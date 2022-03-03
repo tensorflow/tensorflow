@@ -20,7 +20,9 @@ limitations under the License.
 
 namespace mlir {
 
-class StandardOpsDialect;
+namespace func {
+class FuncDialect;
+}  // end namespace func
 
 namespace arith {
 class ArithmeticDialect;

@@ -26,8 +26,8 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -259,7 +259,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   for (Value result : results) {
     return_values.push_back(mapping.lookupOrNull(result));
   }
-  builder.create<mlir::ReturnOp>(location, return_values);
+  builder.create<mlir::func::ReturnOp>(location, return_values);
 
   // Create a function call to the newly created function.
   StringAttr new_func_name =

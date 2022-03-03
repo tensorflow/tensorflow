@@ -26,8 +26,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -175,7 +175,7 @@ class XlaHloToLhloPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<arith::ArithmeticDialect, bufferization::BufferizationDialect,
-                StandardOpsDialect, memref::MemRefDialect, mhlo::MhloDialect,
+                func::FuncDialect, memref::MemRefDialect, mhlo::MhloDialect,
                 lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
   }
 
@@ -1642,7 +1642,7 @@ Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
       ->loadDialect<arith::ArithmeticDialect,
-                    bufferization::BufferizationDialect, StandardOpsDialect,
+                    bufferization::BufferizationDialect, func::FuncDialect,
                     memref::MemRefDialect, mhlo::MhloDialect,
                     lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
 

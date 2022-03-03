@@ -17,7 +17,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -79,7 +79,7 @@ std::string WhileOutlinePass::GetName(Operation* op, StringRef suffix) {
 bool IsAlreadyOutlined(WhileOp while_op) {
   auto just_call = [](Region& region) {
     auto it = region.front().begin();
-    if (!isa<CallOp>(*it)) return false;
+    if (!isa<func::CallOp>(*it)) return false;
     ++it;
     if (!isa<YieldOp>(*it)) return false;
     return true;
@@ -170,7 +170,7 @@ FuncOp CreateOutlineFunc(StringRef name, Region& region,
   } else {
     args.append(yield_op->operand_begin(), yield_op->operand_end());
   }
-  b.create<ReturnOp>(yield_op->getLoc(), args);
+  b.create<func::ReturnOp>(yield_op->getLoc(), args);
   yield_op->erase();
   SymbolTable(region.getParentOfType<ModuleOp>()).insert(outlined_func);
   outlined_func.setPrivate();
@@ -192,7 +192,7 @@ void ReplaceRegionWithCall(StringRef name, Region& region,
   for (Type t : llvm::makeArrayRef(types).drop_back(extern_values.size()))
     new_operands.push_back(block->addArgument(t, loc));
   for (Value v : extern_values) new_operands.push_back(v);
-  auto call = b.create<CallOp>(loc, func, new_operands);
+  auto call = b.create<func::CallOp>(loc, func, new_operands);
   b.create<YieldOp>(loc, call.getResults());
 }
 

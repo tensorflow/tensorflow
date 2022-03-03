@@ -27,11 +27,11 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -429,7 +429,7 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
     target.addLegalDialect<
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
         lmhlo::LmhloDialect, memref::MemRefDialect, shape::ShapeDialect,
-        StandardOpsDialect, tensor::TensorDialect>();
+        func::FuncDialect, tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     // bufferization.to_memref is illegal if it has uses.
     // TODO(b/175670649) Make bufferization.to_memref illegal.
@@ -442,16 +442,17 @@ struct HloLegalizeToLhlo : public HloLegalizeToLhloPassBase<HloLegalizeToLhlo> {
       return converter.isSignatureLegal(op.getType()) &&
              converter.isLegal(&op.getBody());
     });
-    target.addDynamicallyLegalOp<CallOp>([&](CallOp op) {
+    target.addDynamicallyLegalOp<func::CallOp>([&](func::CallOp op) {
       return std::all_of(op.operand_type_begin(), op.operand_type_end(),
                          isMemRefType) &&
              std::all_of(op.result_type_begin(), op.result_type_end(),
                          isMemRefType);
     });
-    target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp op) {
-      return std::all_of(op.operand_type_begin(), op.operand_type_end(),
-                         isMemRefType);
-    });
+    target.addDynamicallyLegalOp<mlir::func::ReturnOp>(
+        [&](mlir::func::ReturnOp op) {
+          return std::all_of(op.operand_type_begin(), op.operand_type_end(),
+                             isMemRefType);
+        });
 
     populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
     populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,

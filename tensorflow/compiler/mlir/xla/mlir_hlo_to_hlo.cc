@@ -28,8 +28,8 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -586,7 +586,7 @@ class ConvertToHloModule {
 
   // Lower function call to HLO call instruction
   LogicalResult LowerFunctionCall(
-      mlir::CallOp call_op, xla::XlaBuilder* builder,
+      mlir::func::CallOp call_op, xla::XlaBuilder* builder,
       ConvertToHloModule::ValueLoweringMap* value_lowering);
 
   // Look up a symbol with the specified name, returning null if no such name
@@ -1908,8 +1908,9 @@ LogicalResult ConvertToHloModule::Lower(
   // Explicitly fail for ops that are not supported for export.
   if (inst->getDialect() !=
           inst->getContext()->getLoadedDialect<mlir::mhlo::MhloDialect>() &&
-      !mlir::isa<mlir::ConstantOp, mlir::arith::ConstantOp, mlir::CallOp,
-                 mlir::tensor::CastOp, mlir::ReturnOp>(inst)) {
+      !mlir::isa<mlir::func::ConstantOp, mlir::arith::ConstantOp,
+                 mlir::func::CallOp, mlir::tensor::CastOp,
+                 mlir::func::ReturnOp>(inst)) {
     inst->emitOpError("unsupported op for export to XLA");
     return failure();
   }
@@ -2052,7 +2053,7 @@ LogicalResult ConvertToHloModule::Lower(
   auto& value_map = *value_lowering;
   ElementsAttr const_attr;
 
-  if (auto call_op = dyn_cast<mlir::CallOp>(inst)) {
+  if (auto call_op = dyn_cast<mlir::func::CallOp>(inst)) {
     return LowerFunctionCall(call_op, builder, &value_map);
   }
 
@@ -2093,7 +2094,7 @@ LogicalResult ConvertToHloModule::Lower(
     return success();
   }
 
-  if (isa<mhlo::ReturnOp, mlir::ReturnOp>(inst)) {
+  if (isa<mhlo::ReturnOp, mlir::func::ReturnOp>(inst)) {
     // Construct the return value for the function. If there is a single value
     // returned, then return it directly, else create a tuple and return.
     unsigned num_return_values = inst->getNumOperands();
@@ -2155,7 +2156,7 @@ LogicalResult ConvertToHloModule::Lower(
 }
 
 LogicalResult ConvertToHloModule::LowerFunctionCall(
-    mlir::CallOp call_op, xla::XlaBuilder* builder,
+    mlir::func::CallOp call_op, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
   auto& value_map = *value_lowering;
   mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op.getCallee());
@@ -2538,7 +2539,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
 
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   for (auto& inst : block) {
-    if (isa<mhlo::ReturnOp, mlir::ReturnOp>(inst)) {
+    if (isa<mhlo::ReturnOp, mlir::func::ReturnOp>(inst)) {
       returns.resize(inst.getNumOperands());
       for (OpOperand& ret : inst.getOpOperands()) {
         unsigned index = ret.getOperandNumber();

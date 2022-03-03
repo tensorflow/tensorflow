@@ -17,7 +17,7 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -69,7 +69,7 @@ FuncOp CreateSessionInitFunc(ModuleOp module) {
                 builder.getStrArrayAttr({kSessionInitFuncName}));
   func.setVisibility(mlir::FuncOp::Visibility::Public);
   auto func_builder = OpBuilder::atBlockBegin(func.addEntryBlock());
-  func_builder.create<mlir::ReturnOp>(func.getLoc());
+  func_builder.create<mlir::func::ReturnOp>(func.getLoc());
   // In cases where there is a session initializer op with empty initializer,
   // replace the session initializer with the new one that points to the session
   // initializer func.

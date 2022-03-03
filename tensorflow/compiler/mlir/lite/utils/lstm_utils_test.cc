@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -92,7 +92,7 @@ class LstmUtilsTest : public ::testing::Test {
 
   void SetUp() override {
     context_ = std::make_unique<mlir::MLIRContext>();
-    context_->loadDialect<arith::ArithmeticDialect, mlir::StandardOpsDialect,
+    context_->loadDialect<arith::ArithmeticDialect, mlir::func::FuncDialect,
                           tensor::TensorDialect, mlir::TF::TensorFlowDialect,
                           TensorFlowLiteDialect>();
     builder_ = std::unique_ptr<mlir::Builder>(new Builder(context_.get()));
@@ -150,7 +150,8 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
       3);
 
   auto it = fused_lstm_func_.getBody().back().rbegin();
-  EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
+  EXPECT_EQ(it->getName().getStringRef(),
+            mlir::func::ReturnOp::getOperationName());
   it++;  // tensor_cast
   it++;  // lstm
   EXPECT_EQ(it->getName().getStringRef(),
@@ -203,7 +204,8 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
             llvm::join(attributes, ","));
 
   auto it = fused_lstm_func_cifg_.getBody().back().rbegin();
-  EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
+  EXPECT_EQ(it->getName().getStringRef(),
+            mlir::func::ReturnOp::getOperationName());
   it++;
   it++;
   EXPECT_EQ(it->getName().getStringRef(),
@@ -229,7 +231,8 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
   EXPECT_EQ(fused_ln_lstm_func_.getType().getNumResults(), 1);
 
   auto it = fused_ln_lstm_func_.getBody().back().rbegin();
-  EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
+  EXPECT_EQ(it->getName().getStringRef(),
+            mlir::func::ReturnOp::getOperationName());
   it++;
   it++;
   EXPECT_EQ(it->getName().getStringRef(),

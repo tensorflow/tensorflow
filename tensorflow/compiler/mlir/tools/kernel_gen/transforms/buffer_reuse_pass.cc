@@ -21,9 +21,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -77,7 +77,7 @@ class BufferReuseAnalysis {
       auto buffer_aliases = aliases.resolve(alloc_op.getResult());
       for (Value alias : buffer_aliases) {
         for (auto &use : alias.getUses()) {
-          if (isa<ReturnOp>(use.getOwner())) {
+          if (isa<func::ReturnOp>(use.getOwner())) {
             int32_t index = use.getOperandNumber();
             if (count_return_uses++ == 0)
               output_index = index;

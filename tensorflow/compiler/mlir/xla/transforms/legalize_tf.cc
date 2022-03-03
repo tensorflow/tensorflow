@@ -30,8 +30,8 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -1038,7 +1038,7 @@ static void BuildBodyWithCall(PatternRewriter &rewriter, const Location &loc,
   Block *block = rewriter.createBlock(body);
   auto inputs = func_ty.getInputs();
   block->addArguments(inputs, SmallVector<Location>(inputs.size(), loc));
-  mlir::CallOp call_op = rewriter.create<mlir::CallOp>(
+  mlir::func::CallOp call_op = rewriter.create<mlir::func::CallOp>(
       loc, func, func_ty.getResults(), block->getArguments());
   rewriter.create<mhlo::ReturnOp>(loc, call_op.getResults());
 }

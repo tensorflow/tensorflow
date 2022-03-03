@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -728,7 +728,7 @@ LogicalResult InferFunctionBodyValuesConstraints(
 
     // Propagate constraints through function return operations.
     for (Block &block : func.body()) {
-      ReturnOp ret = dyn_cast<ReturnOp>(block.back());
+      func::ReturnOp ret = dyn_cast<func::ReturnOp>(block.back());
       if (ret) constraints.Insert(ret.getOperand(i), constraint);
     }
   }

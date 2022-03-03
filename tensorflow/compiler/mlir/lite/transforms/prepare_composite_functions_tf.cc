@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -123,7 +123,7 @@ LogicalResult ConvertTflFusableOp(
   auto tfl_fusable_op = builder.create<TFL::CustomOp>(
       func->getLoc(), func.getType().getResults(), func.getArguments(),
       custom_op_name, CustomOption(&builder, custom_option_buffer));
-  builder.create<ReturnOp>(func->getLoc(), tfl_fusable_op.getResults());
+  builder.create<func::ReturnOp>(func->getLoc(), tfl_fusable_op.getResults());
   return success();
 }
 
@@ -143,7 +143,7 @@ class ConvertEmbeddedLookupFunc {
     auto op = builder.create<mlir::TFL::EmbeddingLookupOp>(
         func_.getLoc(), output_type, lookup, value);
 
-    builder.create<mlir::ReturnOp>(func_.getLoc(), op.getResult());
+    builder.create<mlir::func::ReturnOp>(func_.getLoc(), op.getResult());
   }
 
   LogicalResult VerifySignature() {

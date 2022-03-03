@@ -932,7 +932,7 @@ static Status CompileModuleToLlvmIrImpl(
   mlir::MLIRContext mlir_context;
   mlir_context
       .loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                   mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+                   mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                    mlir::lmhlo_gpu::LmhloGpuDialect>();
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       mlir::ModuleOp::create(mlir::Builder(&mlir_context).getUnknownLoc());

@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -79,7 +79,7 @@ absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
 
   // Convert the SavedModelBundle to an MLIR module.
   mlir::DialectRegistry registry;
-  registry.insert<mlir::StandardOpsDialect, mlir::scf::SCFDialect,
+  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,
                   mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
                   mlir::quant::QuantizationDialect>();
@@ -157,7 +157,7 @@ absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
 
   // Convert the SavedModelBundle to an MLIR module.
   mlir::DialectRegistry registry;
-  registry.insert<mlir::StandardOpsDialect, mlir::scf::SCFDialect,
+  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,
                   mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
                   mlir::quant::QuantizationDialect>();
@@ -223,7 +223,7 @@ absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPostCalibration(
 
   // Convert the SavedModelBundle to an MLIR module.
   mlir::DialectRegistry registry;
-  registry.insert<mlir::StandardOpsDialect, mlir::scf::SCFDialect,
+  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,
                   mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
                   mlir::quant::QuantizationDialect>();

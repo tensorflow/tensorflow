@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -402,7 +402,7 @@ Status HloFunctionImporter::ImportInstructions(
 
   // Create terminator op depending on the parent op of this region.
   if (llvm::isa<FuncOp>(block->getParentOp())) {
-    builder.create<mlir::ReturnOp>(loc, result);
+    builder.create<mlir::func::ReturnOp>(loc, result);
   } else {
     if (flatten_region_arg_tuple) {
       // Flatten tuples in results of this region.
@@ -566,7 +566,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       TF_ASSIGN_OR_RETURN(FuncOp function,
                           ImportAsFunc(*instruction->to_apply()));
       mlir::Operation* new_operation =
-          func_builder->create<mlir::CallOp>(loc, function, operands);
+          func_builder->create<mlir::func::CallOp>(loc, function, operands);
       return new_operation;
     }
     case HloOpcode::kCollectivePermute: {

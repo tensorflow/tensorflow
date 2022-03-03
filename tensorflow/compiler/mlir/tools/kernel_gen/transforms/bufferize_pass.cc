@@ -31,6 +31,9 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
@@ -40,9 +43,6 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"  // from @llvm-project
@@ -165,7 +165,7 @@ struct ComputeOpAndFuncBufferizePass
     target.addLegalDialect<
         arith::ArithmeticDialect, complex::ComplexDialect, lmhlo::LmhloDialect,
         AffineDialect, vector::VectorDialect, memref::MemRefDialect,
-        StandardOpsDialect, tensor::TensorDialect, math::MathDialect>();
+        func::FuncDialect, tensor::TensorDialect, math::MathDialect>();
     target.addLegalOp<UnrealizedConversionCastOp, gml_st::LoopOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addDynamicallyLegalOp<tensor::ExtractSliceOp, tensor::InsertSliceOp>(
@@ -182,9 +182,9 @@ struct ComputeOpAndFuncBufferizePass
           // Force identity maps for several ops which don't support memrefs
           // with affine_maps.
           return llvm::any_of(op->getUsers(), [](Operation* user) {
-            return isa<gml_st::LoopOp, mlir::ReturnOp, mhlo::DynamicReshapeOp,
-                       tensor::CastOp, tensor::CollapseShapeOp,
-                       tensor::ExpandShapeOp>(user);
+            return isa<gml_st::LoopOp, mlir::func::ReturnOp,
+                       mhlo::DynamicReshapeOp, tensor::CastOp,
+                       tensor::CollapseShapeOp, tensor::ExpandShapeOp>(user);
           });
         });
     populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
@@ -209,7 +209,7 @@ struct ComputeOpAndFuncBufferizePass
              converter.isLegal(&op.getBody());
     });
     auto isLegalOp = [&](Operation* op) { return converter.isLegal(op); };
-    target.addDynamicallyLegalOp<CallOp, ReturnOp>(isLegalOp);
+    target.addDynamicallyLegalOp<func::CallOp, func::ReturnOp>(isLegalOp);
 
     auto isLegalOrInsideTiledLoop = [&](Operation* op) {
       return converter.isLegal(op) ||
@@ -238,7 +238,7 @@ struct TiledLoopBufferizePass
     target.addLegalDialect<
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
         complex::ComplexDialect, lmhlo::LmhloDialect, AffineDialect,
-        vector::VectorDialect, memref::MemRefDialect, StandardOpsDialect,
+        vector::VectorDialect, memref::MemRefDialect, func::FuncDialect,
         tensor::TensorDialect, math::MathDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();
@@ -260,7 +260,7 @@ struct TiledLoopBufferizePass
     // Configure legality.
     auto isLegalOp = [&](Operation* op) { return converter.isLegal(op); };
     target.addDynamicallyLegalDialect<linalg::LinalgDialect>(isLegalOp);
-    target.addDynamicallyLegalOp<CallOp, gml_st::LoopOp, gml_st::YieldOp,
+    target.addDynamicallyLegalOp<func::CallOp, gml_st::LoopOp, gml_st::YieldOp,
                                  LLVM::InlineAsmOp, vector::TransferWriteOp,
                                  vector::TransferReadOp>(isLegalOp);
 
@@ -296,7 +296,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
     options
-        .allowDialectInFilter<arith::ArithmeticDialect, StandardOpsDialect,
+        .allowDialectInFilter<arith::ArithmeticDialect, func::FuncDialect,
                               tensor::TensorDialect, vector::VectorDialect>();
     bufferization::AlwaysCopyBufferizationState bufferization_state(options);
     bufferization::populateBufferizationPattern(bufferization_state, patterns);
@@ -319,7 +319,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     target.addLegalDialect<
         arith::ArithmeticDialect, bufferization::BufferizationDialect,
         cf::ControlFlowDialect, complex::ComplexDialect, memref::MemRefDialect,
-        StandardOpsDialect, scf::SCFDialect, tensor::TensorDialect,
+        func::FuncDialect, scf::SCFDialect, tensor::TensorDialect,
         tf_framework::TFFrameworkDialect, AffineDialect, shape::ShapeDialect,
         lmhlo::LmhloDialect, linalg::LinalgDialect, math::MathDialect,
         vector::VectorDialect>();
@@ -336,10 +336,10 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     };
-    target.addDynamicallyLegalOp<
-        ConstantOp, arith::ConstantOp, arith::IndexCastOp, arith::SelectOp,
-        gml_st::LoopOp, gml_st::YieldOp, tf_framework::JITExecuteOp>(
-        typesAreLegal);
+    target.addDynamicallyLegalOp<func::ConstantOp, arith::ConstantOp,
+                                 arith::IndexCastOp, arith::SelectOp,
+                                 gml_st::LoopOp, gml_st::YieldOp,
+                                 tf_framework::JITExecuteOp>(typesAreLegal);
 
     RewritePatternSet patterns(&getContext());
     linalg::populateLinalgBufferizePatterns(converter, patterns);

@@ -448,7 +448,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %arg0 : tensor<2xi32>
   }
 
-  // Test iteratively updating call site if a std.call is used.
+  // Test iteratively updating call site if a func.call is used.
   // CHECK-LABEL: func @call_partitioned_call2(
   // CHECK-SAME: -> tensor<1xi32>
   func @call_partitioned_call2() -> tensor<*xi32> {

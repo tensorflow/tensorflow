@@ -52,7 +52,7 @@
       }) : () -> !tf_executor.control
       "tf_executor.fetch"() : () -> ()
     }) : () -> ()
-    "std.return"() : () -> ()
+    "func.return"() : () -> ()
   }) {sym_name = "main", type = () -> ()} : () -> ()
 }) {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 126 : i32}} : () -> ()
 

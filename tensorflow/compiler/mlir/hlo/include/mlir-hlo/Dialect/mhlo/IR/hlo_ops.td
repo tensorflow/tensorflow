@@ -1377,8 +1377,8 @@ def HLO_DynamicBroadcastInDimOp : HLO_ShapedInterfaceOp<
   let hasCustomHLOConverter = 1;
 }
 
-// Note: There is no HLO_CallOp because the standard call operation mlir::CallOp
-// is used instead. A mlir::CallOp is exported to a HLO call instruction
+// Note: There is no HLO_CallOp because the standard call operation mlir::func::CallOp
+// is used instead. A mlir::func::CallOp is exported to a HLO call instruction
 // directly.
 
 def HLO_CholeskyOp : HLO_Op<"cholesky",

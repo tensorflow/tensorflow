@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -66,7 +66,7 @@ void FunctionalToExecutorDialectConversion::runOnOperation() {
     return;
   }
 
-  auto return_op = dyn_cast<ReturnOp>(body.getTerminator());
+  auto return_op = dyn_cast<func::ReturnOp>(body.getTerminator());
   if (!return_op) {
     LLVM_DEBUG(llvm::dbgs() << "Expect function to end with return\n");
     return;

@@ -15,7 +15,7 @@
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_PATTERN_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LMHLO_TO_GPU_PATTERN_UTILS_H_
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Types.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tfrt/gpu/wrapper/cublas_wrapper.h"  // from @tf_runtime

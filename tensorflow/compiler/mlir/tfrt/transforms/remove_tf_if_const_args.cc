@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -149,7 +149,7 @@ class RemoveTfIfConstArgs
         new_branch.getLoc(), new_branch_type.getResults(), call_args,
         branch.sym_name(), "", "", "");
     // Note that the outputs are not changed.
-    builder.create<mlir::ReturnOp>(new_branch.getLoc(), call_op.output());
+    builder.create<mlir::func::ReturnOp>(new_branch.getLoc(), call_op.output());
 
     return new_branch.sym_name();
   }

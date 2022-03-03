@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -937,22 +937,22 @@ class TFRTCallOpConversion : public mlir::OpConversionPattern<CallOp> {
   bool func_use_fallback_tensor_;
 };
 
-// Convert standard ReturnOp to tfrt.return.
+// Convert func ReturnOp to tfrt.return.
 //
 // TODO(chky): conversion to tfrt kernels should come from a common tf_to_tfrt
 // library.
 class TFRTReturnOpConversion
-    : public mlir::OpConversionPattern<mlir::ReturnOp> {
+    : public mlir::OpConversionPattern<mlir::func::ReturnOp> {
  public:
   TFRTReturnOpConversion(mlir::MLIRContext *context,
                          CoreRTConverter *corert_converter,
                          bool func_use_fallback_tensor)
-      : mlir::OpConversionPattern<mlir::ReturnOp>(context),
+      : mlir::OpConversionPattern<mlir::func::ReturnOp>(context),
         corert_converter_(*corert_converter),
         func_use_fallback_tensor_(func_use_fallback_tensor) {}
 
   LogicalResult matchAndRewrite(
-      mlir::ReturnOp op, OpAdaptor adaptor,
+      mlir::func::ReturnOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     llvm::SmallVector<mlir::Value, 2> new_operands;
 
@@ -2030,11 +2030,13 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
       compiled_func_block->end(), cluster_body, cluster_body.begin(),
       cluster_body.end());
 
-  // Replace `tf_device.return` terminator with `return` in the function body.
+  // Replace `tf_device.return` terminator with `func.return` in the function
+  // body.
   auto device_return =
       cast<tf_device::ReturnOp>(compiled_func_block->getTerminator());
   OpBuilder builder(device_return.getOperation());
-  builder.create<ReturnOp>(device_return.getLoc(), device_return.getOperands());
+  builder.create<func::ReturnOp>(device_return.getLoc(),
+                                 device_return.getOperands());
   device_return.erase();
 
   // TODO(ezhulenev): MLIR doesn't define operation equivalence upstream yet,
