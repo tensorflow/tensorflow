@@ -68,17 +68,21 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   tensorflow::se::CudaComputeCapability cuda_compute_capability;
   cuda_compute_capability.major = sm / 10;
   cuda_compute_capability.minor = sm % 10;
+  tensorflow::se::RocmComputeCapability rocm_compute_capability("gfx908");
   std::string target_triple = "nvptx64-nvidia-cuda";
   std::string datalayout = "nvptx64-nvidia-cuda";
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::Module> llvm_module,
-      xla::gpu::CompileModuleToLlvmIr(
-          hlo_module.get(), &llvm_context,
-          /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
-          /*data_layout=*/xla::gpu::nvptx::DataLayout(),
-          /*platform_name=*/"CUDA",
-          /*platform_id=*/stream_executor::cuda::kCudaPlatformId,
-          gpu_device_info, cuda_compute_capability, /*pointer_size=*/8));
+  std::string platform_name = "CUDA";
+  stream_executor::Platform::Id platform_id =
+      stream_executor::cuda::kCudaPlatformId;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
+                      xla::gpu::CompileModuleToLlvmIr(
+                          hlo_module.get(), &llvm_context,
+                          /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
+                          /*data_layout=*/xla::gpu::nvptx::DataLayout(),
+                          /*platform_name=*/platform_name,
+                          /*platform_id=*/platform_id, gpu_device_info,
+                          cuda_compute_capability, rocm_compute_capability,
+                          /*pointer_size=*/8));
 
   if (!generate_ptx) {
     llvm_module->print(llvm::outs(), nullptr);

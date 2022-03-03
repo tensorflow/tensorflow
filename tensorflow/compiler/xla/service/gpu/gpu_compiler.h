@@ -178,7 +178,8 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, const se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability, int pointer_size);
+    se::CudaComputeCapability cuda_compute_capability,
+    se::RocmComputeCapability rocm_compute_capability, int pointer_size);
 
 // Compiles the given LMHLO module to an executable.
 // ir_emitter_context should be partially populated: buffer_assignment
