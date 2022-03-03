@@ -250,6 +250,18 @@ void GPUUtil::DeviceToDeviceCopy(
 static CopyTensor::Registration register_gpu_gpu_copy(
     DEVICE_GPU, DEVICE_GPU, GPUUtil::DeviceToDeviceCopy);
 
+namespace {
+
+// Returns whether staging is needed based on tensor buffer's memory type.
+bool NeedStaging(const Tensor* tensor) {
+  // Only stage data if the host tensor is on pageable memory.
+  // So if the memory type is unknown, it will fallback to GPU driver to handle
+  // the staging if needed.
+  return tensor->GetMemoryType() == AllocatorMemoryType::kHostPageable;
+}
+
+}  // namespace
+
 // static
 void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
                                  const DeviceContext* device_context,
@@ -276,21 +288,46 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
   send_device_to_host_stream->ThenWaitFor(send_stream);
 
   const int64_t total_bytes = gpu_tensor->TotalBytes();
+  bool need_staging = false;
+  void* staging_buffer = nullptr;
+  Allocator* host_memory_allocator = nullptr;
+
   if (total_bytes > 0) {
     void* src_ptr = GetBase(gpu_tensor);
     DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);
-    void* dst_ptr = GetBase(cpu_tensor);
-    send_device_to_host_stream->ThenMemcpy(dst_ptr, gpu_src_ptr, total_bytes);
+
+    need_staging = NeedStaging(cpu_tensor);
+    if (need_staging) {
+      host_memory_allocator = device_context->host_memory_allocator();
+      if (host_memory_allocator == nullptr) {
+        done(errors::Internal("No host memory allocator is available."));
+        return;
+      }
+      staging_buffer = host_memory_allocator->AllocateRaw(
+          tensorflow::Allocator::kAllocatorAlignment, total_bytes);
+      send_device_to_host_stream->ThenMemcpy(staging_buffer, gpu_src_ptr,
+                                             total_bytes);
+    } else {
+      void* dst_ptr = GetBase(cpu_tensor);
+      send_device_to_host_stream->ThenMemcpy(dst_ptr, gpu_src_ptr, total_bytes);
+    }
   }
   // Use of the input may outlive stack scope, so keep a ref.
   TensorReference input_ref(*gpu_tensor);
   dev_info->event_mgr->ThenExecute(
       send_device_to_host_stream,
-      [send_device_to_host_stream, done, input_ref]() {
+      [send_device_to_host_stream, done, input_ref, need_staging, cpu_tensor,
+       total_bytes, staging_buffer, host_memory_allocator]() {
         if (!send_device_to_host_stream->ok()) {
           LOG(FATAL) << "GPU->CPU Memcpy failed";
         }
         input_ref.Unref();
+
+        if (total_bytes > 0 && need_staging) {
+          void* dst_ptr = GetBase(cpu_tensor);
+          std::memcpy(dst_ptr, staging_buffer, total_bytes);
+          host_memory_allocator->DeallocateRaw(staging_buffer);
+        }
         done(Status::OK());
       });
 }
@@ -323,19 +360,49 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
   }
 
   const int64_t total_bytes = cpu_tensor->TotalBytes();
+
+  bool need_staging = false;
+  void* staging_buffer = nullptr;
+  Allocator* host_memory_allocator = nullptr;
+
+  // Use of cpu_tensor may outlive stack scope, so keep a ref.
+  TensorReference input_ref(*cpu_tensor);
+
   // Note that 0-size tensors have no backing buffer.
   if (total_bytes > 0) {
     void* src_ptr = GetBase(cpu_tensor);
     void* dst_ptr = GetBase(gpu_tensor);
     DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
-    recv_host_to_device_stream->ThenMemcpy(&gpu_dst_ptr, src_ptr, total_bytes);
+
+    need_staging = NeedStaging(cpu_tensor);
+    if (need_staging) {
+      host_memory_allocator = device_context->host_memory_allocator();
+      if (host_memory_allocator == nullptr) {
+        done(errors::Internal("No host memory allocator is available."));
+        return;
+      }
+      staging_buffer = host_memory_allocator->AllocateRaw(
+          tensorflow::Allocator::kAllocatorAlignment, total_bytes);
+      std::memcpy(staging_buffer, src_ptr, total_bytes);
+      input_ref.Unref();
+
+      recv_host_to_device_stream->ThenMemcpy(&gpu_dst_ptr, staging_buffer,
+                                             total_bytes);
+    } else {
+      recv_host_to_device_stream->ThenMemcpy(&gpu_dst_ptr, src_ptr,
+                                             total_bytes);
+    }
   }
-  // Use of cpu_tensor may outlive stack scope, so keep a ref.
-  TensorReference input_ref(*cpu_tensor);
   dev_info->event_mgr->ThenExecute(
       recv_host_to_device_stream,
-      [recv_host_to_device_stream, done, input_ref]() {
-        input_ref.Unref();
+      [recv_host_to_device_stream, done, input_ref, need_staging,
+       staging_buffer, total_bytes, host_memory_allocator]() {
+        if (total_bytes > 0 && need_staging) {
+          host_memory_allocator->DeallocateRaw(staging_buffer);
+        } else {
+          // the ref has been unref'ed if total_bytes > 0 && need_staging.
+          input_ref.Unref();
+        }
         if (!recv_host_to_device_stream->ok()) {
           LOG(FATAL) << "CPU->GPU Memcpy failed";
         }
