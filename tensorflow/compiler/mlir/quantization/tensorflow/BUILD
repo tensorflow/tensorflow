@@ -7,6 +7,7 @@ package_group(
     name = "internal_visibility_allowlist_package",
     packages = [
         "//tensorflow/compiler/mlir/quantization/...",
+        "//learning/brain/mlir/quantization/tensorflow/...",
     ] + internal_visibility_allowlist(),
 )
 

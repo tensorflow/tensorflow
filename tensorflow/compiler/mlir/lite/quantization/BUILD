@@ -102,6 +102,7 @@ cc_library(
         "quantization_traits.h",
         "quantization_utils.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":quantization_config",
         "//tensorflow/core:lib_proto_parsing",
