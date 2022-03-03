@@ -45,6 +45,8 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//third_party/cloud_tpu/inference_converter:bfloat16",
+        "//third_party/cloud_tpu/inference_converter:converter_cc_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

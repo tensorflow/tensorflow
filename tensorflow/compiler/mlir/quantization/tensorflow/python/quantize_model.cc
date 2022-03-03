@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "third_party/cloud_tpu/inference_converter/bfloat16.h"
+#include "third_party/cloud_tpu/inference_converter/converter_options.pb.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
@@ -59,15 +61,61 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 
-using tensorflow::FunctionDefLibrary;
-using tensorflow::Graph;
 using tensorflow::GraphDef;
-using tensorflow::ImportGraphDefOptions;
-using tensorflow::OpRegistry;
 
 namespace tensorflow {
 namespace quantization {
 namespace internal {
+
+const char* const kBfloat16FilterOps[] = {
+    // _Arg(input), _Retval(output) attributes should not converted to bfloat16.
+    "_Arg",
+    "_Retval",
+    // As _Arg(input), _Retval(output) attributes are not converted to bfloat16,
+    // set input/inputs of PartitionedCall/StatefulPartitionedCall as float32.
+    "PartitionedCall",
+    "StatefulPartitionedCall",
+    // Bfloat16 "Round" is not supported in CPU.
+    "Round",
+};
+
+tensorflow::StatusOr<std::unique_ptr<GraphDef>> ConvertToBFloat16(
+    const GraphDef& input_graphdef) {
+  Graph* graph = new Graph(OpRegistry::Global());
+  ImportGraphDefOptions opts;
+  TF_RETURN_IF_ERROR(ImportGraphDef(opts, input_graphdef, graph,
+                                    /*refiner=*/nullptr, /*results=*/nullptr));
+
+  // Build Function Tree.
+  ::gtl::linked_hash_map<std::string, int> func_overhead;
+  auto root_func =
+      absl::make_unique<tensorflow::tpu_inference_converter::FunctionInfo>(
+          "root");
+  root_func->set_graph(graph);
+  TF_RETURN_IF_ERROR(root_func->Build(graph->flib_def(), &func_overhead));
+
+  // Optimize Tree.
+  tensorflow::ConverterOptions converter_opts;
+  converter_opts.set_bfloat16_scope(tensorflow::BFloat16Scope::ALL);
+  // TODO(b/205051314): Enable filterlist to be set by users.
+  for (const auto filter_op : kBfloat16FilterOps) {
+    converter_opts.add_bfloat16_filterlist(filter_op);
+  }
+
+  TF_RETURN_IF_ERROR(tensorflow::tpu_inference_converter::FuncFloatToBFloat16(
+      root_func.get(), converter_opts));
+
+  // Update Tree.
+  FunctionDefLibrary fdef_lib;
+  TF_RETURN_IF_ERROR(root_func->LazyUpdate(&fdef_lib));
+  TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdef_lib));
+
+  // Convert the result graph back to a GraphDef.
+  auto output_graphdef = absl::make_unique<GraphDef>();
+  root_func->get_graph()->ToGraphDef(output_graphdef.get());
+
+  return output_graphdef;
+}
 
 absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
