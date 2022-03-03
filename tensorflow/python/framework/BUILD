@@ -1903,7 +1903,6 @@ tf_py_test(
     main = "tensor_util_test.py",
     python_version = "PY3",
     tags = [
-        "no_msan",
         "no_windows",
     ],
     deps = [
