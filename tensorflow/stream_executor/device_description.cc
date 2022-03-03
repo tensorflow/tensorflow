@@ -112,6 +112,10 @@ CudaComputeCapability DeviceDescription::cuda_compute_capability() const {
   return cuda_compute_capability_;
 }
 
+RocmComputeCapability DeviceDescription::rocm_compute_capability() const {
+  return rocm_compute_capability_;
+}
+
 bool DeviceDescription::rocm_amdgpu_isa_version(int *version) const {
   bool status = false;
   if (rocm_amdgpu_isa_version_ > 0) {

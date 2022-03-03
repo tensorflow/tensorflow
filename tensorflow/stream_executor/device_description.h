@@ -24,6 +24,9 @@ limitations under the License.
 #include <memory>
 
 #include "absl/base/macros.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "absl/types/variant.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -92,6 +95,79 @@ struct CudaComputeCapability {
   std::string ToString() const { return absl::StrCat(major, ".", minor); }
 
   std::pair<int, int> ToPair() const { return std::make_pair(major, minor); }
+};
+
+// ROCm compute capability, as reported by the device description.
+class RocmComputeCapability {
+ public:
+  // gcn_arch_name example --  gfx90a:sramecc+:xnack-
+  // gfx_version is the "gfx90a" part of the gcn_arch_name
+  RocmComputeCapability(const std::string gcn_arch_name)
+      : gcn_arch_name_(gcn_arch_name) {}
+
+  ~RocmComputeCapability() {}
+
+  std::string gcn_arch_name() { return gcn_arch_name_; }
+
+  std::string gfx_version() {
+    std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name_, ':');
+    return tokens[0];
+  }
+
+  bool is_supported_gfx_version() {
+    return supported_gfx_versions().count(gfx_version()) != 0;
+  }
+
+  std::string supported_gfx_versions_str() {
+    return absl::StrJoin(supported_gfx_versions(), ", ");
+  }
+
+  bool has_nhwc_layout_support() {
+    return gfx_versions_with_nhwc_layout_support().count(gfx_version()) != 0;
+  }
+
+  bool has_bf16_dtype_support() {
+    return gfx_versions_with_fast_bf16_support().count(gfx_version()) != 0;
+  }
+
+  bool has_fast_fp16_support() {
+    return gfx_versions_with_fast_fp16_support().count(gfx_version()) != 0;
+  }
+
+  bool has_mfma_instr_support() {
+    return gfx_versions_with_mfma_instr_support().count(gfx_version()) != 0;
+  }
+
+  bool has_fp16_atomics_support() {
+    return gfx_versions_with_fp16_atomics_support().count(gfx_version()) != 0;
+  }
+
+ private:
+  std::string gcn_arch_name_;
+  std::set<std::string> supported_gfx_versions() {
+    return {
+        "gfx900",  // MI25
+        "gfx906",  // MI50 / MI60
+        "gfx908",  // MI100
+        "gfx90a",  // MI200
+        "gfx1030"  // Navi21
+    };
+  }
+  std::set<std::string> gfx_versions_with_nhwc_layout_support() {
+    return {"gfx908", "gfx90a"};
+  }
+  std::set<std::string> gfx_versions_with_fast_bf16_support() {
+    return {"gfx908", "gfx90a"};
+  }
+  std::set<std::string> gfx_versions_with_fast_fp16_support() {
+    return {"gfx906", "gfx908", "gfx90a", "gfx1030"};
+  }
+  std::set<std::string> gfx_versions_with_mfma_instr_support() {
+    return {"gfx908", "gfx90a"};
+  }
+  std::set<std::string> gfx_versions_with_fp16_atomics_support() {
+    return {"gfx90a"};
+  }
 };
 
 // Data that describes the execution target of the StreamExecutor, in terms of
@@ -196,6 +272,11 @@ class DeviceDescription {
   // zero.
   CudaComputeCapability cuda_compute_capability() const;
 
+  // Returns the ROCm compute capability if we're running on the ROCm platform.
+  // If a ROCm compute capability is not available, the default gfx_arch will
+  // be "gfx000" (which is an invalid gfx arch).
+  RocmComputeCapability rocm_compute_capability() const;
+
   // Returns the AMDGPU ISA version if we're running on the ROCm platform.
   // If the information is not available, the version is not modified,
   // and the return value will be false.
@@ -268,6 +349,9 @@ class DeviceDescription {
 
   // CUDA "CC" major value, -1 if not available.
   CudaComputeCapability cuda_compute_capability_{-1, -1};
+
+  // ROCm gfx arch,  "gfx000" if not available.
+  RocmComputeCapability rocm_compute_capability_{"gfx000"};
 
   // ROCM AMDGPU ISA version, 0 if not available.
   int rocm_amdgpu_isa_version_;
@@ -360,6 +444,11 @@ class DeviceDescriptionBuilder {
   void set_cuda_compute_capability(int major, int minor) {
     device_description_->cuda_compute_capability_ =
         CudaComputeCapability{major, minor};
+  }
+
+  void set_rocm_compute_capability(std::string gcn_arch_name) {
+    device_description_->rocm_compute_capability_ =
+        RocmComputeCapability(gcn_arch_name);
   }
 
   void set_rocm_amdgpu_isa_version(int version) {
