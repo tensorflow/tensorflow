@@ -55,15 +55,11 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
   se::StreamExecutor* stream_exec = stream->parent();
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
-  std::string amdgpu_arch = stream_exec->GetDeviceDescription()
-                                .rocm_compute_capability()
-                                .gcn_arch_name();
-
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr,
       backend_->platform()->Name(), gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
-      amdgpu_arch,
+      stream_exec->GetDeviceDescription().rocm_compute_capability(),
       /*mlir_context=*/nullptr, llvm_module.get());
 
   HloModuleConfig module_config;
