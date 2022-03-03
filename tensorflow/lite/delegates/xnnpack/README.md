@@ -169,6 +169,11 @@ Below is the list of currently supported floating-point operators:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+#### `CONCATENATION`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Only concatenation with two inputs is supported.
+
 #### `CONV_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -491,6 +496,11 @@ Below is the list of currently supported quantized operators:
 * Only addition with two inputs is supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `CONCATENATION`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Only concatenation with two inputs is supported.
 
 #### `CONV_2D`
 
