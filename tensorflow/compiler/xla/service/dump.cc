@@ -58,7 +58,8 @@ struct CanonicalDebugOptions {
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
         dump_module_metadata(opts.xla_dump_module_metadata()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
-        dump_hlo_metadata(!opts.xla_dump_disable_metadata()) {
+        dump_hlo_metadata(!opts.xla_dump_disable_metadata()),
+        dump_as_long_text(opts.xla_dump_hlo_as_long_text()) {
     // This constructor examines the values in `opts` and turns on other flags
     // based on what we think is the user's intent.  To reduce confusion about
     // what was a user-specified value versus an extrapolated value, within this
@@ -173,6 +174,7 @@ struct CanonicalDebugOptions {
   bool dump_module_metadata;
   bool dump_compress_protos;
   bool dump_hlo_metadata;
+  bool dump_as_long_text;
 };
 
 static Status WriteStringToFile(tensorflow::Env* env, const std::string& fname,
@@ -305,7 +307,11 @@ static std::vector<std::string> DumpHloModuleImpl(
   std::vector<absl::optional<std::string>> file_paths;
 
   if (opts.dump_as_text) {
-    HloPrintOptions print_options;
+    auto print_options = opts.dump_as_long_text
+                             ? HloPrintOptions()
+                             : HloPrintOptions::ShortParsable();
+    print_options.set_print_large_constants(false);
+    print_options.set_print_control_dependencies(true);
     print_options.set_print_backend_config(true);
     print_options.set_print_metadata(opts.dump_hlo_metadata);
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(

@@ -274,6 +274,9 @@ message DebugOptions {
   // GZip-compress protos dumped via --xla_dump_hlo_as_proto.
   bool xla_dump_compress_protos = 151;
 
+  // Dump HLO in long text format. Ignored unless xla_dump_hlo_as_text is true.
+  bool xla_dump_hlo_as_long_text = 164;
+
   //
   // END flags controlling dumping HLO modules.
   //
@@ -370,7 +373,7 @@ message DebugOptions {
   // Rendezvous. Negative value disables the timeout and will not terminate.
   int64 xla_gpu_nccl_termination_timeout_seconds = 163;
 
-  // Next id: 164
+  // Next id: 165
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
