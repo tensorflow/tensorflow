@@ -152,6 +152,24 @@ struct BufferizeInsertSliceOp : public OpConversionPattern<InsertSliceOp> {
   }
 };
 
+/// Create linalg op on buffers given the original tensor-based operation and
+/// the buffers for the outputs.
+static linalg::LinalgOp createLinalgOpOnBuffers(
+    ConversionPatternRewriter &rewriter, linalg::LinalgOp linalgOp,
+    ValueRange inputs, ValueRange outputs) {
+  SmallVector<Value, 8> newOperands = inputs;
+  newOperands.append(outputs.begin(), outputs.end());
+  auto *newOp = linalgOp.cloneWithoutRegions(rewriter, linalgOp.getLoc(),
+                                             /*resultTypes=*/ArrayRef<Type>{},
+                                             newOperands);
+  for (auto regions : llvm::zip(linalgOp->getRegions(), newOp->getRegions())) {
+    auto &oldRegion = std::get<0>(regions);
+    auto &newRegion = std::get<1>(regions);
+    rewriter.inlineRegionBefore(oldRegion, newRegion, newRegion.begin());
+  }
+  return newOp;
+}
+
 // Bufferize LinalgOps in-place.
 struct BufferizeLinalgOp
     : public OpInterfaceConversionPattern<linalg::LinalgOp> {
@@ -169,8 +187,7 @@ struct BufferizeLinalgOp
     // TODO(b/199046880): Replace this with LinalgOp::Adaptor or equivalent.
     linalg::GenericOpAdaptor adaptor(operands, op->getAttrDictionary());
 
-    mlir::linalg::createLinalgOpOnBuffers(rewriter, op, adaptor.inputs(),
-                                          adaptor.outputs());
+    createLinalgOpOnBuffers(rewriter, op, adaptor.inputs(), adaptor.outputs());
     rewriter.replaceOp(op, adaptor.outputs());
     return success();
   }
