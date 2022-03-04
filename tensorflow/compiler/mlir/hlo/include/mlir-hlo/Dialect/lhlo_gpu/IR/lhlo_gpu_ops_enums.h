@@ -21,9 +21,16 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 
 // Order matters, this .inc header is not self-contained, and relies on the
 // #includes above.
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h.inc"
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.h.inc"
 
 #endif  // MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_ENUMS_H
