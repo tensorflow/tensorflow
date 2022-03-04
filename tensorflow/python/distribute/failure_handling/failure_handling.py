@@ -33,6 +33,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.util.tf_export import tf_export
 
 _PREEMPTION_KEY = 'TERMINATED_WORKER'
 _RUN_COUNT_KEY = 'RUN_TO_CHECKPOINT'
@@ -55,6 +56,7 @@ def _mwms_write_checkpoint_dir(checkpoint_dir, task_type, task_id,
   return os.path.join(dirpath, base)
 
 
+@tf_export('distribute.experimental.CoordinatedCheckpointManager', v1=[])
 class CoordinatedCheckpointManager(object):
   """Preemption and error handler for synchronous training.
 
