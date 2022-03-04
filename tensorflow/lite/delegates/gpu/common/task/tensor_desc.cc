@@ -981,6 +981,18 @@ absl::Status TensorDescriptor::GetDataTypeFromTemplateArgs(
     *result = DataType::FLOAT16;
   } else if (read_type == "float") {
     *result = DataType::FLOAT32;
+  } else if (read_type == "int") {
+    *result = DataType::INT32;
+  } else if (read_type == "short") {
+    *result = DataType::INT16;
+  } else if (read_type == "char") {
+    *result = DataType::INT8;
+  } else if (read_type == "uint") {
+    *result = DataType::UINT32;
+  } else if (read_type == "ushort") {
+    *result = DataType::UINT16;
+  } else if (read_type == "uchar") {
+    *result = DataType::UINT8;
   } else {
     return absl::NotFoundError(absl::StrCat(
         "Unrecognized Read selector template argument - ", read_type));
