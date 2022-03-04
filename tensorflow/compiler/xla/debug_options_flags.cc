@@ -84,6 +84,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_bef_executable(false);
   opts.set_xla_gpu_bef_thunk(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
+  opts.set_xla_gpu_enable_shared_constants(true);
 
   return opts;
 }
@@ -712,6 +713,11 @@ static void AllocateFlags() {
           &DebugOptions::set_xla_gpu_nccl_termination_timeout_seconds),
       flag_values->xla_gpu_nccl_termination_timeout_seconds(),
       "Timeout in seconds before terminating jobs stuck in NCCL Rendezvous."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_enable_shared_constants",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_shared_constants),
+      flag_values->xla_gpu_enable_shared_constants(),
+      "Enable constant sharing between GPU executables"));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }  // NOLINT(readability/fn_size)
