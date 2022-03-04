@@ -1024,9 +1024,20 @@ class Subgraph {
     return kTfLiteOk;
   }
 
-  static TfLiteStatus CheckNumInputsAndOutputs(
-      TfLiteContext* context, TfLiteNode* node, int min_num_inputs,
-      int max_num_inputs, int expected_num_outputs, int node_index) {
+  static TfLiteStatus CheckNumInputs(TfLiteContext* context, TfLiteNode* node,
+                                     int expected_num_inputs, int node_index) {
+    if (node->inputs->size != expected_num_inputs) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          context, "unexpected number of inputs (%d != %d) in node #%d",
+          node->inputs->size, expected_num_inputs, node_index);
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus CheckNumInputs(TfLiteContext* context, TfLiteNode* node,
+                                     int min_num_inputs, int max_num_inputs,
+                                     int node_index) {
     if (node->inputs->size < min_num_inputs ||
         node->inputs->size > max_num_inputs) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
@@ -1034,6 +1045,12 @@ class Subgraph {
                                node->inputs->size, node_index);
       return kTfLiteError;
     }
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus CheckNumOutputs(TfLiteContext* context, TfLiteNode* node,
+                                      int expected_num_outputs,
+                                      int node_index) {
     if (node->outputs->size != expected_num_outputs) {
       TF_LITE_MAYBE_KERNEL_LOG(
           context, "unexpected number of outputs (%d != %d) in node #%d",
@@ -1043,23 +1060,38 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckNumOutputs(TfLiteContext* context, TfLiteNode* node,
+                                      int min_num_outputs, int max_num_outputs,
+                                      int node_index) {
+    if (node->outputs->size < min_num_outputs ||
+        node->outputs->size > max_num_outputs) {
+      TF_LITE_MAYBE_KERNEL_LOG(context,
+                               "unexpected number of outputs (%d) in node #%d",
+                               node->outputs->size, node_index);
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus CheckNumInputsAndOutputs(
+      TfLiteContext* context, TfLiteNode* node, int min_num_inputs,
+      int max_num_inputs, int expected_num_outputs, int node_index) {
+    TF_LITE_ENSURE_STATUS(CheckNumInputs(context, node, min_num_inputs,
+                                         max_num_inputs, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckNumOutputs(context, node, expected_num_outputs, node_index));
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus CheckNumInputsAndOutputs(TfLiteContext* context,
                                                TfLiteNode* node,
                                                int expected_num_inputs,
                                                int expected_num_outputs,
                                                int node_index) {
-    if (node->inputs->size != expected_num_inputs) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          context, "unexpected number of inputs (%d != %d) in node #%d",
-          node->inputs->size, expected_num_inputs, node_index);
-      return kTfLiteError;
-    }
-    if (node->outputs->size != expected_num_outputs) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          context, "unexpected number of outputs (%d != %d) in node #%d",
-          node->outputs->size, expected_num_outputs, node_index);
-      return kTfLiteError;
-    }
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputs(context, node, expected_num_inputs, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckNumOutputs(context, node, expected_num_outputs, node_index));
     return kTfLiteOk;
   }
 
@@ -2018,11 +2050,11 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteSplitParams* split_params,
       const std::vector<uint32_t>& xnnpack_tensors) {
-    TF_LITE_ENSURE_EQ(logging_context, split_params->num_splits,
-                      NumOutputs(node));
-
+    int num_outputs = NumOutputs(node);
+    TF_LITE_ENSURE_EQ(logging_context, split_params->num_splits, num_outputs);
+    TF_LITE_ENSURE_STATUS(CheckNumInputs(logging_context, node, 2, node_index));
     TF_LITE_ENSURE_STATUS(
-        CheckNumInputsAndOutputs(logging_context, node, 2, 2, node_index));
+        CheckNumOutputs(logging_context, node, 2, 3, node_index));
 
     int split_dim_idx = node->inputs->data[0];
     const TfLiteTensor& split_dim_tensor = tensors[split_dim_idx];
@@ -2047,15 +2079,15 @@ class Subgraph {
     TF_LITE_ENSURE(logging_context, split_dim < NumDimensions(&input_tensor));
 
     int input_split_dim_size = SizeOfDimension(&input_tensor, split_dim);
-    if (input_split_dim_size % 2 != 0) {
+    if (input_split_dim_size % num_outputs != 0) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
-          "Cannot evenly split dimension %d, which is %d into 2", split_dim,
-          input_split_dim_size);
+          "Cannot evenly split dimension %d, which is %d, into %d", split_dim,
+          input_split_dim_size, num_outputs);
       return kTfLiteError;
     }
 
-    int32_t expected_output_split_dim_size = input_split_dim_size >> 1;
+    int32_t expected_output_split_dim_size = input_split_dim_size / num_outputs;
 
     for (int i = 0; i < NumOutputs(node); i++) {
       int output_idx = node->outputs->data[i];
@@ -2090,12 +2122,24 @@ class Subgraph {
     }
 
     if (subgraph != nullptr) {
-      const xnn_status status = xnn_define_even_split2(
-          subgraph, split_dim,
-          /*input_id=*/xnnpack_tensors[input_idx],
-          /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
-          /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
-          /*flags=*/0);
+      xnn_status status = xnn_status_invalid_parameter;
+      if (num_outputs == 2) {
+        status = xnn_define_even_split2(
+            subgraph, split_dim,
+            /*input_id=*/xnnpack_tensors[input_idx],
+            /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
+            /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
+            /*flags=*/0);
+      } else if (num_outputs == 3) {
+        status = xnn_define_even_split3(
+            subgraph, split_dim,
+            /*input_id=*/xnnpack_tensors[input_idx],
+            /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
+            /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
+            /*output3_id=*/xnnpack_tensors[node->outputs->data[2]],
+            /*flags=*/0);
+      }
+
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate SPLIT node #%d",
                            node_index);
