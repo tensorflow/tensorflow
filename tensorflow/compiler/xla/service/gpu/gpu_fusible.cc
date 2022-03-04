@@ -254,6 +254,21 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
     return false;
   }
 
+  // If the producer is an in-place operation (or a fusion with an in-place
+  // operation at its root), fusion is dangerous. Only certain data access
+  // patterns in the consumer are valid, otherwise there is danger of the
+  // consumer accidentally reading parts of the in-place operand that have
+  // already been modified.
+  // For simplicitly, we simply ban fusion altogether when the producer is
+  // in-place. (It would be possible to make this more lenient in the future by
+  // allowing fusion in certain cases where the consumer can be proven to be
+  // 'safe').
+  if (HloDataflowAnalysis::IsInPlaceOperation(producer.opcode()) ||
+      (producer.opcode() == HloOpcode::kFusion &&
+       HloDataflowAnalysis::IsInPlaceOperation(
+           producer.fused_expression_root()->opcode()))) {
+    return false;
+  }
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return false;
   }
