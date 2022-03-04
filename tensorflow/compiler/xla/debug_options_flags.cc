@@ -44,6 +44,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_include_timestamp(false);
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
+  opts.set_xla_dump_hlo_as_long_text(false);
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
@@ -488,6 +489,13 @@ static void AllocateFlags() {
       "Dumps HLO modules as text before and after optimizations. Results are "
       "written to the --xla_dump_to dir, or, if no dir is specified, to "
       "stdout."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_hlo_as_long_text",
+      bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_long_text),
+      flag_values->xla_dump_hlo_as_long_text(),
+      "Dumps HLO modules as long text before and after optimizations. Results "
+      "are written to the --xla_dump_to dir, or, if no dir is specified, to "
+      "stdout. Ignored unless xla_dump_hlo_as_text is true."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_dump_hlo_as_proto",
       bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_proto),
