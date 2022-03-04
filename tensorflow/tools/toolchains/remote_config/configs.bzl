@@ -257,11 +257,11 @@ def initialize_rbe_configs():
     # may specify a specific Python version container.
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.9": "docker://gcr.io/tensorflow-sigs/build@sha256:493fb6f7dd563293759d1f033d9d3c669fd02dfb287b6bf21d9852bab9380e68",
-            "sigbuild-r2.9-python3.7": "docker://gcr.io/tensorflow-sigs/build@sha256:295f2598d6e1edbb436606c6005ff758ad52346d223ceccfcea1a3103bef2cd5",
-            "sigbuild-r2.9-python3.8": "docker://gcr.io/tensorflow-sigs/build@sha256:14732da7d5b0c28e788d8c512fa8e903dcf0b697d01cb4e1c23b45f948d345e7",
-            "sigbuild-r2.9-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:493fb6f7dd563293759d1f033d9d3c669fd02dfb287b6bf21d9852bab9380e68",
-            "sigbuild-r2.9-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:06de1309f21d52ae50cda0e2e033e267a30f600f435145183d46f8659bab900f",
+            "sigbuild-r2.9": "docker://gcr.io/tensorflow-sigs/build@sha256:fb84093359afd55b2cf3cebfe64e8281b0f67a44405ed338b2832ae910322c9c",
+            "sigbuild-r2.9-python3.7": "docker://gcr.io/tensorflow-sigs/build@sha256:84b7f306e2d89d77966a6f457f4ffd7ccadefa5022086e285260dbf8c4065bd9",
+            "sigbuild-r2.9-python3.8": "docker://gcr.io/tensorflow-sigs/build@sha256:cf4155e40bbc2e68669e1e2e1f990e8cd5dc2ab9bc8c67e9679e16f6cd9712f5",
+            "sigbuild-r2.9-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:fb84093359afd55b2cf3cebfe64e8281b0f67a44405ed338b2832ae910322c9c",
+            "sigbuild-r2.9-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:382391982e7882ca1f6d2d7e39ca35fec6d47a11110ef83beba314ef802c5b67",
         },
         # Unclear why LIBC is set to 2.19 here, and yet manylinux2010 is 2.12
         # and manylinux2014 is 2.17.
