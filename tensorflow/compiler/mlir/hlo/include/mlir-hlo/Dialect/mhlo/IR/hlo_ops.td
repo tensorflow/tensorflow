@@ -1410,6 +1410,7 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
     DefaultValuedAttr<BoolAttr, "false">:$lower
   );
 
+  let hasVerifier = 1;
   let results = (outs HLO_FpOrComplexTensor);
 }
 
