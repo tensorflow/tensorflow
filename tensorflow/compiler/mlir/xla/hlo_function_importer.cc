@@ -693,9 +693,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kInfeed: {
       if (IsNestedTupleInData(result_type)) {
-        result_type.dump();
-        assert(0 && "InfeedWithTokenInternal: nested tuple found");
+        llvm_unreachable(
+            "Importing xla::kInfeed with nested tuple shape not supported");
       }
+
       attributes.push_back(builder_->getNamedAttr(
           "infeed_config",
           mlir::StringAttr::get(builder_->getContext(),
@@ -730,10 +731,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
       flattened_operands.push_back(operands[1]);
 
-      return func_builder
-          ->create<mlir::mhlo::OutfeedOp>(loc, result_type, flattened_operands,
-                                          attributes)
-          .getOperation();
+      auto op = func_builder->create<mlir::mhlo::OutfeedOp>(
+          loc, result_type, flattened_operands, attributes);
+
+      return op.getOperation();
     }
     case HloOpcode::kPad: {
       const auto& padding_config = instruction->padding_config();
