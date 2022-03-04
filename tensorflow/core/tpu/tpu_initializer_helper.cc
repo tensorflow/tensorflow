@@ -66,12 +66,15 @@ bool IsTpuUsed(long pid) {
   std::unique_ptr<DIR, int (*)(DIR*)> fd_dir(raw_fd_dir, closedir);
   struct dirent* ent;
   char line[100];
+  std::string tpu_dev_path = "/dev/accel0";
   while (ent = readdir(raw_fd_dir)) {
     if (!isdigit(*ent->d_name)) continue;
     long fd = strtol(ent->d_name, NULL, 10);
     path = absl::StrCat("/proc/", pid, "/fd/", fd);
-    if (!readlink(path.c_str(), line, 100)) return false;
-    if (strncmp(line, "/dev/accel0", 11) != 0) continue;
+    if (!readlink(path.c_str(), line, sizeof(line))) continue;
+    std::string str_line(line);
+    str_line.resize(tpu_dev_path.size());
+    if (str_line != tpu_dev_path) continue;
     return true;
   }
   return false;
@@ -79,9 +82,9 @@ bool IsTpuUsed(long pid) {
 
 // This function iterates through all the processes in /proc and logs if any
 // process it was able to check is using the TPU. It does not have permission to
-// processes owned by another user. todo (shahrokhi) use
-// tensorflow/core/platform/filesystem (GetChildren) for this.
-bool FindLibtpuProcess() {
+// processes owned by another user. 
+// TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for this.
+bool FindAndLogLibtpuProcess() {
   DIR* proc = opendir("/proc");
 
   if (proc == NULL) {
@@ -95,9 +98,9 @@ bool FindLibtpuProcess() {
 
     pid = strtol(ent->d_name, NULL, 10);
     if (IsTpuUsed(pid)) {
-      LOG(INFO) << "libtpu.so is already in use by this process (PID: "
-                << std::to_string(pid)
-                << "). Not attempting to load libtpu.so in this process.";
+      LOG(INFO) << "libtpu.so is already in use by process with pid ["
+                << pid
+                << "]. Not attempting to load libtpu.so in this process.";
       return true;
     }
   }
@@ -144,7 +147,7 @@ bool TryAcquireTpuLock() {
       // This lock is held until the process exits intentionally. The underlying
       // TPU device will be held on until it quits.
       if (lockf(fd, F_TLOCK, 0) != 0) {
-        if (!FindLibtpuProcess()) {
+        if (!FindAndLogLibtpuProcess()) {
           LOG(INFO) << "libtpu.so already in use by another process probably"
                        " owned by another user. "
                        "Run \"$ sudo lsof -w /dev/accel0\" to figure out "
