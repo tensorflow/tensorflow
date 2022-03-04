@@ -148,6 +148,7 @@ TfLiteStatus GetIntermediatesSafe(const TfLiteContext* context,
 #endif  // TF_LITE_STATIC_MEMORY
 
 inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
+inline int Rank(const TfLiteTensor* t) { return t->dims->size; }
 inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
