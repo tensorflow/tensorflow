@@ -155,6 +155,42 @@ absl::Status MaxPoolingIndicesTest(TestExecutionEnvironment* env) {
       RETURN_IF_ERROR(PointWiseNear({0.0f, 3.0f}, dst_tensor_ind.data, eps));
     }
   }
+
+  // Testing writing of indices in int tensor
+  for (auto storage : env->GetSupportedStorages()) {
+    for (auto precision : env->GetSupportedPrecisions()) {
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({DataType::INT32, storage, Layout::HWC});
+
+      TensorDescriptor src_0, dst_0, dst_1;
+      src_0 = op_def.src_tensors[0];
+      src_0.UploadData(src_tensor);
+      dst_0.SetBHWCShape(BHWC(1, 1, 1, 2));
+      dst_1.SetBHWCShape(BHWC(1, 1, 1, 2));
+
+      GPUOperation operation = CreatePooling(op_def, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          {&src_0}, {&dst_0, &dst_1},
+          absl::make_unique<GPUOperation>(std::move(operation))));
+
+      TensorFloat32 dst_tensor;
+      dst_0.DownloadData(&dst_tensor);
+      tflite::gpu::Tensor<BHWC, DataType::INT32> dst_tensor_ind;
+      dst_1.DownloadData(&dst_tensor_ind);
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      RETURN_IF_ERROR(PointWiseNear({8.0f, 7.0f}, dst_tensor.data, eps));
+      tflite::gpu::Tensor<BHWC, DataType::INT32> ref_tensor;
+      ref_tensor.shape = BHWC(1, 1, 1, 2);
+      ref_tensor.data = {0, 3};
+      if (dst_tensor_ind.data != ref_tensor.data) {
+        return absl::InternalError("not equal");
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
