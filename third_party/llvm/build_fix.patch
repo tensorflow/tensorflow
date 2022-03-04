@@ -1,0 +1,16 @@
+diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+index de8fb283c9f6..6752194a3584 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -619,10 +619,7 @@ gentbl(
+     tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.inc")],
+     tblgen = ":llvm-tblgen",
+     td_file = "include/llvm/IR/Attributes.td",
+-    td_srcs = [
+-        "include/llvm/IR/Attributes.td",
+-        "include/llvm/IR/AttributesAMDGPU.td",
+-    ],
++    td_srcs = ["include/llvm/IR/Attributes.td"],
+ )
+ 
+ cc_library(
