@@ -109,11 +109,11 @@ add_mlir_library(MhloToLhloConversion
   LmhloDialect
   MLIRArithmetic
   MLIRArithmeticTransforms
+  MLIRFuncTransforms
   MLIRIR
   MLIRPass
   MLIRMath
   MLIRShapeOpsTransforms
-  MLIRStandardOpsTransforms
   MLIRTransformUtils
   MLIRTransforms
 )
