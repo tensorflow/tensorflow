@@ -22,8 +22,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 
 namespace xla {
@@ -102,7 +104,7 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation) {
   // Check if we've already processed this computation.
   if (computation_span_times_.contains(&computation)) return;
 
-  int64_t start_time = flattened_instruction_sequence_.size();
+  LogicalTime start_time = flattened_instruction_sequence_.size();
 
   const HloInstructionSequence& instruction_sequence = it->second;
   for (HloInstruction* instruction : instruction_sequence.instructions()) {
@@ -121,101 +123,117 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation) {
       }
     }
 
-    int64_t time = flattened_instruction_sequence_.size();
+    LogicalTime time = flattened_instruction_sequence_.size();
     CHECK(instruction_schedule_.insert({instruction, time}).second);
     flattened_instruction_sequence_.push_back(instruction);
   }
 
-  int64_t end_time = flattened_instruction_sequence_.size();
+  LogicalTime end_time = flattened_instruction_sequence_.size();
   computation_span_times_[&computation] = {start_time, end_time};
 }
 
-void HloLiveRange::CalculateBufferStartEndMap() {
-  for (const HloValue* value : alias_analysis_.dataflow_analysis().values()) {
-    auto it = instruction_schedule_.find(value->defining_instruction());
-    // Ignore buffers that are not defined.
-    if (it == instruction_schedule_.end()) continue;
+HloLiveRange::TimeBound HloLiveRange::GetLastPosition(
+    const HloValue& value,
+    HloLiveRange::LogicalTime definition_end_time) const {
+  LogicalTime end_time = definition_end_time;
+  const HloPosition* end_position = &value.defining_position();
+  // Loop over the non-defining positions to find the final one.
+  for (const HloPosition& position :
+       absl::Span<const HloPosition>(value.positions()).subspan(1)) {
+    const HloInstruction* position_inst = position.instruction;
+    LogicalTime position_time;
+    if (position_inst->IsRoot()) {  // See comment above.
+      auto it = computation_span_times_.find(position_inst->parent());
+      if (it == computation_span_times_.end()) continue;
+      position_time = it->second.end;
+    } else {
+      auto it = instruction_schedule_.find(position_inst);
+      if (it == instruction_schedule_.end()) continue;
+      position_time = it->second;
+    }
 
-    int64_t buffer_start_time = it->second;
+    if (position_time > end_time) {
+      end_time = position_time;
+      end_position = &position;
+    }
+  }
+  return {-1, end_time, *end_position};
+}
+
+HloLiveRange::LogicalTime HloLiveRange::GetLastUsageTime(
+    const HloValue& value) const {
+  LogicalTime end_time = -1;
+  for (const HloUse& use : value.uses()) {
+    const HloInstruction* used = use.instruction;
+    // As an optimization, we deem a while's init value's live range ends as
+    // soon as the loop body starts. This optimization is only applicable in
+    // module scoped mode.
+    if (module_scoped_analysis_ && used->opcode() == HloOpcode::kWhile) {
+      // The current live range is at the end of the while, move it to
+      // the beginning of the body.
+      used = used->while_body()->parameter_instruction(0);
+      VLOG(1) << "Moved value " << value.ToShortString()
+              << " to while param: " << used->ToString();
+    }
+
+    // It's possible that we didn't track the instruction `used`. This
+    // happens when we do computation scope (versus module scope) heap
+    // simulation and the used instruction is outside of the computation
+    // being simulated.
+    auto it = instruction_schedule_.find(used);
+    if (it != instruction_schedule_.end()) {
+      end_time = std::max(end_time, it->second);
+    }
+  }
+  return end_time;
+}
+
+void HloLiveRange::CalculateBufferStartEndMap() {
+  for (const auto& entry : instruction_schedule_) {
+    const HloInstruction& instruction = *entry.first;
+    const HloComputation* computation = instruction.parent();
 
     // Parameters are defined at the beginning of the computation. This prevents
     // any instruction that's scheduled before the parameter clobbers the
     // parameter's buffer.
-    if (value->instruction()->opcode() == HloOpcode::kParameter) {
-      const HloComputation* computation = value->instruction()->parent();
-      auto it = computation_span_times_.find(computation);
-      if (it != computation_span_times_.end()) {
-        buffer_start_time = std::min(buffer_start_time, it->second.start);
-      }
-    }
+    LogicalTime start_time = (instruction.opcode() == HloOpcode::kParameter)
+                                 ? computation_span_times_[computation].start
+                                 : entry.second;
 
-    int64_t buffer_end_time = buffer_start_time;
+    // If an instruction lives out, the live range of the instruction should be
+    // extended to the end of the computation.
+    LogicalTime definition_end_time =
+        instruction.IsRoot() ? computation_span_times_[computation].end
+                             : entry.second;
 
-    for (const HloUse& use : value->uses()) {
-      const HloInstruction* used = use.instruction;
-      // As an optimization, we deem a while's init value's live range ends as
-      // soon as the loop body starts. This optimization is only applicable in
-      // module scoped mode.
-      if (module_scoped_analysis_ && used->opcode() == HloOpcode::kWhile) {
-        // The current live range is at the end of the while, move it to the
-        // beginning of the body.
-        used = used->while_body()->parameter_instruction(0);
-        VLOG(1) << "Moved value " << value->ToShortString()
-                << " to while param: " << used->ToString();
-      }
+    const InstructionValueSet& value_set_tree =
+        alias_analysis_.dataflow_analysis().GetInstructionValueSet(
+            &instruction);
 
-      // It's possible that we didn't track the instruction `used`. This happens
-      // when we do computation scope (versus module scope) heap simulation and
-      // the used instruction is outside of the computation being simulated.
-      auto it = instruction_schedule_.find(used);
-      if (it != instruction_schedule_.end()) {
-        buffer_end_time = std::max(buffer_end_time, it->second);
-      }
-    }
+    for (const auto& entry : value_set_tree) {
+      for (const HloValue* value : entry.second.values()) {
+        // The start time is only correct for the defining instruction.
+        if (value->defining_instruction() != &instruction) continue;
 
-    HloPosition end_position;
-    int64_t max_end_time = 0;
-    for (const HloPosition& position : value->positions()) {
-      int64_t position_time = instruction_schedule_[position.instruction];
-      if (position_time >= max_end_time) {
-        max_end_time = position_time;
-        end_position = position;
-      }
+        TimeBound live_range = GetLastPosition(*value, definition_end_time);
+        live_range.start = start_time;
 
-      const HloComputation* position_comp = position.instruction->parent();
-      // If this instruction lives out, the live range of the instruction
-      // should be extended to the end of the computation.
-      if (position.instruction == position_comp->root_instruction()) {
-        auto it = computation_span_times_.find(position_comp);
-        if (it != computation_span_times_.end()) {
-          if (buffer_end_time < it->second.end) {
-            buffer_end_time = it->second.end;
-            end_position = position;
-          }
+        // Readonly entry parameters (parameters that don't alias) live across
+        // whole computation.
+        const HloModule& module = *computation->parent();
+        if (instruction.opcode() == HloOpcode::kParameter &&
+            computation == module.entry_computation() &&
+            !module.input_output_alias_config().ParameterHasAlias(
+                instruction.parameter_number(), value->index())) {
+          live_range.end = schedule_end_time();
+        } else {
+          live_range.end = std::max(live_range.end, GetLastUsageTime(*value));
         }
+
+        CHECK_LE(live_range.start, live_range.end) << instruction.ToString();
+        CHECK(buffer_live_ranges_.insert({value, live_range}).second);
       }
     }
-
-    const HloModule* module = value->instruction()->parent()->parent();
-
-    // Readonly entry parameters (parameters that don't alias) live across whole
-    // computation.
-    if (value->instruction()->opcode() == HloOpcode::kParameter &&
-        value->instruction()->parent() == module->entry_computation() &&
-        !module->input_output_alias_config().ParameterHasAlias(
-            value->instruction()->parameter_number(), value->index())) {
-      buffer_end_time = schedule_end_time();
-    }
-
-    CHECK(buffer_start_time <= buffer_end_time)
-        << buffer_start_time << ", " << buffer_end_time << ": "
-        << value->instruction()->ToString();
-
-    bool was_inserted =
-        buffer_live_ranges_
-            .insert({value, {buffer_start_time, buffer_end_time, end_position}})
-            .second;
-    CHECK(was_inserted) << "Value live range already calculated";
   }
 }
 
