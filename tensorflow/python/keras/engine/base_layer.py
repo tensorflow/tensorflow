@@ -883,17 +883,20 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       input_masks = nest.map_structure(
           keras_tensor.keras_tensor_to_placeholder, input_masks)
 
-      with backend.name_scope(self._name_scope()):  # pylint: disable=not-callable
-        with autocast_variable.enable_auto_cast_variables(
-            self._compute_dtype_object):
-          # Build layer if applicable (if the `build` method has been
-          # overridden).
-          # TODO(kaftan): do we maybe_build here, or have we already done it?
-          self._maybe_build(inputs)
-          inputs = self._maybe_cast_inputs(inputs)
-          outputs = call_fn(inputs, *args, **kwargs)
+      ctx = context.context()
+      assert ctx is not None
+      with ops.name_scope(ctx.scope_name[:-1]):
+        with backend.name_scope(self._name_scope()):  # pylint: disable=not-callable
+          with autocast_variable.enable_auto_cast_variables(
+              self._compute_dtype_object):
+            # Build layer if applicable (if the `build` method has been
+            # overridden).
+            # TODO(kaftan): do we maybe_build here, or have we already done it?
+            self._maybe_build(inputs)
+            inputs = self._maybe_cast_inputs(inputs)
+            outputs = call_fn(inputs, *args, **kwargs)
 
-        self._handle_activity_regularization(inputs, outputs)
+          self._handle_activity_regularization(inputs, outputs)
       self._set_mask_metadata(inputs, outputs, input_masks,
                               build_graph=False)
       outputs = nest.map_structure(
