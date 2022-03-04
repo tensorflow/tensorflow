@@ -136,5 +136,23 @@ std::string ToMetalDataType(DataType data_type, int vec_size) {
   return "undefined";
 }
 
+DataType ToMetalTextureType(DataType data_type) {
+  switch (data_type) {
+    case DataType::FLOAT32:
+    case DataType::FLOAT16:
+    case DataType::INT32:
+    case DataType::INT16:
+    case DataType::UINT32:
+    case DataType::UINT16:
+      return data_type;
+    case DataType::INT8:
+      return DataType::INT16;
+    case DataType::UINT8:
+      return DataType::UINT16;
+    default:
+      return DataType::UNKNOWN;
+  }
+}
+
 }  // namespace gpu
 }  // namespace tflite
