@@ -300,15 +300,15 @@ class Subgraph {
           if (quantization_params->scale->size == 1) {
             // Per-tensor quantization parameters
             datatype = xnn_datatype_qint8;
-          } else if (context->tensors[t].dims->size >= 1 &&
+          } else if (NumDimensions(&context->tensors[t]) >= 1 &&
                      quantization_params->scale->size ==
-                         context->tensors[t]
-                             .dims
-                             ->data[quantization_params->quantized_dimension]) {
+                         SizeOfDimension(
+                             &context->tensors[t],
+                             quantization_params->quantized_dimension)) {
             // Per-channel quantization parameters
             for (int c = 0;
-                 c < context->tensors[t]
-                         .dims->data[quantization_params->quantized_dimension];
+                 c < SizeOfDimension(&context->tensors[t],
+                                     quantization_params->quantized_dimension);
                  c++) {
               if (quantization_params->zero_point->data[c] != 0) {
                 TF_LITE_KERNEL_LOG(context,
@@ -325,7 +325,7 @@ class Subgraph {
                 "mismatching number of quantization parameters %d and outer "
                 "dimension %d for INT8 tensor %d in XNNPACK delegate",
                 quantization_params->scale->size,
-                context->tensors[t].dims->data[0], t);
+                SizeOfDimension(&context->tensors[t], 0), t);
             return nullptr;
           }
           break;
@@ -429,11 +429,11 @@ class Subgraph {
               return nullptr;
             }
             datatype = xnn_datatype_qint32;
-          } else if (context->tensors[t].dims->size >= 1 &&
+          } else if (NumDimensions(&context->tensors[t]) >= 1 &&
                      quantization_params->scale->size ==
-                         context->tensors[t].dims->data[0]) {
+                         SizeOfDimension(&context->tensors[t], 0)) {
             // Per-channel quantization parameters
-            for (int c = 0; c < context->tensors[t].dims->data[0]; c++) {
+            for (int c = 0; c < SizeOfDimension(&context->tensors[t], 0); c++) {
               if (quantization_params->zero_point->data[c] != 0) {
                 TF_LITE_KERNEL_LOG(context,
                                    "unsupported zero-point value %d in channel "
@@ -450,7 +450,7 @@ class Subgraph {
                 "mismatching number of quantization parameters %d and outer "
                 "dimension %d for INT8 tensor %d in XNNPACK delegate",
                 quantization_params->scale->size,
-                context->tensors[t].dims->data[0], t);
+                SizeOfDimension(&context->tensors[t], 0), t);
             return nullptr;
           }
           break;
@@ -486,7 +486,7 @@ class Subgraph {
 
       std::vector<size_t> dims(
           &context->tensors[t].dims->data[0],
-          &context->tensors[t].dims->data[context->tensors[t].dims->size]);
+          &context->tensors[t].dims->data[NumDimensions(&context->tensors[t])]);
 
       xnn_status status = xnn_status_success;
       switch (datatype) {
@@ -1372,38 +1372,38 @@ class Subgraph {
                                        int min_num_dims, int max_num_dims,
                                        int tensor_index) {
     if (min_num_dims == max_num_dims) {
-      if (tensor.dims->size != min_num_dims) {
+      if (NumDimensions(&tensor) != min_num_dims) {
         TF_LITE_MAYBE_KERNEL_LOG(
             context,
             "unsupported number of shape dimensions (%d) in tensor #%d: "
             "%d dimensions expected",
-            tensor.dims->size, tensor_index, min_num_dims);
+            NumDimensions(&tensor), tensor_index, min_num_dims);
         return kTfLiteError;
       }
     } else {
-      if (tensor.dims->size < min_num_dims) {
+      if (NumDimensions(&tensor) < min_num_dims) {
         TF_LITE_MAYBE_KERNEL_LOG(
             context,
             "unsupported number of shape dimensions (%d) in tensor #%d: "
             "at least %d dimensions expected",
-            tensor.dims->size, tensor_index, min_num_dims);
+            NumDimensions(&tensor), tensor_index, min_num_dims);
         return kTfLiteError;
       }
-      if (tensor.dims->size > max_num_dims) {
+      if (NumDimensions(&tensor) > max_num_dims) {
         TF_LITE_MAYBE_KERNEL_LOG(
             context,
             "unsupported number of shape dimensions (%d) in tensor #%d: "
             "at most %d dimensions expected",
-            tensor.dims->size, tensor_index, max_num_dims);
+            NumDimensions(&tensor), tensor_index, max_num_dims);
         return kTfLiteError;
       }
     }
-    for (int i = 0; i < tensor.dims->size; i++) {
-      if (tensor.dims->data[i] <= 0) {
+    for (int i = 0; i < NumDimensions(&tensor); i++) {
+      if (SizeOfDimension(&tensor, i) <= 0) {
         TF_LITE_MAYBE_KERNEL_LOG(context,
                                  "invalid num of elements (%d) in "
                                  "dimension #%d in tensor #%d",
-                                 tensor.dims->data[i], i, tensor_index);
+                                 SizeOfDimension(&tensor, i), i, tensor_index);
         return kTfLiteError;
       }
     }
@@ -1421,17 +1421,18 @@ class Subgraph {
   static TfLiteStatus CheckSlopeTensorShape(TfLiteContext* context,
                                             const TfLiteTensor& tensor,
                                             int tensor_index, int node_index) {
-    if (tensor.dims->size < 1) {
+    if (NumDimensions(&tensor) < 1) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
                                "unexpected number of shape dimensions (%d) in "
                                "tensor #%d in node #%d: "
                                "expected at least a 1D tensor",
-                               tensor.dims->size, tensor_index, node_index);
+                               NumDimensions(&tensor), tensor_index,
+                               node_index);
       return kTfLiteError;
     }
     // Validate that all non-channel dimensions (if any) are exactly 1.
-    for (int i = 0; i < tensor.dims->size - 1; i++) {
-      if (tensor.dims->data[i] != 1) {
+    for (int i = 0; i < NumDimensions(&tensor) - 1; i++) {
+      if (SizeOfDimension(&tensor, i) != 1) {
         TF_LITE_MAYBE_KERNEL_LOG(
             context,
             "unexpected value %d of shape dimension #%d in "
@@ -1449,29 +1450,31 @@ class Subgraph {
                                                int expected_rows,
                                                int tensor_index,
                                                int node_index) {
-    if (tensor.dims->size != 2) {
+    if (NumDimensions(&tensor) != 2) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
                                "unexpected number of shape dimensions (%d) in "
                                "padding tensor #%d in node #%d: "
                                "expected a 2D tensor",
-                               tensor.dims->size, tensor_index, node_index);
+                               NumDimensions(&tensor), tensor_index,
+                               node_index);
       return kTfLiteError;
     }
-    if (tensor.dims->data[0] != expected_rows) {
+    if (SizeOfDimension(&tensor, 0) != expected_rows) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
                                "unexpected number of rows (%d) in "
                                "padding tensor #%d in node #%d: "
                                "%d rows expected",
-                               tensor.dims->size, tensor_index, node_index,
+                               NumDimensions(&tensor), tensor_index, node_index,
                                expected_rows);
       return kTfLiteError;
     }
-    if (tensor.dims->data[1] != 2) {
+    if (SizeOfDimension(&tensor, 1) != 2) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
                                "unexpected number of columns (%d) in "
                                "padding tensor #%d in node #%d: "
                                "2 columns expected",
-                               tensor.dims->size, tensor_index, node_index);
+                               NumDimensions(&tensor), tensor_index,
+                               node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -1480,12 +1483,13 @@ class Subgraph {
   static TfLiteStatus CheckAxesTensorShape(TfLiteContext* context,
                                            const TfLiteTensor& tensor,
                                            int tensor_index, int node_index) {
-    if (tensor.dims->size != 1) {
+    if (NumDimensions(&tensor) != 1) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
                                "unexpected number of shape dimensions (%d) in "
                                "axes tensor #%d in node #%d: "
                                "expected a 1D tensor",
-                               tensor.dims->size, tensor_index, node_index);
+                               NumDimensions(&tensor), tensor_index,
+                               node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -1494,12 +1498,13 @@ class Subgraph {
   static TfLiteStatus CheckShapeTensorShape(TfLiteContext* context,
                                             const TfLiteTensor& tensor,
                                             int tensor_index, int node_index) {
-    if (tensor.dims->size != 1) {
+    if (NumDimensions(&tensor) != 1) {
       TF_LITE_MAYBE_KERNEL_LOG(context,
                                "unexpected number of shape dimensions (%d) in "
                                "shape tensor #%d in node #%d: "
                                "expected a 1D tensor",
-                               tensor.dims->size, tensor_index, node_index);
+                               NumDimensions(&tensor), tensor_index,
+                               node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -1540,14 +1545,15 @@ class Subgraph {
       TfLiteContext* context, const TfLiteTensor& input_tensor,
       const TfLiteTensor& output_tensor, int dimension_index, int node_index,
       const char* op_name) {
-    if (input_tensor.dims->data[dimension_index] !=
-        output_tensor.dims->data[dimension_index]) {
+    if (SizeOfDimension(&input_tensor, dimension_index) !=
+        SizeOfDimension(&output_tensor, dimension_index)) {
       TF_LITE_MAYBE_KERNEL_LOG(
           context,
           "mismatch in shape dimension %d (%d != %d) in input and output "
           "tensors of %s operator #%d",
-          dimension_index, input_tensor.dims->data[dimension_index],
-          output_tensor.dims->data[dimension_index], op_name, node_index);
+          dimension_index, SizeOfDimension(&input_tensor, dimension_index),
+          SizeOfDimension(&output_tensor, dimension_index), op_name,
+          node_index);
       return kTfLiteError;
     }
     return kTfLiteOk;
@@ -2132,9 +2138,9 @@ class Subgraph {
 
     // Check dimensions
     int axis = concat_params->axis;
-    if (axis < 0) axis += input1_tensor.dims->size;
+    if (axis < 0) axis += NumDimensions(&input1_tensor);
 
-    for (int i = 0; i < output_tensor.dims->size; i++) {
+    for (int i = 0; i < NumDimensions(&output_tensor); i++) {
       // All dimensions must match except the 'axis'.
       if (i == axis) {
         continue;
@@ -2147,15 +2153,15 @@ class Subgraph {
           "CONCATENATE"));
     }
 
-    int sum_axis =
-        input1_tensor.dims->data[axis] + input2_tensor.dims->data[axis];
+    int sum_axis = SizeOfDimension(&input1_tensor, axis) +
+                   SizeOfDimension(&input2_tensor, axis);
 
-    if (output_tensor.dims->data[axis] != sum_axis) {
+    if (SizeOfDimension(&output_tensor, axis) != sum_axis) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "mismatch in axis dimension %d (%d != %d) in output and input"
           "tensors of CONCATENATE operator #%d",
-          axis, output_tensor.dims->data[axis], sum_axis, node_index);
+          axis, SizeOfDimension(&output_tensor, axis), sum_axis, node_index);
       return kTfLiteError;
     }
 
@@ -2243,10 +2249,10 @@ class Subgraph {
       return kTfLiteError;
     }
 
-    const int output_channels = filter_tensor.dims->data[0];
-    const int kernel_height = filter_tensor.dims->data[1];
-    const int kernel_width = filter_tensor.dims->data[2];
-    const int input_channels = filter_tensor.dims->data[3];
+    const int output_channels = SizeOfDimension(&filter_tensor, 0);
+    const int kernel_height = SizeOfDimension(&filter_tensor, 1);
+    const int kernel_width = SizeOfDimension(&filter_tensor, 2);
+    const int input_channels = SizeOfDimension(&filter_tensor, 3);
 
     uint32_t flags;
     TF_LITE_ENSURE_STATUS(CalculatePadding(
@@ -2352,9 +2358,9 @@ class Subgraph {
       return kTfLiteError;
     }
 
-    const int kernel_height = filter_tensor.dims->data[1];
-    const int kernel_width = filter_tensor.dims->data[2];
-    const int output_channels = filter_tensor.dims->data[3];
+    const int kernel_height = SizeOfDimension(&filter_tensor, 1);
+    const int kernel_width = SizeOfDimension(&filter_tensor, 2);
+    const int output_channels = SizeOfDimension(&filter_tensor, 3);
 
     TF_LITE_ENSURE_STATUS(CheckDepthwiseConvolutionParams(
         logging_context, dwconv_params, output_channels, node_index));
@@ -2628,8 +2634,8 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));
 
-    const int32_t output_channels = filter_tensor.dims->data[0];
-    const int32_t input_channels = filter_tensor.dims->data[1];
+    const int32_t output_channels = SizeOfDimension(&filter_tensor, 0);
+    const int32_t input_channels = SizeOfDimension(&filter_tensor, 1);
 
     if (input_tensor.type != output_tensor.type ||
         input_tensor.type != filter_tensor.type) {
@@ -2640,38 +2646,39 @@ class Subgraph {
       return kTfLiteError;
     }
 
-    if (input_tensor.dims->size == 0) {
+    if (NumDimensions(&input_tensor) == 0) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "unexpected number of shape dimensions %d in tensor #%d",
-          input_tensor.dims->size, node->inputs->data[0]);
+          NumDimensions(&input_tensor), node->inputs->data[0]);
       return kTfLiteError;
     }
 
     int32_t num_input_elements = 1;
-    for (int i = 0; i < input_tensor.dims->size; i++) {
-      if (input_tensor.dims->data[i] <= 0) {
+    for (int i = 0; i < NumDimensions(&input_tensor); i++) {
+      if (SizeOfDimension(&input_tensor, i) <= 0) {
         TF_LITE_MAYBE_KERNEL_LOG(
             logging_context, "invalid dimension #%d (%d) in tensor #%d", i,
-            input_tensor.dims->data[i], node->inputs->data[0]);
+            SizeOfDimension(&input_tensor, i), node->inputs->data[0]);
         return kTfLiteError;
       }
-      num_input_elements *= input_tensor.dims->data[i];
+      num_input_elements *= SizeOfDimension(&input_tensor, i);
     }
 
     if (fc_params->keep_num_dims) {
       TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor,
-                                             input_tensor.dims->size,
+                                             NumDimensions(&input_tensor),
                                              node->outputs->data[0]));
 
-      for (int i = 0; i < input_tensor.dims->size - 1; i++) {
-        if (input_tensor.dims->data[i] != output_tensor.dims->data[i]) {
+      for (int i = 0; i < NumDimensions(&input_tensor) - 1; i++) {
+        if (SizeOfDimension(&input_tensor, i) !=
+            SizeOfDimension(&output_tensor, i)) {
           TF_LITE_MAYBE_KERNEL_LOG(
               logging_context,
               "mismatch in shape dimension %d (%d != %d) in input and output "
               "tensors of FULLY_CONNECTED operator #%d",
-              i, input_tensor.dims->data[i], output_tensor.dims->data[i],
-              node_index);
+              i, SizeOfDimension(&input_tensor, i),
+              SizeOfDimension(&output_tensor, i), node_index);
           return kTfLiteError;
         }
       }
@@ -2688,24 +2695,25 @@ class Subgraph {
       TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 2,
                                              node->outputs->data[0]));
 
-      if (output_tensor.dims->data[0] != num_input_elements / input_channels) {
+      if (SizeOfDimension(&output_tensor, 0) !=
+          num_input_elements / input_channels) {
         TF_LITE_MAYBE_KERNEL_LOG(
             logging_context,
             "batch size %d in output tensor #%d in FULLY_CONNECTED operator "
             "does not match batch size %d in reshaped input tensor #%d",
-            output_tensor.dims->data[0], node->outputs->data[0],
+            SizeOfDimension(&output_tensor, 0), node->outputs->data[0],
             num_input_elements / input_channels, node->inputs->data[0]);
         return kTfLiteError;
       }
     }
 
-    if (output_tensor.dims->data[output_tensor.dims->size - 1] !=
+    if (SizeOfDimension(&output_tensor, NumDimensions(&output_tensor) - 1) !=
         output_channels) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "number of channels %d in output tensor #%d does not match output "
           "channels %d in filter tensor #%d",
-          output_tensor.dims->data[output_tensor.dims->size - 1],
+          SizeOfDimension(&output_tensor, NumDimensions(&output_tensor) - 1),
           node->outputs->data[0], output_channels, node->inputs->data[1]);
       return kTfLiteError;
     }
@@ -3014,11 +3022,11 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, axes_tensor, node->inputs->data[1], node_index));
 
-    if (axes_tensor.dims->data[0] != 2) {
+    if (SizeOfDimension(&axes_tensor, 0) != 2) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "unsupported MEAN reduction along %d axes in node %d",
-          axes_tensor.dims->data[0], node_index);
+          SizeOfDimension(&axes_tensor, 0), node_index);
       return kTfLiteError;
     }
 
@@ -3117,10 +3125,10 @@ class Subgraph {
     const int output_height = output_tensor_dims[1];
     const int output_width = output_tensor_dims[2];
 
-    const int output_channels = filter_tensor.dims->data[0];
-    const int kernel_height = filter_tensor.dims->data[1];
-    const int kernel_width = filter_tensor.dims->data[2];
-    const int input_channels = filter_tensor.dims->data[3];
+    const int output_channels = SizeOfDimension(&filter_tensor, 0);
+    const int kernel_height = SizeOfDimension(&filter_tensor, 1);
+    const int kernel_width = SizeOfDimension(&filter_tensor, 2);
+    const int input_channels = SizeOfDimension(&filter_tensor, 3);
 
     TF_LITE_ENSURE_STATUS(CheckMediaPipeTransposedConvolutionParams(
         logging_context, deconv_params, node_index));
@@ -3459,7 +3467,7 @@ class Subgraph {
                                           kTfLiteInt32, node->inputs->data[1],
                                           node_index));
     TF_LITE_ENSURE_STATUS(CheckPaddingsTensorShape(
-        logging_context, paddings_tensor, input_tensor.dims->size,
+        logging_context, paddings_tensor, NumDimensions(&input_tensor),
         node->inputs->data[1], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, paddings_tensor, node->inputs->data[1], node_index));
@@ -3476,7 +3484,7 @@ class Subgraph {
 
     const int32_t* paddings_data =
         reinterpret_cast<const int32_t*>(paddings_tensor.data.data);
-    for (int i = 0; i < paddings_tensor.dims->size; i++) {
+    for (int i = 0; i < NumDimensions(&paddings_tensor); i++) {
       const int32_t pre_padding = paddings_data[i * 2 + 0];
       if (pre_padding < 0) {
         TF_LITE_MAYBE_KERNEL_LOG(
@@ -3499,7 +3507,7 @@ class Subgraph {
     if (subgraph != nullptr) {
       std::array<size_t, XNN_MAX_TENSOR_DIMS> pre_paddings{};
       std::array<size_t, XNN_MAX_TENSOR_DIMS> post_paddings{};
-      for (int i = 0; i < paddings_tensor.dims->data[0]; i++) {
+      for (int i = 0; i < SizeOfDimension(&paddings_tensor, 0); i++) {
         pre_paddings[i] = static_cast<size_t>(paddings_data[i * 2 + 0]);
         post_paddings[i] = static_cast<size_t>(paddings_data[i * 2 + 1]);
       }
@@ -3698,10 +3706,10 @@ class Subgraph {
     if (subgraph != nullptr) {
       std::array<size_t, XNN_MAX_TENSOR_DIMS> new_shape;
       std::copy(&output_tensor.dims->data[0],
-                &output_tensor.dims->data[output_tensor.dims->size],
+                &output_tensor.dims->data[NumDimensions(&output_tensor)],
                 new_shape.begin());
       const xnn_status status = xnn_define_static_reshape(
-          subgraph, static_cast<size_t>(output_tensor.dims->size),
+          subgraph, static_cast<size_t>(NumDimensions(&output_tensor)),
           new_shape.data(),
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
@@ -3739,11 +3747,11 @@ class Subgraph {
                                           node_index));
     TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
         logging_context, shape_tensor, node->inputs->data[1], node_index));
-    if (shape_tensor.dims->data[0] != 2) {
+    if (SizeOfDimension(&shape_tensor, 0) != 2) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "unexpected number of dimensions %d in the output shape in node %d",
-          shape_tensor.dims->data[0], node_index);
+          SizeOfDimension(&shape_tensor, 0), node_index);
     }
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, shape_tensor, node->inputs->data[1], node_index));
@@ -3759,7 +3767,7 @@ class Subgraph {
 
     const int32_t* shape_data =
         reinterpret_cast<const int32_t*>(shape_tensor.data.data);
-    for (int i = 0; i < shape_tensor.dims->size; i++) {
+    for (int i = 0; i < NumDimensions(&shape_tensor); i++) {
       const int32_t dim = shape_data[i];
       if (dim <= 0) {
         TF_LITE_MAYBE_KERNEL_LOG(
@@ -4057,7 +4065,7 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(
         CheckTensorStaticAllocation(logging_context, output_shape_tensor,
                                     output_shape_tensor_index, node_index));
-    const int output_shape_dims = output_shape_tensor.dims->data[0];
+    const int output_shape_dims = SizeOfDimension(&output_shape_tensor, 0);
     if (output_shape_dims != 4) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
@@ -4490,10 +4498,10 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
         // Such a condition has been checked when preparing to unpack FP16/INT8
         // tensors.
         TFLITE_DCHECK(input_tensor.sparsity != nullptr);
-        const int dims_count = output_tensor.dims->size;
+        const int dims_count = NumDimensions(&output_tensor);
         std::vector<int> vector_shape(dims_count);
         for (int i = 0; i < dims_count; i++) {
-          vector_shape[i] = output_tensor.dims->data[i];
+          vector_shape[i] = SizeOfDimension(&output_tensor, i);
         }
 
         switch (input_tensor.type) {
