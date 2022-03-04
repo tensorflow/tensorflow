@@ -493,6 +493,22 @@ std::string TensorDescriptor::Read(
           return absl::StrCat("vec4(unpackHalf2x16(buffer[", coords[0],
                               "].x), unpackHalf2x16(buffer[", coords[0],
                               "].y))");
+        } else if (data_type == DataType::INT16 ||
+                   data_type == DataType::UINT16) {
+          const std::string vec_type =
+              data_type == DataType::INT16 ? "ivec4" : "uvec4";
+          return absl::Substitute(
+              "$1(buffer[$0].x & 0xffff, (buffer[$0].x >> 16) & 0xffff, "
+              "buffer[$0].y & 0xffff, (buffer[$0].y >> 16) & 0xffff)",
+              coords[0], vec_type);
+        } else if (data_type == DataType::INT8 ||
+                   data_type == DataType::UINT8) {
+          const std::string vec_type =
+              data_type == DataType::INT8 ? "ivec4" : "uvec4";
+          return absl::Substitute(
+              "$1(buffer[$0] & 0xff, (buffer[$0] >> 8) & 0xff, "
+              "(buffer[$0] >> 16) & 0xff, (buffer[$0] >> 24) & 0xff)",
+              coords[0], vec_type);
         } else {
           return absl::StrCat("buffer[", coords[0], "]");
         }
