@@ -137,6 +137,7 @@ std::map<std::string, std::string> GetMetalDefines(
       {"INIT_INT4v4(v0, v1, v2, v3)", "int4(v0, v1, v2, v3)"},
       {"CONVERT_TO_INT4(value)", "int4(value)"},
       {"SELECT_BY_INDEX_FROM_FLT4(value, index)", "(value)[index]"},
+      {"SELECT_BY_INDEX_FROM_VEC4(vec_type, value, index)", "(value)[index]"},
   };
 }
 }  // namespace
