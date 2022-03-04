@@ -72,6 +72,19 @@ StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
   return logical_id.replica_id;
 }
 
+absl::flat_hash_map<GlobalDeviceId, DeviceAssignment::LogicalID>
+DeviceAssignment::GetDeviceToLogicalIdMap() const {
+  absl::flat_hash_map<GlobalDeviceId, DeviceAssignment::LogicalID>
+      device_to_logical_id;
+  for (int r = 0; r < replica_count(); ++r) {
+    for (int c = 0; c < computation_count(); ++c) {
+      GlobalDeviceId device_id((*this)(r, c));
+      device_to_logical_id[device_id] = DeviceAssignment::LogicalID{r, c};
+    }
+  }
+  return device_to_logical_id;
+}
+
 Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
   proto->set_replica_count(replica_count());
   proto->set_computation_count(computation_count());
