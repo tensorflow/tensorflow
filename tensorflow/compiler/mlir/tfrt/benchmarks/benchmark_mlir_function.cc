@@ -33,13 +33,11 @@ namespace tensorflow {
 using ::tfrt::ArrayRef;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValuePtr;
-using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::ResourceContext;
 
 using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::HostContextAsyncTaskRunner;
@@ -147,11 +145,19 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   HostContextAsyncTaskRunner async_task_runner(host.get());
   opts.async_task_runner = &async_task_runner;
 
-  for (auto _ : state) {
+  // Execute compiled kernel and return results.
+  auto execute = [&]() {
     call_frame.args[0] = nullptr;  // reset kernel context argument
     (*executable)->Execute(call_frame, opts);
     if (auto err = (*executable)->ReturnResults(converter, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
+  };
+
+  // Warm up to compile the kernel outside of the benchmark loop.
+  execute();
+
+  for (auto _ : state) {
+    execute();
   }
 }
 
