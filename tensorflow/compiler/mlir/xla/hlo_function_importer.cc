@@ -693,10 +693,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kInfeed: {
       if (IsNestedTupleInData(result_type)) {
-        llvm_unreachable(
-            "Importing xla::kInfeed with nested tuple shape not supported");
+        result_type.dump();
+        assert(0 && "InfeedWithTokenInternal: nested tuple found");
       }
-
       attributes.push_back(builder_->getNamedAttr(
           "infeed_config",
           mlir::StringAttr::get(builder_->getContext(),
@@ -731,10 +730,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
       flattened_operands.push_back(operands[1]);
 
-      auto op = func_builder->create<mlir::mhlo::OutfeedOp>(
-          loc, result_type, flattened_operands, attributes);
-
-      return op.getOperation();
+      return func_builder
+          ->create<mlir::mhlo::OutfeedOp>(loc, result_type, flattened_operands,
+                                          attributes)
+          .getOperation();
     }
     case HloOpcode::kPad: {
       const auto& padding_config = instruction->padding_config();
@@ -773,7 +772,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto scatter_op = func_builder->create<mlir::mhlo::ScatterOp>(
           loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*scatter->to_apply(),
-                                        &scatter_op.update_computation()));
+                                        &scatter_op.update_computation(),
+                                        /*flatten_region_arg_tuple=*/true));
       return scatter_op.getOperation();
     }
     case HloOpcode::kSelectAndScatter: {
@@ -1189,8 +1189,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto op = func_builder->create<mlir::mhlo::MapOp>(
           loc, result_type, operands,
           ConvertDimensions(instruction->dimensions()));
-      TF_RETURN_IF_ERROR(
-          ImportAsRegion(*instruction->to_apply(), &op.computation()));
+      TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
+                                        &op.computation(),
+                                        /*flatten_region_arg_tuple=*/true));
       return op.getOperation();
     }
     case HloOpcode::kConvolution: {
