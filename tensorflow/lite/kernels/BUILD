@@ -1,4 +1,4 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_combine_cc_tests", "tflite_copts", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable", "pybind_extension")
@@ -2767,3 +2767,5 @@ tflite_combine_cc_tests(
     args = ["--use_simple_allocator=true"],
     deps_conditions = [":test_main"],
 )
+
+tflite_self_contained_libs_test_suite(name = "self_contained_libs_tests")
