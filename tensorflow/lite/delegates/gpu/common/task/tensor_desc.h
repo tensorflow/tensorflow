@@ -61,6 +61,10 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool operator!=(const TensorDescriptor& d) const { return !(*this == d); }
 
+  absl::Status PerformConstExpr(const GpuInfo& gpu_info,
+                                const std::string& const_expr,
+                                std::string* result) const override;
+
   absl::Status PerformSelector(const GpuInfo& gpu_info,
                                const std::string& selector,
                                const std::vector<std::string>& args,
