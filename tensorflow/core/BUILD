@@ -248,7 +248,6 @@ tf_proto_library(
     create_go_proto = False,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/core/example:protos_all",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler/protobuf:xplane_proto",
