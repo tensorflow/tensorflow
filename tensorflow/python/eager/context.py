@@ -81,6 +81,10 @@ is_tfrt_enabled = tfrt_utils.enabled
 _RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION",
                                               "1") == "1"
 
+# This flag and the associated environment var are transient and will eventually
+# be removed, once this experiment is enabled by default.
+_JIT_COMPILE_REWRITE_ENABLED = os.getenv("TF_JIT_COMPILE_REWRITE") == "1"
+
 
 # This method should only be called after the context has beein initialized.
 def enable_run_eager_op_as_function():
@@ -109,6 +113,33 @@ def run_eager_op_as_function_enabled():
   if context_safe() is not None:
     return context_safe().run_eager_op_as_function
   return _RUN_EAGER_OP_AS_FUNCTION_ENABLED
+
+
+# This method should only be called after the context has beein initialized.
+def enable_jit_compile_rewrite():
+  """Run jit_compile functions through rewrite pass.
+
+  This runs jit_compile functions through all of the multidevice function
+  rewrite passes.
+  """
+  global _JIT_COMPILE_REWRITE_ENABLED
+  _JIT_COMPILE_REWRITE_ENABLED = True
+  if context_safe() is not None:
+    context_safe().jit_compile_rewrite = True
+
+
+# This method should only be called after the context has been initialized.
+def disable_jit_compile_rewrite():
+  global _JIT_COMPILE_REWRITE_ENABLED
+  _JIT_COMPILE_REWRITE_ENABLED = False
+  if context_safe() is not None:
+    context_safe().jit_compile_rewrite = False
+
+
+def jit_compile_rewrite_enabled():
+  if context_safe() is not None:
+    return context_safe().jit_compile_rewrite
+  return _JIT_COMPILE_REWRITE_ENABLED
 
 
 # Expose it as internally public APIs for Keras use cases in b/171080602.
@@ -455,6 +486,7 @@ class Context(object):
     self._use_tfrt = is_tfrt_enabled()
     self._use_tfrt_distributed_runtime = None
     self._run_eager_op_as_function = run_eager_op_as_function_enabled()
+    self._jit_compile_rewrite = jit_compile_rewrite_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -574,6 +606,8 @@ class Context(object):
               opts, self._use_tfrt_distributed_runtime)
         pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(
             opts, self._run_eager_op_as_function)
+        pywrap_tfe.TFE_ContextOptionsSetJitCompileRewrite(
+            opts, self._jit_compile_rewrite)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
       finally:
         pywrap_tfe.TFE_DeleteContextOptions(opts)
@@ -1825,6 +1859,16 @@ class Context(object):
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextSetRunEagerOpAsFunction(self._handle, enable)
     self._run_eager_op_as_function = enable
+
+  @property
+  def jit_compile_rewrite(self):
+    return self._jit_compile_rewrite
+
+  @jit_compile_rewrite.setter
+  def jit_compile_rewrite(self, enable):
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextSetJitCompileRewrite(self._handle, enable)
+    self._jit_compile_rewrite = enable
 
   @property
   def device_policy(self):
