@@ -1217,7 +1217,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual("ERROR: Empty indices.", ui.toasts[6])
 
   def testWriteScreenOutputToFileWorks(self):
-    output_path = tempfile.mktemp()
+    output_path = tempfile.mkstemp()
 
     ui = MockCursesUI(
         40,
@@ -1254,7 +1254,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, len(ui.unwrapped_outputs))
 
   def testAppendingRedirectErrors(self):
-    output_path = tempfile.mktemp()
+    output_path = tempfile.mkstemp()
 
     ui = MockCursesUI(
         40,
