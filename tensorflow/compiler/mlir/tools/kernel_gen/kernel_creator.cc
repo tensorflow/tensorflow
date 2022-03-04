@@ -332,7 +332,7 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
 }
 
 Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
-                            bool cpu_codegen, bool index_64bit) {
+                            bool cpu_codegen) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
@@ -387,8 +387,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   if (!cpu_codegen) {
     pm.addPass(mlir::createGpuLauchSinkIndexComputationsPass());
     const std::string gpuDataLayoutSpec =
-        index_64bit ? "#dlti.dl_spec<#dlti.dl_entry<index,64:i64>>"
-                    : "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
+        "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
     pm.addPass(mlir::createGpuKernelOutliningPass(gpuDataLayoutSpec));
   }
 
@@ -527,8 +526,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
                                       max_supported_rank, enable_ftz,
                                       index_64bit, cpu_codegen,
                                       jit_i64_indexed_for_large_tensors));
-    TF_RETURN_IF_ERROR(LowerLoopsToGPUorCPU(module.get(), embed_memref_prints,
-                                            cpu_codegen, index_64bit));
+    TF_RETURN_IF_ERROR(
+        LowerLoopsToGPUorCPU(module.get(), embed_memref_prints, cpu_codegen));
     if (!cpu_codegen) {
       TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(module.get()));
       TF_RETURN_IF_ERROR(AmendKernelLLVMIRWithStaticKnowledge(module.get()));
