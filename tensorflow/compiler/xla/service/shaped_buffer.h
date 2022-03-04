@@ -91,7 +91,7 @@ class ShapedBuffer {
   void set_buffers(ShapeTree<se::DeviceMemoryBase> buffers) {
     CHECK(ShapeUtil::Equal(buffers.shape(), on_device_shape_));
     buffers_ = std::move(buffers);
-    buffers_.replace_shape_ptr(&on_device_shape_);
+    buffers_.replace_shape_ptr(on_device_shape_);
   }
 
   // Reset the shape of this shaped buffer and underlying buffer structure.
@@ -103,7 +103,7 @@ class ShapedBuffer {
         << ", old: " << on_device_shape_;
     on_host_shape_ = ShapeUtil::DeviceShapeToHostShape(on_device_shape);
     on_device_shape_ = on_device_shape;
-    buffers_.replace_shape_ptr(&on_device_shape_);
+    buffers_.replace_shape_ptr(on_device_shape_);
   }
   // TODO(b/170310047): remove this overload.
   void set_shapes(const Shape& on_host_shape, const Shape& on_device_shape) {

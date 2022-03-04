@@ -75,6 +75,8 @@ class ShapeIndex {
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
+  void reserve(size_t n) { indices_.reserve(n); }
+
   void push_back(int64_t value) { indices_.push_back(value); }
   void pop_back() { indices_.pop_back(); }
 
@@ -88,6 +90,12 @@ class ShapeIndex {
   container_type::const_iterator end() const { return indices_.end(); }
   container_type::iterator begin() { return indices_.begin(); }
   container_type::iterator end() { return indices_.end(); }
+
+  template <typename InputIterator>
+  void insert(container_type::iterator position, InputIterator first,
+              InputIterator last) {
+    indices_.insert(position, first, last);
+  }
 
   const int64_t* data() const { return indices_.data(); }
 
