@@ -27,8 +27,9 @@ namespace {
 TEST(ReplicateInput, Default) {
   FullTypeDef t;
   t.set_type_id(TFT_ARRAY);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = ReplicateInput()({t});
+  const auto ret = ReplicateInput()({t}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -40,8 +41,9 @@ TEST(ReplicateInput, Default) {
 TEST(ReplicateInput, Duplicate) {
   FullTypeDef t;
   t.set_type_id(TFT_ARRAY);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = ReplicateInput(0, 2)({t});
+  const auto ret = ReplicateInput(0, 2)({t}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -56,8 +58,9 @@ TEST(ReplicateInput, FirstOfMultipleArgs) {
   t1.set_type_id(TFT_ARRAY);
   FullTypeDef t2;
   t2.set_type_id(TFT_TENSOR);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = ReplicateInput(0, 2)({t1, t2});
+  const auto ret = ReplicateInput(0, 2)({t1, t2}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -72,8 +75,9 @@ TEST(ReplicateInput, SecondOfMultipleArgs) {
   t1.set_type_id(TFT_ARRAY);
   FullTypeDef t2;
   t2.set_type_id(TFT_TENSOR);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = ReplicateInput(1, 2)({t1, t2});
+  const auto ret = ReplicateInput(1, 2)({t1, t2}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -85,8 +89,9 @@ TEST(ReplicateInput, SecondOfMultipleArgs) {
 
 TEST(ReplicateInput, Unset) {
   FullTypeDef t;
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = ReplicateInput()({t});
+  const auto ret = ReplicateInput()({t}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -96,8 +101,9 @@ TEST(ReplicateInput, Unset) {
 TEST(Merge, Single) {
   FullTypeDef t;
   t.set_type_id(TFT_ARRAY);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = Merge()({t});
+  const auto ret = Merge()({t}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -109,8 +115,9 @@ TEST(Merge, Single) {
 TEST(Merge, Double) {
   FullTypeDef t;
   t.set_type_id(TFT_ARRAY);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = Merge()({t, t});
+  const auto ret = Merge()({t, t}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -122,8 +129,9 @@ TEST(Merge, Double) {
 TEST(Merge, Unset) {
   FullTypeDef t;
   t.set_type_id(TFT_UNSET);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = Merge()({t});
+  const auto ret = Merge()({t}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -133,8 +141,9 @@ TEST(Merge, Unset) {
 TEST(Merge, UnsetComponents) {
   FullTypeDef t1;
   FullTypeDef t2;
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = Merge()({t1, t2});
+  const auto ret = Merge()({t1, t2}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -157,8 +166,9 @@ TEST(Merge, RejectsMismatched) {
   t1.set_type_id(TFT_ARRAY);
   FullTypeDef t2;
   t2.set_type_id(TFT_TENSOR);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = Merge()({t1, t2});
+  const auto ret = Merge()({t1, t2}, flib_types);
   EXPECT_THAT(ret.status().error_message(),
               ::testing::HasSubstr("expected compatible input types"));
 }
@@ -168,9 +178,10 @@ TEST(Merge, UsesPartialInfo) {
   FullTypeDef t2;
   t2.set_type_id(TFT_ARRAY);
   t2.add_args()->set_type_id(TFT_TENSOR);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  ExpectInferredArrayOfTensor(Merge()({t1, t2}));
-  ExpectInferredArrayOfTensor(Merge()({t2, t1}));
+  ExpectInferredArrayOfTensor(Merge()({t1, t2}, flib_types));
+  ExpectInferredArrayOfTensor(Merge()({t2, t1}, flib_types));
 }
 
 TEST(Merge, SelectsMostSpecificOfSubtypes) {
@@ -180,9 +191,10 @@ TEST(Merge, SelectsMostSpecificOfSubtypes) {
   FullTypeDef t2;
   t2.set_type_id(TFT_ARRAY);
   t2.add_args()->set_type_id(TFT_TENSOR);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  ExpectInferredArrayOfTensor(Merge()({t1, t2}));
-  ExpectInferredArrayOfTensor(Merge()({t2, t1}));
+  ExpectInferredArrayOfTensor(Merge()({t1, t2}, flib_types));
+  ExpectInferredArrayOfTensor(Merge()({t2, t1}, flib_types));
 }
 
 TEST(UnaryContainerCreate, Basic) {
@@ -192,8 +204,9 @@ TEST(UnaryContainerCreate, Basic) {
   t2.set_type_id(TFT_TENSOR);
   FullTypeDef t3;
   t3.set_type_id(TFT_ANY);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = UnaryContainerCreate(TFT_ARRAY, 1)({t1, t2, t3});
+  const auto ret = UnaryContainerCreate(TFT_ARRAY, 1)({t1, t2, t3}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -211,10 +224,11 @@ TEST(UnaryContainerAdd, Basic) {
   t2.set_type_id(TFT_TENSOR);
   FullTypeDef t3;
   t3.set_type_id(TFT_ARRAY);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/2, /*element_idx=*/1,
-                        /*homogeneous=*/false)({t1, t2, t3});
+                        /*homogeneous=*/false)({t1, t2, t3}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -230,10 +244,11 @@ TEST(UnaryContainerAdd, RejectsMismatchedContainerType) {
   t1.set_type_id(TFT_TENSOR);
   FullTypeDef t2;
   t2.set_type_id(TFT_DATASET);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/1, /*element_idx=*/0,
-                        /*homogeneous=*/false)({t1, t2});
+                        /*homogeneous=*/false)({t1, t2}, flib_types);
   EXPECT_THAT(ret.status().error_message(),
               ::testing::HasSubstr("expected container type"));
 }
@@ -242,10 +257,11 @@ TEST(UnaryContainerAdd, IgnoresUnsetContainerType) {
   FullTypeDef t1;
   t1.set_type_id(TFT_TENSOR);
   FullTypeDef t2;
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/1, /*element_idx=*/0,
-                        /*homogeneous=*/false)({t1, t2});
+                        /*homogeneous=*/false)({t1, t2}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -262,10 +278,11 @@ TEST(UnaryContainerAdd, UnsetElementTypeRemainsUnset) {
   FullTypeDef t2;
   FullTypeDef t3;
   t3.set_type_id(TFT_ARRAY);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/2, /*element_idx=*/1,
-                        /*homogeneous=*/false)({t1, t2, t3});
+                        /*homogeneous=*/false)({t1, t2, t3}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -280,10 +297,11 @@ TEST(UnaryContainerAdd, UnsetElementTypeKeepsOriginalElementType) {
   t1.set_type_id(TFT_ARRAY);
   t1.add_args()->set_type_id(TFT_TENSOR);
   FullTypeDef t2;
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
-                        /*homogeneous=*/false)({t1, t2});
+                        /*homogeneous=*/false)({t1, t2}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -301,10 +319,11 @@ TEST(UnaryContainerAdd, KeepsContainerTypeIfElementIsSubtype) {
   t1.add_args()->set_type_id(TFT_ANY);
   FullTypeDef t2;
   t2.set_type_id(TFT_TENSOR);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
-                        /*homogeneous=*/true)({t1, t2});
+                        /*homogeneous=*/true)({t1, t2}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -322,10 +341,11 @@ TEST(UnaryContainerAdd, RejectsMismatchedElementTypesHeterogenous) {
   t1.add_args()->set_type_id(TFT_TENSOR);
   FullTypeDef t2;
   t2.set_type_id(TFT_DATASET);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
-                        /*homogeneous=*/false)({t1, t2});
+                        /*homogeneous=*/false)({t1, t2}, flib_types);
   EXPECT_THAT(ret.status().error_message(),
               ::testing::HasSubstr("need union types"));
 }
@@ -336,10 +356,11 @@ TEST(UnaryContainerAdd, RejectsMismatchedElementTypesHomogeneous) {
   t1.add_args()->set_type_id(TFT_TENSOR);
   FullTypeDef t2;
   t2.set_type_id(TFT_DATASET);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
-                        /*homogeneous=*/true)({t1, t2});
+                        /*homogeneous=*/true)({t1, t2}, flib_types);
   EXPECT_THAT(ret.status().error_message(),
               ::testing::HasSubstr("expected a subtype"));
 }
@@ -351,10 +372,11 @@ TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHeterogeneous) {
   t1.add_args()->set_type_id(TFT_TENSOR);
   FullTypeDef t2;
   t2.set_type_id(TFT_ANY);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
-                        /*homogeneous=*/false)({t1, t2});
+                        /*homogeneous=*/false)({t1, t2}, flib_types);
   EXPECT_THAT(ret.status().error_message(),
               ::testing::HasSubstr("need union types"));
 }
@@ -366,10 +388,11 @@ TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHomogeneous) {
   t1.add_args()->set_type_id(TFT_TENSOR);
   FullTypeDef t2;
   t2.set_type_id(TFT_ANY);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
-                        /*homogeneous=*/true)({t1, t2});
+                        /*homogeneous=*/true)({t1, t2}, flib_types);
   EXPECT_THAT(ret.status().error_message(),
               ::testing::HasSubstr("expected a subtype"));
 }
@@ -377,8 +400,10 @@ TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHomogeneous) {
 TEST(MultiaryUnstack, One) {
   FullTypeDef t1;
   t1.set_type_id(TFT_TENSOR);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = MultiaryUnstack(TFT_DATASET, UnstackTensor)({t1});
+  const auto ret =
+      MultiaryUnstack(TFT_DATASET, UnstackTensor)({t1}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();
@@ -400,8 +425,10 @@ TEST(MultiaryUnstack, Three) {
   FullTypeDef t3;
   t3.set_type_id(TFT_RAGGED);
   t3.add_args()->set_type_id(TFT_INT64);
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
 
-  const auto ret = MultiaryUnstack(TFT_DATASET, UnstackTensor)({t1, t2, t3});
+  const auto ret =
+      MultiaryUnstack(TFT_DATASET, UnstackTensor)({t1, t2, t3}, flib_types);
   TF_EXPECT_OK(ret.status());
 
   const FullTypeDef& rt = ret.ValueOrDie();

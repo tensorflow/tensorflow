@@ -30,7 +30,10 @@ namespace full_type {
 
 ForwardTypeInferenceFn ReplicateInput(int i, int n) {
   return [i, n](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-                    input_types) {
+                    input_types,
+                const std::map<std::string,
+                               std::reference_wrapper<const FullTypeDef>>&
+                    flib_types) {
     const FullTypeDef& in_type = input_types.at(i).get();
     FullTypeDef ret_type;
     if (in_type.type_id() != TFT_UNSET) {
@@ -45,7 +48,10 @@ ForwardTypeInferenceFn ReplicateInput(int i, int n) {
 
 ForwardTypeInferenceFn Merge() {
   return [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-                input_types) -> StatusOr<FullTypeDef> {
+                input_types,
+            const std::map<std::string,
+                           std::reference_wrapper<const FullTypeDef>>&
+                flib_types) -> StatusOr<FullTypeDef> {
     DCHECK(!input_types.empty());
 
     FullTypeDef merged;
@@ -82,26 +88,33 @@ ForwardTypeInferenceFn Merge() {
 }
 
 ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx) {
-  return [t, element_idx](
-             const std::vector<std::reference_wrapper<const FullTypeDef>>&
-                 input_types) -> StatusOr<FullTypeDef> {
-    DCHECK(input_types.size() >= element_idx);
+  return
+      [t, element_idx](
+          const std::vector<std::reference_wrapper<const FullTypeDef>>&
+              input_types,
+          const std::map<std::string,
+                         std::reference_wrapper<const FullTypeDef>>& flib_types)
+          -> StatusOr<FullTypeDef> {
+        DCHECK(input_types.size() >= element_idx);
 
-    FullTypeDef ret_type;
-    ret_type.set_type_id(TFT_PRODUCT);
-    FullTypeDef* arg_t = ret_type.add_args();
-    arg_t->set_type_id(t);
-    *(arg_t->add_args()) = input_types[element_idx].get();
+        FullTypeDef ret_type;
+        ret_type.set_type_id(TFT_PRODUCT);
+        FullTypeDef* arg_t = ret_type.add_args();
+        arg_t->set_type_id(t);
+        *(arg_t->add_args()) = input_types[element_idx].get();
 
-    return ret_type;
-  };
+        return ret_type;
+      };
 }
 
 ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
                                          int element_idx, bool homogeneous) {
   return [t, container_idx, element_idx, homogeneous](
              const std::vector<std::reference_wrapper<const FullTypeDef>>&
-                 input_types) -> StatusOr<FullTypeDef> {
+                 input_types,
+             const std::map<std::string,
+                            std::reference_wrapper<const FullTypeDef>>&
+                 flib_types) -> StatusOr<FullTypeDef> {
     DCHECK(input_types.size() >= container_idx);
     DCHECK(input_types.size() >= element_idx);
 
@@ -168,20 +181,25 @@ ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
 
 ForwardTypeInferenceFn MultiaryUnstack(
     FullTypeId t, std::function<FullTypeDef(const FullTypeDef&)> unstack) {
-  return [t,
-          unstack](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-                       input_types) -> StatusOr<FullTypeDef> {
-    FullTypeDef ret_type;
-    ret_type.set_type_id(TFT_PRODUCT);
-    FullTypeDef* cont_t = ret_type.add_args();
-    cont_t->set_type_id(t);
-    FullTypeDef* el_t = cont_t->add_args();
-    el_t->set_type_id(TFT_PRODUCT);
-    for (int element_idx = 0; element_idx < input_types.size(); ++element_idx) {
-      *(el_t->add_args()) = unstack(input_types[element_idx].get());
-    }
-    return ret_type;
-  };
+  return
+      [t, unstack](
+          const std::vector<std::reference_wrapper<const FullTypeDef>>&
+              input_types,
+          const std::map<std::string,
+                         std::reference_wrapper<const FullTypeDef>>& flib_types)
+          -> StatusOr<FullTypeDef> {
+        FullTypeDef ret_type;
+        ret_type.set_type_id(TFT_PRODUCT);
+        FullTypeDef* cont_t = ret_type.add_args();
+        cont_t->set_type_id(t);
+        FullTypeDef* el_t = cont_t->add_args();
+        el_t->set_type_id(TFT_PRODUCT);
+        for (int element_idx = 0; element_idx < input_types.size();
+             ++element_idx) {
+          *(el_t->add_args()) = unstack(input_types[element_idx].get());
+        }
+        return ret_type;
+      };
 }
 
 FullTypeDef UnstackTensor(const FullTypeDef& t) {

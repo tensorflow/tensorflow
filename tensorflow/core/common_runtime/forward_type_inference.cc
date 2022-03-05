@@ -102,7 +102,10 @@ Status ForwardTypeInferencePass::Run(
       }
     }
 
-    const auto& infer_ret = reg->fwd_type_fn(input_types);
+    // TODO(schwartzedward) implement flib_types
+    std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
+
+    const auto& infer_ret = reg->fwd_type_fn(input_types, flib_types);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         infer_ret.status(), "while inferring type of node '", n->name(), "'");
     const auto& infer_type = *infer_ret;

@@ -36,7 +36,8 @@ typedef std::function<Status(OpDef* c)> OpTypeConstructor;
 
 // TODO(mdan): Consider a vector-in, vector-out contract.
 typedef std::function<StatusOr<FullTypeDef>(
-    const std::vector<std::reference_wrapper<const FullTypeDef>>&)>
+    const std::vector<std::reference_wrapper<const FullTypeDef>>&,
+    const std::map<std::string, std::reference_wrapper<const FullTypeDef>>&)>
     ForwardTypeInferenceFn;
 
 class FunctionDefHelper;

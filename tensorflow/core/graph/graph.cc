@@ -243,7 +243,10 @@ void Node::RunForwardTypeInference() {
     }
   }
 
-  const auto infer_type = props_->fwd_type_fn(input_types);
+  // TODO(schwartzedward) implement flib_types
+  std::map<std::string, std::reference_wrapper<const FullTypeDef>> flib_types;
+
+  const auto infer_type = props_->fwd_type_fn(input_types, flib_types);
   if (!infer_type.ok()) {
     // TODO(mdan): Turn this into an error, once all offenders are clean.
     LOG(WARNING) << name()
