@@ -1385,6 +1385,40 @@ func AssertNextDataset(scope *Scope, input_dataset tf.Output, transformations tf
 	return op.Output(0)
 }
 
+// A transformation that asserts which transformations happened previously.
+//
+// This transformation checks the names and, optionally, the attribute name-value
+// pairs in the `transformations` argument against those of the transformations
+// that preceded this transformation.  If there is a mismatch, the transformation
+// raises an exception.
+//
+// The check occurs when iterating over the contents of the dataset, which
+// means that the check happens *after* any static optimizations are applied
+// to the dataset graph.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+// `AssertPrevDataset` passes through the outputs of its input dataset.
+//	transformations: A `tf.string` vector `tf.Tensor` identifying the transformations, with optional
+// attribute name-value pairs, that are expected to have happened previously.
+//
+//
+func AssertPrevDataset(scope *Scope, input_dataset tf.Output, transformations tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "AssertPrevDataset",
+		Input: []tf.Input{
+			input_dataset, transformations,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Adds a value to the current value of a variable.
 //
 // Any ReadVariableOp with a control dependency on this op is guaranteed to
