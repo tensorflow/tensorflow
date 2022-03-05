@@ -373,7 +373,11 @@ message DebugOptions {
   // Rendezvous. Negative value disables the timeout and will not terminate.
   int64 xla_gpu_nccl_termination_timeout_seconds = 163;
 
-  // Next id: 165
+  // Enables shared constants for XLA/GPU. This allows large constants to be
+  // shared among multiple GPU executables.
+  bool xla_gpu_enable_shared_constants = 165;
+
+  // Next id: 166
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
