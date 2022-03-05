@@ -65,16 +65,15 @@ bool IsTpuUsed(long pid) {
   }
   std::unique_ptr<DIR, int (*)(DIR*)> fd_dir(raw_fd_dir, closedir);
   struct dirent* ent;
-  char line[100];
+  std::string line;
   std::string tpu_dev_path = "/dev/accel0";
   while (ent = readdir(raw_fd_dir)) {
     if (!isdigit(*ent->d_name)) continue;
     long fd = strtol(ent->d_name, NULL, 10);
     path = absl::StrCat("/proc/", pid, "/fd/", fd);
-    if (!readlink(path.c_str(), line, sizeof(line))) continue;
-    std::string str_line(line);
-    str_line.resize(tpu_dev_path.size());
-    if (str_line != tpu_dev_path) continue;
+    if (!readlink(path.c_str(), &line[0], line.size())) continue;
+    line.resize(tpu_dev_path.size());
+    if (line != tpu_dev_path) continue;
     return true;
   }
   return false;
@@ -98,9 +97,9 @@ bool FindAndLogLibtpuProcess() {
 
     pid = strtol(ent->d_name, NULL, 10);
     if (IsTpuUsed(pid)) {
-      LOG(INFO) << "libtpu.so is already in use by process with pid ["
+      LOG(INFO) << "libtpu.so is already in use by process with pid "
                 << pid
-                << "]. Not attempting to load libtpu.so in this process.";
+                << ". Not attempting to load libtpu.so in this process.";
       return true;
     }
   }
