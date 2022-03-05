@@ -131,7 +131,7 @@ class RpcOpsTest(test.TestCase):
     self.assertAllEqual(mul_or.get_value(), 6)
 
     # Test without output_spec
-    mul_or = client1.multiply(a, b)
+    mul_or = client1.multiply.future(a, b)
     self.assertAllEqual(mul_or.is_ok(), True)
     self.assertAllEqual(mul_or.get_value(), 6)
 
@@ -216,7 +216,7 @@ class RpcOpsTest(test.TestCase):
 
     client = rpc_ops.GrpcClient(address, list_registered_methods=True)
 
-    mul_or = client.multiply(a, b)
+    mul_or = client.multiply.future(a, b)
     self.assertAllEqual(mul_or.is_ok(), True)
     self.assertAllEqual(mul_or.get_value(), 6)
 
@@ -244,11 +244,10 @@ class RpcOpsTest(test.TestCase):
 
     a = variables.Variable(2, dtype=dtypes.int32)
     b = variables.Variable(3, dtype=dtypes.int32)
-    self.assertAllEqual(client.multiply_blocking(a, b), 6)
+    self.assertAllEqual(client.multiply(a, b), 6)
 
-    self.assertEqual(
-        client.multiply_blocking.__doc__,
-        "RPC Call for multiply method to server " + address)
+    self.assertEqual(client.multiply.__doc__,
+                     "RPC Call for multiply method to server " + address)
 
   def test_output_specs(self):
 
@@ -289,22 +288,22 @@ class RpcOpsTest(test.TestCase):
 
     a = variables.Variable(2, dtype=dtypes.int32)
 
-    result_or = client.test_dict(a)
+    result_or = client.test_dict.future(a)
     self.assertAllEqual(result_or.is_ok(), True)
     nest.map_structure(self.assertAllEqual, result_or.get_value(), {"key": 2})
 
-    result_or = client.is_positive(a)
+    result_or = client.is_positive.future(a)
     self.assertTrue(result_or.is_ok())
     self.assertTrue(result_or.get_value())
 
-    result_or = client.test_nested_structure(a)
+    result_or = client.test_nested_structure.future(a)
     self.assertAllEqual(result_or.is_ok(), True)
     nest.map_structure(self.assertAllEqual, result_or.get_value(), {
         "test": (2, [2, 2]),
         "test1": (2,)
     })
 
-    result_or = client.do_nothing()
+    result_or = client.do_nothing.future()
     self.assertAllEqual(result_or.is_ok(), True)
     self.assertAllEqual(result_or.get_value(), [])
 
@@ -329,7 +328,7 @@ class RpcOpsTest(test.TestCase):
         address=address, name="test_client", list_registered_methods=True)
     a = variables.Variable(2, dtype=dtypes.int32)
     b = variables.Variable(3, dtype=dtypes.int32)
-    result_or = client.test_input_dict({"a": a, "b": b})
+    result_or = client.test_input_dict.future({"a": a, "b": b})
     self.assertAllEqual(result_or.is_ok(), True)
     self.assertAllEqual(result_or.get_value(), 5)
 
@@ -378,7 +377,7 @@ class RpcOpsTest(test.TestCase):
     client1_with_listed_methods = rpc_ops.GrpcClient(
         address, name="client1", list_registered_methods=True)
 
-    result_or = client1_with_listed_methods.assign_add(
+    result_or = client1_with_listed_methods.assign_add.future(
         variables.Variable(2, dtype=dtypes.int64))
     self.assertAllEqual(result_or.is_ok(), True)
 
@@ -390,7 +389,7 @@ class RpcOpsTest(test.TestCase):
     client2_with_listed_methods = rpc_ops.GrpcClient(
         address=address, name="client2", list_registered_methods=True)
 
-    result_or = client2_with_listed_methods.assign_add(
+    result_or = client2_with_listed_methods.assign_add.future(
         variables.Variable(2, dtype=dtypes.int64))
     self.assertAllEqual(result_or.is_ok(), True)
 
@@ -488,7 +487,7 @@ class RpcOpsTest(test.TestCase):
         address, name="client2", list_registered_methods=True)
 
     # Succeeds with reasonable timeout.
-    result_or = client.add(
+    result_or = client.add.future(
         constant_op.constant(20), constant_op.constant(30), timeout_in_ms=5000)
     self.assertAllEqual(result_or.is_ok(), True)
 
@@ -681,10 +680,11 @@ class RpcOpsTest(test.TestCase):
         "read_var", output_specs=[tensor_spec.TensorSpec([], dtypes.int64)])
     self.assertAllEqual(result_or.is_ok(), True)
     self.assertAllEqual(result_or.get_value(), [2])
-    result_or = client.assign_add(variables.Variable(2, dtype=dtypes.int64))
+    result_or = client.assign_add.future(
+        variables.Variable(2, dtype=dtypes.int64))
     self.assertAllEqual(True, result_or.is_ok())
 
-    result_or = client.read_var()
+    result_or = client.read_var.future()
     self.assertAllEqual(True, result_or.is_ok())
     self.assertAllEqual(result_or.get_value(), 4)
 
@@ -696,7 +696,7 @@ class RpcOpsTest(test.TestCase):
 
     del server
     with self.assertRaises(errors.DeadlineExceededError):
-      _ = client.assign_add_blocking(
+      _ = client.assign_add(
           variables.Variable(2, dtype=dtypes.int64), timeout_in_ms=1)
 
   def test_captured_inputs(self):
@@ -839,7 +839,8 @@ class RpcOpsTest(test.TestCase):
       server.start()
 
       client = rpc_ops.GrpcClient(address, list_registered_methods=True)
-      result_or = client.assign_add(variables.Variable(2, dtype=dtypes.int64))
+      result_or = client.assign_add.future(
+          variables.Variable(2, dtype=dtypes.int64))
       self.assertAllEqual(result_or.is_ok(), True)
 
     self.assertAllEqual(v, 2)

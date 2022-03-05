@@ -146,15 +146,14 @@ class Client(object):
             available. Users can use client.multiply(..) to make RPC, instead of
             client.call("multiply", ...)
 
-            Both "call" and "multiply" methods are non-blocking i.e. they return
-            a StatusOrResult object which should be used to wait for getting
-            value or error.
+            Both "call" and "multiply" methods are blocking i.e. they block till
+            the RPC is finished and return response for successful RPC.
+            Otherwise raise exception.
 
-            Along with the above, blocking versions of the registered
+            Along with the above, a non-blocking version of the registered
             methods are also dynamically added to client instance.
-            e.g. multiply_blocking(**args). These methods block till the RPC is
-            finished and return response for successful RPC. Otherwise raise
-            exception.
+            e.g. status = multiply.future(**args) return a StatusOrResult object
+            which should be used to wait for getting value or error.
 
             These methods are not available when Client is created inside a
             tf.function.
@@ -187,20 +186,20 @@ class Client(object):
       >>> a = tf.constant(2, dtype=tf.int32)
       >>> b = tf.constant(3, dtype=tf.int32)
 
-      >>> result = client.call(
+      >>> # Blocking usage
+      >>> value = client.addition(a, b)
+
+      >>> value = client.call(
       ...    args=[a, b],
       ...    method_name="addition",
       ...    output_specs=tf.TensorSpec((), tf.int32))
 
-      >>> if result.is_ok():
-      ...   result.get_value()
+      >>> # Non-Blocking usage
+      >>> status = client.addition.future(a, b)
 
-      >>> result = client.addition(a, b)
+      >>> if status.is_ok():
+      ...   value = status.get_value()
 
-      >>> if result.is_ok():
-      ...   result.get_value()
-
-      >>> value = client.addition_blocking(a, b)
     """
     if rpc_layer != "grpc":
       raise ValueError("Only GRPC backend is supported at the moment.")
@@ -398,10 +397,10 @@ class GrpcClient(Client):
         raise errors.exception_type_from_error_code(error_code.numpy())(
             None, None, error_msg.numpy())
 
-    setattr(self, method_name, call_wrapper)
+    call_blocking_wrapper.future = call_wrapper
     call_wrapper.__doc__ = doc_string
 
-    blocking_method_name = method_name + "_blocking"
+    blocking_method_name = method_name
     setattr(self, blocking_method_name, call_blocking_wrapper)
     call_blocking_wrapper.__doc__ = doc_string
 
