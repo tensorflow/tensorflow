@@ -554,8 +554,6 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       [](PyBuffer::object self, absl::optional<bool> weak_type) {
         return self.buf()->set_weak_type(weak_type);
       });
-  type.attr("_lazy_expr") =
-      property_readonly([](py::handle self) { return py::none(); });
   type.attr("device_buffer") =
       property_readonly([](py::object self) { return self; });
   type.attr(

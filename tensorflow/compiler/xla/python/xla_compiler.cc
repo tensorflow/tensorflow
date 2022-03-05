@@ -476,6 +476,18 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           [](const HloModule& m) -> absl::optional<xla::OpSharding> {
             if (!m.has_spmd_output_sharding()) return absl::nullopt;
             return m.spmd_output_sharding().ToProto();
+          })
+      .def_property_readonly(
+          "spmd_parameters_shardings",
+          [](const HloModule& m)
+              -> absl::optional<std::vector<xla::OpSharding>> {
+            if (!m.has_spmd_parameters_shardings()) return absl::nullopt;
+            std::vector<xla::OpSharding> param_shardings;
+            for (const auto& parameter_sharding :
+                 m.spmd_parameters_shardings()) {
+              param_shardings.push_back(parameter_sharding.ToProto());
+            }
+            return param_shardings;
           });
 
   m.def("hlo_module_to_dot_graph",

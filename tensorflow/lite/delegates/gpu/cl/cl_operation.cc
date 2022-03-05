@@ -59,6 +59,9 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result +=
       "#define SELECT_BY_INDEX_FROM_FLT4(value, index) (FLT[4]){(value).x, "
       "(value).y, (value).z, (value).w}[index]\n";
+  result +=
+      "#define SELECT_BY_INDEX_FROM_VEC4(vec_type, value, index) "
+      "(vec_type[4]){(value).x, (value).y, (value).z, (value).w}[index]\n";
   switch (precision) {
     case CalculationsPrecision::F32:
       result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";

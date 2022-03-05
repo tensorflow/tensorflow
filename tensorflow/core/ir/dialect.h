@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/types/dialect.h"
 
 namespace mlir {

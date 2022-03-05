@@ -183,6 +183,12 @@ struct TfrtPipelineOptions
           "control flow) ops."),
       llvm::cl::init(false)};
 
+  Option<bool> enable_while_parallel_iterations{
+      *this, "enable-while-parallel-iterations",
+      llvm::cl::desc("If true, tf.While op will be parallelized. This is "
+                     "currently experimental."),
+      llvm::cl::init(false)};
+
   Option<bool> hoist_invariant_ops{
       *this, "hoist-invariant-ops",
       llvm::cl::desc("If true, invariant ops in savedmodels will be hoisted "

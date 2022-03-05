@@ -2651,6 +2651,53 @@ op {
   }
 }
 op {
+  name: "AssertPrevDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "transformations"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "Assign"
   input_arg {
     name: "ref"
@@ -37871,6 +37918,49 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RandomIndexShuffle"
+  input_arg {
+    name: "index"
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "seed"
+    type_attr: "Tseed"
+  }
+  input_arg {
+    name: "max_index"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_UINT32
+        type: DT_INT64
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tseed"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_UINT32
+        type: DT_INT64
+        type: DT_UINT64
       }
     }
   }

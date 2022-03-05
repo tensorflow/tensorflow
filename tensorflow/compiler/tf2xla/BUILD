@@ -47,6 +47,7 @@ package_group(
         "//third_party/mlir_edge/model_curriculum/iree/...",
         "//third_party/mlperf/submissions/training/v0_7/models/...",
         "//third_party/py/keras/...",
+        "//waymo/ml/deploy/benchmark/...",
     ],
 )
 
@@ -180,9 +181,9 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -943,6 +944,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:device_set",
+        "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
     ],
     alwayslink = 1,

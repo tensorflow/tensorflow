@@ -3149,3 +3149,16 @@ func @not_convert_remainder_for_uint64(%arg0: tensor<10x8xui64>, %arg1: tensor<1
   %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xui64>
   return %0 : tensor<10x8xui64>
 }
+
+
+// CHECK-LABEL:   func @torch_index_select(
+// CHECK:       %[[AXIS:.+]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
+// CHECK:       %[[RES:.+]] = "tf.GatherV2"(%arg0, %arg1, %[[AXIS]]) {batch_dims = 0 : i64}
+// CHECK:       return %[[RES]]
+
+func @torch_index_select(%arg0: tensor<2x1xf32>, %arg1: tensor<2xi32>) -> tensor<2x1xf32> {
+  %0 = "mhlo.torch_index_select"(%arg0, %arg1) {
+    batch_dims = 0 : i64, dim = 0 : i64
+  } : (tensor<2x1xf32>, tensor<2xi32>) -> tensor<2x1xf32>
+  return %0 : tensor<2x1xf32>
+}

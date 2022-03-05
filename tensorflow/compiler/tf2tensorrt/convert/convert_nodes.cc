@@ -3735,26 +3735,30 @@ const std::unordered_map<string, nvinfer1::UnaryOperation>*
 UnaryOperationMap() {
   static auto* const m =
       new std::unordered_map<string, nvinfer1::UnaryOperation>({
-          {"Neg", nvinfer1::UnaryOperation::kNEG},
-          {"Exp", nvinfer1::UnaryOperation::kEXP},
-          {"Log", nvinfer1::UnaryOperation::kLOG},
-          {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
-          {"Abs", nvinfer1::UnaryOperation::kABS},
-          {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
-          {"Sin", nvinfer1::UnaryOperation::kSIN},
-          {"Cos", nvinfer1::UnaryOperation::kCOS},
-          {"Tan", nvinfer1::UnaryOperation::kTAN},
-          {"Sinh", nvinfer1::UnaryOperation::kSINH},
-          {"Cosh", nvinfer1::UnaryOperation::kCOSH},
-          {"Asin", nvinfer1::UnaryOperation::kASIN},
-          {"Acos", nvinfer1::UnaryOperation::kACOS},
-          {"Atan", nvinfer1::UnaryOperation::kATAN},
-          {"Asinh", nvinfer1::UnaryOperation::kASINH},
-          {"Acosh", nvinfer1::UnaryOperation::kACOSH},
-          {"Atanh", nvinfer1::UnaryOperation::kATANH},
-          {"Ceil", nvinfer1::UnaryOperation::kCEIL},
-          {"Floor", nvinfer1::UnaryOperation::kFLOOR},
-          {"Erf", nvinfer1::UnaryOperation::kERF},
+        {"Neg", nvinfer1::UnaryOperation::kNEG},
+            {"Exp", nvinfer1::UnaryOperation::kEXP},
+            {"Log", nvinfer1::UnaryOperation::kLOG},
+            {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
+            {"Abs", nvinfer1::UnaryOperation::kABS},
+            {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
+            {"Sin", nvinfer1::UnaryOperation::kSIN},
+            {"Cos", nvinfer1::UnaryOperation::kCOS},
+            {"Tan", nvinfer1::UnaryOperation::kTAN},
+            {"Sinh", nvinfer1::UnaryOperation::kSINH},
+            {"Cosh", nvinfer1::UnaryOperation::kCOSH},
+            {"Asin", nvinfer1::UnaryOperation::kASIN},
+            {"Acos", nvinfer1::UnaryOperation::kACOS},
+            {"Atan", nvinfer1::UnaryOperation::kATAN},
+            {"Asinh", nvinfer1::UnaryOperation::kASINH},
+            {"Acosh", nvinfer1::UnaryOperation::kACOSH},
+            {"Atanh", nvinfer1::UnaryOperation::kATANH},
+            {"Ceil", nvinfer1::UnaryOperation::kCEIL},
+            {"Floor", nvinfer1::UnaryOperation::kFLOOR},
+            {"Erf", nvinfer1::UnaryOperation::kERF},
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+            {"Round", nvinfer1::UnaryOperation::kROUND},
+            {"Sign", nvinfer1::UnaryOperation::kSIGN},
+#endif
       });
   return m;
 }
@@ -3769,6 +3773,18 @@ Status ConvertUnary(OpConverterParams* params) {
   if (op_pair == UnaryOperationMap()->end()) {
     return errors::Unimplemented("Unary op: ", node_def.op(), " not supported");
   }
+
+  // kSIGN  and kROUND are not yet supported in implicit batch mode.
+  // TODO(drivanov): Remove this check when TRT enables these ops in implicit
+  //                 batch mode (nvbugs/3517570).
+  if (params->use_implicit_batch) {
+    const auto& op = params->node_def.op();
+    if (op == "Sign" || op == "Round") {
+      return errors::Unimplemented("Unary op: ", op,
+                                   " not supported in implicit batch mode");
+    }
+  }
+
   if (params->validation_only) return Status::OK();
 
   // Start conversion.

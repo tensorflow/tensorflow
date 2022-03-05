@@ -4,8 +4,10 @@ builtin.func @test(%V__0: tensor<?x?xf32>
         tolerance = 1.000000e-05 : f32,
         device = "/job:localhost/replica:0/task:0/device:CPU:0"
       } : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
-  %dims1 = "tf.Const"() { value = dense<[1]> : tensor<1xi32> }:
-      () -> tensor<1xi32>
+  %dims1 = "tf.Const"() {
+        value = dense<[1]> : tensor<1xi32>,
+        device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      } : () -> tensor<1xi32>
   %1 = "tf.All"(%0, %dims1) {
         keep_dims = false,
         device = "/job:localhost/replica:0/task:0/device:CPU:0"

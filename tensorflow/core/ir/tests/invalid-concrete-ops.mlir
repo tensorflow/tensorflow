@@ -8,7 +8,7 @@ tfg.func @body(%arg0: tensor<i32>) -> (tensor<*xf32>) {
 
 tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %Index, %Arg, %ctl = Op : () -> (tensor<i32>, tensor<*xf32>)
-  // expected-error@+1 {{body function expected to have 4 arguments but got 2}}
+  // expected-error@+1 {{body function has 1 arguments but was provided 2}}
   %For, %ctl_0 = For(%Index, %Index, %Index, %Arg)
   {T = [f32], body = #tf_type.func<@body, {}>}
   : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>)
@@ -23,7 +23,7 @@ tfg.func @body(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> (tensor<*xf32>) {
 
 tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %Index, %Arg, %ctl = Op : () -> (tensor<i32>, tensor<*xf32>)
-  // expected-error@+1 {{body function expected to have 2 return values but got 1}}
+  // expected-error@+1 {{body function has 1 results but expected 2}}
   %For:2, %ctl_0 = For(%Index, %Index, %Index, %Arg)
   {T = [f32], body = #tf_type.func<@body, {}>}
   : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)

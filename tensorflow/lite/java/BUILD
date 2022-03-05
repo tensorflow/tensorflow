@@ -834,7 +834,6 @@ jni_binary_with_tflite(
         # allows bundling of the C lib w/ AAR distribution.
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
 )
 

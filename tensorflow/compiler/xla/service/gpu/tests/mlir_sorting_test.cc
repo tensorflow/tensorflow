@@ -43,7 +43,7 @@ TEST_F(SortingTest, SimpleCase1) {
             %7 = "mhlo.compare"(%a, %b) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
             "mhlo.return"(%7) : (tensor<i1>) -> ()
           }) {dimension = 0 : i64, is_stable = true} : (memref<4xf32>, memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
-          "std.return" () : () -> ()
+          "func.return" () : () -> ()
       })";
   std::vector<float> arg0 = {3, 1, 2, 4};
   std::vector<float> arg1 = {13, 12, 14, 11};

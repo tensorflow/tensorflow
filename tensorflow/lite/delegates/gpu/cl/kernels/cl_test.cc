@@ -151,6 +151,56 @@ absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
   return absl::OkStatus();
 }
 
+absl::Status ClExecutionEnvironment::ExecuteGPUOperation(
+    const std::vector<TensorDescriptor*>& src_cpu,
+    const std::vector<TensorDescriptor*>& dst_cpu,
+    std::unique_ptr<GPUOperation>&& operation) {
+  CreationContext creation_context;
+  creation_context.device = env_.GetDevicePtr();
+  creation_context.context = &env_.context();
+  creation_context.queue = env_.queue();
+  creation_context.cache = env_.program_cache();
+
+  const OperationDef& op_def = operation->GetDefinition();
+  std::vector<Tensor> src(src_cpu.size());
+  for (int i = 0; i < src_cpu.size(); ++i) {
+    auto src_shape = src_cpu[i]->GetBHWDCShape();
+    if (src_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
+    }
+    RETURN_IF_ERROR(
+        src[i].CreateFromDescriptor(*src_cpu[i], creation_context.context));
+    operation->SetSrc(&src[i], i);
+  }
+
+  std::vector<Tensor> dst(dst_cpu.size());
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    auto dst_shape = dst_cpu[i]->GetBHWDCShape();
+    if (dst_shape.b != 1 && !op_def.IsBatchSupported()) {
+      return absl::InvalidArgumentError(
+          "Layout doesn't have Batch dimension, but shape.b != 1");
+    }
+    RETURN_IF_ERROR(CreateTensor(*creation_context.context, dst_shape,
+                                 op_def.dst_tensors[i], &dst[i]));
+
+    operation->SetDst(&dst[i], i);
+  }
+  RETURN_IF_ERROR(operation->AssembleCode(GetGpuInfo()));
+
+  ClOperation cl_op;
+  cl_op.Init(std::move(operation));
+  RETURN_IF_ERROR(cl_op.Compile(creation_context));
+  RETURN_IF_ERROR(cl_op.UpdateParams());
+  RETURN_IF_ERROR(cl_op.AddToQueue(creation_context.queue));
+  RETURN_IF_ERROR(creation_context.queue->WaitForCompletion());
+
+  for (int i = 0; i < dst_cpu.size(); ++i) {
+    RETURN_IF_ERROR(dst[i].ToDescriptor(dst_cpu[i], creation_context.queue));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ExecuteGPUOperation(const std::vector<TensorFloat32>& src_cpu,
                                  const CreationContext& creation_context,
                                  std::unique_ptr<GPUOperation>&& operation,

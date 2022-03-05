@@ -1392,11 +1392,6 @@ Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
          ->mutable_default_session_config()
          ->mutable_experimental()
          ->mutable_coordination_config() = coordination_config;
-    // TODO(hanyangtay): Remove this redundant config copy that is currently
-    // used to determine if service should be initialized within the session (
-    // it may already be initialized elsewhere).
-    *workers[i].request.mutable_coordination_service_config() =
-        coordination_config;
 
     if (session_opts_.config.experimental()
             .share_session_state_in_clusterspec_propagation()) {

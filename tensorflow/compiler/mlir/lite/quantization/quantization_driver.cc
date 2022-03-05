@@ -24,9 +24,9 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -329,10 +329,9 @@ class QuantizationDriver {
       llvm::dbgs() << "\n\n\n" << current_op->getName() << "\n";
     }
     fn_.walk([&](Operation *op) {
-      if (op->hasTrait<OpTrait::IsTerminator>() ||
-          !op->hasTrait<OpTrait::quant::QuantizableResult>() ||
-          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp,
-                    arith::ConstantOp>(op))
+      if (op->hasTrait<OpTrait::IsTerminator>() || IsOpNotQuantizable(op) ||
+          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp,
+                    func::ConstantOp, arith::ConstantOp>(op))
         return;
       if (current_op == op) llvm::dbgs() << "===>>>";
       llvm::dbgs() << op->getName() << " : (";

@@ -221,6 +221,10 @@ Status LayoutAssignment::SetOperandLayout(const Shape& shape_with_layout,
       operand_no > 0 && !mandatory) {
     dfs = false;
     priority--;
+  } else if (instruction->opcode() == HloOpcode::kReshape && !mandatory &&
+             instruction->operand(0)->opcode() == HloOpcode::kDynamicSlice) {
+    dfs = false;
+    priority--;
   }
   VLOG(3) << "SetOperandLayout : " << instruction->name() << ", operand "
           << operand_no << " : "
@@ -560,38 +564,6 @@ Status LayoutAssignment::AddMandatoryConstraints(
           TF_RETURN_IF_ERROR(SetOperandLayout(
               custom_call->operand_shapes_with_layout()[i], custom_call, i));
         }
-      }
-    } else if (instruction->opcode() == HloOpcode::kSend ||
-               instruction->opcode() == HloOpcode::kRecv) {
-      CHECK(get_channel_constraints(instruction))
-          << "Multi-module layout assignment requires ChannelLayoutConstraints";
-      int64_t channel_id = *instruction->channel_id();
-      if (!get_channel_constraints(instruction)
-               ->IsChannelConstrained(channel_id)) {
-        continue;
-      }
-      if (instruction->opcode() == HloOpcode::kSend) {
-        // TODO(b/68493863): Change to use SetOperandLayout().
-        const Shape send_buffer_shape = instruction->operand(0)->shape();
-        TF_RET_CHECK(send_buffer_shape.IsArray());
-        Shape new_buffer_shape =
-            get_channel_constraints(instruction)
-                ->LayoutShapeForChannel(send_buffer_shape,
-                                        *instruction->channel_id());
-        TF_RETURN_IF_ERROR(
-            SetInstructionLayout(new_buffer_shape, instruction->operand(0)));
-      } else {
-        const Shape recv_buffer_shape =
-            ShapeUtil::GetTupleElementShape(instruction->shape(), 0);
-        TF_RET_CHECK(recv_buffer_shape.IsArray());
-        TF_ASSIGN_OR_RETURN(
-            const LogicalBuffer* buffer,
-            points_to_analysis_->GetBufferDefinedAt(instruction, {0}));
-        Shape new_shape =
-            get_channel_constraints(instruction)
-                ->LayoutShapeForChannel(recv_buffer_shape,
-                                        *instruction->channel_id());
-        TF_RETURN_IF_ERROR(SetBufferLayout(new_shape.layout(), *buffer));
       }
     } else if (IsLayoutConstrainedCollective(instruction)) {
       TF_RETURN_IF_ERROR(
@@ -2032,9 +2004,6 @@ Status LayoutAssignment::RunOnComputation(
         });
   }
 
-  // Must be run before clearing layouts.
-  TF_RETURN_IF_ERROR(BuildHostChannelConstraints(computation));
-
   TF_RETURN_IF_ERROR(ClearComputationLayouts(computation));
   if (computation_layout != nullptr) {
     auto it = computation_layouts_.find(computation);
@@ -2066,6 +2035,10 @@ Status LayoutAssignment::RunOnComputation(
   // Prior to applying default layouts, we take note of all HLO instructions
   // which lack a layout constraint.
   for (LogicalBuffer::Id buffer_id : unconstrained_buffer_ids_) {
+    VLOG(5)
+        << "unconstrained instruction:"
+        << points_to_analysis_->GetBuffer(buffer_id).instruction()->ToString()
+        << "\n";
     unconstrained_layout_instructions_.insert(
         points_to_analysis_->GetBuffer(buffer_id).instruction());
   }
@@ -2159,39 +2132,10 @@ Status LayoutAssignment::RunOnComputation(
 Status LayoutAssignment::ConstrainChannelLayouts(
     HloComputation* computation,
     ChannelLayoutConstraints* channel_constraints) {
-  auto get_channel_constraints = [&](const HloInstruction* instruction) {
-    return IsHostSendRecv(instruction) ? &host_channel_constraints_
-                                       : channel_constraints;
-  };
-  // We go through the kRecvDone before. These must either impose their layout,
-  // or find a matching one already existing (ConstrainChannel() returns
-  // nullptr).
-  for (HloInstruction* instruction : computation->instructions()) {
-    if (instruction->opcode() == HloOpcode::kRecvDone) {
-      const Layout* layout =
-          get_channel_constraints(instruction)
-              ->ConstrainChannel(
-                  *instruction->channel_id(),
-                  ShapeUtil::GetSubshape(instruction->shape(), {0}).layout());
-      TF_RET_CHECK(layout == nullptr)
-          << instruction->ToString()
-          << " cannot constrain layout as it was set to "
-          << LayoutUtil::HumanString(*layout);
-    }
-  }
-  // After that we go through the kSend. These are likely going to have a kCopy
-  // as operand (otherwise we add it), so in case the constrained layout does
-  // not match, we can change the kCopy layout (and the kSend one as well).
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
-    if (instruction->opcode() == HloOpcode::kSend) {
-      HloInstruction* operand = instruction->mutable_operand(0);
-      get_channel_constraints(instruction)
-          ->ConstrainChannel(*instruction->channel_id(),
-                             operand->shape().layout());
-    } else if (instruction->IsCrossModuleAllReduce()) {
-      get_channel_constraints(instruction)
-          ->ConstrainChannel(instruction->channel_id().value(),
-                             instruction->shape().layout());
+    if (instruction->IsCrossModuleAllReduce()) {
+      channel_constraints->ConstrainChannel(instruction->channel_id().value(),
+                                            instruction->shape().layout());
     }
   }
   return Status::OK();

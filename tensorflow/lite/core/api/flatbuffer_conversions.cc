@@ -208,6 +208,14 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseBatchToSpaceNd(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_BROADCAST_ARGS: {
+      return ParseBroadcastArgs(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_BROADCAST_TO: {
+      return ParseBroadcastTo(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_CALL_ONCE: {
       return ParseCallOnce(op, error_reporter, allocator, builtin_data);
     }
@@ -856,7 +864,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SCATTER_ND:
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_SEGMENT_SUM:
-    case BuiltinOperator_BROADCAST_TO:
     case BuiltinOperator_RFFT2D:
     case BuiltinOperator_IMAG:
     case BuiltinOperator_REAL:
@@ -864,7 +871,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_HASHTABLE_FIND:
     case BuiltinOperator_HASHTABLE_IMPORT:
     case BuiltinOperator_HASHTABLE_SIZE:
-    case BuiltinOperator_BROADCAST_ARGS:
     case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
@@ -1059,6 +1065,22 @@ TfLiteStatus ParseBatchMatMul(const Operator* op, ErrorReporter* error_reporter,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseBatchToSpaceNd(const Operator*, ErrorReporter*,
                                  BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseBroadcastArgs(const Operator*, ErrorReporter*,
+                                BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseBroadcastTo(const Operator*, ErrorReporter*,
+                              BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 

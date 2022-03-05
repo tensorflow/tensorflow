@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -596,7 +596,8 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
       new_retvals.push_back(body_stats[arg].grads[source]);
     }
   }
-  OpBuilder(old_body_ret).create<ReturnOp>(old_body_ret->getLoc(), new_retvals);
+  OpBuilder(old_body_ret)
+      .create<func::ReturnOp>(old_body_ret->getLoc(), new_retvals);
   old_body_ret->erase();
   UpdateFuncType(body);
   // Recreate the while op.

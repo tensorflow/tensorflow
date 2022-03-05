@@ -196,7 +196,7 @@ bool IsOpNotQuantizable(Operation* op) {
 
   // Constant ops do not have QuantizableResult attribute but they can deal with
   // quantized tensors.
-  if (llvm::isa<ConstantOp, arith::ConstantOp, quant::StatisticsOp>(op))
+  if (llvm::isa<func::ConstantOp, arith::ConstantOp, quant::StatisticsOp>(op))
     return false;
 
   bool prop_enforced_quantizable =

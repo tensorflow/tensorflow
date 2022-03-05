@@ -51,7 +51,6 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
-from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
@@ -155,7 +154,8 @@ def _variable_handle_from_shape_and_dtype(shape,
   if not graph_mode:
     if shared_name is not None:
       raise errors.InternalError(  # pylint: disable=no-value-for-parameter
-          "Using an explicit shared_name is not supported executing eagerly.")
+          "Using an explicit shared_name is not allowed when executing eagerly."
+      )
     shared_name = context.anonymous_name()
 
   handle = gen_resource_variable_ops.var_handle_op(
@@ -329,29 +329,6 @@ def variable_accessed(variable):
     tape.variable_accessed(variable)
 
 
-# TODO(b/202447704): Merge into VariableSpec.
-class VariableType(trace.TraceType):
-  """Represents Variables (and specs) for function tracing purposes."""
-
-  def __init__(self, dtype, shape, local_id):
-    self._components = (dtype, tuple(shape.as_list()), local_id)
-
-  def is_subtype_of(self, other):
-    # TODO(b/202429845): Implement for subtyping.
-    return self == other
-
-  def most_specific_common_supertype(self, others):
-    # TODO(b/202430155) Implement for shape relaxation.
-    return None
-
-  def __hash__(self) -> int:
-    return hash(self._components)
-
-  def __eq__(self, other) -> bool:
-    return isinstance(
-        other, VariableType) and self._components == other._components
-
-
 class BaseResourceVariable(variables.VariableV1, core.Tensor):
   """A python variable from an existing handle."""
 
@@ -458,15 +435,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint
-    # After the handle has been created, set up a way to clean it up when
-    # executing eagerly. We'll hold the only reference to the deleter, so that
-    # when this object is garbage collected the deleter will be too. This
-    # means ResourceVariables can be part of reference cycles without those
-    # cycles being uncollectable.
-    if not self._in_graph_mode:
-      if handle_deleter is None:
-        handle_deleter = EagerResourceDeleter(
-            handle=self._handle, handle_device=self._handle.device)
     self._handle_deleter = handle_deleter
     self._cached_shape_as_list = None
 
@@ -489,9 +457,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
 
-  def __tf_tracing_type__(self, tracing_context):
-    return VariableType(self.dtype, self.shape,
-                        tracing_context.get_local_id(self._handle._id))  # pylint:disable=protected-access
+  def __tf_tracing_type__(self, signature_context):
+    return signature_context.make_reference_type(
+        VariableSpec(self.shape, self.dtype), self._handle._id)  # pylint:disable=protected-access
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -933,7 +901,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
              f"The variable shape {self._shape}, and the "
              f"assigned value shape {value_tensor.shape} are incompatible."))
       kwargs = {}
-      if forward_compat.forward_compatible(2022, 2, 23):
+      if forward_compat.forward_compatible(2022, 3, 23):
         # If the shape is fully defined, we do a runtime check with the shape of
         # value.
         validate_shape = self._shape.is_fully_defined()
@@ -2364,9 +2332,8 @@ class VariableSpec(tensor_spec.DenseSpec):
     assert len(tensor_list) == 1
     return tensor_list[0]
 
-  def __tf_tracing_type__(self, tracing_context):
-    return VariableType(self.dtype, self.shape,
-                        tracing_context.get_local_id(id(self)))
+  def __tf_tracing_type__(self, signature_context):
+    return signature_context.make_reference_type(self, id(self))
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 

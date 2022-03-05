@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -236,7 +236,7 @@ class MergeTfIfOpsPass
       results.append(call_op.output().begin(), call_op.output().end());
     }
 
-    builder.create<mlir::ReturnOp>(loc, results);
+    builder.create<mlir::func::ReturnOp>(loc, results);
 
     return branch.sym_name();
   }

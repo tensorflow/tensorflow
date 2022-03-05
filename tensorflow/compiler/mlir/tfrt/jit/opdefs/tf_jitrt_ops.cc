@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OpDefinition.h"
@@ -123,7 +123,7 @@ int64_t FallbackExecuteOp::cost() {
   // use it to compute a more precise cost estimation.
   for (mlir::Operation& op : kernel_fn.body().getOps()) {
     // Skip return operation.
-    if (mlir::isa<mlir::ReturnOp>(op)) continue;
+    if (mlir::isa<mlir::func::ReturnOp>(op)) continue;
 
     // These ops are cheap regardless of their input sizes.
     if (mlir::isa<mlir::TF::ShapeOp, mlir::TF::StridedSliceOp,

@@ -1019,8 +1019,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
           // most-minor.
           if (input_dynamic_dimension == 0) {
             output_dynamic_dimension = 0;
-          }
-          if (input_dynamic_dimension == operand->shape().rank() - 1) {
+          } else if (input_dynamic_dimension == operand->shape().rank() - 1) {
             output_dynamic_dimension = reshape->shape().rank() - 1;
           }
 

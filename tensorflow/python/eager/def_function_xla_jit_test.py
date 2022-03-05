@@ -1179,7 +1179,7 @@ class DefFunctionTest(xla_test.XLATestCase):
               stage='hlo')
 
       # Test that reduction occurs only once.
-      self.assertTrue(hlo.count('reduce'), 1)
+      self.assertGreater(hlo.count('reduce'), 1)
 
 
 if __name__ == '__main__':

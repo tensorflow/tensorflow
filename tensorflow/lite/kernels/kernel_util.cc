@@ -580,11 +580,13 @@ bool IsMobilePlatform() {
 }
 
 bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
+#ifndef TF_LITE_STATIC_MEMORY
   if (tensor->dims_signature) {
     for (int i : TfLiteIntArrayView(tensor->dims_signature)) {
       if (i == -1) return true;
     }
   }
+#endif  // TF_LITE_STATIC_MEMORY
   return false;
 }
 

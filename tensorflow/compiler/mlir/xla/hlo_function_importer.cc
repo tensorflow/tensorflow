@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -402,7 +402,7 @@ Status HloFunctionImporter::ImportInstructions(
 
   // Create terminator op depending on the parent op of this region.
   if (llvm::isa<FuncOp>(block->getParentOp())) {
-    builder.create<mlir::ReturnOp>(loc, result);
+    builder.create<mlir::func::ReturnOp>(loc, result);
   } else {
     if (flatten_region_arg_tuple) {
       // Flatten tuples in results of this region.
@@ -566,7 +566,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       TF_ASSIGN_OR_RETURN(FuncOp function,
                           ImportAsFunc(*instruction->to_apply()));
       mlir::Operation* new_operation =
-          func_builder->create<mlir::CallOp>(loc, function, operands);
+          func_builder->create<mlir::func::CallOp>(loc, function, operands);
       return new_operation;
     }
     case HloOpcode::kCollectivePermute: {
@@ -693,9 +693,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kInfeed: {
       if (IsNestedTupleInData(result_type)) {
-        result_type.dump();
-        assert(0 && "InfeedWithTokenInternal: nested tuple found");
+        llvm_unreachable(
+            "Importing xla::kInfeed with nested tuple shape not supported");
       }
+
       attributes.push_back(builder_->getNamedAttr(
           "infeed_config",
           mlir::StringAttr::get(builder_->getContext(),
@@ -730,10 +731,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
       flattened_operands.push_back(operands[1]);
 
-      return func_builder
-          ->create<mlir::mhlo::OutfeedOp>(loc, result_type, flattened_operands,
-                                          attributes)
-          .getOperation();
+      auto op = func_builder->create<mlir::mhlo::OutfeedOp>(
+          loc, result_type, flattened_operands, attributes);
+
+      return op.getOperation();
     }
     case HloOpcode::kPad: {
       const auto& padding_config = instruction->padding_config();
@@ -1054,6 +1055,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       result_type);
     }
+    case HloOpcode::kRngGetAndUpdateState: {
+      return func_builder
+          ->create<mlir::mhlo::XlaRngGetAndUpdateStateOp>(
+              loc, result_type,
+              func_builder->getI64IntegerAttr(
+                  Cast<HloRngGetAndUpdateStateInstruction>(instruction)
+                      ->delta()))
+          .getOperation();
+    }
     case HloOpcode::kWhile: {
       llvm::SmallVector<Value> flattened_operands;
       llvm::SmallVector<Type> flattened_operand_types;
@@ -1162,8 +1172,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(ConvertPadding(padding));
       auto reduce = func_builder->create<mlir::mhlo::ReduceWindowOp>(
           loc, return_types, operands, attributes);
-      TF_RETURN_IF_ERROR(
-          ImportAsRegion(*instruction->to_apply(), &reduce.body()));
+      TF_RETURN_IF_ERROR(ImportAsRegion(*instruction->to_apply(),
+                                        &reduce.body(),
+                                        /*flatten_region_arg_tuple=*/true));
 
       // Check if the output needs to be tupled.
       if (return_types.size() == 1 && return_types.front() == result_type) {

@@ -100,8 +100,7 @@ class Asset(base.Trackable):
   def _add_trackable_child(self, name, value):
     setattr(self, name, value)
 
-  def _export_to_saved_model_graph(self, object_map, tensor_map, options):
-    del object_map, options  # Unused.
+  def _export_to_saved_model_graph(self, tensor_map, **unused_kwargs):
     # TODO(b/205008097): Instead of mapping 1-1 between trackable asset
     # and asset in the graph def consider deduping the assets that
     # point to the same file.

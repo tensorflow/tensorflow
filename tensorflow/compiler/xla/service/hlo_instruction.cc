@@ -68,7 +68,12 @@ HloInstruction* HloInstruction::AddInstruction(
     std::unique_ptr<HloInstruction> derived_instruction) {
   HloInstruction* derived =
       parent()->AddInstruction(std::move(derived_instruction));
+  const bool has_prior_sharding = derived->has_sharding();
   SetupDerivedInstruction(derived);
+  if (!has_prior_sharding && (derived->opcode() == HloOpcode::kReshape ||
+                              derived->opcode() == HloOpcode::kTranspose)) {
+    derived->clear_sharding();
+  }
   return derived;
 }
 
@@ -1739,6 +1744,10 @@ void HloInstruction::SetupDerivedInstruction(
   }
   derived_instruction->set_metadata(metadata_);
   derived_instruction->set_frontend_attributes(frontend_attributes_);
+}
+
+bool HloInstruction::IsRoot() const {
+  return this == parent_->root_instruction();
 }
 
 bool HloInstruction::HasSideEffectNoRecurse() const {

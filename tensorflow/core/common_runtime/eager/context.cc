@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 #include <algorithm>
+#include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 // clang-format off
@@ -53,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -147,7 +150,7 @@ EagerContext::EagerContext(
     DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
     DistributedFunctionLibraryRuntime* cluster_flr,
     CollectiveExecutorMgrInterface* collective_executor_mgr,
-    bool run_eager_op_as_function)
+    bool run_eager_op_as_function, bool jit_compile_rewrite)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
       default_device_placement_policy_(default_device_placement_policy),
@@ -168,7 +171,8 @@ EagerContext::EagerContext(
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)),
-      run_eager_op_as_function_(run_eager_op_as_function) {
+      run_eager_op_as_function_(run_eager_op_as_function),
+      jit_compile_rewrite_(jit_compile_rewrite) {
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr);
@@ -649,6 +653,9 @@ EagerContext::~EagerContext() {
     // TODO(b/136478427): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
                     "Servers don't support clean shutdown.";
+    if (server_->worker_env()->session_mgr != nullptr) {
+      server_->worker_env()->session_mgr->TeardownCoordinationServiceAndAgent();
+    }
     server_.release();
   }
 
@@ -660,6 +667,21 @@ EagerContext::~EagerContext() {
   keep_alive_thread_.reset();
   if (!remote_contexts_.empty()) {
     CloseAndClearAllRemoteContexts();
+  }
+
+  // Clean up all the rendezvous instances created via EagerContext.
+  // Currently there are 3 cases in which a rendezvous instances is created:
+  // (1). Created through a rendezvous_creator passed to EagerContext.
+  // (2). Created through rendezvous_mgr.
+  // (3). Created within EagerContext using LocalRendezvousTable.
+  //
+  // Currently case-(3) is taken care of automatically when an EagerContext
+  // instance is deleted. The following code takes care of case-(2). Case-(1)
+  // is tricky as EagerContext does not have a way to access those rendezvous
+  // instances.
+  // TODO (tfrt-dev): Take care of case-(1) mentioned above.
+  if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
+    worker_env_->rendezvous_mgr->CleanupAll();
   }
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -700,6 +722,15 @@ bool EagerContext::RunEagerOpAsFunction() const {
 
 void EagerContext::SetRunEagerOpAsFunction(bool enable) {
   run_eager_op_as_function_ = enable;
+}
+
+bool EagerContext::JitCompileRewrite() const {
+  VLOG(3) << "JitCompileRewrite: " << jit_compile_rewrite_;
+  return jit_compile_rewrite_;
+}
+
+void EagerContext::SetJitCompileRewrite(bool enable) {
+  jit_compile_rewrite_ = enable;
 }
 
 void EagerContext::ListDevices(

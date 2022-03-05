@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -55,7 +55,7 @@ Operation* emitCallToPrint(Location loc, StringRef func_name, Value arg,
     callee_func = b->create<FuncOp>(module.getLoc(), func_name, func_type);
     callee_func.setPrivate();
   }
-  return b->create<CallOp>(loc, callee_func, arg);
+  return b->create<func::CallOp>(loc, callee_func, arg);
 }
 
 void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {

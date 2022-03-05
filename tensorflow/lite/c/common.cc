@@ -36,13 +36,13 @@ size_t TfLiteIntArrayGetSizeInBytes(int size) {
 
 int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b) {
   if (a == b) return 1;
-  if (a == NULL || b == NULL) return 0;
+  if (a == nullptr || b == nullptr) return 0;
   return TfLiteIntArrayEqualsArray(a, b->size, b->data);
 }
 
 int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
                               const int b_data[]) {
-  if (a == NULL) return (b_size == 0);
+  if (a == nullptr) return (b_size == 0);
   if (a->size != b_size) return 0;
   int i = 0;
   for (; i < a->size; i++)
@@ -54,7 +54,7 @@ int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
 
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
   size_t alloc_size = TfLiteIntArrayGetSizeInBytes(size);
-  if (alloc_size <= 0) return NULL;
+  if (alloc_size <= 0) return nullptr;
   TfLiteIntArray* ret = (TfLiteIntArray*)malloc(alloc_size);
   if (!ret) return ret;
   ret->size = size;
@@ -62,7 +62,7 @@ TfLiteIntArray* TfLiteIntArrayCreate(int size) {
 }
 
 TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src) {
-  if (!src) return NULL;
+  if (!src) return nullptr;
   TfLiteIntArray* ret = TfLiteIntArrayCreate(src->size);
   if (ret) {
     memcpy(ret->data, src->data, src->size * sizeof(int));
@@ -101,7 +101,7 @@ void TfLiteTensorDataFree(TfLiteTensor* t) {
       t->allocation_type == kTfLitePersistentRo) {
     free(t->data.raw);
   }
-  t->data.raw = NULL;
+  t->data.raw = nullptr;
 }
 
 void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
@@ -110,31 +110,31 @@ void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
         (TfLiteAffineQuantization*)(quantization->params);
     if (q_params->scale) {
       TfLiteFloatArrayFree(q_params->scale);
-      q_params->scale = NULL;
+      q_params->scale = nullptr;
     }
     if (q_params->zero_point) {
       TfLiteIntArrayFree(q_params->zero_point);
-      q_params->zero_point = NULL;
+      q_params->zero_point = nullptr;
     }
     free(q_params);
   }
-  quantization->params = NULL;
+  quantization->params = nullptr;
   quantization->type = kTfLiteNoQuantization;
 }
 
 void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
-  if (sparsity == NULL) {
+  if (sparsity == nullptr) {
     return;
   }
 
   if (sparsity->traversal_order) {
     TfLiteIntArrayFree(sparsity->traversal_order);
-    sparsity->traversal_order = NULL;
+    sparsity->traversal_order = nullptr;
   }
 
   if (sparsity->block_map) {
     TfLiteIntArrayFree(sparsity->block_map);
-    sparsity->block_map = NULL;
+    sparsity->block_map = nullptr;
   }
 
   if (sparsity->dim_metadata) {
@@ -143,13 +143,13 @@ void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
       TfLiteDimensionMetadata metadata = sparsity->dim_metadata[i];
       if (metadata.format == kTfLiteDimSparseCSR) {
         TfLiteIntArrayFree(metadata.array_segments);
-        metadata.array_segments = NULL;
+        metadata.array_segments = nullptr;
         TfLiteIntArrayFree(metadata.array_indices);
-        metadata.array_indices = NULL;
+        metadata.array_indices = nullptr;
       }
     }
     free(sparsity->dim_metadata);
-    sparsity->dim_metadata = NULL;
+    sparsity->dim_metadata = nullptr;
   }
 
   free(sparsity);
@@ -158,16 +158,16 @@ void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
 void TfLiteTensorFree(TfLiteTensor* t) {
   TfLiteTensorDataFree(t);
   if (t->dims) TfLiteIntArrayFree(t->dims);
-  t->dims = NULL;
+  t->dims = nullptr;
 
   if (t->dims_signature) {
     TfLiteIntArrayFree((TfLiteIntArray *) t->dims_signature);
   }
-  t->dims_signature = NULL;
+  t->dims_signature = nullptr;
 
   TfLiteQuantizationFree(&t->quantization);
   TfLiteSparsityFree(t->sparsity);
-  t->sparsity = NULL;
+  t->sparsity = nullptr;
 }
 
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
@@ -187,7 +187,7 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
   tensor->is_variable = is_variable;
 
   tensor->quantization.type = kTfLiteNoQuantization;
-  tensor->quantization.params = NULL;
+  tensor->quantization.params = nullptr;
 }
 
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
@@ -267,9 +267,6 @@ const char* TfLiteTypeGetName(TfLiteType type) {
   return "Unknown type";
 }
 
-TfLiteDelegate TfLiteDelegateCreate(void) {
-  TfLiteDelegate d{};
-  return d;
-}
+TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
 }  // extern "C"

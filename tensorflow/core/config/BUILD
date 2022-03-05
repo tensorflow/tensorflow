@@ -2,13 +2,17 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 package(
     default_visibility = [
         "//tensorflow/core/config:__subpackages__",
     ],
     licenses = ["notice"],
+)
+
+exports_files(
+    ["flags_api_wrapper.cc"],
+    visibility = ["//tensorflow:internal"],
 )
 
 cc_library(
@@ -59,7 +63,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":flags_pybind",
+        "//tensorflow/python:flags_pybind",
         "//tensorflow/python:pywrap_tensorflow",
     ],
 )
@@ -74,19 +78,5 @@ py_strict_test(
     deps = [
         ":flags_py",
         "//tensorflow/python:client_testlib",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "flags_pybind",
-    srcs = ["flags_api_wrapper.cc"],
-    module_name = "flags_pybind",
-    deps = [
-        "//tensorflow/core:lib_headers_for_pybind",
-        "//tensorflow/core/config:flags_headers",
-        "//tensorflow/python:pybind11_lib",
-        "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/types:optional",
-        "@pybind11",
     ],
 )

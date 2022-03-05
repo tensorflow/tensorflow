@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/framework/metrics.h"
 
 namespace mlir {
 namespace {
@@ -197,11 +198,22 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
 }
 
-tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
-  return RunTPUBridge(module, enable_logging, CreateTPUBridgePipeline);
+tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
+                             bool fallback_enabled) {
+  Status status = RunTPUBridge(module, enable_logging, CreateTPUBridgePipeline);
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      "tpu", "v2", fallback_enabled,
+      status == Status::OK() ? "success" : "failure");
+  return status;
 }
-tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging) {
-  return RunTPUBridge(module, enable_logging, CreateTPUBridgePipelineV1);
+tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
+                                     bool fallback_enabled) {
+  Status status =
+      RunTPUBridge(module, enable_logging, CreateTPUBridgePipelineV1);
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      "tpu", "v1", fallback_enabled,
+      status == Status::OK() ? "success" : "failure");
+  return status;
 }
 
 }  // namespace TFTPU

@@ -101,30 +101,54 @@ gentbl_cc_library(
     ],
 )
 
+# This library defines the interfaces of the TFG dialect. Importantly, the
+# TensorFlowRegistryInterface is a default model that does not query the
+# op registry. The op registry must be injected as a dependency by users. A
+# concrete implementation is available under `:tf_op_registry`.
+cc_library(
+    name = "interfaces",
+    srcs = ["interfaces.cc"],
+    hdrs = ["interfaces.h"],
+    deps = [
+        ":InterfacesIncGen",
+        "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 cc_library(
     name = "Dialect",
     srcs = [
-        "interfaces.cc",
         "ops.cc",
         "tf_op_wrapper.cc",
         "utility.cc",
     ],
     hdrs = [
         "dialect.h",
-        "interfaces.h",
         "ops.h",
         "tf_op_wrapper.h",
         "utility.h",
     ],
     deps = [
         ":DialectIncGen",
-        ":InterfacesIncGen",
+        ":interfaces",
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tf_op_registry",
+    srcs = ["tf_op_registry.cc"],
+    hdrs = ["tf_op_registry.h"],
+    deps = [
+        ":Dialect",
+        ":interfaces",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -203,6 +227,37 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+    ],
+)
+
+tf_cc_test(
+    name = "interfaces_test",
+    size = "small",
+    srcs = ["interfaces_test.cc"],
+    deps = [
+        ":Dialect",
+        ":interfaces",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_op_registry_test",
+    size = "small",
+    srcs = ["tf_op_registry_test.cc"],
+    deps = [
+        ":Dialect",
+        ":interfaces",
+        ":tf_op_registry",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],

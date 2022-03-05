@@ -107,6 +107,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   }
   pass_config.unfold_large_splat_constant =
       toco_flags.unfold_large_splat_constant();
+  pass_config.enable_dynamic_update_slice =
+      toco_flags.enable_dynamic_update_slice();
 
   return internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,

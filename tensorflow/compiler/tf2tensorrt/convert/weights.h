@@ -219,6 +219,10 @@ class TRT_TensorOrWeights {
 
   string DebugString() const;
 
+  nvinfer1::DataType TrtDType() const {
+    return is_tensor_ ? tensor_proxy_ptr_->getType() : weights_.TrtDType();
+  }
+
  private:
   void set_batch_size(int batch_size) { batch_size_ = batch_size; }
 

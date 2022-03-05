@@ -84,7 +84,7 @@ struct TriangularSolveRewritePattern
 
     mlir::Type element_type =
         op.output().getType().cast<mlir::MemRefType>().getElementType();
-    auto data_type = MlirTypeToCudaDataType(element_type);
+    auto data_type = MlirTypeToBlasDataType(element_type);
 
     auto alpha = MakeScalingFactorConstant(
         rewriter, loc, element_type, llvm::APFloat(1.0), llvm::APFloat(0.0));

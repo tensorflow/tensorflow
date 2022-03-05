@@ -594,19 +594,24 @@ Node* Graph::AddNode(NodeDef node_def, Status* status) {
                                    ? Node::NC_FUNCTION_OP
                                    : Node::GetNodeClassForOp(node_def.op());
 
-  if (op_reg_data->type_ctor != nullptr) {
-    VLOG(3) << "AddNode: found type constructor for " << node_def.name();
-    Status s =
-        full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def,
-                                  *(node_def.mutable_experimental_type()));
-    if (!s.ok()) {
-      *status = errors::InvalidArgument("type error: ", s.ToString());
-      VLOG(3) << "AddNode: type inference failed for " << node_def.name()
-              << ": " << s;
-      return nullptr;
-    }
+  if (node_def.has_experimental_type()) {
+    VLOG(3) << "AddNode: node has type set, skipping type constructor "
+            << node_def.name();
   } else {
-    VLOG(3) << "AddNode: no type constructor for " << node_def.name();
+    if (op_reg_data->type_ctor != nullptr) {
+      VLOG(3) << "AddNode: found type constructor for " << node_def.name();
+      Status s =
+          full_type::SpecializeType(AttrSlice(node_def), op_reg_data->op_def,
+                                    *(node_def.mutable_experimental_type()));
+      if (!s.ok()) {
+        *status = errors::InvalidArgument("type error: ", s.ToString());
+        VLOG(3) << "AddNode: type inference failed for " << node_def.name()
+                << ": " << s;
+        return nullptr;
+      }
+    } else {
+      VLOG(3) << "AddNode: no type constructor for " << node_def.name();
+    }
   }
 
   Node* node = AllocateNode(std::make_shared<NodeProperties>(
@@ -688,20 +693,6 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
   edges_.push_back(e);
   ++num_edges_;
 
-  if (!e->IsControlEdge()) {
-    if (dest->in_edges_.size() >= dest->props_->input_types.size()) {
-      // Note: this only produces consistent results at graph construction,
-      // and only when all incoming edges are up-to-date.
-      // If the graph is subsequently modified, or if the node is added before
-      // any of its upstream nodes, this type information would change as well.
-      // In general, graph transformations should run shole-graph type inference
-      // when done, and should not rely on types being fully up to date
-      // after each AddNode.
-      // TODO(mdan): Should we even run type inference here any more?
-      dest->RunForwardTypeInference();
-    }
-  }
-
   return e;
 }
 
@@ -716,11 +707,6 @@ void Graph::RemoveEdge(const Edge* e) {
   edges_[e->id_] = nullptr;
   RecycleEdge(e);
   --num_edges_;
-
-  if (!e->IsControlEdge()) {
-    // This may clear the node type if enough edges are removed.
-    e->dst_->RunForwardTypeInference();
-  }
 }
 
 void Graph::RecycleEdge(const Edge* e) {

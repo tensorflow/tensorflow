@@ -12,6 +12,6 @@ tf_class {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'file_prefix\', \'checkpoint_number\', \'session\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'file_prefix\', \'checkpoint_number\', \'session\', \'options\', \'update_ckpt_state\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\'], "
   }
 }

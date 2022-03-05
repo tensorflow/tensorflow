@@ -52,7 +52,8 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
 // pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
     bool allow_tensorlist_pass_through = false,
-    bool default_to_single_batch = false);
+    bool default_to_single_batch = false,
+    bool enable_dynamic_update_slice = false);
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
 // Use quant_specs.ops_blocklist and quant_specs.nodes_blocklist if possible

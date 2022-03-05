@@ -198,7 +198,7 @@ static mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslate(
 }
 
 static void RegisterInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+  registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                   mlir::mhlo::MhloDialect, mlir::tensor::TensorDialect>();
 }
 

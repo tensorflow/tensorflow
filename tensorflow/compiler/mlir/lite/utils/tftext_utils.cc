@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -138,7 +138,7 @@ LogicalResult ConvertWhitespaceTokenizer(FuncOp func, llvm::StringRef api,
   auto op = builder.create<CustomOp>(
       func.getLoc(), func.getType().getResults(), func.getArguments(), api,
       CustomOption(&builder, empty_option_buffer));
-  builder.create<ReturnOp>(func.getLoc(), op.getResults());
+  builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
   return success();
 }
 
@@ -265,7 +265,7 @@ LogicalResult ConvertNgrams(FuncOp func, llvm::StringRef api, FuncAttr attr) {
   auto op = builder.create<CustomOp>(
       func.getLoc(), func.getType().getResults(), func.getArguments(), api,
       CustomOption(&builder, custom_option_buffer));
-  builder.create<ReturnOp>(func.getLoc(), op.getResults());
+  builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
   return success();
 }
 
@@ -345,7 +345,7 @@ LogicalResult ConvertSgnnProjection(FuncOp func, llvm::StringRef api,
   auto op = builder.create<CustomOp>(
       func.getLoc(), func.getType().getResults(), func.getArguments(), api,
       CustomOption(&builder, custom_option_buffer));
-  builder.create<ReturnOp>(func.getLoc(), op.getResults());
+  builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
   return success();
 }
 }  // namespace

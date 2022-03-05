@@ -135,7 +135,7 @@ Status PyClient::Defragment() {
              buffer = buffer->next_) {
           if (!buffer->is_deleted()) {
             TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
-                                buffer->buffer_->ToLiteral());
+                                buffer->buffer_->ToLiteralSync());
             tmp_buffers.push_back({buffer, literal});
           }
         }
@@ -250,7 +250,6 @@ StatusOr<py::object> PyClient::BufferFromPyval(
   options.allow_zero_copy =
       (!force_copy &&
        (host_buffer_semantics == PjRtClient::HostBufferSemantics::kZeroCopy));
-  options.force_lazy_arrays = true;
   TF_ASSIGN_OR_RETURN(DevicePutResult put,
                       DevicePut(argument, device, options));
 

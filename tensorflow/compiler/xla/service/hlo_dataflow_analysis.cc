@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 
 #include <algorithm>
+#include <memory>
 #include <queue>
 #include <string>
 #include <utility>
@@ -314,18 +315,18 @@ HloValue* HloDataflowAnalysis::NewHloValue(HloInstruction* instruction,
                                            const ShapeIndex& index,
                                            bool is_phi) {
   const int64_t value_id = next_value_id_++;
-  auto emplaced = values_.emplace(
-      std::piecewise_construct, std::forward_as_tuple(value_id),
-      std::forward_as_tuple(value_id, instruction, index, is_phi));
-  CHECK(emplaced.second);
+  auto result =
+      values_.insert({value_id, std::make_unique<HloValue>(
+                                    value_id, instruction, index, is_phi)});
+  CHECK(result.second);
 
-  VLOG(4) << "NewHloValue = " << emplaced.first->second.ToShortString();
+  VLOG(4) << "NewHloValue = " << result.first->second->ToShortString();
 
-  return &emplaced.first->second;
+  return result.first->second.get();
 }
 
 void HloDataflowAnalysis::MarkValueForDeletion(HloValue::Id value_id) {
-  HloValue& value = values_.at(value_id);
+  const HloValue& value = *values_.at(value_id);
   VLOG(4) << "MarkValueForDeletion(" << value.ToShortString() << ")";
 
   value_ids_to_delete_.push_back(value_id);
@@ -339,7 +340,7 @@ void HloDataflowAnalysis::DeleteMarkedValues() {
   // Verify that no marked-for-deletion values are in any of the value sets.
   for (const auto& pair : value_sets_) {
     const HloInstruction* instruction = pair.first;
-    const InstructionValueSet& instruction_value_set = pair.second;
+    const InstructionValueSet& instruction_value_set = *pair.second;
     for (const auto& index_value_set : instruction_value_set) {
       const HloValueSet& value_set = index_value_set.second;
       for (const HloValue* value : value_set.values()) {
@@ -511,11 +512,11 @@ bool HloDataflowAnalysis::Phi(
 }
 
 const HloValue& HloDataflowAnalysis::GetValue(HloValue::Id value_id) const {
-  return values_.at(value_id);
+  return *values_.at(value_id);
 }
 
 HloValue& HloDataflowAnalysis::GetValue(HloValue::Id value_id) {
-  return values_.at(value_id);
+  return *values_.at(value_id);
 }
 
 HloValueSet HloDataflowAnalysis::GetFlattenedValueSet(
@@ -1200,12 +1201,12 @@ void HloDataflowAnalysis::Propagate() {
 
 const InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
     const HloInstruction* instruction) const {
-  return value_sets_.at(instruction);
+  return *value_sets_.at(instruction);
 }
 
 InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
     const HloInstruction* instruction) {
-  return value_sets_.at(instruction);
+  return *value_sets_.at(instruction);
 }
 
 Status HloDataflowAnalysis::InitializeInstructionValueSets() {
@@ -1213,9 +1214,8 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
     const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
     for (HloInstruction* instruction : computation->instructions()) {
       // Create an empty shape tree.
-      value_sets_.emplace(std::piecewise_construct,
-                          std::forward_as_tuple(instruction),
-                          std::forward_as_tuple(instruction->shape()));
+      value_sets_.insert({instruction, std::make_unique<InstructionValueSet>(
+                                           instruction->shape())});
 
       // For each sub-shape of the instruction shape, add a new HloValue to its
       // HloValueSet.
@@ -1432,14 +1432,14 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   }
   for (auto& pair : dataflow_analysis->values_) {
     HloValue::Id value_id = pair.first;
-    HloValue& value = pair.second;
+    HloValue& value = *pair.second;
     value.SetPositionsAndComputeUses(value_positions[value_id]);
   }
 
   // Construct vector of values.
   dataflow_analysis->values_vector_.reserve(dataflow_analysis->values_.size());
-  for (auto& pair : dataflow_analysis->values_) {
-    dataflow_analysis->values_vector_.push_back(&pair.second);
+  for (const auto& pair : dataflow_analysis->values_) {
+    dataflow_analysis->values_vector_.push_back(pair.second.get());
   }
   absl::c_sort(dataflow_analysis->values_vector_, HloValue::IdLessThan);
 

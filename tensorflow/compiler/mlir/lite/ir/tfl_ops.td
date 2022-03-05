@@ -2890,7 +2890,8 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
 def TFL_ReshapeOp: TFL_Op<"reshape", [
     QuantizableResult,
     NoSideEffect,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultsScale,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Reshape operator";
 
   let description = [{
@@ -2905,8 +2906,11 @@ def TFL_ReshapeOp: TFL_Op<"reshape", [
   let results = (outs AnyTensor:$output);
   let hasCanonicalizer = 0b1;
   let hasFolder = 1;
-
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 def TFL_ReverseSequenceOp : TFL_Op<"reverse_sequence", [
@@ -3920,6 +3924,30 @@ def TFL_GeluOp: TFL_Op<"gelu", [
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8]>:$output);
 
   let hasOptions = 1;
+}
+
+def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
+    NoSideEffect,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+  let summary = "DynamicUpdateSlice.";
+  let description = [{
+    DynamicUpdateSlice op that have the same semantics with XLA
+    DynamicUpdateSlice.
+    Generates a result which is the value of the input array
+    operand, with a slice update overwritten at start_indices.
+
+    See https://www.tensorflow.org/xla/operation_semantics#dynamicupdateslice.
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[I1, I8, I32, I64, F32]>:$operand,
+    TFL_TensorOf<[I1, I8, I32, I64, F32]>:$update,
+    TFL_I32Tensor:$start_indices
+  );
+
+  let results = (
+    outs TFL_TensorOf<[I1, I8, I32, I64, F32]>:$output);
 }
 
 //===----------------------------------------------------------------------===//

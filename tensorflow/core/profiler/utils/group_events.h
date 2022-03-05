@@ -123,6 +123,7 @@ class EventNode {
   int RootLevel() const { return root_level_; }
 
   bool IsAsync() const { return is_async_; }
+  bool IsCompiledFunc() const;
 
   // Compare two EventNodes based on start timestamp.
   bool operator<(const EventNode& other) const {

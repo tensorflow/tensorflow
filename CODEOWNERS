@@ -12,9 +12,9 @@
 /tensorflow/python/eager @rohan100jain
 /tensorflow/python/tools/api/generator/ @mihaimaruseac
 /tensorflow/tools/docs/ @markdaoust
-/tensorflow/compiler/mlir/ @aminim @jpienaar
-/tensorflow/core/ir/ @aminim @jpienaar
-/tensorflow/core/transforms/ @aminim @jpienaar
+/tensorflow/compiler/mlir/ @aminim
+/tensorflow/core/ir/ @aminim
+/tensorflow/core/transforms/ @aminim
 
 
 /third_party/systemlibs/ @perfinion

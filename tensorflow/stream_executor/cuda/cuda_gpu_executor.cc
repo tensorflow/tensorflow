@@ -189,27 +189,9 @@ bool GpuExecutor::FindOnDiskForISAVersion(absl::string_view filename,
 //                 returned string. Example: calling this from /usr/bin/foo
 //                 would return /usr/bin.
 static std::string GetBinaryDir(bool strip_exe) {
-  char exe_path[PATH_MAX] = {0};
-#if defined(__APPLE__)
-  uint32_t buffer_size = 0U;
-  _NSGetExecutablePath(nullptr, &buffer_size);
-  char unresolved_path[buffer_size];
-  _NSGetExecutablePath(unresolved_path, &buffer_size);
-  CHECK_ERR(realpath(unresolved_path, exe_path) ? 1 : -1);
-#else
-#if defined(PLATFORM_WINDOWS)
-  HMODULE hModule = GetModuleHandle(NULL);
-  GetModuleFileName(hModule, static_cast<LPWSTR>(exe_path), MAX_PATH);
-#else
-  PCHECK(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1);
-#endif
-#endif
-  // Make sure it's null-terminated:
-  exe_path[sizeof(exe_path) - 1] = 0;
-
+  std::string exe_path = port::GetExecutablePath();
   if (strip_exe) {
     // The exe is the last component of the path, so remove one component.
-    std::string ret = exe_path;
     std::vector<std::string> components = absl::StrSplit(exe_path, '/');
     components.pop_back();
     return absl::StrJoin(components, "/");

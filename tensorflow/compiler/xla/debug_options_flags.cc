@@ -44,6 +44,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_include_timestamp(false);
   opts.set_xla_dump_max_hlo_modules(-1);
   opts.set_xla_dump_module_metadata(false);
+  opts.set_xla_dump_hlo_as_long_text(false);
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
@@ -55,8 +56,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // b/77879207.
   opts.set_xla_gpu_disable_multi_streaming(true);
 
+  opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
-  opts.set_xla_cpu_enable_fast_math(true);
   opts.set_xla_cpu_fast_math_honor_nans(true);
   opts.set_xla_cpu_fast_math_honor_infs(true);
   opts.set_xla_cpu_fast_math_honor_functions(true);
@@ -79,6 +80,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
   opts.set_xla_detailed_logging_and_dumping(true);
+
+  opts.set_xla_gpu_bef_executable(false);
+  opts.set_xla_gpu_bef_thunk(false);
+  opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
+  opts.set_xla_gpu_enable_shared_constants(true);
+
   return opts;
 }
 
@@ -484,6 +491,13 @@ static void AllocateFlags() {
       "written to the --xla_dump_to dir, or, if no dir is specified, to "
       "stdout."));
   flag_objects->push_back(tensorflow::Flag(
+      "xla_dump_hlo_as_long_text",
+      bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_long_text),
+      flag_values->xla_dump_hlo_as_long_text(),
+      "Dumps HLO modules as long text before and after optimizations. Results "
+      "are written to the --xla_dump_to dir, or, if no dir is specified, to "
+      "stdout. Ignored unless xla_dump_hlo_as_text is true."));
+  flag_objects->push_back(tensorflow::Flag(
       "xla_dump_hlo_as_proto",
       bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_proto),
       flag_values->xla_dump_hlo_as_proto(),
@@ -683,6 +697,27 @@ static void AllocateFlags() {
       flag_values->xla_dump_hlo_pipeline_re(),
       "If specified, dumps HLO before and after optimization passes in the "
       "pass pipelines that match this regular expression."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_bef_executable",
+      bool_setter_for(&DebugOptions::set_xla_gpu_bef_executable),
+      flag_values->xla_gpu_bef_executable(),
+      "Whether to enable XLIR to compile gpu programs to TFRT BEF."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_bef_thunk",
+      bool_setter_for(&DebugOptions::set_xla_gpu_bef_thunk),
+      flag_values->xla_gpu_bef_thunk(),
+      "Whether to enable XLIR to compile thunks to TFRT BEF."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_nccl_termination_timeout_seconds",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_nccl_termination_timeout_seconds),
+      flag_values->xla_gpu_nccl_termination_timeout_seconds(),
+      "Timeout in seconds before terminating jobs stuck in NCCL Rendezvous."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_enable_shared_constants",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_shared_constants),
+      flag_values->xla_gpu_enable_shared_constants(),
+      "Enable constant sharing between GPU executables"));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }  // NOLINT(readability/fn_size)

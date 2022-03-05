@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Shape/IR/ShapeOps.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Tensor/IR/TensorOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"

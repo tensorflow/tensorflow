@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -97,7 +97,7 @@ class ExpandHloTuplesPass
     }
 
     // Update output signatures.
-    auto return_op = cast<mlir::ReturnOp>(func.getBody().back().back());
+    auto return_op = cast<mlir::func::ReturnOp>(func.getBody().back().back());
 
     // Expand all tuples in old return operands.
     SmallVector<Value, 4> expanded_return_operands;
@@ -119,8 +119,8 @@ class ExpandHloTuplesPass
     if (expanded_return_operands.empty()) return;
 
     OpBuilder builder(return_op);
-    builder.create<mlir::ReturnOp>(return_op.getLoc(),
-                                   expanded_return_operands);
+    builder.create<mlir::func::ReturnOp>(return_op.getLoc(),
+                                         expanded_return_operands);
     return_op.erase();
     auto new_func_type =
         FunctionType::get(old_func_type.getContext(), expanded_input_types,

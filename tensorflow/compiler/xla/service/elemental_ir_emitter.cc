@@ -2767,7 +2767,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalMap(
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm::Value*> values,
       EmitThreadLocalCall(*map_instr->to_apply(), elemental_operands,
-                          llvm_ir::IrName(map_instr)));
+                          llvm_ir::IrName(map_instr), /*is_reducer=*/false));
   CHECK_EQ(values.size(), 1);
   return values[0];
 }
@@ -2882,7 +2882,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   }
   TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accum_values,
                       EmitThreadLocalCall(*reduce_window->to_apply(),
-                                          input_values, "reducer_function"));
+                                          input_values, "reducer_function",
+                                          /*is_reducer=*/true));
 
   for (int64_t operand_idx = 0; operand_idx < accum_values.size();
        ++operand_idx) {
@@ -2974,7 +2975,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm::Value*> results,
       EmitThreadLocalCall(*reduce->to_apply(), reduction_operands,
-                          "reduce_function"));
+                          "reduce_function", /*is_reducer=*/true));
 
   CHECK(results.size() == accumulators_count);
   for (int i = 0; i < accumulators_count; i++) {

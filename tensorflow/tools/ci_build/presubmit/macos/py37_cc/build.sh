@@ -40,6 +40,7 @@ function run_build () {
   "${BAZEL_WRAPPER_PATH}" \
     test \
     --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
+    --build_event_binary_file="${KOKORO_ARTIFACTS_DIR}/build_events.pb" \
     --nodistinct_host_configuration \
     --build_tag_filters="${tag_filters}" \
     --test_tag_filters="${tag_filters}" \

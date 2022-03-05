@@ -170,7 +170,7 @@ class CpuCompiler : public LLVMCompiler {
   // Runs HLO passes after layout assignment.
   Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
-      LLVMTargetMachineFeatures* target_machine_features);
+      LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
 
   mutable std::unique_ptr<HloProto> hlo_proto_;
 
