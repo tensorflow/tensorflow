@@ -245,33 +245,12 @@ bool MayPreventVectorization(mlir::Operation* op) {
   static constexpr int kMaxConcatArgumentsForUnrolling = 10;
 
   auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
-  const bool is_single_instruction = IsSingleInstructionFusion(fusion);
 
   for (mlir::Operation& instr : fusion.region().front()) {
     if (mlir::isa<mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
                   mlir::bufferization::ToTensorOp, mlir::memref::TensorStoreOp>(
             &instr)) {
       continue;
-    }
-    if (is_single_instruction) {
-      auto instr_opcode = *MhloToHloOpcode(&instr);
-      if (MhloOpIsElementwise(&instr)) {
-        switch (instr_opcode) {
-          case HloOpcode::kSin:
-          case HloOpcode::kCos:
-          case HloOpcode::kPower:
-          case HloOpcode::kAtan2:
-            return true;
-          default:
-            return false;
-        }
-      } else if (instr_opcode == HloOpcode::kReduce &&
-                 instr.getNumResults() == 1) {
-        // TODO(timshen): check if the to_apply() attribute contains
-        // instructions that break LLVM vectorization.
-        return false;
-      }
-      return true;
     }
 
     CHECK(instr.getDialect() ==
