@@ -234,6 +234,7 @@ class ExecutableBuildOptions:
   debug_options: DebugOptions
   device_assignment: Optional[DeviceAssignment]
   use_spmd_partitioning: bool
+  use_auto_spmd_partitioning: bool
 
 class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int
