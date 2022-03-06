@@ -120,7 +120,8 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
 
   if (input_mlir) {
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-    return OwningOpRef<ModuleOp>(mlir::parseSourceFile(*source_mgr, context));
+    return OwningOpRef<ModuleOp>(
+        mlir::parseSourceFile<mlir::ModuleOp>(*source_mgr, context));
   }
 
   // Register extra TF ops passed as OpDef.
