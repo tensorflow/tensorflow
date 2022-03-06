@@ -220,10 +220,17 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   // nullptr stored in some of the function pointers. Calling such functions
   // will result in a crash.
   //
+  // The allow_nullptr parameter controls how missing functions in the
+  // support library, that might be called by the NN API delegate, are treated.
+  // When allow_nullptr is set to true then missing support library function
+  // are silently tolerated.  When allow_nullptr is set to false then
+  // missing support library functions will lead to program termination.  The
+  // latter mode might be desirable to avoid errors that are hard to debug.
+  //
   // WARNING: This is an experimental interface that is subject to change.
   StatefulNnApiDelegate(
-      const NnApiSLDriverImplFL5* nnapi_support_library_driver,
-      Options options);
+      const NnApiSLDriverImplFL5* nnapi_support_library_driver, Options options,
+      bool allow_nullptr = true);
 
   ~StatefulNnApiDelegate() = default;
 

@@ -35,7 +35,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* /* nnapi */,
 
 StatefulNnApiDelegate::StatefulNnApiDelegate(
     const NnApiSLDriverImplFL5* /* nnapi_support_library_driver */,
-    Options /* options */)
+    Options /* options */, bool /* allow_nullptr */)
     : StatefulNnApiDelegate() {}
 
 StatefulNnApiDelegate::StatefulNnApiDelegate()

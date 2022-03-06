@@ -41,7 +41,10 @@ cc_library(
     ),
     deps = [
         ":nnapi_lib",
-    ] + if_nnapi(["//tensorflow/lite/nnapi/sl:nnapi_support_library_headers"]),
+    ] + if_nnapi([
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
+        "//tensorflow/core/platform:logging",
+    ]),
 )
 
 # This target exists only to verify that nnapi_implementation_disabled.cc compiles.
@@ -71,6 +74,8 @@ cc_test(
     srcs = ["nnapi_implementation_test.cc"],
     deps = [
         ":nnapi_implementation",
+        ":nnapi_lib",
+        "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "@com_google_googletest//:gtest_main",
     ],
 )
