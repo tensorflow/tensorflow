@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-
 #define EIGEN_USE_THREADS
 
 #include "absl/base/thread_annotations.h"
@@ -1083,7 +1082,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
 
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
     absl::InlinedVector<int64_t, 4> byte_strides(

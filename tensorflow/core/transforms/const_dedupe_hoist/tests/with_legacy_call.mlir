@@ -9,7 +9,7 @@ tfg.graph #tf_type.version<producer = 1015, min_consumer = 0> {
   %res_2, %ctl_3 = foo(%Const_2) device("/job:host/task:0/device:CPU:0") name("call") : (tensor<2xi32>) -> (tensor<2xi32>)
 // CHECK:   %[[VAL_0:.*]], %[[VAL_1:.*]] = Const device("/job:host/task:0/device:CPU:0") name("apple")
 // CHECK-SAME: _here = 1
-// CHECK:   %[[ID:.*]], %[[CTL:.*]] = Identity(%[[VAL_0]]) [%[[VAL_1]]]
+// CHECK:   %[[ID:.*]], %[[CTL:.*]] = Identity(%[[VAL_0]]) [%[[VAL_1]]] device("/job:host/task:0/device:CPU:0") name("const_dedupe_hoist/pear")
 // Verify that the dtype and value attributes were not propagated but T is set.
 // CHECK-SAME: {T = i32, _here = 1 : i64}
 // CHECK:   foo(%[[ID]]) device

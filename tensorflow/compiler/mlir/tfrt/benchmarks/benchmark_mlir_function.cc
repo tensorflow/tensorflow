@@ -33,13 +33,11 @@ namespace tensorflow {
 using ::tfrt::ArrayRef;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValuePtr;
-using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::ResourceContext;
 
 using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::HostContextAsyncTaskRunner;
@@ -81,7 +79,7 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
                        llvm::StringRef mlir_input,
                        llvm::StringRef function_name,
                        llvm::ArrayRef<InputTensorSpec> input_specs,
-                       bool vectorize) {
+                       bool vectorize, bool codegen_transpose) {
   // Number of worker threads.
   int64_t num_threads = state.range(0);
 
@@ -92,6 +90,7 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
 
   TfJitRtPipelineOptions tf_jitrt_opts;
   tf_jitrt_opts.vectorize = vectorize;
+  tf_jitrt_opts.codegen_transpose = codegen_transpose;
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_jitrt_opts);
@@ -146,11 +145,19 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   HostContextAsyncTaskRunner async_task_runner(host.get());
   opts.async_task_runner = &async_task_runner;
 
-  for (auto _ : state) {
+  // Execute compiled kernel and return results.
+  auto execute = [&]() {
     call_frame.args[0] = nullptr;  // reset kernel context argument
     (*executable)->Execute(call_frame, opts);
     if (auto err = (*executable)->ReturnResults(converter, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
+  };
+
+  // Warm up to compile the kernel outside of the benchmark loop.
+  execute();
+
+  for (auto _ : state) {
+    execute();
   }
 }
 

@@ -140,8 +140,8 @@ Status RunGpuConvUnfused(GpuConvParams params, se::Stream* stream,
   TF_ASSIGN_OR_RETURN(auto* runner,
                       lazy_runner->GetOrCreateRunner(config, stream));
 
-  return (*runner)(stream, input_buf, filter_buf, output_buf, scratch_memory,
-                   options.profile_result);
+  return (*runner)(stream, options.profile_result, scratch_memory, input_buf,
+                   filter_buf, output_buf);
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -201,9 +201,8 @@ Status RunGpuConvForwardActivation(GpuConvParams params, se::Stream* stream,
   TF_ASSIGN_OR_RETURN(auto* runner,
                       lazy_runner->GetOrCreateRunner(config, stream));
 
-  return (*runner)(stream, input_buf, filter_buf, side_input,
-                   params.fusion->bias_buf, output_buf, scratch_memory,
-                   options.profile_result);
+  return (*runner)(stream, options.profile_result, scratch_memory, input_buf,
+                   filter_buf, side_input, params.fusion->bias_buf, output_buf);
 }
 
 // StreamExecutor supports various data types via overloading, and the support

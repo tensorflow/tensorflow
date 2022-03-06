@@ -69,6 +69,7 @@ cc_library(
         "@llvm-project//mlir:ArithmeticTransforms",
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexToStandard",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToGPURuntimeTransforms",
         "@llvm-project//mlir:GPUToNVVMTransforms",
@@ -94,7 +95,6 @@ cc_library(
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:ShapeToStandard",
         "@llvm-project//mlir:ShapeTransforms",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:StandardOpsTransforms",
         "@llvm-project//mlir:StandardToLLVM",
         "@llvm-project//mlir:ToLLVMIRTranslation",
@@ -144,6 +144,7 @@ tf_cc_binary(
     visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__subpackages__"],
     deps = [
         "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:gml_st",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",

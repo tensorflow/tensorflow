@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/nms_utils.h"
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 namespace mlir {
@@ -55,7 +55,7 @@ void ConvertNMSPaddedFunc::RewriteFunc() {
       func_.getLoc(), output_type0, output_type1, boxes, scores,
       max_output_size, iou_threshold, score_threshold);
 
-  builder.create<mlir::ReturnOp>(func_.getLoc(), op.getResults());
+  builder.create<mlir::func::ReturnOp>(func_.getLoc(), op.getResults());
 }
 
 LogicalResult ConvertNMSPaddedFunc::VerifySignature() {
@@ -98,7 +98,7 @@ LogicalResult ConvertSSDPostProcessFunc::RewriteFunc() {
   auto op = builder.create<CustomOp>(
       func_.getLoc(), func_.getType().getResults(), func_.getArguments(),
       kCustomSSDPostprocessing, CustomOption(&builder, custom_option_buffer));
-  builder.create<ReturnOp>(func_.getLoc(), op.getResults());
+  builder.create<func::ReturnOp>(func_.getLoc(), op.getResults());
 
   return success();
 }

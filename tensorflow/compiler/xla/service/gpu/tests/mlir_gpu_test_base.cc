@@ -137,7 +137,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> MlirGpuTestBase::ParseMlirModule(
     absl::string_view module_text, mlir::MLIRContext& context) {
   context
       .loadDialect<mlir::arith::ArithmeticDialect, mlir::lmhlo::LmhloDialect,
-                   mlir::mhlo::MhloDialect, mlir::StandardOpsDialect,
+                   mlir::mhlo::MhloDialect, mlir::func::FuncDialect,
                    mlir::gpu::GPUDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
   llvm::SourceMgr source_mgr;
   std::string diagnostic_str;

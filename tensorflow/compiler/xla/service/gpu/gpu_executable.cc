@@ -602,8 +602,13 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
 // TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc.
 static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
     stream_executor::DeviceMemoryBase* data) {
-  tfrt::gpu::wrapper::Pointer<void> pointer(data->opaque(),
-                                            tfrt::gpu::wrapper::Platform::CUDA);
+#if TENSORFLOW_USE_ROCM
+  auto platform = tfrt::gpu::wrapper::Platform::ROCm;
+#else
+  auto platform = tfrt::gpu::wrapper::Platform::CUDA;
+#endif
+
+  tfrt::gpu::wrapper::Pointer<void> pointer(data->opaque(), platform);
   auto allocator =
       tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuOneShotAllocator<void>>(
           pointer);
@@ -623,7 +628,9 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
                       params.GetGlobalDeviceId());
   request_context_builder.context_data().emplace<XlaGpuParams>(XlaGpuParams{
       params.run_id, params.device_assn, params.gpu_global_device_ids,
-      params.nccl_unique_id_callback, global_device_id});
+      params.nccl_unique_id_callback, global_device_id,
+      GetOrCreateInfeedManager(params.stream->parent()),
+      GetOrCreateOutfeedManager(params.stream->parent())});
 
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {

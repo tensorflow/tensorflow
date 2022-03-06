@@ -17,7 +17,7 @@ limitations under the License.
 // TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -71,7 +71,7 @@ static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
     }
     operands.push_back(val);
   }
-  return builder->create<CallOp>(loc, fn, operands).getOperation();
+  return builder->create<func::CallOp>(loc, fn, operands).getOperation();
 }
 
 // Prepares for jump to the given block by introducing necessary tensor_cast

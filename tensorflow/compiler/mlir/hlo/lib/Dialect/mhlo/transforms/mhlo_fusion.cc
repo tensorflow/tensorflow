@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/utils/cycle_detector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"     // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"              // TF:llvm-project
 #include "mlir/IR/Matchers.h"
 #include "mlir/Pass/Pass.h"               // TF:local_config_mlir

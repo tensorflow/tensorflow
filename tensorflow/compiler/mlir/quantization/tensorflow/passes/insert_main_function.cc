@@ -18,7 +18,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -30,9 +30,9 @@ namespace mlir {
 namespace quant {
 namespace {
 
-constexpr absl::string_view kEntryFunctionAttr = "tf.entry_function";
-constexpr absl::string_view kExportedNameAttr = "tf_saved_model.exported_names";
-constexpr absl::string_view kIndexPathAttr = "tf_saved_model.index_path";
+constexpr char kEntryFunctionAttr[] = "tf.entry_function";
+constexpr char kExportedNameAttr[] = "tf_saved_model.exported_names";
+constexpr char kIndexPathAttr[] = "tf_saved_model.index_path";
 
 // The ConvertMlirToGraphdef requires the provided input module to have a main
 // function, which might not exist in case of multi-signature graphs. In that
@@ -211,8 +211,8 @@ bool CreateMainFunction(ModuleOp& module) {
                             call_op.getResults().end());
     SetFunctionPrivate(function);
   }
-  builder.create<mlir::ReturnOp>(main_func.getBody().getLoc(),
-                                 returning_values);
+  builder.create<mlir::func::ReturnOp>(main_func.getBody().getLoc(),
+                                       returning_values);
 
   // Adds the new function to symbol table.
   SymbolTable symbol_table(module);

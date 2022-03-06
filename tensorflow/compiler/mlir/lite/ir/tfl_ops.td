@@ -2890,7 +2890,8 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
 def TFL_ReshapeOp: TFL_Op<"reshape", [
     QuantizableResult,
     NoSideEffect,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultsScale,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Reshape operator";
 
   let description = [{
@@ -2905,8 +2906,11 @@ def TFL_ReshapeOp: TFL_Op<"reshape", [
   let results = (outs AnyTensor:$output);
   let hasCanonicalizer = 0b1;
   let hasFolder = 1;
-
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 def TFL_ReverseSequenceOp : TFL_Op<"reverse_sequence", [

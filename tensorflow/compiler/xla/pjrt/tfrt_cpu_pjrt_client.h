@@ -433,7 +433,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
       bool wait_for_operations_to_complete) override;
 
-  using PjRtBuffer::ToLiteral;
+  using PjRtBuffer::ToLiteralSync;
   void ToLiteral(MutableLiteralBase* literal,
                  std::function<void(Status)> on_ready) override;
 

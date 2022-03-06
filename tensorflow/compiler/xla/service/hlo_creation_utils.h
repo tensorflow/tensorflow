@@ -155,6 +155,11 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
 
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
+                                        absl::Span<const int64_t> dimensions,
+                                        HloComputation* reduce_computation);
+
+StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
+                                        HloInstruction* init_value,
                                         HloOpcode binary_opcode,
                                         HloModule* module);
 

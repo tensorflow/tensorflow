@@ -91,6 +91,18 @@ cc_library(
     name = "data_type",
     srcs = ["data_type.cc"],
     hdrs = ["data_type.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "data_type_test",
+    srcs = ["data_type_test.cc"],
+    deps = [
+        ":data_type",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(

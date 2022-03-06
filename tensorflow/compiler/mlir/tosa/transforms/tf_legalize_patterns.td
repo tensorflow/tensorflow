@@ -16,7 +16,7 @@ limitations under the License.
 // TensorFlow legalization patterns
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Tosa/IR/TosaOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 

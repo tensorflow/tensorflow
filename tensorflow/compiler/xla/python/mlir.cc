@@ -16,7 +16,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
@@ -43,7 +43,7 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
   mlir::MLIRContext context;
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-  context.loadDialect<mlir::StandardOpsDialect>();
+  context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   TF_RETURN_IF_ERROR(ConvertHloToMlirHlo(*module, &computation.proto(),
                                          /*import_all_computations=*/true));
@@ -58,7 +58,7 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
                                                       bool return_tuple) {
   mlir::MLIRContext context;
   mlir::OwningOpRef<mlir::ModuleOp> module;
-  context.loadDialect<mlir::StandardOpsDialect>();
+  context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   context.loadDialect<mlir::chlo::HloClientDialect>();
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);

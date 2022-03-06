@@ -211,28 +211,28 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 
-InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
-                                       const OpResolver& op_resolver,
-                                       const InterpreterOptions* options)
+InterpreterBuilder::InterpreterBuilder(
+    const FlatBufferModel& model, const OpResolver& op_resolver,
+    const InterpreterOptions* options_experimental)
     : model_(model.GetModel()),
       op_resolver_(op_resolver),
       error_reporter_(ValidateErrorReporter(model.error_reporter())),
       metadata_(model.ReadAllMetadata()),
       allocation_(model.allocation()) {
-  if (options) {
-    options_ = *options;
+  if (options_experimental) {
+    options_ = *options_experimental;
   }
 }
 
-InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
-                                       const OpResolver& op_resolver,
-                                       ErrorReporter* error_reporter,
-                                       const InterpreterOptions* options)
+InterpreterBuilder::InterpreterBuilder(
+    const ::tflite::Model* model, const OpResolver& op_resolver,
+    ErrorReporter* error_reporter,
+    const InterpreterOptions* options_experimental)
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(ValidateErrorReporter(error_reporter)) {
-  if (options) {
-    options_ = *options;
+  if (options_experimental) {
+    options_ = *options_experimental;
   }
 }
 
@@ -673,7 +673,7 @@ TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
   // Apply Flex delegate if applicable.
   if (has_flex_op_) {
     if (Interpreter::TfLiteDelegatePtr flex_delegate = AcquireFlexDelegate()) {
-      TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegate(
+      TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegateImpl(
           // Transfers ownership of flex_delegate to the interpreter.
           std::move(flex_delegate)));
     }
@@ -681,7 +681,7 @@ TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
   for (TfLiteDelegate* delegate : delegates_) {
     // Note that we DON'T transfer ownership of the delegate to the interpreter.
     // (Doing that would cause problems if operator() was invoked twice.)
-    TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegate(delegate));
+    TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegateImpl(delegate));
   }
   return kTfLiteOk;
 }
@@ -767,9 +767,10 @@ TfLiteStatus InterpreterBuilder::operator()(
   (*interpreter)->SetNumThreads(num_threads_);
 
   // Set Interpreter options
-  (*interpreter)->ApplyOptions(&options_);
+  (*interpreter)->ApplyOptionsImpl(&options_);
 
-  (*interpreter)->SetProfiler(tflite::profiling::MaybeCreatePlatformProfiler());
+  (*interpreter)
+      ->SetProfilerImpl(tflite::profiling::MaybeCreatePlatformProfiler());
 
   for (int subgraph_index = 0; subgraph_index < subgraphs->size();
        ++subgraph_index) {

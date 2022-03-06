@@ -357,7 +357,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
-        "nosan",
+        "noasan",  # asan disabled in b/222716501.
     ],
     deps = [
         ":saved_model_cli_lib",

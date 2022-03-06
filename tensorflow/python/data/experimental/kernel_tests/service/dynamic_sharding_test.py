@@ -86,6 +86,23 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(ds, elements, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testGroupByWindow(self):
+    # Verify that split providers are not propagated into iterators created for
+    # the reduce datasets created by the reduce_fn in group_by_window.
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+    elements = [1, 5, 0]
+    ds = dataset_ops.Dataset.from_tensor_slices(elements)
+
+    def reduce_fn(_, window):
+      return dataset_ops.Dataset.zip((window, dataset_ops.Dataset.range(100)))
+
+    ds = ds.group_by_window(lambda x: 0, reduce_fn, window_size=3)
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    # This will fail if the tensor_slices split provider ispropagated into the
+    # `reduce_fn`, since the `zip` requires either 0 or 2 split providers.
+    self.getDatasetOutput(ds)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testRepeatBeforeDistribution(self):
     cluster = data_service_test_base.TestCluster(num_workers=2)
     num_repeats = 5

@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -154,9 +154,9 @@ LogicalResult GetFunctionsToRewrite(
       auto uses = func.getSymbolUses(module);
       if (!uses) continue;
       for (auto& use : *uses) {
-        // Only `mlir::CallOp` is supported as this requires knowing how to
-        // rewrite arguments and results to a function.
-        if (!isa<mlir::CallOp>(use.getUser())) continue;
+        // Only `mlir::func::CallOp` is supported as this requires knowing how
+        // to rewrite arguments and results to a function.
+        if (!isa<mlir::func::CallOp>(use.getUser())) continue;
         auto caller_parent_func = use.getUser()->getParentOfType<FuncOp>();
         if (!caller_parent_func) continue;
 
@@ -374,17 +374,17 @@ Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
   return token;
 }
 
-// Replaces a `mlir::CallOp` with one that has an extra `!mhlo.token` operand
-// and `!mhlo.token` result. If `new_symbol` is set, the new call will be
-// updated to call the `new_symbol` instead.
-Value RewriteCallOp(OpBuilder& builder, CallOp call,
+// Replaces a `mlir::func::CallOp` with one that has an extra `!mhlo.token`
+// operand and `!mhlo.token` result. If `new_symbol` is set, the new call will
+// be updated to call the `new_symbol` instead.
+Value RewriteCallOp(OpBuilder& builder, func::CallOp call,
                     const Optional<StringRef>& new_symbol, Value token) {
   builder.setInsertionPoint(call);
   auto new_operands = llvm::to_vector(call.getArgOperands());
   new_operands.push_back(token);
   auto new_result_types = llvm::to_vector(call.getResultTypes());
   new_result_types.push_back(token.getType());
-  auto new_call = builder.create<CallOp>(
+  auto new_call = builder.create<func::CallOp>(
       call.getLoc(), new_result_types,
       new_symbol ? *new_symbol : call.getCallee(), new_operands);
 
@@ -781,12 +781,12 @@ void UpdateFunctionType(OpBuilder& builder, FuncOp func, Block& func_body) {
 
 // Replaces a function terminator `return` with another `return` that has an
 // extra `mhlo.token` operand.
-void RewriteFunctionTerminator(OpBuilder& builder, mlir::ReturnOp terminator,
-                               Value token) {
+void RewriteFunctionTerminator(OpBuilder& builder,
+                               mlir::func::ReturnOp terminator, Value token) {
   auto new_results = llvm::to_vector(terminator.getOperands());
   new_results.push_back(token);
   builder.setInsertionPoint(terminator);
-  builder.create<mlir::ReturnOp>(terminator.getLoc(), new_results);
+  builder.create<mlir::func::ReturnOp>(terminator.getLoc(), new_results);
   terminator.erase();
 }
 
@@ -837,8 +837,8 @@ LogicalResult RewriteFunction(
       token = RewriteSendToHostOp(builder, channel_id, send_to_host, token);
     } else if (auto recv_from_host = dyn_cast<TF::XlaRecvFromHostOp>(curr_op)) {
       token = RewriteRecvFromHostOp(builder, channel_id, recv_from_host, token);
-    } else if (auto call = dyn_cast<mlir::CallOp>(curr_op)) {
-      // Only `mlir::CallOp` is supported as this requires knowing how to
+    } else if (auto call = dyn_cast<mlir::func::CallOp>(curr_op)) {
+      // Only `mlir::func::CallOp` is supported as this requires knowing how to
       // rewrite arguments and results to a function.
       auto it = funcs.find(call.getCallee());
       if (it != funcs.end()) {
@@ -877,7 +877,7 @@ LogicalResult RewriteFunction(
       // There is no next op after the control flow op terminator, simply let
       // stack have one less element.
       continue;
-    } else if (auto func_terminator = dyn_cast<mlir::ReturnOp>(curr_op)) {
+    } else if (auto func_terminator = dyn_cast<mlir::func::ReturnOp>(curr_op)) {
       if (rewrite_block)
         RewriteFunctionTerminator(builder, func_terminator, token);
 
@@ -899,7 +899,7 @@ LogicalResult RewriteFunction(
 bool IsFunctionCallWithCommunication(
     Operation* op,
     const llvm::SmallDenseMap<StringRef, FuncToRewrite>& funcs_to_rewrite) {
-  if (auto call = dyn_cast<mlir::CallOp>(op))
+  if (auto call = dyn_cast<mlir::func::CallOp>(op))
     return funcs_to_rewrite.count(call.getCallee());
 
   return false;

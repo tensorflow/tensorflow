@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
 
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project

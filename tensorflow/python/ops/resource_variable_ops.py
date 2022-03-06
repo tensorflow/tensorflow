@@ -154,7 +154,8 @@ def _variable_handle_from_shape_and_dtype(shape,
   if not graph_mode:
     if shared_name is not None:
       raise errors.InternalError(  # pylint: disable=no-value-for-parameter
-          "Using an explicit shared_name is not supported executing eagerly.")
+          "Using an explicit shared_name is not allowed when executing eagerly."
+      )
     shared_name = context.anonymous_name()
 
   handle = gen_resource_variable_ops.var_handle_op(
@@ -434,15 +435,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint
-    # After the handle has been created, set up a way to clean it up when
-    # executing eagerly. We'll hold the only reference to the deleter, so that
-    # when this object is garbage collected the deleter will be too. This
-    # means ResourceVariables can be part of reference cycles without those
-    # cycles being uncollectable.
-    if not self._in_graph_mode:
-      if handle_deleter is None:
-        handle_deleter = EagerResourceDeleter(
-            handle=self._handle, handle_device=self._handle.device)
     self._handle_deleter = handle_deleter
     self._cached_shape_as_list = None
 

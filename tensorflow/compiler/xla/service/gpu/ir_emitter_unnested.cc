@@ -41,7 +41,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -3059,37 +3059,61 @@ Status IrEmitterUnnested::EmitAllReduceDone(mlir::Operation* op) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
-  auto infeed_op = mlir::cast<mlir::lmhlo::InfeedOp>(op);
-
-  std::vector<ShapedSlice> dest_slices;
-  dest_slices.reserve(infeed_op.outputs().size());
-
-  for (mlir::Value output : infeed_op.outputs()) {
-    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(output));
-    const Shape& shape = GetShape(output);
-    dest_slices.push_back(ShapedSlice{slice, shape});
+StatusOr<std::vector<ShapedSlice>> IrEmitterUnnested::GetShapedSlices(
+    mlir::Operation::operand_range operands) {
+  std::vector<ShapedSlice> shaped_slices;
+  shaped_slices.reserve(operands.size());
+  for (mlir::Value opnd : operands) {
+    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(opnd));
+    shaped_slices.push_back(ShapedSlice{slice, GetShape(opnd)});
   }
+  return shaped_slices;
+}
 
-  AddThunkToThunkSequence(
-      absl::make_unique<InfeedThunk>(GetThunkInfo(op), std::move(dest_slices)));
+StatusOr<std::vector<BufferAllocation::Slice>> IrEmitterUnnested::GetSlices(
+    mlir::Operation::operand_range operands) {
+  std::vector<BufferAllocation::Slice> slices;
+  slices.reserve(operands.size());
+  for (mlir::Value opnd : operands) {
+    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(opnd));
+    slices.push_back(slice);
+  }
+  return slices;
+}
+
+Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
+  mlir::Operation::operand_range operands =
+      mlir::cast<mlir::lmhlo::InfeedOp>(op).outputs();
+  std::unique_ptr<Thunk> thunk;
+  if (IsBefThunkEnabled(hlo_module_config_)) {
+    TF_ASSIGN_OR_RETURN(auto slices, GetSlices(operands));
+    TF_ASSIGN_OR_RETURN(
+        thunk, CreateBefThunk(GetThunkInfo(op), op, std::move(slices)));
+  } else {
+    TF_ASSIGN_OR_RETURN(auto shaped_slices, GetShapedSlices(operands));
+    thunk = absl::make_unique<InfeedThunk>(GetThunkInfo(op),
+                                           std::move(shaped_slices));
+  }
+  AddThunkToThunkSequence(std::move(thunk));
+
   return Status::OK();
 }
 
 Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
-  auto outfeed_op = mlir::cast<mlir::lmhlo::OutfeedOp>(op);
-
-  std::vector<ShapedSlice> source_slices;
-  source_slices.reserve(outfeed_op.operands().size());
-
-  for (mlir::Value operand : outfeed_op.operands()) {
-    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(operand));
-    const Shape& shape = GetShape(operand);
-    source_slices.push_back(ShapedSlice{slice, shape});
+  mlir::Operation::operand_range operands =
+      mlir::cast<mlir::lmhlo::OutfeedOp>(op).operands();
+  std::unique_ptr<Thunk> thunk;
+  if (IsBefThunkEnabled(hlo_module_config_)) {
+    TF_ASSIGN_OR_RETURN(auto slices, GetSlices(operands));
+    TF_ASSIGN_OR_RETURN(
+        thunk, CreateBefThunk(GetThunkInfo(op), op, std::move(slices)));
+  } else {
+    TF_ASSIGN_OR_RETURN(auto shaped_slices, GetShapedSlices(operands));
+    thunk = absl::make_unique<OutfeedThunk>(GetThunkInfo(op),
+                                            std::move(shaped_slices));
   }
+  AddThunkToThunkSequence(std::move(thunk));
 
-  AddThunkToThunkSequence(absl::make_unique<OutfeedThunk>(
-      GetThunkInfo(op), std::move(source_slices)));
   return Status::OK();
 }
 
@@ -5465,9 +5489,9 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
 }
 
 Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
-  if (mlir::isa<mlir::ConstantOp, mlir::arith::ConstantOp, mlir::memref::ViewOp,
-                mlir::memref::ReinterpretCastOp, mlir::ReturnOp,
-                mlir::lmhlo::TerminatorOp>(op)) {
+  if (mlir::isa<mlir::func::ConstantOp, mlir::arith::ConstantOp,
+                mlir::memref::ViewOp, mlir::memref::ReinterpretCastOp,
+                mlir::func::ReturnOp, mlir::lmhlo::TerminatorOp>(op)) {
     return Status::OK();
   }
 

@@ -33,8 +33,8 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -564,7 +564,7 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
 
   auto* entry_block = function.addEntryBlock();
   builder.setInsertionPointToStart(entry_block);
-  builder.create<mlir::ReturnOp>(builder.getUnknownLoc());
+  builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
   builder.setInsertionPointToStart(entry_block);
 
   mlir::Value input = entry_block->getArgument(1);

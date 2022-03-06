@@ -755,7 +755,7 @@ void LoadDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
                           ctx->env(), path, &metadata, &metadata_file_exists));
 
   OP_REQUIRES(ctx, metadata_file_exists,
-              errors::NotFound("Could not find metadata file."));
+              errors::NotFound("Could not find metadata file [", path, "]"));
 
   *output =
       new Dataset(ctx, path, std::move(metadata), compression_,

@@ -1,15 +1,8 @@
 package(
     default_visibility = [
-        ":friends",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
     ],
     licenses = ["notice"],
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "//tensorflow/compiler/mlir/quantization/...",
-    ],
 )
 
 cc_library(
@@ -19,6 +12,21 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "lift_as_function_call_utils",
+    srcs = ["lift_as_function_call_utils.cc"],
+    hdrs = ["lift_as_function_call_utils.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",

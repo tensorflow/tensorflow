@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.td"
 
 class Quantize<string value> : NativeCodeCall<"TFR::Quantize(" # value # ", $0, $1, $_builder)">;

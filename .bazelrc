@@ -108,10 +108,6 @@
 # opts in to modular op registration support by default.
 build --define framework_shared_object=true
 
-# For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
-build --java_toolchain=//tensorflow/tools/toolchains/java:tf_java_toolchain
-build --host_java_toolchain=//tensorflow/tools/toolchains/java:tf_java_toolchain
-
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
@@ -425,10 +421,6 @@ build:rbe --remote_download_toplevel
 
 build:rbe_linux_base --config=rbe
 build:rbe_linux_base --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
-build:rbe_linux_base --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8
-build:rbe_linux_base --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8
-build:rbe_linux_base --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
-build:rbe_linux_base --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
 
 build:rbe_linux --config=rbe_linux_base
 # Non-rbe settings we should include because we do not run configure
@@ -559,8 +551,6 @@ build:rbe_linux_py3_ml2014 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_m
 build:rbe_win --config=rbe
 build:rbe_win --crosstool_top="//tensorflow/tools/toolchains/win/tf_win_02212022:toolchain"
 build:rbe_win --extra_toolchains="//tensorflow/tools/toolchains/win/tf_win_02212022:cc-toolchain-x64_windows"
-build:rbe_win --host_javabase="//tensorflow/tools/toolchains/win:windows_jdk8"
-build:rbe_win --javabase="//tensorflow/tools/toolchains/win:windows_jdk8"
 build:rbe_win --extra_execution_platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --host_platform="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"
 build:rbe_win --platforms="//tensorflow/tools/toolchains/win:rbe_windows_ltsc2019"

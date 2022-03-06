@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-jitrt-pipeline="vectorize" -split-input-file %s | FileCheck %s
+// RUN: tf-tfrt-opt -tf-jitrt-pipeline="vectorize codegen-transpose" -split-input-file %s | FileCheck %s
 
 // Verify that transpose codegen is working within the pipeline.
 

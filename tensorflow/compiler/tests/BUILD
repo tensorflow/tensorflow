@@ -808,14 +808,17 @@ tf_xla_py_test(
     size = "small",
     timeout = "long",
     srcs = ["image_ops_test.py"],
-    disabled_backends = [
-        "gpu",  # Fails on CUDA 11 b/190787813
+    enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
     ],
     python_version = "PY3",
     shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
+        "requires-gpu-nvidia",
     ],
     deps = [
         ":xla_test",

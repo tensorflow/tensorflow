@@ -289,6 +289,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
   default_params.AddParam("max_profiling_buffer_entries",
                           BenchmarkParam::Create<int32_t>(1024));
+  default_params.AddParam("allow_dynamic_profiling_buffer_increase",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
 
@@ -352,7 +354,9 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                        "require delegate to run the entire graph"),
       CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
       CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
-                          "max profiling buffer entries"),
+                          "max initial profiling buffer entries"),
+      CreateFlag<bool>("allow_dynamic_profiling_buffer_increase", &params_,
+                       "allow dynamic increase on profiling buffer entries"),
       CreateFlag<std::string>(
           "profiling_output_csv_file", &params_,
           "File path to export profile data as CSV, if not set "
@@ -397,7 +401,10 @@ void BenchmarkTfLiteModel::LogParams() {
   LOG_BENCHMARK_PARAM(bool, "enable_op_profiling", "Enable op profiling",
                       verbose);
   LOG_BENCHMARK_PARAM(int32_t, "max_profiling_buffer_entries",
-                      "Max profiling buffer entries", verbose);
+                      "Max initial profiling buffer entries", verbose);
+  LOG_BENCHMARK_PARAM(bool, "allow_dynamic_profiling_buffer_increase",
+                      "Allow dynamic increase on profiling buffer entries",
+                      verbose);
   LOG_BENCHMARK_PARAM(std::string, "profiling_output_csv_file",
                       "CSV File to export profiling data to", verbose);
   LOG_BENCHMARK_PARAM(bool, "print_preinvoke_state",
@@ -769,6 +776,7 @@ BenchmarkTfLiteModel::MayCreateProfilingListener() const {
 
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
       interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),
+      params_.Get<bool>("allow_dynamic_profiling_buffer_increase"),
       params_.Get<std::string>("profiling_output_csv_file"),
       CreateProfileSummaryFormatter(
           !params_.Get<std::string>("profiling_output_csv_file").empty())));
