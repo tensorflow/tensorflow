@@ -95,7 +95,8 @@ StatusOr<OwningOpRef<mlir::ModuleOp>> LoadModule(MLIRContext* context,
 
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-  return OwningOpRef<mlir::ModuleOp>(parseSourceFile(source_mgr, context));
+  return OwningOpRef<mlir::ModuleOp>(
+      parseSourceFile<mlir::ModuleOp>(source_mgr, context));
 }
 
 TEST(ErrorCollectorTest, TessSuccessPass) {

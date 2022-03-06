@@ -66,7 +66,7 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(mem_buffer), llvm::SMLoc());
   OwningOpRef<mlir::ModuleOp> module_ref =
-      parseSourceFile(source_mgr, module.getContext());
+      parseSourceFile<mlir::ModuleOp>(source_mgr, module.getContext());
 
   // Copy all functions used by this signature to the final MLIR module.
   for (FuncOp func : module_ref->getOps<FuncOp>()) {
