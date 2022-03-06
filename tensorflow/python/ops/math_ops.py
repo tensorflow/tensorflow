@@ -4357,8 +4357,6 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
   Returns:
     A `Tensor`. Has the same type as `x`.
   """
-  if (isinstance(exclusive,bool)==False):
-        raise TypeError("argument 'exclusive' should have dtype bool")
   with ops.name_scope(name, "Cumprod", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops.cumprod(
@@ -4415,8 +4413,6 @@ def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
   Returns:
     A `Tensor`. Has the same shape and type as `x`.
   """
-  if (isinstance(exclusive,bool)==False):
-        raise TypeError("argument 'exclusive' should have dtype bool")
   with ops.name_scope(name, "CumulativeLogsumexp", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops.cumulative_logsumexp(
