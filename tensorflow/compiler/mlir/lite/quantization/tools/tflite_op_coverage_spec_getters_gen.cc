@@ -136,7 +136,7 @@ bool CheckTypeConstraints(llvm::Init *input_value,
       def_init->getDef()->getValueAsString("tflRuntimeTypeDescription");
 
   for (const std::string &type : required_types) {
-    if (!absl::StrContains(supported_types, type)) return false;
+    if (!absl::StrContains(supported_types.str(), type)) return false;
   }
   return true;
 }
