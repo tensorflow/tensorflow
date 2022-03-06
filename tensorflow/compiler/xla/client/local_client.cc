@@ -207,6 +207,12 @@ static std::shared_ptr<HloSnapshot> DumpArguments(
   *snapshot->mutable_hlo() = *executable->hlo_proto();
   for (const ShapedBuffer* arg : arguments) {
     auto literal = std::make_shared<Literal>(arg->on_host_shape());
+    // TODO(b/223010622): Re-enable this.
+    if (arg->on_host_shape().is_dynamic()) {
+      LOG(ERROR) << "Dumping dynamic-shaped args is disabled due to memory "
+                    "corruption, b/223010622.";
+      continue;
+    }
     backend->transfer_manager()->TransferLiteralFromDevice(
         stream, *arg, literal.get(), [snapshot, literal](Status status) {
           if (!status.ok()) {
@@ -225,6 +231,12 @@ static void DumpOutputsAndSaveSnapshot(const Backend* backend,
                                        const ShapedBuffer& outputs,
                                        std::shared_ptr<HloSnapshot> snapshot,
                                        se::Stream* stream) {
+  // TODO(b/223010622): Re-enable this.
+  if (outputs.on_host_shape().is_dynamic()) {
+    LOG(ERROR) << "Dumping dynamic-shaped results is disabled due to memory "
+                  "corruption, b/223010622.";
+    return;
+  }
   auto literal = std::make_shared<Literal>(outputs.on_host_shape());
   backend->transfer_manager()->TransferLiteralFromDevice(
       stream, outputs, literal.get(),
