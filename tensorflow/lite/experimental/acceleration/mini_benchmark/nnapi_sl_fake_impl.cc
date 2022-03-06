@@ -28,6 +28,12 @@ limitations under the License.
 
 namespace {
 
+constexpr const char kFakeDeviceIds[] = "nnapi_test=1.0";
+
+constexpr const uint8_t kModelArchHash[32] = {
+    0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
+    16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
+
 std::string GetTempDir() {
   const char* temp_dir = getenv("TEST_TMPDIR");
   if (temp_dir == nullptr || temp_dir[0] == '\0') {
@@ -267,6 +273,150 @@ NnApiSLDriverImplFL5 GetNnApiSlDriverImpl() {
     TraceCall();
     return ANEURALNETWORKS_FEATURE_LEVEL_5;
   };
+  sl_driver_impl.SL_ANeuralNetworksDevice_getPerformanceInfo =
+      [](const ANeuralNetworksDevice*, int32_t,
+         SL_ANeuralNetworksPerformanceInfo*) -> int {
+    return ANEURALNETWORKS_INCOMPLETE;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDevice_forEachOperandPerformanceInfo =
+      [](const ANeuralNetworksDevice*, void*,
+         void (*)(SL_ANeuralNetworksOperandPerformanceInfo, void*)) -> int {
+    return ANEURALNETWORKS_INCOMPLETE;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDevice_getVendorExtensionCount =
+      [](const ANeuralNetworksDevice*, uint32_t*) -> int {
+    return ANEURALNETWORKS_INCOMPLETE;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDevice_getVendorExtensionName =
+      [](const ANeuralNetworksDevice*, uint32_t, const char**) -> int {
+    return ANEURALNETWORKS_INCOMPLETE;
+  };
+  sl_driver_impl
+      .SL_ANeuralNetworksDevice_forEachVendorExtensionOperandTypeInformation =
+      [](const ANeuralNetworksDevice*, uint32_t, void*,
+         void (*)(SL_ANeuralNetworksExtensionOperandTypeInformation,
+                  void*)) -> int { return ANEURALNETWORKS_INCOMPLETE; };
+
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticCompilationInfo_getSessionId =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> int {
+    return ANEURALNETWORKS_INCOMPLETE;
+  };
+
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticCompilationInfo_getNnApiVersion =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> int64_t {
+    return ANEURALNETWORKS_FEATURE_LEVEL_1;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticCompilationInfo_getModelArchHash =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> const uint8_t* {
+    return kModelArchHash;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticCompilationInfo_getDeviceIds =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> const char* {
+    return kFakeDeviceIds;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticCompilationInfo_getErrorCode =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> int32_t {
+    return ANEURALNETWORKS_BAD_STATE;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticCompilationInfo_getInputDataClass =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*)
+      -> ANeuralNetworksDiagnosticDataClass {
+    return ANNDIAG_DATA_CLASS_UNKNOWN;
+  };
+  sl_driver_impl
+      .SL_ANeuralNetworksDiagnosticCompilationInfo_getOutputDataClass =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*)
+      -> ANeuralNetworksDiagnosticDataClass {
+    return ANNDIAG_DATA_CLASS_UNKNOWN;
+  };
+  sl_driver_impl
+      .SL_ANeuralNetworksDiagnosticCompilationInfo_getCompilationTimeNanos =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> uint64_t {
+    return 0;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticCompilationInfo_isCachingEnabled =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> bool {
+    return false;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticCompilationInfo_isControlFlowUsed =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> bool {
+    return false;
+  };
+  sl_driver_impl
+      .SL_ANeuralNetworksDiagnosticCompilationInfo_areDynamicTensorsUsed =
+      [](const ANeuralNetworksDiagnosticCompilationInfo*) -> bool {
+    return false;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticExecutionInfo_getSessionId =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> int32_t {
+    return 0;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticExecutionInfo_getNnApiVersion =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> int64_t {
+    return ANEURALNETWORKS_FEATURE_LEVEL_1;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticExecutionInfo_getModelArchHash =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> const uint8_t* {
+    return kModelArchHash;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticExecutionInfo_getDeviceIds =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> const char* {
+    return kFakeDeviceIds;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticExecutionInfo_getExecutionMode =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*)
+      -> ANeuralNetworksDiagnosticExecutionMode {
+    return ANNDIAG_EXECUTION_MODE_UNKNOWN;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticExecutionInfo_getInputDataClass =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*)
+      -> ANeuralNetworksDiagnosticDataClass {
+    return ANNDIAG_DATA_CLASS_UNKNOWN;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticExecutionInfo_getOutputDataClass =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*)
+      -> ANeuralNetworksDiagnosticDataClass {
+    return ANNDIAG_DATA_CLASS_UNKNOWN;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticExecutionInfo_getErrorCode =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> uint32_t {
+    return 0;
+  };
+  sl_driver_impl
+      .SL_ANeuralNetworksDiagnosticExecutionInfo_getRuntimeExecutionTimeNanos =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> uint64_t {
+    return 0;
+  };
+  sl_driver_impl
+      .SL_ANeuralNetworksDiagnosticExecutionInfo_getDriverExecutionTimeNanos =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> uint64_t {
+    return 0;
+  };
+  // clang-format off
+  sl_driver_impl
+    .SL_ANeuralNetworksDiagnosticExecutionInfo_getHardwareExecutionTimeNanos =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> uint64_t {
+    return 0;
+  };
+  // clang-format on
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticExecutionInfo_isCachingEnabled =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> bool {
+    return false;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnosticExecutionInfo_isControlFlowUsed =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> bool {
+    return false;
+  };
+  sl_driver_impl
+      .SL_ANeuralNetworksDiagnosticExecutionInfo_areDynamicTensorsUsed =
+      [](const ANeuralNetworksDiagnosticExecutionInfo*) -> bool {
+    return false;
+  };
+  sl_driver_impl.SL_ANeuralNetworksDiagnostic_registerCallbacks =
+      [](ANeuralNetworksDiagnosticCompilationFinishedCallback
+             compilationCallback,
+         ANeuralNetworksDiagnosticExecutionFinishedCallback,
+         void* context) -> void {};
 
   return sl_driver_impl;
 }

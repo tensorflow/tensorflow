@@ -225,6 +225,10 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
       const NnApiSLDriverImplFL5* nnapi_support_library_driver,
       Options options);
 
+  StatefulNnApiDelegate(
+      const NnApiSLDriverImplFL5* nnapi_support_library_driver, Options options,
+      bool nullptr_no_error /*= true*/);
+
   ~StatefulNnApiDelegate() = default;
 
   // Returns the delegate options.

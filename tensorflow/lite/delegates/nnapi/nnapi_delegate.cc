@@ -6263,6 +6263,18 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(
   StatefulNnApiDelegateConstructorImpl(options);
 }
 
+StatefulNnApiDelegate::StatefulNnApiDelegate(
+    const NnApiSLDriverImplFL5* nnapi_support_library_driver, Options options,
+    bool nullptr_no_error)
+    : TfLiteDelegate(TfLiteDelegateCreate()),
+      delegate_data_(
+          nullptr_no_error
+              ? CreateNnApiFromSupportLibrary(nnapi_support_library_driver)
+              : CreateCompleteNnApiFromSupportLibraryOrFail(
+                    nnapi_support_library_driver)) {
+  StatefulNnApiDelegateConstructorImpl(options);
+}
+
 StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
                                              Options options)
     : TfLiteDelegate(TfLiteDelegateCreate()), delegate_data_(nnapi) {

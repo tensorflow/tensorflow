@@ -38,6 +38,11 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(
     Options /* options */)
     : StatefulNnApiDelegate() {}
 
+StatefulNnApiDelegate::StatefulNnApiDelegate(
+    const NnApiSLDriverImplFL5* /* nnapi_support_library_driver */,
+    Options /* options */, bool /* nullptr_no_error */)
+    : StatefulNnApiDelegate() {}
+
 StatefulNnApiDelegate::StatefulNnApiDelegate()
     : TfLiteDelegate(TfLiteDelegateCreate()),
       delegate_data_(/*nnapi=*/nullptr) {
