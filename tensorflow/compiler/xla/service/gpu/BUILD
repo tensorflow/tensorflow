@@ -1498,18 +1498,6 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_spmd_partitioner",
-    srcs = ["gpu_spmd_partitioner.cc"],
-    hdrs = ["gpu_spmd_partitioner.h"],
-    deps = [
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service/spmd:spmd_partitioner",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-cc_library(
     name = "gpu_compiler",
     srcs = [
         "gpu_compiler.cc",
@@ -1538,7 +1526,7 @@ cc_library(
         ":gpu_reduce_scatter_creator",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
-        ":gpu_spmd_partitioner",
+        "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         ":gpu_hlo_cost_analysis",
         ":horizontal_input_fusion",
         ":horizontal_loop_fusion",
@@ -2577,7 +2565,6 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_noalias_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_reduce_scatter_creator_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_spmd_e2e_compile_test",
-        "//tensorflow/compiler/xla/service/gpu/tests:gpu_spmd_partitioner_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_too_many_blocks_test",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_unrolling_test",
         "//tensorflow/compiler/xla/service/gpu/tests:kernel_launch_test",
