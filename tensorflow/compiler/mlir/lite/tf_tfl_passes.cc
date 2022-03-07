@@ -145,9 +145,9 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
   // Add canonicalize pass to remove no-op session initializer pass.
   pass_manager->addPass(mlir::createCanonicalizerPass());
 
-  // if (pass_config.guarantee_all_funcs_one_use) {
-  pass_manager->addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
-  //}
+  if (pass_config.guarantee_all_funcs_one_use) {
+    pass_manager->addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
+  }
   if (pass_config.shape_inference) {
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
