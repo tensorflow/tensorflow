@@ -318,6 +318,13 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(
         self.evaluate(f(constant_op.constant(0, dtype=dtypes.int32))), [1, 3])
 
+  def testMaskWithNonBoolTensor(self):
+    mask = [1, 2, 3]
+    tensor = [1, 2, 3]
+    with self.session():
+      with self.assertRaisesRegex(TypeError, "expected bool but got"):
+        self.evaluate(array_ops.boolean_mask(tensor, mask))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class OperatorShapeTest(test_util.TensorFlowTestCase):
