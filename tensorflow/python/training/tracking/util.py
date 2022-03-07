@@ -2084,9 +2084,11 @@ class Checkpoint(tracking.AutoTrackable):
     """Creates a training checkpoint for a single or group of objects.
 
     Args:
-      root: The root object to checkpoint.
+      root: The root object to checkpoint. `root` may be a trackable object or
+        `WeakRef` of a trackable object.
       **kwargs: Keyword arguments are set as attributes of this object, and are
-        saved with the checkpoint. Values must be trackable objects.
+        saved with the checkpoint. All `kwargs` must be trackable objects, or a
+        nested structure of trackable objects (`list`, `dict`, or `tuple`).
 
     Raises:
       ValueError: If `root` or the objects in `kwargs` are not trackable. A
@@ -2102,24 +2104,22 @@ class Checkpoint(tracking.AutoTrackable):
       if _END_TIME_OF_LAST_WRITE is None:
         _END_TIME_OF_LAST_WRITE = time.time()
 
-    saver_root = self
     attached_dependencies = None
     self._save_counter = None  # Created lazily for restore-on-create.
     self._save_assign_op = None
 
     if root:
-      _assert_trackable(root, "root")
-      saver_root = root
+      trackable_root = root() if isinstance(root, weakref.ref) else root
+      _assert_trackable(trackable_root, "root")
       attached_dependencies = []
 
       # All keyword arguments (including root itself) are set as children
       # of root.
       kwargs["root"] = root
-      root._maybe_initialize_trackable()
+      trackable_root._maybe_initialize_trackable()
 
       self._save_counter = data_structures.NoDependency(
-          root._lookup_dependency("save_counter"))
-      self._root = data_structures.NoDependency(root)
+          trackable_root._lookup_dependency("save_counter"))
 
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
       setattr(self, k, v)
@@ -2127,11 +2127,13 @@ class Checkpoint(tracking.AutoTrackable):
       # Call getattr instead of directly using v because setattr converts
       # v to a Trackable data structure when v is a list/dict/tuple.
       converted_v = getattr(self, k)
+      if isinstance(converted_v, weakref.ref):
+        converted_v = converted_v()
       _assert_trackable(converted_v, k)
 
       if root:
         # Make sure that root doesn't already have dependencies with these names
-        child = root._lookup_dependency(k)
+        child = trackable_root._lookup_dependency(k)
         if child is None:
           attached_dependencies.append(
               base.WeakTrackableReference(k, converted_v))
@@ -2140,7 +2142,8 @@ class Checkpoint(tracking.AutoTrackable):
               f"Cannot create a Checkpoint with keyword argument {k} if "
               f"root.{k} already exists.")
 
-    self._saver = saver_with_op_caching(saver_root, attached_dependencies)
+    self._saver = saver_with_op_caching(root if root else self,
+                                        attached_dependencies)
     self._attached_dependencies = data_structures.NoDependency(
         attached_dependencies)
 
@@ -2168,7 +2171,11 @@ class Checkpoint(tracking.AutoTrackable):
           # When loading a checkpoint, the save counter is created after
           # the checkpoint has been loaded, so it must be handled in a deferred
           # manner.
-          restore = self.root._deferred_dependencies.pop("save_counter", ())  # pylint: disable=protected-access
+          if isinstance(self.root, weakref.ref):
+            root = self.root()
+          else:
+            root = self.root
+          restore = root._deferred_dependencies.pop("save_counter", ())  # pylint: disable=protected-access
           if restore:
             restore[0].restore(self._save_counter)
 
