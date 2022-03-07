@@ -68,6 +68,33 @@ std::string AddressModeToCLSampler(AddressMode address_mode) {
   }
 }
 
+std::string GetTypeDeclaration(const GpuInfo& gpu_info, DataType data_type) {
+  if (gpu_info.IsApiOpenCl()) {
+    return ToCLDataType(data_type, 4);
+  } else if (gpu_info.IsApiMetal()) {
+    return ToMetalDataType(data_type, 4);
+  } else if (gpu_info.IsGlsl()) {
+    return ToGlslShaderDataType(data_type, 4, true,
+                                gpu_info.IsGlslSupportsExplicitFp16());
+  } else {
+    return "";
+  }
+}
+
+std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type) {
+  if (gpu_info.IsApiOpenCl()) {
+    return "(" + ToCLDataType(data_type, 4) + ")(0)";
+  } else if (gpu_info.IsApiMetal()) {
+    return ToMetalDataType(data_type, 4) + "(0)";
+  } else if (gpu_info.IsGlsl()) {
+    return ToGlslShaderDataType(data_type, 4, false,
+                                gpu_info.IsGlslSupportsExplicitFp16()) +
+           "(0)";
+  } else {
+    return "";
+  }
+}
+
 }  // namespace
 
 std::string ToString(TensorStorageType type) {
@@ -192,6 +219,21 @@ GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
     }
   }
   return resources;
+}
+
+absl::Status TensorDescriptor::PerformConstExpr(const GpuInfo& gpu_info,
+                                                const std::string& const_expr,
+                                                std::string* result) const {
+  if (const_expr == "type") {
+    *result = GetTypeDeclaration(gpu_info, data_type);
+    return absl::OkStatus();
+  } else if (const_expr == "zero_value") {
+    *result = GetZeroValue(gpu_info, data_type);
+    return absl::OkStatus();
+  } else {
+    return absl::UnimplementedError(
+        absl::StrCat("Can not resolve constant expression - ", const_expr));
+  }
 }
 
 absl::Status TensorDescriptor::PerformSelector(
