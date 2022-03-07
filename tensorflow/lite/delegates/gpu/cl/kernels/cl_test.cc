@@ -39,6 +39,21 @@ ClExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport() const {
   return env_.GetSupportedStoragesWithHWZeroClampSupport();
 }
 
+std::vector<TensorStorageType>
+ClExecutionEnvironment::GetStoragesWith32bitIntSupport() const {
+  return env_.GetSupportedStorages();
+}
+
+std::vector<TensorStorageType>
+ClExecutionEnvironment::GetStoragesWith16bitIntSupport() const {
+  return env_.GetSupportedStorages();
+}
+
+std::vector<TensorStorageType>
+ClExecutionEnvironment::GetStoragesWith8bitIntSupport() const {
+  return env_.GetSupportedStorages();
+}
+
 const GpuInfo& ClExecutionEnvironment::GetGpuInfo() const {
   return env_.GetDevicePtr()->GetInfo();
 }

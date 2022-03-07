@@ -47,6 +47,11 @@ class ClExecutionEnvironment : public TestExecutionEnvironment {
   std::vector<TensorStorageType> GetSupportedStorages() const override;
   std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
       const override;
+  std::vector<TensorStorageType> GetStoragesWith32bitIntSupport()
+      const override;
+  std::vector<TensorStorageType> GetStoragesWith16bitIntSupport()
+      const override;
+  std::vector<TensorStorageType> GetStoragesWith8bitIntSupport() const override;
 
   const GpuInfo& GetGpuInfo() const override;
 
