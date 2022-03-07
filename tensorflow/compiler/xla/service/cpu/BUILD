@@ -240,6 +240,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:slice_sinker",
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla/service:operand_upcaster",
+        "//tensorflow/compiler/xla/service:optimization_barrier_expander",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",

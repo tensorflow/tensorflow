@@ -155,6 +155,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
+#include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
@@ -533,6 +534,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       },
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
+
+  pipeline.AddPass<OptimizationBarrierExpander>();
+  pipeline.AddPass<TupleSimplifier>();
 
   // Layout assignment uses alias analysis, which requires the call graph to be
   // flattened.
