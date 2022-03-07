@@ -83,22 +83,14 @@ Type MlirComputationType(Type element_type,
 // Gets the platform specific Gemm algorithm value.
 template <class GemmOp>
 tfrt::gpu::wrapper::BlasGemmAlgo GetBlasGemmAlgoOrDefault(GemmOp op) {
-#if TENSORFLOW_USE_ROCM
-  rocblas_gemm_algo default_value = rocblas_gemm_algo_standard;
-#else
-  cublasGemmAlgo_t default_value = CUBLAS_GEMM_DEFAULT;
-#endif
-  return static_cast<decltype(default_value)>(
-      op.algorithm().getValueOr(default_value));
+  if (!op.algorithm().hasValue()) return kBlasGemmDefaultAlgo;
+  return {static_cast<int>(op.algorithm().getValue()), kGpuTargetPlatform};
 }
 
+// Returns the platform specific matrix transpose operation value.
 tfrt::gpu::wrapper::BlasOperation MatrixTransposeToBlasOperation(
     bool transpose) {
-#if TENSORFLOW_USE_ROCM
-  return transpose ? rocblas_operation_transpose : rocblas_operation_none;
-#else
-  return transpose ? CUBLAS_OP_T : CUBLAS_OP_N;
-#endif
+  return transpose ? kBlasOperationTranspose : kBlasOperationNone;
 }
 
 // Create all the Ops necessary for the GEMM operation, including the GEMM

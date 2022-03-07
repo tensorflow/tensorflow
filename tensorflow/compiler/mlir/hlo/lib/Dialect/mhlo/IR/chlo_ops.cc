@@ -431,7 +431,6 @@ void RankSpecializationClusterOp::getSuccessorRegions(
 }
 
 LogicalResult RankSpecializationClusterOp::verify() {
-  if (failed(RegionBranchOpInterface::verifyTypes(*this))) return failure();
   if (body().getArgumentTypes() != getOperandTypes())
     return emitOpError() << "block argument types must match operand types";
 

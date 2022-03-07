@@ -60,6 +60,27 @@ MetalExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport() const {
           TensorStorageType::TEXTURE_ARRAY};
 }
 
+std::vector<TensorStorageType>
+MetalExecutionEnvironment::GetStoragesWith32bitIntSupport() const {
+  return {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER,
+          TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
+          TensorStorageType::TEXTURE_ARRAY};
+}
+
+std::vector<TensorStorageType>
+MetalExecutionEnvironment::GetStoragesWith16bitIntSupport() const {
+  return {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER,
+          TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
+          TensorStorageType::TEXTURE_ARRAY};
+}
+
+std::vector<TensorStorageType>
+MetalExecutionEnvironment::GetStoragesWith8bitIntSupport() const {
+  return {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER,
+          TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
+          TensorStorageType::TEXTURE_ARRAY};
+}
+
 absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
     const std::vector<TensorFloat32>& src_cpu,
     std::unique_ptr<GPUOperation>&& operation,

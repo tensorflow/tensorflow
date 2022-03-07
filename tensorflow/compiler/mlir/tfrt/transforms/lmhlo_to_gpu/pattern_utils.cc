@@ -19,6 +19,43 @@ limitations under the License.
 
 namespace tensorflow {
 
+#if TENSORFLOW_USE_ROCM
+const tfrt::gpu::wrapper::Platform kGpuTargetPlatform =
+    tfrt::gpu::wrapper::Platform::ROCm;
+const tfrt::gpu::wrapper::BlasGemmAlgo kBlasGemmDefaultAlgo =
+    rocblas_gemm_algo_standard;
+const tfrt::gpu::wrapper::BlasOperation kBlasOperationTranspose =
+    rocblas_operation_transpose;
+const tfrt::gpu::wrapper::BlasOperation kBlasOperationConjTranspose =
+    rocblas_operation_conjugate_transpose;
+const tfrt::gpu::wrapper::BlasOperation kBlasOperationNone =
+    rocblas_operation_none;
+const tfrt::gpu::wrapper::BlasFillMode kBlasFillModeLower = rocblas_fill_lower;
+const tfrt::gpu::wrapper::BlasFillMode kBlasFillModeUpper = rocblas_fill_upper;
+const tfrt::gpu::wrapper::BlasSideMode kBlasSideLeft = rocblas_side_left;
+const tfrt::gpu::wrapper::BlasSideMode kBlasSideRight = rocblas_side_right;
+const tfrt::gpu::wrapper::BlasDiagType kBlasDiagUnit = rocblas_diagonal_unit;
+const tfrt::gpu::wrapper::BlasDiagType kBlasDiagNonUnit =
+    rocblas_diagonal_non_unit;
+#else
+const tfrt::gpu::wrapper::Platform kGpuTargetPlatform =
+    tfrt::gpu::wrapper::Platform::CUDA;
+const tfrt::gpu::wrapper::BlasGemmAlgo kBlasGemmDefaultAlgo =
+    CUBLAS_GEMM_DEFAULT;
+const tfrt::gpu::wrapper::BlasOperation kBlasOperationTranspose = CUBLAS_OP_T;
+const tfrt::gpu::wrapper::BlasOperation kBlasOperationConjTranspose =
+    CUBLAS_OP_C;
+const tfrt::gpu::wrapper::BlasOperation kBlasOperationNone = CUBLAS_OP_N;
+const tfrt::gpu::wrapper::BlasFillMode kBlasFillModeLower =
+    CUBLAS_FILL_MODE_LOWER;
+const tfrt::gpu::wrapper::BlasFillMode kBlasFillModeUpper =
+    CUBLAS_FILL_MODE_UPPER;
+const tfrt::gpu::wrapper::BlasSideMode kBlasSideLeft = CUBLAS_SIDE_LEFT;
+const tfrt::gpu::wrapper::BlasSideMode kBlasSideRight = CUBLAS_SIDE_RIGHT;
+const tfrt::gpu::wrapper::BlasDiagType kBlasDiagUnit = CUBLAS_DIAG_UNIT;
+const tfrt::gpu::wrapper::BlasDiagType kBlasDiagNonUnit = CUBLAS_DIAG_NON_UNIT;
+#endif
+
 tfrt::gpu::wrapper::BlasDataType MlirTypeToBlasDataType(mlir::Type type) {
 #if TENSORFLOW_USE_ROCM
   if (type.isF16()) return rocblas_datatype_f16_r;
