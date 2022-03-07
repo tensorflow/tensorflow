@@ -416,10 +416,11 @@ cc_library(
 cc_library(
         name = "rocm_helpers",
         srcs = ["rocm_helpers.cu.cc"],
+	copts = rocm_copts(),
         deps =
-        ["@local_config_rocm//rocm:rocm_headers",
+        [
+                "@local_config_rocm//rocm:rocm_headers",
         ],
-        copts = rocm_copts(),
         alwayslink = True,
     )
 
@@ -434,7 +435,7 @@ cc_library(
         ":rocrand_plugin",
         ":rocm_driver",
         ":rocm_platform",
-	":rocm_helpers",
+        ":rocm_helpers",
     ]),
     alwayslink = 1,
 )

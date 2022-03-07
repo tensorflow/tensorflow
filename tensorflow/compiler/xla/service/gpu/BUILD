@@ -1823,7 +1823,7 @@ cc_library(
         ":reduction_layout_normalizer",
         ":target_constants",
         ":tree_reduction_rewriter",
-	":triangular_solve_rewriter",
+        ":triangular_solve_rewriter",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:call_inliner",
