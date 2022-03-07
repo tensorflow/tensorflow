@@ -132,13 +132,17 @@ llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
         llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
   };
 
-  // Register all the symbols.
+  // Register TF framework symbols.
   bind("_mlir_ciface_tf_alloc", &_mlir_ciface_tf_alloc);
   bind("_mlir_ciface_tf_dealloc", &_mlir_ciface_tf_dealloc);
   bind("_mlir_ciface_tf_report_error", &_mlir_ciface_tf_report_error);
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
   bind("_mlir_ciface_tf_launch_kernel", &_mlir_ciface_tf_launch_kernel);
 #endif
+
+  // Register malloc/free to avoid unexpected implementations from shared libs.
+  bind("malloc", &malloc);
+  bind("free", &free);
 
   return symbol_map;
 }
