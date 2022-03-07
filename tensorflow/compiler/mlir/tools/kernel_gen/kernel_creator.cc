@@ -254,6 +254,12 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<FuncOp>(
       mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
+
+  // Now that all compute operations are converted to standard (as a sideeffect
+  // of bufferizing to memref dialect) we can remove the remaining references
+  // to unsigned types.
+  pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
+
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
 
@@ -276,12 +282,6 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
-  // Now that all compute operations are converted to standard (as a sideeffect
-  // of bufferizing to memref dialect) we can remove the remaining references
-  // to unsigned types.
-  pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
-  // Remove UnrealizedConversionCastOps and TensorLoadOps.
-  pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   // Remove copies which are introduced by canonicalizing
   // BufferCastOp(TensorLoadOp).
   pm.addNestedPass<FuncOp>(
