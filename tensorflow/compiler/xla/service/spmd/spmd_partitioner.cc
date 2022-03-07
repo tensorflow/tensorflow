@@ -2760,8 +2760,8 @@ Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
           return branch_b.AddInstruction(
               HloInstruction::CreateTuple(padded_elements));
         }
-        const Shape& pad_shape =
-            ShapeUtil::GetSubshape(shard_shape, ShapeIndexView(index, 1));
+        const Shape& pad_shape = ShapeUtil::GetSubshape(
+            shard_shape, ShapeIndexView(index).subspan(1));
         if (ShapeUtil::Compatible(element_shape, pad_shape)) {
           return infeed_element;
         }
