@@ -2762,13 +2762,19 @@ Status AddFusedBatchMatMul(RemapperContext* ctx,
   return Status::OK();
 }
 
+// This function supports below patterns that require inferred
+// shapes:
+// 1. Contraction + Add.
+// 2. Contraction + Add + Activation.
+// 3. Contraction + BiasAdd/BiasSemanticAdd + Add.
+// 4. Contraction + BiasAdd/BiasSemanticAdd + Add + Activation.
+// Contraction candidate: MatMul, Conv2D, Conv3D, DepthwiseConv2dNative.
 bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
 
-  // Candidate for Contraction + Add or Contraction + BiasAdd + Add fusion.
-  // Contraction candidate: MatMul, Conv2D, DepthwiseConv2dNative
   auto is_supported_add_input = [](const auto* node_view) -> bool {
     if (IsConvOrMatMul(*node_view->node())) return true;
+    // IsAdd will verify BiasSemanticAdd.
     if (IsBiasAdd(*node_view->node()) || IsAdd(*node_view->node())) {
       if (node_view->NumRegularFanins() < 2) return false;
       const auto& bias_add_fanin_0 = node_view->GetRegularFanin(0);
@@ -2791,14 +2797,21 @@ bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
-  bool ret = false;
-  for (int i = 0; i < node_view->NumRegularFanins(); i++) {
-    const auto& fanin_i = node_view->GetRegularFanin(i);
-    ret = is_supported_add(fanin_i.node_view());
-    if (ret) break;
+  // Dealing with the Contraction + Add or Contraction + BiasAdd/BiasSemanticAdd
+  // + Add patterns.
+  if (is_supported_add(node_view)) {
+    return true;
+  }
+  // Dealing with the Contraction + Add + Activation  or Contraction +
+  // BiasAdd/BiasSemanticAdd + Add + Activation pattern.
+  if (IsSupportedActivation(*node_view->node())) {
+    for (int i = 0; i < node_view->NumRegularFanins(); i++) {
+      const auto& fanin_i = node_view->GetRegularFanin(i);
+      if (is_supported_add(fanin_i.node_view())) return true;
+    }
   }
 
-  return ret;
+  return false;
 }
 
 // Check if a node is a candidate to one of the patterns that require inferred
