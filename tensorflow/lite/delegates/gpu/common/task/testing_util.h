@@ -41,6 +41,18 @@ class TestExecutionEnvironment {
   virtual std::vector<TensorStorageType>
   GetSupportedStoragesWithHWZeroClampSupport() const = 0;
 
+  // returns storage types that supports int32/uint32
+  virtual std::vector<TensorStorageType> GetStoragesWith32bitIntSupport()
+      const = 0;
+
+  // returns storage types that supports int16/uint16
+  virtual std::vector<TensorStorageType> GetStoragesWith16bitIntSupport()
+      const = 0;
+
+  // returns storage types that supports int8/uint8
+  virtual std::vector<TensorStorageType> GetStoragesWith8bitIntSupport()
+      const = 0;
+
   virtual const GpuInfo& GetGpuInfo() const = 0;
 
   virtual absl::Status ExecuteGPUOperation(
