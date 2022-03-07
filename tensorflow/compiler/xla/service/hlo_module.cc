@@ -19,13 +19,18 @@ limitations under the License.
 #include <iterator>
 #include <set>
 #include <sstream>
+#include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/random/distributions.h"
+#include "absl/random/random.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -45,7 +50,8 @@ HloModule::HloModule(const std::string& name, HloModuleConfig config)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(std::move(config)),
       unique_id_(next_unique_module_id_++),
-      metadata_(tensorflow::Env::Default()) {
+      metadata_(tensorflow::Env::Default()),
+      generation_id_(NextGenerationId(unique_id_)) {
   metadata_.set_canonical_module_id(unique_id_);
 }
 
@@ -278,6 +284,7 @@ std::string HloModule::ToString(const HloPrintOptions& options) const {
 HloModuleProto HloModule::ToProto() const {
   HloModuleProto proto;
   proto.set_id(unique_id_);
+  proto.set_generation_id(generation_id_);
   proto.set_name(name_);
   proto.set_entry_computation_name(entry_computation_->name());
   proto.set_entry_computation_id(entry_computation_->unique_id());
@@ -714,6 +721,23 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
                << " computation_count=" << computations_.size();
   }
   return post_order;
+}
+
+uint64_t HloModule::NextGenerationId(int unique_id) {
+  static absl::Mutex mutex(absl::kConstInit);
+  static absl::BitGen gen;
+  absl::MutexLock lock(&mutex);
+
+  // Uses the first 32 bits of the unique ID in cases where int is 64-bits.
+  // Practically, the number of HLO modules will never exceed 1 billion.  Even
+  // if it does, the RNG will not repeat and this will generate a unique ID.
+  uint32_t half_id = static_cast<uint32_t>(unique_id);
+  uint64_t rng_id =
+      absl::Uniform<uint32_t>(gen, 0, std::numeric_limits<uint32_t>::max());
+  // Uses the unique ID bits as the upper 32 and the rng bits as the lower 32.
+  // This creates monotonically increasing IDs since the upper 32 bits will
+  // increase as 0,1,2,...
+  return (static_cast<uint64_t>(half_id) << 32) | static_cast<uint64_t>(rng_id);
 }
 
 namespace {

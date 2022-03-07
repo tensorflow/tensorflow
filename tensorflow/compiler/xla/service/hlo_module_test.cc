@@ -198,6 +198,13 @@ TEST_F(HloModuleTest, UniqueModuleId) {
   EXPECT_NE(module_a->unique_id(), module_b->unique_id());
 }
 
+TEST_F(HloModuleTest, UniqueGenerationId) {
+  auto module_a = CreateNewVerifiedModule();
+  auto module_b = CreateNewVerifiedModule();
+  // Makes sure that two different module have different generation IDs.
+  EXPECT_NE(module_a->generation_id(), module_b->generation_id());
+}
+
 TEST_F(HloModuleTest, ProtoSerializationWithoutSchedule) {
   const std::string text = R"(
 HloModule axpy_module

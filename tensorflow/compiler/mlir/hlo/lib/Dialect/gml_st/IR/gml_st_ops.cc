@@ -638,15 +638,163 @@ struct LoopResultsFolder : public OpRewritePattern<LoopOp> {
     return success();
   }
 };
+
+/// Pull `gml_st.loop` input/output arguments that are produced by
+/// `tensor.cast` ops inside `gml_st.loop`:
+///
+/// ```
+///   %in = tensor.cast %t0 : tensor<32x1024xf32> to tensor<?x?xf32>
+///   %out = tensor.cast %t1 : tensor<32x1024xf32> to tensor<?x?xf32>
+///   %result = gml_st.loop %i = %c0 to %c1024 step %c32
+///       ins (%in_ = %in: tensor<?x?xf32>)
+///       outs (%out_ = %out: tensor<?x?xf32>) {
+///     %0 = call @do(%in_, %out_)
+///       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+///     scf.yield %0 : tensor<?x?xf32>
+///   }
+///   %result_cast = tensor.cast %result
+///     : tensor<?x?xf32> to tensor<32x1024xf32>
+///   use_of(%result_cast)
+/// ```
+///
+/// folds into:
+//
+/// ```
+///   %result = gml_st.loop %i = %c0 to %c1024 step %c32
+///       ins (%in_ = %t0: tensor<32x1024xf32>)
+///       outs (%out_ = %t1: tensor<32x1024xf32>) {
+///     %in_cast = tensor.cast %in_ : tensor<32x1024xf32> to tensor<?x?xf32>
+///     %out_cast = tensor.cast %out_ : tensor<32x1024xf32> to tensor<?x?xf32>
+///     %0 = call @do(%in_, %out_)
+///       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+///     %0_cast = tensor.cast %0 : tensor<?x?xf32> to tensor<32x1024xf32>
+///     scf.yield %0 : tensor<32x1024xf32>
+///   }
+///   use_of(%result)
+/// ```
+struct TensorCastOfLoopInsOutsFolder : public OpRewritePattern<LoopOp> {
+  using OpRewritePattern<LoopOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(LoopOp loop,
+                                PatternRewriter &rewriter) const override {
+    CastOpsOfArgs input_casts = FindTensorCastOps(loop.inputs());
+    CastOpsOfArgs output_casts = FindTensorCastOps(loop.outputs());
+    if (!input_casts.cast_found && !output_casts.cast_found) return failure();
+
+    auto new_loop = rewriter.create<LoopOp>(
+        loop.getLoc(), loop.lowerBound(), loop.upperBound(), loop.step(),
+        input_casts.updated_args, output_casts.updated_args,
+        loop.iterator_types(), loop.distribution_types());
+
+    rewriter.replaceOp(loop, InsertCastsAndCloneBody(input_casts, output_casts,
+                                                     loop, new_loop, rewriter));
+    return success();
+  }
+
+ private:
+  struct CastOpsOfArgs {
+    SmallVector<tensor::CastOp, 4> ops;
+    // Contains either old arguments or arguments of `tensor.cast`.
+    SmallVector<Value, 4> updated_args;
+    bool cast_found = false;
+  };
+
+  // Scans through args to find what args are produced by `tensor.cast` ops.
+  CastOpsOfArgs FindTensorCastOps(ValueRange args) const {
+    CastOpsOfArgs result;
+    for (auto arg : args) {
+      if (auto cast = arg.getDefiningOp<tensor::CastOp>()) {
+        result.ops.push_back(cast);
+        result.updated_args.push_back(cast.source());
+        result.cast_found = true;
+        continue;
+      }
+      result.ops.push_back(nullptr);
+      result.updated_args.push_back(arg);
+    }
+    return result;
+  }
+
+  SmallVector<Value, 4> InsertCastsAndCloneBody(
+      const CastOpsOfArgs &input_casts, const CastOpsOfArgs &output_casts,
+      LoopOp loop, LoopOp new_loop, PatternRewriter &rewriter) const {
+    auto loc = new_loop.getLoc();
+    BlockAndValueMapping bvm;
+    bvm.map(loop.getInductionVars(), new_loop.getInductionVars());
+
+    auto inner_builder =
+        OpBuilder::atBlockEnd(new_loop.getBody(), rewriter.getListener());
+
+    Value old_arg, new_arg, yield_arg, result;
+    tensor::CastOp arg_cast;
+
+    // Map inputs, insert `tensor.cast` if necessary.
+    for (auto item :
+         llvm::zip(loop.getRegionInputArgs(), new_loop.getRegionInputArgs(),
+                   input_casts.ops)) {
+      std::tie(old_arg, new_arg, arg_cast) = item;
+      if (!arg_cast) {
+        bvm.map(old_arg, new_arg);
+        continue;
+      }
+      Value new_cast = inner_builder.create<tensor::CastOp>(
+          loc, arg_cast.getType(), new_arg);
+      bvm.map(old_arg, new_cast);
+    }
+
+    // Map outputs, insert `tensor.cast` and cast the loop results if necessary.
+    SmallVector<Value, 4> new_results;
+    rewriter.setInsertionPointAfter(new_loop);
+    for (auto item :
+         llvm::zip(loop.getRegionOutputArgs(), new_loop.getRegionOutputArgs(),
+                   output_casts.ops, new_loop.getResults())) {
+      std::tie(old_arg, new_arg, arg_cast, result) = item;
+      if (!arg_cast) {
+        bvm.map(old_arg, new_arg);
+        new_results.push_back(result);
+        continue;
+      }
+      Value new_cast = inner_builder.create<tensor::CastOp>(
+          loc, arg_cast.getType(), new_arg);
+      bvm.map(old_arg, new_cast);
+
+      new_results.push_back(
+          rewriter.create<tensor::CastOp>(loc, arg_cast.getType(), result));
+    }
+
+    // Clone loop body.
+    for (auto &op : loop.getBody()->without_terminator())
+      inner_builder.clone(op, bvm);
+
+    // Cast yield arguments to the new type.
+    SmallVector<Value, 4> yield_args =
+        loop.getBody()->getTerminator()->getOperands();
+    SmallVector<Value, 4> new_yield_args;
+    for (auto item : llvm::zip(yield_args, output_casts.ops)) {
+      std::tie(yield_arg, arg_cast) = item;
+      if (!arg_cast) {
+        new_yield_args.push_back(bvm.lookup(yield_arg));
+        continue;
+      }
+      new_yield_args.push_back(inner_builder.create<tensor::CastOp>(
+          loc, arg_cast.source().getType(), bvm.lookup(yield_arg)));
+    }
+    inner_builder.create<YieldOp>(loc, new_yield_args);
+    return new_results;
+  }
+};
+
 }  // namespace
 
 void LoopOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                          MLIRContext *context) {
-  results.add<LoopInputsFolder, LoopResultsFolder,
-              DimOfLoopInsOutsFolder<tensor::DimOp>,
-              DimOfLoopInsOutsFolder<memref::DimOp>,
-              DimOfLoopResultFolder<tensor::DimOp>,
-              DimOfLoopResultFolder<memref::DimOp>>(context);
+  results
+      .add<LoopInputsFolder, LoopResultsFolder,
+           DimOfLoopInsOutsFolder<tensor::DimOp>,
+           DimOfLoopInsOutsFolder<memref::DimOp>,
+           DimOfLoopResultFolder<tensor::DimOp>,
+           DimOfLoopResultFolder<memref::DimOp>, TensorCastOfLoopInsOutsFolder>(
+          context);
 }
 
 /// This is used for patterns of the form

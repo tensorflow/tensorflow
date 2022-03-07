@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/random/random.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -315,6 +316,8 @@ class HloModule {
   // the lifetime of this process.
   int unique_id() const { return unique_id_; }
 
+  uint64_t generation_id() const { return generation_id_; }
+
   // Sets the schedule of the module to the given schedule.
   Status set_schedule(HloSchedule schedule);
 
@@ -433,6 +436,10 @@ class HloModule {
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
 
+  // Generates a unique generation ID based on the module unique ID that is
+  // unique across restarts of a process.
+  uint64_t NextGenerationId(int unique_id);
+
   std::string name_;
   HloModuleConfig config_;
   HloComputation* entry_computation_ = nullptr;
@@ -453,6 +460,7 @@ class HloModule {
 
   // Used to keep track of the next unique module id that should be assigned.
   static std::atomic<int> next_unique_module_id_;
+
   // A unique id to label modules with.
   int unique_id_;
 
@@ -497,6 +505,10 @@ class HloModule {
 
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
+
+  // An ID that is unique within a process and unique across restarts of a
+  // process.
+  uint64_t generation_id_;
 };
 
 }  // namespace xla

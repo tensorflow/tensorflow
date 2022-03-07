@@ -480,6 +480,10 @@ message HloModuleProto {
 
   // Profile information for the HLO module.
   repeated ProfileInfo profile_info = 13;
+
+  // An ID for uniquely identifying modules across restarts of
+  // a process since id is only unique within a process.
+  int64 generation_id = 15;
 }
 
 // Serialization of LogicalBuffer.
