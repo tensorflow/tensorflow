@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -54,6 +55,7 @@ PYBIND11_MODULE(mlir_wrapper, m) {
     }
     return true;
   });
+  m.def("registerHloPasses", []() { mlir::mhlo::registerAllMhloPasses(); });
 
   init_basic_classes(m);
   init_types(m);

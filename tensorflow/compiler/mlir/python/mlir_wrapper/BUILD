@@ -16,6 +16,7 @@ tf_python_pybind_extension(
     module_name = "mlir_wrapper",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/python:pybind11_lib",
