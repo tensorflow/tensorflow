@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -136,6 +137,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
  private:
   const CoordinationServiceDeviceInfo& ListClusterDevices() override
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  uint64_t GetServiceIncarnation() override;
   void StartCheckStaleness();  // Checks both heartbeat and barrier timeouts.
   void Stop();
   void PropagateError(const CoordinatedTask& task, Status error,
@@ -149,7 +151,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     bool passed = false;
     Status result = errors::Unknown(
         "Invalid barrier result.");  // Only valid if `passed` is true.
-    uint64 deadline_in_micros = 0;
+    uint64_t deadline_in_micros = 0;
     int num_pending_tasks = 0;
     // Specifies which tasks have called the barrier so far.
     absl::flat_hash_map<CoordinatedTask, bool, CoordinatedTaskHash,
@@ -218,7 +220,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 
   std::unique_ptr<CoordinationClientCache> client_cache_;
   Env& env_;
-  const uint64 heartbeat_timeout_ms_;
+  const uint64_t service_incarnation_ = random::New64();
+  const uint64_t heartbeat_timeout_ms_;
 
   mutex state_mu_;
   condition_variable cluster_registered_cv_;
@@ -316,7 +319,7 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
     const ServerDef& server_def)
     : client_cache_(std::move(client_cache)),
       env_(*env),
-      heartbeat_timeout_ms_([&server_def]() -> uint64 {
+      heartbeat_timeout_ms_([&server_def]() -> uint64_t {
         const auto& configs = server_def.default_session_config()
                                   .experimental()
                                   .coordination_config();
@@ -391,7 +394,7 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
           }
 
           // Barrier timeout check.
-          uint64 current_time_micros = Env::Default()->NowMicros();
+          uint64_t current_time_micros = Env::Default()->NowMicros();
           {
             mutex_lock l(state_mu_);
             // Gather barriers which have timed out.
@@ -513,6 +516,10 @@ void CoordinationServiceStandaloneImpl::DoneClusterRegistration(Status s) {
     }
   }
   cluster_registered_cv_.notify_all();
+}
+
+uint64_t CoordinationServiceStandaloneImpl::GetServiceIncarnation() {
+  return service_incarnation_;
 }
 
 Status CoordinationServiceStandaloneImpl::ReportTaskError(
