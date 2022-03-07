@@ -490,43 +490,6 @@ Defined Functions:
     self.assertTrue(np.all(feed_dict['y'] == pkl1))
     self.assertTrue(np.all(feed_dict['z'] == pkl2))
 
-  def testInputParserPythonExpression(self):
-    x1 = np.ones([2, 10])
-    x2 = np.array([[1], [2], [3]])
-    x3 = np.mgrid[0:5, 0:5]
-    x4 = [[3], [4]]
-    input_expr_str = ('x1=np.ones([2,10]);x2=np.array([[1],[2],[3]]);'
-                      'x3=np.mgrid[0:5,0:5];x4=[[3],[4]]')
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
-        '', input_expr_str, '')
-    self.assertTrue(np.all(feed_dict['x1'] == x1))
-    self.assertTrue(np.all(feed_dict['x2'] == x2))
-    self.assertTrue(np.all(feed_dict['x3'] == x3))
-    self.assertTrue(np.all(feed_dict['x4'] == x4))
-
-  def testInputParserBoth(self):
-    x0 = np.array([[1], [2]])
-    input_path = os.path.join(test.get_temp_dir(), 'input.npz')
-    np.savez(input_path, a=x0)
-    x1 = np.ones([2, 10])
-    input_str = 'x0=' + input_path + '[a]'
-    input_expr_str = 'x1=np.ones([2,10])'
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
-        input_str, input_expr_str, '')
-    self.assertTrue(np.all(feed_dict['x0'] == x0))
-    self.assertTrue(np.all(feed_dict['x1'] == x1))
-
-  def testInputParserBothDuplicate(self):
-    x0 = np.array([[1], [2]])
-    input_path = os.path.join(test.get_temp_dir(), 'input.npz')
-    np.savez(input_path, a=x0)
-    x1 = np.ones([2, 10])
-    input_str = 'x0=' + input_path + '[a]'
-    input_expr_str = 'x0=np.ones([2,10])'
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
-        input_str, input_expr_str, '')
-    self.assertTrue(np.all(feed_dict['x0'] == x1))
-
   def testInputParserErrorNoName(self):
     x0 = np.array([[1], [2]])
     x1 = np.array(range(5))
@@ -627,7 +590,7 @@ Defined Functions:
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
-        'regress_x2_to_y3', '--input_exprs', 'x2=np.ones((3,1))'
+        'regress_x2_to_y3', '--input_exprs', 'x2=[1,2,3]'
     ])
     with self.assertRaises(ValueError):
       saved_model_cli.run(args)
