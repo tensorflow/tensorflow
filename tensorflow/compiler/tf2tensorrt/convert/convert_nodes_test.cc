@@ -1379,7 +1379,23 @@ class OpConverterTest : public ::testing::Test {
 
   template <typename T = int32>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
-                      const std::vector<T>& values, DataType tf_type) {
+                      const std::vector<T>& values_inp, DataType tf_type,
+                      bool fix_values = true) {
+    const auto num_elements = std::accumulate(std::begin(dims), std::end(dims),
+                                              1, std::multiplies<int>());
+
+    std::vector<T> values(values_inp);
+    if (num_elements != values.size()) {
+      if (fix_values) {
+        AdjustVectorByDims<T>(values, num_elements, name, "AddTestWeights");
+      } else {
+        FAIL() << "Unable to create test weights: "
+               << (num_elements > values.size() ? "not enough" : "to many")
+               << " values specified: " << values.size() << " vs. "
+               << num_elements << " defined by dims";
+      }
+    }
+
     if (tf_type == DT_FLOAT) {
       AddTestWeights(name, dims, CastVector<T, float>(values));
     } else if (tf_type == DT_HALF) {
@@ -1491,6 +1507,28 @@ class OpConverterTest : public ::testing::Test {
     return converter_->quantization_ranges_;
   }
 
+ protected:
+  template <typename T>
+  void AdjustVectorByDims(std::vector<T>& values, size_t num_elements,
+                          const string& name, const char* callingFunc) {
+    const auto old_size = values.size();
+    if (num_elements > old_size) {
+      // Expending vector with 0's.
+      const std::vector<T> zeros(num_elements - old_size, 0);
+      values.reserve(num_elements);
+      values.insert(values.end(), zeros.begin(), zeros.end());
+      VLOG(2) << "In function " << callingFunc << " the vector '" << name
+              << "' was extended by " << num_elements - old_size << " zeros";
+    } else {
+      // Removing unnecessary elements.
+      values.resize(num_elements);
+      VLOG(2) << "Only first " << num_elements << " out of " << old_size
+              << " elements of the vector '" << name
+              << "' will be used in function" << callingFunc;
+    }
+  }
+
+ public:
   std::unique_ptr<Converter> converter_;
 
  private:
@@ -1544,6 +1582,20 @@ std::ostream& operator<<(std::ostream& os, const TestParamBase& p) {
   }
   os << ", " << p.status;
   return os;
+}
+
+// Printing vector with the numbers of type T which defines tensor or shape.
+template <typename T>
+const std::string get_debug_string_for_vector(const std::vector<T>& vector,
+                                              absl::string_view pComment,
+                                              absl::string_view name,
+                                              absl::string_view type = "") {
+  const std::string t1 = absl::StrCat(pComment, name, " Dims(nbDims=");
+  const std::string t2 = absl::StrJoin(vector, ",");
+  const std::string t3 = type != "" ? absl::StrCat(") of type ", type) : ")";
+  std::stringstream stream;
+  stream << t1 << vector.size() << ", d=" << t2 << t3;
+  return stream.str();
 }
 
 // Parameterized version of OpConverterTest. We have the following parameters:
@@ -1608,17 +1660,26 @@ class ParameterizedOpConverterTestBase
   //
   template <typename T = int>
   void AddTestTensor(const string& name, const std::vector<int32>& dims,
-                     DataType tf_type, const std::vector<T>& values,
+                     DataType tf_type, const std::vector<T>& values_inp,
                      const std::vector<int32>& partial_input_shape_dims = {},
-                     Status add_input_status = Status::OK()) {
+                     Status add_input_status = Status::OK(),
+                     bool fix_values = true) {
+    std::vector<T> values(values_inp);
+    VLOG(2) << "**** AddTestTensor for " << name
+            << " ***** dims empty() = " << dims.empty()
+            << "  tf_type = " << DebugString(tf_type);
     if (!dims.empty()) {
       const auto num_elements = std::accumulate(
           std::begin(dims), std::end(dims), 1, std::multiplies<double>());
       if (!values.empty() && num_elements != values.size()) {
-        // Note: for conversion only tests, it is valid to have empty values,
-        // otherwise the number of elements should match.
-        LOG(WARNING) << "Expected Test Tensor Shape: " << DebugString(dims)
-                     << ", Received Input Tensor: " << DebugString(values);
+        if (fix_values) {
+          AdjustVectorByDims(values, num_elements, name, "AddTestTensor");
+        } else {
+          // Note: for conversion only tests, it is valid to have empty values,
+          // otherwise the number of elements should match.
+          LOG(WARNING) << "Expected Test Tensor Shape: " << DebugString(dims)
+                       << ", Received Input Tensor: " << DebugString(values);
+        }
       }
     }
 
@@ -1633,13 +1694,19 @@ class ParameterizedOpConverterTestBase
         // Use static (known) input shapes.
         partial_shape = dims;
       }
+      if (VLOG_IS_ON(2)) {
+        VLOG(2) << get_debug_string_for_vector(
+            partial_shape, "Using partial_shape: for ", name);
+      }
     }
     nvinfer1::DataType trt_type;
     TF_ASSERT_OK(TfTypeToTrtType(tf_type, &trt_type));
     AddTestTensorWithTFDims(name, partial_shape, trt_type, add_input_status);
     if (!values.empty()) {
-      VLOG(2) << "Adding test tensor: " << name << " "
-              << DataTypeString(tf_type);
+      if (VLOG_IS_ON(2)) {
+        VLOG(2) << get_debug_string_for_vector(
+            values, "Adding test tensor: for ", name, DataTypeString(tf_type));
+      }
       InputOutputData data{name, AsTensor(values, dims, tf_type)};
       VLOG(2) << "Added tensor: " << data.name << " with dtype "
               << DataTypeString(data.tensor.dtype());
@@ -2141,6 +2208,151 @@ TEST_P(OpConverter_FP32_Test, ConvertTranspose) {
     }
     TestOpConverter("my_transpose", node_def, p.expected_output_dims, p.status,
                     p.runtime_status, ElementsAreArray(expected_values));
+  }
+}
+
+TEST_P(OpConverter_FP32_Test, ConvertTile) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
+  auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
+  auto tile = ops::Tile(s.WithOpName("my_tile"), input, weights);
+  const NodeDef& node_def = tile.operation.node()->def();
+
+  struct TileParam {
+    std::vector<int> input_dims;
+    std::vector<int> multiplier;
+    std::vector<float> tensor;
+    // Concrete (static) output dimensions, including batch size as first dim.
+    std::vector<int> expected_output_dims;
+    std::vector<int> expected_results;
+    int test_ID;
+    // Expected status of conversion (with concrete error message).
+    Status status;
+    // Expected status of BuildAndRun.
+    Status runtime_status;
+  };
+
+  std::vector<TileParam> test_params = {
+      TileParam{{1, 2, 3},   // input_dims
+                {1, -2, 1},  // multiplier
+                {},          // tensor
+                {},          // expected_output_dims
+                {},          // expected_results
+                1,           // test_ID
+                Status(error::INVALID_ARGUMENT,
+                       "All replications of the Tile operation in "
+                       "my_tile should be positive, got (1, -2, 1).")},
+      TileParam{
+          {1, 2, 3},           // input_dims
+          {1, 2, 1, 3},        // multiplier
+          {0, 1, 2, 3, 4, 5},  // tensor
+          {},                  // expected_output_dims
+          {},                  // expected_results
+          2,                   // test_ID
+          Status(
+              error::INVALID_ARGUMENT,
+              "The length of the replication vector (4) of the Tile operation "
+              "in 'my_tile' "
+              "is expected to be equal to the rank of the input vector (3).")},
+      TileParam{{1, 2},                                 // input_dims
+                {1, 3},                                 // multiplier
+                {2, 3},                                 // tensor
+                {1, 6},                                 // expected_output_dims
+                {2, 3, 2, 3, 2, 3}},                    // out values
+      TileParam{{1, 2, 3},                              // input_dims
+                {1, 2, 1},                              // multiplier
+                {0, 1, 2, 3, 4, 5},                     // tensor
+                {1, 4, 3},                              // output dims
+                {0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}},  // expected_results
+      TileParam{{1, 2, 3},                              // input_dims
+                {1, 1, 2},                              // multiplier
+                {0, 1, 2, 3, 4, 5},                     // tensor
+                {1, 2, 6},                              // expected_output_dims
+                {0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5}},  // expected_results
+      TileParam{{1, 2, 3},                              // input_dims
+                {1, 2, 2},                              // multiplier
+                {0, 1, 2, 3, 4, 5},                     // tensor
+                {1, 4, 6},                              // expected_output_dims
+                {0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5,
+                 0, 1, 2, 0, 1, 2, 3, 4, 5, 3, 4, 5}}  // expected_results
+  };
+
+  for (bool multiplier_is_tensor : {true, false}) {
+    for (bool input_is_tensor : {true, false}) {
+      for (auto p : test_params) {
+        std::vector<int> num_mults = {static_cast<int>(p.multiplier.size())};
+        std::vector<std::vector<int>> partial_input_dims_options = {{}};
+        if (multiplier_is_tensor) {
+          if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+            p.status =
+                Status(error::INVALID_ARGUMENT,
+                       "Conversion for Tile is not implemented for multipliers "
+                       "passed as a tensor in implicit batch mode");
+            num_mults = {1, static_cast<int>(p.multiplier.size())};
+          } else {
+            if (p.test_ID == 1) {
+              // Replacement of statuses, since when multiplier is a tensor AND
+              // trt_mode_ != TrtTestMode::kImplicitBatch we cannot define these
+              // statuses in ConvertTile::Validate() for first two tests from
+              // test_params.
+              p.status = Status::OK();
+              p.runtime_status =
+                  Status(error::INTERNAL,
+                         "Incorrect number of profile config parameters");
+            }
+
+            if (trt_mode_ == TrtTestMode::kDynamicShape) {
+              if (p.test_ID == 1)
+                partial_input_dims_options = {num_mults};
+              else
+                partial_input_dims_options = {{}, num_mults};
+            }
+          }
+        }
+
+        for (auto partial_input_dims : partial_input_dims_options) {
+          if (multiplier_is_tensor &&
+              trt_mode_ != TrtTestMode::kImplicitBatch) {
+            if (trt_mode_ == TrtTestMode::kDynamicShape) {
+              if (p.test_ID != 1) {
+                p.runtime_status =
+                    partial_input_dims.empty()
+                        ? Status(error::INTERNAL,
+                                 "Failed to build TensorRT engine")
+                        : Status::OK();
+                p.status = Status::OK();
+              }
+            }
+
+            if (p.test_ID == 2 && (trt_mode_ == TrtTestMode::kExplicitBatch ||
+                                   !partial_input_dims.empty())) {
+              p.status = Status(error::INVALID_ARGUMENT,
+                                "When replications are defined as a tensor, "
+                                "the number of its elements (4) must be equal "
+                                "to the rank of the input tensor (3).");
+            }
+          }
+
+          Reset();
+          if (input_is_tensor) {
+            AddTestTensor("input", p.input_dims, p.tensor);
+          } else {
+            AddTestWeights("input", p.input_dims, p.tensor, tf_type_);
+          }
+
+          if (multiplier_is_tensor) {
+            AddTestTensor<int>("weights", num_mults, DT_INT32, p.multiplier,
+                               partial_input_dims);
+          } else {
+            AddTestWeights<int32>("weights", num_mults, p.multiplier);
+          }
+
+          TestOpConverter("my_tile", node_def, p.expected_output_dims, p.status,
+                          p.runtime_status,
+                          ElementsAreArray(p.expected_results));
+        }
+      }
+    }
   }
 }
 
