@@ -784,7 +784,7 @@ class MutableLiteralBase : public LiteralBase {
   // in this literal object.
   //
   // generator must be a callable of the type
-  // NativeT(absl::Span<int64_t> indexes) or compatible.
+  // NativeT(absl::Span<const int64_t> indexes) or compatible.
   //
   // This literal must have a dense layout.
   template <typename NativeT, typename FnType>
@@ -899,10 +899,16 @@ class Literal : public MutableLiteralBase {
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
   // elements are moved into the new Literals; no data is copied. Upon return
   // this Literal is set to a nil shape (empty tuple)
+  //
+  // TODO(jlebar): Because this function invalidates `this`, it should be
+  // ref-qualified with &&.
   std::vector<Literal> DecomposeTuple();
 
   // Returns a subliteral specified by given shape_index. No data is copied, the
   // current literal becomes invalid after this function call.
+  //
+  // TODO(jlebar): Because this function invalidates `this`, it should be
+  // ref-qualified with &&.
   Literal SubLiteral(ShapeIndexView shape_index);
 
  private:
