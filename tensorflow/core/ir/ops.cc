@@ -1032,10 +1032,7 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
     return op.emitOpError("then region must be terminated by a 'tfg.yield'");
   if (!terminatedByYield(op.else_block()))
     return op.emitOpError("else region must be terminated by a 'tfg.yield'");
-
-  // Call the region branch op verifier. Verifies correctness of terminator,
-  // region, and operand types.
-  return RegionBranchOpInterface::verifyTypes(op);
+  return success();
 }
 
 LogicalResult IfRegionOp::verify() { return VerifyIfLikeRegionOp(*this); }
@@ -1098,10 +1095,7 @@ static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
            << op.branches().size() << " regions but "
            << op.branch_attrs()->size() << " branch function attributes";
   }
-
-  // Call the region branch op verifier. Verifies correctness of terminator,
-  // region, and operand types.
-  return RegionBranchOpInterface::verifyTypes(op);
+  return success();
 }
 
 LogicalResult CaseRegionOp::verify() { return VerifyCaseLikeRegionOp(*this); }
@@ -1191,9 +1185,7 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
       failed(verifyLoopRegionArgs(op, op.body_region())))
     return failure();
 
-  // Call the region branch op verifier. Verifies correctness of terminator,
-  // region, and operand types.
-  return RegionBranchOpInterface::verifyTypes(op);
+  return success();
 }
 
 LogicalResult WhileRegionOp::verify() { return VerifyWhileLikeRegionOp(*this); }
@@ -1253,11 +1245,7 @@ LogicalResult ForRegionOp::verify() {
         "expected first body block argument to be tensor<i32>");
   }
 
-  if (failed(verifyLoopRegionArgs(op, op.body_region()))) return failure();
-
-  // Call the region branch op verifier. Verifies correctness of terminator,
-  // region, and operand types.
-  return RegionBranchOpInterface::verifyTypes(op);
+  return verifyLoopRegionArgs(op, op.body_region());
 }
 
 LogicalResult ForRegionOp::inferReturnTypes(
