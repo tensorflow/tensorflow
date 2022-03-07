@@ -307,6 +307,11 @@ Below is the list of currently supported floating-point operators:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+#### `SPLIT`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Only split into 2 outputs is supported.
+
 #### `SOFTMAX`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -589,6 +594,11 @@ Below is the list of currently supported quantized operators:
 * The first input and the output must be 4D tensors in 8-bit quantized format.
 * The second input (the input with the new shape specification) must be
   static (use `kTfLiteMmapRo` allocation type).
+
+#### `SPLIT`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Only split into two outputs is supported.
 
 #### `SUB`
 
