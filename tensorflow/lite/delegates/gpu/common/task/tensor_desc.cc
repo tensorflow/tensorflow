@@ -238,11 +238,11 @@ absl::Status TensorDescriptor::PerformSelector(
   } else if (selector == "ReadBilinear") {
     return PerformReadBilinearSelector(gpu_info, args, result);
   } else if (selector == "Write") {
-    return PerformWriteSelector(gpu_info, args, result);
+    return PerformWriteSelector(gpu_info, args, template_args, result);
   } else if (selector == "WriteLinear") {
-    return PerformWriteLinearSelector(gpu_info, args, result);
+    return PerformWriteLinearSelector(gpu_info, args, template_args, result);
   } else if (selector == "Write2D") {
-    return PerformWrite2DSelector(gpu_info, args, result);
+    return PerformWrite2DSelector(gpu_info, args, template_args, result);
   } else if (selector == "GetAddress") {
     return PerformGetAddressSelector(args, result);
   } else if (selector == "GetPtrWithSliceOffset") {
@@ -261,15 +261,8 @@ absl::Status TensorDescriptor::PerformReadSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) const {
   DataType read_as_type = data_type;
-  if (!template_args.empty()) {
-    if (template_args.size() != 1) {
-      return absl::NotFoundError(
-          "Unrecognized Read selector template arguments.");
-    } else {
-      RETURN_IF_ERROR(
-          GetDataTypeFromTemplateArgs(template_args[0], &read_as_type));
-    }
-  }
+  RETURN_IF_ERROR(
+      MaybeGetDataTypeFromTemplateArgs(template_args, &read_as_type));
   if (args.size() == 1) {  // function overload for 1D linear types.
     if (storage_type == TensorStorageType::BUFFER ||
         storage_type == TensorStorageType::IMAGE_BUFFER) {
@@ -434,7 +427,7 @@ absl::Status TensorDescriptor::GetLinkingContextFromWriteSelector(
 
 absl::Status TensorDescriptor::PerformWriteSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
-    std::string* result) const {
+    const std::vector<std::string>& template_args, std::string* result) const {
   std::string xc;
   std::string yc;
   std::string zc;
@@ -444,13 +437,16 @@ absl::Status TensorDescriptor::PerformWriteSelector(
   if (args.size() < 2 || !parsed) {
     return absl::NotFoundError("Unrecognized Write selector");
   }
-  *result = Write(gpu_info, args[0], GetPhysicalCoords(xc, yc, zc, sc, bc));
+  DataType write_type = data_type;
+  RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &write_type));
+  *result = Write(gpu_info, write_type, args[0],
+                  GetPhysicalCoords(xc, yc, zc, sc, bc));
   return absl::OkStatus();
 }
 
 absl::Status TensorDescriptor::PerformWriteLinearSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
-    std::string* result) const {
+    const std::vector<std::string>& template_args, std::string* result) const {
   if (storage_type != TensorStorageType::BUFFER &&
       storage_type != TensorStorageType::IMAGE_BUFFER) {
     return absl::InvalidArgumentError(
@@ -460,13 +456,15 @@ absl::Status TensorDescriptor::PerformWriteLinearSelector(
   if (args.size() != 2) {
     return absl::NotFoundError("Unrecognized WriteLinear selector");
   }
-  *result = Write(gpu_info, args[0], {args[1]});
+  DataType write_type = data_type;
+  RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &write_type));
+  *result = Write(gpu_info, write_type, args[0], {args[1]});
   return absl::OkStatus();
 }
 
 absl::Status TensorDescriptor::PerformWrite2DSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
-    std::string* result) const {
+    const std::vector<std::string>& template_args, std::string* result) const {
   if (storage_type != TensorStorageType::TEXTURE_2D) {
     return absl::InvalidArgumentError(
         "Write2D selector can be used only with 2d "
@@ -475,7 +473,9 @@ absl::Status TensorDescriptor::PerformWrite2DSelector(
   if (args.size() != 3) {
     return absl::NotFoundError("Unrecognized Write2D selector");
   }
-  *result = Write(gpu_info, args[0], {args[1], args[2]});
+  DataType write_type = data_type;
+  RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &write_type));
+  *result = Write(gpu_info, write_type, args[0], {args[1], args[2]});
   return absl::OkStatus();
 }
 
@@ -630,62 +630,75 @@ std::string TensorDescriptor::Read(
 }
 
 std::string TensorDescriptor::Write(
-    const GpuInfo& gpu_info, const std::string& var_name,
+    const GpuInfo& gpu_info, DataType write_type, const std::string& var_name,
     const std::vector<std::string>& coords) const {
+  std::string write_expr = var_name;
+  if (write_type != data_type) {
+    if (gpu_info.IsApiOpenCl()) {
+      write_expr =
+          "convert_" + ToCLDataType(data_type, 4) + "(" + write_expr + ")";
+    } else if (gpu_info.IsApiMetal()) {
+      write_expr = ToMetalDataType(data_type, 4) + "(" + write_expr + ")";
+    } else if (gpu_info.IsGlsl()) {
+      write_expr = ToGlslShaderDataType(data_type, 4, false,
+                                        gpu_info.IsGlslSupportsExplicitFp16()) +
+                   "(" + write_expr + ")";
+    }
+  }
   switch (storage_type) {
     case TensorStorageType::BUFFER:
     case TensorStorageType::IMAGE_BUFFER:
       if (gpu_info.IsApiOpenCl()) {
         if (use_buffer_for_write_only_image_buffer) {
-          return absl::StrCat("buffer[", coords[0], "] = ", var_name);
+          return absl::StrCat("buffer[", coords[0], "] = ", write_expr);
         } else {
           return absl::Substitute("$0(image_buffer, $1, $2)",
                                   GetWriteImageFromDataType(data_type),
-                                  coords[0], var_name);
+                                  coords[0], write_expr);
         }
       } else if (gpu_info.IsApiMetal()) {
         if (use_buffer_for_write_only_image_buffer) {
-          return absl::StrCat("buffer[", coords[0], "] = ", var_name);
+          return absl::StrCat("buffer[", coords[0], "] = ", write_expr);
         } else {
-          return absl::Substitute("image_buffer.write($0, uint($1))", var_name,
-                                  coords[0]);
+          return absl::Substitute("image_buffer.write($0, uint($1))",
+                                  write_expr, coords[0]);
         }
       } else if (gpu_info.IsGlsl()) {
         if (data_type == DataType::FLOAT16 &&
             !gpu_info.IsGlslSupportsExplicitFp16()) {
           return absl::StrCat("buffer[", coords[0], "] = uvec2(packHalf2x16(",
-                              var_name, ".xy), packHalf2x16(", var_name,
+                              write_expr, ".xy), packHalf2x16(", write_expr,
                               ".zw))");
         } else {
-          return absl::StrCat("buffer[", coords[0], "] = ", var_name);
+          return absl::StrCat("buffer[", coords[0], "] = ", write_expr);
         }
       } else {
-        return absl::StrCat("buffer[", coords[0], "] = ", var_name);
+        return absl::StrCat("buffer[", coords[0], "] = ", write_expr);
       }
     case TensorStorageType::SINGLE_TEXTURE_2D:
     case TensorStorageType::TEXTURE_2D:
       if (gpu_info.IsApiOpenCl()) {
         if (use_buffer_for_write_only_2d_texture) {
           return absl::Substitute(
-              "buffer[($2) * aligned_texture_width + ($1)] = $0", var_name,
+              "buffer[($2) * aligned_texture_width + ($1)] = $0", write_expr,
               coords[0], coords[1]);
         } else {
           return absl::Substitute("$0(image2d, (int2)($1, $2), $3)",
                                   GetWriteImageFromDataType(data_type),
-                                  coords[0], coords[1], var_name);
+                                  coords[0], coords[1], write_expr);
         }
       } else if (gpu_info.IsApiMetal()) {
         if (use_buffer_for_write_only_2d_texture) {
           return absl::Substitute(
-              "buffer[($2) * aligned_texture_width + ($1)] = $0", var_name,
+              "buffer[($2) * aligned_texture_width + ($1)] = $0", write_expr,
               coords[0], coords[1]);
         } else {
           return absl::Substitute("image2d.write($0, ushort2($1, $2))",
-                                  var_name, coords[0], coords[1]);
+                                  write_expr, coords[0], coords[1]);
         }
       } else if (gpu_info.IsGlsl()) {
         return absl::Substitute("imageStore(image2d, ivec2($0, $1), $2)",
-                                coords[0], coords[1], var_name);
+                                coords[0], coords[1], write_expr);
       } else {
         return "";
       }
@@ -693,13 +706,13 @@ std::string TensorDescriptor::Write(
       if (gpu_info.IsApiOpenCl()) {
         return absl::Substitute("$0(image3d, (int4)($1, $2, $3, 0), $4)",
                                 GetWriteImageFromDataType(data_type), coords[0],
-                                coords[1], coords[2], var_name);
+                                coords[1], coords[2], write_expr);
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image3d.write($0, ushort3($1, $2, $3))",
-                                var_name, coords[0], coords[1], coords[2]);
+                                write_expr, coords[0], coords[1], coords[2]);
       } else if (gpu_info.IsGlsl()) {
         return absl::Substitute("imageStore(image3d, ivec3($0, $1, $2), $3)",
-                                coords[0], coords[1], coords[2], var_name);
+                                coords[0], coords[1], coords[2], write_expr);
       } else {
         return "";
       }
@@ -707,14 +720,14 @@ std::string TensorDescriptor::Write(
       if (gpu_info.IsApiOpenCl()) {
         return absl::Substitute("$0(image2d_array, (int4)($1, $2, $3, 0), $4)",
                                 GetWriteImageFromDataType(data_type), coords[0],
-                                coords[1], coords[2], var_name);
+                                coords[1], coords[2], write_expr);
       } else if (gpu_info.IsApiMetal()) {
         return absl::Substitute("image2d_array.write($0, ushort2($1, $2), $3)",
-                                var_name, coords[0], coords[1], coords[2]);
+                                write_expr, coords[0], coords[1], coords[2]);
       } else if (gpu_info.IsGlsl()) {
         return absl::Substitute(
             "imageStore(image2d_array, ivec3($0, $1, $2), $3)", coords[0],
-            coords[1], coords[2], var_name);
+            coords[1], coords[2], write_expr);
       } else {
         return "";
       }
@@ -980,38 +993,45 @@ std::vector<std::string> TensorDescriptor::GetPhysicalCoords(
   }
 }
 
-absl::Status TensorDescriptor::GetDataTypeFromTemplateArgs(
-    const std::string& template_arg, DataType* result) const {
-  std::string read_type = template_arg;
-  if (read_type == "FLT" || read_type == "ACCUM_FLT") {
-    auto it = state_vars_.find(read_type);
-    if (it == state_vars_.end()) {
-      return absl::UnavailableError(absl::StrCat(
-          "Read selector template argument ", read_type, " uninitialized."));
-    } else {
-      read_type = it->second;
+absl::Status TensorDescriptor::MaybeGetDataTypeFromTemplateArgs(
+    const std::vector<std::string>& template_args, DataType* result) const {
+  for (const auto& template_arg : template_args) {
+    std::string read_type = template_arg;
+    if (read_type == "FLT" || read_type == "ACCUM_FLT") {
+      auto it = state_vars_.find(read_type);
+      if (it == state_vars_.end()) {
+        return absl::UnavailableError(
+            absl::StrCat("Template argument ", read_type, " uninitialized."));
+      } else {
+        read_type = it->second;
+      }
     }
-  }
 
-  if (read_type == "half") {
-    *result = DataType::FLOAT16;
-  } else if (read_type == "float") {
-    *result = DataType::FLOAT32;
-  } else if (read_type == "int") {
-    *result = DataType::INT32;
-  } else if (read_type == "short") {
-    *result = DataType::INT16;
-  } else if (read_type == "char") {
-    *result = DataType::INT8;
-  } else if (read_type == "uint") {
-    *result = DataType::UINT32;
-  } else if (read_type == "ushort") {
-    *result = DataType::UINT16;
-  } else if (read_type == "uchar") {
-    *result = DataType::UINT8;
-  } else {
-    return absl::NotFoundError(absl::StrCat(
-        "Unrecognized Read selector template argument - ", read_type));
+    if (read_type == "half") {
+      *result = DataType::FLOAT16;
+      return absl::OkStatus();
+    } else if (read_type == "float") {
+      *result = DataType::FLOAT32;
+      return absl::OkStatus();
+    } else if (read_type == "int") {
+      *result = DataType::INT32;
+      return absl::OkStatus();
+    } else if (read_type == "short") {
+      *result = DataType::INT16;
+      return absl::OkStatus();
+    } else if (read_type == "char") {
+      *result = DataType::INT8;
+      return absl::OkStatus();
+    } else if (read_type == "uint") {
+      *result = DataType::UINT32;
+      return absl::OkStatus();
+    } else if (read_type == "ushort") {
+      *result = DataType::UINT16;
+      return absl::OkStatus();
+    } else if (read_type == "uchar") {
+      *result = DataType::UINT8;
+      return absl::OkStatus();
+    }
   }
   return absl::OkStatus();
 }
