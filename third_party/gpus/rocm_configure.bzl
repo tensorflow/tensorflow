@@ -215,11 +215,7 @@ def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
         cmd = "%s/bin/rocm_agent_enumerator" % rocm_toolkit_path
         result = execute(repository_ctx, [bash_bin, "-c", cmd])
         targets = [target for target in result.stdout.strip().split("\n") if target != "gfx000"]
-<<<<<<< HEAD
-        targets = {x : None for x in targets}
-=======
         targets = {x: None for x in targets}
->>>>>>> google_upstream/master
         targets = list(targets.keys())
         amdgpu_targets_str = ",".join(targets)
     amdgpu_targets = amdgpu_targets_str.split(",")
@@ -345,11 +341,7 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
     ]
     if int(rocm_config.rocm_version_number) >= 40500:
         libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path + "/hipsolver")))
-<<<<<<< HEAD
-        libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, 'hipblas', rocm_config.rocm_toolkit_path + "/hipblas")))
-=======
         libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, "hipblas", rocm_config.rocm_toolkit_path + "/hipblas")))
->>>>>>> google_upstream/master
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def _exec_find_rocm_config(repository_ctx, script_path):
