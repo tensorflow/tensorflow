@@ -749,6 +749,22 @@ class ShardedVariableMixin(trackable.Trackable):
   def _shared_name(self):
     return self._name
 
+  @property
+  def trainable(self):
+    return self.variables[0].trainable
+
+  @property
+  def synchronization(self):
+    return variables_lib.VariableSynchronization.NONE
+
+  @property
+  def aggregation(self):
+    return variables_lib.VariableAggregation.NONE
+
+  @property
+  def is_sharded_variable(self):
+    return True
+
 
 @tf_export('__internal__.distribute.ShardedVariable', v1=[])
 class ShardedVariable(ShardedVariableMixin, composite_tensor.CompositeTensor):

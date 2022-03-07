@@ -6,7 +6,15 @@ tf_class {
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "aggregation"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_sharded_variable"
     mtype: "<type \'property\'>"
   }
   member {
@@ -15,6 +23,14 @@ tf_class {
   }
   member {
     name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "synchronization"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable"
     mtype: "<type \'property\'>"
   }
   member {
