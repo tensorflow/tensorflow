@@ -2156,6 +2156,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "XlaGather",
       "XlaIf",
       "XlaKeyValueSort",
+      "XlaOptimizationBarrier",
       "XlaPad",
       "XlaRecv",
       "XlaReduce",

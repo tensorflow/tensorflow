@@ -1207,5 +1207,25 @@ scatter_dimension: Dimension to scatter.
 reduce_op: Reduction computation.
 )doc");
 
+Status OptimizationBarrierShape(shape_inference::InferenceContext* c) {
+  for (int i = 0; i < c->num_inputs(); ++i) {
+    c->set_output(i, c->input(i));
+  }
+  return Status::OK();
+}
+
+REGISTER_OP("XlaOptimizationBarrier")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: list(type) >= 0")
+    .SetShapeFn(OptimizationBarrierShape)
+    .Doc(R"doc(
+Wraps the XLA OptimizationBarrier operator.
+
+Documented at https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier.
+
+input: A Tuple of Arrays of any type.
+)doc");
+
 }  // namespace
 }  // namespace tensorflow

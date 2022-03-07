@@ -6551,3 +6551,14 @@ func private @ge_select(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<
   %0 = "tf.GreaterEqual"(%arg0, %arg1) {device = ""} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xi1>
   return %0 : tensor<*xi1>
 }
+
+//===----------------------------------------------------------------------===//
+// tf.XlaOptimizationBarrier legalization
+//===----------------------------------------------------------------------===//
+
+func @test_xla_optimization_barrier(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xi32>) -> (tensor<4x4xf32>, tensor<3x4xi32>) {
+  // CHECK: %[[OPT_BARRIER:.*]]:2 = "mhlo.optimization_barrier"(%arg0, %arg1)
+  // CHECK-NEXT: return %[[OPT_BARRIER]]#0, %[[OPT_BARRIER]]#1
+  %0, %1 = "tf.XlaOptimizationBarrier"(%arg0, %arg1) : (tensor<4x4xf32>, tensor<3x4xi32>) -> (tensor<4x4xf32>, tensor<3x4xi32>)
+  return %0, %1 : tensor<4x4xf32>, tensor<3x4xi32>
+}
