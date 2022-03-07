@@ -176,6 +176,10 @@ class DefaultTypesTest(test.TestCase):
       def is_subtype_of(self, other):
         return other._object == 2
 
+      def most_specific_common_supertype(self, types):
+        return self if all(self._object == other._object
+                           for other in types) else MockSubtypeOf2(2)
+
     original = default_types.Reference(MockSubtypeOf2(3), 1)
     clone = default_types.Reference(MockSubtypeOf2(3), 1)
     different_id = default_types.Reference(MockSubtypeOf2(3), 2)
@@ -186,6 +190,9 @@ class DefaultTypesTest(test.TestCase):
     self.assertTrue(original.is_subtype_of(supertype))
     self.assertFalse(supertype.is_subtype_of(original))
 
+    self.assertEqual(supertype.most_specific_common_supertype([]), supertype)
+    self.assertEqual(original.most_specific_common_supertype([clone]), original)
+    self.assertIsNone(original.most_specific_common_supertype([different_id]))
 
 if __name__ == '__main__':
   test.main()
