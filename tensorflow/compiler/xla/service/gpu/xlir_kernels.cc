@@ -199,9 +199,13 @@ static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
   // to run inside a blocking task.
   return tfrt::RunBlockingWork(
       exec_ctx.host(),
-      [=, participants = std::move(participants),
-       context = context.ValueRef()]() mutable
-      -> llvm::Expected<tfrt::gpu::GpuCclHandle> {
+      tfrt::gpu::DestroyCapturesOnInvoke([=,
+                                          participants =
+                                              std::move(participants),
+                                          context =
+                                              context.ValueRef()]() mutable
+                                         -> llvm::Expected<
+                                             tfrt::gpu::GpuCclHandle> {
         auto current = tfrt::gpu::wrapper::CtxSetCurrent(context->get());
         if (!current) return current.takeError();
 
@@ -222,7 +226,7 @@ static tfrt::AsyncValueRef<tfrt::gpu::GpuCclHandle> CclCreate(
             std::move(context),
             tfrt::gpu::wrapper::OwningCclComm({*comm_ptr, current->platform()}),
             std::move(comm_deleter));
-      });
+      }));
 }
 
 static tfrt::AsyncValueRef<tfrt::Chain> CclCollectivePermute(
