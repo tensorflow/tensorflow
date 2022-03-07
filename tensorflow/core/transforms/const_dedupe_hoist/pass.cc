@@ -47,6 +47,7 @@ struct DedupeAndHoistConstantPass
     t_id = StringAttr::get(context, "T");
     tfg_const = StringAttr::get(context, "tfg.Const");
     value_id = StringAttr::get(context, "value");
+    mlir_context = context;
     return success();
   }
   void runOnOperation() override;
@@ -71,6 +72,7 @@ struct DedupeAndHoistConstantPass
   StringAttr tfg_const;
   StringAttr t_id;
   StringAttr value_id;
+  MLIRContext* mlir_context;
 };
 
 }  // namespace
@@ -157,13 +159,22 @@ Operation* DedupeAndHoistConstantPass::BuildIdentity(Operation* input,
   operands.insert(op_operands.begin(), op_operands.end());
   state.addOperands(operands.takeVector());
 
-  // All attributes except for value and dtype (which is remapped to I)
-  // TODO(jpienaar): Consider reducing name of the identity op.
+  // All attributes except for value, name, and dtype (which is remapped to I)
   auto attrs = llvm::to_vector(
       llvm::make_filter_range(input->getAttrs(), [&](NamedAttribute attr) {
-        return attr.getName() != value_id && attr.getName() != dtype_id;
+        return attr.getName() != value_id && attr.getName() != dtype_id &&
+               attr.getName() != name_id;
       }));
   state.addAttributes(attrs);
+
+  // Concat `const_dedupe_hoist` prefix with the const op name to avoid name
+  // collision.
+  // TODO(rdzhabarov): Improve name generation to avoid potential collisions.
+  if (auto const_name = input->getAttrOfType<StringAttr>(name_id)) {
+    state.addAttribute(
+        name_id, StringAttr::get(mlir_context, "const_dedupe_hoist/" +
+                                                   const_name.getValue()));
+  }
   // Map dtype to T attribute.
   state.addAttribute(t_id, input->getAttr(dtype_id));
   return OpBuilder(input).createOperation(state);

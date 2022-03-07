@@ -46,8 +46,8 @@ limitations under the License.
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -200,7 +200,7 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 }
 
 static bool IsConst(Operation* op) {
-  return isa<mlir::ConstantOp, mlir::arith::ConstantOp, mlir::TF::ConstOp,
+  return isa<mlir::func::ConstantOp, mlir::arith::ConstantOp, mlir::TF::ConstOp,
              tfl::ConstOp, tfl::QConstOp, tfl::SparseConstOp,
              tfl::SparseQConstOp, mlir::TFL::NoValueOp>(op);
 }
@@ -947,7 +947,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
   auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
   auto get_call_index = [&](mlir::Block& b) -> Optional<int> {
     if (b.getOperations().size() != 2) return llvm::None;
-    if (auto call_op = dyn_cast<mlir::CallOp>(b.front()))
+    if (auto call_op = dyn_cast<mlir::func::CallOp>(b.front()))
       return subgraph_index_map_.at(call_op.getCallee().str());
     return llvm::None;
   };

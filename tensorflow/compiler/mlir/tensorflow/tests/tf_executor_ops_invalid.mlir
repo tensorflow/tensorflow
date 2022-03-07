@@ -250,7 +250,7 @@ func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
   tf_executor.graph {
     "tf_executor.island"() ({
-// expected-error@-1 {{'tf_executor.island' op expects regions to end with 'tf_executor.yield', found 'std.return'}}
+// expected-error@-1 {{'tf_executor.island' op expects regions to end with 'tf_executor.yield', found 'func.return'}}
 // expected-note@-2 {{in custom textual format, the absence of terminator implies 'tf_executor.yield'}}
       return
     }) : () -> (!tf_executor.control)

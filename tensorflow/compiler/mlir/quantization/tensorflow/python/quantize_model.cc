@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -36,8 +36,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
@@ -71,7 +69,6 @@ namespace tensorflow {
 namespace quantization {
 namespace internal {
 
-// TODO(b/220688154): Split into the separate C++ API target.
 absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags) {
@@ -82,7 +79,7 @@ absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
 
   // Convert the SavedModelBundle to an MLIR module.
   mlir::DialectRegistry registry;
-  registry.insert<mlir::StandardOpsDialect, mlir::scf::SCFDialect,
+  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,
                   mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
                   mlir::quant::QuantizationDialect>();
@@ -150,7 +147,6 @@ absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
   return *graph.ConsumeValueOrDie();
 }
 
-// TODO(b/220688154): Split into the separate C++ API target.
 absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags) {
@@ -161,7 +157,7 @@ absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
 
   // Convert the SavedModelBundle to an MLIR module.
   mlir::DialectRegistry registry;
-  registry.insert<mlir::StandardOpsDialect, mlir::scf::SCFDialect,
+  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,
                   mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
                   mlir::quant::QuantizationDialect>();
@@ -217,7 +213,6 @@ absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
   return *graph.ConsumeValueOrDie();
 }
 
-// TODO(b/220688154): Split into the separate C++ API target.
 absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPostCalibration(
     absl::string_view saved_model_path, absl::string_view exported_names_str,
     absl::string_view tags) {
@@ -228,7 +223,7 @@ absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPostCalibration(
 
   // Convert the SavedModelBundle to an MLIR module.
   mlir::DialectRegistry registry;
-  registry.insert<mlir::StandardOpsDialect, mlir::scf::SCFDialect,
+  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,
                   mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
                   mlir::quant::QuantizationDialect>();
@@ -285,90 +280,5 @@ absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPostCalibration(
 }
 
 }  // namespace internal
-
-PyObject* QuantizeQATModel(absl::string_view saved_model_path,
-                           absl::string_view exported_names_str,
-                           absl::string_view tags) {
-  absl::StatusOr<tensorflow::GraphDef> graph_def =
-      internal::QuantizeQATModel(saved_model_path, exported_names_str, tags);
-  if (!graph_def.ok()) {
-    PyErr_Format(PyExc_ValueError, "failed to quantize QAT model");
-    return nullptr;
-  }
-
-  std::string ret_str = graph_def.value().SerializeAsString();
-
-  return tflite::python_utils::ConvertToPyString(ret_str.c_str(),
-                                                 ret_str.size());
-}
-
-PyObject* QuantizePTQModelPreCalibration(absl::string_view saved_model_path,
-                                         absl::string_view exported_names_str,
-                                         absl::string_view tags) {
-  absl::StatusOr<tensorflow::GraphDef> graph_def =
-      internal::QuantizePTQModelPreCalibration(saved_model_path,
-                                               exported_names_str, tags);
-  if (!graph_def.ok()) {
-    PyErr_Format(PyExc_ValueError,
-                 "failed to quantize PTQ model at the precalibration stage");
-    return nullptr;
-  }
-
-  std::string ret_str = graph_def.value().SerializeAsString();
-
-  return tflite::python_utils::ConvertToPyString(ret_str.c_str(),
-                                                 ret_str.size());
-}
-
-PyObject* QuantizePTQModelPostCalibration(absl::string_view saved_model_path,
-                                          absl::string_view exported_names_str,
-                                          absl::string_view tags) {
-  absl::StatusOr<tensorflow::GraphDef> graph_def =
-      internal::QuantizePTQModelPostCalibration(saved_model_path,
-                                                exported_names_str, tags);
-  if (!graph_def.ok()) {
-    PyErr_Format(PyExc_ValueError,
-                 "failed to quantize PTQ model at the postcalibration stage");
-    return nullptr;
-  }
-
-  std::string ret_str = graph_def.value().SerializeAsString();
-
-  return tflite::python_utils::ConvertToPyString(ret_str.c_str(),
-                                                 ret_str.size());
-}
-
-void ClearCollectedInformationFromCalibrator() {
-  calibrator::CalibratorSingleton::ClearCollectedInformation();
-}
-
-void ClearDataFromCalibrator(absl::string_view id) {
-  calibrator::CalibratorSingleton::ClearData(id);
-}
-
-float GetMinFromCalibrator(absl::string_view id) {
-  absl::optional<std::pair<float, float>> min_max =
-      calibrator::CalibratorSingleton::GetMinMax(id);
-  if (!min_max.has_value()) {
-    PyErr_Format(PyExc_ValueError, "No calibrated data for '%s'",
-                 std::string{id}.c_str());
-    throw py::error_already_set();
-  }
-
-  return min_max->first;
-}
-
-float GetMaxFromCalibrator(absl::string_view id) {
-  absl::optional<std::pair<float, float>> min_max =
-      calibrator::CalibratorSingleton::GetMinMax(id);
-  if (!min_max.has_value()) {
-    PyErr_Format(PyExc_ValueError, "No calibrated data for '%s'",
-                 std::string{id}.c_str());
-    throw py::error_already_set();
-  }
-
-  return min_max->second;
-}
-
 }  // namespace quantization
 }  // namespace tensorflow

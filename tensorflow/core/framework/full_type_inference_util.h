@@ -74,6 +74,21 @@ ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx);
 ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
                                          int element_idx, bool homogeneous);
 
+// Helper for ops with semantics of unstacking multiple inputs into a container
+// `<t>[T1, ..., Tn]`, that is `T1, ..., Tn -> <t>[PRODUCT[U1, ..., Un]]`
+// where Ui is obtained from an "unstack" mapping T -> U. Both <t> and the
+// "unstack" mapping are parameterized by this factory.
+// Note that when the "unstack" function is the identity function, this becomes
+// equivalent to ContainerCreate.
+ForwardTypeInferenceFn MultiaryUnstack(
+    FullTypeId t, std::function<FullTypeDef(const FullTypeDef&)> unstack);
+
+// Mapping function representing the the type function for unstacking of
+// Tensor (or Tensor-like) types. Note that this is a helper to use with
+// other type inference functions; it's not a function itself.
+// TODO(mdan): Replace with a trait, when available.
+FullTypeDef UnstackTensor(const FullTypeDef& t);
+
 }  // namespace full_type
 
 }  // namespace tensorflow

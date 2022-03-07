@@ -41,6 +41,11 @@ class MetalExecutionEnvironment : public TestExecutionEnvironment {
   std::vector<TensorStorageType> GetSupportedStorages() const override;
   std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
       const override;
+  std::vector<TensorStorageType> GetStoragesWith32bitIntSupport()
+      const override;
+  std::vector<TensorStorageType> GetStoragesWith16bitIntSupport()
+      const override;
+  std::vector<TensorStorageType> GetStoragesWith8bitIntSupport() const override;
 
   const GpuInfo& GetGpuInfo() const { return device_.GetInfo(); }
 
@@ -55,6 +60,11 @@ class MetalExecutionEnvironment : public TestExecutionEnvironment {
       std::unique_ptr<GPUOperation>&& operation,
       const std::vector<BHWDC>& dst_sizes,
       const std::vector<Tensor5DFloat32*>& dst_cpu) override;
+
+  absl::Status ExecuteGPUOperation(
+      const std::vector<TensorDescriptor*>& src_cpu,
+      const std::vector<TensorDescriptor*>& dst_cpu,
+      std::unique_ptr<GPUOperation>&& operation) override;
 
  private:
   MetalDevice device_;

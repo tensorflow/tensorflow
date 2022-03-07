@@ -942,7 +942,7 @@ void LegalizeTF::runOnOperation() {
   // used later or in the case of SELECT were we allow TF ops in the final
   // graph.
   target.addLegalOp<mlir::arith::ConstantOp>();
-  target.addLegalOp<mlir::ConstantOp>();
+  target.addLegalOp<mlir::func::ConstantOp>();
   target.addLegalOp<TFL::NoValueOp>();
   target.addLegalOp<ConstOp>();
   target.addLegalOp<DequantizeOp>();

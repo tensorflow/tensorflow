@@ -449,12 +449,26 @@ void EventNode::SetIsEager(bool is_eager) {
   FindOrAddStatByType(StatType::kIsEager)->set_int64_value(is_eager ? 1 : 0);
 }
 
+bool EventNode::IsCompiledFunc() const {
+  auto is_func = visitor_.GetStat(StatType::kIsFunc);
+  return !is_func || is_func->IntValue();
+}
+
 bool EventNode::IsEager() {
-  // It is eagerly executed if its trace context includes the EagerKernelExecute
-  // event (which may execute an op eagerly or through the TF executor) but not
-  // the TF executor event.
-  return FindParent(HostEventType::kExecutorStateProcess) == nullptr &&
-         FindParent(HostEventType::kEagerKernelExecute) != nullptr;
+  /* Both eager mode (op-by-op) and non-eager mode (eager functions) of eager
+   * executions are unified and forward to TF1 executor now. Therefore we will
+   * check following conditions:
+   */
+  auto* node = FindParent(HostEventType::kEagerKernelExecute);
+  if (node == nullptr) {
+    // if current op is NOT scheduled under "EagerExecute", likely this is
+    // from TF1, therefore not eager.
+    return false;
+  }
+
+  // Otherwise, it is eager mode execution of an operation if and only if it is
+  // not a eager mode execution of a compiled function.
+  return !node->IsCompiledFunc();
 }
 
 const EventNode* EventNode::FindParent(int64_t event_type) const {

@@ -55,15 +55,17 @@ def _is_quantized_input_stats_required(
     True, if the `inference_type` or the `inference_input_type` is a quantized
     type and it is not post training quantization, else False.
   """
-  quantized_inference_types = (
-      [_types_pb2.QUANTIZED_UINT8, _types_pb2.QUANTIZED_INT8])
+  quantized_inference_types = ([
+      _types_pb2.QUANTIZED_UINT8, _types_pb2.QUANTIZED_INT8
+  ])
   return ((conversion_flags.inference_type in quantized_inference_types or
            conversion_flags.inference_input_type in quantized_inference_types)
           and not conversion_flags.post_training_quantize)
 
 
-def convert_tensor_tf_type_to_tflite_type(
-    tf_type: dtypes.DType, usage: str = "") -> _types_pb2.IODataType:
+def convert_tensor_tf_type_to_tflite_type(tf_type: dtypes.DType,
+                                          usage: str = ""
+                                         ) -> _types_pb2.IODataType:
   """Convert tensor type from tf type to tflite type.
 
   Args:
@@ -82,6 +84,7 @@ def convert_tensor_tf_type_to_tflite_type(
       dtypes.float64: _types_pb2.FLOAT64,
       dtypes.int8: _types_pb2.INT8,
       dtypes.int16: _types_pb2.INT16,
+      dtypes.uint16: _types_pb2.UINT16,
       dtypes.int32: _types_pb2.INT32,
       dtypes.int64: _types_pb2.INT64,
       dtypes.uint8: _types_pb2.UINT8,
@@ -94,15 +97,17 @@ def convert_tensor_tf_type_to_tflite_type(
   }
   tflite_type = mapping.get(tf_type)
   if tflite_type is None:
-    raise ValueError("Unsupported TensorFlow type `{0}` provided for the {1}"
-                     .format(tf_type, usage))
+    raise ValueError(
+        "Unsupported TensorFlow type `{0}` provided for the {1}".format(
+            tf_type, usage))
   return tflite_type
 
 
 # Only a few restricted tensor types are allowed for explicitly setting
 # inference/input/output types.
-def convert_inference_tf_type_to_tflite_type(
-    tf_type: dtypes.DType, usage: str = "") -> _types_pb2.IODataType:
+def convert_inference_tf_type_to_tflite_type(tf_type: dtypes.DType,
+                                             usage: str = ""
+                                            ) -> _types_pb2.IODataType:
   """Convert inference type from tf type to tflite type.
 
   Args:
@@ -123,8 +128,9 @@ def convert_inference_tf_type_to_tflite_type(
   }
   tflite_type = mapping.get(tf_type)
   if tflite_type is None:
-    raise ValueError("Unsupported TensorFlow type `{0}` provided for the {1}"
-                     .format(tf_type, usage))
+    raise ValueError(
+        "Unsupported TensorFlow type `{0}` provided for the {1}".format(
+            tf_type, usage))
   return tflite_type
 
 
@@ -218,13 +224,13 @@ def mlir_quantize(input_data_str,
     enable_numeric_verify: Experimental. Subject to change. Bool indicating
       whether to add NumericVerify ops into the debug mode quantized model.
     enable_whole_model_verify: Experimental. Subject to change. Bool indicating
-    whether to add verification for layer by layer, or on whole model. When
-    disabled (per-layer) float and quantized ops will be run from same input
-    (output of previous quantized layer). When enabled, float and quantized ops
-    will run with respective float and quantized output of previous ops.
+      whether to add verification for layer by layer, or on whole model. When
+      disabled (per-layer) float and quantized ops will be run from same input
+      (output of previous quantized layer). When enabled, float and quantized
+      ops will run with respective float and quantized output of previous ops.
     denylisted_ops: Experimental. Subject to change. Set of ops to denylist.
-    denylisted_nodes: Experimental. Subject to change. Set of notes to
-      denylist.
+    denylisted_nodes: Experimental. Subject to change. Set of notes to denylist.
+
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
@@ -305,8 +311,9 @@ def convert(model_flags_str,
         converter_error.append_error(error_data)
       raise converter_error
 
-  return _run_deprecated_conversion_binary(
-      model_flags_str, conversion_flags_str, input_data_str, debug_info_str)
+  return _run_deprecated_conversion_binary(model_flags_str,
+                                           conversion_flags_str, input_data_str,
+                                           debug_info_str)
 
 
 @convert_phase(Component.CONVERT_TF_TO_TFLITE_MODEL,
@@ -347,8 +354,10 @@ Alternative, use virtualenv.""")
   # Windows and TemporaryFile are not that useful together,
   # since you cannot have two readers/writers. So we have to
   # make the temporaries and close and delete them explicitly.
-  conversion_filename, model_filename, input_filename, output_filename = (
-      None, None, None, None)
+  conversion_filename, model_filename, input_filename, output_filename = (None,
+                                                                          None,
+                                                                          None,
+                                                                          None)
   try:
     # Build all input files
     with _tempfile.NamedTemporaryFile(delete=False) as fp_conversion, \
@@ -564,8 +573,8 @@ def build_conversion_flags(inference_type=dtypes.float32,
       dynamic range quantization. Only per-tensor quantization will be used.
     enable_mlir_dynamic_range_quantizer: Enable MLIR dynamic range quantization.
       If False, the old converter dynamic range quantizer is used.
-    tf_quantization_mode: Indicates the mode of TF Quantization when the
-      output model is used for TF Quantization.
+    tf_quantization_mode: Indicates the mode of TF Quantization when the output
+      model is used for TF Quantization.
     disable_infer_tensor_range: Disable infering tensor ranges.
     use_fake_quant_num_bits: Allow quantization parameters to be calculated from
       num_bits attribute.
@@ -653,10 +662,9 @@ def convert_graphdef_with_arrays(input_data, input_arrays_with_shape,
     output_arrays: List of output tensors to freeze graph with. Use only when
       graph cannot be loaded into TensorFlow and when `output_tensors` is None.
     control_output_arrays: Control output node names. This is used when
-      converting a Graph with no output tensors. For example, if the
-      graph's last operation is a Print op, just specify that op's name in
-      this field. This can be used together with the `output_arrays`
-      parameter.
+      converting a Graph with no output tensors. For example, if the graph's
+      last operation is a Print op, just specify that op's name in this field.
+      This can be used together with the `output_arrays` parameter.
     **kwargs: See `build_model_flags` and `build_conversion_flags`.
 
   Returns:
@@ -712,7 +720,7 @@ def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
   Args:
     input_data: Input data (i.e. often `sess.graph_def`),
    input_tensors: List of input tensors. Type and shape are computed using
-      `foo.shape` and `foo.dtype`.
+     `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     **kwargs: See `build_model_flags` and `build_conversion_flags`.
 

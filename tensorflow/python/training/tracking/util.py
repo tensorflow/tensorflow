@@ -74,6 +74,24 @@ _END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
 _CHECKPOINT_V1 = "checkpoint_v1"
 _CHECKPOINT_V2 = "checkpoint_v2"
 
+# Async eager executor used for asynchronous checkpoint.
+_ASYNC_SAVE_EXECUTOR = None
+
+
+def _get_async_save_executor():
+  """Return the async executor used for running checkpoint save op."""
+  global _ASYNC_SAVE_EXECUTOR
+  if _ASYNC_SAVE_EXECUTOR is None:
+    _ASYNC_SAVE_EXECUTOR = executor.new_executor(enable_async=True)
+  return _ASYNC_SAVE_EXECUTOR
+
+
+def _wait_for_async_save_executor():
+  """Wait for the async executor to finish ongoing checkpoint save."""
+  global _ASYNC_SAVE_EXECUTOR
+  if _ASYNC_SAVE_EXECUTOR is not None:
+    _ASYNC_SAVE_EXECUTOR.wait()
+
 
 def _get_duration_microseconds(start_time_seconds, end_time_seconds):
   if end_time_seconds < start_time_seconds:
@@ -1168,11 +1186,6 @@ class TrackableSaver(object):
     self._restore_op_cache = {}
     self._graph_view = graph_view
 
-    # A dictionary used to keep track of the status of each async checkpoint.
-    # Key: path of the checkpoint file.
-    # Value: True or False, indicating whether the file saving is ongoing.
-    self._ongoing_async_ckpt_events = {}
-
   def _gather_saveables(self, object_graph_tensor=None):
     """Wraps _serialize_object_graph to include the object graph proto."""
     named_saveable_objects, graph_proto, feed_additions, registered_savers = (
@@ -1250,15 +1263,12 @@ class TrackableSaver(object):
       # Step-2: Execute the rest of the checkpoint operations on the host device
       #         using an async executor.
       file_path = _convert_file_name_tensor_to_string(file_prefix)
-      self._ongoing_async_ckpt_events[file_path] = True
-      async_save_executor = executor.new_executor(enable_async=True)
-      with context.executor_scope(async_save_executor):
+      with context.executor_scope(_get_async_save_executor()):
         _run_save()
         # Update the internal checkpoint state if the checkpoint event is
         # triggered from Checkpoint.save().
         if update_ckpt_state:
           _update_checkpoint_state_internal(file_path)
-        self._ongoing_async_ckpt_events[file_path] = False
 
       # Step-3: Return the expected checkpoint file path though the save op may
       #         not have finished.
@@ -1408,20 +1418,13 @@ class TrackableSaver(object):
     options = options or checkpoint_options.CheckpointOptions()
     if save_path is None:
       return InitializationOnlyStatus(self._graph_view, ops.uid())
-    # Wait until the specified checkpoint is available.
-    # This only apples if the file is saved by async checkpoint.
-    # For synchronous checkpoint, file should already exist before calling
-    # restore().
-    # TODO(chienchunh): Allow users to configure the timeout.
-    timeout = 10
-    while save_path in self._ongoing_async_ckpt_events.keys(
-    ) and self._ongoing_async_ckpt_events[save_path]:
-      if timeout == 0:
-        raise RuntimeError(
-            f"Timeout when waiting for checkpoint file: {save_path}")
-      logging.info("Checkpoint file [%s] not ready; waiting to check back.")
-      time.sleep(1)
-      timeout = timeout - 1
+
+    # Wait until the ongoing checkpoint to finish.
+    # TODO(chienchunh): Allow to load the file while other checkpoint events
+    #                   are still ongiing. Need to add timeout mechanism along
+    #                   with conditional variables to notify when the checkpoint
+    #                   file is ready.
+    _wait_for_async_save_executor()
 
     reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     graph_building = not context.executing_eagerly()

@@ -3701,6 +3701,10 @@ def gelu(features, approximate=False, name=None):
   """
   with ops.name_scope(name, "Gelu", [features]):
     features = ops.convert_to_tensor(features, name="features")
+    if not features.dtype.is_floating:
+      raise ValueError(
+          "`features.dtype` must be a floating point tensor."
+          f"Received:features.dtype={features.dtype}")
     if approximate:
       return gen_nn_ops.gelu(features, name=name)
     else:

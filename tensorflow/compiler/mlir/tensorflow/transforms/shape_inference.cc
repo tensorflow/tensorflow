@@ -32,7 +32,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -846,7 +846,7 @@ bool ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
   // update the type.
   bool enqueue_callers = false;
   for (OpOperand& use : make_early_inc_range(result.getUses())) {
-    if (isa<ReturnOp>(use.getOwner())) {
+    if (isa<func::ReturnOp>(use.getOwner())) {
       enqueue_callers = true;
     } else if (NeedsCastBack(use, tf_dialect_)) {
       if (!cast_op) {
@@ -2499,9 +2499,9 @@ LogicalResult ShapeInference::InferShapeForFunctionReturnType(FuncOp func) {
                           << "\n");
 
   // Find any return ops.
-  SmallVector<ReturnOp, 4> return_ops;
+  SmallVector<func::ReturnOp, 4> return_ops;
   for (Block& block : func) {
-    if (auto return_op = dyn_cast<ReturnOp>(block.getTerminator())) {
+    if (auto return_op = dyn_cast<func::ReturnOp>(block.getTerminator())) {
       return_ops.push_back(return_op);
     }
   }

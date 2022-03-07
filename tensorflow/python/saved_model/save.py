@@ -974,25 +974,25 @@ def _verify_ops(graph_def, namespace_whitelist):
         f"argument in tf.saved_model.SaveOptions: {invalid_namespaces}.")
 
 
-def _dependency_sorted_node_ids(saveble_view):
+def _dependency_sorted_node_ids(saveable_view):
   """Returns topologically sorted nodes, sorted by dependencies."""
   dependency_map = {}
-  for node in saveble_view.nodes:
-    node_id = saveble_view.node_ids[node]
+  for node in saveable_view.nodes:
+    node_id = saveable_view.node_ids[node]
     deps = dependency_map[node_id] = []
     # TODO(kathywu): Remove once all of these have been converted to trackable.
     if isinstance(node, _CapturedTensor):
       continue  # These are not `Trackable` and therefore have no dependencies.
-    for _, dep in saveble_view.augmented_graph_view.list_dependencies(node):
-      if dep not in saveble_view.node_ids:
+    for _, dep in saveable_view.augmented_graph_view.list_dependencies(node):
+      if dep not in saveable_view.node_ids:
         node_path = trackable_utils.pretty_print_node_path(
-            saveble_view.node_paths[node])
+            saveable_view.node_paths[node])
         raise ValueError(
             f"Found an untracked dependency. Object {node_path} depends "
             f"on {dep}, but this dependency isn't listed as a child. "
             "Please track this child by overriding `_trackable_children` "
             "or use `._track_trackable`.")
-      deps.append(saveble_view.node_ids[dep])
+      deps.append(saveable_view.node_ids[dep])
   try:
     return trackable_utils.order_by_dependency(dependency_map)
   except trackable_utils.CyclicDependencyError as err:
@@ -1001,9 +1001,9 @@ def _dependency_sorted_node_ids(saveble_view):
 
     for x, deps in err.leftover_dependency_map.items():
       node_path = trackable_utils.pretty_print_node_path(
-          saveble_view.node_paths[saveble_view.nodes[x]])
+          saveable_view.node_paths[saveable_view.nodes[x]])
       pretty_printed_nodes.append(
-          f"\tNode {x} = {node_path} (type {type(saveble_view.nodes[x])})")
+          f"\tNode {x} = {node_path} (type {type(saveable_view.nodes[x])})")
       pretty_printed_dependencies.append(
           f"\tNode {x} depends on nodes {deps}")
     pretty_printed_nodes = "\n".join(pretty_printed_nodes)

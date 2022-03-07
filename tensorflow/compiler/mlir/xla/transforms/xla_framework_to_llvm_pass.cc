@@ -31,10 +31,10 @@ limitations under the License.
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
@@ -203,8 +203,8 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
     // Clone the region and handle ReturnOps specially as there will be no
     // return values now.
     for (auto &op : funcOp.front()) {
-      if (isa<mlir::ReturnOp>(op)) {
-        rewriter.create<mlir::ReturnOp>(loc, ValueRange());
+      if (isa<mlir::func::ReturnOp>(op)) {
+        rewriter.create<mlir::func::ReturnOp>(loc, ValueRange());
       } else {
         rewriter.clone(op, mapping);
       }
@@ -255,7 +255,7 @@ class LegalizeXLAFrameworkToLLVMPass
     //  Set target.
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addLegalDialect<mlir::StandardOpsDialect>();
+    target.addLegalDialect<mlir::func::FuncDialect>();
     target.addIllegalDialect<xla_framework::XLAFrameworkDialect>();
     // Unrealized conversion casts are cleaned up by a separate pass.
     target.addLegalOp<UnrealizedConversionCastOp, ModuleOp>();

@@ -68,6 +68,7 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
     llvm::SmallVector<mlir::Attribute> v;
     v.reserve(types.size());
     for (const mlir::Type &t : types) {
+      if (t.isa<TokenType>()) continue;
       auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
       v.push_back(layout.getValue());
@@ -80,7 +81,8 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
     llvm::SmallVector<mlir::Attribute> v;
     v.reserve(types.size());
     for (const mlir::Type &t : types) {
-      auto layout = GetTPUInfeedLayout(t, rewriter);
+      if (t.isa<TokenType>()) continue;
+      auto layout = GetTPUInfeedLayout({t}, rewriter);
       if (failed(layout)) return failure();
       v.push_back(layout.getValue());
     }
@@ -119,7 +121,9 @@ FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
     }
     return rewriter.getArrayAttr(elements);
   } else {
-    return rewriter.getUnitAttr();  // e.g. tokens
+    // types.size() == 1 and types[0] == TokenType
+    // For this case, we return an empty array attribute.
+    return rewriter.getArrayAttr({});
   }
 }
 

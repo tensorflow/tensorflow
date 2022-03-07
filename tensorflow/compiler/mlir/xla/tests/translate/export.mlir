@@ -1558,8 +1558,7 @@ func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f32>, 
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>, %b1: tensor<i32>):
               %2 = mhlo.add %a0, %b0 : tensor<f32>
               %3 = mhlo.add %a1, %b1 : tensor<i32>
-              %4 = "mhlo.tuple"(%2, %3) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-              "mhlo.return"(%4) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+              "mhlo.return"(%2, %3) : (tensor<f32>, tensor<i32>) -> ()
             })
          { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
            window_dimensions = dense<[5, 1]> : tensor<2xi64>,

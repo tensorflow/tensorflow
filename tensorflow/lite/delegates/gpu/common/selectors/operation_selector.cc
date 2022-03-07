@@ -278,15 +278,12 @@ void AddConvSharedWeights(
       for (int i = 0; i < 4; ++i) {
         TensorDescriptor weights_tensor = TensorDescriptor(
             weights_desc.type, TensorStorageType::TEXTURE_2D, Layout::HWC);
-        weights_tensor.shape = BHWDC(1, tex_size.y, tex_size.x, 1, 4);
-        const BHWC shape_bhwc =
-            BHWC(weights_tensor.shape.b, weights_tensor.shape.h,
-                 weights_tensor.shape.w, weights_tensor.shape.c);
-        weights_tensor.data.resize(sub_size);
-        memcpy(weights_tensor.data.data(), weights_data.data() + sub_size * i,
-               sub_size);
+        weights_tensor.SetBHWCShape(BHWC(1, tex_size.y, tex_size.x, 4));
+        weights_tensor.SetData(std::vector<uint8_t>(
+            weights_data.data() + sub_size * i,
+            weights_data.data() + sub_size * i + sub_size));
         gpu_subgraph->new_tensors.push_back(
-            {shape_bhwc, std::move(weights_tensor)});
+            {weights_tensor.GetBHWCShape(), std::move(weights_tensor)});
         gpu_subgraph->operations[0].input_ids.push_back(-1 - i);
         shared_conv_weights->back().global_const_ids.push_back(-1 - i);
       }
@@ -296,15 +293,14 @@ void AddConvSharedWeights(
           weights_desc.type, TensorStorageType::BUFFER, Layout::HWC);
       const int flt_count =
           GetTotalElementsCountForLayout(weights_desc, attr.weights.shape);
-      weights_tensor.shape = BHWDC(1, 1, 1, 1, flt_count);
-      const BHWC shape_bhwc =
-          BHWC(weights_tensor.shape.b, weights_tensor.shape.h,
-               weights_tensor.shape.w, weights_tensor.shape.c);
-      weights_tensor.data.resize(flt_count * SizeOf(weights_desc.type));
+      weights_tensor.SetBHWCShape(BHWC(1, 1, 1, flt_count));
+      std::vector<uint8_t> weights_data =
+          std::vector<uint8_t>(flt_count * SizeOf(weights_desc.type));
       RearrangeWeights(attr.weights, weights_desc,
-                       absl::MakeSpan(weights_tensor.data));
+                       absl::MakeSpan(weights_data));
+      weights_tensor.SetData(std::move(weights_data));
       gpu_subgraph->new_tensors.push_back(
-          {shape_bhwc, std::move(weights_tensor)});
+          {weights_tensor.GetBHWCShape(), std::move(weights_tensor)});
       gpu_subgraph->operations[0].input_ids.push_back(-1);
       shared_conv_weights->back().global_const_ids.push_back(-1);
     }

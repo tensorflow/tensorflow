@@ -566,7 +566,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // Insert UnrealizedConversionCasts to guarantee ReturnOp agrees with
   // the FuncOp type.
   IRRewriter rewriter(func.getContext());
-  func.walk([&](ReturnOp op) {
+  func.walk([&](func::ReturnOp op) {
     FuncOp parent = dyn_cast<FuncOp>(op->getParentOp());
     if (parent != func) return;
 
@@ -593,7 +593,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
     }
 
     if (cast_added) {
-      rewriter.replaceOpWithNewOp<ReturnOp>(op, return_values);
+      rewriter.replaceOpWithNewOp<func::ReturnOp>(op, return_values);
     }
   });
 

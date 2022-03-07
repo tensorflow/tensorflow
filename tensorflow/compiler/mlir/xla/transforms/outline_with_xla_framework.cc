@@ -30,9 +30,9 @@ limitations under the License.
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
@@ -128,8 +128,8 @@ struct OutlineXLAFunc : public RewritePattern {
           loc, t.value(), b->getArgument(t.index())));
     }
 
-    auto call = rewriter.create<CallOp>(loc, func.sym_name(),
-                                        func.getType().getResults(), args);
+    auto call = rewriter.create<func::CallOp>(
+        loc, func.sym_name(), func.getType().getResults(), args);
     // Wrap results
     SmallVector<Value> results;
     for (auto t : call.getResults()) {
@@ -137,7 +137,7 @@ struct OutlineXLAFunc : public RewritePattern {
           loc, ::mlir::xla_framework::BufferType::get(ctx), t));
     }
 
-    rewriter.create<ReturnOp>(loc, results);
+    rewriter.create<func::ReturnOp>(loc, results);
     return success();
   }
 };

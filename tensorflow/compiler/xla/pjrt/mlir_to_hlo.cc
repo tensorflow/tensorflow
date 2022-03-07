@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -71,7 +71,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     absl::string_view mlir_module_str, mlir::MLIRContext& context) {
   mlir::OwningOpRef<mlir::ModuleOp> module;
-  context.loadDialect<mlir::StandardOpsDialect>();
+  context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
   context.loadDialect<mlir::chlo::HloClientDialect>();
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);

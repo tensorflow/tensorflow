@@ -459,45 +459,23 @@ LogicalResult verifyReducerShape(
     return mlir::emitError(loc)
            << "The reduction-region expected to return some value(s)";
 
-  // Check that the reduction-region returns a tuple- OR list- of tensors.
+  // Check that the reduction-region returns list- of tensors.
   // The number of result-tensors must match the `numInputs`.
-  // TODO(b/171261845): Remove tuples from MHLO dialect.
-  auto tupleT =
-      block.getTerminator()->getOperand(0).getType().dyn_cast<TupleType>();
-  if (tupleT && block.getTerminator()->getOperands().size() == 1) {
-    if (tupleT.size() != numInputs)
-      return mlir::emitError(loc)
-             << "Reduction-region here must produce a tuple with " << numInputs
-             << " tensors, but produces " << tupleT.size() << " instead";
+  if (block.getTerminator()->getOperands().size() != numInputs)
+    return mlir::emitError(loc)
+           << "Reduction-region here must produce " << numInputs
+           << " tensors, but produces "
+           << block.getTerminator()->getOperands().size() << " instead";
 
-    for (Type elementType : tupleT.getTypes()) {
-      auto tensorTy = elementType.dyn_cast<TensorType>();
-      if (!tensorTy)
-        return mlir::emitError(loc)
-               << "Reduction-region here must produce tuple "
-                  "of tensor-typed results, but "
-                  "produces "
-               << elementType << " instead";
+  for (Value retOperand : block.getTerminator()->getOperands()) {
+    auto tensorTy = retOperand.getType().dyn_cast<TensorType>();
+    if (!tensorTy)
+      return mlir::emitError(loc) << "Reduction-region here must produce "
+                                     "tensor-typed result(s), but "
+                                     "produces "
+                                  << retOperand.getType() << " instead";
 
-      accumulatorSubShapes.push_back(tensorTy);
-    }
-  } else {
-    if (block.getTerminator()->getOperands().size() != numInputs)
-      return mlir::emitError(loc)
-             << "Reduction-region here must produce " << numInputs
-             << " tensors, but produces "
-             << block.getTerminator()->getOperands().size() << " instead";
-
-    for (Value retOperand : block.getTerminator()->getOperands()) {
-      auto tensorTy = retOperand.getType().dyn_cast<TensorType>();
-      if (!tensorTy)
-        return mlir::emitError(loc) << "Reduction-region here must produce "
-                                       "tensor-typed result(s), but "
-                                       "produces "
-                                    << retOperand.getType() << " instead";
-
-      accumulatorSubShapes.push_back(tensorTy);
-    }
+    accumulatorSubShapes.push_back(tensorTy);
   }
 
   // Consider typical reduce-* op syntax:
@@ -746,6 +724,39 @@ LogicalResult CustomCallOp::verify() {
 
   // Verify that results and result layouts match.
   return verify_types_and_layouts(result_types, result_layouts, "result");
+}
+
+//===----------------------------------------------------------------------===//
+// CholeskyOp
+//===----------------------------------------------------------------------===//
+
+// The following properties are already enforced by the ODS:
+//   P0. a.element_type is floating or complex
+// We intend to verify the following properties
+//   P1. The 'a' argument to Cholesky must have rank >= 2, got shape %s
+//   P2. The two minor dimensions of 'a' must have equal size, got %s.
+LogicalResult CholeskyOp::verify() {
+  auto a_type = a().getType().dyn_cast<RankedTensorType>();
+  if (!a_type) return success();  // Nothing to check for unranked tensors
+
+  auto a_shape = a_type.getShape();
+  if (a_shape.size() < 2) {
+    return emitOpError() << "argument 'a' must have rank >= 2, got shape "
+                         << a_shape << ".";
+  }
+
+  auto last_dim = a_shape[a_shape.size() - 1];
+  auto penultimate_dim = a_shape[a_shape.size() - 2];
+  if (isDynamicDimSize(last_dim) || isDynamicDimSize(penultimate_dim)) {
+    return success();
+  }
+  if (last_dim != penultimate_dim) {
+    return emitOpError()
+           << "minor dimensions of 'a' must have equal size, got shape "
+           << a_shape << ".";
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1750,6 +1761,72 @@ LogicalResult AllGatherOp::verify() {
            << resultType.getDimSize(allGatherDimIndex)
            << ", expected to be a multiple of operand gather dimension size "
            << operandType.getDimSize(allGatherDimIndex);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BatchNormGradOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BatchNormGradOp::verify() {
+  // The following properties are already enforced by the ODS:
+  //  1. Inputs 'operand' & 'grad_output' and outputs 'grad_operand',
+  //     are ranked-tensors with floating-point (fp) type.
+  //  2. The shapes of inputs 'operand' & 'grad_output' match.
+  //  3. Inputs 'scale', 'mean', 'variance' and Outputs 'grad_scale',
+  //     'grad_offset'  are all 1D fp tensors with same shape.
+  //  4. The element-types of input 'operand' and outputs 'grad_scale',
+  //     'grad_offset' match.
+  //  5. The type of input 'operand' and output 'grad_operand' match.
+  //
+  // We intend to verify the following properties
+  //  P1. Inputs 'operand' & 'grad_output' has the same shape with fp
+  //      element-types, ignoring fp-precision : Inferred from (1) & (2).
+  //  P2. The feature dimension 'feature_index' is a valid index in 'operand':
+  //      Inferred from check C2 below.
+  //  P3. Inputs 'scale', 'mean', 'variance' must be 1D tensors with same shape
+  //      and fp element-type (ignoring precision) and the number of elements
+  //      in its sole-dimension == number of features in the 'operand's
+  //      feature-dimension 'feature_index': Inferred from (3) and check C3
+  //      below.
+  //  P4. Outputs 'grad_scale' & 'grad_offset' are 1D tensors with
+  //      element-type == element-type of(operand) and same shape as any of
+  //      the inputs 'scale', 'mean', or 'variance': Inferred from (3), (4) and
+  //      check C3 below.
+  //  P5. The type (shape + element-type) of input 'operand' and
+  //      output 'grad_operand' must match: Inferred from (5).
+
+  // C2.
+  auto operand_type = operand().getType().cast<RankedTensorType>();
+  if (static_cast<int64_t>(feature_index()) >= operand_type.getRank())
+    return emitOpError() << "expects feature_index to be smaller "
+                            "than the rank of operand type; got feature_index "
+                         << feature_index() << ", and rank "
+                         << operand_type.getRank() << ".";
+
+  if (static_cast<int64_t>(feature_index()) < 0)
+    return emitOpError() << "expects feature_index to be a "
+                         << "non-negative number, got "
+                         << static_cast<int64_t>(feature_index()) << ".";
+
+  auto grad_output_type = grad_output().getType().cast<RankedTensorType>();
+  if (operand_type.getRank() != grad_output_type.getRank())
+    return emitOpError() << "expects 'operand' and 'grad_output' to have the "
+                            "same rank. but got rank(oprand) "
+                         << operand_type.getRank() << " and rank(grad_output) "
+                         << grad_output_type.getRank() << ".";
+
+  // C3.
+  const int64_t feature_count = operand_type.getShape()[feature_index()];
+  const int64_t scale_shape =
+      scale().getType().cast<RankedTensorType>().getShape()[0];
+  if (scale_shape != feature_count)
+    return emitOpError() << "expects the size of scale factor to be "
+                            "same as the feature count,"
+                            " but the size of scale factor is "
+                         << scale_shape << " and the feature count is "
+                         << feature_count << ".";
 
   return success();
 }
@@ -3091,29 +3168,51 @@ LogicalResult RealDynamicSliceOp::reifyReturnTypeShapes(
 // Checks that the result type is of the form `zero_or_more_type(s),
 // mhlo::token`
 LogicalResult InfeedOp::verify() {
-  auto result_ty = getResult(0).getType().dyn_cast<TupleType>();
-  if (result_ty) {
-    // TODO(@sdasgup): The current branch need to be removed once the
-    // allowance of tuple-return-type for infeed is revoked.
-    auto subtypes = result_ty.getTypes();
-    if (subtypes.size() != 2)
-      return emitOpError()
-             << "result is expected to be a tuple of size 2, but got "
-             << subtypes.size();
-    if (!subtypes[1].isa<TokenType>())
-      return emitOpError() << "second element of result tuple is expected to "
-                              "be of token type, but got "
-                           << subtypes[1];
-  } else {
-    auto result_types = getResultTypes();
-    if (result_types.empty())
-      return emitOpError()
-             << "result is expected to be at least of size 1, but got "
-             << result_types.size();
-    if (!result_types[result_types.size() - 1].isa<TokenType>())
-      return emitOpError() << "last element of result types is expected to "
-                              "be of token type, but got "
-                           << result_types[result_types.size() - 1];
+  auto result_types = getResultTypes();
+  if (result_types.empty())
+    return emitOpError()
+           << "result is expected to be at least of size 1, but got "
+           << result_types.size();
+
+  if (!result_types[result_types.size() - 1].isa<TokenType>())
+    return emitOpError() << "last element of result types is expected to "
+                            "be of token type, but got "
+                         << result_types[result_types.size() - 1];
+
+  // Verify layout attribute
+  constexpr char kLayoutAttr[] = "layout";
+  if (!getOperation()->hasAttr(kLayoutAttr)) return success();
+
+  mlir::ArrayAttr layout =
+      getOperation()->getAttrOfType<mlir::ArrayAttr>(kLayoutAttr);
+  if (!layout)
+    return emitOpError() << "layout-attribute expected to be of array-type.";
+
+  if (layout.size() != result_types.size() - 1) {
+    return emitOpError() << "layout-attribute size must be "
+                         << result_types.size() - 1
+                         << " (which is the number of "
+                            "op-results - 1 (for token result)), but got "
+                         << layout.size();
+  }
+
+  for (auto child_layout : layout) {
+    mlir::ArrayAttr child_layout_arr = child_layout.dyn_cast<mlir::ArrayAttr>();
+    if (!child_layout_arr) {
+      return emitOpError() << "layout-attribute expected to have "
+                              "elements of type array, but got "
+                           << child_layout;
+    }
+
+    for (int64_t i = 0; i < child_layout_arr.size(); i++) {
+      mlir::IntegerAttr attr =
+          child_layout_arr[i].dyn_cast<mlir::IntegerAttr>();
+      if (!attr) {
+        return emitOpError() << "layout-attribute's leaf elements are "
+                                "expected to be of type integer, but got "
+                             << child_layout_arr[i];
+      }
+    }
   }
 
   return success();

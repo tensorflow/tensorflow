@@ -1167,6 +1167,9 @@ class HloInstruction {
   HloOpcode opcode() const { return opcode_; }
   HloOpcode* mutable_opcode() { return &opcode_; }
 
+  // Returns whether this instruction is the root of its parent computation.
+  bool IsRoot() const;
+
   // Returns true if this instruction has a side effect, irrespective of whether
   // any called computations may contain an instruction with side effects.
   bool HasSideEffectNoRecurse() const;

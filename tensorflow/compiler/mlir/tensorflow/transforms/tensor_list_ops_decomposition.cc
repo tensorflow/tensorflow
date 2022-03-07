@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -139,8 +139,8 @@ AddTensorListSizesToTerminator(
 // size_return_index, fixed_size).
 llvm::SmallVector<std::tuple<int64_t, int64_t, bool>, 8> ModifyFunctionReturn(
     FuncOp func, const llvm::SmallDenseMap<Value, SizeInfo>& buffer_to_size) {
-  auto output_buffer_to_size =
-      AddTensorListSizesToTerminator<ReturnOp>(func.front(), buffer_to_size);
+  auto output_buffer_to_size = AddTensorListSizesToTerminator<func::ReturnOp>(
+      func.front(), buffer_to_size);
   UpdateFuncType(func);
   return output_buffer_to_size;
 }

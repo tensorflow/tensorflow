@@ -86,6 +86,10 @@ struct TfrtCompileOptions {
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
 
+  // If true, tf.While's iterations will be parallelized on a best-effort
+  // basis. This is currently experimental.
+  bool enable_while_parallel_iterations = false;
+
   // A set of flags to control auto-fusion: automatic clustering of Tensorflow
   // operations and compiling outlined regions using MLIR based compilation
   // stack.

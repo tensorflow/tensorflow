@@ -10,7 +10,7 @@
 func @alloc(%ctx: !tf_framework.op_kernel_context,
                 %size_0 : index , %size_2 : index) -> memref<?x10x?xf32> {
   %buf = tf_framework.alloc(%ctx, %size_0, %size_2) : memref<?x10x?xf32>
-  std.return %buf : memref<?x10x?xf32>
+  func.return %buf : memref<?x10x?xf32>
 }
 // Compute number of elements.
 // CHECK: [[SIZE_1:%.*]] = llvm.mlir.constant(10 : index) : i64

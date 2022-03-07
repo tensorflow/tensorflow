@@ -148,9 +148,9 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite:flatbuffer_import",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
     ],

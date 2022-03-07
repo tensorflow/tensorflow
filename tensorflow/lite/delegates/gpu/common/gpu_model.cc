@@ -256,7 +256,7 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
         tensor_desc.use_buffer_for_write_only_2d_texture = true;
       }
     }
-    tensor_desc.shape = BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
+    tensor_desc.SetBHWCShape(shape);
     tensor_reserver->Add(t->id, tensor_desc);
     max_id = std::max(max_id, t->id);
   }
@@ -343,17 +343,16 @@ absl::Status ConvertOperations(const GpuInfo& gpu_info,
     absl::flat_hash_map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
-      if (!t.second.data.empty()) {  // constant tensor
+      if (!t.second.GetData().empty()) {  // constant tensor
         auto global_id = tensor_reserver->GetNewId();
         gpu_model->const_tensors[global_id] =
             std::move(gpu_subgraph.new_tensors[j].second);
         const auto& shape = gpu_subgraph.new_tensors[j].first;
-        gpu_model->const_tensors[global_id].shape =
-            BHWDC(shape.b, shape.h, shape.w, 1, shape.c);
+        gpu_model->const_tensors[global_id].SetBHWCShape(shape);
         mapping_to_global_ids[j] = global_id;
       } else {
         TensorDescriptor td = t.second;
-        td.shape = BHWDC(t.first.b, t.first.h, t.first.w, 1, t.first.c);
+        td.SetBHWCShape(t.first);
         auto global_id = tensor_reserver->Add(td);
         mapping_to_global_ids[j] = global_id;
       }
@@ -506,13 +505,15 @@ absl::Status ResolvePolymorphicArgs(GpuModel* gpu_model) {
     std::vector<DummySpatialTensor> src_tensors(node.inputs.size());
     for (int i = 0; i < node.inputs.size(); ++i) {
       const auto& tensor_desc = gpu_model->tensors[node.inputs[i]];
-      src_tensors[i] = DummySpatialTensor(tensor_desc.shape, tensor_desc);
+      src_tensors[i] =
+          DummySpatialTensor(tensor_desc.GetBHWDCShape(), tensor_desc);
       node.gpu_operation->SetSrc(&src_tensors[i], i);
     }
     std::vector<DummySpatialTensor> dst_tensors(node.outputs.size());
     for (int i = 0; i < node.outputs.size(); ++i) {
       const auto& tensor_desc = gpu_model->tensors[node.outputs[i]];
-      dst_tensors[i] = DummySpatialTensor(tensor_desc.shape, tensor_desc);
+      dst_tensors[i] =
+          DummySpatialTensor(tensor_desc.GetBHWDCShape(), tensor_desc);
       node.gpu_operation->SetDst(&dst_tensors[i], i);
     }
     RETURN_IF_ERROR(

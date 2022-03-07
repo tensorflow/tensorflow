@@ -99,9 +99,10 @@ TEST(GpuMultiStream, Basics) {
         auto out_buffers,
         executable->Execute({{in_buffer0.get(), in_buffer1.get()}}, options));
 
-    TF_ASSERT_OK_AND_ASSIGN(auto out_literal, out_buffers[0][0]->ToLiteral());
+    TF_ASSERT_OK_AND_ASSIGN(auto out_literal,
+                            out_buffers[0][0]->ToLiteralSync());
     LiteralTestUtil::ExpectR1Equal<int32_t>(expected_outputs, *out_literal);
-    TF_ASSERT_OK_AND_ASSIGN(out_literal, out_buffers[0][1]->ToLiteral());
+    TF_ASSERT_OK_AND_ASSIGN(out_literal, out_buffers[0][1]->ToLiteralSync());
     LiteralTestUtil::ExpectR1Equal<int32_t>(expected_outputs, *out_literal);
   }
 }

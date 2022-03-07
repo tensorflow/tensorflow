@@ -9,7 +9,7 @@ func @tf_entry(%size_0 : index , %size_2 : index) -> index
     attributes {tf_entry} {
   %buf = memref.alloc(%size_0, %size_2)[] : memref<?x10x?xf32>
   memref.dealloc %buf : memref<?x10x?xf32>
-  std.return %size_0 : index
+  func.return %size_0 : index
 }
 // CHECK-NEXT: [[BUF:%.*]] = tf_framework.alloc
 // CHECK-SAME:   ([[CTX]], [[SIZE_0]], [[SIZE_2]]) : memref<?x10x?xf32>
@@ -28,7 +28,7 @@ func @tf_entry(%size_0 : index , %size_2 : index) -> index
 // CHECK-LABEL: func @non_tf_entry(
 // CHECK-SAME:    [[SIZE_0:%.*]]: index, [[SIZE_2:%.*]]: index) -> index
 func @non_tf_entry(%size_0 : index , %size_2 : index) -> index {
-  std.return %size_0 : index
+  func.return %size_0 : index
 }
 
 // -----
@@ -37,7 +37,7 @@ func @tf_entry_no_ctx(%size : index) attributes {tf_entry} {
   // expected-error @+1 {{failed to legalize operation 'memref.alloc' that was explicitly marked illegal}}
   %buf = memref.alloc()[%size] : memref<64xf32, affine_map<(d0)[s0] -> (d0 + s0)>>
   memref.dealloc %buf : memref<64xf32, affine_map<(d0)[s0] -> (d0 + s0)>>
-  std.return
+  func.return
 }
 
 // -----

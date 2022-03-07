@@ -46,9 +46,9 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -1393,7 +1393,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     return_operands.push_back(vals_map[index]);
   }
 
-  op_builder.create<mlir::ReturnOp>(base_loc, return_operands);
+  op_builder.create<mlir::func::ReturnOp>(base_loc, return_operands);
 
   return PostProcessFuncOp(func);
 }
@@ -1422,7 +1422,7 @@ void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
   auto inputs = func.getType().getInputs();
   region.addArguments(inputs, mlir::SmallVector<Location>(inputs.size(), loc));
   op_builder.setInsertionPointToStart(&region.front());
-  auto call_op = op_builder.create<mlir::CallOp>(
+  auto call_op = op_builder.create<mlir::func::CallOp>(
       loc, func.getType().getResults(), func.sym_name(), region.getArguments());
   op_builder.create<mlir::TFL::YieldOp>(loc, call_op.getResults());
 }
@@ -1450,7 +1450,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
-  context->loadDialect<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+  context->loadDialect<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                        mlir::quant::QuantizationDialect,
                        mlir::TFL::TensorFlowLiteDialect,
                        mlir::TF::TensorFlowDialect>();

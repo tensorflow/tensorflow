@@ -78,6 +78,12 @@ limitations under the License.
 // would work!
 #define TFTRT_CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
 
+#define TFTRT_CHECK_INPUT_SIZE(size, exp_size, node_def)                 \
+  if ((size) != (exp_size)) {                                            \
+    TFTRT_ERROR(errors::InvalidArgument, node_def.op(), " got ", (size), \
+                " inputs but expected ", (exp_size));                    \
+  }
+
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -1701,11 +1707,8 @@ Status CheckInputsWeights(
     const std::vector<std::pair<string, TrtInputArg>>& expected_inputs) {
   const auto& inputs = params.inputs;
   const auto& node_def = params.node_def;
-  if (inputs.size() != expected_inputs.size()) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected ",
-                                   expected_inputs.size());
-  }
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), expected_inputs.size(), node_def);
+
   for (int i = 0; i < inputs.size(); i++) {
     if (expected_inputs[i].second == TrtInputArg::kWeight &&
         inputs.at(i).is_tensor()) {
@@ -3416,11 +3419,7 @@ Status ConvertRelu6(OpConverterParams* params) {
 Status ConvertBiasAdd(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(
-        "BiasAdd expects exactly 2 inputs, but received ", inputs.size());
-  }
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
 
   if (inputs[0].is_weights() && inputs[1].is_weights()) {
     return errors::InvalidArgument(
@@ -3649,10 +3648,8 @@ Status ConvertIdentity(OpConverterParams* params) {
 Status ConvertBinary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected 2");
-  }
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
+
   std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
                                    DataType::DT_INT32};
   TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
@@ -4910,10 +4907,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
 Status ConvertMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected 2");
-  }
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
+
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
@@ -4929,10 +4924,8 @@ Status ConvertMatMul(OpConverterParams* params) {
 Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected 2");
-  }
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
+
   TF_RETURN_IF_ERROR(CheckInputsWeights(
       *params, {{"x", TrtInputArg::kBoth}, {"y", TrtInputArg::kBoth}}));
   // TODO(tfeher): Consider adding INT8 type because FC layer can support it.
@@ -5961,10 +5954,9 @@ Status ConvertAddN(OpConverterParams* params) {
   if (num_inputs < 2) {
     return errors::InvalidArgument("AddN requires at least two inputs");
   }
-  if (inputs.size() != num_inputs) {
-    return errors::InvalidArgument("Got ", inputs.size(),
-                                   " inputs but expected ", num_inputs);
-  }
+
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), num_inputs, node_def);
+
   for (const auto& input : inputs) {
     if (!input.is_tensor() && input.weights().Shape().dim(0) != 1) {
       return errors::InvalidArgument(

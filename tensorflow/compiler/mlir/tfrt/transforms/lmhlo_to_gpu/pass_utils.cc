@@ -41,7 +41,12 @@ Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
         "Failed to lower LMHLO to TFRT Dialect with gpu kernels.");
   }
 
-  tfrt::gpu::setEntryPoint(module, tfrt::gpu::wrapper::Platform::CUDA,
+  tfrt::gpu::setEntryPoint(module,
+#if TENSORFLOW_USE_ROCM
+                           tfrt::gpu::wrapper::Platform::ROCm,
+#else
+                           tfrt::gpu::wrapper::Platform::CUDA,
+#endif
                            entry_function_name, buffer_sizes);
   return Status::OK();
 }

@@ -459,14 +459,14 @@ flatbuffers::Offset<data::TensorDescriptor> Encode(
       Encode(*static_cast<const GPUObjectDescriptor*>(&desc), builder);
 
   data::BHWDCBuilder shape_builder(*builder);
-  shape_builder.add_b(desc.shape.b);
-  shape_builder.add_h(desc.shape.h);
-  shape_builder.add_w(desc.shape.w);
-  shape_builder.add_d(desc.shape.d);
-  shape_builder.add_c(desc.shape.c);
+  shape_builder.add_b(desc.GetBHWDCShape().b);
+  shape_builder.add_h(desc.GetBHWDCShape().h);
+  shape_builder.add_w(desc.GetBHWDCShape().w);
+  shape_builder.add_d(desc.GetBHWDCShape().d);
+  shape_builder.add_c(desc.GetBHWDCShape().c);
   auto shape_fb = shape_builder.Finish();
 
-  auto data_fb = builder->CreateVector(desc.data);
+  auto data_fb = builder->CreateVector(desc.GetData());
   data::TensorDescriptorBuilder tensor_builder(*builder);
   tensor_builder.add_base_obj(obj_fb);
   tensor_builder.add_data_type(ToFB(desc.data_type));
@@ -486,14 +486,12 @@ void Decode(const data::TensorDescriptor* fb_desc, TensorDescriptor* desc) {
   desc->data_type = ToEnum(fb_desc->data_type());
   desc->storage_type = ToEnum(fb_desc->storage_type());
   desc->layout = ToEnum(fb_desc->layout());
-  desc->shape.b = fb_desc->shape()->b();
-  desc->shape.h = fb_desc->shape()->h();
-  desc->shape.w = fb_desc->shape()->w();
-  desc->shape.d = fb_desc->shape()->d();
-  desc->shape.c = fb_desc->shape()->c();
-  desc->data =
+  desc->SetBHWDCShape(BHWDC(fb_desc->shape()->b(), fb_desc->shape()->h(),
+                            fb_desc->shape()->w(), fb_desc->shape()->d(),
+                            fb_desc->shape()->c()));
+  desc->SetData(
       std::vector<uint8_t>(fb_desc->data()->data(),
-                           fb_desc->data()->data() + fb_desc->data()->size());
+                           fb_desc->data()->data() + fb_desc->data()->size()));
   desc->use_buffer_for_write_only_2d_texture =
       fb_desc->use_buffer_for_write_only_2d_texture();
   desc->use_buffer_for_write_only_image_buffer =

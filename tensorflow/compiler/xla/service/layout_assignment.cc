@@ -2132,39 +2132,10 @@ Status LayoutAssignment::RunOnComputation(
 Status LayoutAssignment::ConstrainChannelLayouts(
     HloComputation* computation,
     ChannelLayoutConstraints* channel_constraints) {
-  auto get_channel_constraints = [&](const HloInstruction* instruction) {
-    return IsHostSendRecv(instruction) ? &host_channel_constraints_
-                                       : channel_constraints;
-  };
-  // We go through the kRecvDone before. These must either impose their layout,
-  // or find a matching one already existing (ConstrainChannel() returns
-  // nullptr).
-  for (HloInstruction* instruction : computation->instructions()) {
-    if (instruction->opcode() == HloOpcode::kRecvDone) {
-      const Layout* layout =
-          get_channel_constraints(instruction)
-              ->ConstrainChannel(
-                  *instruction->channel_id(),
-                  ShapeUtil::GetSubshape(instruction->shape(), {0}).layout());
-      TF_RET_CHECK(layout == nullptr)
-          << instruction->ToString()
-          << " cannot constrain layout as it was set to "
-          << LayoutUtil::HumanString(*layout);
-    }
-  }
-  // After that we go through the kSend. These are likely going to have a kCopy
-  // as operand (otherwise we add it), so in case the constrained layout does
-  // not match, we can change the kCopy layout (and the kSend one as well).
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
-    if (instruction->opcode() == HloOpcode::kSend) {
-      HloInstruction* operand = instruction->mutable_operand(0);
-      get_channel_constraints(instruction)
-          ->ConstrainChannel(*instruction->channel_id(),
-                             operand->shape().layout());
-    } else if (instruction->IsCrossModuleAllReduce()) {
-      get_channel_constraints(instruction)
-          ->ConstrainChannel(instruction->channel_id().value(),
-                             instruction->shape().layout());
+    if (instruction->IsCrossModuleAllReduce()) {
+      channel_constraints->ConstrainChannel(instruction->channel_id().value(),
+                                            instruction->shape().layout());
     }
   }
   return Status::OK();

@@ -17,7 +17,7 @@ limitations under the License.
 // equivalent real value operations.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 //===----------------------------------------------------------------------===//

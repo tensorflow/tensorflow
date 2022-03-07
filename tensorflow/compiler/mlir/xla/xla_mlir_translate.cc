@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/xla_mlir_translate.h"
 
 #include "llvm/Support/MemoryBuffer.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project

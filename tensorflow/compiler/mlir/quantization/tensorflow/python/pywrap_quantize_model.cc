@@ -16,7 +16,7 @@ limitations under the License.
 #include <cstring>
 
 #include "pybind11/pybind11.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model_wrapper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 PYBIND11_MODULE(pywrap_quantize_model, m) {
