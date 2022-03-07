@@ -185,8 +185,8 @@ bool IndicesToCopyForWhile(const HloDataflowAnalysis& dataflow,
     const ShapeIndex& index = pair.first;
     bool& should_copy = pair.second;
     // If there is any ambiguity, then loop state must be copied.
-    if (dataflow.GetValueSet(init, index).values().size() > 1 ||
-        dataflow.GetValueSet(xla_while, index).values().size() > 1) {
+    if (dataflow.GetValueSet(init, index).size() > 1 ||
+        dataflow.GetValueSet(xla_while, index).size() > 1) {
       should_copy = true;
     } else {
       // If the output of the while instruction is not the same as the init
@@ -213,12 +213,11 @@ bool IndicesToCopyForConditional(const HloDataflowAnalysis& dataflow,
     const ShapeIndex& index = pair.first;
     bool& should_copy = pair.second;
 
-    CHECK_EQ(dataflow.GetValueSet(xla_conditional, index).values().size(), 1);
-
-    auto value = dataflow.GetValueSet(xla_conditional, index).values()[0];
+    const HloValue& value =
+        dataflow.GetValueSet(xla_conditional, index).GetUniqueValue();
     // The conditional must be copied if the value is a phi.
     should_copy =
-        value->is_phi() && value->defining_instruction() == xla_conditional;
+        value.is_phi() && value.defining_instruction() == xla_conditional;
     any_copies |= should_copy;
   }
   return any_copies;
@@ -1245,7 +1244,7 @@ class CopyRemover {
         if (instruction->opcode() == HloOpcode::kCopy) {
           const HloValueSet& src_value_set =
               dataflow_.GetValueSet(instruction->operand(0));
-          if (src_value_set.values().size() == 1) {
+          if (src_value_set.size() == 1) {
             CopyNodes& copy_node = copy_map_[instruction];
             copy_node.dest =
                 value_to_node.at(&dataflow_.GetUniqueValueAt(instruction));
@@ -1955,7 +1954,7 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
          alias_analysis->dataflow_analysis().GetInstructionValueSet(root)) {
       const ShapeIndex& index = pair.first;
       const HloValueSet& value_set = pair.second;
-      for (const HloValue* value : value_set.values()) {
+      for (const HloValue* value : value_set) {
         if (ShouldCopyRootValue(*value, policy)) {
           VLOG(2) << "Root of (" << root->name() << ") of computation("
                   << computation->name()

@@ -63,9 +63,9 @@ class HloDataflowAnalysisTest : public HloTestBase,
   std::vector<HloValue> HloValuesAt(const HloInstruction* instruction,
                                     const ShapeIndex& index = {}) {
     CHECK(analysis_ != nullptr);
+    const HloValueSet& analysis_values =
+        analysis_->GetValueSet(instruction, index);
     std::vector<HloValue> values;
-    const auto& analysis_values =
-        analysis_->GetValueSet(instruction, index).values();
     values.reserve(analysis_values.size());
     for (const HloValue* value : analysis_values) {
       values.push_back(*value);
@@ -1735,7 +1735,7 @@ ENTRY root {
   auto& dataflow_analysis = RunAnalysis(GetParam());
   auto set = dataflow_analysis.GetFlattenedValueSet(
       entry->GetInstructionWithName("t"));
-  EXPECT_EQ(set.values().size(), 3);
+  EXPECT_EQ(set.size(), 3);
 }
 
 TEST_P(HloDataflowAnalysisTest, ConditionalWithIdentity) {

@@ -293,10 +293,8 @@ bool AreTransitiveUsesEffectivelyElementwise(const HloInstruction* param,
 bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
                                            const ShapeIndex& index) const {
   const HloValueSet& value_set = GetValueSet(instruction, index);
-  if (value_set.values().size() != 1) {
-    return false;
-  }
-  return value_set.GetUniqueValue().defining_instruction() == instruction;
+  return (value_set.size() == 1) &&
+         (value_set.GetUniqueValue().defining_instruction() == instruction);
 }
 
 const HloValue& HloDataflowAnalysis::GetValueDefinedAt(
@@ -343,7 +341,7 @@ void HloDataflowAnalysis::DeleteMarkedValues() {
     const InstructionValueSet& instruction_value_set = *pair.second;
     for (const auto& index_value_set : instruction_value_set) {
       const HloValueSet& value_set = index_value_set.second;
-      for (const HloValue* value : value_set.values()) {
+      for (const HloValue* value : value_set) {
         DCHECK(!ContainsKey(id_set, value->id()))
             << "Value " << value->ToShortString()
             << " marked for deletion, but still exists in value set for "
@@ -373,7 +371,7 @@ std::string HloDataflowAnalysis::ToString() const {
                                 const ShapeIndex& index,
                                 const HloValueSet& value_set) {
               StrAppend(&out, "      tuple index ", index.ToString(), ":\n");
-              for (const HloValue* value : value_set.values()) {
+              for (const HloValue* value : value_set) {
                 StrAppend(&out, "        ", value->ToShortString(),
                           ValueIsDefinedAt(instruction, index) ? " (def)" : "",
                           "\n");
@@ -382,7 +380,7 @@ std::string HloDataflowAnalysis::ToString() const {
       } else {
         const HloValueSet& top_level_value_set =
             GetValueSet(instruction, /*index=*/{});
-        for (const HloValue* value : top_level_value_set.values()) {
+        for (const HloValue* value : top_level_value_set) {
           StrAppend(&out, "      ", value->ToShortString(),
                     ValueIsDefinedAt(instruction) ? " (def)" : "", "\n");
         }
@@ -429,14 +427,14 @@ bool HloDataflowAnalysis::Phi(
 
     // Positions with phi values should never have more than one value in the
     // value set.
-    CHECK_LE(value_set.values().size(), 1);
+    CHECK_LE(value_set.size(), 1);
     const HloValue* current_value =
-        value_set.values().size() == 1 ? value_set.values()[0] : nullptr;
+        value_set.size() == 1 ? &value_set.GetUniqueValue() : nullptr;
 
     // Construct a vector of value IDs of the inputs.
     std::vector<HloValue::Id> input_value_ids;
     for (const InstructionValueSet* input : inputs) {
-      for (const HloValue* value : input->element(index).values()) {
+      for (const HloValue* value : input->element(index)) {
         input_value_ids.push_back(value->id());
       }
     }
@@ -454,7 +452,7 @@ bool HloDataflowAnalysis::Phi(
       // A value set which has at least one element should never have its value
       // set reduced to zero elements. During dataflow value sets only can go
       // from empty to non-empty, not the reverse.
-      CHECK_EQ(value_set.values().size(), 0)
+      CHECK(value_set.empty())
           << "Instruction " << instruction->name() << " at index " << index
           << " previously had non-empty value set. Value set: " << value_set;
     } else if (input_value_ids.size() == 1) {
@@ -462,16 +460,14 @@ bool HloDataflowAnalysis::Phi(
       // this value set should contain this single value.
       const HloValue& new_value = GetValue(input_value_ids[0]);
       if (current_value == nullptr) {
-        value_set.Clear();
-        value_set.AddValue(&new_value);
+        value_set = {&new_value};
         changed = true;
       } else if (current_value != &new_value) {
         if (current_value_defined_here) {
           // Remove the existing phi.
           MarkValueForDeletion(current_value->id());
         }
-        value_set.Clear();
-        value_set.AddValue(&new_value);
+        value_set = {&new_value};
         changed = true;
       }
     } else {
@@ -481,8 +477,7 @@ bool HloDataflowAnalysis::Phi(
       bool phi_defined_here =
           current_value_defined_here && current_value->is_phi();
       if (current_value == nullptr || !phi_defined_here) {
-        value_set.Clear();
-        value_set.AddValue(NewHloValue(instruction, index, /*is_phi=*/true));
+        value_set = {NewHloValue(instruction, index, /*is_phi=*/true)};
 
         std::vector<HloValue*> inputs;
         inputs.reserve(input_value_ids.size());
@@ -490,7 +485,7 @@ bool HloDataflowAnalysis::Phi(
           inputs.push_back(&GetValue(id));
         }
         // Register the phi into phi graph.
-        phi_graph_.RegisterPhi(*value_set.values()[0], inputs);
+        phi_graph_.RegisterPhi(**value_set.begin(), inputs);
         changed = true;
       } else if (phi_defined_here) {
         std::vector<HloValue*> new_inputs;
@@ -521,19 +516,13 @@ HloValue& HloDataflowAnalysis::GetValue(HloValue::Id value_id) {
 
 HloValueSet HloDataflowAnalysis::GetFlattenedValueSet(
     const HloInstruction* instruction) const {
-  HloValueSet value_set;
-
-  const InstructionValueSet& value_set_tree =
-      GetInstructionValueSet(instruction);
-
+  const auto& value_set_tree = GetInstructionValueSet(instruction);
   std::vector<const HloValueSet*> all_sets;
-  for (auto& pair : value_set_tree) {
-    const HloValueSet& value_set = pair.second;
-    all_sets.push_back(&value_set);
+  all_sets.reserve(value_set_tree.size());
+  for (auto& pair : GetInstructionValueSet(instruction)) {
+    all_sets.push_back(&pair.second);
   }
-  value_set.AssignUnionOf(all_sets);
-
-  return value_set;
+  return HloValueSet::UnionOf(all_sets);
 }
 
 const HloValueSet& HloDataflowAnalysis::GetValueSet(
@@ -1217,21 +1206,19 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
       value_sets_.insert({instruction, std::make_unique<InstructionValueSet>(
                                            instruction->shape())});
 
-      // For each sub-shape of the instruction shape, add a new HloValue to its
-      // HloValueSet.
-      auto define_all_values = [this, &instruction]() {
-        for (auto& pair : GetInstructionValueSet(instruction)) {
-          const ShapeIndex& index = pair.first;
-          HloValue* value = NewHloValue(instruction, index, /*is_phi=*/false);
-          GetValueSet(instruction, index).AddValue(value);
-        }
-      };
-
       // Add a new HloValue to the HloValueSet corresponding to the given index
       // of the instruction shape.
       auto define_value_at = [this, &instruction](const ShapeIndex& index) {
         HloValue* value = NewHloValue(instruction, index, /*is_phi=*/false);
-        GetValueSet(instruction, index).AddValue(value);
+        GetValueSet(instruction, index).insert(value);
+      };
+
+      // For each sub-shape of the instruction shape, add a new HloValue to its
+      // HloValueSet.
+      auto define_all_values = [&] {
+        for (auto& pair : GetInstructionValueSet(instruction)) {
+          define_value_at(pair.first);
+        }
       };
 
       switch (instruction->opcode()) {
@@ -1373,18 +1360,16 @@ void HloDataflowAnalysis::OptimizePhiValues() {
       VLOG(1) << instruction_value_set.ToString();
       instruction_value_set.ForEachMutableElement(
           [&](const xla::ShapeIndex& index, HloValueSet* value_set) {
-            auto values = value_set->values();
-            if (!(values.size() == 1 && values[0]->is_phi())) {
-              return;
-            }
-            HloValue::Id phi_id = values[0]->id();
+            if (value_set->size() != 1) return;
+            const HloValue& value = value_set->GetUniqueValue();
+            if (!value.is_phi()) return;
+
+            HloValue::Id phi_id = value.id();
             HloValue::Id new_id = phi_graph_.FindOptimizedValue(phi_id);
             if (new_id != phi_id) {
-              VLOG(1) << "Replacing " << values[0]->ToString() << " with "
-                      << GetValue(new_id).ToString();
-              value_set->Clear();
               const HloValue& new_value = GetValue(new_id);
-              value_set->AddValue(&new_value);
+              VLOG(1) << "Replacing " << value << " with " << new_value;
+              *value_set = {&new_value};
               MarkValueForDeletion(phi_id);
             }
           });
@@ -1421,7 +1406,7 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
            dataflow_analysis->GetInstructionValueSet(instruction)) {
         const ShapeIndex& index = pair.first;
         const HloValueSet& value_set = pair.second;
-        for (const HloValue* value : value_set.values()) {
+        for (const HloValue* value : value_set) {
           if (value->defining_instruction() != instruction) {
             value_positions[value->id()].push_back(
                 HloPosition{instruction, index});
@@ -1455,8 +1440,7 @@ Status HloDataflowAnalysis::Verify() const {
   // indicate.
   for (const HloValue* value : values()) {
     for (const HloPosition& position : value->positions()) {
-      const HloValueSet& value_set = GetValueSet(position);
-      TF_RET_CHECK(absl::c_linear_search(value_set.values(), value))
+      TF_RET_CHECK(GetValueSet(position).contains(value))
           << "Value set at position " << position << " does not contain value "
           << value->ToShortString();
     }
@@ -1470,7 +1454,7 @@ Status HloDataflowAnalysis::Verify() const {
         const ShapeIndex& index = pair.first;
         const HloValueSet& value_set = pair.second;
         const HloPosition position{instruction, index};
-        for (const HloValue* value : value_set.values()) {
+        for (const HloValue* value : value_set) {
           TF_RET_CHECK(absl::c_linear_search(value->positions(), position))
               << "Value set at position " << position
               << " unexpectedly contains value " << value->ToShortString();
@@ -1486,7 +1470,7 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
     const HloInstruction* operand, const ShapeIndex& index,
     const HloInstruction* user) const {
   // Return false if no value at 'operand' and 'index' is used at 'user'.
-  for (const HloValue* value : GetValueSet(operand, index).values()) {
+  for (const HloValue* value : GetValueSet(operand, index)) {
     for (const HloUse& use : value->uses()) {
       if (use.instruction == user) {
         if (user->IsLoopFusion()) {

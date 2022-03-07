@@ -145,6 +145,8 @@ class ShapeTree {
   ShapeTree(ShapeTree&&) = default;
   ShapeTree& operator=(ShapeTree&& other) = default;
 
+  size_t size() const { return nodes_.size(); }
+
   // iterator implements a bidirectional_iterator with
   //  value_type = std::pair<ShapeIndex, T>.
   //

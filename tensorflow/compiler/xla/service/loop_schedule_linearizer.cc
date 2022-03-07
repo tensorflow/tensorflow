@@ -89,8 +89,8 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
       continue;
     }
 
-    if (dataflow.GetValueSet(root, index).values().size() > 1 ||
-        dataflow.GetValueSet(input, index).values().size() > 1) {
+    if (dataflow.GetValueSet(root, index).size() > 1 ||
+        dataflow.GetValueSet(input, index).size() > 1) {
       VLOG(2) << "Index " << index.ToString() << " is associated with multiple "
               << "values, not attempting to introduce stricter dependencies";
     } else {

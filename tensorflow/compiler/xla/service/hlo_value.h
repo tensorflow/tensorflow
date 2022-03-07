@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VALUE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VALUE_H_
 
-#include <stddef.h>
-
+#include <algorithm>
+#include <initializer_list>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -190,27 +192,35 @@ std::ostream& operator<<(std::ostream& out, const HloValue& hlo_value);
 // defined by the instruction's operands or defined further up in the XLA graph.
 class HloValueSet {
  public:
-  HloValueSet() = default;
+  using const_iterator = std::vector<const HloValue*>::const_iterator;
 
+  HloValueSet() = default;
+  HloValueSet(std::initializer_list<const HloValue*> values)
+      : HloValueSet(absl::Span<const HloValue* const>(values)) {}
   explicit HloValueSet(absl::Span<const HloValue* const> values)
-      : values_(values.begin(), values.end()) {
-    SortAndUniquifyValues();
+      : HloValueSet(
+            std::vector<const HloValue*>(values.begin(), values.end())) {}
+
+  bool insert(const HloValue* value);
+
+  // Merges the values from the other set into this one.
+  void merge(const HloValueSet& other);
+
+  bool empty() const { return values_.empty(); }
+  size_t size() const { return values_.size(); }
+
+  bool contains(const HloValue* value) const {
+    return absl::c_binary_search(values_, value, HloValue::IdLessThan);
   }
+
+  const_iterator begin() const { return values_.begin(); }
+  const_iterator end() const { return values_.end(); }
+
+  static HloValueSet UnionOf(absl::Span<const HloValueSet* const> inputs);
 
   // Sets this value set to the union of the given value sets. Returns whether
   // this value set changed.
   bool AssignUnionOf(absl::Span<const HloValueSet* const> inputs);
-
-  // Return the vector of HloValues in the set. Values in the vector are unique
-  // and stably sorted by value id.
-  const std::vector<const HloValue*>& values() const { return values_; }
-
-  // Adds the value to the set.  Returns true iff the value was added and didn't
-  // already exist in the set.
-  bool AddValue(const HloValue* value);
-
-  // Clear all values from the set.
-  void Clear() { values_.clear(); }
 
   // Return the unique HLO value in the set. CHECKs if the set does not contain
   // exactly one value.
@@ -220,22 +230,21 @@ class HloValueSet {
   }
 
   bool operator==(const HloValueSet& other) const {
-    if (values_.size() != other.values_.size()) return false;
-    for (size_t i = 0; i < values_.size(); ++i) {
-      if (values_[i]->id() != other.values_[i]->id()) {
-        return false;
-      }
-    }
-    return true;
+    return absl::c_equal(*this, other, HloValue::IdEqual);
   }
   bool operator!=(const HloValueSet& other) const { return !(*this == other); }
 
   std::string ToString() const;
 
  private:
-  // Sorts value_ and removes duplicates. This should be called after adding any
-  // elements to values_.
-  void SortAndUniquifyValues();
+  explicit HloValueSet(std::vector<const HloValue*> values)
+      : values_(std::move(values)) {
+    absl::c_sort(values_, HloValue::IdLessThan);
+    // Remove duplicate values.
+    values_.erase(
+        std::unique(values_.begin(), values_.end(), HloValue::IdEqual),
+        values_.end());
+  }
 
   // HloValues sorted by HloValue::Id.
   std::vector<const HloValue*> values_;

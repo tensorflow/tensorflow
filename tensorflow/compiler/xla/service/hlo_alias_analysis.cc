@@ -397,7 +397,7 @@ std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
   std::vector<const HloBuffer*> buffers;
   for (const HloValue* value :
-       dataflow_analysis_->GetValueSet(instruction, index).values()) {
+       dataflow_analysis_->GetValueSet(instruction, index)) {
     buffers.push_back(&GetBufferContainingValue(*value));
   }
 
@@ -414,7 +414,7 @@ bool HloAliasAnalysis::InstructionBuffersAreAmbiguous(
        dataflow_analysis_->GetInstructionValueSet(instruction)) {
     const HloValueSet& value_set = pair.second;
     const HloBuffer* buffer = nullptr;
-    for (const HloValue* value : value_set.values()) {
+    for (const HloValue* value : value_set) {
       if (buffer == nullptr) {
         buffer = &GetBufferContainingValue(*value);
       } else if (buffer != &GetBufferContainingValue(*value)) {
@@ -431,7 +431,7 @@ bool HloAliasAnalysis::InstructionBuffersAreDistinct(
   for (const auto& pair :
        dataflow_analysis_->GetInstructionValueSet(instruction)) {
     const HloValueSet& value_set = pair.second;
-    if (value_set.values().size() == 1) {
+    if (value_set.size() == 1) {
       if (!buffers_seen
                .insert(&GetBufferContainingValue(value_set.GetUniqueValue()))
                .second) {
@@ -445,9 +445,9 @@ bool HloAliasAnalysis::InstructionBuffersAreDistinct(
       // case, however, as the number of values at an index is almost always
       // one.
       std::vector<const HloBuffer*> buffers_at_this_index;
-      for (const HloValue* value : value_set.values()) {
+      for (const HloValue* value : value_set) {
         const HloBuffer* buffer = &GetBufferContainingValue(*value);
-        if (ContainsKey(buffers_seen, buffer)) {
+        if (buffers_seen.contains(buffer)) {
           return false;
         }
         buffers_at_this_index.push_back(buffer);

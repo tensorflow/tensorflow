@@ -249,15 +249,14 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     const HloValueSet& sources = this->GetRootValueSet().element(index);
     // The points to set is unambiguous so the set should be a
     // singleton.
-    CHECK_EQ(1, sources.values().size());
-    const HloValue* value_source = sources.values()[0];
-    HloInstruction* src = value_source->instruction();
+    const HloValue& value_source = sources.GetUniqueValue();
+    HloInstruction* src = value_source.instruction();
 
     // The source for this result buffer can be a nested buffer such as
     // a tuple element.
     TF_ASSIGN_OR_RETURN(
         const BufferAllocation::Slice slice,
-        this->assignment_->GetUniqueSlice(src, value_source->index()));
+        this->assignment_->GetUniqueSlice(src, value_source.index()));
     const BufferAllocation::Index buffer_index = slice.index();
 
     // TODO(cheshire): duplication with other backends.

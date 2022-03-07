@@ -211,7 +211,7 @@ void HloLiveRange::CalculateBufferStartEndMap() {
             &instruction);
 
     for (const auto& entry : value_set_tree) {
-      for (const HloValue* value : entry.second.values()) {
+      for (const HloValue* value : entry.second) {
         // The start time is only correct for the defining instruction.
         if (value->defining_instruction() != &instruction) continue;
 

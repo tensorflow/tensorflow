@@ -58,9 +58,8 @@ class HloAliasAnalysisTest : public HloTestBase {
   std::vector<HloBuffer> GetBuffersAt(const HloInstruction* instruction,
                                       const ShapeIndex& index = {}) const {
     std::set<HloBuffer::Id> buffer_ids;
-    for (const HloValue* value : analysis_->dataflow_analysis()
-                                     .GetValueSet(instruction, index)
-                                     .values()) {
+    for (const HloValue* value :
+         analysis_->dataflow_analysis().GetValueSet(instruction, index)) {
       buffer_ids.insert(analysis_->GetBufferContainingValue(*value).id());
     }
 

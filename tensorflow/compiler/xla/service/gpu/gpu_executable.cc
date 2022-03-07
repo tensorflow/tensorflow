@@ -1118,14 +1118,13 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
         // The points-to set is unambiguous so the set should be a
         // singleton. That is, we know exactly which instruction
         // produced the array at this element.
-        CHECK_EQ(1, sources.values().size());
-        HloInstruction* src_hlo = sources.values()[0]->instruction();
+        const HloValue& src = sources.GetUniqueValue();
+        const HloInstruction* src_hlo = src.instruction();
 
         GpuExecutable::OutputInfo& info = output[index];
         info.passthrough = src_hlo->opcode() == HloOpcode::kParameter;
-        TF_ASSIGN_OR_RETURN(
-            const BufferAllocation::Slice slice,
-            assignment.GetUniqueSlice(src_hlo, sources.values()[0]->index()));
+        TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                            assignment.GetUniqueSlice(src_hlo, src.index()));
         CHECK_EQ(slice.offset(), 0) << "Parameter should get its own slice";
         info.allocation_index = slice.index();
 

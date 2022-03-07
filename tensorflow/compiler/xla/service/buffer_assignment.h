@@ -427,9 +427,9 @@ class BufferAssignment {
 
   // Returns the set BufferValues which may be the source of the value at the
   // given index and instruction.
-  const std::vector<const HloValue*>& GetSourceBuffers(
-      const HloInstruction* instruction, const ShapeIndex& index) const {
-    return dataflow_analysis().GetValueSet(instruction, index).values();
+  const HloValueSet& GetSourceBuffers(const HloInstruction* instruction,
+                                      const ShapeIndex& index) const {
+    return dataflow_analysis().GetValueSet(instruction, index);
   }
 
   // Returns true if 'hlo_a{shape_index_a}' and 'hlo_b{shape_index_b}'

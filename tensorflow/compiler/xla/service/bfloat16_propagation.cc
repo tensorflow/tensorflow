@@ -89,10 +89,8 @@ void BFloat16Propagation::RevertIfFusionInternalBF16Changes(
   auto root_changes_it = changes_to_bf16_.find(root);
   if (root_changes_it != changes_to_bf16_.end()) {
     for (const auto& entry : root_changes_it->second) {
-      for (const HloValue* value :
-           dataflow_->GetValueSet(root, entry.second).values()) {
-        changed_root_buffers.insert(value);
-      }
+      const HloValueSet& values = dataflow_->GetValueSet(root, entry.second);
+      changed_root_buffers.insert(values.begin(), values.end());
     }
   }
 
@@ -110,13 +108,12 @@ void BFloat16Propagation::RevertIfFusionInternalBF16Changes(
               if (subshape.element_type() != F32) {
                 return;
               }
-              for (const HloValue* value :
-                   dataflow_->GetValueSet(inst, index).values()) {
-                if (ContainsKey(changed_root_buffers, value)) {
-                  aliasing = true;
-                  break;
-                }
-              }
+
+              aliasing |=
+                  absl::c_any_of(dataflow_->GetValueSet(inst, index),
+                                 [&](const HloValue* value) {
+                                   return changed_root_buffers.contains(value);
+                                 });
             });
         return aliasing;
       };
@@ -241,7 +238,7 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
   }
 
   auto& value_set = dataflow_->GetValueSet(&hlo, index);
-  for (const HloValue* value : value_set.values()) {
+  for (const HloValue* value : value_set) {
     if (ContainsKey(values_that_must_be_kept_as_f32_, value)) {
       return false;
     }
@@ -407,12 +404,11 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
         if (OutputTypeAfterChange(hlo, index) != F32) {
           return;
         }
-        for (const auto* value : dataflow_->GetValueSet(hlo, index).values()) {
-          // Since we use HloValues from the dataflow analysis, this can also
-          // affect HLO instructions beyond the root, e.g., if the root is a
-          // Tuple HLO, then its operands are also affected.
-          values_that_must_be_kept_as_f32_.insert(value);
-        }
+        // Since we use HloValues from the dataflow analysis, this can also
+        // affect HLO instructions beyond the root, e.g., if the root is a
+        // Tuple HLO, then its operands are also affected.
+        const HloValueSet& values = dataflow_->GetValueSet(hlo, index);
+        values_that_must_be_kept_as_f32_.insert(values.begin(), values.end());
       });
     }
     return;
@@ -533,15 +529,12 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
       // initially but then adjusted back to F32, and the fusion computation
       // is now being adjusted after the fusion node.
       if (output_type == F32) {
-        for (const auto* value : dataflow_->GetValueSet(root, index).values()) {
-          // We rely on the fact that this adjustment works in reverse
-          // topological order so that called computation will be
-          // processed later. Adding the value to
-          // values_that_must_be_kept_as_f32_ will ensure the
-          // correctness of the adjustment for HLOs that will be
-          // processed later.
-          values_that_must_be_kept_as_f32_.insert(value);
-        }
+        // We rely on the fact that this adjustment works in reverse topological
+        // order so that called computation will be processed later. Adding the
+        // value to values_that_must_be_kept_as_f32_ will ensure the correctness
+        // of the adjustment for HLOs that will be processed later.
+        const HloValueSet& values = dataflow_->GetValueSet(root, index);
+        values_that_must_be_kept_as_f32_.insert(values.begin(), values.end());
       }
       VLOG(2) << "Called computation root " << root->ToString()
               << " at shape index " << index << " adjusted to "
@@ -587,7 +580,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
           return;
         }
         PrimitiveType type = BF16;
-        for (const auto* value : dataflow_->GetValueSet(hlo, index).values()) {
+        for (const auto* value : dataflow_->GetValueSet(hlo, index)) {
           auto value_type = ValueTypeAfterChange(value);
           if (value_type == BF16) {
             continue;
@@ -608,10 +601,8 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
           if (operand_and_output_index.second == index) {
             const HloUse& operand = operand_and_output_index.first;
             for (const auto* value :
-                 dataflow_
-                     ->GetValueSet(hlo->operand(operand.operand_number),
-                                   operand.operand_index)
-                     .values()) {
+                 dataflow_->GetValueSet(hlo->operand(operand.operand_number),
+                                        operand.operand_index)) {
               auto value_type = ValueTypeAfterChange(value);
               if (value_type == BF16) {
                 continue;
@@ -633,14 +624,12 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
           type = F32;
         }
         if (type == F32) {
-          for (const auto* value :
-               dataflow_->GetValueSet(hlo, index).values()) {
-            // We rely on the fact that this adjustment works in reverse
-            // topological order. Adding the value to
-            // values_that_must_be_kept_as_f32_ will ensure the correctness
-            // of the adjustment for HLOs that will be processed later.
-            values_that_must_be_kept_as_f32_.insert(value);
-          }
+          // We rely on the fact that this adjustment works in reverse
+          // topological order. Adding the value to
+          // values_that_must_be_kept_as_f32_ will ensure the correctness
+          // of the adjustment for HLOs that will be processed later.
+          const HloValueSet& values = dataflow_->GetValueSet(hlo, index);
+          values_that_must_be_kept_as_f32_.insert(values.begin(), values.end());
         }
         if (type != output_type) {
           any_change = true;

@@ -18,11 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -215,43 +217,51 @@ std::ostream& operator<<(std::ostream& out, const HloValue& value) {
   return out;
 }
 
-void HloValueSet::SortAndUniquifyValues() {
-  absl::c_sort(values_, HloValue::IdLessThan);
+bool HloValueSet::insert(const HloValue* value) {
+  auto it = absl::c_lower_bound(values_, value, HloValue::IdLessThan);
+  bool should_insert = (it == values_.end() || (*it)->id() != value->id());
+  if (should_insert) values_.insert(it, value);
+  return should_insert;
+}
+
+void HloValueSet::merge(const HloValueSet& other) {
+  size_t prev_size = values_.size();
+  values_.insert(values_.end(), other.begin(), other.end());
+  // Merge sort then de-duplicate (`O(size() + other.size())`);
+  auto mid = values_.begin() + prev_size;
+  absl::c_inplace_merge(values_, mid, HloValue::IdLessThan);
   values_.erase(std::unique(values_.begin(), values_.end(), HloValue::IdEqual),
                 values_.end());
 }
 
-std::string HloValueSet::ToString() const {
-  return StrCat("HloValueSet: ",
-                absl::StrJoin(values_, ", ",
-                              [](std::string* result, const HloValue* value) {
-                                result->append(value->ToShortString());
-                              }));
+/*static*/
+HloValueSet HloValueSet::UnionOf(absl::Span<const HloValueSet* const> inputs) {
+  if (inputs.size() == 2) {
+    HloValueSet values(*inputs[0]);
+    values.merge(*inputs[1]);
+    return values;
+  }
+
+  std::vector<const HloValue*> values;
+  for (const HloValueSet* input : inputs) {
+    values.insert(values.end(), input->begin(), input->end());
+  }
+  return HloValueSet(std::move(values));
 }
 
 bool HloValueSet::AssignUnionOf(absl::Span<const HloValueSet* const> inputs) {
-  HloValueSet union_set;
-  for (const HloValueSet* input : inputs) {
-    for (const HloValue* value : input->values()) {
-      union_set.values_.push_back(value);
-    }
-  }
-  union_set.SortAndUniquifyValues();
-  if (*this != union_set) {
-    *this = union_set;
-    return true;
-  }
-  return false;
+  HloValueSet union_set(UnionOf(inputs));
+  bool changed = (*this != union_set);
+  if (changed) *this = union_set;
+  return changed;
 }
 
-bool HloValueSet::AddValue(const HloValue* value) {
-  auto it = std::lower_bound(values_.begin(), values_.end(), value,
-                             HloValue::IdLessThan);
-  if (it == values_.end() || (*it)->id() != value->id()) {
-    values_.insert(it, value);
-    return true;
-  }
-  return false;  // already exists
+std::string HloValueSet::ToString() const {
+  return StrCat("HloValueSet: ",
+                absl::StrJoin(*this, ", ",
+                              [](std::string* result, const HloValue* value) {
+                                result->append(value->ToShortString());
+                              }));
 }
 
 std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
@@ -260,11 +270,8 @@ std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
 }
 
 bool InstructionValueSet::IsAmbiguous() const {
-  bool ambiguous = false;
-  for (auto& iter : *this) {
-    ambiguous |= iter.second.values().size() > 1;
-  }
-  return ambiguous;
+  return absl::c_any_of(
+      *this, [](const auto& entry) { return entry.second.size() > 1; });
 }
 
 bool InstructionValueSet::AssignUnionOf(
@@ -273,12 +280,14 @@ bool InstructionValueSet::AssignUnionOf(
   for (int i = 1; i < inputs.size(); ++i) {
     DCHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()));
   }
+
   bool changed = false;
   for (auto& pair : *this) {
     const ShapeIndex& index = pair.first;
     HloValueSet& value_set = pair.second;
 
     std::vector<const HloValueSet*> input_value_sets;
+    input_value_sets.reserve(inputs.size());
     for (const InstructionValueSet* input : inputs) {
       input_value_sets.push_back(&input->element(index));
     }
