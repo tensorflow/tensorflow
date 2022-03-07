@@ -188,3 +188,61 @@ func @dim_of_loop_result_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?
   %r2 = tensor.dim %r, %c0 : tensor<?x?xf32>
   return %r2 : index
 }
+
+// -----
+
+func private @do(%A: tensor<?x4xf32>, %B: tensor<?xf32>) -> tensor<?xf32>
+
+func @fold_tensor_cast(%in: tensor<4x600xf32>,
+                       %out: tensor<4xf32>) -> tensor<4xf32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c600 = arith.constant 600 : index
+
+  %in_cast = tensor.cast %in : tensor<4x600xf32> to tensor<?x600xf32>
+  %out_cast = tensor.cast %out : tensor<4xf32> to tensor<?xf32>
+
+  %result = gml_st.loop (%i) = (%c0) to (%c600) step (%c4)
+      ins (%in_ = %in_cast: tensor<?x600xf32>)
+      outs (%out_ = %out_cast: tensor<?xf32>)
+      iterators["reduction"] {
+    %dim_in = tensor.dim %in_, %c0 : tensor<?x600xf32>
+    %dim_out = tensor.dim %out_, %c0 : tensor<?xf32>
+
+    %in_sub = tensor.extract_slice %in_[0, %i] [%dim_in, 4] [1, 1]
+      : tensor<?x600xf32> to tensor<?x4xf32>
+    %out_sub = tensor.extract_slice %out_[0] [%dim_out] [1]
+      : tensor<?xf32> to tensor<?xf32>
+    %result_sub = call @do(%in_sub, %out_sub):
+      (tensor<?x4xf32>, tensor<?xf32>) -> tensor<?xf32>
+    %out_update = tensor.insert_slice %result_sub into %out_[0] [%dim_out] [1]
+      : tensor<?xf32> into tensor<?xf32>
+    gml_st.yield %out_update : tensor<?xf32>
+  }
+  %result_cast = tensor.cast %result : tensor<?xf32> to tensor<4xf32>
+  return %result_cast : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_tensor_cast(
+// CHECK-SAME:    %[[IN:.*]]: tensor<4x600xf32>, %[[OUT:.*]]: tensor<4xf32>)
+
+// CHECK-DAG:  %[[C600:.*]] = arith.constant 600 : index
+// CHECK-DAG:  %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+
+// CHECK:      %[[RESULT:.*]] = gml_st.loop
+// CHECK-SAME:   ins (%[[IN_:.*]] = %[[IN]]: tensor<4x600xf32>)
+// CHECK-SAME:   outs (%[[OUT_:.*]] = %[[OUT]]: tensor<4xf32>) iterators
+
+// CHECK:      %[[IN_SUB:.*]] = tensor.extract_slice
+// CHECK:      %[[IN_SUB_CAST:.*]] = tensor.cast %[[IN_SUB]]
+// CHECK-SAME:   : tensor<4x4xf32> to tensor<?x4xf32>
+
+// CHECK:      %[[OUT_SUB:.*]] = tensor.cast %[[OUT_]]
+// CHECK-SAME:   : tensor<4xf32> to tensor<?xf32>
+
+// CHECK:      %[[RESULT_SUB:.*]] = call @do(%[[IN_SUB_CAST]], %[[OUT_SUB]])
+// CHECK:      %[[RESULT_CAST:.*]] = tensor.cast %[[RESULT_SUB]]
+// CHECK:      gml_st.yield %[[RESULT_CAST]] : tensor<4xf32>
+// CHECK:    }
+// CHECK:    return %[[RESULT]] : tensor<4xf32>
