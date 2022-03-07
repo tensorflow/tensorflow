@@ -156,6 +156,7 @@ cc_library(
     name = "loader_util",
     srcs = ["loader_util.cc"],
     hdrs = ["loader_util.h"],
+    visibility = ["//third_party/auroraml:__subpackages__"],
     deps = [":constants"] + if_not_mobile([
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
