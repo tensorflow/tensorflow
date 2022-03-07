@@ -1210,6 +1210,7 @@ InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
 }
 
 Status HloDataflowAnalysis::InitializeInstructionValueSets() {
+  value_sets_.reserve(module_.instruction_count());
   for (const HloComputation* computation : module_.computations()) {
     const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
     for (HloInstruction* instruction : computation->instructions()) {

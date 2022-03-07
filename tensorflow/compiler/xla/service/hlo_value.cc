@@ -168,15 +168,6 @@ void HloValue::SetPositionsAndComputeUses(
 
   positions_.insert(positions_.end(), positions.begin(), positions.end());
 
-  // Gather the computation roots at which this value appears.
-  absl::flat_hash_set<HloInstruction*> root_positions;
-  for (const HloPosition& position : positions_) {
-    if (position.instruction ==
-        position.instruction->parent()->root_instruction()) {
-      root_positions.insert(position.instruction);
-    }
-  }
-
   // Build vector of HloUses for the value.
   for (const HloPosition& position : positions_) {
     for (HloInstruction* user : position.instruction->users()) {
@@ -187,8 +178,7 @@ void HloValue::SetPositionsAndComputeUses(
 
         // Root instructions of computations are considered to be uses whether
         // or not the root instruction itself actually uses the value.
-        if (MayUseOperandValue(i, position.index, user) ||
-            ContainsKey(root_positions, user)) {
+        if (MayUseOperandValue(i, position.index, user) || user->IsRoot()) {
           HloUse new_use{user, i, position.index};
 
           // The new use must not already exist in uses_.
