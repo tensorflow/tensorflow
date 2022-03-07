@@ -3617,6 +3617,22 @@ Operation* ReduceWindowOp::getReductionOp(int result_index) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReducePrecisionOp
+//===----------------------------------------------------------------------===//
+
+// The following property is already enforced by the ODS:
+//  P0. operand element type is float
+//  P1. mantissa_bits >= 0
+// We intend to verify the following properties
+//  P2. exponent_bits >= 1
+LogicalResult ReducePrecisionOp::verify() {
+  if (exponent_bits() < 1) {
+    return emitOpError() << "exponent_bits must be at least 1.";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ReverseOp
 //===----------------------------------------------------------------------===//
 
