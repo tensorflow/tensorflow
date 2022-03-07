@@ -25,14 +25,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.training.tracking import tracking
 
 
 def _contains_quantized_function_call(meta_graphdef):
@@ -44,110 +42,6 @@ def _contains_quantized_function_call(meta_graphdef):
 
 
 class QuantizationTest(test.TestCase, parameterized.TestCase):
-
-  def test_qat_model(self):
-
-    class QATModelWithAdd(tracking.AutoTrackable):
-      """Basic model with Fake quant + add."""
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[10], dtype=dtypes.float32, name='x'),
-          tensor_spec.TensorSpec(shape=[10], dtype=dtypes.float32, name='y')
-      ])
-      def add(self, x, y):
-        float_res = math_ops.add(x, y)
-        x = array_ops.fake_quant_with_min_max_args(
-            x, min=-0.1, max=0.2, num_bits=8, narrow_range=False)
-        y = array_ops.fake_quant_with_min_max_args(
-            y, min=-0.3, max=0.4, num_bits=8, narrow_range=False)
-        res = math_ops.add(x, y)
-        res = array_ops.fake_quant_with_min_max_args(
-            res, min=-0.4, max=0.6, num_bits=8, narrow_range=False)
-        return {'output': res, 'float_output': float_res}
-
-    root = QATModelWithAdd()
-
-    temp_path = self.create_tempdir().full_path
-    saved_model_save.save(
-        root, temp_path, signatures=root.add.get_concrete_function())
-
-    output_directory = self.create_tempdir().full_path
-    tags = [tag_constants.SERVING]
-    model = quantize_model.quantize(temp_path, ['serving_default'],
-                                    [tag_constants.SERVING], output_directory)
-    self.assertIsNotNone(model)
-    self.assertEqual(
-        list(model.signatures._signatures.keys()), ['serving_default'])
-    func = model.signatures['serving_default']
-    func_res = func(
-        x=array_ops.constant(0.1, shape=[10]),
-        y=array_ops.constant(0.1, shape=[10]))
-    self.assertAllClose(
-        func_res['output'], array_ops.constant(0.2, shape=[10]), atol=0.01)
-    self.assertAllClose(
-        func_res['float_output'],
-        array_ops.constant(0.2, shape=[10]),
-        atol=1e-3)
-
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
-
-  def test_ptq_model(self):
-
-    class PTQModelWithAdd(tracking.AutoTrackable):
-      """Basic model with addition."""
-
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=[10], dtype=dtypes.float32, name='x'),
-          tensor_spec.TensorSpec(shape=[10], dtype=dtypes.float32, name='y')
-      ])
-      def add(self, x, y):
-        res = math_ops.add(x, y)
-        return {'output': res, 'x': x, 'y': y}
-
-    def data_gen():
-      for _ in range(255):
-        yield {
-            'x':
-                ops.convert_to_tensor(
-                    np.random.uniform(size=(10)).astype('f4')),
-            'y':
-                ops.convert_to_tensor(
-                    np.random.uniform(size=(10)).astype('f4'))
-        }
-
-    root = PTQModelWithAdd()
-
-    temp_path = self.create_tempdir().full_path
-    saved_model_save.save(
-        root, temp_path, signatures=root.add.get_concrete_function())
-
-    output_directory = self.create_tempdir().full_path
-    tags = [tag_constants.SERVING]
-    model = quantize_model.quantize(
-        temp_path, ['serving_default'],
-        tags,
-        output_directory,
-        representative_dataset=data_gen)
-    self.assertIsNotNone(model)
-    self.assertEqual(
-        list(model.signatures._signatures.keys()), ['serving_default'])
-    func = model.signatures['serving_default']
-    func_res = func(
-        x=array_ops.constant(0.1, shape=[10]),
-        y=array_ops.constant(0.1, shape=[10]))
-    self.assertAllClose(
-        func_res['output'], array_ops.constant(0.2, shape=[10]), atol=0.01)
-    xy_atol = 1e-6
-    self.assertAllClose(
-        func_res['x'], array_ops.constant(0.1, shape=[10]), atol=xy_atol)
-    self.assertAllClose(
-        func_res['y'], array_ops.constant(0.1, shape=[10]), atol=xy_atol)
-
-    output_loader = saved_model_loader.SavedModelLoader(output_directory)
-    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
-    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
   @parameterized.named_parameters(
       ('none', None),
