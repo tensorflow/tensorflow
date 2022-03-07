@@ -38,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 49.
+// Next ID to use: 50.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -294,4 +294,7 @@ message TocoFlags {
   // Enable converting to DynamicUpdateSlice op (for ops like TensorListSetItem)
   // Note: This is an experimental feature
   optional bool enable_dynamic_update_slice = 48 [default = false];
+
+  // Whether to preserve `TF::AssertOp`.
+  optional bool preserve_assert_op = 49 [default = false];
 }
