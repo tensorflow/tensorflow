@@ -170,8 +170,11 @@ class ConvolutionVisitor {
   // Perform space-to-batch propagation on reverse.
   Status PropagateOnReverse(HloInstruction* reverse);
 
-  // Perform space-to-batch propagation on reverse.
+  // Perform space-to-batch propagation on pad.
   Status PropagateOnPad(HloInstruction* pad);
+
+  // Perform space-to-batch propagation on slice.
+  Status PropagateOnSlice(HloInstruction* slice);
 
   // Perform space-to-batch propagation on the backprop filter convolution.
   // Assumes the activations and kernel were already space-to-batched.
@@ -1621,6 +1624,27 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     return true;
   }
 
+  if (consumer->opcode() == HloOpcode::kSlice) {
+    auto operand = consumer->mutable_operand(0);
+    if (!instr_to_dim_map_.contains(operand)) {
+      return false;
+    }
+    auto result = instr_to_dim_map_[operand];
+    const int64_t old_batch_dim = result[DimMapper(SpaceToBatchDimMap::kBatch)];
+    const int64_t old_space_dim =
+        result[DimMapper(SpaceToBatchDimMap::kSpace0)];
+    // Disallow slice on the batch and space dims
+    if (consumer->shape().dimensions(old_batch_dim) !=
+        operand->shape().dimensions(old_batch_dim)) {
+      return false;
+    }
+    if (consumer->shape().dimensions(old_space_dim) !=
+        operand->shape().dimensions(old_space_dim)) {
+      return false;
+    }
+    return true;
+  }
+
   if (consumer->opcode() == HloOpcode::kReduce) {
     // Support only the trivial case where both batch and split spatial dim are
     // being reduced
@@ -1743,7 +1767,8 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
     // batched, if their new spatial sizes don't match, choose the bigger one
     // as the producer.
     if (consumer->IsElementwiseBinary() ||
-        consumer->opcode() == HloOpcode::kSelect) {
+        consumer->opcode() == HloOpcode::kSelect ||
+        consumer->opcode() == HloOpcode::kClamp) {
       int64_t pivot_operand_number = -1;
       HloInstruction* pivot_operand = nullptr;
       for (int i = 0; i < consumer->operand_count(); ++i) {
@@ -1907,6 +1932,11 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
   // slice/pad/reduce-window.
   if (consumer->opcode() == HloOpcode::kPad) {
     TF_CHECK_OK(PropagateOnPad(consumer));
+    return true;
+  }
+
+  if (consumer->opcode() == HloOpcode::kSlice) {
+    TF_CHECK_OK(PropagateOnSlice(consumer));
     return true;
   }
 
@@ -2803,6 +2833,40 @@ Status ConvolutionVisitor::PropagateOnPad(HloInstruction* pad) {
       std::vector<int64_t>(instr_to_dim_map_[pad->mutable_operand(0)]);
   instr_to_dim_permute_map_[new_pad] =
       std::vector<int64_t>(instr_to_dim_permute_map_[first_operand]);
+
+  return Status::OK();
+}
+
+Status ConvolutionVisitor::PropagateOnSlice(HloInstruction* slice) {
+  auto operand = old_to_new_instrs_[slice->mutable_operand(0)];
+  auto permute_dims = instr_to_dim_permute_map_[operand];
+
+  DimensionVector starts(slice->shape().rank());
+  DimensionVector limits(slice->shape().rank());
+  DimensionVector strides(slice->shape().rank());
+  for (int i = 0; i < slice->shape().rank(); ++i) {
+    const int64_t old_dim = ReverseDimLookUp(permute_dims, i);
+    if (slice->shape().dimensions(old_dim) ==
+        slice->operand(0)->shape().dimensions(old_dim)) {
+      starts[i] = 0;
+      strides[i] = 1;
+      limits[i] = operand->shape().dimensions(i);
+      continue;
+    }
+    starts[i] = slice->slice_starts(old_dim);
+    strides[i] = slice->slice_strides(old_dim);
+    limits[i] = slice->slice_limits(old_dim);
+  }
+
+  TF_ASSIGN_OR_RETURN(auto new_slice,
+                      MakeSliceHlo(operand, starts, limits, strides));
+
+  old_to_new_instrs_[slice] = new_slice;
+  // Set mappings from operand 0.
+  instr_to_dim_map_[slice] =
+      std::vector<int64_t>(instr_to_dim_map_[slice->mutable_operand(0)]);
+  instr_to_dim_permute_map_[new_slice] =
+      std::vector<int64_t>(instr_to_dim_permute_map_[operand]);
 
   return Status::OK();
 }
