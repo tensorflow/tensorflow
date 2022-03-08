@@ -229,7 +229,23 @@ LogicalResult ConvertTfCollectiveReduceV2(OpBuilder& builder,
       all_reduce.merge_op(), all_reduce);
 }
 
+#include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf_collective.inc"
+
+LogicalResult ConvertTfCollective(Operation* op) {
+  MLIRContext* context = op->getContext();
+  RewritePatternSet patterns(context);
+  patterns.insert<RewriteCollectiveAssignGroupV2CollectiveReduceV2>(context);
+  if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns)))) {
+    return failure();
+  }
+  return success();
+}
+
 void LegalizeTFCollective::runOnOperation() {
+  if (failed(ConvertTfCollective(getOperation()))) {
+    signalPassFailure();
+    return;
+  }
   int64_t channel_id = 0;
   OpBuilder builder(&getContext());
 
@@ -246,6 +262,10 @@ void LegalizeTFCollective::runOnOperation() {
       if (failed(ConvertTfCollectiveReduceV2(builder, channel_id, all_reduce,
                                              module))) {
         return WalkResult::interrupt();
+      }
+    } else if (isa<TF::CollectiveAssignGroupV2Op>(op)) {
+      if (op->use_empty()) {
+        op->erase();
       }
     }
     return WalkResult::advance();
