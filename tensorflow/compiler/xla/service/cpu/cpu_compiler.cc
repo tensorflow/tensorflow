@@ -1047,6 +1047,7 @@ std::vector<ComputationToEmit> SubcomputationEmissionOrder(
       agenda.emplace(c, true);
       for (auto* instruction : c.computation->instructions()) {
         bool allow_reassociation =
+            instruction->opcode() == HloOpcode::kAllReduce ||
             instruction->opcode() == HloOpcode::kReduce ||
             instruction->opcode() == HloOpcode::kReduceWindow;
         for (auto it = instruction->called_computations().rbegin();
