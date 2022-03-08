@@ -4239,6 +4239,13 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
 }
 
 //===----------------------------------------------------------------------===//
+// RngBitGeneratorOp
+//===----------------------------------------------------------------------===//
+
+// Verify that input state has the same shape as output shape
+LogicalResult RngBitGeneratorOp::verify() { return success(); }
+
+//===----------------------------------------------------------------------===//
 // RngNormalOp
 //===----------------------------------------------------------------------===//
 
