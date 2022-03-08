@@ -67,12 +67,12 @@ bool IsTpuUsed(long pid) {
   struct dirent* ent;
   std::string line;
   std::string tpu_dev_path = "/dev/accel0";
+  line.resize(tpu_dev_path.size());
   while (ent = readdir(raw_fd_dir)) {
     if (!isdigit(*ent->d_name)) continue;
     long fd = strtol(ent->d_name, NULL, 10);
     path = absl::StrCat("/proc/", pid, "/fd/", fd);
     if (!readlink(path.c_str(), &line[0], line.size())) continue;
-    line.resize(tpu_dev_path.size());
     if (line != tpu_dev_path) continue;
     return true;
   }
