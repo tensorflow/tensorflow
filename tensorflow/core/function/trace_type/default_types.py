@@ -245,8 +245,10 @@ class Reference(trace.TraceType):
     if all(
         isinstance(other, Reference) and self.identifier == other.identifier
         for other in types):
-      return Reference(self.base.most_specific_common_supertype(
-          [other.base for other in types]), self.identifier)
+      base_supertype = self.base.most_specific_common_supertype(
+          [other.base for other in types])
+      if base_supertype is not None:
+        return Reference(base_supertype, self.identifier)
     return None
 
   def __eq__(self, other: Any) -> bool:
