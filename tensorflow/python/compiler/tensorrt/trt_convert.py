@@ -1239,7 +1239,6 @@ class TrtGraphConverterV2(object):
     self._converted = False
     self._device = None
     self._build_called_once = False
-    self._calibrated = False
 
     if use_dynamic_shape is None:
       self._use_dynamic_shape = False
@@ -1311,10 +1310,13 @@ class TrtGraphConverterV2(object):
     # Rebuild the function since calibration has changed the graph.
     self._converted_func = _construct_function_from_graph_def(
         self._converted_func, self._converted_graph_def)
-    self._calibrated = True
+    self._need_calibration = False
 
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
   # use it here (b/124792963).
+  @deprecation.deprecated_args(None,
+                               "Use the calibration_fn arg of build()",
+                               "calibration_input_fn")
   def convert(self, calibration_input_fn=None):
     """Convert the input SavedModel in 2.0 format.
 
@@ -1352,9 +1354,6 @@ class TrtGraphConverterV2(object):
       logging.info(f"Placing imported graph from "
                    f"`{self._input_saved_model_dir}` on device: {self._device}")
 
-    if (self._need_calibration and not calibration_input_fn):
-      raise ValueError("Should specify calibration_input_fn because INT8 "
-                       "calibration is needed")
     if (not self._need_calibration and calibration_input_fn):
       raise ValueError("Should not specify calibration_input_fn because INT8 "
                        "calibration is not needed")
@@ -1396,7 +1395,7 @@ class TrtGraphConverterV2(object):
     self._converted_func = _construct_function_from_graph_def(
         func, self._converted_graph_def, frozen_func)
 
-    if self._need_calibration:
+    if self._need_calibration and calibration_input_fn is not None:
       # Execute calibration here only if not in dynamic shape mode.
       if not self._need_trt_profiles():
         self._execute_calibration(calibration_input_fn)
@@ -1417,12 +1416,18 @@ class TrtGraphConverterV2(object):
 
     return self._converted_func
 
-  def build(self, input_fn):
+  def build(self, input_fn=None, calibration_fn=None):
     """Run inference with converted graph in order to build TensorRT engines.
 
-    If the conversion requires INT8 calibration, then a reference to the
-    calibration function was stored during the call to convert(). Calibration
-    will be performed while we build the TensorRT engines.
+    The input_fn generator function provides the input data for which we build
+    the engines. The role of this function is to generate inputs with all the
+    input shapes that we expect to encounter during inference.
+
+    If the conversion requires INT8 calibration, then calibration_fn is used to
+    generate calibration data while we build the TensorRT engines.
+
+    If the engine should be built for the same input shape that is used for the
+    calibration, then it is not required to provide input_fn.
 
     Args:
       input_fn: a generator function that provides the input data as a single
@@ -1449,37 +1454,46 @@ class TrtGraphConverterV2(object):
                  # return a list of input tensors
                  yield [np.zeros(x).astype(np.float32) for x in shapes]`
 
+      calibration_fn: a generator function that yields input data as a list or
+        tuple or dict, which will be used to calibrate the engine. This
+        function is expected to provide realistic input data, each batch with
+        the same shape.
+
     Raises:
       NotImplementedError: build() is already called.
-      RuntimeError: the input_fx is None.
+      RuntimeError: input functions are None or model not converted.
     """
     if self._build_called_once:
       raise NotImplementedError("build() is already called. It is not "
                                 "supported to call build() more than once.")
-    if not input_fn:
-      raise RuntimeError("input_fn is None. Method build() needs input_fn "
-                         "to be specified in order to build TensorRT engines")
+    if not input_fn and not calibration_fn:
+      raise RuntimeError("Both input_fn and calibration_fn is None. Method "
+                          "build() needs at least one of them specified in "
+                          "order to build TensorRT engines")
     if not self._converted:
       raise RuntimeError("Need to call convert() before build()")
-    if (self._need_calibration and not self._calibrated and
-        self._calibration_input_fn is None):
-      raise RuntimeError("Need to provide the calibration_input_fn arg while "
-                         "calling convert().")
+
+    if calibration_fn is None:
+      calibration_fn = self._calibration_input_fn
+
+    if self._need_calibration and calibration_fn == None:
+      raise RuntimeError("Need to provide the calibration_fn arg")
 
     def _set_profile_generation_mode(value, node):
       node.attr["_profile_generation_mode"].b = value
 
-    if self._need_trt_profiles():
-      # Enable profile generation.
-      self._for_each_trt_node(self._converted_graph_def,
-                              partial(_set_profile_generation_mode, True))
-      # Profile generation is enabled using the _profile_generation_mode
-      # attribute of the TRTEngineOps. We need to rebuild the function to
-      # change this attribute.
-      func = _construct_function_from_graph_def(self._converted_func,
-                                                self._converted_graph_def)
-    else:
-      func = self._converted_func
+    if input_fn is not None:
+      if self._need_trt_profiles():
+        # Enable profile generation.
+        self._for_each_trt_node(self._converted_graph_def,
+                                partial(_set_profile_generation_mode, True))
+        # Profile generation is enabled using the _profile_generation_mode
+        # attribute of the TRTEngineOps. We need to rebuild the function to
+        # change this attribute.
+        func = _construct_function_from_graph_def(self._converted_func,
+                                                  self._converted_graph_def)
+      else:
+        func = self._converted_func
 
     first_input = None
     # Run inference:
@@ -1491,17 +1505,17 @@ class TrtGraphConverterV2(object):
       args, kwargs = _convert_to_tensor(inp)
       func(*args, **kwargs)
 
-    if self._need_trt_profiles():
-      # Disable profile generation.
-      self._for_each_trt_node(self._converted_graph_def,
-                              partial(_set_profile_generation_mode, False))
+      if self._need_trt_profiles():
+        # Disable profile generation.
+        self._for_each_trt_node(self._converted_graph_def,
+                                partial(_set_profile_generation_mode, False))
 
     # Run calibration if required, this would have been skipped in
     # the convert step
-    if self._need_calibration and not self._calibrated:
-      self._execute_calibration(self._calibration_input_fn)
+    if self._need_calibration:
+      self._execute_calibration(calibration_fn)
       # calibration also builds the engine
-    else:
+    elif input_fn is not None:
       # Use the first input in explicit batch mode to build TensorRT engines
       # after generating all the profiles. The first input is used but any of
       # the inputs can be used because the shape of this input does not
@@ -1531,7 +1545,7 @@ class TrtGraphConverterV2(object):
       RuntimeError: if the needed calibration hasn't been done.
     """
     assert self._converted
-    if self._need_calibration and not self._calibrated:
+    if self._need_calibration:
       raise RuntimeError("A model that requires INT8 calibration has to be "
                          "built before saving it. Call build() to build and "
                          "calibrate the TensorRT engines.")

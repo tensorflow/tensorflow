@@ -76,6 +76,11 @@
         and Tensorflow-native way to encode structured data such as protocol
         buffers or pandas dataframes.
 
+*    `tf.experimental.tensorrt`:
+    *   Added a new argument `calibration_fn` to the `.build()` function inside
+        `TrtGraphConverterV2`. This will replace `calibration_input_fn`
+        parameter of convert(), which is now deprecated.
+
 *   `tf.keras`:
 
     *   Added method `get_metrics_result()` to `tf.keras.models.Model`.

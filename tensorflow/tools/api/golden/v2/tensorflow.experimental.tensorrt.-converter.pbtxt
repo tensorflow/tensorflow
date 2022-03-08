@@ -8,7 +8,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'input_fn\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_fn\', \'calibration_fn\'], varargs=None, keywords=None, defaults=['\'None\', \'None\']"
   }
   member_method {
     name: "convert"

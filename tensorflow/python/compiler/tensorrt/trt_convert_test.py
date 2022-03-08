@@ -401,14 +401,16 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       max_workspace_size_bytes=10 << 20,  # Use a smaller workspace.
       precision_mode=trt_convert.TrtPrecisionMode.FP32,
       maximum_cached_engines=2,
-      allow_build_at_runtime=True):
+      allow_build_at_runtime=True,
+      use_dynamic_shape=False):
     return trt_convert.TrtGraphConverterV2(
         input_saved_model_dir=input_saved_model_dir,
         input_saved_model_signature_key=input_saved_model_signature_key,
         max_workspace_size_bytes=max_workspace_size_bytes,
         precision_mode=precision_mode,
         maximum_cached_engines=maximum_cached_engines,
-        allow_build_at_runtime=allow_build_at_runtime)
+        allow_build_at_runtime=allow_build_at_runtime,
+        use_dynamic_shape=use_dynamic_shape)
 
   def _CheckTrtOps(self, concrete_func, check_fn=None, num_engines=1):
     graph_def = concrete_func.graph.as_graph_def()
@@ -701,6 +703,72 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     del root_with_trt
     gc.collect()  # Force GC to destroy the TRT engine cache.
+
+  def _Int8Conversion_v2_helper(self, input_fn, **kwargs):
+    np_input1, np_input2 = self._RandomInput([4, 1, 1])
+
+    # Create a model and save it.
+    input_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    root = self._GetModelForV2()
+    expected_output = root.run(np_input1, np_input2)
+    save.save(root, input_saved_model_dir,
+              {_SAVED_MODEL_SIGNATURE_KEY: root.run})
+
+    # Run TRT conversion.
+    converter = self._CreateConverterV2(
+        input_saved_model_dir,
+        precision_mode=trt_convert.TrtPrecisionMode.INT8, 
+        **kwargs)
+
+    # Convert and perform INT8 calibration
+    def _CalibrationInputFn():
+      yield np_input1, np_input2
+
+    converter.convert()
+
+    with self.assertRaisesRegex(
+        RuntimeError, "Both input_fn and calibration_fn is None"):
+      converter.build()
+
+    with self.assertRaisesRegex(
+        RuntimeError, "Need to provide the calibration_fn arg"):
+      # Only input_fn is specified, but one needs the calibration function too.
+      converter.build(input_fn=_CalibrationInputFn)
+
+    with self.assertRaisesRegex(
+        RuntimeError, "calibrate the TensorRT engines"):
+      converter.save(self.get_temp_dir())
+
+    converter.build(input_fn=input_fn, calibration_fn=_CalibrationInputFn)
+
+    trt_engine_name = self._GetUniqueTRTEngineOp(
+        converter._converted_graph_def).name
+    
+    output_saved_model_dir = self.mkdtemp()
+    converter.save(output_saved_model_dir)
+    expected_asset_file = os.path.join(
+        output_saved_model_dir,
+        "assets/trt-serialized-engine." + trt_engine_name)
+    self.assertTrue(os.path.exists(expected_asset_file))
+    self.assertTrue(os.path.getsize(expected_asset_file))
+
+  @test_util.run_v2_only
+  def testTrtGraphConverter_Int8Conversion_v2_build_implicit(self):
+    self._Int8Conversion_v2_helper(input_fn=None, use_dynamic_shape=False)
+
+  @test_util.run_v2_only
+  def testTrtGraphConverter_Int8Conversion_v2_build_explicit(self):
+    # Test in explicit batch mode, but with fixed input shapes.
+    self._Int8Conversion_v2_helper(input_fn=None, use_dynamic_shape=True)
+
+  @test_util.run_v2_only
+  def testTrtGraphConverter_Int8Conversion_v2_build_dynamic(self):
+    input1 = self._RandomInput([3, 1, 1])
+    input2 = self._RandomInput([7, 1, 1])
+    def _input_fn():
+      yield input1
+      yield input2
+    self._Int8Conversion_v2_helper(_input_fn, use_dynamic_shape=True)
 
   @test_util.run_v2_only
   def testTrtGraphConverter_DestroyEngineCache(self):
