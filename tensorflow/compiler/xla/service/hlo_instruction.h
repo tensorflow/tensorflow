@@ -1170,6 +1170,9 @@ class HloInstruction {
   // Returns whether this instruction is the root of its parent computation.
   bool IsRoot() const;
 
+  // Does this instruction have no users.
+  bool IsDead() const { return users_.empty() && !IsRoot(); }
+
   // Returns true if this instruction has a side effect, irrespective of whether
   // any called computations may contain an instruction with side effects.
   bool HasSideEffectNoRecurse() const;

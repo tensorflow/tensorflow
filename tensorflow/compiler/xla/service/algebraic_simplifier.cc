@@ -3082,7 +3082,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   if (ShapeUtil::IsScalar(operand->shape())) {
     for (HloInstruction* user : broadcast->users()) {
       // Skip if the broadcast user has no uses itself.
-      if (user->user_count() == 0 && user != computation_->root_instruction()) {
+      if (user->IsDead()) {
         continue;
       }
       if (OutputIsPermutationOfOperandElements(user, broadcast) ||
@@ -3567,7 +3567,7 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
     return is_scalar_broadcast(instruction) || is_equal_broadcast(instruction);
   };
   for (HloInstruction* user : broadcast->users()) {
-    if (user->user_count() == 0 && user != computation_->root_instruction()) {
+    if (user->IsDead()) {
       continue;
     }
     // Do not move reshapes or broadcasts past copies since the shape the copy
