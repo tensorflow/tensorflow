@@ -513,7 +513,7 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          bool fallback_enabled,
                                          const std::string& result) {
   static auto* metric = monitoring::Counter<4>::New(
-      "/tensorflow/core/tf_mlir_bridge_first_phase_counter",
+      "/tensorflow/core/tf_mlir_bridge_first_phase_count",
       "Tracks processing state in first phase of mlir bridge", "device",
       "version", "fallback", "result");
   std::string fallback_status =

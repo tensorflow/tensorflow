@@ -196,7 +196,7 @@ void UpdateTfMlirGraphOptimizationPassStateCounter(
     const std::string& pass_state, const std::string& processing_state);
 
 // Records the activity of the first phase of the mlir bridge using the
-// tf_metadata.tf_mlir_bridge_first_phase_counter metric.
+// tf_metadata.tf_mlir_bridge_first_phase_count metric.
 // device_type: tpu, cpu, gpu, etc.
 // bridge_version: v1 compat, v2, etc.
 // fallback_enabled: true if fallback will happen, false if not
