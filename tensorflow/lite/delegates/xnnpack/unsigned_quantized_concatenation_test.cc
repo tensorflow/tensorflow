@@ -26,7 +26,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(Concatenation, 1D) {
+TEST(UnsignedQuantizedConcatenation, 1D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -44,7 +44,7 @@ TEST(Concatenation, 1D) {
   }
 }
 
-TEST(Concatenation, 2D) {
+TEST(UnsignedQuantizedConcatenation, 2D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -65,7 +65,7 @@ TEST(Concatenation, 2D) {
   }
 }
 
-TEST(Concatenation, 3D) {
+TEST(UnsignedQuantizedConcatenation, 3D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -86,7 +86,7 @@ TEST(Concatenation, 3D) {
   }
 }
 
-TEST(Concatenation, 4D) {
+TEST(UnsignedQuantizedConcatenation, 4D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
