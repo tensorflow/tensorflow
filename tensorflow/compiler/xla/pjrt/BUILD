@@ -138,6 +138,7 @@ cc_library(
     hdrs = ["pjrt_client.h"],
     visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
+        ":pjrt_future",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -150,6 +151,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -402,6 +404,19 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_future",
+    hdrs = ["pjrt_future.h"],
+    deps = [
+        ":utils",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "tracked_tfrt_cpu_device_buffer",
     srcs = ["tracked_tfrt_cpu_device_buffer.cc"],
     hdrs = ["tracked_tfrt_cpu_device_buffer.h"],
@@ -425,6 +440,7 @@ cc_library(
     deps = [
         ":mlir_to_hlo",
         ":pjrt_client",
+        ":pjrt_future",
         ":semaphore",
         ":tracked_tfrt_cpu_device_buffer",
         ":transpose",
@@ -433,6 +449,7 @@ cc_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_computation",
