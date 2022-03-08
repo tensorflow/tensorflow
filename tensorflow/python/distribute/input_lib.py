@@ -16,6 +16,7 @@
 
 import functools
 import sys
+import time
 
 import six
 
@@ -35,6 +36,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.distribute_lib import InputReplicationMode
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
@@ -54,6 +56,24 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
+
+
+_distributed_dataset_initialization_time_milliseconds = monitoring.Sampler(
+    "/tensorflow/api/distribution_strategy/"
+    "distributed_dataset_initialization_time_milliseconds",
+    monitoring.ExponentialBuckets(scale=1, growth_factor=2, bucket_count=26),
+    "Track the time (in milliseconds) to initialize distributed datasets.",
+    "strategy", "workers")
+
+_distributed_dataset_from_function_initialization_time_milliseconds = (
+    monitoring.Sampler(
+        "/tensorflow/api/distribution_strategy/"
+        "distributed_dataset_from_function_initialization_time_milliseconds",
+        monitoring.ExponentialBuckets(
+            scale=1, growth_factor=2, bucket_count=26),
+        "Track the time (in milliseconds) to initialize distributed datasets "
+        "from function.",
+        "strategy", "workers"))
 
 
 def get_iterator_spec_from_dataset(strategy, dataset):
@@ -1097,10 +1117,19 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
     self._cardinality = _cardinality(dataset)
     self._enable_get_next_as_optional = _enable_get_next_as_optional(
         self._strategy, dataset, self._cardinality)
+    distribute_start_time_ns = time.time_ns()
     self._create_cloned_datasets_from_dataset(dataset, self._input_context,
                                               self._input_workers,
                                               self._strategy,
                                               self._num_replicas_in_sync)
+    if context.executing_eagerly():
+      # Records the time to initialize the distributed dataset.
+      context.async_wait()
+      distribute_duration_ms = (time.time_ns() -
+                                distribute_start_time_ns) // 1_000_000
+      _distributed_dataset_initialization_time_milliseconds.get_cell(
+          self._strategy.__class__.__name__,
+          str(self._input_workers.num_workers)).add(distribute_duration_ms)
     self._element_spec = _create_distributed_tensor_spec(
         self._strategy, self._cloned_datasets[0].element_spec)
     self._built = True
@@ -1385,9 +1414,19 @@ class DistributedDatasetsFromFunction(_IterableInput,
 
   def build(self):
     assert not self._built
+    distribute_start_time_ns = time.time_ns()
     self._datasets, element_spec = (
         _create_datasets_from_function_with_input_context(
             self._input_contexts, self._input_workers, self._dataset_fn))
+    if context.executing_eagerly():
+      # Records the time to initialize the distributed dataset.
+      context.async_wait()
+      distribute_duration_ms = (time.time_ns() -
+                                distribute_start_time_ns) // 1_000_000
+      _distributed_dataset_from_function_initialization_time_milliseconds.get_cell(
+          self._strategy.__class__.__name__,
+          str(self._input_workers.num_workers)).add(distribute_duration_ms)
+
     self._element_spec = _create_distributed_tensor_spec(
         self._strategy, element_spec)
     self._cardinality = _cardinality(self._datasets[0])
