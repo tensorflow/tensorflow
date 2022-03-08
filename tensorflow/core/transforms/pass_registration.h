@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/transforms/const_dedupe_hoist/pass.h"
 #include "tensorflow/core/transforms/drop_unregistered_attribute/output_shapes.h"
 #include "tensorflow/core/transforms/graph_to_func/graph_to_func_pass.h"
+#include "tensorflow/core/transforms/remapper/remapper_pass.h"
 #include "tensorflow/core/transforms/toposort/toposort_pass.h"
 
 namespace mlir {

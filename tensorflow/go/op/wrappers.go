@@ -5264,6 +5264,21 @@ func CollectiveAllToAllV3(scope *Scope, input tf.Output, communicator tf.Output,
 	return op.Output(0)
 }
 
+// Assign group keys based on group assignment.
+func CollectiveAssignGroupV2(scope *Scope, group_assignment tf.Output, device_index tf.Output) (group_key tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveAssignGroupV2",
+		Input: []tf.Input{
+			group_assignment, device_index,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // CollectiveBcastRecvAttr is an optional argument to CollectiveBcastRecv.
 type CollectiveBcastRecvAttr func(optionalAttr)
 
@@ -52651,6 +52666,35 @@ func XlaKeyValueSort(scope *Scope, keys tf.Output, values tf.Output) (sorted_key
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Wraps the XLA OptimizationBarrier operator.
+//
+// Documented at https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier.
+//
+// Arguments:
+//	input: A Tuple of Arrays of any type.
+func XlaOptimizationBarrier(scope *Scope, input []tf.Output) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaOptimizationBarrier",
+		Input: []tf.Input{
+			tf.OutputList(input),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("XlaOptimizationBarrier", err)
+		return
+	}
+	return output
 }
 
 // Wraps the XLA Pad operator, documented at

@@ -44,7 +44,7 @@ PYBIND11_MODULE(tfr_wrapper, m) {
     llvm::SourceMgr source_mgr = llvm::SourceMgr();
     source_mgr.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(input),
                                   llvm::SMLoc());
-    auto module = mlir::parseSourceFile(source_mgr, &ctx);
+    auto module = mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, &ctx);
     if (!module) {
       return false;
     }

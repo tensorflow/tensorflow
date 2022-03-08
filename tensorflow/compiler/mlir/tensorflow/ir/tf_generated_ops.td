@@ -19819,6 +19819,24 @@ Sorts a tensor. Currently only sorts in ascending order are supported.
   TF_DerivedOperandTypeAttr V = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_XlaOptimizationBarrierOp : TF_Op<"XlaOptimizationBarrier", [NoSideEffect]> {
+  let summary = "Wraps the XLA OptimizationBarrier operator.";
+
+  let description = [{
+Documented at https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A Tuple of Arrays of any type.}]>:$input
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_XlaPadOp : TF_Op<"XlaPad", [NoSideEffect, TF_NoConstantFold]> {
   let summary = "Wraps the XLA Pad operator, documented at";
 

@@ -136,6 +136,7 @@ tf_kernel_library(
         "xla_conv_op.cc",
         "xla_dequantize_op.cc",
         "xla_dot_op.cc",
+        "xla_optimization_barrier_op.cc",
         "xla_pad_op.cc",
         "xla_reduce_op.cc",
         "xla_select_and_scatter_op.cc",

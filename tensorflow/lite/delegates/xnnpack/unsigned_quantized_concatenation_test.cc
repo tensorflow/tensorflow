@@ -26,7 +26,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(UnsignedQuantizedConcatenation, 1D) {
+TEST(UnsignedQuantizedConcatenation, 1D_2_inputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -39,12 +39,16 @@ TEST(UnsignedQuantizedConcatenation, 1D) {
   const std::vector<int32_t> shape2({shape_rng()});
 
   for (int i = -1; i < 1; i++) {
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 
-TEST(UnsignedQuantizedConcatenation, 2D) {
+TEST(UnsignedQuantizedConcatenation, 2D_2_inputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -60,12 +64,16 @@ TEST(UnsignedQuantizedConcatenation, 2D) {
     std::vector<int32_t> shape2{shape1};
     shape2[i < 0 ? i + shape1.size() : i] = shape_rng();
 
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 
-TEST(UnsignedQuantizedConcatenation, 3D) {
+TEST(UnsignedQuantizedConcatenation, 3D_2_inputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -81,12 +89,16 @@ TEST(UnsignedQuantizedConcatenation, 3D) {
     std::vector<int32_t> shape2{shape1};
     shape2[i < 0 ? i + shape1.size() : i] = shape_rng();
 
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 
-TEST(UnsignedQuantizedConcatenation, 4D) {
+TEST(UnsignedQuantizedConcatenation, 4D_2_inputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -103,8 +115,12 @@ TEST(UnsignedQuantizedConcatenation, 4D) {
     std::vector<int32_t> shape2{shape1};
     shape2[i < 0 ? i + shape1.size() : i] = shape_rng();
 
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 

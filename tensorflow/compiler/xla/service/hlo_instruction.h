@@ -132,22 +132,35 @@ class HloPrintOptions {
   }
 
   // Options to produce a fingerprint of an HLO.
+  // This option is primarily based on the Canonical option with some
+  // important changes commented below.
   static HloPrintOptions Fingerprint() {
     return HloPrintOptions()
         .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
+        // Exclude because they do not affect HLO optimizations.
         .set_print_infeed_outfeed_config(false)
+        // Exclude floating point constant literals that are not all zeros, all
+        // ones, or integers because they may be randomly initialized weights,
+        // which may be changed across different runs.
         .set_print_only_essential_constants(true)
+        // For faster ToString().
         .set_compact_operands(true)
         .set_print_operand_names(false)
-        .set_print_operand_shape(true)
+        // For faster ToString(). This information can be inferred from
+        // output shapes and canonicalized names.
+        .set_print_operand_shape(false)
         .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
         .set_print_control_dependencies(false)
         .set_canonicalize_instruction_names(true)
+        // Ignore "id" in "name.id" (afer period) because it can be
+        // non-deterministic. This mainly affects computations' names because
+        // canonicalized instructions' names are in "tmp_id" format.
         .set_print_ids(false)
+        // Sort computations.
         .set_canonicalize_computations(true);
   }
 

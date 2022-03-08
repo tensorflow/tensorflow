@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
@@ -242,7 +244,7 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
     // Use SetOrAddStat to avoid duplicating stats in dst_plane.
     dst.SetOrAddStat(*stat_metadata, stat.RawStat(), src_plane);
   });
-  src.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+  src.ForEachLine([&](const XLineVisitor& line) {
     XLineBuilder dst_line = dst.GetOrCreateLine(line.Id());
     int64_t time_offset_ps = 0LL;
     if (dst_line.NumEvents() == 0) {
@@ -263,7 +265,7 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
       // but no display name, line's name will became display name of dst_line.
     }
 
-    line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
       const XEventMetadata* src_event_metadata = event.metadata();
       XEventMetadata* dst_event_metadata =
           dst.GetOrCreateEventMetadata(event.Name());
@@ -282,7 +284,7 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
       if (event.NumOccurrences()) {
         dst_event.SetNumOccurrences(event.NumOccurrences());
       }
-      event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+      event.ForEachStat([&](const XStatVisitor& stat) {
         // Here we can call AddStat instead of SetOrAddStat because dst_event
         // was just added.
         dst_event.AddStat(*dst.GetOrCreateStatMetadata(stat.Name()),
@@ -316,6 +318,38 @@ bool IsEmpty(const XSpace& space) {
     }
   }
   return true;
+}
+
+void AddFlowsToXplane(int32_t host_id, bool is_host_plane, XPlane* xplane) {
+  if (!xplane) return;
+  XPlaneBuilder plane(xplane);
+  XStatMetadata* correlation_id_stats_metadata =
+      plane.GetStatMetadata(GetStatTypeStr(StatType::kCorrelationId));
+  XStatMetadata* flow_stats_metadata =
+      plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kFlow));
+  XFlow::FlowDirection direction = is_host_plane
+                                       ? XFlow::FlowDirection::kFlowOut
+                                       : XFlow::FlowDirection::kFlowIn;
+
+  plane.ForEachLine([&](XLineBuilder line) {
+    line.ForEachEvent([&](XEventBuilder event) {
+      absl::optional<uint64_t> correlation_id;
+      event.ForEachStat([&](XStat* stat) {
+        if (correlation_id_stats_metadata &&
+            stat->metadata_id() == correlation_id_stats_metadata->id()) {
+          correlation_id = stat->uint64_value();
+        }
+      });
+      if (correlation_id) {
+        uint64_t flow_id = host_id;
+        flow_id &= 0xffff;  // keep 16 bits host id.
+        flow_id <<= 48;
+        flow_id |= *correlation_id;
+        XFlow flow(flow_id, direction);
+        event.AddStatValue(*flow_stats_metadata, flow.ToStatValue());
+      }
+    });
+  });
 }
 
 }  // namespace profiler

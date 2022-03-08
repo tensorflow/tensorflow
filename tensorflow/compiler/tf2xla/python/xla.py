@@ -578,3 +578,7 @@ def scatter(operand, scatter_indices, updates, update_computation,
       dimension_numbers=dimension_numbers.SerializeToString(),
       indices_are_sorted=indices_are_sorted,
       name=name)
+
+
+def optimization_barrier(*args):
+  return gen_xla_ops.xla_optimization_barrier(args)

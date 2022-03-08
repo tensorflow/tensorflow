@@ -26,7 +26,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(Concatenation, 1D) {
+TEST(Concatenation, 1D_2_inputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -39,12 +39,16 @@ TEST(Concatenation, 1D) {
   const std::vector<int32_t> shape2({shape_rng()});
 
   for (int i = -1; i < 1; i++) {
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 
-TEST(Concatenation, 2D) {
+TEST(Concatenation, 2D_2_inputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -57,15 +61,18 @@ TEST(Concatenation, 2D) {
   for (int i = -2; i < 2; i++) {
     // All dimensions must be the same, except for axis.
     const std::vector<int32_t> shape1({shape_rng(), shape_rng()});
-    std::vector<int32_t> shape2{shape1};
-    shape2[i < 0 ? i + shape1.size() : i] = shape_rng();
+    auto shape2 = SameShapeDifferentAxis(shape1, i, shape_rng());
 
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 
-TEST(Concatenation, 3D) {
+TEST(Concatenation, 3D_2_inputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -78,15 +85,18 @@ TEST(Concatenation, 3D) {
   for (int i = -3; i < 3; i++) {
     // All dimensions must be the same, except for axis.
     const std::vector<int32_t> shape1({shape_rng(), shape_rng(), shape_rng()});
-    std::vector<int32_t> shape2{shape1};
-    shape2[i < 0 ? i + shape1.size() : i] = shape_rng();
+    auto shape2 = SameShapeDifferentAxis(shape1, i, shape_rng());
 
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 
-TEST(Concatenation, 4D) {
+TEST(Concatenation, 4D_2_inputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -100,11 +110,14 @@ TEST(Concatenation, 4D) {
     // All dimensions must be the same, except for axis.
     const std::vector<int32_t> shape1(
         {shape_rng(), shape_rng(), shape_rng(), shape_rng()});
-    std::vector<int32_t> shape2{shape1};
-    shape2[i < 0 ? i + shape1.size() : i] = shape_rng();
+    auto shape2 = SameShapeDifferentAxis(shape1, i, shape_rng());
 
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 

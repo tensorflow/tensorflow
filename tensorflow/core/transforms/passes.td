@@ -134,3 +134,25 @@ def ControlFlowSink : Pass<"tfg-cf-sink", "ModuleOp"> {
 
   let constructor = "CreateControlFlowSinkPass()";
 }
+
+def Remapper : Pass<"remapper"> {
+  let summary = "Remap operations to decrease amount of operations";
+  let description = [{
+    This is TF-level instruction selection. It remaps operations onto other
+    set of operations to decrease the amount operations to perform computation.
+    For example, we may convert a MulOp to a _MklSwishOp if it has the following
+    form,
+
+        MulOp               _MklSwishOp
+        /   \                    \
+       x  SigmoidOp   ->          x
+             \
+              x
+  }];
+  let options = [
+    Option<"enable_mkl_patterns_", "enable-mkl-patterns", "bool",
+    /*default=*/"false",
+    "Enable the the MKL related patterns.">,
+  ];
+  let constructor = "CreateRemapperPass()";
+}

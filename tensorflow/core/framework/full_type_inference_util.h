@@ -83,11 +83,27 @@ ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
 ForwardTypeInferenceFn MultiaryUnstack(
     FullTypeId t, std::function<FullTypeDef(const FullTypeDef&)> unstack);
 
-// Mapping function representing the the type function for unstacking of
+// Helper for ops with semantics of applying some transformation to the
+// elements of a container:
+// `<t>[PRODUCT[T1, ..., Tn]] -> <t>[PRODUCT[U1, ..., Un]]`,
+// where Ui is obtained by applying a map T -> U. Both <t> and the "map"
+// function are parameterized by this factory. See BatchTensor for an
+// example of "map".
+ForwardTypeInferenceFn ContainerMap(
+    FullTypeId t, int input_idx,
+    std::function<FullTypeDef(const FullTypeDef&)> map);
+
+// Mapping function representing the type function for unstacking of
 // Tensor (or Tensor-like) types. Note that this is a helper to use with
 // other type inference functions; it's not a function itself.
 // TODO(mdan): Replace with a trait, when available.
 FullTypeDef UnstackTensor(const FullTypeDef& t);
+
+// Mapping function representing the type function for an op that changes the
+// batch size of dataset. Note that this is a helper to use with other type
+// inference functions; it's not a function itself.
+// TODO(mdan): Replace with a trait, when available.
+FullTypeDef BatchTensor(const FullTypeDef& t);
 
 }  // namespace full_type
 
