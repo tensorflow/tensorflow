@@ -128,7 +128,7 @@ func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32xf16>,
   lmhlo_gpu.conv_forward_fused(%input, %filter, %bias, %output, %scratch)
     dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1],
     window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
-    {activation_mode = "Relu",
+    {activation_mode = #lmhlo_gpu<"activation Relu">,
      backend_config = {algorithm = 1 : i64,
                        knob_ids = [],
                        knob_values = [],
@@ -155,7 +155,7 @@ func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x
   lmhlo_gpu.conv_forward_fused_with_side_input(%input, %filter, %bias, %side_input, %output, %scratch)
     dim_numbers = [b, f, 0, 1]x[0, 1, i, o]->[b, f, 0, 1],
     window = {stride = [1, 1], pad = [[1, 1], [1, 1]], lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
-    {activation_mode = "Relu",
+    {activation_mode = #lmhlo_gpu<"activation Relu">,
      backend_config = {algorithm = 1 : i64,
                        knob_ids = [],
                        knob_values = [],

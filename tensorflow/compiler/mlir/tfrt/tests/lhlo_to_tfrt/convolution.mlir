@@ -213,7 +213,8 @@ func @conv_forward_fused(
     window = {stride = [1, 1], lhs_dilate = [1, 1], rhs_dilate = [1, 1],
               reverse = [0, 0]}
     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
-      result_scale = 1.000000e+00 : f64, activation_mode = "Relu",
+      result_scale = 1.000000e+00 : f64,
+      activation_mode = #lmhlo_gpu<"activation Relu">,
       backend_config = {algorithm = 0 : i64,
                         knob_ids = [0, 1, 2, 3],
                         knob_values = [4, 5, 6, 7],
@@ -277,7 +278,7 @@ func @conv_forward_fused_with_side_input(
               reverse = [0, 0]}
     { batch_group_count = 1 : i64, feature_group_count = 1 : i64,
       result_scale = 1.000000e+00 : f64, side_input_scale = 1.000000e+00 : f64,
-      activation_mode = "Relu",
+      activation_mode = #lmhlo_gpu<"activation Relu">,
       backend_config = {algorithm = 0 : i64,
                         knob_ids = [0, 1, 2, 3],
                         knob_values = [4, 5, 6, 7],
