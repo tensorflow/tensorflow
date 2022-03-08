@@ -5421,7 +5421,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
         context, node_index, &node, &registration));
     if (IsDequantizeConstFloat16(context, node, registration)) {
       builder.AddTensorInput(node->inputs->data[0], /*hybrid_op=*/false,
-                             NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION);
+                             NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION |
+                                 NN_TENSOR_FLAG_SCALAR_AS_TENSOR);
     }
     if (IsDensifyConstTensor(context, node, registration)) {
       densify_output_to_node_mapping_[node->outputs->data[0]] = node_index;
