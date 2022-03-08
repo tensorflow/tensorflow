@@ -26,7 +26,7 @@ func @main(%serialized: tensor<32x!tf_type.string>) -> (tensor<?x2xi64>) attribu
   %sparse_keys = "tf.Const"() {device = "/device:CPU:0", dtype = !tf_type.string, value = dense<""> : tensor<2x!tf_type.string>} : () -> tensor<2x!tf_type.string>
 
   // CHECK: [[fallback_serialized:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[serialized]]
-  // CHECK-SAME: device = "/device:CPU:0"
+  // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:CPU:0"
   // CHECK: [[outputs:%.*]]:8 = tfrt_fallback_async.executeop key(0) cost({{.*}}) device("/device:CPU:0") "tf.ParseExampleV2"
   // CHECK-SAME: ([[fallback_serialized]]
   // CHECK-NOT: device
