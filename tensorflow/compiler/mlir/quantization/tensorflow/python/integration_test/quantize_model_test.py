@@ -41,7 +41,7 @@ def _contains_quantized_function_call(meta_graphdef):
   return False
 
 
-class QuantizationTest(test.TestCase, parameterized.TestCase):
+class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       ('none', None),
@@ -88,6 +88,8 @@ class QuantizationTest(test.TestCase, parameterized.TestCase):
     converted_model = quantize_model.quantize(
         input_saved_model_path, [signature_key],
         tags,
+        optimization_method=quantize_model.OptimizationMethod
+        .STATIC_RANGE_QUANT,
         output_directory=output_directory)
     self.assertIsNotNone(converted_model)
     self.assertEqual(
@@ -150,6 +152,8 @@ class QuantizationTest(test.TestCase, parameterized.TestCase):
         input_saved_model_path, ['serving_default'],
         tags,
         output_directory,
+        optimization_method=quantize_model.OptimizationMethod
+        .STATIC_RANGE_QUANT,
         representative_dataset=data_gen)
     self.assertIsNotNone(converted_model)
     self.assertEqual(
@@ -159,6 +163,93 @@ class QuantizationTest(test.TestCase, parameterized.TestCase):
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+
+class AutomaticQuantizationTest(test.TestCase, parameterized.TestCase):
+
+  def test_conv_ptq_model(self):
+
+    class ConvModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
+      ])
+      def conv(self, input_tensor):
+        filters = np.random.uniform(
+            low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
+        bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
+        out = nn_ops.conv2d(
+            input_tensor,
+            filters,
+            strides=[1, 1, 2, 1],
+            dilations=[1, 1, 1, 1],
+            padding='SAME',
+            data_format='NHWC')
+        out = nn_ops.bias_add(out, bias, data_format='NHWC')
+        out = nn_ops.relu6(out)
+        return {'output': out}
+
+    model = ConvModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    def data_gen():
+      for _ in range(255):
+        yield {
+            'input_tensor':
+                ops.convert_to_tensor(
+                    np.random.uniform(low=0, high=150,
+                                      size=(1, 3, 4, 3)).astype('f4')),
+        }
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    with self.assertRaises(NotImplementedError):
+      quantize_model.quantize(
+          input_saved_model_path, ['serving_default'],
+          tags,
+          output_directory,
+          optimization_method=quantize_model.OptimizationMethod.AUTOMATIC_QUANT,
+          representative_dataset=data_gen)
+
+
+class DynamicRangeQuantizationTest(test.TestCase, parameterized.TestCase):
+
+  def test_conv_ptq_model(self):
+
+    class ConvModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
+      ])
+      def conv(self, input_tensor):
+        filters = np.random.uniform(
+            low=-10, high=10, size=(2, 3, 3, 2)).astype('f4')
+        bias = np.random.uniform(low=0, high=10, size=(2)).astype('f4')
+        out = nn_ops.conv2d(
+            input_tensor,
+            filters,
+            strides=[1, 1, 2, 1],
+            dilations=[1, 1, 1, 1],
+            padding='SAME',
+            data_format='NHWC')
+        out = nn_ops.bias_add(out, bias, data_format='NHWC')
+        out = nn_ops.relu6(out)
+        return {'output': out}
+
+    model = ConvModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    with self.assertRaises(NotImplementedError):
+      quantize_model.quantize(
+          input_saved_model_path, ['serving_default'],
+          tags,
+          output_directory,
+          optimization_method=quantize_model.OptimizationMethod
+          .DYNAMIC_RANGE_QUANT)
 
 
 if __name__ == '__main__':
