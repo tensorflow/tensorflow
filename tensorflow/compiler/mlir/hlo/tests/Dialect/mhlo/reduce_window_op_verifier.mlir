@@ -701,3 +701,27 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>, %init0: tensor<4x2xf
          : (tensor<4x2xf32>, tensor<4x2xf32>) -> (tensor<2x1xf32>)
   return %0 : tensor<2x1xf32>
 }
+
+// -----
+
+func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
+    %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
+    (tensor<2x2xf32>, tensor<2x2xi32>) {
+  // expected-error@+1 {{Reduction-region here must produce tensor-typed result(s), but produces 'tuple<tensor<f32>, tensor<i32>>' instead}}
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>,
+                %b1: tensor<i32>):
+              %2 = mhlo.add %a0, %b0 : tensor<f32>
+              %3 = mhlo.add %a1, %b1 : tensor<i32>
+              %4 = "mhlo.tuple"(%2, %3) : (tensor<f32>, tensor<i32>) ->
+                  tuple<tensor<f32>, tensor<i32>>
+              "mhlo.return"(%4,%2) :
+                  (tuple<tensor<f32>, tensor<i32>>, tensor<f32>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64> }
+         : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
+              (tensor<2x2xf32>, tensor<2x2xi32>)
+  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+}
