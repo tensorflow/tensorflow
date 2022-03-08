@@ -15,28 +15,6 @@
 // Quantization as a function library.
 
 module {
-  func private @quantized_add_fn(%lhs_i8 : tensor<*xi8>, %rhs_i8 : tensor<*xi8>,
-                          %lhs_scale : tensor<*xf32>, %lhs_zp : tensor<*xi32>,
-                          %rhs_scale : tensor<*xf32>, %rhs_zp : tensor<*xi32>,
-                          %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
-    // There is no matching quantized implementation in TensorFlow
-    // So, we need to do dequantization, addition and quantization to mimic.
-    %lhs = "tf.PartitionedCall"
-               (%lhs_i8, %lhs_scale, %lhs_zp)
-               { config = "", config_proto = "", executor_type = "", f=@dequantize_i8 } :
-	       (tensor<*xi8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
-    %rhs = "tf.PartitionedCall"
-               (%rhs_i8, %rhs_scale, %rhs_zp)
-               { config = "", config_proto = "", executor_type = "", f=@dequantize_i8 } :
-	       (tensor<*xi8>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
-    %add = "tf.AddV2"(%lhs, %rhs) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %add_i8 = "tf.PartitionedCall"
-                  (%add, %out_scale, %out_zp)
-                  { config = "", config_proto = "", executor_type = "", f=@quantize_i8 } :
-	          (tensor<*xf32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
-    return %add_i8 : tensor<*xi8>
-  }
-
   // TODO(b/220993213): factor out common logic.
   func private @quantized_conv2d_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,

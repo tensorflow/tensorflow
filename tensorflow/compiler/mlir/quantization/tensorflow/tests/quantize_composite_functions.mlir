@@ -15,52 +15,6 @@
 // RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions -symbol-dce | FileCheck %s
 
 module {
-  func @add(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
-    %cst = "tf.Const"() {value = dense<-3.500000e+00> : tensor<f32>} : () -> tensor<f32>
-    %cst_0 = "tf.Const"() {value = dense<3.500000e+00> : tensor<f32>} : () -> tensor<f32>
-    %0 = "quant.qcast"(%arg0) : (tensor<8xf32>) -> tensor<8x!quant.uniform<i8:f32, 1.000000e+00:-10>>
-    %1 = "quant.dcast"(%0) : (tensor<8x!quant.uniform<i8:f32, 1.000000e+00:-10>>) -> tensor<8xf32>
-    %2 = "quant.qcast"(%cst) : (tensor<f32>) -> tensor<!quant.uniform<i8:f32, 2.000000e+00>>
-    %3 = "quant.dcast"(%2) : (tensor<!quant.uniform<i8:f32, 2.000000e+00>>) -> tensor<f32>
-    %4 = "tf.PartitionedCall"(%1, %3) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @fused_add_fn_2} : (tensor<8xf32>, tensor<f32>) -> tensor<8xf32>
-    %5 = "quant.qcast"(%4) : (tensor<8xf32>) -> tensor<8x!quant.uniform<i8:f32, 3.000000e+00:7>>
-    %6 = "quant.dcast"(%5) : (tensor<8x!quant.uniform<i8:f32, 3.000000e+00:7>>) -> tensor<8xf32>
-    %7 = "tf.PartitionedCall"(%arg1, %cst_0) {config = "", config_proto = "", executor_type = "", f = @fused_add_fn_1} : (tensor<8xf32>, tensor<f32>) -> tensor<8xf32>
-    return %6, %7 : tensor<8xf32>, tensor<8xf32>
-  }
-  func private @fused_add_fn_2(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<8xf32> attributes {tf_quant.fused_function} {
-    %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<8xf32>, tensor<f32>) -> tensor<8xf32>
-    return %0 : tensor<8xf32>
-  }
-  func private @fused_add_fn_1(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tensor<8xf32> attributes {tf_quant.fused_function} {
-    %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<8xf32>, tensor<f32>) -> tensor<8xf32>
-    return %0 : tensor<8xf32>
-  }
-
-// CHECK-LABEL: func @add
-// CHECK-DAG: %[[cst_f:.*]] = "tf.Const"() {value = dense<3.500000e+00> : tensor<f32>}
-// CHECK-DAG: %[[scale_x:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
-// CHECK-DAG: %[[zp_x:.*]] = "tf.Const"() {value = dense<-10> : tensor<i32>}
-// CHECK-DAG: %[[scale_y:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>}
-// CHECK-DAG: %[[zp_y:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-// CHECK-DAG: %[[scale_add:.*]] = "tf.Const"() {value = dense<3.000000e+00> : tensor<f32>}
-// CHECK-DAG: %[[zp_add:.*]] = "tf.Const"() {value = dense<7> : tensor<i32>}
-// CHECK-DAG: %[[cst_q:.*]] = "tf.Const"() {value = dense<-2> : tensor<i8>}
-// CHECK: %[[quantize:.*]] = "tf.PartitionedCall"(%arg0, %[[scale_x]], %[[zp_x]])
-// CHECK-SAME: f = @quantize_i8
-// CHECK: %[[quantize_add:.*]] = "tf.PartitionedCall"(%[[quantize]], %[[cst_q]],
-// CHECK-SAME: %[[scale_x]], %[[zp_x]], %[[scale_y]], %[[zp_y]], %[[scale_add]], %[[zp_add]])
-// CHECK-SAME: f = @quantized_add_fn
-// CHECK: %[[dequantize:.*]] = "tf.PartitionedCall"(%1, %[[scale_add]], %[[zp_add]])
-// CHECK-SAME: f = @dequantize_i8
-// CHECK: %[[float_add:.*]] = "tf.PartitionedCall"(%arg1, %[[cst_f]])
-// CHECK-SAME: f = @fused_add_fn_1
-// CHECK: return %[[dequantize]], %[[float_add]] : tensor<8xf32>, tensor<8xf32>
-}
-
-// -----
-
-module {
   func @conv(%arg0: tensor<1x2x2x3xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
     %cst = "tf.Const"() {value = dense<[[[[1.600000e-01, 1.000000e-01], [5.100000e-01, 5.400000e-01], [-5.000000e-01, 4.100000e-01]], [[-3.500000e-01, 5.000000e-02], [-0.00999999977, 1.600000e-01], [-4.800000e-01, -2.400000e-01]]], [[[-3.500000e-01, -2.100000e-01], [-1.400000e-01, -2.000000e-02], [4.800000e-01, 3.500000e-01]], [[-1.900000e-01, 3.200000e-01], [0.00999999977, -7.000000e-02], [2.000000e-01, -4.000000e-02]]]]> : tensor<2x2x3x2xf32>} : () -> tensor<2x2x3x2xf32>
     %cst_0 = "tf.Const"() {value = dense<[-2.000000e+00, 3.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
