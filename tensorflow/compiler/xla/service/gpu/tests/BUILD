@@ -161,26 +161,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "gpu_spmd_partitioner_test",
-    srcs = ["gpu_spmd_partitioner_test.cc"],
-    deps = [
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/service:rng_expander",
-        "//tensorflow/compiler/xla/service:sharding_propagation",
-        "//tensorflow/compiler/xla/service/gpu:gpu_spmd_partitioner",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
-    ],
-)
-
-tf_cc_test(
     name = "gpu_spmd_e2e_compile_test",
     size = "small",
     srcs = ["gpu_spmd_e2e_compile_test.cc"],

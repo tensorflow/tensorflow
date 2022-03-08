@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_spmd_partitioner.h"
+#include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 
 #include <memory>
 
@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
 namespace xla {
-namespace gpu {
+namespace spmd {
 
-Status GpuSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
+Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
     HloInstruction* hlo) {
   if (hlo->sharding().HasUniqueDevice()) {
     return HandleSingleDevice(hlo);
@@ -46,17 +46,17 @@ Status GpuSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
 }
 
 std::unique_ptr<spmd::SpmdPartitioningVisitor>
-GpuSpmdPartitioner::CreateVisitor(
+StatefulRngSpmdPartitioner::CreateVisitor(
     HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
     const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, spmd::SpmdLogger* logger,
     spmd::SpmdPartitionerOptions options) {
-  return absl::make_unique<GpuSpmdPartitioningVisitor>(
+  return absl::make_unique<StatefulRngSpmdPartitioningVisitor>(
       computation, num_partitions, num_replicas, collective_ops_creator,
       next_channel_id, logger, std::move(options), this);
 }
 
-Status GpuSpmdPartitioner::PreprocessSharding(HloModule* module) {
+Status StatefulRngSpmdPartitioner::PreprocessSharding(HloModule* module) {
   // For rng-get-and-update-status with no sharding, set sharding to be
   // replicated.
   for (HloComputation* computation : module->computations()) {
@@ -70,11 +70,11 @@ Status GpuSpmdPartitioner::PreprocessSharding(HloModule* module) {
   return spmd::SpmdPartitioner::PreprocessSharding(module);
 }
 
-bool GpuSpmdPartitioner::CanSideEffectingHaveReplicatedSharding(
+bool StatefulRngSpmdPartitioner::CanSideEffectingHaveReplicatedSharding(
     const HloInstruction* hlo) {
   if (hlo->opcode() == HloOpcode::kRngGetAndUpdateState) return true;
   return spmd::SpmdPartitioner::CanSideEffectingHaveReplicatedSharding(hlo);
 }
 
-}  // namespace gpu
+}  // namespace spmd
 }  // namespace xla
