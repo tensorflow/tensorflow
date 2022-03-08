@@ -66,6 +66,12 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
       # tensors have only one dimensions
       return ["TRTEngineOp_000"]
 
+  def ShouldRunTest(self, run_params):
+    # We cannot calibrate without bulding the engine, we turn of INT8 test.
+    return (run_params.dynamic_shape and
+            run_params.precision_mode != 'INT8',
+            "no calibration dynamic shape")
+
 
 class ShapeOutputWithSingleInputProfile(ShapeOutputTest):
   """Same as the previous test, but with a single input profile."""
@@ -222,6 +228,12 @@ class ShapeValueMaskTest(trt_test.TfTrtIntegrationTestBase):
       return ["TRTEngineOp_000"]
     else:
       return []
+
+  def ShouldRunTest(self, run_params):
+    # We cannot calibrate without bulding the engine, we turn of INT8 test.
+    return (run_params.dynamic_shape and
+            run_params.precision_mode != 'INT8',
+            "no calibration dynamic shape")
 
 
 if __name__ == "__main__":
