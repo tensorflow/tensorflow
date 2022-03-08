@@ -39,8 +39,12 @@ TEST(Concatenation, 1D) {
   const std::vector<int32_t> shape2({shape_rng()});
 
   for (int i = -1; i < 1; i++) {
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 
@@ -60,8 +64,12 @@ TEST(Concatenation, 2D) {
     std::vector<int32_t> shape2{shape1};
     shape2[i < 0 ? i + shape1.size() : i] = shape_rng();
 
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 
@@ -81,8 +89,12 @@ TEST(Concatenation, 3D) {
     std::vector<int32_t> shape2{shape1};
     shape2[i < 0 ? i + shape1.size() : i] = shape_rng();
 
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 
@@ -103,8 +115,12 @@ TEST(Concatenation, 4D) {
     std::vector<int32_t> shape2{shape1};
     shape2[i < 0 ? i + shape1.size() : i] = shape_rng();
 
-    ConcatenationTester().Input1Shape(shape1).Input2Shape(shape2).Axis(i).Test(
-        TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format off
+    ConcatenationTester()
+        .InputShapes({shape1, shape2})
+        .Axis(i)
+        .Test(TensorType_FLOAT32, xnnpack_delegate.get());
+    // clang-format on
   }
 }
 
