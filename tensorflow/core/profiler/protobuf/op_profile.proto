@@ -63,7 +63,7 @@ message Node {
 // Metrics are always "total" rather than "self".
 message Metrics {
   // Core-time taken by this operation, as a fraction of all operations.
-  double time = 1;
+  double time_fraction = 1;
   // Floating point computations performed by this operation, as a fraction of
   // peak core FLOPS * program time. This representation has useful properties:
   //  - it is proportional to the number of floating point operations performed
