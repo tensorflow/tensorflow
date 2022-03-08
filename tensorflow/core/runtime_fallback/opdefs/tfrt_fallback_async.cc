@@ -95,7 +95,7 @@ LogicalResult BatchFunctionOp::verify() {
   return fallback_common::VerifyExecuteOpCommon(*this);
 }
 
-static ParseResult parseCreateOp(OpAsmParser &parser, OperationState &result) {
+ParseResult CreateOp::parse(OpAsmParser &parser, OperationState &result) {
   fallback_common::ParseExecuteOpOptions parse_options;
   parse_options.has_chain = true;
   parse_options.has_key = true;
@@ -117,7 +117,7 @@ static ParseResult parseCreateOp(OpAsmParser &parser, OperationState &result) {
 
   return mlir::success();
 }
-static ParseResult parseExecuteOp(OpAsmParser &parser, OperationState &result) {
+ParseResult ExecuteOp::parse(OpAsmParser &parser, OperationState &result) {
   fallback_common::ParseExecuteOpOptions parse_options;
   parse_options.has_chain = false;
   parse_options.has_key = true;
@@ -130,8 +130,7 @@ static ParseResult parseExecuteOp(OpAsmParser &parser, OperationState &result) {
       parser, builder, result, builder.getType<fallback::TFTensorType>(),
       parse_options);
 }
-static ParseResult parseExecuteOpSeq(OpAsmParser &parser,
-                                     OperationState &result) {
+ParseResult ExecuteOpSeq::parse(OpAsmParser &parser, OperationState &result) {
   fallback_common::ParseExecuteOpOptions parse_options;
   parse_options.has_chain = true;
   parse_options.has_key = true;
@@ -144,8 +143,8 @@ static ParseResult parseExecuteOpSeq(OpAsmParser &parser,
       parser, builder, result, builder.getType<fallback::TFTensorType>(),
       parse_options);
 }
-static ParseResult parseExecuteOpWithAllocator(OpAsmParser &parser,
-                                               OperationState &result) {
+ParseResult ExecuteOpWithAllocator::parse(OpAsmParser &parser,
+                                          OperationState &result) {
   auto &builder = parser.getBuilder();
   llvm::SmallVector<mlir::OpAsmParser::OperandType, 1> allocator;
   if (parser.parseOperandList(allocator,
@@ -169,8 +168,8 @@ static ParseResult parseExecuteOpWithAllocator(OpAsmParser &parser,
       parser, builder, result, builder.getType<fallback::TFTensorType>(),
       parse_options);
 }
-static ParseResult parseExecuteOpSeqWithAllocator(OpAsmParser &parser,
-                                                  OperationState &result) {
+ParseResult ExecuteOpSeqWithAllocator::parse(OpAsmParser &parser,
+                                             OperationState &result) {
   auto &builder = parser.getBuilder();
   llvm::SmallVector<mlir::OpAsmParser::OperandType, 2> chain_and_allocator;
   if (parser.parseOperandList(chain_and_allocator,
@@ -205,8 +204,8 @@ static ParseResult parseExecuteOpSeqWithAllocator(OpAsmParser &parser,
       parse_options);
 }
 
-static ParseResult parseBatchFunctionOp(OpAsmParser &parser,
-                                        OperationState &result) {
+ParseResult BatchFunctionOp::parse(OpAsmParser &parser,
+                                   OperationState &result) {
   auto &builder = parser.getBuilder();
   auto chain_type = GetChainType(&builder);
   auto tensorhandle_type = builder.getType<corert::TensorHandleType>();
@@ -258,7 +257,8 @@ static ParseResult parseBatchFunctionOp(OpAsmParser &parser,
   return success();
 }
 
-static void print(OpAsmPrinter &p, CreateOp op) {
+void CreateOp::print(OpAsmPrinter &p) {
+  CreateOp op = *this;
   p << "(" << op.in_ch() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") device("
     << op->getAttr("device") << ") " << op->getAttr("op_name") << "()";
@@ -270,7 +270,8 @@ static void print(OpAsmPrinter &p, CreateOp op) {
     << ')';
 }
 
-static void print(OpAsmPrinter &p, ExecuteOp op) {
+void ExecuteOp::print(OpAsmPrinter &p) {
+  ExecuteOp op = *this;
   p << " key(" << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt()
     << ") cost(" << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
     << ") device(" << op->getAttr("device") << ") " << op->getAttr("op_name")
@@ -281,7 +282,8 @@ static void print(OpAsmPrinter &p, ExecuteOp op) {
   if (!op.results().empty()) p << " : " << op.results().size();
 }
 
-static void print(OpAsmPrinter &p, ExecuteOpSeq op) {
+void ExecuteOpSeq::print(OpAsmPrinter &p) {
+  ExecuteOpSeq op = *this;
   p << "(" << op.in_op_chain() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
@@ -293,7 +295,8 @@ static void print(OpAsmPrinter &p, ExecuteOpSeq op) {
   if (!op.results().empty()) p << " : " << op.results().size();
 }
 
-static void print(OpAsmPrinter &p, ExecuteOpWithAllocator op) {
+void ExecuteOpWithAllocator::print(OpAsmPrinter &p) {
+  ExecuteOpWithAllocator op = *this;
   p << "(" << op.allocator() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
@@ -305,7 +308,8 @@ static void print(OpAsmPrinter &p, ExecuteOpWithAllocator op) {
   if (!op.results().empty()) p << " : " << op.results().size();
 }
 
-static void print(OpAsmPrinter &p, ExecuteOpSeqWithAllocator op) {
+void ExecuteOpSeqWithAllocator::print(OpAsmPrinter &p) {
+  ExecuteOpSeqWithAllocator op = *this;
   p << "(" << op.in_op_chain() << ", " << op.allocator() << ") key("
     << op->getAttrOfType<mlir::IntegerAttr>("op_key").getInt() << ") cost("
     << op->getAttrOfType<mlir::IntegerAttr>("_tfrt_cost").getInt()
@@ -317,12 +321,12 @@ static void print(OpAsmPrinter &p, ExecuteOpSeqWithAllocator op) {
   if (!op.results().empty()) p << " : " << op.results().size();
 }
 
-static void print(OpAsmPrinter &p, BatchFunctionOp op) {
-  p << "(" << op.in_op_chain() << ") " << op->getAttr("f") << " ("
-    << op.operands() << ") ";
+void BatchFunctionOp::print(OpAsmPrinter &p) {
+  p << "(" << in_op_chain() << ") " << getOperation()->getAttr("f") << " ("
+    << operands() << ") ";
 
-  fallback_common::PrintExecuteOpCommon(p, op);
-  if (!op.results().empty()) p << " : " << op.results().size();
+  fallback_common::PrintExecuteOpCommon(p, *this);
+  if (!results().empty()) p << " : " << results().size();
 }
 
 void ExecuteOp::getOpAttrs(

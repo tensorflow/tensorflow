@@ -467,8 +467,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   }];
 
   let hasVerifier = 1;
-  let parser = [{ return ParseFuncOp(parser, &result); }];
-  let printer = [{ PrintFuncOp(p, *this); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def TFR_TFRReturnOp : TFR_Op<"return", [HasParent<"TFRFuncOp">, NoSideEffect,
