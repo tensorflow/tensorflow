@@ -234,8 +234,7 @@ Status DynamicDimensionInferenceVisitor::HandleGetTupleElement(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
                int64_t operand_index, HloInstruction* dynamic_size) {
         if (hlo->tuple_index() == index[0]) {
-          ShapeIndex new_index =
-              ShapeIndexView(index).ConsumeFront().ToShapeIndex();
+          ShapeIndex new_index(ShapeIndexView(index).subspan(1));
           parent_->SetDynamicSize(hlo, new_index, dimension, dynamic_size);
         }
         return Status::OK();
@@ -1940,7 +1939,7 @@ bool DynamicDimensionInference::HasDynamicDimension(
     if (subshape.IsTuple()) {
       return;
     }
-    if (!ShapeIndexView(subindex).StartsWith(index)) {
+    if (ShapeIndexView(subindex).first(index.size()) != index) {
       return;
     }
     for (int64_t i = 0; i < subshape.dimensions_size(); ++i) {

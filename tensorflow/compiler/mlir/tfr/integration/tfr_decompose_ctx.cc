@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"

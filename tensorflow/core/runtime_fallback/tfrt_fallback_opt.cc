@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Support/MlirOptMain.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
 #include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
 #include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_sync.h"

@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -274,6 +274,7 @@ int main(int argc, char **argv) {
   pass_config.enable_dynamic_update_slice = enable_dynamic_update_slice;
   pass_config.runtime_verification = true;
   pass_config.outline_tf_while = true;
+  pass_config.preserve_assert_op = preserve_assert_op;
 
   if (enable_hlo_to_tf_conversion) {
     pass_config.enable_hlo_to_tf_conversion = true;

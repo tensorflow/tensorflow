@@ -14,26 +14,32 @@
 
 // RUN: tf-quant-opt %s -split-input-file -quant-lift-quantizable-spots-as-functions -quant-quantize -verify-each=false | FileCheck %s
 
-// CHECK-LABEL: add
-func @add(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
-  %cst_0 = "tf.Const"() {value = dense<-3.5> : tensor<f32>} : () -> tensor<f32>
-  %cst_1 = "tf.Const"() {value = dense<3.5> : tensor<f32>} : () -> tensor<f32>
-  %q_x = "quant.qcast"(%arg0) : (tensor<8xf32>) -> tensor<8x!quant.uniform<i8:f32, 1.0:-10>>
-  %dq_x = "quant.dcast"(%q_x) : (tensor<8x!quant.uniform<i8:f32, 1.0:-10>>) -> tensor<8xf32>
-  %q_y = "quant.qcast"(%cst_0) : (tensor<f32>) -> tensor<!quant.uniform<i8:f32, 2.0>>
-  %dq_y = "quant.dcast"(%q_y) : (tensor<!quant.uniform<i8:f32, 2.0>>) -> tensor<f32>
-  %add_quant = "tf.AddV2"(%dq_x, %dq_y) : (tensor<8xf32>, tensor<f32>) -> tensor<8xf32>
-  %q_out = "quant.qcast"(%add_quant) : (tensor<8xf32>) -> tensor<8x!quant.uniform<i8:f32, 3.0:7>>
-  %dq_out = "quant.dcast"(%q_out) : (tensor<8x!quant.uniform<i8:f32, 3.0:7>>) -> tensor<8xf32>
-  %add_float = "tf.AddV2"(%arg1, %cst_1) : (tensor<8xf32>, tensor<f32>) -> tensor<8xf32>
-  return %dq_out, %add_float : tensor<8xf32>, tensor<8xf32>
+// CHECK-LABEL: conv
+func private @conv(%input: tensor<1x3x4x3xf32> {tf._user_specified_name = "input_tensor"}) -> tensor<*xf32> attributes {tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<1x3x4x3>]} {
+  %weight = arith.constant opaque<"elided_large_const", "0xDEADBEEF"> : tensor<2x3x3x2xf32>
+  %bias = arith.constant dense<[7.11401462, 7.05456924]> : tensor<2xf32>
+
+  %q_input= "quant.qcast"(%input) : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.58810077742034317:-128>>
+  %dq_input= "quant.dcast"(%q_input) : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.58810077742034317:-128>>) -> tensor<1x3x4x3xf32>
+  %q_weight = "quant.qcast"(%weight) : (tensor<2x3x3x2xf32>) -> tensor<2x3x3x2x!quant.uniform<i8:f32, 0.074855112561992565:-1>>
+  %dq_weight = "quant.dcast"(%q_weight) : (tensor<2x3x3x2x!quant.uniform<i8:f32, 0.074855112561992565:-1>>) -> tensor<2x3x3x2xf32>
+  %q_bias = "quant.qcast"(%bias) : (tensor<2xf32>) -> tensor<2x!quant.uniform<i32:f32, 0.044022349891595126>>
+  %dq_bias = "quant.dcast"(%q_bias) : (tensor<2x!quant.uniform<i32:f32, 0.044022349891595126>>) -> tensor<2xf32>
+
+  %res = "tf._FusedConv2D"(%dq_input, %dq_weight, %dq_bias) {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations", data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], epsilon = 0.000000e+00 : f32, explicit_paddings = [], fused_ops = ["BiasAdd", "Relu6"], leakyrelu_alpha = 2.000000e-01 : f32, padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>, tensor<2xf32>) -> tensor<*xf32>
+
+  %q_res = "quant.qcast"(%res) : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>
+  %dq_res = "quant.dcast"(%q_res) : (tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>) -> tensor<*xf32>
+
+  return %dq_res : tensor<*xf32>
 }
 
-// CHECK: %[[quant_add:.*]] = "tf.PartitionedCall"
-// CHECK-SAME: _tfl_quant_trait = "fully_quantizable"
-// CHECK-SAME: f = @fused_add_fn_2
-// CHECK-SAME: (tensor<8x!quant.uniform<i8:f32, 1.000000e+00:-10>>, tensor<!quant.uniform<i8:f32, 2.000000e+00>>) -> tensor<8x!quant.uniform<i8:f32, 3.000000e+00:7>>
-// CHECK: %[[dequantize:.*]] = "quant.dcast"(%[[quant_add]])
-// CHECK: %[[float_add:.*]] = "tf.PartitionedCall"
-// CHECK-SAME: f = @fused_add_fn_1} : (tensor<8xf32>, tensor<f32>) -> tensor<8xf32>
-// CHECK: return %[[dequantize]], %[[float_add]] : tensor<8xf32>, tensor<8xf32>
+// CHECK: [[bias:%.+]] = arith.constant dense<[7.11401462, 7.05456924]> : tensor<2xf32>
+// CHECK-NEXT: [[weight:%.+]] = arith.constant opaque<"elided_large_const", "0xDEADBEEF"> : tensor<2x3x3x2xf32>
+// CHECK-NEXT: [[q_input:%.+]] = "quant.qcast"(%arg0) : (tensor<1x3x4x3xf32>) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.58810077742034317:-128>>
+// CHECK-NEXT: [[q_bias:%.+]] = "quant.qcast"([[bias]]) : (tensor<2xf32>) -> tensor<2x!quant.uniform<i32:f32, 0.044022349891595126>>
+// CHECK-NEXT: [[conv:%.+]] = "tf.PartitionedCall"([[q_input]], [[weight]], [[q_bias]]) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @[[fused_fn:fused_conv2d_relu6_fn.*]]} : (tensor<1x3x4x3x!quant.uniform<i8:f32, 0.58810077742034317:-128>>, tensor<2x3x3x2x!quant.uniform<i8:f32, 0.074855112561992565:-1>>, tensor<2x!quant.uniform<i32:f32, 0.044022349891595126>>) -> tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>
+// CHECK-NEXT: [[res:%.+]] = "quant.dcast"([[conv]]) : (tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>) -> tensor<*xf32>
+// CHECK-NEXT: return [[res]] : tensor<*xf32>
+
+// CHECK: func private @[[fused_fn]](

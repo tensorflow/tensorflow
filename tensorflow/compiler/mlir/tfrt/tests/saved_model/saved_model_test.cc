@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

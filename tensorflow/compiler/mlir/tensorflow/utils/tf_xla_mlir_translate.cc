@@ -31,9 +31,9 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"

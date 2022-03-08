@@ -135,6 +135,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/loop_schedule_linearizer.h"
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
+#include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/real_imag_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_combiner.h"
@@ -617,6 +618,8 @@ Status GpuCompiler::OptimizeHloModule(
     options.set_minmax_propagate_nan(
         !debug_options.xla_gpu_enable_fast_min_max());
     pipeline.AddPass<AlgebraicSimplifier>(options);
+    pipeline.AddPass<OptimizationBarrierExpander>();
+    pipeline.AddPass<TupleSimplifier>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -922,7 +925,7 @@ static Status CompileModuleToLlvmIrImpl(
           /*colorer=*/BufferAssigner::DefaultColorer(),
           /*must_not_live_out=*/{}, can_share_buffer_function));
 
-  VLOG(1) << "Buffer Assignment Stats "
+  VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"
           << results->buffer_assignment->GetStats().ToString();
   DumpHloModuleIfEnabled(*hlo_module, *results->buffer_assignment,
                          absl::StrCat("sm_", cuda_compute_capability.ToString(),
@@ -1221,6 +1224,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
+  VLOG(1) << "Starting to compile HLO module " << module->name();
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
   std::string slow_compilation_msg =
       absl::StrCat("Compiling module ", module->name());
@@ -1404,7 +1408,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           stream_exec->GetDeviceDescription().memory_bandwidth());
       GpuHloCostAnalysis cost_analysis(options);
       TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
-      VLOG(1) << "HLO memory read+written: "
+      VLOG(1) << "HLO memory read+written for " << module->name() << " "
               << tensorflow::strings::HumanReadableNumBytes(
                      cost_analysis.bytes_accessed());
       if (module->config().hlo_profiling_enabled()) {

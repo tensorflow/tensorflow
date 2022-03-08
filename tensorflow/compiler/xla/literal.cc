@@ -417,7 +417,7 @@ Literal Literal::SubLiteral(ShapeIndexView shape_index) {
   if (!shape_index.empty()) {
     auto decomposed = this->DecomposeTuple();
     return decomposed.at(shape_index.front())
-        .SubLiteral(shape_index.ConsumeFront());
+        .SubLiteral(shape_index.subspan(1));
   } else {
     return std::move(*this);
   }

@@ -48,13 +48,6 @@ class IsFusedOpEndsWith<string OpName> : AttrConstraint<
 // Pattern rules for lifting as functions
 //===----------------------------------------------------------------------===//
 
-def LiftAdd : Pat<
-  (TF_AddV2Op:$res $x, $y),
-  (LiftAsFunctionCall<"fused_add_fn">
-     (ArgumentList $x, $y),
-     (ResultList $res)),
-  [(IsNotInFusedFunc $res)]>;
-
 def LiftFusedConv2DRelu6 : Pat<
   (TF__FusedConv2DOp:$res
     $input, $filter, $bias, $strides, $padding,

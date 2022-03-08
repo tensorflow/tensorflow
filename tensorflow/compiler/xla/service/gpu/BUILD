@@ -1626,6 +1626,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:logistic_expander",
         "//tensorflow/compiler/xla/service:loop_schedule_linearizer",
+        "//tensorflow/compiler/xla/service:optimization_barrier_expander",
         "//tensorflow/compiler/xla/service:operand_upcaster",
         "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:real_imag_expander",

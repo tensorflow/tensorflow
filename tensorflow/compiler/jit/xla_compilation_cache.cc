@@ -210,6 +210,27 @@ StatusOr<XlaCompilationCache::Signature> XlaCompilationCache::BuildSignature(
   return std::move(signature);
 }
 
+static xla::ExecutableBuildOptions GetBuildOptions(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result, int default_device_ordinal) {
+  xla::ExecutableBuildOptions build_options;
+  if (result.collective_info) {
+    build_options.set_num_replicas(result.collective_info->group_size);
+  }
+  build_options.set_device_ordinal(options.device_ordinal != -1
+                                       ? options.device_ordinal
+                                       : default_device_ordinal);
+  build_options.set_result_layout(result.xla_output_shape);
+  build_options.set_device_allocator(options.device_allocator.get());
+  build_options.set_alias_passthrough_params(options.alias_passthrough_params);
+  build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
+      options.detailed_logging);
+  if (tensorflow::OpDeterminismRequired()) {
+    build_options.mutable_debug_options()->set_xla_gpu_deterministic_ops(true);
+  }
+  return build_options;
+}
+
 Status XlaCompilationCache::BuildExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result,
@@ -221,21 +242,8 @@ Status XlaCompilationCache::BuildExecutable(
   for (int i = 0, end = result.xla_input_shapes.size(); i < end; ++i) {
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
-  xla::ExecutableBuildOptions build_options;
-  if (result.collective_info) {
-    build_options.set_num_replicas(result.collective_info->group_size);
-  }
-  build_options.set_device_ordinal(options.device_ordinal != -1
-                                       ? options.device_ordinal
-                                       : client_->default_device_ordinal());
-  build_options.set_result_layout(result.xla_output_shape);
-  build_options.set_device_allocator(options.device_allocator.get());
-  build_options.set_alias_passthrough_params(options.alias_passthrough_params);
-  build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
-      options.detailed_logging);
-  if (tensorflow::OpDeterminismRequired()) {
-    build_options.mutable_debug_options()->set_xla_gpu_deterministic_ops(true);
-  }
+  xla::ExecutableBuildOptions build_options =
+      GetBuildOptions(options, result, client_->default_device_ordinal());
   TF_ASSIGN_OR_RETURN(
       auto executables,
       client_->Compile(*result.computation, argument_layouts, build_options));

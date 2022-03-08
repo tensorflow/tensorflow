@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"

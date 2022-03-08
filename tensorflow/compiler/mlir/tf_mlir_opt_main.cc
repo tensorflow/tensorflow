@@ -16,7 +16,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
-#include "mlir/Support/MlirOptMain.h"  // from @llvm-project
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "tensorflow//compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"

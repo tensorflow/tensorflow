@@ -552,6 +552,7 @@ class TFLiteConverterBase(object):
     self._metadata.environment.tensorflowVersion = versions.__version__
     self._metadata.environment.modelType = self._get_original_model_type()
     self._experimental_enable_dynamic_update_slice = False
+    self._experimental_preserve_assert_op = False
 
     # When the value is true, the MLIR quantantizer triggers dynamic range
     # quantization in MLIR instead of the old quantizer. Used only if
@@ -670,6 +671,8 @@ class TFLiteConverterBase(object):
             self.experimental_enable_resource_variables,
         "enable_dynamic_update_slice":
             self._experimental_enable_dynamic_update_slice,
+        "preserve_assert_op":
+            self._experimental_preserve_assert_op,
     }
 
     if self.saved_model_dir:
