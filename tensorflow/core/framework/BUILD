@@ -753,6 +753,8 @@ tf_cc_test(
     srcs = ["resource_handle_test.cc"],
     deps = [
         ":resource_handle",
+        ":resource_handle_proto_cc",
+        ":tensor_shape_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
