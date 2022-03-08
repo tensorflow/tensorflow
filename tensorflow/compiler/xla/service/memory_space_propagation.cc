@@ -63,7 +63,7 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
                                        int64_t memory_space) const {
   bool modified = false;
   const HloValue& value = dataflow_analysis_->GetUniqueValueAt(
-      callee_instruction, ShapeIndex(index));
+      callee_instruction, index.ToShapeIndex());
 
   for (const HloPosition& position : value.positions()) {
     HloInstruction* instruction = position.instruction;

@@ -80,12 +80,34 @@ constexpr int64_t kAnnotationPrintInterval = 5;
 }  // namespace
 
 std::string ShapeIndex::ToString() const {
-  return StrCat("{", absl::StrJoin(*this, ","), "}");
+  return ShapeIndexView(*this).ToString();
+}
+
+std::string ShapeIndexView::ToString() const {
+  return StrCat("{", absl::StrJoin(indices_, ","), "}");
+}
+
+bool ShapeIndexView::operator==(const ShapeIndexView& other) const {
+  return indices_ == other.indices_;
+}
+
+bool ShapeIndexView::operator!=(const ShapeIndexView& other) const {
+  return !(*this == other);
 }
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
   out << shape_index.ToString();
   return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index) {
+  out << shape_index.ToString();
+  return out;
+}
+
+bool ShapeIndexView::StartsWith(ShapeIndexView prefix) const {
+  return size() >= prefix.size() &&
+         indices_.subspan(0, prefix.size()) == prefix.indices_;
 }
 
 /* static */ bool ShapeUtil::IsArrayPrimitiveType(
@@ -423,7 +445,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
 
   UpdateDynamicDimension(shape->mutable_tuple_shapes(index.front()),
-                         index.subspan(1), dim, is_dynamic);
+                         index.ConsumeFront(), dim, is_dynamic);
 }
 
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {
@@ -954,7 +976,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   const Shape* return_shape = &shape;
   for (auto i : index) {
     CHECK(return_shape->IsTuple())
-        << "Invalid index " << ShapeIndex(index) << " for shape " << shape;
+        << "Invalid index " << index << " for shape " << shape;
     return_shape = &return_shape->tuple_shapes(i);
   }
   return *return_shape;
@@ -968,7 +990,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
         i >= return_shape->tuple_shapes_size()) {
       return InvalidArgument(
           "Shape index %s not a valid subshape index for tuple with shape %s",
-          ShapeIndex(index).ToString(), shape.DebugString());
+          index.ToString(), shape.DebugString());
     }
     return_shape = &return_shape->tuple_shapes(i);
   }
