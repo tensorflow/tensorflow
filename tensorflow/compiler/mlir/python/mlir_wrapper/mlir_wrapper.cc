@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"

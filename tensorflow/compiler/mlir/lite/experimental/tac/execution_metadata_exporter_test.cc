@@ -22,7 +22,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/runtime_metadata_generated.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
