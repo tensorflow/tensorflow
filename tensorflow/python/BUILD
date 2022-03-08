@@ -156,6 +156,10 @@ py_library(
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
         ":distributed_framework_test_lib",
+        # copybara:uncomment_begin(google-only)
+        # # FIXME(b/189332820): Link the target when it is available on OSS.
+        # ":dtensor",
+        # copybara:uncomment_end
         ":filesystem_ops",
         ":functional_ops",
         ":gradient_checker",
@@ -192,6 +196,7 @@ py_library(
         ":training",
         ":weights_broadcast_ops",
         ":while_v2",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
@@ -261,7 +266,6 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -4580,6 +4584,15 @@ alias(
     name = "layers",
     actual = "//tensorflow/python/layers:layers",
 )
+
+# copybara:uncomment_begin(google-only)
+# # FIXME(b/189332820): Link the target when it is available on OSS.
+# alias(
+#     name = "dtensor",
+#     actual =
+#         "//tensorflow/dtensor/python:core",
+# )
+# copybara:uncomment_end
 
 py_library(
     name = "learning_rate_decay",
