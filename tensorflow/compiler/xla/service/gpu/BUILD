@@ -2501,6 +2501,8 @@ cc_library(
     ],
 )
 
+# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_bef_thunk
+# See tap/tensorflow.xla_gpu_tfrt.
 # TODO(b/187959015): Expand test patterns; see cl/377552996.
 test_suite(
     name = "bef_thunk_tests",
@@ -2531,6 +2533,8 @@ test_suite(
     ]),
 )
 
+# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_bef_executable
+# See tap/tensorflow.xla_gpu_tfrt_executable.
 test_suite(
     name = "bef_executable_tests",
     tests = [
@@ -2569,6 +2573,8 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_unrolling_test",
         "//tensorflow/compiler/xla/service/gpu/tests:kernel_launch_test",
         "//tensorflow/compiler/xla/service/gpu/tests:launch_dimensions.hlo.test",
+        "//tensorflow/compiler/xla/service/gpu/tests:mlir_fft_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
         "//tensorflow/compiler/xla/service/gpu/tests:mlir_gpu_compile_test",
         "//tensorflow/compiler/xla/service/gpu/tests:pad_to_static.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:parallel_reduction_test",
