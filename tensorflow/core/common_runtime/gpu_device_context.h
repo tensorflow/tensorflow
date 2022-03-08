@@ -35,7 +35,8 @@ class GPUDeviceContext : public DeviceContext {
 #endif
                    se::Stream* host_to_device_stream,
                    se::Stream* device_to_host_stream,
-                   gtl::InlinedVector<se::Stream*, 4> device_to_device_stream)
+                   gtl::InlinedVector<se::Stream*, 4> device_to_device_stream,
+                   Allocator* host_memory_allocator)
       : stream_id_(stream_id),
         stream_(stream),
 #if TENSORFLOW_USE_ROCM
@@ -43,7 +44,8 @@ class GPUDeviceContext : public DeviceContext {
 #endif
         host_to_device_stream_(host_to_device_stream),
         device_to_host_stream_(device_to_host_stream),
-        device_to_device_stream_(device_to_device_stream) {
+        device_to_device_stream_(device_to_device_stream),
+        host_memory_allocator_(host_memory_allocator) {
   }
 
   ~GPUDeviceContext() override {}
@@ -58,6 +60,9 @@ class GPUDeviceContext : public DeviceContext {
     return device_to_device_stream_[index % device_to_device_stream_.size()];
   }
   int stream_id() const { return stream_id_; }
+  Allocator* host_memory_allocator() const override {
+    return host_memory_allocator_;
+  }
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done,
@@ -92,6 +97,9 @@ class GPUDeviceContext : public DeviceContext {
   se::Stream* device_to_host_stream_;
   // Streams to use for copying data between GPUs.
   gtl::InlinedVector<se::Stream*, 4> device_to_device_stream_;
+  // The allocator to use for allocating pinned host memory.
+  // Not owned.
+  Allocator* host_memory_allocator_;
 };
 
 }  // namespace tensorflow
