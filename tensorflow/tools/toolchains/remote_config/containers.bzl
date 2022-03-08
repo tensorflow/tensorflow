@@ -21,7 +21,7 @@ container_digests = {
     "cuda11.2-cudnn8.1-ubuntu18.04-manylinux2010-multipython": "sha256:904ea6196b81fe67bf5a3c00d336b7c6f990d49291abd2c1dec0654ee7ac3041",
     "cuda11.4-cudnn8.0.5-ubuntu18.04-manylinux2010-multipython": "sha256:0777b477c37b003895713bd11e4e4db99329b7f03b77b130d49437881d71b795",
     "cuda11.4-cudnn8.2-ubuntu18.04-manylinux2010-multipython": "sha256:589c2fa98484dd83bcf0ffe371640a7c1a0c5e7299c0fc871c8820ddcbca2699",
-    "cuda11.2-cudnn8.1-ubuntu20.04-manylinux2014-multipython": "sha256:7a132742ec8a1e7362983d2e3ea43ff66e4c924575b827d659cd2043a441674b",
+    "cuda11.2-cudnn8.1-ubuntu20.04-manylinux2014-multipython": "sha256:0fcfd17656f64ffe57ddda0919d9db7ec1470816a50d1c186f453076efe05f93",
     # Others
     "rocm-ubuntu18.04-manylinux2010-multipython": "sha256:0cc50129979d8e96f8e218e3d73506b044c88898ade095f1ed5adbc24ca363af",
     "windows-1803": "sha256:f109576c7c0c8a1783ff22b666e8923b52dbbe7933f69a1c7a7275202c304a12",
