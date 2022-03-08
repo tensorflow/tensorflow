@@ -700,7 +700,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
       // branches (branches 1..n) being placed into the boundaries multiple
       // times.
       if (!computation->IsMarkedAsDead(instr_to_remove) &&
-          instr_to_remove->user_count() == 0) {
+          instr_to_remove->IsDead()) {
         VLOG(2) << "Removing boundary:" << b2.ToString() << "\n";
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(instr_to_remove));
       }

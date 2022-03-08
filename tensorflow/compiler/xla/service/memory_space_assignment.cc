@@ -3236,21 +3236,19 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     // Find a chunk that's as long living as possible.
     absl::optional<Chunk> last_chunk_candidate;
     int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
-    std::lower_bound(earliest_use_it, std::next(use_time_it), -1,
-                     [&](int64_t use, int64_t) {
-                       alternate_mem_interval->end = use;
-                       Chunk chunk_candidate =
-                           FindChunkCandidate(*alternate_mem_interval);
-                       if (chunk_candidate.chunk_end() <=
-                           available_heap_size()) {
-                         if (use > latest_matching_use) {
-                           last_chunk_candidate = chunk_candidate;
-                           latest_matching_use = use;
-                         }
-                         return true;
-                       }
-                       return false;
-                     });
+    std::lower_bound(
+        earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
+          alternate_mem_interval->end = use;
+          Chunk chunk_candidate = FindChunkCandidate(*alternate_mem_interval);
+          if (chunk_candidate.chunk_end() <= available_heap_size()) {
+            if (use > latest_matching_use) {
+              last_chunk_candidate = chunk_candidate;
+              latest_matching_use = use;
+            }
+            return true;
+          }
+          return false;
+        });
     if (last_chunk_candidate.has_value()) {
       VLOG(3) << "FindBestChunkCandidate earliest use = " << earliest_use
               << ", latest contiguous use = " << latest_contiguous_use_time
@@ -3943,8 +3941,7 @@ Status MemorySpaceAssignment::SimplifyGraph() {
       for (HloInstruction* instruction :
            computation->MakeInstructionPostOrder()) {
         if (computation->IsSafelyRemovable(instruction) &&
-            instruction->user_count() == 0 && !instruction->HasSideEffect() &&
-            instruction != computation->root_instruction() &&
+            instruction->IsDead() && !instruction->HasSideEffect() &&
             instruction->opcode() != HloOpcode::kCopyStart &&
             instruction->opcode() != HloOpcode::kCopyDone) {
           VLOG(4) << "Instruction removed: " << instruction->ToString();

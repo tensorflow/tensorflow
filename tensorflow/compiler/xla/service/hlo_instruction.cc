@@ -1747,7 +1747,7 @@ void HloInstruction::SetupDerivedInstruction(
 }
 
 bool HloInstruction::IsRoot() const {
-  return this == parent_->root_instruction();
+  return parent_ != nullptr && this == parent_->root_instruction();
 }
 
 bool HloInstruction::HasSideEffectNoRecurse() const {
