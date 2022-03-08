@@ -82,8 +82,10 @@ class LegalizeTF : public PassWrapper<LegalizeTF, OperationPass<FuncOp>> {
  public:
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF&) {}
-  explicit LegalizeTF(bool run_tfl_runtime_verification) {
+  explicit LegalizeTF(bool run_tfl_runtime_verification,
+                      bool preserve_assert_op) {
     run_tfl_runtime_verification_ = run_tfl_runtime_verification;
+    preserve_assert_op_ = preserve_assert_op;
   }
 
   StringRef getArgument() const final {
@@ -103,6 +105,10 @@ class LegalizeTF : public PassWrapper<LegalizeTF, OperationPass<FuncOp>> {
   Option<bool> run_tfl_runtime_verification_{
       *this, "run-tfl-runtime-verification",
       llvm::cl::desc("Allow tfl runtime verification."), llvm::cl::init(true)};
+  Option<bool> preserve_assert_op_{
+      *this, "preserve-assert-op",
+      llvm::cl::desc("Preserve AssertOp during tfl legalization."),
+      llvm::cl::init(false)};
 };
 
 // Returns true if all tensor value in `values` has static shape and same shape.
@@ -902,7 +908,8 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
   }
 };
 
-void addPatterns(MLIRContext* context, RewritePatternSet& patterns) {
+void addPatterns(MLIRContext* context, RewritePatternSet& patterns,
+                 bool preserve_assert_op) {
   // Add TF->TF lowering patterns.
   TF::PopulateLoweringTFPatterns(context, &patterns);
 
@@ -910,8 +917,9 @@ void addPatterns(MLIRContext* context, RewritePatternSet& patterns) {
   populateWithGenerated(patterns);
   patterns.add<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
                ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
-               ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFAssertOp,
-               ConvertTFConv3DOp, ConvertTFConv3DBackpropInputV2Op>(context);
+               ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFConv3DOp,
+               ConvertTFConv3DBackpropInputV2Op>(context);
+  if (!preserve_assert_op) patterns.add<ConvertTFAssertOp>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.add<LegalizeUnidirectionalSequenceLstm,
@@ -960,7 +968,7 @@ void LegalizeTF::runOnOperation() {
 
   RewritePatternSet stage1Patterns(&getContext());
 
-  addPatterns(context, stage1Patterns);
+  addPatterns(context, stage1Patterns, preserve_assert_op_);
 
   FrozenRewritePatternSet stage1FrozenPatterns(std::move(stage1Patterns));
   if (!applyPatterns(func, target, stage1FrozenPatterns))
@@ -971,7 +979,7 @@ void LegalizeTF::runOnOperation() {
   // rules in order not to add unnecessary BroadcastTo ops.
   RewritePatternSet stage2Patterns(&getContext());
 
-  addPatterns(context, stage2Patterns);
+  addPatterns(context, stage2Patterns, preserve_assert_op_);
 
   stage2Patterns.add<ApplyExplicitBroadcasting<TF::LessEqualOp>,
                      ApplyExplicitBroadcasting<TF::GreaterEqualOp>,
@@ -1002,8 +1010,9 @@ void LegalizeTF::runOnOperation() {
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
-    bool run_tfl_runtime_verification) {
-  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification);
+    bool run_tfl_runtime_verification, bool preserve_assert_op) {
+  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification,
+                                      preserve_assert_op);
 }
 
 static PassRegistration<LegalizeTF> pass;
