@@ -81,10 +81,8 @@ typedef Eigen::GpuDevice GPUDevice;
 bool UseNhwcLayoutForConvOnRocm(se::Stream* stream) {
 #if TENSORFLOW_USE_ROCM
    bool is_enabled = se::gpu::UseNhwcLayoutForRocm();
-   auto arch_name = stream->GetGcnArchName();
-   return (arch_name.find("gfx908") != std::string::npos  ||
-           arch_name.find("gfx90a") != std::string::npos) &&
-           is_enabled; 
+   auto rocm_compute_capability = stream->GetRocmComputeCapability();
+   return (is_enabled && rocm_compute_capability.has_nhwc_layout_support());
 #else
    return false;
 #endif

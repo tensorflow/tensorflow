@@ -239,9 +239,9 @@ class GpuBfloat16Support : public BFloat16Support {
                  .IsAtLeast(se::CudaComputeCapability::AMPERE);
     }
 #elif TENSORFLOW_USE_ROCM && TF_ROCM_VERSION>=50000
-    auto amd_gcn = stream_exec_->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
-    return ((amd_gcn.find("gfx908") != std::string::npos) ||
-	    (amd_gcn.find("gfx90a") != std::string::npos));
+    auto rocm_compute_capability =
+        stream_exec_->GetDeviceDescription().rocm_compute_capability();
+    return rocm_compute_capability.has_bf16_dtype_support();
 #endif
     return false;
   }
@@ -904,7 +904,7 @@ static Status CompileModuleToLlvmIrImpl(
     const std::string& platform_name, const se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
     se::CudaComputeCapability cuda_compute_capability,
-    std::string amdgpu_arch,
+    se::RocmComputeCapability rocm_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     int pointer_size, CompileModuleResults* results) {
   results->llvm_module = absl::make_unique<llvm::Module>("", *llvm_context);
@@ -966,7 +966,7 @@ static Status CompileModuleToLlvmIrImpl(
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, amdgpu_arch, 
+      gpu_device_info, cuda_compute_capability, rocm_compute_capability,
       &mlir_context, results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
@@ -1243,9 +1243,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(stream_exec);
 
-  std::string amdgpu_arch =
-      stream_exec->GetDeviceDescription().rocm_amdgpu_gcn_arch_name();
-
   if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
     HloCostAnalysis::Options options{ShapeSizeBytesFunction()};
     options.set_bytes_per_second(
@@ -1266,9 +1263,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       stream_exec->platform()->Name(), stream_exec->platform()->id(),
       gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
-      amdgpu_arch,
-      GetCanShareBuffer(), pointer_size_, 
-      &compile_module_results));
+      stream_exec->GetDeviceDescription().rocm_compute_capability(),
+      GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
   if (user_pre_optimization_hook_) {
     user_pre_optimization_hook_(*compile_module_results.llvm_module);
@@ -1434,6 +1430,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         stream_exec->platform()->Name(), stream_exec->platform()->id(),
         gpu_device_info,
         stream_exec->GetDeviceDescription().cuda_compute_capability(),
+        stream_exec->GetDeviceDescription().rocm_compute_capability(),
         GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
     if (!absl::holds_alternative<OwnedBefBuffer>(
@@ -1468,13 +1465,13 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     const std::string& platform_name, const se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
     se::CudaComputeCapability cuda_compute_capability,
-    std::string amdgpu_arch, int pointer_size) {
+    se::RocmComputeCapability rocm_compute_capability, int pointer_size) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
-      platform_id, gpu_device_info, cuda_compute_capability, amdgpu_arch,
-      DummyCanShareBufferFunction,
-      pointer_size, &results));
+      platform_id, gpu_device_info, cuda_compute_capability,
+      rocm_compute_capability, DummyCanShareBufferFunction, pointer_size,
+      &results));
   return std::move(results.llvm_module);
 }
 
