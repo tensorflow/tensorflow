@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
 
@@ -105,7 +106,9 @@ void TFGraphDialect::initialize() {
   // registered.
   allowUnknownOperations();
 
+  // Create the fallback OpAsmOpInterface instance.
   fallbackOpAsmInterface_ = new TFGraphOpAsmInterface;
+
   // Caching some often used context-owned informations for fast-access.
   name_key_ = StringAttr::get(getContext(), getNameAttrKey());
   device_key_ = StringAttr::get(getContext(), getDeviceAttrKey());
@@ -118,10 +121,17 @@ void TFGraphDialect::initialize() {
 }
 
 // Provides a hook for op interface.
-void *TFGraphDialect::getRegisteredInterfaceForOp(mlir::TypeID interface,
-                                                  mlir::OperationName opName) {
-  if (interface == TypeID::get<mlir::OpAsmOpInterface>()) {
+void *TFGraphDialect::getRegisteredInterfaceForOp(TypeID interface,
+                                                  OperationName opName) {
+  if (interface == TypeID::get<OpAsmOpInterface>()) {
     return fallbackOpAsmInterface_;
+  } else if (interface == TypeID::get<TensorFlowRegistryInterface>()) {
+    if (auto *instance =
+            getRegisteredInterface<TensorFlowRegistryInterfaceBase>()) {
+      // Important: cast to (Concept *) to shift the pointer off the vtable.
+      return static_cast<TensorFlowRegistryInterfaceBase::Concept *>(
+          const_cast<TensorFlowRegistryInterfaceBase *>(instance));
+    }
   }
 
   return nullptr;
@@ -852,13 +862,13 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
   ArrayRef<Type> returns = func.getType().getResults();
   if (operands.size() * 2 != arguments.size()) {
     return attach_func(op->emitOpError(func_name)
-                       << " function expected to have " << operands.size() * 2
-                       << " arguments but got " << arguments.size());
+                       << " function has " << arguments.size() / 2
+                       << " arguments but was provided " << operands.size());
   }
   if (results.size() != returns.size()) {
     return attach_func(op->emitOpError(func_name)
-                       << " function expected to have " << results.size()
-                       << " return values but got " << returns.size());
+                       << " function has " << returns.size()
+                       << " results but expected " << results.size());
   }
 
   if (func.generic()) return success();
@@ -1022,10 +1032,7 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
     return op.emitOpError("then region must be terminated by a 'tfg.yield'");
   if (!terminatedByYield(op.else_block()))
     return op.emitOpError("else region must be terminated by a 'tfg.yield'");
-
-  // Call the region branch op verifier. Verifies correctness of terminator,
-  // region, and operand types.
-  return RegionBranchOpInterface::verifyTypes(op);
+  return success();
 }
 
 LogicalResult IfRegionOp::verify() { return VerifyIfLikeRegionOp(*this); }
@@ -1088,10 +1095,7 @@ static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
            << op.branches().size() << " regions but "
            << op.branch_attrs()->size() << " branch function attributes";
   }
-
-  // Call the region branch op verifier. Verifies correctness of terminator,
-  // region, and operand types.
-  return RegionBranchOpInterface::verifyTypes(op);
+  return success();
 }
 
 LogicalResult CaseRegionOp::verify() { return VerifyCaseLikeRegionOp(*this); }
@@ -1181,9 +1185,7 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
       failed(verifyLoopRegionArgs(op, op.body_region())))
     return failure();
 
-  // Call the region branch op verifier. Verifies correctness of terminator,
-  // region, and operand types.
-  return RegionBranchOpInterface::verifyTypes(op);
+  return success();
 }
 
 LogicalResult WhileRegionOp::verify() { return VerifyWhileLikeRegionOp(*this); }
@@ -1243,11 +1245,7 @@ LogicalResult ForRegionOp::verify() {
         "expected first body block argument to be tensor<i32>");
   }
 
-  if (failed(verifyLoopRegionArgs(op, op.body_region()))) return failure();
-
-  // Call the region branch op verifier. Verifies correctness of terminator,
-  // region, and operand types.
-  return RegionBranchOpInterface::verifyTypes(op);
+  return verifyLoopRegionArgs(op, op.body_region());
 }
 
 LogicalResult ForRegionOp::inferReturnTypes(

@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/ir/interfaces.h"
 
+#include "tensorflow/core/ir/types/dialect.h"
+
 namespace mlir {
 namespace tfg {
 LogicalResult ControlArgumentInterface::verifyRegion(Operation *op,
                                                      Region &region) {
   unsigned num_ctl = 0, num_data = 0;
   for (BlockArgument arg : region.getArguments()) {
-    bool is_ctl = arg.getType().isa<ControlType>();
+    bool is_ctl = arg.getType().isa<tf_type::ControlType>();
     num_ctl += is_ctl;
     num_data += !is_ctl;
   }

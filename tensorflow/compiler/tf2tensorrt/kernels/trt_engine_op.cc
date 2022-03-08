@@ -434,12 +434,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     use_explicit_precision_ = false;
   }
 
-  if (use_explicit_precision_) {
-    LOG(INFO) << "TRTEngineOp using explicit QDQ";
-  } else {
-    LOG(INFO) << "TRTEngineOp not using explicit QDQ";
-  }
-
   native_execution_func_handle_ = kInvalidHandle;
   if (!static_engine_) {
     OP_REQUIRES_OK(context, ImportSegmentGraphDef(context->function_library(),

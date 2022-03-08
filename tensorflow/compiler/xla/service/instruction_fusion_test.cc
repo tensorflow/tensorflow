@@ -31,7 +31,6 @@ class InstructionFusionForTesting : public InstructionFusion {
  public:
   explicit InstructionFusionForTesting(HloModule* module)
       : InstructionFusion(InstructionFusion::IsExpensive) {
-    module_ = module;
     computation_ = module->entry_computation();
   }
 
@@ -184,7 +183,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     abs1 = f32[] abs(add)
     rng = f32[] rng(p1, abs1), distribution=rng_uniform
     abs2 = f32[] abs(rng)
-    abs3 = f32[] abs(rng)    
+    abs3 = f32[] abs(rng)
     ROOT root = f32[] subtract(abs2, add)
   })")
                     .ValueOrDie();

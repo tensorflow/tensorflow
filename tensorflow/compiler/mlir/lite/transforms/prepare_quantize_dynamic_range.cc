@@ -203,7 +203,7 @@ class PrepareDynamicRangeQuantizableOp
     int quantize_operand_num = quant_op.second;
 
     // If the constant is an output tensor, do nothing.
-    if (llvm::dyn_cast_or_null<ReturnOp>(quantize_op)) {
+    if (llvm::dyn_cast_or_null<func::ReturnOp>(quantize_op)) {
       return;
     }
 

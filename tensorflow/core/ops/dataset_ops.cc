@@ -59,6 +59,8 @@ REGISTER_OP("TensorSliceDataset")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "Toutput_types"))
+    .SetForwardTypeFn(full_type::MultiaryUnstack(TFT_DATASET,
+                                                 full_type::UnstackTensor))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SparseTensorSliceDataset")

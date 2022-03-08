@@ -16,9 +16,9 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
@@ -36,7 +36,7 @@ PYBIND11_MODULE(tfr_wrapper, m) {
   m.def("verify", [](std::string input) {
     mlir::DialectRegistry registry;
     registry.insert<mlir::arith::ArithmeticDialect, mlir::scf::SCFDialect,
-                    mlir::TF::TensorFlowDialect, mlir::StandardOpsDialect,
+                    mlir::TF::TensorFlowDialect, mlir::func::FuncDialect,
                     mlir::shape::ShapeDialect, mlir::TFR::TFRDialect>();
     mlir::MLIRContext ctx(registry);
     ctx.loadAllAvailableDialects();

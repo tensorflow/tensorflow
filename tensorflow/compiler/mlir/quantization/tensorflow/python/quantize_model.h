@@ -12,40 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_LIB_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_LIB_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_H_
 
-#include <pybind11/stl.h>
-
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
-#include "tensorflow/python/lib/core/pybind11_lib.h"
+#include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {
 namespace quantization {
+namespace internal {
 
-PyObject* QuantizeQATModel(absl::string_view saved_model_path,
-                           absl::string_view exported_names_str,
-                           absl::string_view tags);
+absl::StatusOr<tensorflow::GraphDef> QuantizeQATModel(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags);
 
-PyObject* QuantizePTQModelPreCalibration(absl::string_view saved_model_path,
-                                         absl::string_view exported_names_str,
-                                         absl::string_view tags);
+absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPreCalibration(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags);
 
-PyObject* QuantizePTQModelPostCalibration(absl::string_view saved_model_path,
-                                          absl::string_view exported_names_str,
-                                          absl::string_view tags);
+absl::StatusOr<tensorflow::GraphDef> QuantizePTQModelPostCalibration(
+    absl::string_view saved_model_path, absl::string_view exported_names_str,
+    absl::string_view tags);
 
-void ClearCollectedInformationFromCalibrator();
-
-void ClearDataFromCalibrator(absl::string_view id);
-
-float GetMinFromCalibrator(absl::string_view id);
-
-float GetMaxFromCalibrator(absl::string_view id);
-
+}  // namespace internal
 }  // namespace quantization
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_LIB_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_H_

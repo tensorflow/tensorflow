@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -46,7 +46,7 @@ class InsertQuantizedFunctionsPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TF::TensorFlowDialect, StandardOpsDialect>();
+    registry.insert<TF::TensorFlowDialect, func::FuncDialect>();
   }
 
  private:

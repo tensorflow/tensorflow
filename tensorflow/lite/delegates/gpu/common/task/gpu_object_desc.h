@@ -167,7 +167,8 @@ class GPUObjectDescriptor {
     state_vars_[key] = value;
   }
 
-  virtual absl::Status PerformConstExpr(const std::string& const_expr,
+  virtual absl::Status PerformConstExpr(const tflite::gpu::GpuInfo& gpu_info,
+                                        const std::string& const_expr,
                                         std::string* result) const {
     return absl::UnimplementedError(
         "No implementation of perform const expression");

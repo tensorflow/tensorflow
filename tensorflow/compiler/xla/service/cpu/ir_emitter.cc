@@ -22,10 +22,12 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/FMF.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
@@ -161,10 +164,12 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     HloComputation* computation, const std::string& function_name_prefix,
     bool is_top_level_computation,
-    absl::Span<HloInstruction* const> instruction_order) {
+    absl::Span<HloInstruction* const> instruction_order,
+    bool allow_reassociation) {
   std::string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
   VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix << "]";
   is_top_level_computation_ = is_top_level_computation;
+  allow_reassociation_ = allow_reassociation;
   num_dynamic_loop_bounds_ = 0;
   if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
     num_dynamic_loop_bounds_ =
@@ -196,9 +201,15 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   tracing_state_.set_enabled(
       computation->parent()->config().cpu_traceme_enabled());
 
+  llvm::IRBuilderBase::FastMathFlagGuard guard(*builder());
+  llvm::FastMathFlags flags = builder()->getFastMathFlags();
+  flags.setAllowReassoc(flags.allowReassoc() || allow_reassociation);
+  builder()->setFastMathFlags(flags);
+
   TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
   llvm::Function* ir_function = compute_function_->function();
-  InsertOrDie(&emitted_functions_, computation, ir_function);
+  InsertOrDie(&emitted_functions_,
+              ComputationToEmit{computation, allow_reassociation}, ir_function);
   // Delete 'compute_function', finalizing 'ir_function' and restoring caller
   // IR insert point.
 
@@ -632,7 +643,9 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
     Store(size, slot_in_sizes_alloca);
   }
 
-  auto less_than_function = FindOrDie(emitted_functions_, sort->to_apply());
+  auto less_than_function =
+      FindOrDie(emitted_functions_,
+                ComputationToEmit{sort->to_apply(), allow_reassociation_});
   EmitCallToFunc(
       runtime::kKeyValueSortSymbolName,
       {b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
@@ -672,7 +685,11 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   //
   // This is completely un-optimized and just here to have something
   // that works.
-  return DefaultAction(reduce_window);
+  bool saved_allow_reassociation = allow_reassociation_;
+  allow_reassociation_ = true;
+  Status status = DefaultAction(reduce_window);
+  allow_reassociation_ = saved_allow_reassociation;
+  return status;
 }
 
 Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
@@ -1821,6 +1838,10 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
         innermost_dimension_size % vectorization_factor);
     llvm_ir::IrArray::Index array_index(array_multi_index, reduce->shape(),
                                         b_.getInt64Ty());
+    llvm::IRBuilderBase::FastMathFlagGuard guard(b_);
+    llvm::FastMathFlags flags = b_.getFastMathFlags();
+    flags.setAllowReassoc(true);
+    b_.setFastMathFlags(flags);
     TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accumulator,
                         EmitInnerLoopForVectorizedReduction(
                             reduction_generator, array_index, vector_type,
@@ -1845,6 +1866,11 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   auto init_value = reduce->mutable_operand(1);
   absl::Span<const int64_t> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
+  bool saved_allow_reassociation = allow_reassociation_;
+  allow_reassociation_ = true;
+  auto cleanup = absl::MakeCleanup([saved_allow_reassociation, this]() {
+    allow_reassociation_ = saved_allow_reassociation;
+  });
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     std::string vectorization_failure_reason;
     TF_ASSIGN_OR_RETURN(
@@ -2166,7 +2192,8 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
 
 Status IrEmitter::HandleCall(HloInstruction* call) {
   HloComputation* computation = call->to_apply();
-  llvm::Function* call_ir_function = FindOrDie(emitted_functions_, computation);
+  llvm::Function* call_ir_function = FindOrDie(
+      emitted_functions_, ComputationToEmit{computation, allow_reassociation_});
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
 
@@ -3341,14 +3368,14 @@ llvm::Value* IrEmitter::EmitScalarReturningThreadLocalCall(
     const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
     absl::string_view name) {
   std::vector<llvm::Value*> return_value =
-      EmitThreadLocalCall(callee, parameters, name);
+      EmitThreadLocalCall(callee, parameters, name, /*is_reducer=*/false);
   CHECK_EQ(return_value.size(), 1);
   return return_value[0];
 }
 
 std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
     const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-    absl::string_view name) {
+    absl::string_view name, bool is_reducer) {
   CHECK(absl::c_binary_search(thread_local_computations_, &callee));
   const Shape& return_shape = callee.root_instruction()->shape();
   bool is_scalar_return = ShapeUtil::IsScalar(return_shape);
@@ -3393,15 +3420,17 @@ std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
     EmitTuple(tuple_array, allocas_for_returned_scalars, &b_);
   }
 
-  Call(FindOrDie(emitted_functions_, &callee),
-       GetArrayFunctionCallArguments(
-           parameter_addrs, &b_, name,
-           /*return_value_buffer=*/return_value_buffer,
-           /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
-           /*buffer_table_arg=*/
-           llvm::Constant::getNullValue(b_.getInt8PtrTy()->getPointerTo()),
-           /*status_arg=*/GetStatusArgument(),
-           /*profile_counters_arg=*/GetProfileCountersArgument()));
+  Call(
+      FindOrDie(emitted_functions_,
+                ComputationToEmit{&callee, allow_reassociation_ || is_reducer}),
+      GetArrayFunctionCallArguments(
+          parameter_addrs, &b_, name,
+          /*return_value_buffer=*/return_value_buffer,
+          /*exec_run_options_arg=*/GetExecutableRunOptionsArgument(),
+          /*buffer_table_arg=*/
+          llvm::Constant::getNullValue(b_.getInt8PtrTy()->getPointerTo()),
+          /*status_arg=*/GetStatusArgument(),
+          /*profile_counters_arg=*/GetProfileCountersArgument()));
 
   if (ComputationTransitivelyContainsCustomCall(&callee)) {
     EmitEarlyReturnIfErrorStatus();
@@ -3419,7 +3448,8 @@ void IrEmitter::EmitGlobalCall(const HloComputation& callee,
                                absl::string_view name) {
   CHECK(absl::c_binary_search(global_computations_, &callee));
 
-  Call(FindOrDie(emitted_functions_, &callee),
+  Call(FindOrDie(emitted_functions_,
+                 ComputationToEmit{&callee, allow_reassociation_}),
        GetArrayFunctionCallArguments(
            /*parameter_addresses=*/{}, &b_, name,
            /*return_value_buffer=*/

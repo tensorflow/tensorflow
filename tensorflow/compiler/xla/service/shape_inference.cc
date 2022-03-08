@@ -457,7 +457,7 @@ StatusOr<PrimitiveType> MaybeUpcast(
   auto old_element_type = operand_shape.element_type();
   if (primitive_util::IsComplexType(old_element_type) !=
       primitive_util::IsComplexType(new_element_type)) {
-    return InvalidArgument("Conversion from complex to real type %s => %s.",
+    return InvalidArgument("Conversion between complex and real type %s => %s.",
                            ShapeUtil::HumanString(operand_shape),
                            PrimitiveType_Name(new_element_type));
   }

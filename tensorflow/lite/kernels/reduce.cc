@@ -662,8 +662,17 @@ void ReduceAllDims(const T* input_data, const int* input_dims,
   // Fetch backend context and number of threads.
   CpuBackendContext* cpu_backend_context =
       CpuBackendContext::GetFromContext(context);
-  const int thread_count = cpu_backend_context->max_num_threads();
+  int thread_count = cpu_backend_context->max_num_threads();
+  const int kMinElementsPerThread = 1024;
+  if (num_elems / thread_count < kMinElementsPerThread) thread_count = 1;
 
+  if (thread_count == 1) {
+    output_data[0] = num_elems > 0 ? input_data[0] : init_value;
+    for (int i = 1; i < num_elems; ++i) {
+      output_data[0] = reducer(output_data[0], input_data[i]);
+    }
+    return;
+  }
   std::vector<ReduceWorkerTask<T>> tasks;
   std::vector<EvalData<T>> data;
   tasks.reserve(thread_count);

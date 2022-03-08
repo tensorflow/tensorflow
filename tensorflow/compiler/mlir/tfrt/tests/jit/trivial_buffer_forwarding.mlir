@@ -7,28 +7,33 @@
 // CHECK-LABEL: @reuse_input_buffer
 func @reuse_input_buffer(%arg0: index) -> memref<?x10xf32> {
   %cst_0 = arith.constant 0.0 : f32
+  %cst_1 = arith.constant 1.0 : f32
 
   // CHECK: %[[IN:.*]] = memref.alloc
+  // CHECK: %[[IN2:.*]] = memref.alloc
   // CHECK: %[[OUT:.*]] = memref.alloc
   %0 = memref.alloc(%arg0) : memref<?x10xf32>
   %1 = memref.alloc(%arg0) : memref<?x10xf32>
+  %2 = memref.alloc(%arg0) : memref<?x10xf32>
   linalg.fill(%cst_0, %0) : f32, memref<?x10xf32>
+  linalg.fill(%cst_1, %1) : f32, memref<?x10xf32>
 
   // CHECK: linalg.generic
-  // CHECK-SAME: ins(%[[IN]] :  memref<?x10xf32>)
+  // CHECK-SAME: ins(%[[IN]], %[[IN2]] :  memref<?x10xf32>, memref<?x10xf32>)
   // CHECK-SAME: outs(%[[IN]] :  memref<?x10xf32>)
-  linalg.generic { indexing_maps = [#map0, #map0],
+  linalg.generic { indexing_maps = [#map0, #map0, #map0],
                    iterator_types = ["parallel", "parallel"] }
-  ins(%0 : memref<?x10xf32>) outs(%1 : memref<?x10xf32>) {
-    ^bb0(%in: f32, %out: f32):
-      %2 = math.sqrt %in : f32
-      linalg.yield %2 : f32
+  ins(%0, %1 : memref<?x10xf32>, memref<?x10xf32>) outs(%2 : memref<?x10xf32>) {
+    ^bb0(%lhs: f32, %rhs: f32, %out: f32):
+      %3 = arith.addf %lhs, %rhs : f32
+      linalg.yield %3 : f32
     }
   // CHECK: memref.dealloc %[[OUT]]
   memref.dealloc %0 : memref<?x10xf32>
+  memref.dealloc %1 : memref<?x10xf32>
 
   // CHECK: return %[[IN]]
-  return %1: memref<?x10xf32>
+  return %2: memref<?x10xf32>
 }
 
 // -----

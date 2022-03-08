@@ -311,8 +311,48 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 
   // Tracks the set of inputs that each instruction depends on (in one
   // iteration). For case 1).
-  absl::flat_hash_map<HloInstruction*, absl::flat_hash_set<int64_t>>
-      inst_input_deps;
+  struct InputIndicesSet {
+    void Merge(const InputIndicesSet& other) {
+      // Delay the creation of the owned hash set until sufficient amount of
+      // merge requests have come. This in practice saves a lot of heap
+      // allocations for unary/binary/ternay ops.
+      if (all.size() + other.all.size() <= all.capacity() && owned == nullptr) {
+        absl::c_copy(other.all, std::back_inserter(all));
+        return;
+      }
+      // Create owned storage to merge stacked sets.
+      if (owned == nullptr) {
+        owned = std::make_unique<absl::flat_hash_set<int64_t>>();
+        // Rough estimation of new set size, to reduce resize.
+        owned->reserve(other.all.front()->size() * 2);
+      }
+      for (auto* deps : all) {
+        if (deps == owned.get()) {
+          continue;
+        }
+        owned->insert(deps->begin(), deps->end());
+      }
+      for (auto* deps : other.all) {
+        owned->insert(deps->begin(), deps->end());
+      }
+      all.clear();
+      all.push_back(owned.get());
+    }
+    void Add(int64_t index) {
+      if (owned == nullptr) {
+        CHECK(all.empty());
+        owned = std::make_unique<absl::flat_hash_set<int64_t>>();
+        all.push_back(owned.get());
+      }
+      owned->insert(index);
+    }
+    // Owned storage.
+    std::unique_ptr<absl::flat_hash_set<int64_t>> owned;
+    // Collection of pointers to all sets of dependencies, the union of which is
+    // the set of input dependencies.
+    absl::InlinedVector<const absl::flat_hash_set<int64_t>*, 4> all;
+  };
+  absl::flat_hash_map<HloInstruction*, InputIndicesSet> inst_input_deps;
   // Find disjoint sets of connected instruction groups. This helps finding a
   // group of inter-dependent indices that can be removed together. For case 2).
   absl::flat_hash_map<HloInstruction*, tensorflow::UnionFind<HloInstruction*>>
@@ -339,7 +379,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       auto& my_set = disjoint_sets[inst];
       if (inst->opcode() == HloOpcode::kGetTupleElement &&
           inst->operand(0) == while_input) {
-        deps.insert(inst->tuple_index());
+        deps.Add(inst->tuple_index());
         HloInstruction* output =
             while_body_root->mutable_operand(inst->tuple_index());
         if (output != inst) {
@@ -348,12 +388,13 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       } else {
         for (HloInstruction* operand : inst->operands()) {
           disjoint_sets[operand].Merge(&my_set);
-          const auto& operand_set = inst_input_deps[operand];
-          deps.insert(operand_set.begin(), operand_set.end());
+          deps.Merge(inst_input_deps[operand]);
         }
       }
       if (inst->HasSideEffect() || inst == while_cond->root_instruction()) {
-        side_effecting_indices.insert(deps.begin(), deps.end());
+        for (auto* dep : deps.all) {
+          side_effecting_indices.insert(dep->begin(), dep->end());
+        }
       }
     }
   }
@@ -361,9 +402,11 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   absl::flat_hash_set<int64_t> indices_affecting_others;
   for (int64_t i = 0; i < tuple_size; ++i) {
     HloInstruction* output = while_body_root->mutable_operand(i);
-    for (int64_t index : inst_input_deps[output]) {
-      if (index != i) {
-        indices_affecting_others.insert(index);
+    for (auto* deps : inst_input_deps[output].all) {
+      for (int64_t index : *deps) {
+        if (index != i) {
+          indices_affecting_others.insert(index);
+        }
       }
     }
   }

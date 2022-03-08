@@ -127,7 +127,7 @@ add {
   %variance = f32[2] parameter(3)
   %grad_output = f32[2,2,2,2] parameter(4)
 
-  // CHECK:  %[[OUT:.+]]:3 = "mhlo.batch_norm_grad"
+  // CHECK:  %[[GRAD_OPERAND:.+]], %[[GRAD_SCALE:.+]], %[[GRAD_OFFSET:.+]]  = "mhlo.batch_norm_grad"
   // CHECK-SAME:  epsilon = 1.000000e-03 : f32
   // CHECK-SAME:  feature_index = 1 : i64
   // CHECK:  %[[TUPLE:.+]] = "mhlo.tuple"

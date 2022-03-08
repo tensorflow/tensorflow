@@ -28,6 +28,8 @@
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
@@ -48,7 +50,7 @@ class XlirDialect : public mlir::Dialect {
 // GPU module data container to be stored in TFRT's request context and picked
 // up by xlir.module.load.
 struct GpuModuleData {
-  llvm::StringRef blob;
+  llvm::ArrayRef<uint8_t> blob;
 
   struct ConstantInfo {
     llvm::StringRef symbol_name;
@@ -66,6 +68,8 @@ struct XlaGpuParams {
   const std::vector<GlobalDeviceId>* gpu_global_device_ids;  // may be null
   const NcclUniqueIdCallback* nccl_unique_id_callback;       // may be null
   GlobalDeviceId global_device_id;
+  InfeedManager* infeed_manager;    // never null
+  OutfeedManager* outfeed_manager;  // never null
 };
 
 }  // namespace gpu

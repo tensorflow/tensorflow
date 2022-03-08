@@ -141,6 +141,7 @@ def initialize_tpu_system(cluster_resolver=None):
 
   logging.info("Finished initializing TPU system.")
   tpu_topology = topology.Topology(serialized=serialized_topology)
+  cluster_resolver.set_tpu_topology(serialized_topology)
   _INITIALIZED_TPU_SYSTEMS[tpu_name] = tpu_topology
 
   return tpu_topology

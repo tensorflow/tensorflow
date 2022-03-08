@@ -515,9 +515,9 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:StandardOps",
         "@pybind11",
     ],
 )

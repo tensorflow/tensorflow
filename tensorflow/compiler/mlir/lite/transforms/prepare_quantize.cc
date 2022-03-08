@@ -276,7 +276,7 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
   // so this op can be quantized. This is only applied on the returned result
   // because the error will not be accumulated.
 
-  func.walk([&](ReturnOp ret) {
+  func.walk([&](func::ReturnOp ret) {
     int i = 0;
     for (Value returned : ret.getOperands()) {
       llvm::SmallVector<Value, 4> quantized;

@@ -690,9 +690,7 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
     DefaultValuedStrAttr<StrAttr, "">:$infeed_config,
     OptionalAttr<ArrayAttr>:$layout
   );
-  // TODO(@sdasgup): The following code need to be adjusted once the
-  // allowance of tuple-return-type for infeed is revoked.
-  let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
+  let results = (outs Variadic<HLO_TensorOrToken>);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -712,9 +710,7 @@ def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
   }];
 
   let arguments = (ins
-    // TODO(@sdasgup): The following code need to be adjusted once the
-    // allowance of tuple-return-type for infeed is revoked.
-    Variadic<HLO_TensorOrTuple>:$operands,
+    Variadic<HLO_Tensor>:$operands,
     HLO_Token:$token,
     DefaultValuedStrAttr<StrAttr, "">:$outfeed_config
   );
@@ -1174,7 +1170,12 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
 // MHLO Other op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]> {
+def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect,
+    AllShapesMatch<["scale", "mean", "variance", "grad_scale",
+        "grad_offset"]>,
+    AllShapesMatch<["operand", "grad_output"]>,
+    AllElementTypesMatch<["operand", "grad_scale", "grad_offset"]>,
+    AllTypesMatch<["operand", "grad_operand"]>]> {
   let summary = "Batch Normalization Gradient";
   let description = [{
     Calculates gradients of batch norm.
@@ -1183,18 +1184,23 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    HLO_Tensor:$operand,
-    HLO_Tensor:$scale,
-    HLO_Tensor:$mean,
-    HLO_Tensor:$variance,
-    HLO_Tensor:$grad_output,
+    RankedTensorOf<[AnyFloat]>:$operand,
+    1DTensorOf<[AnyFloat]>:$scale,
+    1DTensorOf<[AnyFloat]>:$mean,
+    1DTensorOf<[AnyFloat]>:$variance,
+    RankedTensorOf<[AnyFloat]>:$grad_output,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
   let results = (outs Variadic<HLO_TensorOrToken>);
+  let results = (outs
+      RankedTensorOf<[AnyFloat]>:$grad_operand,
+      1DTensorOf<[AnyFloat]>:$grad_scale,
+      1DTensorOf<[AnyFloat]>:$grad_offset);
 
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
@@ -1367,8 +1373,8 @@ def HLO_DynamicBroadcastInDimOp : HLO_ShapedInterfaceOp<
   let hasCustomHLOConverter = 1;
 }
 
-// Note: There is no HLO_CallOp because the standard call operation mlir::CallOp
-// is used instead. A mlir::CallOp is exported to a HLO call instruction
+// Note: There is no HLO_CallOp because the standard call operation mlir::func::CallOp
+// is used instead. A mlir::func::CallOp is exported to a HLO call instruction
 // directly.
 
 def HLO_CholeskyOp : HLO_Op<"cholesky",
@@ -1400,6 +1406,7 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
     DefaultValuedAttr<BoolAttr, "false">:$lower
   );
 
+  let hasVerifier = 1;
   let results = (outs HLO_FpOrComplexTensor);
 }
 

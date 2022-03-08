@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -313,7 +313,7 @@ LogicalResult RegionResourceHoister::Analyze() {
 
       // For functions, if the resource is used as a return operand, use that
       // as its result index.
-      if (is_func && isa<ReturnOp>(user)) {
+      if (is_func && isa<func::ReturnOp>(user)) {
         assert(!info.IsResultIndexAssigned() &&
                "Expect resource argument to returned no more than once");
         info.result_index = use.getOperandNumber();
@@ -948,7 +948,7 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
     auto old_return = branch.front().getTerminator();
     OpBuilder builder(old_return);
     auto new_return =
-        builder.create<ReturnOp>(old_return->getLoc(), new_retvals);
+        builder.create<func::ReturnOp>(old_return->getLoc(), new_retvals);
     old_return->erase();
     (void)LiftArgRetResourcesForFunction(
         branch, remaining_resource_data_types, [&](int64_t index, Value value) {
@@ -1082,7 +1082,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   // Replace old return with the new ones with update values.
   OpBuilder builder(old_return);
   auto new_return =
-      builder.create<ReturnOp>(old_return->getLoc(), old_and_new_retvals);
+      builder.create<func::ReturnOp>(old_return->getLoc(), old_and_new_retvals);
   old_return->erase();
   callee.setType(
       FunctionType::get(callee.getContext(), callee.getType().getInputs(),

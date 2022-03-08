@@ -51,7 +51,7 @@ def BufferPacking : Pass<"buffer-packing", "FuncOp"> {
   selected window-size.
   After this sorting, the buffers are checked whether subsequent buffers can be
   packed into them.}];
-  let dependentDialects = ["StandardOpsDialect","memref::MemRefDialect",
+  let dependentDialects = ["func::FuncDialect","memref::MemRefDialect",
     "arith::ArithmeticDialect"];
   let constructor = "createBufferPackingPass()";
   let options = [

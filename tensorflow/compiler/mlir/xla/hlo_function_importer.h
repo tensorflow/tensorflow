@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -141,7 +141,7 @@ class HloFunctionImporter {
         builder_(builder),
         function_map_(function_map) {
     context_->loadDialect<mlir::arith::ArithmeticDialect>();
-    context_->loadDialect<mlir::StandardOpsDialect>();
+    context_->loadDialect<mlir::func::FuncDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
   }
 

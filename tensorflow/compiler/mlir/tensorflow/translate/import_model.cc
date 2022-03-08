@@ -50,7 +50,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -1710,8 +1710,8 @@ Status ImporterBase::ConvertFunctionArgAndRets(
   builder_.create<mlir::tf_executor::FetchOp>(graph_op.getLoc(),
                                               inst_to_return);
   builder_.setInsertionPointToEnd(bb);
-  builder_.create<mlir::ReturnOp>(mlir::UnknownLoc::get(context_),
-                                  graph_op.getResults());
+  builder_.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(context_),
+                                        graph_op.getResults());
 
   func.setAllArgAttrs(
       llvm::to_vector<4>(llvm::map_range(arg_attrs, [&](NamedAttrList& list) {
@@ -3339,7 +3339,8 @@ Status CreateSavedModelIR(
             /*config=*/builder.getStringAttr(""),
             /*config_proto=*/builder.getStringAttr(""),
             /*executor_type=*/builder.getStringAttr(""));
-        body_builder.create<mlir::ReturnOp>(func.getLoc(), call.getResults());
+        body_builder.create<mlir::func::ReturnOp>(func.getLoc(),
+                                                  call.getResults());
       }
       func->setAttr(
           "tf_saved_model.exported_names",

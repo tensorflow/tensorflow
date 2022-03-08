@@ -70,10 +70,12 @@ void populateHLOToLHLOConversionPattern(
 // inserted when the lowering would otherwise lead to a memref with a
 // non-identity map.
 void populateHLOToMemrefConversionPattern(
-    bufferization::BufferizeTypeConverter *converter,
-    RemoveSignTypeConverter *sign_converter, RewritePatternSet *patterns,
+    RewritePatternSet *patterns,
     const std::function<bool(Operation *)> &enforce_identity_map =
         [](Operation *) { return true; });
+
+// Collection of rewrite patterns for lowering of HLO to arithmetic dialect.
+void populateHLOToArithmeticConversionPatterns(RewritePatternSet *patterns);
 
 // Collection of rewrite patterns for lowering of shape operations from the HLO
 // dialect to the standard dialect.

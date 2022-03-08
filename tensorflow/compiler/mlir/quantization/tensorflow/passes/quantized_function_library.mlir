@@ -170,6 +170,117 @@ module {
     return %conv: tensor<*xi8>
   }
 
+  // TODO(b/220993213): factor out common logic.
+  func private @quantized_matmul_fn(%input : tensor<*xi8>,
+                         %filter : tensor<*xi8>, %bias : tensor<*xi32>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
+                         %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
+                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
+    %fused_scale = "tf.Mul"(%input_scale, %weight_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+
+    %0 = "tf.Cast"(%input) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %1 = "tf.Sub"(%0, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %2 = "tf.Cast"(%filter) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %3 = "tf.Sub"(%2, %weight_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    // TODO(b/215633216): Optimize this function with the XLA Dot op.
+    %5 = "tf.MatMul"(%1, %3) {
+      attr_map = "transpose_a:0,transpose_b:1"
+    } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+    %6 = "tf.AddV2"(%5, %bias) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %7 = "tf.Div"(%fused_scale, %out_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %8 = "tf.Cast"(%6) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
+    %9 = "tf.Mul"(%8, %7) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %10 = "tf.Round"(%9) : (tensor<*xf32>) -> tensor<*xf32>
+    %11 = "tf.Cast"(%10) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi32>
+    %12 = "tf.AddV2"(%11, %out_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %i8_min = "tf.Const"() {value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+    %i8_max = "tf.Const"() {value = dense<127> : tensor<i32>} : () -> tensor<i32>
+    %13 = "tf.ClipByValue"(%12, %i8_min, %i8_max) : (tensor<*xi32>, tensor<i32>, tensor<i32>) -> tensor<*xi32>
+    %14 = "tf.Cast"(%13) {Truncate = false} : (tensor<*xi32>) -> tensor<*xi8>
+    return %14 : tensor<*xi8>
+  }
+
+  func private @quantized_matmul_relu_fn(%input : tensor<*xi8>,
+                         %filter : tensor<*xi8>, %bias : tensor<*xi32>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
+                         %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
+                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
+    %fused_scale = "tf.Mul"(%input_scale, %weight_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+
+    %0 = "tf.Cast"(%input) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %1 = "tf.Sub"(%0, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %2 = "tf.Cast"(%filter) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %3 = "tf.Sub"(%2, %weight_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    // TODO(b/215633216): Optimize this function with the XLA Dot op.
+    %5 = "tf.MatMul"(%1, %3) {
+      attr_map = "transpose_a:0,transpose_b:1"
+    } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+    %6 = "tf.AddV2"(%5, %bias) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %7 = "tf.Div"(%fused_scale, %out_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %8 = "tf.Cast"(%6) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
+    %9 = "tf.Mul"(%8, %7) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %10 = "tf.Round"(%9) : (tensor<*xf32>) -> tensor<*xf32>
+    %11 = "tf.Cast"(%10) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi32>
+    %12 = "tf.AddV2"(%11, %out_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %i8_min = "tf.Const"() {value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+    %i8_max = "tf.Const"() {value = dense<127> : tensor<i32>} : () -> tensor<i32>
+    %clip_min = "tf.Maximum"(%i8_min, %out_zp) : (tensor<i32>, tensor<*xi32>) -> tensor<i32>
+    %13 = "tf.ClipByValue"(%12, %clip_min, %i8_max) : (tensor<*xi32>, tensor<i32>, tensor<i32>) -> tensor<*xi32>
+    %14 = "tf.Cast"(%13) {Truncate = false} : (tensor<*xi32>) -> tensor<*xi8>
+    return %14 : tensor<*xi8>
+  }
+
+  func private @quantized_matmul_relu6_fn(%input : tensor<*xi8>,
+                         %weight : tensor<*xi8>, %bias : tensor<*xi32>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
+                         %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
+                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
+    %fused_scale = "tf.Mul"(%input_scale, %weight_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+
+    %0 = "tf.Cast"(%input) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %1 = "tf.Sub"(%0, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %2 = "tf.Cast"(%weight) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %3 = "tf.Sub"(%2, %weight_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    // TODO(b/215633216): Optimize this function with the XLA Dot op.
+    %5 = "tf.MatMul"(%1, %3) {
+      attr_map = "transpose_a:0,transpose_b:1"
+    } : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+    %6 = "tf.AddV2"(%5, %bias) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %7 = "tf.Div"(%fused_scale, %out_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %8 = "tf.Cast"(%6) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
+    %9 = "tf.Mul"(%8, %7) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %10 = "tf.Round"(%9) : (tensor<*xf32>) -> tensor<*xf32>
+    %11 = "tf.Cast"(%10) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi32>
+    %12 = "tf.AddV2"(%11, %out_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %i8_min = "tf.Const"() {value = dense<-128> : tensor<i32>} : () -> tensor<i32>
+    %i8_max = "tf.Const"() {value = dense<127> : tensor<i32>} : () -> tensor<i32>
+    %act_max =  "tf.Const"() {value = dense<6.0> : tensor<f32>} : () -> tensor<f32>
+    %i8_act_max_0 = "tf.PartitionedCall"(%act_max, %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@quantize_i8
+      } : (tensor<f32>, tensor<*xf32>, tensor<*xi32>) -> tensor<i8>
+    %i8_act_max_1 = "tf.Cast"(%i8_act_max_0) {Truncate = false} : (tensor<i8>) -> tensor<i32>
+    %clip_min = "tf.Maximum"(%i8_min, %out_zp) : (tensor<i32>, tensor<*xi32>) -> tensor<i32>
+    %clip_max = "tf.Minimum"(%i8_max, %i8_act_max_1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %13 = "tf.ClipByValue"(%12, %clip_min, %clip_max) : (tensor<*xi32>, tensor<i32>, tensor<i32>) -> tensor<*xi32>
+    %14 = "tf.Cast"(%13) {Truncate = false} : (tensor<*xi32>) -> tensor<*xi8>
+    return %14 : tensor<*xi8>
+  }
+
   // Note: following functions won't handle per-channel quantization for now.
   func private @quantize_i8(%input : tensor<*xf32>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xi8> {
     %div = "tf.Div"(%input, %scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>

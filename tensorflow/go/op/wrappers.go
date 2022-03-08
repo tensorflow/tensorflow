@@ -1385,6 +1385,40 @@ func AssertNextDataset(scope *Scope, input_dataset tf.Output, transformations tf
 	return op.Output(0)
 }
 
+// A transformation that asserts which transformations happened previously.
+//
+// This transformation checks the names and, optionally, the attribute name-value
+// pairs in the `transformations` argument against those of the transformations
+// that preceded this transformation.  If there is a mismatch, the transformation
+// raises an exception.
+//
+// The check occurs when iterating over the contents of the dataset, which
+// means that the check happens *after* any static optimizations are applied
+// to the dataset graph.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+// `AssertPrevDataset` passes through the outputs of its input dataset.
+//	transformations: A `tf.string` vector `tf.Tensor` identifying the transformations, with optional
+// attribute name-value pairs, that are expected to have happened previously.
+//
+//
+func AssertPrevDataset(scope *Scope, input_dataset tf.Output, transformations tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "AssertPrevDataset",
+		Input: []tf.Input{
+			input_dataset, transformations,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Adds a value to the current value of a variable.
 //
 // Any ReadVariableOp with a control dependency on this op is guaranteed to
@@ -32534,6 +32568,35 @@ func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf
 		Type: "RandomGammaGrad",
 		Input: []tf.Input{
 			alpha, sample,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Outputs the position of `value` in a permutation of [0, ..., max_index].
+//
+// Output values are a bijection of the `index` for any combination and `seed` and `max_index`.
+//
+// If multiple inputs are vectors (matrix in case of seed) then the size of the
+// first dimension must match.
+//
+// The outputs are deterministic.
+//
+// Arguments:
+//	index: A scalar tensor or a vector of dtype `dtype`. The index (or indices) to be shuffled. Must be within [0, max_index].
+//	seed: A tensor of dtype `Tseed` and shape [3] or [n, 3]. The random seed.
+//	max_index: A scalar tensor or vector of dtype `dtype`. The upper bound(s) of the interval (inclusive).
+//
+// Returns A scalar tensor of dtype `dtype`, within [0, max_index]. The randomly shuffled index.
+func RandomIndexShuffle(scope *Scope, index tf.Output, seed tf.Output, max_index tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RandomIndexShuffle",
+		Input: []tf.Input{
+			index, seed, max_index,
 		},
 	}
 	op := scope.AddOperation(opspec)

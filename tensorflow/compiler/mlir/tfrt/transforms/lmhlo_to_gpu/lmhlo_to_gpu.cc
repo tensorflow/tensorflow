@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
@@ -45,6 +45,8 @@ void populateCholeskyConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateConvolutionConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCustomCallConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateGemmConversionPattern(RewritePatternSet&, TypeConverter&);
+void populateInfeedAndOutfeedConversionPattern(RewritePatternSet&,
+                                               TypeConverter&);
 void populateReplicaAndPartitionConversionPattern(RewritePatternSet&,
                                                   TypeConverter&);
 void populateTriangularSolveConversionPattern(RewritePatternSet&,
@@ -80,6 +82,7 @@ void ConvertLmhloToGpuPass::runOnOperation() {
   populateConvolutionConversionPattern(patterns, converter);
   populateCustomCallConversionPattern(patterns, converter);
   populateGemmConversionPattern(patterns, converter);
+  populateInfeedAndOutfeedConversionPattern(patterns, converter);
   populateReplicaAndPartitionConversionPattern(patterns, converter);
   populateTriangularSolveConversionPattern(patterns, converter);
   populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
@@ -94,7 +97,8 @@ void ConvertLmhloToGpuPass::runOnOperation() {
   wrap_target.addLegalOp<
       lmhlo::AllGatherOp, lmhlo::AllReduceOp, lmhlo::ReduceScatterOp,
       lmhlo::AllToAllOp, lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp,
-      lmhlo::TriangularSolveOp, lmhlo::ReplicaIdOp, lmhlo::PartitionIdOp>();
+      lmhlo::TriangularSolveOp, lmhlo::ReplicaIdOp, lmhlo::PartitionIdOp,
+      lmhlo::InfeedOp, lmhlo::OutfeedOp>();
   tfrt::gpu::populateGpuAsyncConversionPatterns(patterns, converter,
                                                 wrap_target);
 
