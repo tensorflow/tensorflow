@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -143,7 +144,6 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void PropagateError(const CoordinatedTask& task, Status error,
                       bool is_reported_by_agent = false)
       TF_LOCKS_EXCLUDED(state_mu_);
-  void DoneClusterRegistration(Status s) TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void SetTaskError(absl::string_view task_name, Status error)
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
@@ -192,10 +192,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     State GetState() { return state_; }
     Status GetStatus() { return status_; }
     void SetConnected(uint64_t task_incarnation);
-    void SetRegisteredCallback(StatusCallback cb);
     Status RecordHeartbeat(uint64_t task_incarnation);
     int64 TimeSinceLastHeartbeatMs();
-    void InvokeRegisteredCallback(Status s);
     void SetError(Status status);
     absl::flat_hash_set<std::string> GetOngoingBarriers();
     void JoinBarrier(absl::string_view barrier_id);
@@ -204,10 +202,6 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
    private:
     // Incarnation ID for CPU:0 on remote task.
     uint64_t task_incarnation_ = 0;
-    // WaitForAllTasks callback invoked when all tasks are registered. Must be
-    // invoked exactly once.
-    StatusCallback registered_callback_;
-    std::atomic_bool is_callback_invoked_{true};
 
     State state_ = State::DISCONNECTED;
     Status status_;
@@ -224,11 +218,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   const uint64_t heartbeat_timeout_ms_;
 
   mutex state_mu_;
-  condition_variable cluster_registered_cv_;
   absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
       TF_GUARDED_BY(state_mu_);
   CoordinationServiceDeviceInfo cluster_devices_ TF_GUARDED_BY(state_mu_);
-  int cluster_pending_workers_ TF_GUARDED_BY(state_mu_);
 
   mutex kv_mu_;
   // Ordered map to store config key-values
@@ -260,12 +252,6 @@ void CoordinationServiceStandaloneImpl::TaskState::SetConnected(
   last_heartbeat_us_ = Env::Default()->NowMicros();
 }
 
-void CoordinationServiceStandaloneImpl::TaskState::SetRegisteredCallback(
-    StatusCallback cb) {
-  is_callback_invoked_.store(false);
-  registered_callback_ = cb;
-}
-
 void CoordinationServiceStandaloneImpl::TaskState::SetError(
     const Status status) {
   if (state_ == State::ERROR) return;
@@ -289,15 +275,6 @@ Status CoordinationServiceStandaloneImpl::TaskState::RecordHeartbeat(
 int64 CoordinationServiceStandaloneImpl::TaskState::TimeSinceLastHeartbeatMs() {
   mutex_lock l(last_heartbeat_mu_);
   return (Env::Default()->NowMicros() - last_heartbeat_us_) / 1000;
-}
-
-void CoordinationServiceStandaloneImpl::TaskState::InvokeRegisteredCallback(
-    Status s) {
-  if (!is_callback_invoked_.exchange(true, std::memory_order_acq_rel)) {
-    registered_callback_(s);
-    mutex_lock l(last_heartbeat_mu_);
-    last_heartbeat_us_ = Env::Default()->NowMicros();
-  }
 }
 
 absl::flat_hash_set<std::string>
@@ -343,7 +320,6 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
       cluster_state_.emplace(task_name, std::make_unique<TaskState>());
     }
   }
-  cluster_pending_workers_ = cluster_state_.size();
   StartCheckStaleness();
 }
 
@@ -445,7 +421,6 @@ void CoordinationServiceStandaloneImpl::Stop() {
     mutex_lock l(check_staleness_thread_shutdown_mu_);
     shutting_down_ = true;
     check_staleness_thread_cv_.notify_all();
-    cluster_registered_cv_.notify_all();
   }
   check_staleness_thread_.reset();
 }
@@ -471,7 +446,6 @@ void CoordinationServiceStandaloneImpl::RegisterWorker(
 
       SetTaskError(task_name, status);
       status = s;
-      DoneClusterRegistration(s);
     } else {
       // Hit this path when the task is registering itself for the first time,
       // or it's already in ERROR state and now register again. In both cases,
@@ -488,34 +462,18 @@ void CoordinationServiceStandaloneImpl::RegisterWorker(
 void CoordinationServiceStandaloneImpl::WaitForAllTasks(
     const CoordinatedTask& task, const CoordinationServiceDeviceInfo& devices,
     StatusCallback done) {
-  const std::string& task_name = GetTaskName(task);
-  mutex_lock l(state_mu_);
-  if (!cluster_state_.contains(task_name)) {
-    done(MakeCoordinationError(errors::InvalidArgument(
-        "Unexpected worker request with task_name=", task_name)));
-    return;
+  {
+    mutex_lock l(state_mu_);
+    cluster_devices_.MergeFrom(devices);
   }
-  DCHECK_GT(cluster_pending_workers_, 0);
-  cluster_state_[task_name]->SetRegisteredCallback(std::move(done));
-  cluster_devices_.MergeFrom(devices);
-  cluster_pending_workers_--;
-  if (cluster_pending_workers_ == 0) {
-    DoneClusterRegistration(Status::OK());
-  }
+  BarrierAsync(
+      absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_)),
+      absl::InfiniteDuration(), task, {}, std::move(done));
 }
 
 const CoordinationServiceDeviceInfo&
 CoordinationServiceStandaloneImpl::ListClusterDevices() {
   return cluster_devices_;
-}
-
-void CoordinationServiceStandaloneImpl::DoneClusterRegistration(Status s) {
-  for (const auto& task_state : cluster_state_) {
-    if (task_state.second != nullptr) {
-      task_state.second->InvokeRegisteredCallback(s);
-    }
-  }
-  cluster_registered_cv_.notify_all();
 }
 
 uint64_t CoordinationServiceStandaloneImpl::GetServiceIncarnation() {
