@@ -555,6 +555,7 @@ key_value_sort = gen_xla_ops.xla_key_value_sort
 variadic_sort = gen_xla_ops.xla_variadic_sort
 while_loop = gen_xla_ops.xla_while
 dequantize = gen_xla_ops.xla_dequantize
+custom_call = gen_xla_ops.xla_custom_call
 
 
 def gather(operand, start_indices, dimension_numbers, slice_sizes,

@@ -134,6 +134,7 @@ tf_kernel_library(
         "where_op.cc",
         "xla_broadcast_helper_op.cc",
         "xla_conv_op.cc",
+        "xla_custom_call_op.cc",
         "xla_dequantize_op.cc",
         "xla_dot_op.cc",
         "xla_optimization_barrier_op.cc",
