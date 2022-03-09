@@ -288,6 +288,7 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
