@@ -37,7 +37,7 @@ func @transpose_2d(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-COUNT-12:    vector.shuffle
 // CHECK-COUNT-8:     llvm.inline_asm
 // CHECK-COUNT-8:     vector.shuffle
-// Vector xfer write: unrolled second vector dimension.
+// Vector xfer writes: unrolled second vector dimension.
 // CHECK-NEXT:        vector.transfer_write
 // CHECK-NEXT:        affine.apply
 // CHECK-NEXT:        vector.transfer_write
@@ -89,7 +89,7 @@ func @transpose_3d_021(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 // CHECK-COUNT-12:    vector.shuffle
 // CHECK-COUNT-8:     llvm.inline_asm
 // CHECK-COUNT-8:     vector.shuffle
-// Vector xfer write: unrolled second vector dimension.
+// Vector xfer writes: unrolled second vector dimension.
 // CHECK-NEXT:        vector.transfer_write
 // CHECK-NEXT:        affine.apply
 // CHECK-NEXT:        vector.transfer_write
@@ -141,7 +141,7 @@ func @transpose_3d_201(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 // CHECK-COUNT-12:    vector.shuffle
 // CHECK-COUNT-8:     llvm.inline_asm
 // CHECK-COUNT-8:     vector.shuffle
-// Vector xfer write: unrolled second vector dimension.
+// Vector xfer writes: unrolled second vector dimension.
 // CHECK-NEXT:        vector.transfer_write
 // CHECK-NEXT:        affine.apply
 // CHECK-NEXT:        vector.transfer_write
@@ -193,7 +193,7 @@ func @transpose_3d_210(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 // CHECK-COUNT-12:    vector.shuffle
 // CHECK-COUNT-8:     llvm.inline_asm
 // CHECK-COUNT-8:     vector.shuffle
-// Vector xfer write: unrolled second vector dimension.
+// Vector xfer writes: unrolled second vector dimension.
 // CHECK-NEXT:        vector.transfer_write
 // CHECK-NEXT:        affine.apply
 // CHECK-NEXT:        vector.transfer_write
@@ -245,7 +245,7 @@ func @transpose_3d_120(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 // CHECK-COUNT-12:    vector.shuffle
 // CHECK-COUNT-8:     llvm.inline_asm
 // CHECK-COUNT-8:     vector.shuffle
-// Vector xfer write: unrolled second vector dimension.
+// Vector xfer writes: unrolled second vector dimension.
 // CHECK-NEXT:        vector.transfer_write
 // CHECK-NEXT:        affine.apply
 // CHECK-NEXT:        vector.transfer_write
@@ -275,41 +275,13 @@ func @transpose_3d_102(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 // CHECK-LABEL:   func @transpose_3d_102
 // CHECK-DAG:       %[[C8:.*]] = arith.constant 8 : index
 // CHECK-DAG:       %[[C1:.*]] = arith.constant 1 : index
-// 1x8x8 tiling.
-// CHECK:           scf.parallel {{.*}} step (%[[C1]], %[[C8]], %[[C8]]) {
-// Vector xfer reads: unrolled second vector dimension.
-// CHECK-NEXT:        vector.transfer_read
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_read
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_read
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_read
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_read
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_read
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_read
-// CHECK-NEXT:        affine.apply
+// 1x1x8 tiling.
+// CHECK:           scf.parallel {{.*}} step (%[[C1]], %[[C1]], %[[C8]]) {
+// Vector xfer read: we only vectorize one dimension for "memcopy" transposes.
 // CHECK-NEXT:        vector.transfer_read
 // No transposition is required here so no AVX2 shuffle/asm should be generated.
 // CHECK-NOT:         vector.shuffle
 // CHECK-NOT:         llvm.inline_asm
-// Vector xfer write: unrolled second vector dimension.
-// CHECK-NEXT:        vector.transfer_write
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_write
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_write
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_write
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_write
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_write
-// CHECK-NEXT:        affine.apply
-// CHECK-NEXT:        vector.transfer_write
-// CHECK-NEXT:        affine.apply
+// Vector xfer write: we only vectorize one dimension for "memcopy" transposes.
 // CHECK-NEXT:        vector.transfer_write
 
