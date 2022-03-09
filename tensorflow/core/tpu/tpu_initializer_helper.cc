@@ -57,7 +57,7 @@ bool GetEnvBool(const char* name, bool defval) {
 
 // This function gets pid of a process and checks if that process is using tpu.
 // It is not able to check processes that are owned by another user.
-bool IsTpuUsed(long pid) {
+bool IsTpuUsed(int64_t pid) {
   std::string path = absl::StrCat("/proc/", pid, "/fd");
   DIR* raw_fd_dir = opendir(path.c_str());
   if (!raw_fd_dir) {
@@ -68,9 +68,9 @@ bool IsTpuUsed(long pid) {
   std::string line;
   std::string tpu_dev_path = "/dev/accel0";
   line.resize(tpu_dev_path.size());
-  while (ent = readdir(raw_fd_dir)) {
+  while ((ent = readdir(raw_fd_dir))) {
     if (!isdigit(*ent->d_name)) continue;
-    long fd = strtol(ent->d_name, NULL, 10);
+    int64_t fd = strtol(ent->d_name, nullptr, 10);
     path = absl::StrCat("/proc/", pid, "/fd/", fd);
     if (!readlink(path.c_str(), &line[0], line.size())) continue;
     if (line != tpu_dev_path) continue;
@@ -86,16 +86,16 @@ bool IsTpuUsed(long pid) {
 bool FindAndLogLibtpuProcess() {
   DIR* proc = opendir("/proc");
 
-  if (proc == NULL) {
+  if (proc == nullptr) {
     return false;
   }
   std::unique_ptr<DIR, int (*)(DIR*)> proc_dir(proc, closedir);
   struct dirent* ent;
-  long pid;
-  while (ent = readdir(proc)) {
+  int64_t pid;
+  while ((ent = readdir(proc))) {
     if (!isdigit(*ent->d_name)) continue;
 
-    pid = strtol(ent->d_name, NULL, 10);
+    pid = strtol(ent->d_name, nullptr, 10);
     if (IsTpuUsed(pid)) {
       LOG(INFO) << "libtpu.so is already in use by process with pid "
                 << pid
