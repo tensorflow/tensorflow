@@ -74,11 +74,16 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
     done = [] {};
   }
 
-  const int64_t axis_input = context->input(0).scalar<int64_t>()();
+  const Tensor& input_axis = context->input(0);
   const Tensor& input_indices = context->input(1);
   const Tensor& input_values = context->input(2);
   const Tensor& input_shape = context->input(3);
 
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsScalar(input_axis.shape()),
+                    errors::InvalidArgument(
+                        "Input axis should be a scalar but received shape ",
+                        input_axis.shape().DebugString()),
+                    done);
   OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsMatrix(input_indices.shape()),
                     errors::InvalidArgument(
                         "Input indices should be a matrix but received shape ",
@@ -95,6 +100,7 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
                         input_shape.shape().DebugString()),
                     done);
 
+  const int64_t axis_input = input_axis.scalar<int64_t>()();
   const int64_t input_rank = input_shape.vec<int64_t>().size();
   const int64_t axis = (axis_input < 0) ? input_rank + axis_input : axis_input;
 
@@ -148,5 +154,41 @@ class SparseSplitOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+typedef Eigen::GpuDevice GPUDevice;
+
+// The GPU implementation is async because it requires waiting for a
+// host->device memcpy before the output is allocated (similar to
+// SegmentSumGPUOp).
+template <typename T>
+class SparseSplitGPUOp : public AsyncOpKernel {
+ public:
+  explicit SparseSplitGPUOp(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("num_split", &num_split_));
+  }
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    SparseSplitOpImpl<GPUDevice, T>(context, num_split_, done);
+  }
+
+ private:
+  int num_split_;
+};
+
+#define REGISTER_KERNELS(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("SparseSplit")             \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("split_dim")    \
+                              .HostMemory("shape")        \
+                              .HostMemory("output_shape") \
+                              .TypeConstraint<type>("T"), \
+                          SparseSplitGPUOp<type>)
+TF_CALL_POD_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

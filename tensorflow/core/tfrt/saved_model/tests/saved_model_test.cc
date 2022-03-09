@@ -47,8 +47,10 @@ TEST_P(SavedModelTest, BasicV1) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
   options.enable_lazy_loading = GetParam().enable_lazy_loading;
-  options.compile_options.enable_native_ops = GetParam().enable_native_ops;
-  options.compile_options.enable_grappler = GetParam().enable_grappler;
+  options.graph_execution_options.compile_options.enable_native_ops =
+      GetParam().enable_native_ops;
+  options.graph_execution_options.compile_options.enable_grappler =
+      GetParam().enable_grappler;
 
   tensorflow::Status status;
   auto saved_model =
@@ -104,6 +106,40 @@ TEST(SavedModelTest, BasicV2) {
   std::vector<tensorflow::Tensor> outputs;
   TF_ASSERT_OK(
       test.GetSavedModel()->Run({}, "serving_default", inputs, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+  auto& output = outputs[0];
+
+  ASSERT_EQ(output.NumElements(), 1);
+  EXPECT_EQ(output.flat<int32_t>()(0), 6);
+}
+
+TEST(SavedModelTest, VariableOnTpu) {
+  // A ReadVariableOp on 'TPU' would behave exactly the same as a ReadVariableOp
+  // on 'CPU'. This is to be compatible with TF1 runtime.
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/variable_on_tpu");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+  options.graph_execution_options.compile_options.enable_native_ops = false;
+
+  tensorflow::Status status;
+  auto saved_model =
+      SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                     /*tags=*/{"serve"}, &status);
+  TF_CHECK_OK(status);
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.emplace_back(tensorflow::DT_INT32,
+                      /*shape=*/tensorflow::TensorShape{1, 3});
+  auto flat = inputs.back().flat<int32_t>();
+  flat(0) = 1;
+  flat(1) = 1;
+  flat(2) = 1;
+
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model->Run({}, "serving_default", inputs, &outputs));
   ASSERT_EQ(outputs.size(), 1);
   auto& output = outputs[0];
 
@@ -441,7 +477,7 @@ TEST(SavedModelTest, CustomWorkQueue) {
       std::make_unique<tfrt::tf::RunHandlerThreadWorkQueue>(queue_options));
 
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_native_ops = false;
+  options.graph_execution_options.compile_options.enable_native_ops = false;
 
   tensorflow::Status status;
   auto saved_model =
@@ -479,7 +515,7 @@ TEST(SavedModelTest, RunOptionsWorkQueue) {
   auto runtime = tensorflow::tfrt_stub::Runtime::Create();
 
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_native_ops = false;
+  options.graph_execution_options.compile_options.enable_native_ops = false;
 
   tensorflow::Status status;
   auto saved_model =
@@ -581,7 +617,7 @@ TEST(SavedModelTest, RefTypeTensorInput) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -601,9 +637,9 @@ TEST(SavedModelTest, HashTableAssetV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_native_ops = false;
-  options.compile_options.enable_grappler = true;
-  options.compile_options.hoist_invariant_ops = true;
+  options.graph_execution_options.compile_options.enable_native_ops = false;
+  options.graph_execution_options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.hoist_invariant_ops = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -759,8 +795,8 @@ TEST_P(SavedModelPowTest, Pow) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
-  options.run_placer_grappler_on_functions =
+  options.graph_execution_options.compile_options.enable_grappler = true;
+  options.graph_execution_options.run_placer_grappler_on_functions =
       GetParam().run_placer_grappler_on_functions;
 
   tensorflow::Status status;
@@ -794,7 +830,7 @@ TEST(SavedModelPowTest, MapDataset) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -825,7 +861,7 @@ TEST(SavedModelTest, ControlFlowV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -844,7 +880,7 @@ TEST(SavedModelTest, WhileLoopV1) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =
@@ -876,7 +912,7 @@ TEST(SavedModelTest, SparseTensorInput) {
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
-  options.compile_options.enable_grappler = true;
+  options.graph_execution_options.compile_options.enable_grappler = true;
 
   tensorflow::Status status;
   auto saved_model =

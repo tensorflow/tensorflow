@@ -2,34 +2,6 @@
 // RUN:   | mlir-hlo-opt \
 // RUN:   | FileCheck %s
 
-// CHECK-LABEL: func @batch_norm_grad_memrefs
-func @batch_norm_grad_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>,
-                              %arg3: memref<8xf32>, %arg4: memref<8x8x8x8xf32>,
-                              %grad_operand: memref<8x8x8x8xf32>, %grad_scale: memref<8xf32>,
-                              %grad_offset: memref<8xf32>) -> () {
-  "lmhlo_gpu.batch_norm_grad"(%arg0, %arg1, %arg2, %arg3, %arg4, %grad_operand, %grad_scale, %grad_offset) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
-      : (memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>, memref<8xf32>, memref<8x8x8x8xf32>,
-         memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>) -> ()
-  return
-}
-
-// CHECK-LABEL: func @batch_norm_inference_memrefs
-func @batch_norm_inference_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>,
-                                   %arg3: memref<8xf32>, %arg4: memref<8xf32>, %arg_out: memref<8x8x8x8xf32>) -> () {
-  "lmhlo_gpu.batch_norm_inference"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg_out) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
-      : (memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>, memref<8xf32>, memref<8xf32>, memref<8x8x8x8xf32>) -> ()
-  return
-}
-
-// CHECK-LABEL: func @batch_norm_training_memrefs
-func @batch_norm_training_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>,
-                                  %output: memref<8x8x8x8xf32>, %batch_mean: memref<8xf32>,
-                                  %batch_var: memref<8xf32>) -> () {
-  "lmhlo_gpu.batch_norm_training"(%arg0, %arg1, %arg2, %output, %batch_mean, %batch_var) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
-      : (memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>, memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>) -> ()
-  return
-}
-
 // CHECK-LABEL: func @conv_forward_generic
 // CHECK: lmhlo_gpu.conv_forward
 // CHECK-SAME: dim_numbers = [b, f, 0, 1]x[i, o, 0, 1]->[b, f, 0, 1]

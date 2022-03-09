@@ -63,8 +63,8 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
   tpu::ExecutorApiFn()->TpuTransferManager_GetInfeedLayoutFn(&c_shape,
                                                              &c_infeed_shape);
   xla::Shape infeed_shape = ApiConverter::FromC(&c_infeed_shape);
-  ApiConverter::Free(&c_shape);
-  ApiConverter::Free(&c_infeed_shape);
+  ApiConverter::Destroy(&c_shape);
+  ApiConverter::Destroy(&c_infeed_shape);
   return infeed_shape;
 }
 
@@ -430,6 +430,8 @@ TpuInfeedEnqueueOp::TpuInfeedEnqueueOp(
 }
 
 Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx, int device_ordinal) {
+  VLOG(1) << "TpuInfeedEnqueueOp::DoWork. iter_id=" << ctx->frame_iter().iter_id
+          << " device_ordinal=" << device_ordinal;
   const Tensor& input_tensor = ctx->input(0);
 
   // Validate runtime shape and fail if it doesn't match the contract.
@@ -457,6 +459,8 @@ Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx, int device_ordinal) {
   // Transfer the given literal to the Infeed interface of the device.
   TF_RETURN_IF_ERROR(
       transfer_op_->TransferLiteralToInfeed(device_ordinal, literal));
+  VLOG(1) << "TpuInfeedEnqueueOp completes. iter_id="
+          << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
   return Status::OK();
 }
 
@@ -486,6 +490,8 @@ TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(
 
 Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
                                        int device_ordinal) {
+  VLOG(1) << "TpuInfeedEnqueueTupleOp::DoWork. iter_id="
+          << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
   OpInputList values;
   TF_RETURN_IF_ERROR(ctx->input_list("inputs", &values));
   if (values.size() != shapes_.size()) {
@@ -494,7 +500,7 @@ Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
   }
 
   for (const auto& shapes : shapes_) {
-    VLOG(1) << "TransferLiteralToInfeed " << shapes.DebugString();
+    VLOG(2) << "TransferLiteralToInfeed " << shapes.DebugString();
   }
 
   std::vector<Tensor> maybe_transposed_tensors;
@@ -528,7 +534,8 @@ Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(
       transfer_op_->TransferLiteralToInfeed(device_ordinal, tuple));
 
-  VLOG(1) << "TransferLiteralToInfeed complete.";
+  VLOG(1) << "TpuInfeedEnqueueTupleOp completes. iter_id="
+          << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
 
   return Status::OK();
 }

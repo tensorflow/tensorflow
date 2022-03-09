@@ -207,8 +207,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         imported_graph.control_outputs)
 
   def _make_asset(self, contents):
-    filename = tempfile.mktemp(prefix=self.get_temp_dir())
-    with open(filename, "w") as f:
+    fd, filename = tempfile.mkstemp(prefix=self.get_temp_dir())
+    with os.fdopen(fd, "w") as f:
       f.write(contents)
     return filename
 
@@ -2135,20 +2135,16 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
     class Extra(tracking.AutoTrackable):
 
-      def _list_extra_dependencies_for_serialization(self, cache):
-        if self not in cache:
-          cache[self] = {"a": variables.Variable(5.)}
-        return cache[self]
+      def _trackable_children(self, save_type, **kwargs):
+        children = super(Extra, self)._trackable_children(save_type, **kwargs)
+        children["a"] = variables.Variable(5.)
+        return children
+
     root = Extra()
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
     imported = load.load(path)
     self.assertEqual(5, self.evaluate(imported.a))
-
-    root.a = variables.Variable(3.)
-    with self.assertRaisesRegex(
-        ValueError, "object has an attribute named 'a', which is reserved."):
-      save.save(root, path)
 
   def test_save_cached_variable(self):
     with ops.Graph().as_default(), session_lib.Session() as session:
@@ -2494,8 +2490,8 @@ class DeferredInitModuleVariablesTest(test.TestCase):
     load_and_run_module(export_dir, weight_size)
 
   def _make_asset(self, contents):
-    filename = tempfile.mktemp(prefix=self.get_temp_dir())
-    with open(filename, "w") as f:
+    fd, filename = tempfile.mkstemp(prefix=self.get_temp_dir())
+    with os.fdopen(fd, "w") as f:
       f.write(contents)
     return filename
 

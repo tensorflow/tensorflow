@@ -51,7 +51,7 @@ namespace {
 // computation.
 struct FusedKernelMatcherPass
     : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 bool IsActivationFunction(Operation *op) {
@@ -170,12 +170,12 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     std::vector<NamedAttribute> attrs = contraction->getAttrs();
     ArrayAttr fused_ops_attr = ArrayAttr::get(context, fused_ops);
     attrs.push_back(
-        NamedAttribute(Identifier::get("fused_ops", context), fused_ops_attr));
+        NamedAttribute(StringAttr::get(context, "fused_ops"), fused_ops_attr));
     // Epsilon is used only in fusions with the FusedBatchNorm op, so we zero it
     // here.
     Attribute epsilon = rewriter.getF32FloatAttr(0);
     attrs.push_back(
-        NamedAttribute(Identifier::get("epsilon", context), epsilon));
+        NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
     // Insert fused operation right before the BiasAdd operation to guarantee
     // that bias value dominates the fused operation. We already verified that
@@ -244,10 +244,10 @@ class FuseMatMulBiasAdd
   }
 };
 
-void FusedKernelMatcherPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
-  patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
+void FusedKernelMatcherPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
+  patterns.add<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

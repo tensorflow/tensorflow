@@ -35,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
+#include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
@@ -121,42 +123,18 @@ class FunctionMetadata {
 class SavedModel {
  public:
   struct Options {
-    explicit Options(const Runtime* rt) : runtime(rt) { DCHECK(runtime); }
+    explicit Options(const Runtime* rt) : graph_execution_options(rt) {}
 
     // If true, the loading of any signature (or signature combination) will be
     // deferred until the first corresponding invocationof running. Otherwise,
     // the individual signatures will be loaded along with the saved model.
     bool enable_lazy_loading = false;
 
-    // If true, when creating an optimized subgraph, Placer and Grappler will
-    // also run on the functions.
-    bool run_placer_grappler_on_functions = false;
-
-    // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
-    // more details. It must not be nullptr;
-    const Runtime* runtime = nullptr;
-
-    // Model metadata used for monitoring and tracing.
-    tensorflow::SessionMetadata model_metadata;
-
-    tensorflow::TfrtCompileOptions compile_options;
+    GraphExecutionOptions graph_execution_options;
   };
 
   // Per-request options.
-  struct RunOptions {
-    absl::optional<std::chrono::system_clock::time_point> deadline;
-
-    // Priority of the request. Larger number means higher priority.
-    int priority = 0;
-
-    // If true, the input specs will be checked before running, and an error
-    // will be raised upon mismatch.
-    bool validate_input_specs = false;
-
-    // The thread pool used for this run. If it is nullptr, a default one set
-    // in the tensorflow::tfrt_stub::Runtime will be used.
-    WorkQueueInterface* work_queue = nullptr;
-  };
+  using RunOptions = GraphExecutionRunOptions;
 
   explicit SavedModel(const Runtime* runtime) : runtime_(runtime) {
     DCHECK(runtime_);
@@ -243,9 +221,9 @@ class SavedModelImpl final : public SavedModel {
       tfrt::BefBuffer bef, tfrt::RCReference<tfrt::BEFFile> bef_file,
       absl::flat_hash_map<std::string, internal::Signature> signatures,
       std::unique_ptr<FallbackState> fallback_state,
-      std::unique_ptr<TfrtGraphExecutionState> graph_execution_state,
       std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource,
-      std::unique_ptr<tfrt::ResourceContext> resource_context);
+      std::unique_ptr<tfrt::ResourceContext> resource_context,
+      std::unique_ptr<GraphExecutor> graph_executor);
 
   ~SavedModelImpl() override;
 
@@ -284,18 +262,9 @@ class SavedModelImpl final : public SavedModel {
     std::unique_ptr<tfrt::ResourceContext> resource_context;
   };
 
-  // Create a ResourceContext and populate it with per model resource from
-  // Runtime. If `tpu_target` is set to kTpurt, also call a special
-  // `AddTpuResources` function to populate TPU related resources for tpurt.
-  //
-  // TODO(b/178227859): Remove the need for the special handling for TPU here.
-  static std::unique_ptr<tfrt::ResourceContext> CreateResourceContext(
-      const Runtime& runtime, tfrt::tpu::TpuModelResource* tpu_model_resource,
-      tensorflow::TfrtTpuInfraTarget tpu_target);
-
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
   // `output_nodes`.
-  tensorflow::StatusOr<mlir::OwningModuleRef> ImportSubgraph(
+  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSubgraph(
       mlir::MLIRContext* context,
       const tensorflow::GraphImportConfig::InputArrays& input_nodes,
       const std::vector<std::string>& output_nodes,
@@ -311,17 +280,6 @@ class SavedModelImpl final : public SavedModel {
   tensorflow::StatusOr<
       std::reference_wrapper<const SavedModelImpl::LoadingResult>>
   GetOrCreateLoadingResult(absl::Span<const std::string> names)
-      TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
-
-  // Returns the loading result given inputs, output_tensor_names, and
-  // target_node_names.
-  tensorflow::StatusOr<
-      std::reference_wrapper<const SavedModelImpl::LoadingResult>>
-  GetOrCreateLoadingResult(
-      absl::Span<const std::string> input_tensor_names,
-      absl::Span<const tensorflow::DataType> input_tensor_dtypes,
-      absl::Span<const std::string> output_tensor_names,
-      absl::Span<const std::string> target_node_names)
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
 
   // Runs `func` with the given inputs, and outputs the result.
@@ -346,7 +304,6 @@ class SavedModelImpl final : public SavedModel {
   tfrt::RequestDeadlineTracker req_deadline_tracker_;
   absl::flat_hash_map<std::string, internal::Signature> signatures_;
   std::unique_ptr<FallbackState> fallback_state_;
-  std::unique_ptr<TfrtGraphExecutionState> graph_execution_state_;
   // TODO(b/178227859): Change the hardcoding of this specific TPU resource
   // (TpuModelResource) to a general and plugable interface.
   std::unique_ptr<tfrt::tpu::TpuModelResource> tpu_model_resource_;
@@ -357,6 +314,7 @@ class SavedModelImpl final : public SavedModel {
   absl::flat_hash_map<std::string /*joined_name*/,
                       std::unique_ptr<LoadingResult>>
       loading_result_cache_ TF_GUARDED_BY(loading_result_cache_mu_);
+  std::unique_ptr<GraphExecutor> graph_executor_;
 };
 
 }  // namespace tfrt_stub

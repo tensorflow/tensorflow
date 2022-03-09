@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <bitset>
 #include <cmath>
+#include <limits>
 #include <type_traits>
 
 #include "absl/algorithm/container.h"
@@ -79,22 +80,22 @@ struct UintWithSize {};
 
 template <>
 struct UintWithSize<1> {
-  using type = uint8;
+  using type = uint8_t;
 };
 
 template <>
 struct UintWithSize<2> {
-  using type = uint16;
+  using type = uint16_t;
 };
 
 template <>
 struct UintWithSize<4> {
-  using type = uint32;
+  using type = uint32_t;
 };
 
 template <>
 struct UintWithSize<8> {
-  using type = uint64;
+  using type = uint64_t;
 };
 
 // Templated DfsHloVisitor for use by HloEvaluator.
@@ -1640,7 +1641,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       case S32: {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_slice],
-            DynamicSlice<int32>(
+            DynamicSlice<int32_t>(
                 operand_literal,
                 absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
                 result_shape));
@@ -1656,7 +1657,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       case U32: {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_slice],
-            DynamicSlice<uint32>(
+            DynamicSlice<uint32_t>(
                 operand_literal,
                 absl::MakeConstSpan(dynamic_slice->operands()).subspan(1),
                 result_shape));
@@ -1705,7 +1706,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       case S32: {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_update_slice],
-            DynamicUpdateSlice<int32>(
+            DynamicUpdateSlice<int32_t>(
                 operand_literal, update_literal,
                 absl::MakeConstSpan(dynamic_update_slice->operands())
                     .subspan(2)));
@@ -1721,7 +1722,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       case U32: {
         TF_ASSIGN_OR_RETURN(
             parent_->evaluated_[dynamic_update_slice],
-            DynamicUpdateSlice<uint32>(
+            DynamicUpdateSlice<uint32_t>(
                 operand_literal, update_literal,
                 absl::MakeConstSpan(dynamic_update_slice->operands())
                     .subspan(2)));
@@ -1787,15 +1788,15 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         break;
       }
       case U8: {
-        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint8>(map));
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint8_t>(map));
         break;
       }
       case U16: {
-        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint16>(map));
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint16_t>(map));
         break;
       }
       case U32: {
-        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint32>(map));
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<uint32_t>(map));
         break;
       }
       case U64: {
@@ -1803,15 +1804,15 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         break;
       }
       case S8: {
-        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int8>(map));
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int8_t>(map));
         break;
       }
       case S16: {
-        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int16>(map));
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int16_t>(map));
         break;
       }
       case S32: {
-        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int32>(map));
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int32_t>(map));
         break;
       }
       case S64: {
@@ -2481,7 +2482,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  // Enable CLZ only for int32, uint32, int64_t and uint64.
+  // Enable CLZ only for int32_t, uint32_t, int64_t and uint64_t.
   template <typename NativeT,
             typename std::enable_if<
                 (!std::is_integral<NativeT>::value ||
@@ -2495,11 +2496,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 std::is_integral<NativeT>::value &&
                 !std::is_same<NativeT, bool>::value>::type* = nullptr>
   Status HandleClz(HloInstruction* clz) {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[clz],
-                        ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
-                          return (sizeof(elem_operand) * CHAR_BIT - 1) -
-                                 tensorflow::Log2Floor64(elem_operand);
-                        }));
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[clz],
+        ElementWiseUnaryOp(clz, [](ElementwiseT elem_operand) {
+          using UnsignedElementwiseT = std::make_unsigned_t<ElementwiseT>;
+          return (std::numeric_limits<UnsignedElementwiseT>::digits - 1) -
+                 Log2Floor<UnsignedElementwiseT>(elem_operand);
+        }));
     return Status::OK();
   }
 
@@ -2585,12 +2588,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[reduce_precision],
         ElementWiseUnaryOp(reduce_precision, [&](ElementwiseT elem) {
-          const uint32 src_mantissa_bits =
+          const uint32_t src_mantissa_bits =
               std::numeric_limits<NativeT>::digits - 1;
-          const uint32 src_exponent_bits =
+          const uint32_t src_exponent_bits =
               8 * sizeof(NativeT) - src_mantissa_bits - 1;
-          const uint32 dest_mantissa_bits = reduce_precision->mantissa_bits();
-          const uint32 dest_exponent_bits = reduce_precision->exponent_bits();
+          const uint32_t dest_mantissa_bits = reduce_precision->mantissa_bits();
+          const uint32_t dest_exponent_bits = reduce_precision->exponent_bits();
 
           using Uint = typename UintWithSize<sizeof(NativeT)>::type;
           Uint value_as_int = absl::bit_cast<Uint>(elem);
@@ -3053,11 +3056,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 // instantiating it.  We explicitly instantiate this class in the various
 // hlo_evaluator_typed_visitor*.cc files.
 extern template class HloEvaluatorTypedVisitor<bool>;
-extern template class HloEvaluatorTypedVisitor<uint8>;
-extern template class HloEvaluatorTypedVisitor<uint32>;
+extern template class HloEvaluatorTypedVisitor<uint8_t>;
+extern template class HloEvaluatorTypedVisitor<uint32_t>;
 extern template class HloEvaluatorTypedVisitor<uint64_t>;
-extern template class HloEvaluatorTypedVisitor<int8>;
-extern template class HloEvaluatorTypedVisitor<int32>;
+extern template class HloEvaluatorTypedVisitor<int8_t>;
+extern template class HloEvaluatorTypedVisitor<int32_t>;
 extern template class HloEvaluatorTypedVisitor<int64_t>;
 extern template class HloEvaluatorTypedVisitor<Eigen::half, float>;
 extern template class HloEvaluatorTypedVisitor<float>;

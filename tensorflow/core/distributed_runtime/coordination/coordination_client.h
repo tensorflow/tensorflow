@@ -63,6 +63,13 @@ class CoordinationClient {
   virtual void DeleteKeyValueAsync(const DeleteKeyValueRequest* request,
                                    DeleteKeyValueResponse* response,
                                    StatusCallback done) = 0;
+
+  virtual void BarrierAsync(const BarrierRequest* request,
+                            BarrierResponse* response, StatusCallback done) = 0;
+
+  virtual void CancelBarrierAsync(const CancelBarrierRequest* request,
+                                  CancelBarrierResponse* response,
+                                  StatusCallback done) = 0;
 };
 
 // Simple wrapper class that can be used to retrieve CoordinationClients.

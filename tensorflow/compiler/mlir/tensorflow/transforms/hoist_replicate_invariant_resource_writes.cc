@@ -32,7 +32,7 @@ namespace {
 struct HoistReplicateInvariantResourceWritesPass
     : public TF::HoistReplicateInvariantResourceWritesPassBase<
           HoistReplicateInvariantResourceWritesPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // TODO(prakalps): This is a common utility and other passes use something
@@ -124,7 +124,7 @@ SmallVector<TF::AssignVariableOp> GetTailWritesToReplicateInvariantResourceVars(
   return std::move(tail_assign_variable_ops);
 }
 
-void HoistReplicateInvariantResourceWritesPass::runOnFunction() {
+void HoistReplicateInvariantResourceWritesPass::runOnOperation() {
   SmallVector<tf_device::ReplicateOp, 2> replicate_ops;
   getOperation().walk([&](tf_device::ReplicateOp replicate_op) {
     replicate_ops.push_back(replicate_op);

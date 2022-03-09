@@ -24,7 +24,8 @@ namespace {
 
 // This pass is only available in the tf-opt binary for testing.
 class MarkInitializedVariablesTestPass
-    : public PassWrapper<MarkInitializedVariablesTestPass, FunctionPass> {
+    : public PassWrapper<MarkInitializedVariablesTestPass,
+                         OperationPass<FuncOp>> {
  public:
   StringRef getArgument() const final {
     return "tf-saved-model-mark-initialized-variables-test";
@@ -34,10 +35,10 @@ class MarkInitializedVariablesTestPass
     return "Mark variables as initialized or not.";
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     TF::test_util::FakeSession session;
     if (failed(mlir::tf_saved_model::MarkInitializedVariablesInFunction(
-            getFunction(), &session)))
+            getOperation(), &session)))
       return signalPassFailure();
   }
 };
@@ -45,7 +46,7 @@ class MarkInitializedVariablesTestPass
 // This pass is only available in the tf-opt binary for testing.
 class MarkInitializedVariablesInvalidSessionTestPass
     : public PassWrapper<MarkInitializedVariablesInvalidSessionTestPass,
-                         FunctionPass> {
+                         OperationPass<FuncOp>> {
  public:
   StringRef getArgument() const final {
     return "tf-saved-model-mark-initialized-variables-invalid-session-test";
@@ -55,10 +56,10 @@ class MarkInitializedVariablesInvalidSessionTestPass
     return "Mark variables as initialized or not, but with invalid session.";
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     // Pass an invalid session argument, which is a nullptr.
     if (failed(mlir::tf_saved_model::MarkInitializedVariablesInFunction(
-            getFunction(), /*session=*/nullptr)))
+            getOperation(), /*session=*/nullptr)))
       return signalPassFailure();
   }
 };

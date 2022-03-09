@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/hash/hash.h"
@@ -38,9 +39,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -48,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
@@ -58,7 +62,7 @@ namespace py = pybind11;
 
 struct Uniquer {
   absl::Mutex mu;
-  NameUniquer name_uniquer TF_GUARDED_BY(mu);
+  NameUniquer name_uniquer ABSL_GUARDED_BY(mu);
 };
 
 Uniquer* GetUniquer() {
@@ -90,6 +94,19 @@ StatusOr<py::bytes> GetHloModuleSerializedProto(const HloModule& module) {
     return Unknown("Failed to serialize the HloModuleProto.");
   }
   return py::bytes(result);
+}
+
+// Converts a serialized HloModuleProto into a HloModule.
+StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
+    const py::bytes& bytes) {
+  HloModuleProto proto;
+  proto.ParseFromString(bytes);
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          proto, GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(proto, module_config));
+  return std::shared_ptr<HloModule>(std::move(module));
 }
 
 StatusOr<std::shared_ptr<HloModule>> GetHloModule(
@@ -127,7 +144,7 @@ StatusOr<std::string> GetComputationHloDotGraph(
 StatusOr<uint64_t> HashComputation(const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
-  return hlo_module->Hash();
+  return absl::HashOf(*hlo_module);
 }
 // Safe version of ShapeUtil::MakeShapeWithLayout that fails gracefully on
 // invalid input.
@@ -210,12 +227,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("__ne__", [](const Layout& layout,
                         const Layout& other) { return layout != other; })
       .def("__hash__",
-           [](const Layout& layout) { return absl::Hash<Layout>()(layout); })
+           [](const Layout& layout) { return absl::HashOf(layout); })
       .def("to_string", &Layout::ToString);
 
   py::class_<Shape> shape_class(m, "Shape");
   shape_class
-      .def(py::init([](const string& s) {
+      .def(py::init([](const std::string& s) {
         return absl::make_unique<Shape>(ValueOrThrow(ParseShape(s)));
       }))
       .def_static(
@@ -336,8 +353,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         const Shape& other) { return shape == other; })
       .def("__ne__", [](const Shape& shape,
                         const Shape& other) { return shape != other; })
-      .def("__hash__",
-           [](const Shape& shape) { return absl::Hash<Shape>()(shape); })
+      .def("__hash__", [](const Shape& shape) { return absl::HashOf(shape); })
       .def("__repr__", [](const Shape& shape) {
         return shape.ToString(/*print_layout=*/true);
       });
@@ -367,9 +383,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         const ShapeIndex& other) { return shape_ind == other; })
       .def("__ne__", [](const ShapeIndex& shape_ind,
                         const ShapeIndex& other) { return shape_ind != other; })
-      .def("__hash__", [](const ShapeIndex& shape_ind) {
-        return absl::Hash<ShapeIndex>()(shape_ind);
-      });
+      .def("__hash__",
+           [](const ShapeIndex& shape_ind) { return absl::HashOf(shape_ind); });
 
   // Literals
   py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
@@ -455,11 +470,24 @@ void BuildXlaCompilerSubmodule(py::module& m) {
               &HloModule::ToString),
           py::arg("options") = HloPrintOptions())
       .def("as_serialized_hlo_module_proto", &GetHloModuleSerializedProto)
+      .def("from_serialized_hlo_module_proto", &HloModuleFromSerializedProto)
       .def_property_readonly(
           "spmd_output_sharding",
           [](const HloModule& m) -> absl::optional<xla::OpSharding> {
             if (!m.has_spmd_output_sharding()) return absl::nullopt;
             return m.spmd_output_sharding().ToProto();
+          })
+      .def_property_readonly(
+          "spmd_parameters_shardings",
+          [](const HloModule& m)
+              -> absl::optional<std::vector<xla::OpSharding>> {
+            if (!m.has_spmd_parameters_shardings()) return absl::nullopt;
+            std::vector<xla::OpSharding> param_shardings;
+            for (const auto& parameter_sharding :
+                 m.spmd_parameters_shardings()) {
+              param_shardings.push_back(parameter_sharding.ToProto());
+            }
+            return param_shardings;
           });
 
   m.def("hlo_module_to_dot_graph",
@@ -471,7 +499,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   m.def(
       "hlo_module_cost_analysis",
       [](PyClient* client,
-         const HloModule& module) -> StatusOr<std::map<string, float>> {
+         const HloModule& module) -> StatusOr<HloCostAnalysis::Properties> {
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
@@ -690,6 +718,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)
       .value("MAXIMAL", OpSharding::MAXIMAL)
+      .value("MANUAL", OpSharding::MANUAL)
       .value("TUPLE", OpSharding::TUPLE)
       .value("OTHER", OpSharding::OTHER);
 
@@ -713,6 +742,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                       &xla::OpSharding::mutable_tile_assignment_devices);
   DefRepeatedProperty(op_sharding, "tuple_shardings",
                       &xla::OpSharding::mutable_tuple_shardings);
+  DefRepeatedProperty(op_sharding, "last_tile_dims",
+                      &xla::OpSharding::mutable_last_tile_dims);
 
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)

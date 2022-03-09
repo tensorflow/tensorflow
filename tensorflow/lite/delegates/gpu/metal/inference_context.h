@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_model_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/profiling_info.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
+#include "tensorflow/lite/delegates/gpu/metal/inference_context_generated.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
@@ -54,81 +57,27 @@ struct MetalNode {
   MetalNode& operator=(const MetalNode&) = delete;
 };
 
-struct GpuNode {
-  std::unique_ptr<GPUOperation> gpu_operation;
-  std::vector<ValueId> inputs;
-  std::vector<ValueId> outputs;
-  std::string name;
-
-  GpuNode() = default;
-  GpuNode(GpuNode&& node) = default;
-  GpuNode& operator=(GpuNode&& node) = default;
-  GpuNode(const GpuNode&) = delete;
-  GpuNode& operator=(const GpuNode&) = delete;
-};
-
 class InferenceContext {
  public:
-  struct CreateInferenceInfo {
-    CalculationsPrecision precision;
-    TensorStorageType storage_type;
-    ModelHints hints;
-
-    // User can provide immutable external tensors for inference context.
-    // Some restrictions apply:
-    //   1) ValueId must be input or output id of GraphFloat32
-    //   2) Provided ptrs must be valid during life of InferenceContext.
-    //   3) data_type must be equal to DeduceDataTypeFromPrecision(precision);
-    //      for example for precision F16, data_type must be FLOAT16
-    //   4) Layout must be without Batch dimension if tensor.shape.b == 1
-    //      Layout must be with Batch dimension if tensor.shape.b != 1
-    // InitFromGraph will fail if gpu can not allocate tensor with requested
-    // tensor descriptor
-    // WARNING: This is an experimental API and subject to change.
-    // IMPORTANT: tensors ids from predefined / external_immutable_tensors /
-    // external_mutable_tensors should not intersect.
-    absl::flat_hash_map<ValueId, GpuSpatialTensor*> external_immutable_tensors;
-
-    // User can provide mutable external tensors for inference context.
-    // HINT: Highly recommended to use other options if possible, this options
-    // will be with the worst performance.
-    // Some restrictions apply:
-    //   1) ValueId must be input or output id of GraphFloat32
-    //   2) data_type must be equal to DeduceDataTypeFromPrecision(precision);
-    //      for example for precision F16, data_type must be FLOAT16
-    //   3) Layout must be without Batch dimension if tensor.shape.b == 1
-    //      Layout must be with Batch dimension if tensor.shape.b != 1
-    // InitFromGraph will fail if gpu can not allocate tensor with requested
-    // tensor descriptor
-    // WARNING: This is an experimental API and subject to change.
-    // IMPORTANT: tensors ids from predefined / external_immutable_tensors /
-    // external_mutable_tensors should not intersect.
-    absl::flat_hash_map<ValueId, TensorDescriptor> external_mutable_tensors;
-  };
-
-  struct GpuModel {
-    std::vector<std::pair<ValueId, ValueId>> input_ids_and_refs;
-    std::vector<std::pair<ValueId, ValueId>> variable_ids_and_refs;
-    std::vector<std::pair<ValueId, ValueId>> output_ids_and_refs;
-    std::vector<GpuNode> nodes;
-    absl::flat_hash_map<ValueId, TensorDescriptor> tensors;
-    absl::flat_hash_map<ValueId, TensorDescriptor> const_tensors;
-  };
-
   InferenceContext() = default;
 
   // IMPORTANT: If InitFromGraph used, RunGraphTransforms must be applied for
   // this graph upfront, otherwise not guaranteed correct behavior
-  absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
-                             const GraphFloat32& graph,
-                             id<MTLDevice> device_id);
+  absl::Status InitFromGraph(const CreateGpuModelInfo& create_info,
+                             const GraphFloat32& graph, id<MTLDevice> device_id,
+                             std::vector<uint8_t>* serialized_model = nullptr);
 
   // Applies specific transformations to the graph before the
   // initialization. These transformations are either impossible or useless in
   // other backends.
   absl::Status InitFromGraphWithTransforms(
-      const CreateInferenceInfo& create_info, GraphFloat32* graph,
-      id<MTLDevice> device_id);
+      const CreateGpuModelInfo& create_info, GraphFloat32* graph,
+      id<MTLDevice> device_id,
+      std::vector<uint8_t>* serialized_model = nullptr);
+
+  absl::Status RestoreDeserialized(
+      const absl::Span<const uint8_t> serialized_model, id<MTLDevice> device_id,
+      CreateGpuModelInfo* create_info = nullptr);
 
   /// Inserts all GPU compute tasks into the command encoder.
   /// @param inputOutputBuffers Must be created and passed into the method
@@ -172,6 +121,7 @@ class InferenceContext {
   // Returns size in bytes for all intermediate(runtime) tensors that owned by
   // this inference context. Do not include constant tensors.
   uint64_t GetIntermediateTensorsSize() const;
+  uint64_t GetConstantTensorsSize() const;
 
   // Can be used only with ids from external_mutable_tensors in create_info
   // Must be called after initialization and before execution
@@ -191,6 +141,15 @@ class InferenceContext {
     kExternal
   };
 
+  flatbuffers::Offset<data::InferenceContext> Encode(
+      MetalDevice* device,
+      flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
+      flatbuffers::FlatBufferBuilder* builder);
+
+  absl::Status Decode(MetalDevice* device,
+                      const data::InferenceContext* fb_inference);
+
+  void CopyFromGpuModel(GpuModel* gpu_model);
   absl::Status CompileOperations(MetalDevice* device);
   void PrepareExternal();
 
@@ -229,9 +188,6 @@ class InferenceContext {
   id<MTLIndirectCommandBuffer> icb_ = nullptr;
   id<MTLDevice> device_ = nullptr;
 };
-
-// Runs specific transforms for the graph.
-absl::Status RunGraphTransforms(GraphFloat32* graph);
 
 }  // namespace metal
 }  // namespace gpu

@@ -256,7 +256,10 @@ cuda_py_test(
     name = "division_past_test",
     size = "medium",
     srcs = ["division_past_test.py"],
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -347,9 +350,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "segment_reduction_ops_deterministic_test",
+    name = "segment_reduction_ops_d9m_test",
     size = "small",
-    srcs = ["segment_reduction_ops_deterministic_test.py"],
+    srcs = ["segment_reduction_ops_d9m_test.py"],
     tags = ["no_cuda_asan"],  # b/195247538
     xla_enable_strict_auto_jit = False,
     deps = [

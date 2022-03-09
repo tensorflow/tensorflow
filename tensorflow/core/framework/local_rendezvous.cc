@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -164,8 +165,17 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
     queue->head = item->next;
   }
 
-  // Invoke the done-callback, without holding the lock.
+  // Make sure the ref-count of the rendezvous won't reach 0 while the
+  // done_callback is running, which would otherwise become deadlock:
+  // the done_callback waits for the Unref() to return, while the destructor
+  // wiats for the pending_callback_counter to reach 0.
+  core::RefCountPtr<const Rendezvous> rc_owner_ref;
+  if (rc_owner_) {
+    rc_owner_ref.reset(rc_owner_);
+    rc_owner_->Ref();
+  }
   pending_callback_counter_++;
+  // Invoke the done-callback, without holding the lock.
   mu_.unlock();
   DCHECK_EQ(item->type, Item::kRecv);
   (*item->recv_state.waiter)(Status::OK(), send_args, item->args, val, is_dead);
@@ -319,8 +329,17 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     queue->head = item->next;
   }
 
-  // Invoke the done-callback, without holding the lock.
+  // Make sure the ref-count of the rendezvous won't reach 0 while the
+  // done_callback is running, which would otherwise become deadlock:
+  // the done_callback waits for the Unref() to return, while the destructor
+  // wiats for the pending_callback_counter to reach 0.
+  core::RefCountPtr<const Rendezvous> rc_owner_ref;
+  if (rc_owner_) {
+    rc_owner_ref.reset(rc_owner_);
+    rc_owner_->Ref();
+  }
   pending_callback_counter_++;
+  // Invoke the done-callback, without holding the lock.
   mu_.unlock();
   DCHECK_EQ(item->type, Item::kSend);
   done(Status::OK(), item->args, recv_args, *item->send_state.value,

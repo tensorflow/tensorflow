@@ -31,7 +31,7 @@ namespace {
 using Convolution4DExpanderTest = HloTestBase;
 
 TEST_F(Convolution4DExpanderTest, ConvertTo2DConvolution) {
-  string hlo_string = R"(HloModule convolution_4d_fp32
+  std::string hlo_string = R"(HloModule convolution_4d_fp32
 
 ENTRY convolution_computation {
   input = f32[1,10,1,10,5,20]{5,4,3,2,1,0} parameter(0)
@@ -56,7 +56,7 @@ ENTRY convolution_computation {
 }
 
 TEST_F(Convolution4DExpanderTest, ConvertTo3DConvolution) {
-  string hlo_string = R"(HloModule convolution_4d_fp32
+  std::string hlo_string = R"(HloModule convolution_4d_fp32
 
 ENTRY convolution_computation {
   input = f32[1,10,1,10,5,20]{5,4,3,2,1,0} parameter(0)
@@ -83,7 +83,7 @@ ENTRY convolution_computation {
 }
 
 TEST_F(Convolution4DExpanderTest, ConvertTo0DConvolution) {
-  string hlo_string = R"(HloModule convolution_4d_fp32
+  std::string hlo_string = R"(HloModule convolution_4d_fp32
 
 ENTRY convolution_computation {
   input = f32[1,1,1,1,5,20]{5,4,3,2,1,0} parameter(0)
@@ -108,7 +108,7 @@ ENTRY convolution_computation {
 }
 
 TEST_F(Convolution4DExpanderTest, DontConvert3DConvolution) {
-  string hlo_string = R"(HloModule convolution_4d_fp32
+  std::string hlo_string = R"(HloModule convolution_4d_fp32
 
 ENTRY convolution_computation {
   input = f32[1,1,1,5,20]{4,3,2,1,0} parameter(0)
@@ -127,7 +127,7 @@ ENTRY convolution_computation {
 }
 
 TEST_F(Convolution4DExpanderTest, DontConvertIfNoTrivialDimensionAvailable) {
-  string hlo_string = R"(HloModule convolution_4d_fp32
+  std::string hlo_string = R"(HloModule convolution_4d_fp32
 
 ENTRY convolution_computation {
   input = f32[2,10,2,10,5,20]{5,4,3,2,1,0} parameter(0)
@@ -146,7 +146,7 @@ ENTRY convolution_computation {
 }
 
 TEST_F(Convolution4DExpanderTest, DontConvertIfPaddingIsNonzero) {
-  string hlo_string = R"(HloModule convolution_4d_fp32
+  std::string hlo_string = R"(HloModule convolution_4d_fp32
 
 ENTRY convolution_computation {
   input = f32[1,10,1,10,5,20]{5,4,3,2,1,0} parameter(0)

@@ -486,43 +486,6 @@ Concrete Functions:
     self.assertTrue(np.all(feed_dict['y'] == pkl1))
     self.assertTrue(np.all(feed_dict['z'] == pkl2))
 
-  def testInputParserPythonExpression(self):
-    x1 = np.ones([2, 10])
-    x2 = np.array([[1], [2], [3]])
-    x3 = np.mgrid[0:5, 0:5]
-    x4 = [[3], [4]]
-    input_expr_str = ('x1=np.ones([2,10]);x2=np.array([[1],[2],[3]]);'
-                      'x3=np.mgrid[0:5,0:5];x4=[[3],[4]]')
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
-        '', input_expr_str, '')
-    self.assertTrue(np.all(feed_dict['x1'] == x1))
-    self.assertTrue(np.all(feed_dict['x2'] == x2))
-    self.assertTrue(np.all(feed_dict['x3'] == x3))
-    self.assertTrue(np.all(feed_dict['x4'] == x4))
-
-  def testInputParserBoth(self):
-    x0 = np.array([[1], [2]])
-    input_path = os.path.join(test.get_temp_dir(), 'input.npz')
-    np.savez(input_path, a=x0)
-    x1 = np.ones([2, 10])
-    input_str = 'x0=' + input_path + '[a]'
-    input_expr_str = 'x1=np.ones([2,10])'
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
-        input_str, input_expr_str, '')
-    self.assertTrue(np.all(feed_dict['x0'] == x0))
-    self.assertTrue(np.all(feed_dict['x1'] == x1))
-
-  def testInputParserBothDuplicate(self):
-    x0 = np.array([[1], [2]])
-    input_path = os.path.join(test.get_temp_dir(), 'input.npz')
-    np.savez(input_path, a=x0)
-    x1 = np.ones([2, 10])
-    input_str = 'x0=' + input_path + '[a]'
-    input_expr_str = 'x0=np.ones([2,10])'
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
-        input_str, input_expr_str, '')
-    self.assertTrue(np.all(feed_dict['x0'] == x1))
-
   def testInputParserErrorNoName(self):
     x0 = np.array([[1], [2]])
     x1 = np.array(range(5))
@@ -541,22 +504,25 @@ Concrete Functions:
     with self.assertRaises(RuntimeError):
       saved_model_cli.load_inputs_from_input_arg_string(input_str, '', '')
 
-  def testRunCommandInputExamples(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandInputExamples(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
-    output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
+    output_dir = os.path.join(test.get_temp_dir(),
+                              'new_dir' + ('tfrt' if use_tfrt else ''))
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
         'regress_x_to_y', '--input_examples',
         'inputs=[{"x":[8.0],"x2":[5.0]}, {"x":[4.0],"x2":[3.0]}]', '--outdir',
         output_dir
-    ])
+    ] + (['--use_tfrt'] if use_tfrt else []))
     saved_model_cli.run(args)
     y_actual = np.load(os.path.join(output_dir, 'outputs.npy'))
     y_expected = np.array([[6.0], [4.0]])
     self.assertAllEqual(y_expected, y_actual)
 
-  def testRunCommandExistingOutdir(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandExistingOutdir(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     x = np.array([[1], [2]])
@@ -568,16 +534,17 @@ Concrete Functions:
       os.remove(output_file)
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
-        'regress_x2_to_y3', '--inputs', 'inputs=' + input_path + '[x0]',
-        '--outdir',
+        'regress_x2_to_y3', '--inputs', 'inputs=' + input_path +
+        '[x0]', '--outdir',
         test.get_temp_dir()
-    ])
+    ] + (['--use_tfrt'] if use_tfrt else []))
     saved_model_cli.run(args)
     y_actual = np.load(output_file)
     y_expected = np.array([[3.5], [4.0]])
     self.assertAllClose(y_expected, y_actual)
 
-  def testRunCommandNewOutdir(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandNewOutdir(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     x = np.array([[1], [2]])
@@ -590,15 +557,16 @@ Concrete Functions:
     np.savez(input_path, x0=x, x1=x_notused)
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
-        'serving_default', '--inputs', 'x=' + input_path + '[x0]', '--outdir',
-        output_dir
-    ])
+        'serving_default', '--inputs', 'x=' + input_path +
+        '[x0]', '--outdir', output_dir
+    ] + (['--use_tfrt'] if use_tfrt else []))
     saved_model_cli.run(args)
     y_actual = np.load(os.path.join(output_dir, 'y.npy'))
     y_expected = np.array([[2.5], [3.0]])
     self.assertAllClose(y_expected, y_actual)
 
-  def testRunCommandOutOverwrite(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandOutOverwrite(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     x = np.array([[1], [2]])
@@ -612,34 +580,37 @@ Concrete Functions:
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
         'serving_default', '--inputs', 'x=' + input_path + '[x0]', '--outdir',
         test.get_temp_dir(), '--overwrite'
-    ])
+    ] + (['--use_tfrt'] if use_tfrt else []))
     saved_model_cli.run(args)
     y_actual = np.load(output_file)
     y_expected = np.array([[2.5], [3.0]])
     self.assertAllClose(y_expected, y_actual)
 
-  def testRunCommandInvalidInputKeyError(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandInvalidInputKeyError(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
-        'regress_x2_to_y3', '--input_exprs', 'x2=np.ones((3,1))'
-    ])
+        'regress_x2_to_y3', '--input_exprs', 'x2=[1,2,3]'
+    ] + (['--use_tfrt'] if use_tfrt else []))
     with self.assertRaises(ValueError):
       saved_model_cli.run(args)
 
-  def testRunCommandInvalidSignature(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandInvalidSignature(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
-        'INVALID_SIGNATURE', '--input_exprs', 'x2=np.ones((3,1))'
-    ])
+        'INVALID_SIGNATURE', '--input_exprs', 'x2=[1,2,3]'
+    ] + (['--use_tfrt'] if use_tfrt else []))
     with self.assertRaisesRegex(ValueError,
                                 'Could not find signature "INVALID_SIGNATURE"'):
       saved_model_cli.run(args)
 
-  def testRunCommandInputExamplesNotListError(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandInputExamplesNotListError(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
@@ -647,11 +618,12 @@ Concrete Functions:
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
         'regress_x_to_y', '--input_examples', 'inputs={"x":8.0,"x2":5.0}',
         '--outdir', output_dir
-    ])
+    ] + (['--use_tfrt'] if use_tfrt else []))
     with self.assertRaisesRegex(ValueError, 'must be a list'):
       saved_model_cli.run(args)
 
-  def testRunCommandInputExamplesFeatureValueNotListError(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandInputExamplesFeatureValueNotListError(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
@@ -659,11 +631,12 @@ Concrete Functions:
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
         'regress_x_to_y', '--input_examples', 'inputs=[{"x":8.0,"x2":5.0}]',
         '--outdir', output_dir
-    ])
+    ] + (['--use_tfrt'] if use_tfrt else []))
     with self.assertRaisesRegex(ValueError, 'feature value must be a list'):
       saved_model_cli.run(args)
 
-  def testRunCommandInputExamplesFeatureBadType(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandInputExamplesFeatureBadType(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
@@ -671,11 +644,12 @@ Concrete Functions:
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
         'regress_x_to_y', '--input_examples', 'inputs=[{"x":[[1],[2]]}]',
         '--outdir', output_dir
-    ])
+    ] + (['--use_tfrt'] if use_tfrt else []))
     with self.assertRaisesRegex(ValueError, 'is not supported'):
       saved_model_cli.run(args)
 
-  def testRunCommandOutputFileExistError(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandOutputFileExistError(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     x = np.array([[1], [2]])
@@ -689,21 +663,23 @@ Concrete Functions:
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
         'serving_default', '--inputs', 'x=' + input_path + '[x0]', '--outdir',
         test.get_temp_dir()
-    ])
+    ] + (['--use_tfrt'] if use_tfrt else []))
     with self.assertRaises(RuntimeError):
       saved_model_cli.run(args)
 
-  def testRunCommandInputNotGivenError(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandInputNotGivenError(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
         'serving_default'
-    ])
+    ] + (['--use_tfrt'] if use_tfrt else []))
     with self.assertRaises(AttributeError):
       saved_model_cli.run(args)
 
-  def testRunCommandWithDebuggerEnabled(self):
+  @parameterized.named_parameters(('non_tfrt', False))
+  def testRunCommandWithDebuggerEnabled(self, use_tfrt):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     x = np.array([[1], [2]])
@@ -716,9 +692,9 @@ Concrete Functions:
     np.savez(input_path, x0=x, x1=x_notused)
     args = self.parser.parse_args([
         'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
-        'serving_default', '--inputs', 'x=' + input_path + '[x0]', '--outdir',
-        output_dir, '--tf_debug'
-    ])
+        'serving_default', '--inputs', 'x=' + input_path +
+        '[x0]', '--outdir', output_dir, '--tf_debug'
+    ] + (['--use_tfrt'] if use_tfrt else []))
 
     def fake_wrapper_session(sess):
       return sess
@@ -817,8 +793,8 @@ Concrete Functions:
       ('VariablesToFeedNoneLargeConstant', '', 'func3', None),
       ('WriteToWriteVar', 'all', 'func_write', None),
   )
-  def testAOTCompileCPUFreezesAndCompiles(
-      self, variables_to_feed, func, target_triple):
+  def testAOTCompileCPUFreezesAndCompiles(self, variables_to_feed, func,
+                                          target_triple):
     if not test.is_built_with_xla():
       self.skipTest('Skipping test because XLA is not compiled in.')
 

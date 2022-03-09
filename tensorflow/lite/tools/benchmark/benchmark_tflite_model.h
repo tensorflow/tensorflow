@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+#include "tensorflow/lite/tools/utils.h"
 
 namespace tflite {
 namespace benchmark {
@@ -35,7 +36,7 @@ namespace benchmark {
 class BenchmarkTfLiteModel : public BenchmarkModel {
  public:
   struct InputLayerInfo {
-    InputLayerInfo() : has_value_range(false) {}
+    InputLayerInfo() : has_value_range(false), low(0), high(0) {}
 
     std::string name;
     std::vector<int> shape;
@@ -84,47 +85,18 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 
   void CleanUp();
 
-  // Implement type erasure with unique_ptr with custom deleter.
-  using VoidUniquePtr = std::unique_ptr<void, void (*)(void*)>;
-
-  struct InputTensorData {
-    InputTensorData() : data(nullptr, nullptr) {}
-
-    VoidUniquePtr data;
-    size_t bytes;
-  };
-
-  InputTensorData LoadInputTensorData(const TfLiteTensor& t,
-                                      const std::string& input_file_path);
+  utils::InputTensorData LoadInputTensorData(
+      const TfLiteTensor& t, const std::string& input_file_path);
 
   std::vector<InputLayerInfo> inputs_;
-  std::vector<InputTensorData> inputs_data_;
+  std::vector<utils::InputTensorData> inputs_data_;
   std::unique_ptr<tflite::FlatBufferModel> model_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
   std::unique_ptr<tflite::ExternalCpuBackendContext> external_context_;
 
  private:
-  template <typename T, typename Distribution>
-  inline InputTensorData CreateInputTensorData(int num_elements,
-                                               Distribution distribution) {
-    InputTensorData tmp;
-    tmp.bytes = sizeof(T) * num_elements;
-    T* raw = new T[num_elements];
-    std::generate_n(raw, num_elements, [&]() {
-      if (std::is_same<T, std::complex<float>>::value) {
-        return static_cast<T>(distribution(random_engine_),
-                              distribution(random_engine_));
-      } else {
-        return static_cast<T>(distribution(random_engine_));
-      }
-    });
-    tmp.data = VoidUniquePtr(static_cast<void*>(raw),
-                             [](void* ptr) { delete[] static_cast<T*>(ptr); });
-    return tmp;
-  }
-
-  InputTensorData CreateRandomTensorData(const TfLiteTensor& t,
-                                         const InputLayerInfo* layer_info);
+  utils::InputTensorData CreateRandomTensorData(
+      const TfLiteTensor& t, const InputLayerInfo* layer_info);
 
   void AddOwnedListener(std::unique_ptr<BenchmarkListener> listener) {
     if (listener == nullptr) return;

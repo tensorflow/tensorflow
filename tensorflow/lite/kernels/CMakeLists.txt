@@ -252,8 +252,7 @@ set(TEST_WITH_EXTERNAL_MAIN_LIST
   pow_test.cc
   quant_basic_lstm_test.cc
   quantize_test.cc
-  random_standard_normal_test.cc
-  random_uniform_test.cc
+  random_ops_test.cc
   range_test.cc
   rank_test.cc
   reduce_test.cc

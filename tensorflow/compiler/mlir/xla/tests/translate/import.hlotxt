@@ -127,10 +127,26 @@ add {
   %variance = f32[2] parameter(3)
   %grad_output = f32[2,2,2,2] parameter(4)
 
-  // CHECK:  "mhlo.batch_norm_grad"
+  // CHECK:  %[[GRAD_OPERAND:.+]], %[[GRAD_SCALE:.+]], %[[GRAD_OFFSET:.+]]  = "mhlo.batch_norm_grad"
   // CHECK-SAME:  epsilon = 1.000000e-03 : f32
   // CHECK-SAME:  feature_index = 1 : i64
+  // CHECK:  %[[TUPLE:.+]] = "mhlo.tuple"
+  // CHECK:  return %[[TUPLE]]
   ROOT %batch-norm-grad = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-grad(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %mean, f32[2] %variance, f32[2,2,2,2] %grad_output), epsilon=0.001, feature_index=1
+}
+
+// CHECK-LABEL:  func private @test_batch_norm_train
+%test_batch_norm_train (input: f32[2,2,2,2], scale: f32[2], offset: f32[2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
+  %input = f32[2,2,2,2] parameter(0)
+  %scale = f32[2] parameter(1)
+  %offset = f32[2] parameter(2)
+
+  // CHECK:  %[[OUT:.+]], %[[MEAN:.+]], %[[VAR:.+]] = "mhlo.batch_norm_training"
+  // CHECK-SAME:  epsilon = 1.000000e-03 : f32
+  // CHECK-SAME:  feature_index = 1 : i64
+  // CHECK:  %[[TUPLE:.+]] = "mhlo.tuple"
+  // CHECK:  return %[[TUPLE]]
+  ROOT %batch-norm-train = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-training(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %offset), epsilon=0.001, feature_index=1
 }
 
 // CHECK-LABEL:  func private @call(%arg0: tensor<i64>) -> tensor<i64>
@@ -386,23 +402,23 @@ add {
   ROOT %divide.3 = f32[4] divide(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
-// CHECK-LABEL:  func private @test_dot(%arg0: tensor<1x4xf32>, %arg1: tensor<4x1xf32>) -> tensor<f32>
-%test_dot (Arg_0.1: f32[1, 4], Arg_1.2: f32[4, 1]) -> f32[] {
+// CHECK-LABEL:  func private @test_dot(%arg0: tensor<1x4xf32>, %arg1: tensor<4x1xf32>) -> tensor<1x1xf32>
+%test_dot (Arg_0.1: f32[1, 4], Arg_1.2: f32[4, 1]) -> f32[1, 1] {
   %Arg_0.1 = f32[1, 4] parameter(0)
   %Arg_1.2 = f32[4, 1] parameter(1)
 
-  // CHECK-NEXT:  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["HIGH", "HIGHEST"]} : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<f32>
-  dot.3 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={high,highest}
+  // CHECK-NEXT:  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["HIGH", "HIGHEST"]} : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<1x1xf32>
+  dot.3 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={high,highest}
 
-  // CHECK-NEXT:  %1 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["HIGHEST", "DEFAULT"]} : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<f32>
-  dot.4 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,default}
+  // CHECK-NEXT:  %1 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["HIGHEST", "DEFAULT"]} : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<1x1xf32>
+  dot.4 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,default}
 
-  // CHECK-NEXT:  %2 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<f32>
-  %dot.5 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={default,default}
+  // CHECK-NEXT:  %2 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<1x1xf32>
+  %dot.5 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={default,default}
 
   // TODO(b/129709049) consider making this default precision config inferred.
-  // CHECK-NEXT:  "mhlo.dot"(%arg0, %arg1) {precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<f32>
-  ROOT %dot.6 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  // CHECK-NEXT:  "mhlo.dot"(%arg0, %arg1) {precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<1x4xf32>, tensor<4x1xf32>) -> tensor<1x1xf32>
+  ROOT %dot.6 = f32[1, 1] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 // CHECK-LABEL:  @test_dot_general
@@ -431,7 +447,15 @@ add {
   // TODO(b/129709049) consider making this default precision config inferred.
   // CHECK-NEXT:  "mhlo.dot_general"([[ARG0]], [[ARG1]])
   // CHECK-SAME: precision_config = ["DEFAULT", "DEFAULT"]}
-  ROOT %dot.6 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  %dot.6 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+
+  // CHECK: [[rehape:%[a-zA-Z0-9]+]] = "mhlo.reshape"
+  // CHECK-NEXT:  "mhlo.dot_general"([[rehape]], [[ARG1]])
+  // CHECK-SAME: lhs_contracting_dimensions = [0]
+  // CHECK-SAME: rhs_contracting_dimensions = [0]
+  // CHECK-SAME: precision_config = ["DEFAULT", "DEFAULT"]}
+  reshape.0 = f32[4]{0} reshape(f32[4, 1] Arg_0.1)
+  ROOT %dot.7 = f32[] dot(%reshape.0, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}
 }
 
 // CHECK-LABEL:  func private @test_dynamic_slice
@@ -543,10 +567,35 @@ add {
   %token0 = token[] parameter(0)
   // CHECK-NEXT:  "mhlo.infeed"([[TOKEN]])
   // CHECK-SAME:  infeed_config = "foobar"
-  // CHECK-SAME:  layout = {{\[\[2, 0, 1], unit]}}
+  // CHECK-SAME:  layout = {{\[\[2, 0, 1]]}}
   ROOT %infeed = (s32[3, 3, 3]{2, 0, 1}, token[]) infeed(token[] %token0), infeed_config="foobar"
 }
 
+// CHECK-LABEL:  func private @test_infeed_with_empty_tuple_data
+// CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> !mhlo.token
+  // CHECK-NEXT:  [[INFEED:%.*]] = "mhlo.infeed"([[TOKEN]])
+  // CHECK-SAME:    infeed_config = "foobar"
+  // CHECK-SAME:    layout = []
+  // CHECK:       return [[INFEED]] : !mhlo.token
+%test_infeed_with_empty_tuple_data (Arg_0.1: token[]) -> token[] {
+  %Arg_0.1 = token[] parameter(0)
+  %infeed.2 = ((), token[]) infeed(token[] %Arg_0.1), infeed_config="foobar"
+  %get-tuple-element.3 = () get-tuple-element(((), token[]) %infeed.2), index=0
+  ROOT %get-tuple-element.4 = token[] get-tuple-element(((), token[]) %infeed.2), index=1
+}
+
+// CHECK-LABEL:  func private @test_infeed_layout
+// CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> tuple<tuple<tensor<3x4xi32>, tensor<5x6xi32>, tensor<7x8xi32>, tensor<9x10xi32>>, !mhlo.token>
+%test_infeed_layout (token0: token[]) -> ( ( s32[3, 4]{1, 0}, s32[5, 6]{1, 0}, s32[7, 8]{1, 0}, s32[9,10]{1, 0}), token[]) {
+  %token0 = token[] parameter(0)
+  // CHECK-NEXT:  [[INFEED:%.*]]:5 = "mhlo.infeed"([[TOKEN]])
+  // CHECK-SAME:  infeed_config = "foobar"
+  // CHECK-SAME:  layout = {{\[\[}}1, 0], [1, 0], [1, 0], [1, 0]]
+  // CHECK-NEXT: [[T1:%.*]] = "mhlo.tuple"([[INFEED]]#0, [[INFEED]]#1, [[INFEED]]#2, [[INFEED]]#3)
+  // CHECK-NEXT: [[T2:%.*]] = "mhlo.tuple"([[T1]], [[INFEED]]#4)
+  // CHECK-NEXT: return [[T2]]
+  ROOT %infeed = ( ( s32[3, 4]{1, 0}, s32[5, 6]{1, 0}, s32[7, 8]{1, 0}, s32[9,10]{1, 0}), token[]) infeed(token[] %token0), infeed_config="foobar"
+}
 
 // CHECK-LABEL:  func private @test_iota_1() -> tensor<4xf32>
 %test_iota_1 () -> f32[4] {
@@ -588,7 +637,7 @@ add {
 %test_map {
   param0 = f32[4]{0} parameter(0)
   param1 = f32[4]{0} parameter(1)
-// CHECK:  "mhlo.map"([[ARG_0]], [[ARG_1]]) ( {
+// CHECK:  "mhlo.map"([[ARG_0]], [[ARG_1]]) ({
 // CHECK:    ^bb0([[ARG_2:%.*]]: tensor<f32>, [[ARG_3:%.*]]: tensor<f32>):
 // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG_2]], [[ARG_3]]
 // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
@@ -677,6 +726,18 @@ add {
   // CHECK-SAME: mhlo.sharding = "\08\03\1A\02\02\01\22\02\00\01"
   // CHECK-SAME:  outfeed_config = "foobar"
   ROOT %outfeed.3 = token[] outfeed(s32[3] %Arg_0.1, token[] %Arg_1.2), outfeed_config="foobar", sharding={devices=[2,1]0,1}
+}
+
+// CHECK-LABEL:  func private @test_outfeed_with_empty_data
+// CHECK-SAME: ([[TOKEN:%.*]]: !mhlo.token) -> !mhlo.token
+%test_outfeed_with_empty_data (Arg_0.1: token[]) -> token[] {
+  %tuple.2 = () tuple()
+  %Arg_0.1 = token[] parameter(0)
+  // CHECK-NEXT:  "mhlo.outfeed"([[TOKEN]])
+  // CHECK-SAME:  outfeed_config = "foobar"
+  // CHECK-SAME:  xla_shape = "token[]"
+  // CHECK-SAME:  : (!mhlo.token) -> !mhlo.token
+  ROOT %outfeed.3 = token[] outfeed(() %tuple.2, token[] %Arg_0.1), outfeed_shape=(), outfeed_config="foobar"
 }
 
 // CHECK-LABEL:  func private @test_pad(%arg0: tensor<4xf32>, %arg1: tensor<f32>) -> tensor<4xf32>
@@ -781,26 +842,24 @@ add {
   %Arg_1.2 = f32[4] parameter(1)
   %Arg_2.3 = f32[] parameter(2)
 
-  // CHECK:  mhlo.reduce [[ARG0]], [[ARG0]], [[ARG2]], [[ARG2]]
-  // CHECK:  mhlo.add{{.*}} : tensor<f32>
-  // CHECK:  mhlo.add{{.*}} : tensor<f32>
-  // CHECK:  {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x4xf32>, tensor<4x4xf32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  // CHECK:  mhlo.reduce([[ARG0]] init: [[ARG2]]), ([[ARG0]] init: [[ARG2]])
+  // CHECK-SAME:  dimensions = [0, 1]
+  // CHECK:  %[[A:.*]] = mhlo.add{{.*}} : tensor<f32>
+  // CHECK:  %[[B:.*]] = mhlo.add{{.*}} : tensor<f32>
+  // CHECK: "mhlo.return"(%[[A]], %[[B]]) : (tensor<f32>, tensor<f32>) -> ()
   // CHECK: "mhlo.tuple"(%0#0, %0#1) {xla_shape = {{.*}}} : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
   %reduce.1 = (f32[], f32[]) reduce(%Arg_0.1, %Arg_0.1, %Arg_2.3, %Arg_2.3), dimensions={0, 1}, to_apply=%reduce_helper.1
 
-  // CHECK:  [[VAL2:%.*]] = mhlo.reduce [[ARG0]], [[ARG2]]
+  // CHECK:  [[VAL2:%.*]] = mhlo.reduce([[ARG0]] init: [[ARG2]])
   // CHECK:  mhlo.add{{.*}} : tensor<f32>
-  // CHECK:  {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x4xf32>, tensor<f32>) -> tensor<f32>
   %reduce.3 = f32[] reduce(%Arg_0.1, %Arg_2.3), dimensions={0, 1}, to_apply=%reduce_helper.3
-
-  // CHECK:  [[VAL3:%.*]] = mhlo.reduce [[ARG0]], [[ARG1]]
+  // CHECK:  [[VAL3:%.*]] = mhlo.reduce([[ARG0]] init: [[ARG1]])
+  // CHECK-
   // CHECK:  mhlo.add{{.*}} : tensor<4xf32>
-  // CHECK:  {dimensions = dense<0> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4xf32>
   %reduce.2 = f32[4] reduce(%Arg_0.1, %Arg_1.2), dimensions={0}, to_apply=%reduce_helper.2
-
-  // CHECK:  [[VAL4:%.*]] = mhlo.reduce [[VAL3]], [[ARG2]]
+  // CHECK:  [[VAL4:%.*]] = mhlo.reduce([[VAL3]] init: [[ARG2]])
+  // CHECK-SAME:  dimensions = [0]
   // CHECK:  mhlo.add{{.*}} : tensor<f32>
-  // CHECK:  {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<f32>) -> tensor<f32>
   %reduce.4 = f32[] reduce(%reduce.2, %Arg_2.3), dimensions={0}, to_apply=%reduce_helper.3
 
   // CHECK:  %5 = mhlo.subtract [[VAL2]], [[VAL4]] : tensor<f32>
@@ -821,8 +880,8 @@ add {
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<4x8xf32>)
 %test_reduce_scatter {
   input = f32[4,8] parameter(0)
-  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ( {
-  // CHECK-NEXT:   ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>):  // no predecessors
+  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ({
+  // CHECK-NEXT:   ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>):
   // CHECK-NEXT:     [[ADD:%.*]] = mhlo.add [[BARG0]], [[BARG1]] : tensor<f32>
   // CHECK-NEXT:     "mhlo.return"([[ADD]])
   // CHECK-NEXT:   }) {
@@ -836,8 +895,8 @@ add {
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<4x8xf32>)
 %test_reduce_scatter_with_channel {
   input = f32[4,8] parameter(0)
-  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ( {
-  // CHECK-NEXT:   ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>):  // no predecessors
+  // CHECK-NEXT: "mhlo.reduce_scatter"([[ARG0]]) ({
+  // CHECK-NEXT:   ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>):
   // CHECK-NEXT:     [[ADD:%.*]] = mhlo.add [[BARG0]], [[BARG1]] : tensor<f32>
   // CHECK-NEXT:     "mhlo.return"([[ADD]])
   // CHECK-NEXT:   }) {
@@ -855,7 +914,7 @@ add {
   %Arg_0.1 = f32[2,17,31,7] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
 
-  // CHECK: "mhlo.reduce_window"([[ARG0]], [[ARG1]]) ( {
+  // CHECK: "mhlo.reduce_window"([[ARG0]], [[ARG1]]) ({
   // CHECK:   mhlo.add {{.*}} : tensor<f32>
   // CHECK: }) {
   // CHECK-SAME:   base_dilations = dense<1> : tensor<4xi64>
@@ -885,13 +944,13 @@ add {
 %test_reduce_window_multiple_outputs (Arg0: f32[4,6], Arg1: f32[4,6]) -> f32[4,3] {
   %Arg0 = f32[4,6] parameter(0)
   %Arg1 = f32[4,6] parameter(1)
-  // CHECK: [[CONST_FALSE:%.*]] = mhlo.constant dense<false>
-  // CHECK: [[CONST_INF:%.*]] = mhlo.constant dense<0xFF800000>
-  // CHECK: [[CONST_ZERO:%.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK-DAG: [[CONST_FALSE:%.*]] = mhlo.constant dense<false>
+  // CHECK-DAG: [[CONST_INF:%.*]] = mhlo.constant dense<0xFF800000>
+  // CHECK-DAG: [[CONST_ZERO:%.*]] = mhlo.constant dense<0.000000e+00>
   %constant.3 = pred[] constant(false)
   %constant.4 = f32[] constant(-inf)
   %constant.5 = f32[] constant(0)
-  // CHECK: [[REDUCE_WINDOW:%.*]]:2 = "mhlo.reduce_window"([[ARG1]], [[ARG0]], [[CONST_INF]], [[CONST_ZERO]]) ( {
+  // CHECK: [[REDUCE_WINDOW:%.*]]:2 = "mhlo.reduce_window"([[ARG1]], [[ARG0]], [[CONST_INF]], [[CONST_ZERO]]) ({
   // CHECK: ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>, [[BARG2:%.*]]: tensor<f32>, [[BARG3:%.*]]: tensor<f32>)
   // CHECK:   [[COMPARE:%.*]] = "mhlo.compare"([[BARG0]], [[BARG2]]) {comparison_direction = "GE"}
   // CHECK:   [[SELECT_0:%.*]] = "mhlo.select"([[COMPARE]], [[BARG0]], [[BARG2]])
@@ -904,10 +963,8 @@ add {
   // CHECK-SAME:   window_strides = dense<[1, 2]> : tensor<2xi64>
   // CHECK_SAME: }
   // CHECK_SAME: : (tensor<4x6xf32>, tensor<4x6xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x3xf32>, tensor<4x3xf32>)
-  // CHECK: [[TUPLE:%.*]] = "mhlo.tuple"([[REDUCE_WINDOW]]#0, [[REDUCE_WINDOW]]#1) {xla_shape = {{.*}}} : (tensor<4x3xf32>, tensor<4x3xf32>) -> tuple<tensor<4x3xf32>, tensor<4x3xf32>>
   %reduce-window.15 = (f32[4,3], f32[4,3]) reduce-window(f32[4,6] %Arg1, f32[4,6] %Arg0, f32[] %constant.4, f32[] %constant.5), window={size=1x2 stride=1x2}, to_apply=%reducer_window_helper
-  // CHECK: [[GET_TUPLE_ELEMENT:%.*]] = "mhlo.get_tuple_element"([[TUPLE]]) {index = 1 : i32}
-  // CHECK: return [[GET_TUPLE_ELEMENT]] : tensor<4x3xf32>
+  // CHECK: return [[REDUCE_WINDOW]]#1 : tensor<4x3xf32>
   ROOT %get-tuple-element.16 = f32[4,3] get-tuple-element((f32[4,3], f32[4,3]) %reduce-window.15), index=1
 }
 
@@ -967,7 +1024,7 @@ add {
 
 // CHECK-LABEL:  func private @test_scatter
 // CHECK-SAME:   [[ARG_0:%.*]]: tensor<200x100x300xf32>, [[ARG_1:%.*]]: tensor<10x2xi64>, [[ARG_2:%.*]]: tensor<10x300xf32>) -> tensor<200x100x300xf32>
-// CHECK:  "mhlo.scatter"([[ARG_0]], [[ARG_1]], [[ARG_2]]) ( {
+// CHECK:  "mhlo.scatter"([[ARG_0]], [[ARG_1]], [[ARG_2]]) ({
 // CHECK:    ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
 // CHECK:      [[ADD:%.*]] = mhlo.add [[LHS]], [[RHS]]
 // CHECK:      "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
@@ -1013,7 +1070,7 @@ add {
   ROOT %select-and-scatter = f32[4,5] select-and-scatter(f32[4,5] %input, f32[2,2] %source, f32[] %init_value), window={size=2x3 stride=2x3 pad=0_0x0_1}, select=%ge_select, scatter=%add_gather
 }
 
-// CHECK:  [[RESULT:%.*]] = "mhlo.select_and_scatter"([[INPUT]], [[SOURCE]], [[INIT_VAL]]) ( {
+// CHECK:  [[RESULT:%.*]] = "mhlo.select_and_scatter"([[INPUT]], [[SOURCE]], [[INIT_VAL]]) ({
 // CHECK:  ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
 // CHECK:    [[CMP:%.*]] = "mhlo.compare"([[LHS]], [[RHS]])
 // CHECK:    "mhlo.return"([[CMP]]) : (tensor<i1>) -> ()
@@ -1059,7 +1116,7 @@ add {
 }
 // CHECK-LABEL:  func private @test_sort
 // CHECK-SAME:  [[ARG:%.*]]: tensor<1024xf32>) -> tensor<1024xf32>
-// CHECK:  "mhlo.sort"([[ARG]]) ( {
+// CHECK:  "mhlo.sort"([[ARG]]) ({
 // CHECK:    ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
 // CHECK:      [[CMP:%.*]] = "mhlo.compare"([[ARG0]], [[ARG1]]) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 // CHECK:      "mhlo.return"([[CMP]]) : (tensor<i1>) -> ()
@@ -1108,9 +1165,6 @@ add {
   %Arg_0.1 = s32[1] parameter(0)
   %Arg_1.2 = f32[1, 2] parameter(1)
 
-  // CHECK-NEXT:  %0 = "mhlo.tuple"(%arg0) {xla_shape = {{.*}}} : (tensor<1xi32>) -> tuple<tensor<1xi32>>
-  %tuple.3 = (s32[1]) tuple(%Arg_0.1)
-
   // CHECK:  "mhlo.tuple"(%arg0, %arg1) {xla_shape = {{.*}}} : (tensor<1xi32>, tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>>
   ROOT %tuple.4 = (s32[1], f32[1,2]) tuple(%Arg_0.1, %Arg_1.2)
 }
@@ -1131,15 +1185,12 @@ add {
 // CHECK-LABEL:  func private @test_while(%arg0: tensor<i64>) -> tensor<i64>
 %test_while (arg0.1: s64[]) -> s64[] {
   %arg0.1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
-  // CHECK-NEXT:  "mhlo.while"(%arg0) ( {
-  // CHECK-NEXT:  ^bb0(%arg1: tensor<i64>):	// no predecessors
-  // CHECK-NEXT:  [[CMP:%.*]] = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  // CHECK-NEXT:  mhlo.while(%[[ITER_ARG:.*]] = %arg0)
+  // CHECK:  [[CMP:%.*]] = "mhlo.compare"(%[[ITER_ARG]], %[[ITER_ARG]]) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
   // CHECK-NEXT:  "mhlo.return"([[CMP]]) : (tensor<i1>) -> ()
-  // CHECK-NEXT:  },  {
-  // CHECK-NEXT:  ^bb0(%arg1: tensor<i64>):	// no predecessors
-  // CHECK-NEXT:  [[ADD:%.*]] = mhlo.add %arg1, %arg1 : tensor<i64>
+
+  // CHECK:  [[ADD:%.*]] = mhlo.add %[[ITER_ARG]], %[[ITER_ARG]] : tensor<i64>
   // CHECK-NEXT:  "mhlo.return"([[ADD]]) : (tensor<i64>) -> ()
-  // CHECK-NEXT:  }) : (tensor<i64>) -> tensor<i64>
   ROOT %while.2 = s64[] while(%arg0.1), body=%loop, condition=%cond
 }
 
@@ -1209,7 +1260,9 @@ add {
 // CHECK-SAME:    (%[[ARG0:.*]]: tensor<3xui64>)
 %rngbitgen (Arg_0.1: u64[3]) -> (u64[3], u32[2,2]) {
   %Arg_0.1 = u64[3] parameter(0)
-  // CHECK: "mhlo.rng_bit_generator"(%[[ARG0]]) {rng_algorithm = 2 : i32, xla_shape = {{.*}}} : (tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
+  // CHECK: %[[RNG:.+]]:2 = "mhlo.rng_bit_generator"(%[[ARG0]]) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
+  // CHECK: %[[TUPLE:.+]] = "mhlo.tuple"(%[[RNG]]#0, %[[RNG]]#1) {xla_shape = "(u64[3]{0}, u32[2,2]{1,0})"} : (tensor<3xui64>, tensor<2x2xui32>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>  
+  // CHECK: return %[[TUPLE]]
   ROOT %rng-bit-generator.2 = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_philox
 }
 
@@ -1235,4 +1288,15 @@ add {
   %Arg_0.1 = f32[3,4] parameter(0)
   // CHECK: "mhlo.reduce_precision"(%[[ARG0]]) {exponent_bits = 8 : i32, mantissa_bits = 10 : i32} : (tensor<3x4xf32>) -> tensor<3x4xf32>
   ROOT %reduce_precision = f32[3,4] reduce-precision(f32[3,4] %Arg_0.1), exponent_bits=8, mantissa_bits=10
+}
+
+
+// CHECK-LABEL: func private @optimization_barrier
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<4x4xf32>, %[[ARG1:.*]]: tensor<3x4xf32>)
+%optimization_barrier (Arg_0.1: f32[4,4], Arg_1.2: f32[3,4]) -> (f32[4,4], f32[3,4]) {
+  %Arg_0.1 = f32[4,4] parameter(0)
+  %Arg_1.2 = f32[3,4] parameter(1)
+  %args = (f32[4,4], f32[3,4]) tuple(f32[4,4] %Arg_0.1, f32[3,4] %Arg_1.2)
+  // CHECK: "mhlo.optimization_barrier"(%[[ARG0]], %[[ARG1]]) : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
+  ROOT %opt-barrier = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %args)
 }

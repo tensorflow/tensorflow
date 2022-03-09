@@ -38,6 +38,11 @@ Status PartitionFunctionGraph(
     std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
     std::function<string(const Edge*)> get_tensor_name_attr = nullptr);
 
+// Inserts send/recv ops to `graph` if nodes are assigned to multiple devices.
+// Returns the new graph with the added nodes.
+StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
+    const DeviceSet& device_set, std::unique_ptr<Graph> graph);
+
 // This function performs bookkeeping to track which `Arg` and `Retval` nodes
 // were placed on a particular device / graph.
 //

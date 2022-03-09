@@ -57,8 +57,7 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
   Status s = env_->session_mgr->CreateSession(
       request->session_handle(), request->server_def(),
       request->cluster_device_attributes(), request->isolate_session_state(),
-      request->master_task(), request->master_incarnation(),
-      request->coordination_service_config());
+      request->master_task(), request->master_incarnation());
   done(s);
 }
 

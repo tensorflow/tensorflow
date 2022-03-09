@@ -808,14 +808,17 @@ tf_xla_py_test(
     size = "small",
     timeout = "long",
     srcs = ["image_ops_test.py"],
-    disabled_backends = [
-        "gpu",  # Fails on CUDA 11 b/190787813
+    enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
     ],
     python_version = "PY3",
     shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
+        "requires-gpu-nvidia",
     ],
     deps = [
         ":xla_test",
@@ -1151,7 +1154,7 @@ tf_xla_py_test(
     name = "reduce_window_test",
     size = "small",
     srcs = ["reduce_window_test.py"],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1549,7 +1552,6 @@ tf_xla_py_test(
     size = "small",
     srcs = ["cast_ops_test.py"],
     disabled_backends = ["cpu_ondemand"],
-    enable_mlir_bridge = False,  # TODO(b/200894060): Re-enable on MLIR bridge.
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2086,9 +2088,7 @@ tf_xla_py_test(
     enable_mlir_bridge = True,
     shard_count = 5,
     tags = [
-        "no_oss",
-        "no_pip",
-        "notap",  # TODO(b/208452143): Fix the test.
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
     deps = [

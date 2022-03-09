@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
-#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -49,7 +49,9 @@ class GpuHloOrdering : public PredecessorHloOrdering {
                                                         : nullptr;
   }
 
-  string ToString() const override { return ToStringHelper("GpuHloOrdering"); }
+  std::string ToString() const override {
+    return ToStringHelper("GpuHloOrdering");
+  }
 
  private:
   std::unique_ptr<HloInstructionSequence> entry_sequence_;
@@ -160,7 +162,7 @@ void BFSLaunchOrder(const HloComputation* computation,
   // The sorting algorithm repeatedly pops the top from the queue and deletes
   // that HLO from the graph, making more HLOs incoming-edge free.
   std::deque<HloInstruction*> queue;
-  std::unordered_map<const HloInstruction*, int64_t> incoming_edge_count;
+  absl::flat_hash_map<const HloInstruction*, int64_t> incoming_edge_count;
   for (auto* hlo : computation->instructions()) {
     if (hlo->operand_count() == 0) {
       queue.push_back(hlo);

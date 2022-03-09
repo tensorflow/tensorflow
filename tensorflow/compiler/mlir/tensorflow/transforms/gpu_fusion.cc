@@ -39,7 +39,7 @@ namespace {
 // of "target" in the MLIR pipeline in the future.
 class GpuOpFusionPass : public TensorflowGPUFusionBase<GpuOpFusionPass> {
  public:
-  void runOnFunction() final;
+  void runOnOperation() final;
 };
 
 //   %y:6 = "tf.FusedBatchNormV3"(%x, %scale, %offset, %mean, %variance)
@@ -116,10 +116,10 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
   }
 };
 
-void GpuOpFusionPass::runOnFunction() {
-  FuncOp func = getFunction();
-  OwningRewritePatternList patterns(&getContext());
-  patterns.insert<ReluToFusedBatchNorm>(&getContext());
+void GpuOpFusionPass::runOnOperation() {
+  FuncOp func = getOperation();
+  RewritePatternSet patterns(&getContext());
+  patterns.add<ReluToFusedBatchNorm>(&getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

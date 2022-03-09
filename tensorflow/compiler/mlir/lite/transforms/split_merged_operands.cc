@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -66,8 +66,8 @@ namespace TFL {
 namespace {
 
 struct SplitMergedOperandsPass
-    : public PassWrapper<SplitMergedOperandsPass, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<SplitMergedOperandsPass, OperationPass<FuncOp>> {
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -111,9 +111,9 @@ LogicalResult DuplicateValueIfNeeded(Operation* op,
   return success();
 }
 
-void SplitMergedOperandsPass::runOnFunction() {
+void SplitMergedOperandsPass::runOnOperation() {
   llvm::DenseSet<Value> stateful_values;
-  auto func = getFunction();
+  auto func = getOperation();
   OpBuilder builder(func);
   for (auto& bb : func.getBody()) {
     for (auto& op : bb) {

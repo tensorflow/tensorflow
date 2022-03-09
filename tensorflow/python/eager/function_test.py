@@ -38,7 +38,6 @@ from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
-from tensorflow.python.eager import function_cache
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -205,6 +204,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c = constant_op.constant(1.0)
     with self.assertRaisesRegex(AttributeError, 'no attribute'):
       add(c)
+
+  def testVariableMultiFunction(self):
+    @def_function.function
+    def second(dup_var, dup_var_2, some_const):
+      return dup_var + dup_var_2 + some_const
+
+    @def_function.function
+    def first(dup_var, some_const):
+      return second(dup_var, dup_var, some_const)
+
+    my_const = constant_op.constant(1)
+    my_var = variables.Variable(2, dtype=dtypes.int32)
+    self.assertEqual(second(my_var, my_var, my_const).numpy(), 5)
+    self.assertEqual(first(my_var, my_const).numpy(), 5)
 
   @test_util.disable_tfrt('Packed tensor is not supported in tfrt yet.')
   def testPackedVariable(self):
@@ -664,15 +677,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    # TODO(b/201533914): Remove this flag.
-    if function_cache.USE_FULL_TRACE_TYPE:
-      expected_error = errors.InvalidArgumentError
-      expected_message = r'could not be represented through the generic tracing'
-    else:
-      expected_error = ValueError
-      expected_message = r'got.*set'
-
-    with self.assertRaisesRegex(expected_error, expected_message):
+    with self.assertRaisesRegex(
+        TypeError,
+        r'could not be represented through the generic tracing'):
       f(set([]))
 
   def testFuncName(self):
@@ -3535,7 +3542,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def g():
       f_concrete(constant_op.constant([1., 2.]))
 
-    with self.assertRaisesRegex(ValueError, 'argument_name'):
+    with self.assertRaisesRegex(ValueError, 'is not compatible with the shape'):
       g()
 
   @test_util.run_in_graph_and_eager_modes
@@ -3764,7 +3771,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           cf(d, y=e),  # structured signature w/ kwarg
           cf(y=e, x=d),  # structured signature w/ 2 kwargs
           cf(a, b, c),  # flat signature
-          cf(x=a, x_1=b, y=c)  # flat signature w/ kwargs
       ]:
         self.assertIsInstance(output, tuple)
         self.assertLen(output, 2)

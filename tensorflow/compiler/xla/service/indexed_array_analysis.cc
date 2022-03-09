@@ -42,7 +42,7 @@ using ScalarIndexedArray = Analysis::ScalarIndexedArray;
 using absl::StrJoin;
 }  // namespace
 
-string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
+std::string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
   switch (root->kind()) {
     case Array::kUnknown: {
       auto* unknown_tensor = root->as<UnknownArray>();
@@ -51,7 +51,7 @@ string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
 
     case Array::kConstant: {
       if (print_constants) {
-        string contents = root->as<ConstantArray>()->literal()->ToString();
+        std::string contents = root->as<ConstantArray>()->literal()->ToString();
         return absl::StrCat("(constant ", ShapeUtil::HumanString(root->shape()),
                             " ", contents, ")");
       }
@@ -69,9 +69,9 @@ string IndexedArrayAnalysis::ToString(Array* root, bool print_constants) {
     case Array::kScalarIndexedConstant:
     case Array::kScalarIndexed: {
       auto* indexed_array = root->as<ScalarIndexedArray>();
-      string name = root->kind() == Array::kScalarIndexedConstant
-                        ? "scalar-indexed-const"
-                        : "scalar-indexed";
+      std::string name = root->kind() == Array::kScalarIndexedConstant
+                             ? "scalar-indexed-const"
+                             : "scalar-indexed";
       return absl::StrCat(
           "(", name, " ", ToString(indexed_array->source(), print_constants),
           " ", ToString(indexed_array->indices(), print_constants), " ",
@@ -398,7 +398,7 @@ std::vector<ReshapePassthroughDimPair> ComputeReshapePassthroughDimPairs(
   absl::c_reverse(result);
 
   if (VLOG_IS_ON(3)) {
-    std::vector<string> result_strings;
+    std::vector<std::string> result_strings;
     absl::c_transform(result, std::back_inserter(result_strings),
                       [](ReshapePassthroughDimPair value) {
                         return absl::StrCat(value.result_dim, "->",

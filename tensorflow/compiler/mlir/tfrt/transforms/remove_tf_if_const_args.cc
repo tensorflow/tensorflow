@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -104,8 +104,10 @@ class RemoveTfIfConstArgs
       llvm::ArrayRef<mlir::TF::ConstOp> const_args,
       llvm::ArrayRef<unsigned> const_arg_indices) {
     // Get the new function type as const args are removed.
+    llvm::BitVector const_arg_indices_bv(branch.getNumArguments());
+    for (auto i : const_arg_indices) const_arg_indices_bv.set(i);
     auto new_branch_type =
-        branch.getType().getWithoutArgsAndResults(const_arg_indices, {});
+        branch.getType().getWithoutArgsAndResults(const_arg_indices_bv, {});
     std::string new_branch_name =
         absl::StrCat(branch.sym_name().str(), branch_suffix);
     // Create the wrapper function with the new arguments that calls the
@@ -147,7 +149,7 @@ class RemoveTfIfConstArgs
         new_branch.getLoc(), new_branch_type.getResults(), call_args,
         branch.sym_name(), "", "", "");
     // Note that the outputs are not changed.
-    builder.create<mlir::ReturnOp>(new_branch.getLoc(), call_op.output());
+    builder.create<mlir::func::ReturnOp>(new_branch.getLoc(), call_op.output());
 
     return new_branch.sym_name();
   }

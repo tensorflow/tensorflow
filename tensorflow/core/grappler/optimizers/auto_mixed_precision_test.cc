@@ -335,6 +335,58 @@ TEST_F(AutoMixedPrecisionTest, Simple) {
   }
 }
 
+TEST_F(AutoMixedPrecisionTest, NoInferOp) {
+  setenv("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL", "TREAT_INFER_AS_DENY",
+         1 /* replace */);
+
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output deny1 = ops::Exp(s.WithOpName("deny1"), input);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), deny1);
+  Output infer1 = ops::Sqrt(s.WithOpName("infer1"), clr1);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), infer1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), clr2, clr2);
+  Output clr3 = ops::Relu(s.WithOpName("clr3"), allow1);
+  Output infer2 = ops::Log(s.WithOpName("infer2"), clr3);
+  Output clr4 = ops::Relu(s.WithOpName("clr4"), infer2);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), clr4, clr4);
+  Output infer3 = ops::Log(s.WithOpName("infer3"), allow2);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), infer3);
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  GraphView output_view(&output);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 4);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("deny1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("infer1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("infer2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("infer3")->attr().at("T").type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 5e-4);
+  }
+  unsetenv("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL");
+}
+
 TEST_F(AutoMixedPrecisionTest, BidirectionalClearChain) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});

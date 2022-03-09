@@ -95,7 +95,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view) override {
+      absl::string_view, bool /*is_reducer*/) override {
     return compute_nested_(callee, parameters);
   }
 
@@ -115,7 +115,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   // callee_name according to T.  Returns the IR value that represents the
   // return value of the function.
   StatusOr<llvm::Value*> EmitLlvmIntrinsicMathCall(
-      const string& callee_name, absl::Span<llvm::Value* const> operands,
+      const std::string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
   // Emits IR to call a device function of type [T] -> T.  Adjusts
@@ -129,7 +129,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   // Emits IR to call a function of type [T] -> T.  Does not munge callee_name.
   // Returns the IR value that represents the return value of the function.
   StatusOr<llvm::Value*> EmitMathCall(
-      const string& callee_name, absl::Span<llvm::Value* const> operands,
+      const std::string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
       absl::string_view name = "");
 

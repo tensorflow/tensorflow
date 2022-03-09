@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -35,7 +34,7 @@ using absl::nullopt;
 class ConstantReductionFunctionTest : public HloTestBase {};
 
 TEST_F(ConstantReductionFunctionTest, Bool) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule jit_f__2.10
 
 reduction_computation__3.4 {

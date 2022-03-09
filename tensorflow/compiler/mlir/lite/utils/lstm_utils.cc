@@ -22,14 +22,13 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -85,8 +84,8 @@ Value CreateI32DenseConst(OpBuilder* builder, ArrayRef<int32_t> values,
 }
 
 Value CreateNoneValue(OpBuilder* builder, mlir::Location location) {
-  return builder->create<mlir::ConstantOp>(location, builder->getNoneType(),
-                                           builder->getUnitAttr());
+  return builder->create<TFL::NoValueOp>(location, builder->getNoneType(),
+                                         builder->getUnitAttr());
 }
 
 Value Transpose(OpBuilder* builder, Value value_to_transpose,
@@ -436,8 +435,8 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
 
   auto tensor_cast = builder_.create<mlir::tensor::CastOp>(
       fused_func_op_.getLoc(), func_result_type, lstm_.getResult());
-  builder_.create<mlir::ReturnOp>(fused_func_op_.getLoc(),
-                                  tensor_cast.getResult());
+  builder_.create<mlir::func::ReturnOp>(fused_func_op_.getLoc(),
+                                        tensor_cast.getResult());
   return success();
 }
 
@@ -720,8 +719,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       output_shape,
       final_inputs.getType().cast<RankedTensorType>().getElementType());
 
-  Value none = builder->create<mlir::ConstantOp>(
-      func_op.getLoc(), builder->getNoneType(), builder->getUnitAttr());
+  Value none = CreateNoneValue(builder, func_op.getLoc());
   auto lstm = builder->create<mlir::TFL::UnidirectionalSequenceLSTMOp>(
       func_op.getLoc(), result_type, /*input=*/final_inputs,
       /*input_to_input_weights=*/weights_array->getResult(0),
@@ -830,7 +828,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   func_op.setType(mlir::FunctionType::get(
       func_op.getContext(), func_op.getType().getInputs(), output_types));
 
-  builder->create<mlir::ReturnOp>(func_op.getLoc(), outputs);
+  builder->create<mlir::func::ReturnOp>(func_op.getLoc(), outputs);
   return success();
 }
 

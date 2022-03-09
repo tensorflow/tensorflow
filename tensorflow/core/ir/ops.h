@@ -29,11 +29,33 @@ limitations under the License.
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
 // Get the C++ declaration for all the ops defined in ODS for the dialect.
 
 #define GET_OP_CLASSES
 #include "tensorflow/core/ir/ops.h.inc"
+
+namespace mlir {
+namespace tfg {
+
+// Analysis that keeps track of all function names in a module.
+struct FunctionTable {
+  explicit FunctionTable(ModuleOp module);
+
+  // Returns whether there are no functions.
+  bool empty() const { return functions.empty(); }
+
+  // Returns whether `op` may be a call.
+  bool MaybeCall(Operation* op);
+
+ private:
+  // All the functions in the graph.
+  DenseSet<StringRef> functions;
+};
+
+}  // namespace tfg
+}  // namespace mlir
 
 #endif  // TENSORFLOW_CORE_IR_OPS_H_

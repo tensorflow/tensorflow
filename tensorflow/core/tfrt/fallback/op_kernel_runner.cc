@@ -89,9 +89,9 @@ StatusOr<OpKernelRunner> OpKernelRunner::Create(
 
   // Fall back to host device if it fails to find the specified device.
   if (!s.ok()) {
-    LOG(ERROR) << "Failed to find device " << device_name
-               << " when creating OpKernel: " << op_name << ". Error: " << s;
-    LOG(ERROR) << "Fallback to host device instead";
+    LOG(WARNING) << "Failed to find device " << device_name
+                 << " when creating OpKernel: " << op_name << ". Error: " << s;
+    LOG(WARNING) << "Fallback to host device instead";
     device = device_manager.HostCPU();
   }
 

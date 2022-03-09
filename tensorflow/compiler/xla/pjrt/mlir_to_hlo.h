@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 // Converts an MHLO/CHLO module string to an mlir::Module.
-StatusOr<mlir::OwningModuleRef> ParseMlirModuleString(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     absl::string_view mlir_module_str, mlir::MLIRContext& context);
 
 // Converts an CHLO/MHLO module to XLA HLO.

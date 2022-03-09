@@ -54,6 +54,12 @@ flags.DEFINE_string('model_dir', os.environ.get('TEST_TMPDIR'),
 
 class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
 
+  def skip_if_oss(self):
+    if FLAGS.project is not None or FLAGS.zone is not None:
+      self.skipTest(
+          'Skipping tests for oss as it is slow to run every test in cloud tpu.'
+      )
+
   def setUp(self):
     super(TPUEmbeddingCorrectness, self).setUp()
     self.embedding_values = np.array(list(range(32)), dtype=np.float64)
@@ -167,6 +173,14 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
         optimizer = tpu_embedding_v2_utils.Adam(learning_rate=0.1)
       elif optimizer_name == 'ftrl':
         optimizer = tpu_embedding_v2_utils.FTRL(learning_rate=0.1)
+      elif optimizer_name == 'adagrad_momentum':
+        optimizer = tpu_embedding_v2_utils.AdagradMomentum(
+            learning_rate=0.1,
+            momentum=0.9,
+            use_nesterov=True,
+            exponent=3.0,
+            epsilon=0.1,
+            beta2=0.9)
       else:
         raise ValueError('optimizer is not recognized: ', optimizer_name)
       mid_level_api = self._create_mid_level(optimizer=optimizer)
@@ -174,10 +188,12 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     return strategy, mid_level_api, optimizer
 
   @parameterized.parameters(
-      *itertools.product(['sgd', 'adagrad', 'adam', 'ftrl'], [True, False],
-                         [True, False], [True, False]))
+      *itertools.product(['sgd', 'adagrad', 'adam', 'ftrl', 'adagrad_momentum'],
+                         [True, False], [True, False], [True, False]))
   def test_embedding(self, optimizer_name, training, sparse,
                      is_high_dimensional):
+    if optimizer_name != 'sgd' or not training:
+      self.skip_if_oss()
     strategy, mid_level_api, optimizer = (
         self._create_strategy_and_mid_level(optimizer_name))
 
@@ -461,13 +477,20 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
 
     if is_high_dimensional:
       activation_watched_gold = np.stack([activation_watched_gold] *
-                                         self.data_batch_size)
+                                         self.batch_size * num_replicas)
 
       activation_favorited_gold = np.stack([activation_favorited_gold] *
-                                           self.data_batch_size)
+                                           self.batch_size * num_replicas)
 
       activation_friends_gold = np.stack([activation_friends_gold] *
-                                         self.data_batch_size)
+                                         self.batch_size * num_replicas)
+    else:
+      activation_watched_gold = np.concatenate(
+          [activation_watched_gold] * (num_replicas // self.batch_size))
+      activation_favorited_gold = np.concatenate(
+          [activation_favorited_gold] * (num_replicas // self.batch_size))
+      activation_friends_gold = np.concatenate(
+          [activation_friends_gold] * (num_replicas // self.batch_size))
 
     loss_gold = [loss_gold0] * num_replicas
 
@@ -528,6 +551,8 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
       check_fn = self._check_embedding_and_slot_variables_for_sgd
     elif isinstance(optimizer, tpu_embedding_v2_utils.Adagrad):
       check_fn = self._check_embedding_and_slot_variables_for_adagrad
+    elif isinstance(optimizer, tpu_embedding_v2_utils.AdagradMomentum):
+      check_fn = self._check_embedding_and_slot_variables_for_adagrad_momentum
     elif isinstance(optimizer, tpu_embedding_v2_utils.Adam):
       check_fn = self._check_embedding_and_slot_variables_for_adam
     elif isinstance(optimizer, tpu_embedding_v2_utils.FTRL):
@@ -559,10 +584,38 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     embedding_table -= (
         optimizer.learning_rate * np.sum(gradients, axis=0) /
         np.sqrt(accumulator))
-    self.assertAllClose(_get_variable(variable['parameters']).numpy(),
-                        embedding_table)
-    self.assertAllClose(_get_variable(variable['accumulators']).numpy(),
-                        accumulator)
+    self.assertAllClose(
+        _get_variable(variable['parameters']).numpy(), embedding_table)
+    self.assertAllClose(
+        _get_variable(variable['accumulators']).numpy(), accumulator)
+
+  def _check_embedding_and_slot_variables_for_adagrad_momentum(
+      self, embedding_table_before, gradients, optimizer, variable):
+    embedding_table = np.copy(embedding_table_before)
+    accumulator = np.zeros(_get_variable(variable['accumulators']).shape)
+    momenta = np.zeros(_get_variable(variable['momenta']).shape)
+    gradients = np.sum(gradients, axis=0)
+    if optimizer.beta2 == 1.0:
+      accumulator += gradients**2
+    else:
+      accumulator = optimizer.beta2 * accumulator + (
+          1 - optimizer.beta2) * gradients**2
+    accumulator_power = np.power(accumulator + optimizer.epsilon,
+                                 -1.0 / optimizer.exponent)
+    momenta = optimizer.momentum * momenta + gradients * accumulator_power
+    if optimizer.use_nesterov:
+      update = optimizer.momentum * momenta + gradients * accumulator_power
+    else:
+      update = momenta
+    embedding_table -= optimizer.learning_rate * update
+    self.assertAllClose(
+        _get_variable(variable['parameters']).numpy(),
+        embedding_table,
+        rtol=1e-3)
+    self.assertAllClose(
+        _get_variable(variable['accumulators']).numpy(), accumulator, rtol=1e-3)
+    self.assertAllClose(
+        _get_variable(variable['momenta']).numpy(), momenta, rtol=1e-3)
 
   def _check_embedding_and_slot_variables_for_adam(self, embedding_table_before,
                                                    gradients,

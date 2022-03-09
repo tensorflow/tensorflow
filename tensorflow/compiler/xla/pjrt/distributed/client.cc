@@ -85,7 +85,7 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
   State state_ ABSL_GUARDED_BY(mu_) = State::kNotConnected;
 
   // A unique session ID, assigned by the server during Connect().
-  uint64 session_id_;
+  uint64_t session_id_;
 
   // Notification that tells the heartbeat thread to stop running.
   absl::Notification stop_heartbeats_;

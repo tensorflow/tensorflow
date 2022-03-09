@@ -513,8 +513,8 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(model.variables[1], [1])
     self.assertAllEqual(model.variables, model.trainable_variables)
 
-    self.assertLen(model._checkpoint_dependencies, 1)
-    self.assertIs(model._checkpoint_dependencies[0].ref, model.w)
+    self.assertLen(model._trackable_children(), 1)
+    self.assertIs(model._trackable_children().popitem()[1], model.w)
 
   def test_embedding_lookup(self):
     v = [
@@ -675,6 +675,16 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     equal = sv1 == sv2
     self.assertAllEqual(equal, [True, True])
     self.assertAllEqual(sv1 + sv2, [2.0, 4.0])
+
+  def test_shards_have_container_set(self):
+    v1 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv1 = sharded_variable.ShardedVariable(v1)
+    for v in sv1.variables:
+      self.assertTrue(hasattr(v, '_sharded_container'))
+      self.assertIs(v._sharded_container(), sv1)
 
 
 if __name__ == '__main__':

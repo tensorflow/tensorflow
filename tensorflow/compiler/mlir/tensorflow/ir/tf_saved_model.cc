@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -61,7 +60,8 @@ LogicalResult VerifyTensorTypesCompatible(Type t1, Type t2) {
   return verifyCompatibleShape(t1.cast<TensorType>(), t2.cast<TensorType>());
 }
 
-static LogicalResult Verify(GlobalTensorOp global_tensor) {
+LogicalResult GlobalTensorOp::verify() {
+  GlobalTensorOp global_tensor = *this;
   if (failed(VerifyTensorTypesCompatible(
           global_tensor.type(), global_tensor.value().Attribute::getType()))) {
     return global_tensor.emitError() << "'type' and 'value' attributes should "
@@ -77,7 +77,8 @@ static LogicalResult Verify(GlobalTensorOp global_tensor) {
   return success();
 }
 
-static LogicalResult Verify(SessionInitializerOp session_initializer) {
+LogicalResult SessionInitializerOp::verify() {
+  SessionInitializerOp session_initializer = *this;
   mlir::SymbolTable symbol_table(
       session_initializer->getParentOfType<ModuleOp>());
 
@@ -242,7 +243,7 @@ static bool HasAnyTfSavedModelArgAttr(FuncOp func) {
 static LogicalResult VerifySavedModelModule(
     ModuleOp module, TensorFlowSavedModelDialect *dialect) {
   auto exported_names_ident =
-      Identifier::get("tf_saved_model.exported_names", dialect->getContext());
+      StringAttr::get(dialect->getContext(), "tf_saved_model.exported_names");
   // Check that there are no duplicated exported_names.
   DenseMap<StringRef, Operation *> exported_name_to_op;
   for (auto &op : module) {
@@ -492,8 +493,8 @@ class OptimizeSessionInitializerPattern
 };
 
 void SessionInitializerOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<OptimizeSessionInitializerPattern>(context);
+    RewritePatternSet &results, MLIRContext *context) {
+  results.add<OptimizeSessionInitializerPattern>(context);
 }
 
 SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp op) {

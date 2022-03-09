@@ -22,6 +22,7 @@ limitations under the License.
 #include <queue>
 #include <stack>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -31,7 +32,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -40,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -64,6 +66,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/ir/types/dialect.h"
@@ -755,6 +759,17 @@ class ShapeInference {
   // Returns whether either op or function type was changed.
   bool InferShapeForReduceDataset(ReduceDatasetOp op, int64_t max_iterations);
 
+  // Infers the shape for TakeWhileDatasetOp and its associated predicate
+  // function. Returns whether either op or function type was changed.
+  bool InferShapeForTakeWhileDataset(TakeWhileDatasetOp op,
+                                     int64_t max_iterations);
+
+  // Infers shape for dataset ops that have `M` input elements and `N`
+  // arguments, and also propagates the shape to the specified function (called
+  // only when function exists and has single use).
+  bool InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
+                                    int64_t max_iterations);
+
   // Infers the shape of ops that create TensorList. Specifically,
   // TensorListReserveOp, EmptyTensorListOp and TensorListFromTensor ops. It
   // refines the element shape if all tensors written to the list across all
@@ -764,6 +779,15 @@ class ShapeInference {
   // Infers the shape of VarHandleOp based on the uses of the VarHandleOp to
   // update the subtypes of the resource type.
   bool InferShapeForVarHandleOp(VarHandleOp op);
+
+  // Infers the output shape of XlaConvOp based on the input shapes
+  bool InferShapeForXlaConvOp(XlaConvOp op);
+
+  // Infers the output shape of XlaReduceWindowOp based on the input shapes.
+  bool InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op);
+
+  // Infers the output shape of XlaSelectAndScatterOp based on the input shapes.
+  bool InferShapeForXlaSelectAndScatterOp(XlaSelectAndScatterOp op);
 
   bool RefineWithInferTypeOpInterface(InferTypeOpInterface infer_ti);
 
@@ -822,7 +846,7 @@ bool ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
   // update the type.
   bool enqueue_callers = false;
   for (OpOperand& use : make_early_inc_range(result.getUses())) {
-    if (isa<ReturnOp>(use.getOwner())) {
+    if (isa<func::ReturnOp>(use.getOwner())) {
       enqueue_callers = true;
     } else if (NeedsCastBack(use, tf_dialect_)) {
       if (!cast_op) {
@@ -939,7 +963,7 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
       host_compute_op->getAttrOfType<StringAttr>("host_mlir_module");
   if (host_module.getValue().empty()) return false;
 
-  mlir::OwningModuleRef module_for_func;
+  mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
   FuncOp func = host_compute_op.GetHostFunc(&module_for_func);
 
   // Update/use input shapes for function.
@@ -1005,9 +1029,17 @@ struct DatasetInput {
 };
 
 // Returns the input elements shapes and types for Dataset ops.
-DatasetInput GetDatasetInput(Operation* op) {
+DatasetInput GetDatasetInput(Value value) {
   // TODO(haoliang): add an interface for DatasetOp to avoid the following
   // enumeration.
+  // Iteratively tracing upwards if parent op is `IdentityOp` or `IdentityNOp`.
+  while (
+      llvm::isa_and_nonnull<IdentityOp, IdentityNOp>(value.getDefiningOp())) {
+    value = value.getDefiningOp()->getOperand(
+        value.cast<OpResult>().getResultNumber());
+  }
+
+  Operation* op = value.getDefiningOp();
   if (!llvm::isa_and_nonnull<BatchDatasetV2Op, MapDatasetOp, RepeatDatasetOp,
                              ParallelMapDatasetOp, ParallelMapDatasetV2Op,
                              TakeDatasetOp>(op))
@@ -1017,29 +1049,19 @@ DatasetInput GetDatasetInput(Operation* op) {
                       op->getAttrOfType<ArrayAttr>("output_types")};
 }
 
-bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
-                                             int64_t max_iterations) {
-  // MapDatasetOp's relationship with its associated function is as
-  // follows: first M function params are dictated by the set
-  // output shapes and types, the next N are the last Ninputs from MapDataset
-  // op. The MapDataset op always has N+1 inputs.
-  // TODO(jpienaar): Avoid this lookup.
-  auto module = op->getParentOfType<ModuleOp>();
-  auto f = module.lookupSymbol<FuncOp>(op.f());
-  // Skip if function is not found or more than one caller.
-  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
-
-  int N = op.getNumOperands() - 1;
+bool ShapeInference::InferShapeForDatasetOpCommon(Operation* op, FuncOp f,
+                                                  int64_t max_iterations) {
+  int N = op->getNumOperands() - 1;
   int M = f.getNumArguments() - N;
   DCOMMENT_OP(op, "Inferring shape for with N = " << N << " and M = " << M);
 
   // Initialize with function input types.
-  SmallVector<Type> input_types(f.getArgumentTypes());
+  auto input_types = llvm::to_vector<1>(
+      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
-  DatasetInput input_elements =
-      GetDatasetInput(op.input_dataset().getDefiningOp());
+  DatasetInput input_elements = GetDatasetInput(op->getOperand(0));
   if (!input_elements) {
-    op.emitWarning("unexpected dataset input; skipping function refinement");
+    op->emitWarning("unexpected dataset input; skipping function refinement");
     return false;
   }
 
@@ -1054,20 +1076,48 @@ bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
     *it++ = t;
   }
   // Now the remaining N from operand types.
-  for (auto t : llvm::drop_begin(op.getOperandTypes())) {
+  for (auto t : llvm::drop_begin(op->getOperandTypes())) {
     auto meet = TypeMeet(*it, t);
     changed = changed || (meet != *it);
     *it++ = meet;
   }
   if (!changed) return false;
 
-  FailureOr<bool> res =
-      PropagateShapeToFunctions(module, input_types, {f}, max_iterations);
+  FailureOr<bool> res = PropagateShapeToFunctions(
+      op->getParentOfType<ModuleOp>(), input_types, {f}, max_iterations);
   if (failed(res)) {
-    op.emitOpError("propagating shapes for MapDataset failed");
+    op->emitOpError("propagating shapes failed");
     return false;
   }
   return *res;
+}
+
+bool ShapeInference::InferShapeForMapDataset(MapDatasetOp op,
+                                             int64_t max_iterations) {
+  // MapDatasetOp's relationship with its associated function is as
+  // follows: first M function params are dictated by the set
+  // output shapes and types, the next N are the last Ninputs from MapDataset
+  // op. The MapDataset op always has N+1 inputs.
+  // TODO(jpienaar): Avoid this lookup.
+  auto module = op->getParentOfType<ModuleOp>();
+  auto f = module.lookupSymbol<FuncOp>(op.f());
+  // Skip if function is not found or more than one caller.
+  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
+  return InferShapeForDatasetOpCommon(op, f, max_iterations);
+}
+
+bool ShapeInference::InferShapeForTakeWhileDataset(TakeWhileDatasetOp op,
+                                                   int64_t max_iterations) {
+  // TakeWhileDatasetOp's relationship with its associated function is as
+  // follows: first M function params are dictated by the set
+  // output shapes and types, the next N are the last Ninputs from
+  // TakeWhileDataset op. The TakeWhileDataset op always has N+1 inputs.
+  // TODO(jpienaar): Avoid this lookup.
+  auto module = op->getParentOfType<ModuleOp>();
+  auto f = module.lookupSymbol<FuncOp>(op.predicate());
+  // Skip if function is not found or more than one caller.
+  if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
+  return InferShapeForDatasetOpCommon(op, f, max_iterations);
 }
 
 bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
@@ -1087,8 +1137,7 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   // Skip if function is not found or it has more than one caller.
   if (!f || !llvm::hasSingleElement(GetCallers(f))) return false;
 
-  DatasetInput input_elements =
-      GetDatasetInput(op.input_dataset().getDefiningOp());
+  DatasetInput input_elements = GetDatasetInput(op.input_dataset());
   if (!input_elements) {
     op.emitWarning("unexpected dataset input; skipping function refinement");
     return false;
@@ -1110,7 +1159,8 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
   }
 
   // Initialize with function input types.
-  SmallVector<Type> input_types(f.getArgumentTypes());
+  auto input_types = llvm::to_vector<1>(
+      cast<FunctionOpInterface>(f.getOperation()).getArgumentTypes());
 
   // Track if changed to skip enqueueing.
   bool changed = false;
@@ -1219,6 +1269,498 @@ bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
     changed = true;
   }
 
+  return changed;
+}
+
+// Helper function for creating a Window proto from user-supplied data.
+// Returns llvm::None if the user-supplied data was invalid.
+llvm::Optional<xla::Window> InferWindowFromDimensions(
+    llvm::SmallVector<int64_t> window_dimensions,
+    llvm::SmallVector<int64_t> window_strides,
+    llvm::SmallVector<std::pair<int64_t, int64_t>> padding,
+    llvm::SmallVector<int64_t> lhs_dilation,
+    llvm::SmallVector<int64_t> rhs_dilation) {
+  const auto verify_size = [&](const size_t x, const char* x_name) {
+    if (x == 0 || x == window_dimensions.size()) {
+      return true;
+    } else {
+      llvm::errs()
+          << "Window has different number of window dimensions than of "
+          << x_name
+          << "\nNumber of window dimensions: " << window_dimensions.size()
+          << "\nNumber of " << x_name << ": " << x << "\n";
+      return false;
+    }
+  };
+
+  if (!(verify_size(window_dimensions.size(), "window_dimensions") &&
+        verify_size(window_strides.size(), "window strides") &&
+        verify_size(padding.size(), "padding entries") &&
+        verify_size(lhs_dilation.size(), "lhs dilation factors") &&
+        verify_size(rhs_dilation.size(), "rhs dilation factors")))
+    return llvm::None;
+
+  xla::Window window;
+  for (size_t i = 0; i < window_dimensions.size(); i++) {
+    auto dim = window.add_dimensions();
+    dim->set_size(window_dimensions[i]);
+    if (!window_strides.empty()) {
+      dim->set_stride(window_strides[i]);
+    } else {
+      dim->set_stride(1);
+    }
+    if (!padding.empty()) {
+      dim->set_padding_low(padding[i].first);
+      dim->set_padding_high(padding[i].second);
+    } else {
+      dim->set_padding_low(0);
+      dim->set_padding_high(0);
+    }
+    if (!lhs_dilation.empty()) {
+      dim->set_base_dilation(lhs_dilation[i]);
+    } else {
+      dim->set_base_dilation(1);
+    }
+    if (!rhs_dilation.empty()) {
+      dim->set_window_dilation(rhs_dilation[i]);
+    } else {
+      dim->set_window_dilation(1);
+    }
+    dim->set_window_reversal(false);
+  }
+  return window;
+}
+
+llvm::Optional<RankedTensorType> InferWindowOutputShape(
+    const ShapedType& base_shape, const xla::Window& window,
+    Type element_type) {
+  if (window.dimensions_size() != base_shape.getRank()) {
+    llvm::errs() << "Window has dimension " << window.dimensions_size()
+                 << " but base shape has dimension " << base_shape.getRank()
+                 << "\n";
+    return llvm::None;
+  }
+
+  std::vector<int64_t> output_dimensions(window.dimensions_size());
+  std::vector<bool> output_is_dynamic(window.dimensions_size());
+  for (int64_t i = 0; i < window.dimensions_size(); ++i) {
+    const auto& dim = window.dimensions(i);
+    if (dim.size() <= 0) {
+      llvm::errs() << "Window " << window.DebugString()
+                   << " has a non-positive dimension.\n";
+      return llvm::None;
+    }
+    if (dim.stride() <= 0) {
+      llvm::errs() << "Window " << window.DebugString()
+                   << " has a non-positive stride.\n";
+      return llvm::None;
+    }
+    if (dim.base_dilation() < 1) {
+      llvm::errs() << "Window " << window.DebugString()
+                   << " has a non-positive base area dilation factor.\n";
+      return llvm::None;
+    }
+    if (dim.window_dilation() < 1) {
+      llvm::errs() << "Window " << window.DebugString()
+                   << " has a non-positive window dilation factor.\n";
+      return llvm::None;
+    }
+
+    if (base_shape.isDynamicDim(i)) {
+      output_dimensions[i] = ShapedType::kDynamicSize;
+    } else {
+      const int64_t dilated_base = xla::window_util::DilatedBound(
+          base_shape.getDimSize(i), dim.base_dilation());
+      const int64_t padded_dilated_base =
+          dim.padding_low() + dilated_base + dim.padding_high();
+      const int64_t dilated_window =
+          xla::window_util::DilatedBound(dim.size(), dim.window_dilation());
+
+      output_dimensions[i] = xla::window_util::StridedBound(
+          padded_dilated_base, dilated_window, dim.stride());
+    }
+  }
+
+  return RankedTensorType::get(output_dimensions, element_type);
+}
+
+bool ShapeInference::InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op) {
+  DCOMMENT_OP(op, "Inferring shape for XlaReduceWindowOp");
+
+  bool changed = false;
+
+  auto input_ty = op.input().getType().cast<ShapedType>();
+  DenseElementsAttr window_dimensions, window_strides, base_dilations,
+      window_dilations, padding;
+  if (input_ty.hasStaticShape() &&
+      matchPattern(op.window_dimensions(), m_Constant(&window_dimensions)) &&
+      matchPattern(op.window_strides(), m_Constant(&window_strides)) &&
+      matchPattern(op.base_dilations(), m_Constant(&base_dilations)) &&
+      matchPattern(op.window_dilations(), m_Constant(&window_dilations)) &&
+      matchPattern(op.padding(), m_Constant(&padding))) {
+    llvm::SmallVector<int64_t> window_dimensions_vec, window_strides_vec,
+        base_dilations_vec, window_dilations_vec;
+    llvm::SmallVector<std::pair<int64_t, int64_t>> padding_pairs(
+        padding.getNumElements() / 2);
+
+    for (auto i = 0; i < window_dimensions.size(); ++i) {
+      window_dimensions_vec.push_back(
+          window_dimensions.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < window_strides.size(); ++i) {
+      window_strides_vec.push_back(
+          window_strides.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < base_dilations.size(); ++i) {
+      base_dilations_vec.push_back(
+          base_dilations.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < window_dilations.size(); ++i) {
+      window_dilations_vec.push_back(
+          window_dilations.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < padding_pairs.size(); ++i) {
+      padding_pairs[i] = {padding.getValues<IntegerAttr>()[i * 2].getInt(),
+                          padding.getValues<IntegerAttr>()[i * 2 + 1].getInt()};
+    }
+
+    auto window = InferWindowFromDimensions(
+        window_dimensions_vec, window_strides_vec, padding_pairs,
+        base_dilations_vec, window_dilations_vec);
+    if (!window) {
+      op->emitOpError("failed to create window");
+    }
+    auto output_shape = InferWindowOutputShape(
+        input_ty, window.getValue(),
+        op.init_value().getType().cast<ShapedType>().getElementType());
+
+    if (!output_shape) {
+      op->emitOpError("failed to infer output shape");
+    }
+
+    changed = RefineResultType(op.getOperation(), op.getResult(),
+                               output_shape.getValue());
+  }
+
+  return changed;
+}
+
+bool ShapeInference::InferShapeForXlaSelectAndScatterOp(
+    XlaSelectAndScatterOp op) {
+  DCOMMENT_OP(op, "Inferring shape for XlaSelectAndScatterOp");
+
+  auto operand_shape = op.operand().getType().cast<ShapedType>();
+  auto source_shape = op.source().getType().cast<ShapedType>();
+  DenseElementsAttr window_dimensions, window_strides, padding;
+  if (operand_shape.hasRank() && source_shape.hasRank() &&
+      matchPattern(op.window_dimensions(), m_Constant(&window_dimensions)) &&
+      matchPattern(op.window_strides(), m_Constant(&window_strides)) &&
+      matchPattern(op.padding(), m_Constant(&padding))) {
+    llvm::SmallVector<int64_t> window_dimensions_vec, window_strides_vec,
+        base_dilations_vec, window_dilations_vec;
+    llvm::SmallVector<std::pair<int64_t, int64_t>> padding_pairs(
+        padding.getNumElements() / 2);
+
+    for (auto i = 0; i < window_dimensions.size(); ++i) {
+      window_dimensions_vec.push_back(
+          window_dimensions.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < window_strides.size(); ++i) {
+      window_strides_vec.push_back(
+          window_strides.getValues<IntegerAttr>()[i].getInt());
+    }
+
+    for (auto i = 0; i < padding_pairs.size(); ++i) {
+      padding_pairs[i] = {padding.getValues<IntegerAttr>()[i * 2].getInt(),
+                          padding.getValues<IntegerAttr>()[i * 2 + 1].getInt()};
+    }
+
+    auto window = InferWindowFromDimensions(
+        window_dimensions_vec, window_strides_vec, padding_pairs, {}, {});
+    if (!window) {
+      op->emitOpError("failed to create window");
+    }
+    auto window_result_shape = InferWindowOutputShape(
+        operand_shape, window.getValue(), operand_shape.getElementType());
+
+    if (!window_result_shape) {
+      op->emitOpError("failed to infer window result shape");
+    }
+
+    if (window_result_shape.getValue() != source_shape) {
+      op->emitOpError(
+          "Source shape does not match the shape of window-reduced operand.");
+    }
+  }
+
+  return RefineResultType(op.getOperation(), op.getResult(),
+                          op.operand().getType());
+}
+
+llvm::Optional<RankedTensorType> InferXlaConvOutputShape(
+    llvm::SmallVector<int64_t> input_tensor_dims,
+    llvm::SmallVector<int64_t> kernel_tensor_dims,
+    llvm::SmallVector<int64_t> window_strides,
+    llvm::SmallVector<std::pair<int64_t, int64_t>> paddings,
+    llvm::SmallVector<int64_t> lhs_dilations,
+    llvm::SmallVector<int64_t> rhs_dilations, int64_t batch_group_count,
+    xla::ConvolutionDimensionNumbers dnums, Type element_type) {
+  auto num_spatial_dims = input_tensor_dims.size() - 2;
+  std::vector<int64_t> output_dims(input_tensor_dims.size());
+
+  auto input_batch = input_tensor_dims[dnums.input_batch_dimension()];
+  auto kernel_output_feature =
+      kernel_tensor_dims[dnums.kernel_output_feature_dimension()];
+  output_dims[dnums.output_batch_dimension()] = input_batch / batch_group_count;
+  DCOMMENT("inferrd output batch dimension is "
+           << output_dims[dnums.output_batch_dimension()]);
+  output_dims[dnums.output_feature_dimension()] = kernel_output_feature;
+  DCOMMENT("inferrd output output_feature_dimension is "
+           << output_dims[dnums.output_feature_dimension()]);
+
+  std::vector<int64_t> input_spatial_dims;
+  llvm::SmallVector<int64_t> window_spatial_dims;
+  for (auto i = 0; i < num_spatial_dims; ++i) {
+    input_spatial_dims.push_back(
+        input_tensor_dims[dnums.input_spatial_dimensions(i)]);
+    window_spatial_dims.push_back(
+        kernel_tensor_dims[dnums.kernel_spatial_dimensions(i)]);
+  }
+
+  ShapedType base_shape =
+      RankedTensorType::get(input_spatial_dims, element_type);
+
+  auto window =
+      InferWindowFromDimensions(window_spatial_dims, window_strides, paddings,
+                                lhs_dilations, rhs_dilations);
+
+  auto output_shape =
+      InferWindowOutputShape(base_shape, window.getValue(), element_type);
+
+  for (auto i = 0; i < num_spatial_dims; ++i) {
+    output_dims[dnums.output_spatial_dimensions(i)] =
+        output_shape.getValue().getShape()[i];
+    DCOMMENT("inferrd output spatial dimension "
+             << i << " at dimension numebr "
+             << dnums.output_spatial_dimensions(i) << " is "
+             << output_dims[dnums.output_spatial_dimensions(i)]);
+  }
+  return RankedTensorType::get(output_dims, element_type);
+}
+
+// TODO(hanxiongwang): The logic in this function need move to Op Verify method
+// when dependecy issue of adding header file
+// "third_party/tensorflow/compiler/xla/xla_data.pb.h" into
+// "third_party/tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.cc" is
+// resolved
+LogicalResult PrecheckForXlaConvOp(XlaConvOp op) {
+  auto input_tensor = op.lhs();
+  auto kernel_tensor = op.rhs();
+  auto window_strides = op.window_strides();
+  auto padding = op.padding();
+  auto lhs_dilation = op.lhs_dilation();
+  auto rhs_dilation = op.rhs_dilation();
+  auto feature_group_count = op.feature_group_count();
+  // This batch_group_count is a placeholder. We do not have batch_group_count
+  // in XlaConvOp V1. By default, it is set to be 1. In XlaConvOpV2, we have it.
+  // Eventually we migrate to V2, we con reuse this variable with minor change
+  int64_t batch_group_count = 1;
+
+  auto input_args_have_static_shape = [&]() -> bool {
+    return input_tensor.getType().cast<TensorType>().hasStaticShape() &&
+           kernel_tensor.getType().cast<TensorType>().hasStaticShape() &&
+           window_strides.getType().cast<TensorType>().hasStaticShape() &&
+           padding.getType().cast<TensorType>().hasStaticShape() &&
+           lhs_dilation.getType().cast<TensorType>().hasStaticShape() &&
+           rhs_dilation.getType().cast<TensorType>().hasStaticShape() &&
+           feature_group_count.getType().cast<TensorType>().hasStaticShape();
+  };
+
+  // Return failure when one of the input args has not a static shape
+  if (!input_args_have_static_shape()) {
+    return failure();
+  }
+
+  auto input_tensor_shape =
+      input_tensor.getType().cast<RankedTensorType>().getShape();
+  auto kernel_tensor_shape =
+      kernel_tensor.getType().cast<RankedTensorType>().getShape();
+
+  if (input_tensor_shape.size() <= 2) {
+    return op.emitOpError()
+           << "input tensor argument is " << input_tensor_shape.size()
+           << " which is invalid, since input tensor argument must has a "
+           << "rank greater than 2.\n";
+  }
+
+  if (kernel_tensor_shape.size() <= 2) {
+    return op.emitOpError()
+           << "kernel tensor argument is " << kernel_tensor_shape.size()
+           << " which is invalid, since kernel tensor argument must has a "
+           << "rank greater than 2.\n";
+  }
+
+  if (input_tensor_shape.size() != kernel_tensor_shape.size()) {
+    return op.emitOpError() << "both input tensor and kernel tensor must "
+                            << "have same number of dimensions.\n";
+  }
+
+  DenseElementsAttr feature_group_count_attr;
+  xla::ConvolutionDimensionNumbers dnums;
+  dnums.ParseFromString(op.dimension_numbersAttr().getValue().str());
+  if (dnums.input_spatial_dimensions_size() !=
+      dnums.kernel_spatial_dimensions_size()) {
+    return op.emitOpError() << "Both arguments to convolution must have "
+                            << "same number of dimensions.\n";
+  }
+
+  if (dnums.input_spatial_dimensions_size() !=
+      dnums.output_spatial_dimensions_size()) {
+    return op.emitOpError() << "Both input and output of convolution must have "
+                            << "same number of dimensions.\n";
+  }
+  if (!matchPattern(feature_group_count,
+                    m_Constant(&feature_group_count_attr))) {
+    return success();
+  }
+
+  auto feature_group_count_val =
+      feature_group_count_attr.getValues<IntegerAttr>()[0].getInt();
+  auto input_features = input_tensor_shape[dnums.input_feature_dimension()];
+  auto input_batch = input_tensor_shape[dnums.input_batch_dimension()];
+  auto kernel_input_features =
+      kernel_tensor_shape[dnums.kernel_input_feature_dimension()];
+  auto kernel_output_features =
+      kernel_tensor_shape[dnums.kernel_output_feature_dimension()];
+
+  if (feature_group_count_val <= 0) {
+    return op.emitOpError()
+           << "feature_group_count must be a positive number, got "
+           << feature_group_count_val;
+  }
+
+  if (batch_group_count <= 0) {
+    return op.emitOpError()
+           << "batch_group_count must be a positive number, got "
+           << batch_group_count;
+  }
+  if (batch_group_count > 1 && feature_group_count_val > 1) {
+    return op.emitOpError()
+           << "both batch_group_count " << batch_group_count
+           << "and feature_group_count " << feature_group_count_val
+           << " cannot be greater than 1";
+  }
+  if (kernel_output_features % batch_group_count != 0) {
+    return op.emitOpError()
+           << "Expected output feature dimension size (value "
+           << kernel_output_features
+           << ") to be a multiple of batch group count " << batch_group_count;
+  }
+  if (input_features % feature_group_count_val != 0 ||
+      input_features / feature_group_count_val != kernel_input_features) {
+    return op.emitOpError()
+           << "Expected the size of kernel_input_features (value "
+           << kernel_input_features
+           << ") in rhs times feature_group_count (value "
+           << feature_group_count_val
+           << ") in lhs should equal the size of the z dimension (value "
+           << input_features << ") in lhs.\n";
+  }
+  if (kernel_output_features % feature_group_count_val > 0) {
+    return op.emitOpError() << "Expected output feature dimension (value "
+                            << kernel_output_features << ") to be divisible by "
+                            << "feature_group_count (value "
+                            << feature_group_count_val << ").\n";
+  }
+  if (input_batch % batch_group_count != 0) {
+    return op.emitOpError()
+           << "Expected input batch dimension (value " << input_batch
+           << " ) to be divisible by batch_group_count (value "
+           << batch_group_count << "); ";
+  }
+  return success();
+}
+
+bool ShapeInference::InferShapeForXlaConvOp(XlaConvOp op) {
+  DCOMMENT_OP(op, "Inferring shape for XlaConvOp");
+
+  bool changed = false;
+
+  if (PrecheckForXlaConvOp(op).failed()) {
+    return changed;
+  }
+
+  auto input_tensor = op.lhs();
+  auto kernel_tensor = op.rhs();
+  auto window_strides = op.window_strides();
+  auto padding = op.padding();
+  auto lhs_dilation = op.lhs_dilation();
+  auto rhs_dilation = op.rhs_dilation();
+  // This batch_group_count is a placeholder. We do not have batch_group_count
+  // in XlaConvOp V1. By default, it is set to be 1. In XlaConvOpV2, we have it.
+  // Eventually we migrate to V2, we con reuse this variable with minor change
+  int64_t batch_group_count = 1;
+
+  DenseIntElementsAttr window_strides_attr, padding_attr, lhs_dilation_attr,
+      rhs_dilation_attr;
+  if (matchPattern(window_strides, m_Constant(&window_strides_attr)) &&
+      matchPattern(padding, m_Constant(&padding_attr)) &&
+      matchPattern(lhs_dilation, m_Constant(&lhs_dilation_attr)) &&
+      matchPattern(rhs_dilation, m_Constant(&rhs_dilation_attr))) {
+    llvm::SmallVector<int64_t> input_tensor_dims_vec, kernel_tensor_dims_vec,
+        window_strides_vec, lhs_dilations_vec, rhs_dilations_vec;
+    llvm::SmallVector<std::pair<int64_t, int64_t>> padding_pairs(
+        padding_attr.getNumElements() / 2);
+    xla::ConvolutionDimensionNumbers dnums;
+    dnums.ParseFromString(op.dimension_numbersAttr().getValue().str());
+
+    auto input_tensor_shape = input_tensor.getType().cast<RankedTensorType>();
+    for (auto i = 0; i < input_tensor_shape.getShape().size(); ++i) {
+      DCOMMENT("Input Tensor Shape " << i << "th is "
+                                     << input_tensor_shape.getShape()[i]);
+      input_tensor_dims_vec.push_back(input_tensor_shape.getShape()[i]);
+    }
+
+    auto kernel_tensor_shape = kernel_tensor.getType().cast<RankedTensorType>();
+    for (auto i = 0; i < kernel_tensor_shape.getShape().size(); ++i) {
+      DCOMMENT("Kernel tensor Shape" << i << "th is "
+                                     << kernel_tensor_shape.getShape()[i]);
+      kernel_tensor_dims_vec.push_back(kernel_tensor_shape.getShape()[i]);
+    }
+
+    for (const llvm::APInt& i : window_strides_attr) {
+      window_strides_vec.push_back(i.getSExtValue());
+    }
+
+    for (auto i = 0; i < padding_pairs.size(); ++i) {
+      padding_pairs[i] = {
+          padding_attr.getValues<IntegerAttr>()[i * 2].getInt(),
+          padding_attr.getValues<IntegerAttr>()[i * 2 + 1].getInt()};
+    }
+
+    for (const llvm::APInt& i : lhs_dilation_attr) {
+      lhs_dilations_vec.push_back(i.getSExtValue());
+    }
+
+    for (const llvm::APInt& i : rhs_dilation_attr) {
+      rhs_dilations_vec.push_back(i.getSExtValue());
+    }
+
+    auto output_shape = InferXlaConvOutputShape(
+        input_tensor_dims_vec, kernel_tensor_dims_vec, window_strides_vec,
+        padding_pairs, lhs_dilations_vec, rhs_dilations_vec, batch_group_count,
+        dnums, input_tensor_shape.getElementType());
+    if (output_shape.getValue()) {
+      changed = RefineResultType(op.getOperation(), op.getResult(),
+                                 output_shape.getValue());
+      return changed;
+    }
+  }
   return changed;
 }
 
@@ -1376,6 +1918,7 @@ bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
   if (op->hasTrait<OpTrait::SameOperandsAndResultShape>())
     return RefineShapeForPassThroughOps(op);
   if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);
+  if (isa<tensor::CastOp>(op)) return InferShapeForCast(op);
   return false;
 }
 
@@ -1462,6 +2005,13 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
                                             op->getResults());
   }
 
+  // The shape inference function for `ReduceDatasetOp` should always be
+  // executed regardless of whether the result type can be refined.
+  if (auto reduce_dataset_op = dyn_cast<ReduceDatasetOp>(op)) {
+    // TODO(jpienaar): The output type of these ops need to be refined.
+    return InferShapeForReduceDataset(reduce_dataset_op, max_iterations);
+  }
+
   // If no result for this op needs shape inference, we have a fast-path return.
   // But if the type is a resource/variant, we do not skip it because we might
   // not have the handle shapes.
@@ -1477,10 +2027,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // needed.
   if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);
 
-  // tf.Cast and tensor::Cast are only inferred if they have at least one user
-  // in the TF dialect or feeding into the function return. This is necessary to
-  // avoid inserting casts which cannot be refined.
-  if (isa<CastOp, tensor::CastOp>(op)) return InferShapeForCast(op);
+  // tf.Cast is only inferred if it has at least one user in the TF dialect or
+  // feeding into the function return. This is necessary to avoid inserting
+  // casts which cannot be refined.
+  if (isa<CastOp>(op)) return InferShapeForCast(op);
 
   // Handle IfOp here by inferring the shape from the else/then function
   // results. Since `output_shapes` is a derived attribute, avoid going down the
@@ -1507,14 +2057,15 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   }
 
   // TODO(jpienaar): Extract function input arg constraint interface.
+  // TODO(jpienaar): Unify the shape propagation to functions using interface.
   if (auto map_dataset_op = dyn_cast<MapDatasetOp>(op)) {
     // TODO(jpienaar): The output type of these ops need to be refined.
     return InferShapeForMapDataset(map_dataset_op, max_iterations);
   }
 
-  if (auto reduce_dataset_op = dyn_cast<ReduceDatasetOp>(op)) {
+  if (auto takewhile_dataset_op = dyn_cast<TakeWhileDatasetOp>(op)) {
     // TODO(jpienaar): The output type of these ops need to be refined.
-    return InferShapeForReduceDataset(reduce_dataset_op, max_iterations);
+    return InferShapeForTakeWhileDataset(takewhile_dataset_op, max_iterations);
   }
 
   // Handle TensorList init operations by inferring shape from TensorList write
@@ -1524,6 +2075,18 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 
   if (auto var_handle_op = dyn_cast<VarHandleOp>(op)) {
     return InferShapeForVarHandleOp(var_handle_op);
+  }
+
+  if (auto xla_reduce_window_op = dyn_cast<XlaReduceWindowOp>(op)) {
+    return InferShapeForXlaReduceWindowOp(xla_reduce_window_op);
+  }
+
+  if (auto xla_select_and_scatter_op = dyn_cast<XlaSelectAndScatterOp>(op)) {
+    return InferShapeForXlaSelectAndScatterOp(xla_select_and_scatter_op);
+  }
+
+  if (auto xla_conv_op = dyn_cast<XlaConvOp>(op)) {
+    return InferShapeForXlaConvOp(xla_conv_op);
   }
 
   // Return operand as a constant attribute.
@@ -1814,16 +2377,35 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
       PropagateConstantFromCallee(call_op, func, module);
       return failure_or_converged;
     }
-  } else if (auto xla_variadic_sort_op = dyn_cast<TF::XlaVariadicSortOp>(op)) {
-    auto comparator =
-        llvm::cast<mlir::FuncOp>(mlir::SymbolTable::lookupSymbolIn(
-            module, xla_variadic_sort_op.comparator()));
-    mlir::SmallVector<mlir::Type, 2> types;
-    for (auto type : comparator.getType().getInputs()) {
-      types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
+  } else if (isa<TF::XlaReduceWindowOp>(op) ||
+             isa<TF::XlaSelectAndScatterOp>(op) ||
+             isa<TF::XlaVariadicReduceV2Op>(op) ||
+             isa<TF::XlaVariadicSortOp>(op)) {
+    auto propagate_shape_to = [&](mlir::SymbolRefAttr func_sym) {
+      auto func = llvm::cast<mlir::FuncOp>(
+          mlir::SymbolTable::lookupSymbolIn(module, func_sym));
+      mlir::SmallVector<mlir::Type, 2> types;
+      for (auto type : func.getType().getInputs()) {
+        types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
+      }
+      return PropagateShapeToFunctions(module, types, {func}, max_iterations);
+    };
+
+    if (auto xla_reduce_window_op = dyn_cast<TF::XlaReduceWindowOp>(op)) {
+      return propagate_shape_to(xla_reduce_window_op.computation());
     }
-    return PropagateShapeToFunctions(module, types, {comparator},
-                                     max_iterations);
+    if (auto xla_select_and_scatter_op =
+            dyn_cast<TF::XlaSelectAndScatterOp>(op)) {
+      return propagate_shape_to(xla_select_and_scatter_op.select())
+                 .getValue() &&
+             propagate_shape_to(xla_select_and_scatter_op.scatter()).getValue();
+    } else if (auto xla_variadic_reduce_v2_op =
+                   dyn_cast<TF::XlaVariadicReduceV2Op>(op)) {
+      return propagate_shape_to(xla_variadic_reduce_v2_op.reducer());
+    } else if (auto xla_variadic_sort_op =
+                   dyn_cast<TF::XlaVariadicSortOp>(op)) {
+      return propagate_shape_to(xla_variadic_sort_op.comparator());
+    }
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.
@@ -1923,9 +2505,9 @@ LogicalResult ShapeInference::InferShapeForFunctionReturnType(FuncOp func) {
                           << "\n");
 
   // Find any return ops.
-  SmallVector<ReturnOp, 4> return_ops;
+  SmallVector<func::ReturnOp, 4> return_ops;
   for (Block& block : func) {
-    if (auto return_op = dyn_cast<ReturnOp>(block.getTerminator())) {
+    if (auto return_op = dyn_cast<func::ReturnOp>(block.getTerminator())) {
       return_ops.push_back(return_op);
     }
   }

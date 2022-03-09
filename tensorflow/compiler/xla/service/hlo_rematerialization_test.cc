@@ -615,7 +615,7 @@ class CompressingRematerializationTest : public RematerializationTestBase {
 
 // Test rematerialization only remats big buffer that pass certain limits.
 TEST_F(CompressingRematerializationTest, OnlyRematBigBuffer) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_float {
@@ -662,7 +662,7 @@ ENTRY %entry {
 
 // Test rematerialization of a single instruction.
 TEST_F(CompressingRematerializationTest, SingleRemat) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_float {
@@ -698,7 +698,7 @@ ENTRY %entry {
 }
 
 TEST_F(CompressingRematerializationTest, AllUsersUseSameCopy) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_float {
@@ -750,7 +750,7 @@ ENTRY %entry {
 // Test rematerialization of values through bitcasts
 // Its expected that the broadcast gets rematerialized
 TEST_F(HloRematerializationTest, ThroughBitcastRemat) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 ENTRY %mycomp (param: f32[1]) -> f32[1] {
@@ -815,7 +815,7 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
 // Test that the "deny list for move remats" engages when we rematerialize
 // through bitcasts.
 TEST_F(HloRematerializationTest, ThroughBitcastRematInfiniteLoop) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 ENTRY %mycomp (param: f32[1]) -> f32[1024] {
@@ -847,7 +847,7 @@ ENTRY %mycomp (param: f32[1]) -> f32[1024] {
 }
 
 TEST_F(HloRematerializationTest, RematTupleShape) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_mul_comp {
@@ -890,7 +890,7 @@ ENTRY %entry {
 }
 
 TEST_F(HloRematerializationTest, RematTupleShapeDoubleUse) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_mul_comp {
@@ -943,7 +943,7 @@ ENTRY %entry {
 }
 
 TEST_F(HloRematerializationTest, RematTupleShapeThroughBitcasts) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_mul_comp {
@@ -990,7 +990,7 @@ ENTRY %entry {
 }
 
 TEST_F(HloRematerializationTest, RematThroughTuple) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 %add_mul_comp {
@@ -1042,7 +1042,7 @@ ENTRY %entry {
 
 // Make sure when rematerializing all-gathers we increment channel_ids properly.
 TEST_F(HloRematerializationTest, AllGatherChannelId) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule fusion, is_scheduled=true
 
 ENTRY %mycomp (param: f32[1]) -> f32[1] {
@@ -1093,6 +1093,67 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
   EXPECT_TRUE(original_ag->channel_id().has_value());
   EXPECT_TRUE(remat_ag->channel_id().has_value());
   EXPECT_EQ(*remat_ag->channel_id(), *original_ag->channel_id() + 1);
+}
+
+TEST_F(HloRematerializationTest, RematTupleArgFusion) {
+  const std::string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_mul_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %x = f32[1024]{0} broadcast(f32[] %p0), dimensions={}
+  %y = f32[1024]{0} broadcast(f32[] %p1), dimensions={}
+  %add = f32[1024] add(%x, %y)
+  %mul = f32[1024] multiply(%x, %y)
+  ROOT %out = (f32[1024], f32[1024]) tuple(%add, %mul)
+}
+
+%add_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  ROOT %add = add(%p0, %p1)
+}
+
+%add_tuple_comp {
+  %p = (f32[1024]{0}, f32[1024]{0}) parameter(0)
+  %p0 = get-tuple-element(%p), index=0
+  %p1 = get-tuple-element(%p), index=1
+  ROOT %add = add(%p0, %p1)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %fus = (f32[1024]{0}, f32[1024]{0}) fusion(%param.0, %param.1), kind=kLoop,
+    calls=%add_mul_comp
+  %gte.1 = f32[1024]{0} get-tuple-element(%fus), index=0
+  %gte.3 = f32[1024]{0} get-tuple-element(%fus), index=1
+  %add.0 = f32[1024]{0} add(f32[1024]{0} %gte.1, f32[1024]{0} %gte.3)
+  %broadcast.1 = f32[1024]{0} broadcast(f32[] %param.0), dimensions={}
+  %add.1 = f32[1024]{0} add(f32[1024]{0} %add.0, f32[1024]{0} %broadcast.1)
+  %c = f32[] constant(0)
+  %reduce = f32[] reduce(%add.1, %c), dimensions={0}, to_apply=add_comp
+  %fus.1 = f32[1024]{0} fusion(%fus), kind=kLoop, calls=%add_tuple_comp
+  ROOT %tuple = tuple(%reduce, %fus.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  const HloComputation* computation = module->entry_computation();
+  const HloInstruction* root = computation->root_instruction();
+  ASSERT_THAT(root, op::Tuple(op::Reduce(), op::Fusion(op::Fusion())));
+  const HloInstruction* fusion1 = root->operand(1);
+  const HloInstruction* fusion0 = fusion1->operand(0);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_THAT(
+      root, op::Tuple(op::Reduce(),
+                      op::Fusion(AllOf(op::Fusion(), ::testing::Ne(fusion0)))));
 }
 
 }  // namespace

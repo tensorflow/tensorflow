@@ -3,14 +3,8 @@ load(":roundtrip.bzl", "glob_roundtrip_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
-    default_visibility = [":friends"],
+    default_visibility = ["//tensorflow/core/ir/importexport:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
-)
-
-package_group(
-    name = "friends",
-    packages = [
-    ],
 )
 
 cc_library(

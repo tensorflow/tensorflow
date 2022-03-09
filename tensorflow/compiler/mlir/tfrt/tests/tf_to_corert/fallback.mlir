@@ -64,9 +64,9 @@ func @no_native(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<tensor<1
 
 // CHECK-LABEL: func @gpu_device
 func @gpu_device(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<3x3xf32> {
-  // CHECK-NOT: tfrt_fallback_async.executeop
-  // CHECK: corert.executeop.seq({{.*}}, {{.*}}) "tf.ReadVariableOp"
-  // CHECK: corert.executeop({{.*}}) "tf.MatMul"
+  // CHECK-NOT: corert.executeop
+  // CHECK: tfrt_fallback_async.executeop.seq({{.*}}) key({{.*}}) cost({{.*}}) device("/device:GPU:0") "tf.ReadVariableOp"
+  // CHECK: tfrt_fallback_async.executeop key({{.*}}) cost({{.*}}) device("/device:GPU:0") "tf.MatMul"
   %0 = "tf.ReadVariableOp"(%arg1) {device = "/device:GPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
   %1 = "tf.MatMul"(%arg0, %0) {T = f32, device = "/device:GPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
   return %1 : tensor<3x3xf32>
@@ -97,7 +97,8 @@ func @tfrt_set_resource(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<
 
 // CHECK-LABEL: func @tfrt_get_resource
 func @tfrt_get_resource() -> tensor<3x3xf32> {
-  // CHECK: [[ch3:%.*]], [[results:%.*]]:2 = tfrt_fallback_async.get_resource {{.*}} {device = "/device:CPU:0", indices = [0, 1]}
+  // CHECK: [[ready_ch:%.*]] = tfrt.new.chain
+  // CHECK: [[ch3:%.*]], [[results:%.*]]:2 = tfrt_fallback_async.get_resource [[ready_ch]] {device = "/device:CPU:0", indices = [0, 1]}
   // CHECK: tfrt_fallback_async.executeop key({{.*}}) cost({{.*}}) device("/device:CPU:0") "tf.MatMul"([[results]]#0, [[results]]#1)
   %a, %b = "tf._TfrtGetResource"() {device = "/device:CPU:0", indices = [0, 1], shared_name = ["", ""], container = ["", ""]} : () -> (tensor<3x1xf32>, tensor<1x3xf32>)
   %1 = "tf.MatMul"(%a, %b) {T = f32, device = "/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>

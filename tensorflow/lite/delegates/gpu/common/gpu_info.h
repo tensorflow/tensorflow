@@ -105,6 +105,11 @@ struct AMDInfo {
 };
 
 struct AdrenoInfo {
+  struct OpenClCompilerVersion {
+    int major = 0;
+    int minor = 0;
+    int patch = 0;
+  };
   AdrenoInfo() = default;
   explicit AdrenoInfo(const std::string& device_version);
 
@@ -139,6 +144,8 @@ struct AdrenoInfo {
   bool support_one_layer_texture_array = true;
 
   bool compiler_bugs_in_a6xx = false;
+
+  OpenClCompilerVersion cl_compiler_version;
 };
 
 enum class AppleGpu {
@@ -157,6 +164,9 @@ enum class AppleGpu {
   kA13,
   kA14,
   kA15,
+  kM1,
+  kM1Pro,
+  kM1Max,
 };
 
 struct AppleInfo {
@@ -169,6 +179,13 @@ struct AppleInfo {
   bool IsLocalMemoryPreferredOverGlobal() const;
 
   bool IsBionic() const;
+
+  bool IsSIMDMatMulSupported() const;
+  // Often, fp32 alu performance is 1/2 of fp16 alu performance
+  // But, on some devices, fp32 alu performance equal to fp16 alu performance,
+  // at least in some scenarios.
+  // This method returns true if SIMDMatMul performance in fp32 equal to fp16
+  bool IsSIMDMatMulFp32Perf2x() const;
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
@@ -305,6 +322,7 @@ struct OpenClInfo {
   std::string vendor_name;
   std::string opencl_c_version;
   std::string platform_version;
+  std::string driver_version;
 
   OpenClVersion cl_version;
 
@@ -328,8 +346,10 @@ struct OpenClInfo {
   int max_work_group_total_size;
 
   // The row pitch alignment size in pixels for 2D images created from a buffer.
-  // The value returned must be a power of 2.
-  uint64_t image_pitch_alignment;
+  // The value must be a power of 2.
+  uint64_t image_pitch_alignment = 0;
+  // The minimum alignment in pixels. The value must be a power of 2.
+  uint64_t image_base_address_alignment = 0;
   uint64_t base_addr_align_in_bits;
 
   // rtn is ROUND_TO_NEAREST

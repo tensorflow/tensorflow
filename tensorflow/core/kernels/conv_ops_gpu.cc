@@ -145,8 +145,8 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
             se::dnn::ProfileResult* profile_result) -> Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
-      return (*runner)(stream, input_ptr, filter_ptr, side_input_ptr, bias_ptr,
-                       output_ptr_rz, scratch, profile_result);
+      return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
+                       side_input_ptr, bias_ptr, output_ptr_rz);
     };
 
     SE_ASSIGN_OR_RETURN(
@@ -177,6 +177,10 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
                           BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
                               results, std::move(runners)));
     } else {
+      LOG(WARNING)
+          << "None of the algorithms provided by cuDNN frontend heuristics "
+             "worked; trying fallback algorithms.  Conv: "
+          << params.ToString();
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>>
           fallback_runners;
       SE_RETURN_IF_ERROR(stream->parent()->GetFusedConvolveRunners(
@@ -300,8 +304,8 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
             se::dnn::ProfileResult* profile_result) -> Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
-      return (*runner)(stream, input_ptr, filter_ptr, output_ptr, scratch,
-                       profile_result);
+      return (*runner)(stream, profile_result, scratch, input_ptr, filter_ptr,
+                       output_ptr);
     };
     SE_ASSIGN_OR_RETURN(
         auto results,
@@ -329,6 +333,10 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
           autotune_entry,
           BestCudnnConvAlgorithm<se::dnn::ConvOp>(results, std::move(runners)));
     } else {
+      LOG(WARNING)
+          << "None of the algorithms provided by cuDNN frontend heuristics "
+             "worked; trying fallback algorithms.  Conv: "
+          << conv_parameters.ToString();
       std::vector<std::unique_ptr<const se::dnn::ConvRunner>> fallback_runners;
       TF_RETURN_IF_ERROR(stream->parent()->GetConvolveRunners(
           CudnnUseFrontend(), kind, element_type, element_type, stream,

@@ -19,10 +19,10 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -49,14 +49,14 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
     arg_bufs.push_back(
         b->create<memref::AllocOp>(loc, arg_type.cast<MemRefType>()));
   }
-  for (auto operand : llvm::enumerate(operands)) {
+  for (const auto& operand : llvm::enumerate(operands)) {
     b->create<memref::StoreOp>(loc, operand.value(), arg_bufs[operand.index()]);
   }
   // Clone the ops from `lhlo_block`.
   BlockAndValueMapping mapping;
   mapping.map(lhlo_block->getArguments(), arg_bufs);
   for (auto& nested : lhlo_block->without_terminator()) {
-    auto clone = b->clone(nested, mapping);
+    auto* clone = b->clone(nested, mapping);
     mapping.map(nested.getResults(), clone->getResults());
   }
   return b->create<memref::LoadOp>(loc, arg_bufs.back());
@@ -69,7 +69,7 @@ Value ApplySingleResultLhloCode(Location loc, ValueRange operands,
 // LHLO ops.
 void ConvertToReductionOperator(Location loc, scf::ReduceOp reduce_op,
                                 Block* lhlo_block, OpBuilder* b) {
-  Block& loop_reduce_op_body = reduce_op.reductionOperator().front();
+  Block& loop_reduce_op_body = reduce_op.getReductionOperator().front();
   OpBuilder::InsertionGuard guard(*b);
   b->setInsertionPointToStart(&loop_reduce_op_body);
   b->create<scf::ReduceReturnOp>(
@@ -151,7 +151,7 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
   ArrayRef<int64_t> shape =
       shaped_value.getType().cast<ShapedType>().getShape();
   SmallVector<Value, 2> lower, upper, step;
-  for (auto dim : llvm::enumerate(shape)) {
+  for (const auto& dim : llvm::enumerate(shape)) {
     upper.push_back(
         GetStaticOrDynamicDim(loc, shaped_value, dim.index(), dim.value(), b));
     lower.push_back(zero);
@@ -167,7 +167,7 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
 //
 // Example:
 //
-//  "lmhlo.reduce"(%buffer, %init_buf, %result) ( {
+//  "lmhlo.reduce"(%buffer, %init_buf, %result) ({
 //    ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
 //      <LHLO ops>
 //    } ) {dimensions = dense<[1]> : tensor<1xi64>}
@@ -180,7 +180,7 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
 //    %result = scf.parallel (%j) = (%c0) to (%c10) step (%c1) init (%init) {
 //      %elem_to_reduce = load %buffer[%i, %j, %k] : memref<100x10x5xf32>
 //      scf.reduce(%elem_to_reduce)  {
-//        ^bb0(%elem: f32, %acc: f32):   // no predecessors
+//        ^bb0(%elem: f32, %acc: f32):
 //          elem_buf = alloc() : memref<f32>
 //          store %elem, elem_buf[] : memref<f32>
 //          acc_buf = alloc() : memref<f32>
@@ -198,7 +198,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
   using OpConversionPattern<lmhlo::ReduceOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::ReduceOp reduce_op, OpAdaptor adaptor,
+      lmhlo::ReduceOp reduce_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
     if (reduce_op.out().size() != 1) return failure();
@@ -244,7 +244,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
     SmallVector<Value, 2> parallel_lower, parallel_upper, parallel_step;
     SmallVector<Value, 2> reduce_lower, reduce_upper, reduce_step;
     auto operand_shape = operand.getType().cast<MemRefType>().getShape();
-    for (auto dim : llvm::enumerate(operand_shape)) {
+    for (const auto& dim : llvm::enumerate(operand_shape)) {
       const bool is_reducing_dim = reducing_dims.count(dim.index());
 
       Value ub = GetStaticOrDynamicDim(loc, operand, dim.index(), dim.value(),
@@ -330,7 +330,7 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 // func @reduce_window(%arg: memref<112x112xf32>,
 //              %init: memref<f32>,
 //              %result: memref<56x56xf32>) {
-//   "lmhlo.reduce_window"(%arg, %init, %result) ( {
+//   "lmhlo.reduce_window"(%arg, %init, %result) ({
 //     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
 //       "lmhlo.maximum"(%lhs, %rhs, %res)
 //         : (memref<f32>, memref<f32>, memref<f32>) -> ()
@@ -369,7 +369,7 @@ class ReduceWindowOpConverter
   using OpConversionPattern<lmhlo::ReduceWindowOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::ReduceWindowOp reduce_window_op, OpAdaptor adaptor,
+      lmhlo::ReduceWindowOp reduce_window_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/183977252) : Handle variadic ReduceOp/ReduceWindowOp
     if (reduce_window_op.out().size() != 1) return failure();
@@ -456,10 +456,10 @@ class ReduceWindowOpConverter
 
     OpBuilder else_builder =
         elem_or_init.getElseBodyBuilder(rewriter->getListener());
-    else_builder.create<scf::YieldOp>(loc, *window_loop.initVals().begin());
+    else_builder.create<scf::YieldOp>(loc, *window_loop.getInitVals().begin());
 
     return rewriter->create<scf::ReduceOp>(loc,
-                                           *elem_or_init.results().begin());
+                                           *elem_or_init.getResults().begin());
   }
 };
 
@@ -496,7 +496,7 @@ class SelectAndScatterOpConverter
   using OpConversionPattern<lmhlo::SelectAndScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::SelectAndScatterOp s_and_s_op, OpAdaptor adaptor,
+      lmhlo::SelectAndScatterOp s_and_s_op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = s_and_s_op.getLoc();
     InitializeOutput(s_and_s_op, &rewriter);
@@ -512,13 +512,13 @@ class SelectAndScatterOpConverter
         loc, s_and_s_op.source(), loop_over_src.getInductionVars());
 
     // Compute `out[selected_ivs]` = scatter(out[selected_ivs], src_element)`.
-    auto rmw = rewriter.create<GenericAtomicRMWOp>(loc, s_and_s_op.out(),
-                                                   selected_ivs);
+    auto rmw = rewriter.create<memref::GenericAtomicRMWOp>(
+        loc, s_and_s_op.out(), selected_ivs);
     OpBuilder rmw_builder = OpBuilder::atBlockEnd(rmw.getBody());
     auto acc_result =
         ApplySingleResultLhloCode(loc, {src_elem, rmw.getCurrentValue()},
                                   &s_and_s_op.scatter().front(), &rmw_builder);
-    rmw_builder.create<AtomicYieldOp>(loc, acc_result);
+    rmw_builder.create<memref::AtomicYieldOp>(loc, acc_result);
 
     rewriter.replaceOp(s_and_s_op, llvm::None);
     return success();
@@ -709,16 +709,16 @@ struct LhloLegalizeToParallelLoopsPass
     : public LhloLegalizeToParallelLoopsPassBase<
           LhloLegalizeToParallelLoopsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<arith::ArithmeticDialect, StandardOpsDialect,
+    registry.insert<arith::ArithmeticDialect, func::FuncDialect,
                     memref::MemRefDialect, scf::SCFDialect>();
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
 
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     // clang-format off
-    patterns.insert<
+    patterns.add<
         ReduceOpConverter,
         ReduceWindowOpConverter,
         SelectAndScatterOpConverter
@@ -727,7 +727,7 @@ struct LhloLegalizeToParallelLoopsPass
 
     ConversionTarget target(getContext());
     target.addLegalDialect<arith::ArithmeticDialect, linalg::LinalgDialect,
-                           memref::MemRefDialect, StandardOpsDialect,
+                           memref::MemRefDialect, func::FuncDialect,
                            scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<lmhlo::ReduceOp, lmhlo::ReduceWindowOp,
                         lmhlo::SelectAndScatterOp>();

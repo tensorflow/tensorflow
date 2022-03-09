@@ -23,7 +23,6 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -39,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -81,8 +79,6 @@ class HloDataflowAnalysis {
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       const CanShareBuffer& can_share_buffer = nullptr);
-
-  static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
   // of its output.
@@ -141,7 +137,7 @@ class HloDataflowAnalysis {
   // Returns the call graph used for computing the dataflow.
   const CallGraph& call_graph() const { return *call_graph_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns true if 'user' cannot possibly use the buffer at 'index' in
   // 'operand'. Returns false otherwise.
@@ -178,7 +174,9 @@ class HloDataflowAnalysis {
   static std::vector<std::pair<HloUse, ShapeIndex>> GetInPlaceInputOutputPairs(
       HloInstruction* instruction);
 
- protected:
+ private:
+  static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
+
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value = false,
                       const CanShareBuffer& can_share_buffer = nullptr);
@@ -228,6 +226,7 @@ class HloDataflowAnalysis {
   bool UpdateParameterValueSet(HloInstruction* parameter);
   bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
+  bool UpdateOptimizationBarrierValueSet(HloInstruction* barrier);
   bool UpdateRecvDoneValueSet(HloInstruction* recv_done);
   bool UpdateTupleSelectValueSet(HloInstruction* select);
   bool UpdateSendValueSet(HloInstruction* send);
@@ -276,10 +275,12 @@ class HloDataflowAnalysis {
   // The map of all HloValues in the module. We pass around pointers to the
   // mapped HloValues, so the underlying container must keep them valid despite
   // mutations touching other map entries.
-  std::unordered_map<HloValue::Id, HloValue> values_;
+  absl::flat_hash_map<HloValue::Id, std::unique_ptr<HloValue>> values_;
 
   // A map from instruction to InstructionValueSet.
-  std::unordered_map<const HloInstruction*, InstructionValueSet> value_sets_;
+  absl::flat_hash_map<const HloInstruction*,
+                      std::unique_ptr<InstructionValueSet>>
+      value_sets_;
 
   // Values marked for deletion during construction. We don't delete them
   // immediately because references to them may remain in ValueSets temporarily

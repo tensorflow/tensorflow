@@ -113,7 +113,6 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
@@ -1477,7 +1476,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
 
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
     absl::InlinedVector<int64_t, 4> byte_strides(
@@ -1543,18 +1542,19 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
   return std::move(buffer);
 }
 
-Status PjRtStreamExecutorBuffer::CopyToRemoteDevice(
-    absl::string_view serialized_descriptor) {
+void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
+    absl::string_view serialized_descriptor, RemoteSendCallback on_done) {
   VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDevice";
-  return client_->CopyToRemoteDevice(this, serialized_descriptor);
+  client_->CopyToRemoteDevice(this, serialized_descriptor, std::move(on_done));
 }
 
-Status PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
-    absl::Span<const std::string> serialized_descriptors,
+void PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered(
+    absl::Span<const std::pair<std::string, RemoteSendCallback>>
+        serialized_descriptors_and_callbacks,
     const ScatterDetails& scatter_details) {
   VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDeviceScattered";
-  return client_->CopyToRemoteDeviceScattered(this, serialized_descriptors,
-                                              scatter_details);
+  client_->CopyToRemoteDeviceScattered(
+      this, serialized_descriptors_and_callbacks, scatter_details);
 }
 
 Status PjRtStreamExecutorBuffer::BlockHostUntilReady() {
@@ -1585,6 +1585,41 @@ Status PjRtStreamExecutorBuffer::BlockHostUntilReady() {
     local_device_state->ReturnStreamToPool(std::move(stream));
   }
   return Status::OK();
+}
+
+void PjRtStreamExecutorBuffer::OnReady(std::function<void(Status)> callback) {
+  std::shared_ptr<TrackedDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(&mu_);
+    if (device_buffer_ == nullptr) {
+      callback(
+          InvalidArgument("OnReady() called on deleted or donated buffer"));
+      return;
+    }
+    device_buffer = device_buffer_;
+  }
+  LocalDeviceState* local_device_state = device_->local_device_state();
+  std::unique_ptr<se::Stream> stream;
+  for (auto& event : device_buffer->definition_events()) {
+    if (!event->IsComplete()) {
+      if (stream == nullptr) {
+        stream = local_device_state->BorrowStreamFromPool();
+      }
+      event->WaitForEventOnStream(stream.get());
+    }
+  }
+  if (stream == nullptr) {
+    callback(Status::OK());
+  } else {
+    auto* stream_ptr = stream.release();
+    local_device_state->ThenExecuteCallback(
+        stream_ptr,
+        [callback = std::move(callback), stream_ptr, local_device_state]() {
+          callback(Status::OK());
+          local_device_state->ReturnStreamToPool(
+              std::unique_ptr<se::Stream>(stream_ptr));
+        });
+  }
 }
 
 namespace {
@@ -2050,7 +2085,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
     PjRtDevice* device) const {
-  const uint64 start_time_usecs = tensorflow::Env::Default()->NowMicros();
+  const uint64_t start_time_usecs = tensorflow::Env::Default()->NowMicros();
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);

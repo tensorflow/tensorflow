@@ -18,9 +18,9 @@ import abc
 import collections
 import functools
 import re
-
-import typing
+from typing import List, Optional, Sequence, Any
 import warnings
+
 import numpy as np
 
 from tensorflow.python.framework import composite_tensor
@@ -43,31 +43,8 @@ ops = LazyLoader("ops", globals(),
                  "tensorflow.python.framework.ops")
 
 
-# TODO(b/202447704): Merge into TypeSpec.
-class TypeSpecTraceType(trace.TraceType):
-  """A wrapper to support encoding of TypeSpecs through TraceType."""
-
-  def __init__(self, spec):
-    self._spec = spec
-
-  def is_subtype_of(self, other):
-    # TODO(b/202429845): Implement for subtyping.
-    return self == other
-
-  def most_specific_common_supertype(self, others):
-    # TODO(b/202430155) Implement for shape relaxation.
-    return None
-
-  def __hash__(self) -> int:
-    return hash(self._spec)
-
-  def __eq__(self, other) -> bool:
-    return isinstance(
-        other, TypeSpecTraceType) and self._spec == other._spec
-
-
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
-class TypeSpec(object, metaclass=abc.ABCMeta):
+class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
   """Specifies a TensorFlow value type.
 
   A `tf.TypeSpec` provides metadata describing an object accepted or returned
@@ -120,6 +97,94 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
     """
     raise NotImplementedError("%s.value_type" % type(self).__name__)
 
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    """Returns True if `self` is a subtype of `other`.
+
+    Implements the tf.types.experimental.func.TraceType interface.
+
+    If not overridden by a subclass, the default behavior is to assume the
+    TypeSpec is covariant upon attributes that implement TraceType and
+    invariant upon rest of the attributes as well as the structure and type
+    of the TypeSpec.
+
+    Args:
+      other: A TraceType object.
+    """
+    if type(self) is not type(other):
+      return False
+
+    is_subtype = True
+    def check_attribute(attribute_self, attribute_other):
+      nonlocal is_subtype
+      if not is_subtype:
+        return
+
+      if isinstance(attribute_self, trace.TraceType):
+        if not attribute_self.is_subtype_of(attribute_other):
+          is_subtype = False
+          return
+      else:
+        if attribute_self != attribute_other:
+          is_subtype = False
+
+    try:
+      # TODO(b/217959193): Replace _serialize with parameter decomposition.
+      nest.map_structure(check_attribute, self._serialize(),
+                         other._serialize())  # pylint: disable=protected-access
+    except (ValueError, TypeError):
+      return False
+
+    return is_subtype
+
+  def most_specific_common_supertype(
+      self,
+      others: Sequence[trace.TraceType]) -> Optional["TypeSpec"]:
+    """Returns the most specific supertype TypeSpec  of `self` and `others`.
+
+    Implements the tf.types.experimental.func.TraceType interface.
+
+    If not overridden by a subclass, the default behavior is to assume the
+    TypeSpec is covariant upon attributes that implement TraceType and
+    invariant upon rest of the attributes as well as the structure and type
+    of the TypeSpec.
+
+    Args:
+      others: A sequence of TraceTypes.
+    """
+    if any(type(self) is not type(other) for other in others):
+      return None
+
+    has_supertype = True
+    def make_supertype_attribute(attribute_self, *attribute_others):
+      nonlocal has_supertype
+      if not has_supertype:
+        return
+
+      if isinstance(attribute_self, trace.TraceType):
+        attribute_supertype = attribute_self.most_specific_common_supertype(
+            attribute_others)
+        if attribute_supertype is None:
+          has_supertype = False
+          return
+        return attribute_supertype
+      else:
+        if not all(attribute_self == attribute_other
+                   for attribute_other in attribute_others):
+          has_supertype = False
+          return
+        return attribute_self
+
+    try:
+      # TODO(b/217959193): Replace _serialize with parameter decomposition.
+      serialized_supertype = nest.map_structure(
+          make_supertype_attribute, self._serialize(),
+          *(o._serialize() for o in others))  # pylint: disable=protected-access
+    except (ValueError, TypeError):
+      return None
+
+    return self._deserialize(serialized_supertype) if has_supertype else None
+
+  # TODO(b/202447704): Reduce internal usages.
   def is_compatible_with(self, spec_or_value):
     """Returns true if `spec_or_value` is compatible with this TypeSpec."""
     # === Subclassing ===
@@ -136,6 +201,7 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
       return False
     return self.__is_compatible(self._serialize(), spec_or_value._serialize())  # pylint: disable=protected-access
 
+  # TODO(b/202447704): Deprecate.
   def most_specific_compatible_type(self, other: "TypeSpec") -> "TypeSpec":
     """Returns the most specific TypeSpec compatible with `self` and `other`.
 
@@ -184,6 +250,29 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
         return value
 
     return self._deserialize(nest.map_structure(relax, self._serialize()))
+
+  # TODO(b/206014848): Helper function to support logic that does not consider
+  # Tensor name. Will be removed once load-bearing usages of Tensor name are
+  # fixed.
+  def _without_tensor_names(self) -> "TypeSpec":
+    """Returns a TypeSpec compatible with `self`, with tensor names removed.
+
+    Returns:
+      A `TypeSpec` that is compatible with `self`, where the name of any
+      `TensorSpec` is set to `None`.
+    """
+
+    # === Subclassing ===
+    # If not overridden by a subclass, the default behavior is to serialize
+    # this TypeSpec, set the TensorSpecs' names to None, and deserialize the
+    # result.
+
+    def rename(value):
+      if isinstance(value, TypeSpec):
+        return value._without_tensor_names()  # pylint: disable=protected-access
+      return value
+
+    return self._deserialize(nest.map_structure(rename, self._serialize()))
 
   # === Component encoding for values ===
 
@@ -237,7 +326,7 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
 
   # === Tensor list encoding for values ===
 
-  def _to_tensor_list(self, value) -> typing.List["ops.Tensor"]:
+  def _to_tensor_list(self, value) -> List["ops.Tensor"]:
     """Encodes `value` as a flat list of `tf.Tensor`.
 
     By default, this just flattens `self._to_components(value)` using
@@ -257,7 +346,7 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
     """
     return nest.flatten(self._to_components(value), expand_composites=True)
 
-  def _from_tensor_list(self, tensor_list: typing.List["ops.Tensor"]):
+  def _from_tensor_list(self, tensor_list: List["ops.Tensor"]) -> Any:
     """Reconstructs a value from a flat list of `tf.Tensor`.
 
     Args:
@@ -274,8 +363,8 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
     self.__check_tensor_list(tensor_list)
     return self._from_compatible_tensor_list(tensor_list)
 
-  def _from_compatible_tensor_list(self,
-                                   tensor_list: typing.List["ops.Tensor"]):
+  def _from_compatible_tensor_list(
+      self, tensor_list: List["ops.Tensor"]) -> Any:
     """Reconstructs a value from a compatible flat list of `tf.Tensor`.
 
     Args:
@@ -372,8 +461,14 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
 
   # === Private Helper Methods ===
 
-  def __tf_tracing_type__(self, _):
-    return TypeSpecTraceType(self)
+  # TODO(b/216206374): Currently this usage is used to represent a Tensor
+  # argument not a TensorSpec argument as it should be.
+  def __tf_tracing_type__(self,
+                          context: trace.TracingContext) -> trace.TraceType:
+    if context.include_tensor_ranks_only:
+      return self._with_tensor_ranks_only()
+    else:
+      return self
 
   def __check_tensor_list(self, tensor_list):
     """Raises an exception if tensor_list incompatible w/ flat_tensor_specs."""
@@ -397,8 +492,8 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
 
   def __make_cmp_key(self, value):
     """Converts `value` to a hashable key."""
-    if isinstance(value,
-                  (int, float, bool, np.generic, dtypes.DType, TypeSpec)):
+    if isinstance(value, (int, float, bool, np.generic, dtypes.DType, TypeSpec,
+                          tensor_shape.TensorShape)):
       return value
     if isinstance(value, compat.bytes_or_text_types):
       return value
@@ -414,12 +509,6 @@ class TypeSpec(object, metaclass=abc.ABCMeta):
       return tuple([self.__make_cmp_key(v) for v in value])
     if isinstance(value, list):
       return (list, tuple([self.__make_cmp_key(v) for v in value]))
-    if isinstance(value, tensor_shape.TensorShape):
-      if value.ndims is None:
-        # Note: we include a type object in the tuple, to ensure we can't get
-        # false-positive matches (since users can't include type objects).
-        return (tensor_shape.TensorShape, None)
-      return (tensor_shape.TensorShape, tuple(value.as_list()))
     if isinstance(value, np.ndarray):
       return (np.ndarray, value.shape,
               TypeSpec.__nested_list_to_tuple(value.tolist()))
@@ -739,7 +828,7 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
     raise NotImplementedError(f"{type(self).__name__}._unbatch")
 
   @property
-  def _flat_tensor_specs(self) -> typing.List[TypeSpec]:
+  def _flat_tensor_specs(self) -> List[TypeSpec]:
     """A list of TensorSpecs compatible with self._to_tensor_list(v)."""
     component_flat_tensor_specs = nest.map_structure(
         functools.partial(get_batchable_flat_tensor_specs, context_spec=self),
@@ -748,7 +837,7 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
 
   def _to_tensor_list(
       self,
-      value: composite_tensor.CompositeTensor) -> typing.List["ops.Tensor"]:
+      value: composite_tensor.CompositeTensor) -> List["ops.Tensor"]:
     """Encodes `value` as a flat list of `ops.Tensor`."""
     component_tensor_lists = nest.map_structure(
         batchable_to_tensor_list,
@@ -758,7 +847,7 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
 
   def _to_batched_tensor_list(
       self,
-      value: composite_tensor.CompositeTensor) -> typing.List["ops.Tensor"]:
+      value: composite_tensor.CompositeTensor) -> List["ops.Tensor"]:
     """Encodes `value` as a flat list of `ops.Tensor` each with rank>0."""
     get_spec_tensor_list = lambda spec, v: (  # pylint: disable=g-long-lambda
         batchable_to_tensor_list(spec, v, minimum_rank=1)
@@ -773,7 +862,7 @@ class BatchableTypeSpec(TypeSpec, metaclass=abc.ABCMeta):
     return tensor_list
 
   def _from_compatible_tensor_list(
-      self, tensor_list: typing.List["ops.Tensor"]
+      self, tensor_list: List["ops.Tensor"]
   ) -> composite_tensor.CompositeTensor:
     """Reconstructs a value from a compatible flat list of `ops.Tensor`."""
     flat_specs = nest.map_structure(

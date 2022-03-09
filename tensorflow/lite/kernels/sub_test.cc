@@ -416,6 +416,29 @@ TEST(QuantizedSubOpModel, QuantizedVariousInputShapesInt16) {
   QuantizedVariousInputShapes<TensorType_INT16, int16_t>();
 }
 
+TEST(QuantizedSubOpModel, QuantizedLargeInputShapesInt16) {
+  // This test is to cover large shape, which is more than 16 to test
+  // AVX2 kernel with batch 16.
+  const float kQuantizedTolerance = GetTolerance<int16_t>(-2.1, 2.1);
+  const std::vector<int> test_shape = {18};
+  QuantizedSubOpModel m({TensorType_INT16, test_shape, -2.0, 2.0},
+                        {TensorType_INT16, test_shape, -1.1, 1.1},
+                        {TensorType_INT16, {}, -2.1, 2.1},
+                        ActivationFunctionType_NONE);
+  m.QuantizeAndPopulate<int16_t>(
+      m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0, -2.0, 0.2, 0.7, 0.8, 1.1, 2.0,
+                   -2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
+  m.QuantizeAndPopulate<int16_t>(
+      m.input2(), {0.1, 0.3, 0.3, 0.5, 1.1, 0.1, 0.1, 0.3, 0.3, 0.5, 1.1, 0.1,
+                   0.1, 0.3, 0.3, 0.5, 1.1, 0.1});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {-2.1, -0.1, 0.4, 0.3, 0.0, 1.9, -2.1, -0.1, 0.4, 0.3, 0.0,
+                   1.9, -2.1, -0.1, 0.4, 0.3, 0.0, 1.9},
+                  kQuantizedTolerance)));
+}
+
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedWithBroadcast() {
   float kQuantizedTolerance = GetTolerance<integer_dtype>(-2.7, 2.7);

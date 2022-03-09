@@ -37,6 +37,7 @@ import six
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
+from tensorflow.core.config import flags
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_sanitizers
@@ -1130,6 +1131,7 @@ def enable_eager_op_as_function(fn):
   return wrapper
 
 
+@tf_export("test.with_eager_op_as_function")
 def with_eager_op_as_function(cls=None, only_as_function=False):
   """Adds methods that call original methods with eager_op_as_function enabled.
 
@@ -1184,6 +1186,89 @@ def with_eager_op_as_function(cls=None, only_as_function=False):
                 enable_eager_op_as_function(value))
         if only_as_function:
           delattr(cls, name)
+    return cls
+
+  if cls is not None:
+    return decorator(cls)
+
+  return decorator
+
+
+def enable_graph_building_optimization(fn):
+  """Decorator for enabling graph_building_optimization on a test.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will enable graph_building_optimization,
+  execute the test, then reset the feature flag to its default value.
+
+  Example:
+
+  class MyTest(test.TestCase):
+
+    @enable_graph_building_optimization
+    def testFoo(self):
+      ...
+
+  Args:
+    fn: the function to be wrapped.
+
+  Returns:
+    The wrapped function.
+  """
+
+  def wrapper(*args, **kwargs):
+    # If `graph_building_optimization` is already enabled do nothing.
+    if flags.config().graph_building_optimization.value():
+      return fn(*args, **kwargs)
+
+    flags.config().graph_building_optimization.reset(True)
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      flags.config().graph_building_optimization.reset(False)
+
+  return wrapper
+
+
+def add_graph_building_optimization_tests(cls=None):
+  """Adds methods with graph_building_optimization enabled to the test suite.
+
+  Example:
+
+  @test_util.add_graph_building_optimization_tests
+  class FooTest(test.TestCase):
+
+    def testBar(self):
+      ...
+
+  Generated class:
+  class FooTest(test.TestCase):
+
+    def testBar(self):
+      ...
+
+    def testBarWithGraphBuildingOptimization(self):
+      // Enable graph_building_optimization
+      testBar(self)
+      // Disable graph_building_optimization
+
+  Args:
+    cls: class to decorate.
+
+  Returns:
+    cls with new test methods added.
+  """
+
+  def decorator(cls):
+    if flags.config().graph_building_optimization.value():
+      return cls
+
+    for name, value in cls.__dict__.copy().items():
+      if (callable(value) and
+          (name.startswith(unittest.TestLoader.testMethodPrefix) or
+           name.startswith("benchmark"))):
+        setattr(cls, name + "WithGraphBuildingOptimization",
+                enable_graph_building_optimization(value))
     return cls
 
   if cls is not None:
@@ -2438,14 +2523,13 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     stream.flush()
     fd = stream.fileno()
-    tmp_file_path = tempfile.mktemp(dir=self.get_temp_dir())
-    tmp_file = open(tmp_file_path, "w")
+    tmp_file, tmp_file_path = tempfile.mkstemp(dir=self.get_temp_dir())
     orig_fd = os.dup(fd)
-    os.dup2(tmp_file.fileno(), fd)
+    os.dup2(tmp_file, fd)
     try:
       yield CapturedWrites(tmp_file_path)
     finally:
-      tmp_file.close()
+      os.close(tmp_file)
       os.dup2(orig_fd, fd)
 
   def _AssertProtoEquals(self, a, b, msg=None):

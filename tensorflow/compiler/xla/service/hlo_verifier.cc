@@ -218,6 +218,11 @@ Status ShapeVerifier::HandleCholesky(HloInstruction* hlo) {
   return CheckShape(hlo, expected);
 }
 
+Status ShapeVerifier::HandleOptimizationBarrier(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(hlo, 1));
+  return CheckShape(hlo, hlo->operand(0)->shape());
+}
+
 // Checks that `hlo`'s set of ReplicaGroups:
 //
 //  - names each replica 0 through n-1 exactly once (where n is either number of
@@ -464,12 +469,6 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
   TF_RET_CHECK(all_to_all != nullptr);
-  if (all_to_all->split_dimension()) {
-    if (hlo->replica_groups().empty()) {
-      return InternalError(
-          "An array all-to-all must have an explicit replica_groups config");
-    }
-  }
 
   // The size of each replica group must be the same (checked in
   // CheckReplicaGroups). This is the split count of the operation). In case the
@@ -1032,7 +1031,7 @@ Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
 }
 
 Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
-  // HLO broadcast has no exact analog at the proto level so there is no
+  // HLO broadcast has no exact analog at the client level so there is no
   // ShapeInference method. Check the output shape explicitly.
   const Shape& operand_shape = broadcast->operand(0)->shape();
   // Check for mixed precision.
@@ -1427,6 +1426,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
@@ -1542,6 +1542,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:
+      case HloOpcode::kOptimizationBarrier:
       case HloOpcode::kParameter:
       case HloOpcode::kRecv:
       case HloOpcode::kRecvDone:
@@ -1653,9 +1654,10 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   return Status::OK();
 }
 
-string ComputationsToString(absl::Span<HloComputation* const> computations) {
+std::string ComputationsToString(
+    absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
-                       [](string* s, const HloComputation* computation) {
+                       [](std::string* s, const HloComputation* computation) {
                          s->append(computation->name());
                        });
 }
@@ -2275,7 +2277,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
  private:
-  absl::flat_hash_map<string, const HloInstruction*> instructions_by_name_;
+  absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name_;
   // Determines whether an instruction can change layouts.
   std::function<bool(const HloInstruction*)>
       instruction_can_change_layout_func_;

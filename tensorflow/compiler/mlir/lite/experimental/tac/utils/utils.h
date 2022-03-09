@@ -20,14 +20,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
 namespace tac {
 
 // Import the file as mlir module, the input maybe flatbuffer or mlir file.
-absl::StatusOr<mlir::OwningModuleRef> ImportFlatbufferOrMlir(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
     const std::string& input_filename, bool input_mlir,
     llvm::SourceMgr* source_mgr, mlir::MLIRContext* context);
 

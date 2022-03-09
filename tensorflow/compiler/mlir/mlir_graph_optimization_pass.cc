@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -125,7 +125,7 @@ MlirOptimizationPassRegistry& MlirOptimizationPassRegistry::Global() {
 static void RegisterDialects(mlir::DialectRegistry& registry) {
   // clang-format off
   registry.insert<mlir::arith::ArithmeticDialect,
-                  mlir::StandardOpsDialect,
+                  mlir::func::FuncDialect,
                   mlir::TF::TensorFlowDialect,
                   mlir::shape::ShapeDialect,
                   mlir::tf_device::TensorFlowDeviceDialect,
@@ -240,13 +240,13 @@ Status MlirFunctionOptimizationPass::Run(
   metrics::UpdateTfMlirGraphOptimizationPassStateCounter("",
                                                          kGraphImportSuccess);
 
-  mlir::OwningModuleRef module_ref = std::move(module_ref_status.ValueOrDie());
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
+      std::move(module_ref_status.ValueOrDie());
   AddDevicesToOp(*module_ref, &device_set);
 
   int per_pass_state_index = 0;
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
-    VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
 
     if (VLOG_IS_ON(1)) {
       DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
@@ -255,11 +255,14 @@ Status MlirFunctionOptimizationPass::Run(
     Status pass_status = Status::OK();
     auto pass_state = per_pass_state[per_pass_state_index++];
     if (pass_state == MlirOptimizationPassState::Enabled) {
+      VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
       timings.Reset({kTfMlirCategory, name.str()});
       pass_status = pass_registration.pass->Run(config_proto, *module_ref,
                                                 **graph, *flib_def);
       timings.ReportAndStop();
     } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+      VLOG(2) << "Run MLIR graph optimization pass with fallback: "
+              << StringRefToView(name);
       // Make sure when the pass is FallbackEnabled, it only modifies the MLIR
       // module in case of no failures.
       auto module_ref_clone = module_ref->clone();
@@ -272,6 +275,9 @@ Status MlirFunctionOptimizationPass::Run(
         module_ref = module_ref_clone;
       else
         module_ref_clone->destroy();
+    } else {
+      VLOG(2) << "MLIR graph optimization pass: " << StringRefToView(name)
+              << " is disabled and will not be run.";
     }
 
     if (!pass_status.ok()) {
@@ -369,7 +375,8 @@ Status MlirV1CompatGraphOptimizationPass::Run(
                : Status::OK();
   }
 
-  mlir::OwningModuleRef module_ref = std::move(module_ref_status.ValueOrDie());
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
+      std::move(module_ref_status.ValueOrDie());
   AddDevicesToOp(*module_ref, options.device_set);
 
   llvm::StringRef name = pass->name();

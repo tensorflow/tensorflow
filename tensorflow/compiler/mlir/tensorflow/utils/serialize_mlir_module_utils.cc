@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/platform/errors.h"
@@ -35,7 +35,7 @@ std::string SerializeMlirModule(mlir::ModuleOp module_op) {
 
 Status DeserializeMlirModule(llvm::StringRef serialized_mlir_module,
                              mlir::MLIRContext* mlir_context,
-                             mlir::OwningModuleRef* mlir_module) {
+                             mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   TF_RET_CHECK(!serialized_mlir_module.empty())
       << "unexpected empty serialized MLIR module string";
   TF_RET_CHECK(mlir_module) << "unexpected null MLIR module pointer";

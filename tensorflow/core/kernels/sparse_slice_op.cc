@@ -161,4 +161,34 @@ class SparseSliceOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+typedef Eigen::GpuDevice GPUDevice;
+
+template <typename T>
+class SparseSliceGPUOp : public AsyncOpKernel {
+ public:
+  explicit SparseSliceGPUOp(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    SparseSliceOpImpl<GPUDevice, T>(context, done);
+  }
+};
+
+#define REGISTER_KERNELS(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("SparseSlice")             \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("shape")        \
+                              .HostMemory("start")        \
+                              .HostMemory("size")         \
+                              .HostMemory("output_shape") \
+                              .TypeConstraint<type>("T"), \
+                          SparseSliceGPUOp<type>)
+
+TF_CALL_POD_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

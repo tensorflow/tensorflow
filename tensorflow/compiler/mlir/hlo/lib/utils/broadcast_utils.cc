@@ -20,7 +20,6 @@ limitations under the License.
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -69,9 +68,8 @@ Value ComputeNaryElementwiseBroadcastingResultExtents(Location loc,
     if (ty.isDynamicDim(0)) {
       result_rank = ShapedType::kDynamicSize;
       break;
-    } else {
-      result_rank = std::max(result_rank, ty.getDimSize(0));
     }
+    result_rank = std::max(result_rank, ty.getDimSize(0));
   }
   Type extent_tensor_ty =
       shape::getExtentTensorType(builder.getContext(), result_rank);

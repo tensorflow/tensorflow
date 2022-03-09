@@ -15,7 +15,6 @@
 """Mid level API for TPU Embeddings."""
 
 import functools
-import math
 from typing import Any, Callable, Dict, Iterable, List, Optional, Text, Tuple, Union
 
 from absl import logging
@@ -61,28 +60,12 @@ _HOOK_KEY = "TPUEmbedding_saveable"
 _NAME_KEY = "_tpu_embedding_layer"
 
 
-# TODO(bfontain): Cleanup and remove this once there is an implementation of
-# sharded variables that can be used in the PSStrategy with optimizers.
-# We implement just enough of the of a tf.Variable so that this could be passed
-# to an optimizer.
 class TPUShardedVariable(sharded_variable.ShardedVariableMixin):
   """A ShardedVariable class for TPU."""
 
   @property
   def _in_graph_mode(self):
     return self.variables[0]._in_graph_mode  # pylint: disable=protected-access
-
-  @property
-  def _unique_id(self):
-    return self.variables[0]._unique_id  # pylint: disable=protected-access
-
-  @property
-  def _distribute_strategy(self):
-    return self.variables[0]._distribute_strategy  # pylint: disable=protected-access
-
-  @property
-  def _shared_name(self):
-    return self._name
 
 
 def _add_key_attr(op, name):
@@ -497,11 +480,22 @@ class TPUEmbedding(tracking.AutoTrackable):
       self, input_shapes: List[TensorShape]) -> List[TensorShape]:
     """Get output shapes from the flattened input shapes list."""
     output_shapes = []
-    for input_shape in input_shapes:
+    for input_shape, feature in zip(input_shapes,
+                                    nest.flatten(self._feature_config)):
       if input_shape.rank is None or input_shape.rank < 1:
         raise ValueError(
             "Received input tensor of shape {}. Rank must be 1 and above"
             .format(input_shape))
+      # Update the input shape with the max sequence length. Only update when
+      # 1. Input feature is 2D ragged or sparse tensor.
+      # 2. Output shape is not set in the feature config and the max sequence
+      #    length is set.
+      if (len(input_shape) == 2 and input_shape[-1] != 1 and
+          not feature.output_shape and feature.max_sequence_length > 0):
+        input_shape_list = input_shape.as_list()
+        input_shape_list.insert(
+            len(input_shape_list) - 1, feature.max_sequence_length)
+        input_shape = TensorShape(input_shape_list)
       if input_shape.rank == 1:
         output_shapes.append(input_shape)
       else:
@@ -555,25 +549,13 @@ class TPUEmbedding(tracking.AutoTrackable):
     """
 
     config_proto = tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration()
-    # The tensor core batch size should be the GCD of all the input batch size.
-    tensor_core_batch_size = self._get_tensor_core_batch_size(
-        self._output_shapes)
-
-    # There are several things that need to be computed here:
-    # 1. Each table has a num_features, which corresponds to the number of
-    #    output rows per example for this table. Sequence features count for
-    #    their maximum sequence length.
-    # 2. Learning rate index: the index of the dynamic learning rate for this
-    #    table (if it exists) in the list we created at initialization.
-    #    We don't simply create one learning rate index per table as this has
-    #    extremely bad performance characteristics. The more separate
-    #    optimization configurations we have, the worse the performance will be.
-    num_features = {table: 0 for table in self._table_config}
-    for i, feature in enumerate(nest.flatten(self._feature_config)):
-      num_features[feature.table] += self._get_reduce_prod(
-          self._output_shapes[i]) // tensor_core_batch_size
 
     # Map each callable dynamic learning rate to its in index in the list.
+    # The learning rate index is the index of the dynamic learning rate for this
+    # table (if it exists) in the list we created at initialization. We don't
+    # simply create one learning rate index per table as this has extremely bad
+    # performance characteristics. The more separate optimization configurations
+    # we have, the worse the performance will be.
     learning_rate_index = {r: i for i, r in enumerate(
         self._dynamic_learning_rates)}
 
@@ -586,8 +568,6 @@ class TPUEmbedding(tracking.AutoTrackable):
       table_descriptor.vocabulary_size = max(table.vocabulary_size,
                                              self._strategy.extended.num_hosts)
       table_descriptor.dimension = table.dim
-
-      table_descriptor.num_features = num_features[table]
 
       parameters = table_descriptor.optimization_parameters
 
@@ -623,7 +603,6 @@ class TPUEmbedding(tracking.AutoTrackable):
     config_proto.mode = (
         tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration.TRAINING)
 
-    config_proto.batch_size_per_tensor_core = tensor_core_batch_size
     config_proto.num_hosts = self._strategy.extended.num_hosts
     config_proto.num_tensor_cores = self._strategy.num_replicas_in_sync
 
@@ -933,7 +912,7 @@ class TPUEmbedding(tracking.AutoTrackable):
           "Weight will always be 1 in this case.".format(path))
     # For tensors, there are no indices and no weights.
     indices.append(int_zeros)
-    values.append(math_ops.cast(array_ops.reshape(tensor, [-1]), dtypes.int32))
+    values.append(math_ops.cast(array_ops.reshape(tensor, [-1]), dtypes.int64))
     weights.append(float_zeros)
 
   def _add_data_for_sparse_tensor(self, tensor, weight, indices, values,
@@ -946,7 +925,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         sample_indices = array_ops.pad(
             sample_indices, paddings=[[0, 0], [0, 1]])
     indices.append(sample_indices)
-    values.append(math_ops.cast(tensor.values, dtypes.int32))
+    values.append(math_ops.cast(tensor.values, dtypes.int64))
     # If we have weights they must be a SparseTensor.
     if weight is not None:
       if not isinstance(weight, sparse_tensor.SparseTensor):
@@ -957,11 +936,11 @@ class TPUEmbedding(tracking.AutoTrackable):
     else:
       weights.append(float_zeros)
 
-  def _add_data_for_ragged_tensor(self, tensor, weight, row_lengths, values,
+  def _add_data_for_ragged_tensor(self, tensor, weight, row_splits, values,
                                   weights, int_zeros, float_zeros, path,
                                   feature):
-    row_lengths.append(math_ops.cast(tensor.row_lengths(), dtypes.int32))
-    values.append(math_ops.cast(tensor.values, dtypes.int32))
+    row_splits.append(math_ops.cast(tensor.row_splits, dtypes.int32))
+    values.append(math_ops.cast(tensor.values, dtypes.int64))
     # If we have weights they must be a RaggedTensor.
     if weight is not None:
       if not isinstance(weight, ragged_tensor.RaggedTensor):
@@ -997,8 +976,8 @@ class TPUEmbedding(tracking.AutoTrackable):
     combiners = [table.combiner for table in self._table_config]
 
     # These parallel arrays will be the inputs to the enqueue op.
-    # sample_indices for sparse, row_lengths for ragged.
-    indices_or_row_lengths = []
+    # sample_indices for sparse, row_splits for ragged.
+    indices_or_row_splits = []
     values = []
     weights = []
 
@@ -1017,14 +996,14 @@ class TPUEmbedding(tracking.AutoTrackable):
     for inp, weight, (path, feature) in zip(
         flat_inputs, flat_weights, flat_features):
       if isinstance(inp, ops.Tensor):
-        self._add_data_for_tensor(inp, weight, indices_or_row_lengths, values,
+        self._add_data_for_tensor(inp, weight, indices_or_row_splits, values,
                                   weights, int_zeros, float_zeros, path)
       elif isinstance(inp, sparse_tensor.SparseTensor):
-        self._add_data_for_sparse_tensor(inp, weight, indices_or_row_lengths,
+        self._add_data_for_sparse_tensor(inp, weight, indices_or_row_splits,
                                          values, weights, int_zeros,
                                          float_zeros, path, feature)
       elif isinstance(inp, ragged_tensor.RaggedTensor):
-        self._add_data_for_ragged_tensor(inp, weight, indices_or_row_lengths,
+        self._add_data_for_ragged_tensor(inp, weight, indices_or_row_splits,
                                          values, weights, int_zeros,
                                          float_zeros, path, feature)
       else:
@@ -1033,7 +1012,7 @@ class TPUEmbedding(tracking.AutoTrackable):
                          "enqueue.".format(path, type(inp)))
 
     return tpu_ops.enqueue_tpu_embedding_arbitrary_tensor_batch(
-        sample_indices_or_row_lengths=indices_or_row_lengths,
+        sample_indices_or_row_splits=indices_or_row_splits,
         embedding_indices=values,
         aggregation_weights=weights,
         mode_override=mode_override,
@@ -1444,21 +1423,6 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     return TensorShape(shape)
 
-  def _get_tensor_core_batch_size(self, output_shapes):
-    """Get the tensor core batch size based on the output shapes."""
-    tensor_core_batch_size = self._get_reduce_prod(output_shapes[0])
-    for output_shape in output_shapes[1:]:
-      tensor_core_batch_size = math.gcd(tensor_core_batch_size,
-                                        self._get_reduce_prod(output_shape))
-    return tensor_core_batch_size
-
-  def _get_reduce_prod(self, shape: TensorShape) -> int:
-    """Get the reduce prod of a tensorshape."""
-    result = 1
-    for dim in shape.as_list():
-      result *= dim
-    return result
-
   def _update_output_shapes(self, incoming_output_shapes: List[TensorShape]):
     """Update the existing output shapes based on the new output shapes.
 
@@ -1484,7 +1448,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     # output shapes.
     nest.assert_same_structure(self._output_shapes, incoming_output_shapes)
 
-    for (path, feature), old_output_shape, incoming_output_shape in zip(
+    for (path, _), old_output_shape, incoming_output_shape in zip(
         nest.flatten_with_joined_string_paths(self._feature_config),
         self._output_shapes, incoming_output_shapes):
       # First check if both shapes are not None.
@@ -1505,7 +1469,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
   def _check_output_shapes_fully_defined(self):
     """Check if the output shape is fully defined."""
-    for (path, feature), output_shape in zip(
+    for (path, _), output_shape in zip(
         nest.flatten_with_joined_string_paths(self._feature_config),
         self._output_shapes):
       if not output_shape.is_fully_defined():

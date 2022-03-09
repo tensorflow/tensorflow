@@ -155,10 +155,10 @@ class DataServiceDispatcherImpl {
                     GetVersionResponse* response);
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
                               GetOrRegisterDatasetResponse* response);
-  Status GetElementSpec(const GetElementSpecRequest* request,
-                        GetElementSpecResponse* response);
   Status GetDataServiceMetadata(const GetDataServiceMetadataRequest* request,
                                 GetDataServiceMetadataResponse* response);
+  Status GetDataServiceConfig(const GetDataServiceConfigRequest* request,
+                              GetDataServiceConfigResponse* response);
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
   Status ReleaseJobClient(const ReleaseJobClientRequest* request,
@@ -188,9 +188,6 @@ class DataServiceDispatcherImpl {
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
                          const DataServiceMetadata& metadata,
                          int64_t& dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Sets the element spec of the dataset for the specified `dataset_id`.
-  Status SetElementSpec(int64_t dataset_id, const std::string& element_spec)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
   // stored in `out_stub`.
@@ -199,7 +196,8 @@ class DataServiceDispatcherImpl {
       TF_LOCKS_EXCLUDED(mu_);
   // Creates a job and stores it in `job`. This method updates the
   // dispatcher state with the new job, but does not assign tasks to workers.
-  Status CreateJob(const GetOrCreateJobRequest& request,
+  Status CreateJob(const DispatcherState::JobKey& job_key,
+                   const GetOrCreateJobRequest& request,
                    std::shared_ptr<const DispatcherState::Job>& job)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates tasks for the specified worker, one task for every unfinished job.
@@ -267,7 +265,7 @@ class DataServiceDispatcherImpl {
   // Checks that the dispatcher has started, returning UNAVAILABLE if it hasn't.
   Status CheckStarted() TF_LOCKS_EXCLUDED(mu_);
   // Records that a split was produced by a call to `GetSplit`.
-  Status RecordSplitProduced(int64_t job_id, int64_t repetition,
+  Status RecordSplitProduced(int64_t job_id, int64_t iteration,
                              int64_t split_provider_index, bool finished)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.

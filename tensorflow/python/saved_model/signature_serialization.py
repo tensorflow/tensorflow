@@ -255,7 +255,10 @@ class _SignatureMap(collections_abc.Mapping, base.Trackable):
   def __repr__(self):
     return "_SignatureMap({})".format(self._signatures)
 
-  def _list_functions_for_serialization(self, unused_serialization_cache):
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
+    if save_type != base.SaveType.SAVEDMODEL:
+      return {}
+
     return {
         key: value for key, value in self.items()
         if isinstance(value, (def_function.Function, defun.ConcreteFunction))
@@ -296,13 +299,14 @@ def create_signature_map(signatures):
   return signature_map
 
 
-def validate_saveable_view(saveable_view):
-  """Performs signature-related sanity checks on `saveable_view`."""
-  for name, dep in saveable_view.list_children(saveable_view.root):
+def validate_augmented_graph_view(augmented_graph_view):
+  """Performs signature-related sanity checks on `augmented_graph_view`."""
+  for name, dep in augmented_graph_view.list_children(
+      augmented_graph_view.root):
     if name == SIGNATURE_ATTRIBUTE_NAME:
       if not isinstance(dep, _SignatureMap):
         raise ValueError(
-            f"Exporting an object {saveable_view.root} which has an attribute "
+            f"Exporting an object {augmented_graph_view.root} which has an attribute "
             f"named '{SIGNATURE_ATTRIBUTE_NAME}'. This is a reserved attribute "
             "used to store SavedModel signatures in objects which come from "
             "`tf.saved_model.load`. Delete this attribute "

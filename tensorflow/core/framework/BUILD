@@ -737,6 +737,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:intrusive_ptr",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tensor_coding",
         "//tensorflow/core/platform:types",
@@ -936,6 +937,7 @@ cc_library(
         "//tensorflow/core/lib/hash",
         "//tensorflow/core/lib/strings:proto_serialization",
         "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:protobuf",
         "@com_google_absl//absl/strings",
     ],
@@ -1050,6 +1052,13 @@ cc_library(
         "full_type_inference_util.h",
         "full_type_util.h",
     ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+        # Necessary for calling REGISTER_OP with SetTypeConstructor
+        # http://yaqs/4779722181477138432
+        "//intelligence/brella/sql/tensorflow:__pkg__",
+    ],
     deps = [
         ":attr_value_proto_cc",
         ":full_type_proto_cc",
@@ -1059,9 +1068,12 @@ cc_library(
         ":op_def_proto_cc",
         ":tensor",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:hash",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1734,6 +1746,17 @@ tf_proto_library(
         ":types_proto",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "function_proto_py_pb2",
+#     has_services = 0,
+#     api_version = 2,
+#     deps = [
+#         ":function_proto",
+#     ],
+# )
+# copybara:uncomment_end
 
 tf_proto_library(
     name = "summary_proto",

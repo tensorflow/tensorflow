@@ -21,8 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/primitive_util.h"
-
 #define EIGEN_USE_THREADS
 
 #include "absl/base/thread_annotations.h"
@@ -39,8 +37,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
+#include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/pjrt/worker_thread.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
@@ -1082,7 +1082,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
 
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
     absl::InlinedVector<int64_t, 4> byte_strides(
@@ -1147,6 +1147,13 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
       src_device_buffer_definition_events_avs_copy =
           CopyAsyncValues(src_device_buffer_definition_events_avs);
 
+  // Grab a reference to the tracked device buffer object that underlies the
+  // source buffer. The tracked device buffer object may hold ownership of
+  // external objects, such as NumPy arrays, and we must not allow it to be
+  // deleted until the closure below completes.
+  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> source_tdb =
+      src_device_buffer.buffer();
+
   // Add d2d as usage event on src_buffer.
   src_device_buffer.ConvertUsageHold(absl::MakeSpan(src_usage_events));
 
@@ -1155,7 +1162,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
       [client = client_, num_leaf_buffers, src_buffers = std::move(src_buffers),
        dst_buffers_copies = dst_buffers, indirect_avs = std::move(indirect_avs),
        src_device_buffer_definition_events_avs =
-           std::move(src_device_buffer_definition_events_avs_copy)]() mutable {
+           std::move(src_device_buffer_definition_events_avs_copy),
+       source_tdb{std::move(source_tdb)}]() mutable {
         tensorflow::profiler::TraceMe traceme("D2D Dispatch");
         for (const auto& av : src_device_buffer_definition_events_avs) {
           if (auto* error = av->GetErrorIfPresent()) {
@@ -1207,6 +1215,46 @@ Status TfrtCpuBuffer::BlockHostUntilReady() {
     }
   }
   return status;
+}
+
+void TfrtCpuBuffer::OnReady(std::function<void(Status)> callback) {
+  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(&mu_);
+    if (tracked_device_buffer_ == nullptr) {
+      callback(
+          InvalidArgument("OnReady() called on deleted or donated buffer"));
+      return;
+    }
+    device_buffer = tracked_device_buffer_;
+  }
+
+  std::vector<tfrt::RCReference<tfrt::AsyncValue>> avs;
+  avs.reserve(device_buffer->DefinitionEvents().size());
+  // Wait for all definition events to complete.
+  for (const auto& ev : device_buffer->DefinitionEvents()) {
+    avs.push_back(ev.CopyRCRef());
+  }
+
+  absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> avs_to_move;
+  avs_to_move.reserve(avs.size());
+  for (const auto& av : avs) {
+    avs_to_move.push_back(av.CopyRef());
+  }
+
+  EnqueueWorkWhenReady(
+      client_->GetHostContext(), avs,
+      [avs = std::move(avs_to_move), callback = std::move(callback)]() {
+        Status s;
+        for (const auto& av : avs) {
+          if (auto* error = av->GetErrorIfPresent()) {
+            s.Update(FailedPrecondition(
+                "Error in OnReady waiting for buffer ready: %s",
+                error->message));
+          }
+        }
+        callback(s);
+      });
 }
 
 TfrtCpuExecutable::TfrtCpuExecutable(
@@ -1306,7 +1354,7 @@ static StatusOr<std::shared_ptr<MaybeOwningCpuMemory>> MemoryForAllocation(
   // by the JITed code, msan has no way of knowing their memory was
   // initialized. Mark them initialized so that msan doesn't flag loads from
   // these buffers.
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(out->data(), buffer_size);
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(out->data(), buffer_size);
   return out;
 }
 

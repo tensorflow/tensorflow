@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <iterator>
 
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -59,25 +60,42 @@ bool isExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
 // tensor.expand_shape.
 struct ReshapeToExpandShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
-  ReshapeToExpandShape(MLIRContext *ctx) : OpRewritePattern(ctx) {}
+  using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
     ShapeComponentAnalysis shapeComponentAnalysis;
     if (!isExpandShape(shapeComponentAnalysis, op)) return failure();
     auto output_shape = shapeComponentAnalysis.GetValueInfo(op.output_shape());
     SmallVector<ReassociationExprs> reassociations(output_shape->size());
-    auto it = reassociations.begin();
+    auto old_result_type = op.getResult().getType().cast<ShapedType>();
+    auto output_dimensions = llvm::to_vector<>(old_result_type.getShape());
+    auto *it = reassociations.begin();
     int64_t runningIndex = 0;
     for (const auto &dim : *output_shape) {
       it->push_back(rewriter.getAffineDimExpr(runningIndex++));
-      if (!dim.isConstant(1)) ++it;
+      if (dim.isConstant(1)) {
+        output_dimensions[runningIndex - 1] = 1;
+      } else {
+        ++it;
+      }
     }
     // If the last dimension was a 1 expand it from the penultimate dim.
-    if (output_shape->back().isConstant(1)) std::prev(it)->append(*it);
+    if (it != reassociations.begin() && output_shape->back().isConstant(1))
+      std::prev(it)->append(*it);
     reassociations.erase(it, reassociations.end());
 
-    rewriter.replaceOpWithNewOp<tensor::ExpandShapeOp>(
-        op, op.getResult().getType(), op.operand(), reassociations);
+    // mhlo.dynamic_reshape is more lenient about the type. Add the static
+    // knowledge we have about 1 dims.
+    auto new_result_type = RankedTensorType::get(
+        output_dimensions, old_result_type.getElementType());
+    Location loc = op.getLoc();
+    Value expanded_shape = rewriter.create<tensor::ExpandShapeOp>(
+        loc, new_result_type, op.operand(), reassociations);
+    if (old_result_type != new_result_type) {
+      expanded_shape =
+          rewriter.create<tensor::CastOp>(loc, old_result_type, expanded_shape);
+    }
+    rewriter.replaceOp(op, expanded_shape);
     return success();
   }
 };
@@ -193,7 +211,7 @@ struct RemoveRedundantCstrReshapable final
     //     factor, i.e. if the symbolic factors based on the dynamic shape are
     //     not a subset of the factors based on the number of elements.
     int64_t concreteProductDynShape = 1;
-    for (auto dim : *dynShapeDims) {
+    for (const auto &dim : *dynShapeDims) {
       SmallVector<Symbol> partialSymbolicFactorsDynShape;
       if (!IsSimpleProduct(
               dim,
@@ -204,7 +222,7 @@ struct RemoveRedundantCstrReshapable final
         return failure();
       }
       for (const Symbol &symDynShape : partialSymbolicFactorsDynShape) {
-        auto it = llvm::find(remainingSymbolicFactorsNumElems, symDynShape);
+        auto *it = llvm::find(remainingSymbolicFactorsNumElems, symDynShape);
         if (it == remainingSymbolicFactorsNumElems.end()) return failure();
         remainingSymbolicFactorsNumElems.erase(it);
       }
@@ -231,10 +249,16 @@ struct RemoveRedundantCstrReshapable final
 
 struct TurnDynamicReshapeIntoCollapseShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
-  TurnDynamicReshapeIntoCollapseShape(MLIRContext *ctx)
+  explicit TurnDynamicReshapeIntoCollapseShape(MLIRContext *ctx)
       : OpRewritePattern(ctx) {}
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
+    auto input_type = op.operand().getType().dyn_cast<RankedTensorType>();
+    auto output_type = op.getType().dyn_cast<RankedTensorType>();
+    if (!input_type || !output_type ||
+        input_type.getRank() <= output_type.getRank())
+      return failure();
+
     // Require sucessful shape analysis for operand and shape.
     ShapeComponentAnalysis shapeComponentAnalysis;
     auto argShapeInfo = shapeComponentAnalysis.GetShapeInfo(op.operand());
@@ -285,7 +309,7 @@ struct TurnDynamicReshapeIntoCollapseShape final
         // Eliminate the common symbolic factors. Fail if we cannot consume a
         // symbolic factor of the operand shape.
         for (const Symbol &symArgShapeDim : symbolicFactorsArgShapeDim) {
-          auto it =
+          auto *it =
               llvm::find(remainingSymbolicFactorsShapeDim, symArgShapeDim);
           if (it == remainingSymbolicFactorsShapeDim.end()) return failure();
           remainingSymbolicFactorsShapeDim.erase(it);
@@ -299,6 +323,10 @@ struct TurnDynamicReshapeIntoCollapseShape final
       // Consume trailing 1 dimensions.
       while (i < argShapeInfo->size() && (*argShapeInfo)[i].isConstant(1))
         reassociation_map.back().push_back(i++);
+
+      // This is effectively a shape expansion that we cannot handle yet.
+      // TODO(b/217611473): Implement shape expansion cases.
+      if (reassociation_map.back().empty()) return failure();
     }
 
     // Fail if not all of the operand shape could be consumed.
@@ -317,18 +345,18 @@ class ReshapeSimplifierPass final
     registry.insert<linalg::LinalgDialect>();
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
 };
 }  // end namespace
 
-void ReshapeSimplifierPass::runOnFunction() {
+void ReshapeSimplifierPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   mlir::RewritePatternSet patterns(ctx);
 
   // clang-format off
-  patterns.insert<
+  patterns.add<
       ReshapeToExpandShape,
       RemoveComputeReshapeShape,
       RemoveRedundantCstrReshapable,
@@ -336,13 +364,13 @@ void ReshapeSimplifierPass::runOnFunction() {
   // clang-format on
   shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
 
-  if (failed(mlir::applyPatternsAndFoldGreedily(getFunction(),
+  if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
                                                 std::move(patterns)))) {
     signalPassFailure();
   }
 }
 
-std::unique_ptr<FunctionPass> createReshapeSimplifierPass() {
+std::unique_ptr<OperationPass<FuncOp>> createReshapeSimplifierPass() {
   return std::make_unique<ReshapeSimplifierPass>();
 }
 

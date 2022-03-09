@@ -22,7 +22,6 @@ import traceback  # pylint: disable=unused-import
 import weakref
 
 import numpy as np
-import six
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
@@ -70,7 +69,7 @@ def _maybe_copy_to_context_device(tensor, device_name):
     return tensor._copy()  # pylint: disable=protected-access
 
 
-class EagerFunc(object):
+class EagerFunc:
   """A wrapper for a function owned by an EagerPyFunc."""
 
   def __init__(self, func, Tout, is_grad_func):
@@ -173,7 +172,7 @@ class EagerFunc(object):
     return outputs
 
 
-class FuncRegistry(object):
+class FuncRegistry:
   """A helper class to keep track of registered py functions.
 
   FuncRegistry keeps a map from unique tokens (string) to python
@@ -271,7 +270,7 @@ class FuncRegistry(object):
       ret = func(*args)
       # Strings seem to lead to a memory leak here if they're not wrapped in a
       # list.
-      if isinstance(ret, six.binary_type):
+      if isinstance(ret, bytes):
         ret = [ret]
       # Ensures that we return either a single numpy array or a list of numpy
       # arrays.
@@ -681,7 +680,7 @@ py_func.__doc__ = "%s" % py_func_common.__doc__
 
 @tf_export("numpy_function")
 @dispatch.add_dispatch_support
-def numpy_function(func, inp, Tout, name=None):
+def numpy_function(func, inp, Tout, stateful=True, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
   Given a python function `func` wrap this function as an operation in a
@@ -725,8 +724,6 @@ def numpy_function(func, inp, Tout, name=None):
     through a numpy_function. If you require something that is differentiable,
     please consider using tf.py_function.
 
-  * The resulting function is assumed stateful and will never be optimized.
-
   Args:
     func: A Python function, which accepts `numpy.ndarray` objects as arguments
       and returns a list of `numpy.ndarray` objects (or a single
@@ -742,12 +739,20 @@ def numpy_function(func, inp, Tout, name=None):
     inp: A list of `tf.Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.
+    stateful: (Boolean.) Setting this argument to False tells the runtime to
+      treat the function as stateless, which enables certain optimizations.
+      A function is stateless when given the same input it will return the
+      same output and have no side effects; its only purpose is to have a
+      return value.
+      The behavior for a stateful function with the `stateful` argument False
+      is undefined. In particular, caution should be taken when
+      mutating the input arguments as this is a stateful operation.
     name: (Optional) A name for the operation.
 
   Returns:
     Single or list of `tf.Tensor` which `func` computes.
   """
-  return py_func_common(func, inp, Tout, stateful=True, name=name)
+  return py_func_common(func, inp, Tout, stateful=stateful, name=name)
 
 
 def _as_dtype_or_type_spec(t):

@@ -14,6 +14,7 @@
 # ========================================================================
 """A utility to trace tensor values on TPU."""
 
+import collections
 import hashlib
 import operator
 
@@ -266,31 +267,55 @@ def read_tensor_tracer_event_file(event_file):
   by TensorTracer with trace_mode=full_tensor_summary.
 
   Example usage:
-    result_dict = tensor_tracer.read_tensor_tracer_event_file(event_file_path)
-    for step, tensor_dict in result_dict.items():
-      for tensor_name, full_tensor_content in tensor_dict.items():
-        logging.info(tensor_name, full_tensor_content)
+    result_dict_list = tensor_tracer.read_tensor_tracer_event_file(
+      event_file_path)
+    for result_dict in result_dict_list:
+      for step, tensor_dict in result_dict.items():
+        for tensor_name, full_tensor_content in tensor_dict.items():
+          logging.info(tensor_name, full_tensor_content)
 
   Args:
     event_file: Path to the event file that contains only tensor tracer events.
   Returns:
-    An event dictionary in the form of
-    {step_number: {tensor_name: tensor_content}}
+    A list of event dictionaries, each of which with the form:
+    {step_number: {tensor_name: tensor_content}}. This is a list instead of
+    a single event dictionary because it is possible that an event file may
+    have multiple event traces, each of them covering the same step ranges.
   Raises:
     ValueError: If an unexpected trace is found.
   """
-  event_dict = {}
+
+  # Keeps track of how many times that a step number shows up in these events.
+  step_occurrence_count = collections.defaultdict(int)
+
+  # List of step occurrences.
+  step_occurrence_list = []
+
   for trace_event in summary_iterator.summary_iterator(event_file):
     # First event is an event with file_version: "brain.Event:2"
     if not trace_event.HasField('summary'):
       continue
-    step = trace_event.step
-    if step not in event_dict:
-      event_dict[step] = {}
-
     if len(trace_event.summary.value) != 1:
       raise ValueError('Single step contains %d summary values,'
                        ' expected 1.' % len(trace_event.summary.value))
+    step = trace_event.step
+    step_occurrence_count[step] += 1  # a new occurrence for this step.
+
+    occurrence_idx = step_occurrence_count[step] - 1
+    occurrence_size = len(step_occurrence_list)
+
+    if occurrence_idx == occurrence_size:
+      # This particular occurrence isn't yet recorded on step_occurrence_list.
+      # So append this new occurrence to the end of step_occurrence_list.
+      new_occurrence = collections.defaultdict(dict)
+      step_occurrence_list.append(new_occurrence)
+    else:
+      # This particular occurrence must be already recorded on
+      # step_occurrence_list (i.e. occurrence_idx < occurrence_size).
+      if occurrence_idx > occurrence_size:
+        raise ValueError('Unexpected: occurrence_idx (%d) > '
+                         'occurrence_size (%d)' % (occurrence_idx,
+                                                   occurrence_size))
     tensor_value = trace_event.summary.value[0]
     tensor_name = tensor_value.tag
 
@@ -299,8 +324,8 @@ def read_tensor_tracer_event_file(event_file):
         tensor_value.tensor.tensor_content,
         dtypes.DType(tensor_value.tensor.dtype).as_numpy_dtype()
         ).reshape(real_shape)
-    event_dict[step][tensor_name] = tensor_content
-  return event_dict
+    step_occurrence_list[occurrence_idx][step][tensor_name] = tensor_content
+  return step_occurrence_list
 
 
 def trace_tensor(tensor, tracepoint_name=None):
@@ -1383,6 +1408,11 @@ class TensorTracer(object):
       else:
         return tensor
 
+    # Check if there are graph operations being profiled.
+    if not tensor_trace_order.traced_tensors:
+      logging.warn('Inspect mode has no tensors in the cache to check.')
+      return control_flow_ops.no_op
+
     # Check if the cache includes any nan or inf
     if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NAN_INF:
       # Cache has 1s or 0s if the mode is NaN_INF
@@ -1546,6 +1576,9 @@ class TensorTracer(object):
     """
     # Add a dependency to op and tensor fetches to make sure that all tracing
     # ops are executed before flushing trace results.
+    if not tensor_trace_order.traced_tensors:
+      logging.warn('No tensor values being traced. No flush cache op added.')
+      return tensor_fetches
     with ops.control_dependencies(op_fetches +
                                   [tensor.op for tensor in tensor_fetches]):
       flush_cache_op = self._generate_flush_cache_op(
@@ -1760,7 +1793,8 @@ class TensorTracer(object):
               value = self.aggregate_global_cache(value)
           with ops.control_dependencies([summary_writer.init()]):
             summary_write_ops.append(summary.write(
-                graph_summary_tag + '/' + key, value, metadata=summary_metadata,
+                _TT_SUMMARY_TAG + '/' + key + '#' + graph_summary_tag + '#',
+                value, metadata=summary_metadata,
                 step=step_value))
       return control_flow_ops.group(summary_write_ops)
 

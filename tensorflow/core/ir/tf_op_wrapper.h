@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_TF_OP_WRAPPER_H_
 #define TENSORFLOW_CORE_IR_TF_OP_WRAPPER_H_
 
+#include <cstddef>
+
 #include "llvm/ADT/iterator_range.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -23,39 +25,74 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {
+namespace detail {
+// This class implements the iterator on control return of a value.
+template <typename ValueIteratorT>
+class ControlRetIterator final
+    : public llvm::mapped_iterator_base<ControlRetIterator<ValueIteratorT>,
+                                        ValueIteratorT, Value> {
+ public:
+  using llvm::mapped_iterator_base<ControlRetIterator<ValueIteratorT>,
+                                   ValueIteratorT, Value>::mapped_iterator_base;
+  Value mapElement(Value value) const;
+};
+}  // namespace detail
+
 namespace tfg {
 
 // Wrapper class exposing convenience methods to manipulate TensorFlow graph
 // nodes uniformly.
 class TFOp {
  public:
-  explicit TFOp(Operation &op);
-  explicit TFOp(Operation *op) : TFOp(*op) {}
+  // Wrap an operation. The operation can be null. The constructor must be
+  // marked as implicit to support `llvm::dyn_cast`.
+  TFOp(Operation *op = nullptr);  // NOLINT
+
+  explicit TFOp(Operation &op) : TFOp(&op) {}
+
+  // Support LLVM-style RTTI.
   static bool classof(Operation *op) {
     return isa<TFGraphDialect>(op->getDialect());
   }
 
+  // Get the wrapped operation.
+  Operation *getOperation() { return op_; }
+
   // Returns a pointer to the TensorFlow Graph Dialect. It nevers returns
   // nullptr.
   TFGraphDialect *getDialect() {
-    return static_cast<TFGraphDialect *>(op_.getDialect());
+    return cast<TFGraphDialect>(op_->getDialect());
   }
+
+  // Split the operands into data and control operands.
+  std::tuple<OperandRange, OperandRange> splitOperands() {
+    ControlType ctl_type = getDialect()->getControlType();
+    OperandRange operands = op_->getOperands();
+    unsigned num_ctl = 0;
+    for (Value operand : llvm::reverse(operands)) {
+      if (operand.getType() == ctl_type)
+        ++num_ctl;
+      else
+        break;
+    }
+    unsigned split_idx = operands.size() - num_ctl;
+    return std::make_tuple(operands.slice(0, split_idx),
+                           operands.slice(split_idx, num_ctl));
+  }
+
+  // Returns the regular operands, the control operands will be excluded.
+  OperandRange getNonControlOperands() { return std::get<0>(splitOperands()); }
 
   // The control operands are always after the regular inputs.
-  ValueRange getControlOperands() {
-    OperandRange operands = op_.getOperands();
-    if (operands.empty()) return operands;
-    OperandRange::iterator first_control_op = std::prev(operands.end());
-    while (first_control_op != operands.begin() &&
-           first_control_op.getBase()->get().getType().isa<ControlType>())
-      --first_control_op;
-    if (!first_control_op.getBase()->get().getType().isa<ControlType>())
-      ++first_control_op;
-    return llvm::make_range(first_control_op, operands.end());
-  }
+  OperandRange getControlOperands() { return std::get<1>(splitOperands()); }
 
   // Returns the control token produced by this operation.
-  Value controlRet() { return op_.getResult(op_.getNumResults() - 1); }
+  Value controlRet() { return op_->getResult(op_->getNumResults() - 1); }
+
+  // Returns the non-control results produced by this operation.
+  ResultRange getNonControlResults() {
+    return op_->getResults().slice(0, op_->getNumResults() - 1);
+  }
 
   // Returns the node name for this operation.
   StringAttr nameAttr();
@@ -79,6 +116,11 @@ class TFOp {
   void setAssignedDevice(const Twine &assigned_device);
   void setAssignedDevice(StringAttr assigned_device);
 
+  // Returns the assigned TPU cluster name.
+  StringAttr tpuReplicate();
+  // Set the assigned TPU cluster name.
+  void setTpuReplicate(StringAttr tpu_replicate);
+
   // Returns the device, preferring the assigned device if set, and the
   // requested device otherwise.
   StringAttr deviceAttr() {
@@ -93,12 +135,59 @@ class TFOp {
   }
 
   // Forward `->` to the underlying operation, exposing the `Operation` methods.
-  Operation *operator->() { return &op_; }
-  Operation &operator*() { return op_; }
+  Operation *operator->() { return op_; }
+  Operation &operator*() { return *op_; }
+
+  // Converts to true if there is a wrapped operation.
+  explicit operator bool() const { return op_; }
 
  private:
-  Operation &op_;
+  // The wrapped operation.
+  Operation *op_;
 };
+
+// A range iterator to get the control tokens associated with a value range.
+// This range allows to wrap a ValueRange (or an OperandRange) and iterates on
+// the control token associated to the producer of each value. For example, if
+// you wrap the operands of an operation:
+//     OperandControlRetRange range = op->getOperands();
+// iterating this range will yield the control edges from each of the operations
+// (or block arguments) producing these operands.
+template <typename ValueRangeT>
+class ControlRetRange final
+    : public llvm::iterator_range<
+          ::mlir::detail::ControlRetIterator<typename ValueRangeT::iterator>> {
+ public:
+  using Base = llvm::iterator_range<
+      ::mlir::detail::ControlRetIterator<typename ValueRangeT::iterator>>;
+  explicit ControlRetRange(ValueRangeT c) : Base(c.begin(), c.end()) {}
+
+  /// Return the value at the given index.
+  Value operator[](size_t index) const {
+    assert(index < size() && "invalid index into value range");
+    return *(this->begin() + index);
+  }
+
+  // Return the size of this range.
+  size_t size() const { return llvm::size(*this); }
+
+  // Return first value in the range.
+  Value front() { return (*this)[0]; }
+
+  // Compare this range with another.
+  template <typename OtherT>
+  bool operator==(const OtherT &other) const {
+    return llvm::size(*this) == llvm::size(other) &&
+           std::equal(this->begin(), this->end(), other.begin());
+  }
+  template <typename OtherT>
+  bool operator!=(const OtherT &other) const {
+    return !(*this == other);
+  }
+};
+
+using OperandControlRetRange = ControlRetRange<OperandRange>;
+using ValueControlRetRange = ControlRetRange<ValueRange>;
 
 }  // namespace tfg
 }  // namespace mlir

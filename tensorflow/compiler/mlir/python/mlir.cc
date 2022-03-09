@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api.h"
@@ -367,7 +367,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
 
   // Run the tf standard pipeline by default and then, run passes that lift
   // variables if the flag is set on the module.
-  mlir::OwningModuleRef module = module_or.ConsumeValueOrDie();
+  mlir::OwningOpRef<mlir::ModuleOp> module = module_or.ConsumeValueOrDie();
   mlir::PassManager pm(&context);
   std::string error;
   llvm::raw_string_ostream error_stream(error);
@@ -391,7 +391,7 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::MLIRContext context(registry);
-  mlir::OwningModuleRef module;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
   {
     mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
     module = mlir::parseSourceString(mlir_txt, &context);

@@ -57,6 +57,86 @@ func @testBitcast(%arg0: tensor<3x4xui16>) -> tensor<3x4x!tf_type.quint16> {
 
 // -----
 
+// CHECK-LABEL: func @testBitcast_v2
+func @testBitcast_v2(%arg0: tensor<3x2xi16>) -> tensor<3xi32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
+func @testBitcast_v3(%arg0: tensor<3x5xi16>) -> tensor<3xi32> {
+  // expected-error @+1 {{input rightmost dimension size is not equal to the divisor. the last dimension of input is expected to be 2}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x5xi16>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
+func @testBitcast_v4(%arg0: tensor<3x2xi16>) -> tensor<3x2xi32> {
+  // expected-error @+1 {{rank of input tensor is 2. rank of output tensor is expected to be 1, instead of 2.}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<3x2xi32>
+  return %0 : tensor<3x2xi32>
+}
+
+// -----
+
+func @testBitcast_v5(%arg0: tensor<3x2xi16>) -> tensor<2xi32> {
+  // expected-error @+1 {{the 0th dim of output tensor is 2. It is not equal to the one in input tensor, which is 3}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi16>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBitcast_v6
+func @testBitcast_v6(%arg0: tensor<3x2xi32>) -> tensor<3x2x2xi16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2x2xi16>
+  return %0 : tensor<3x2x2xi16>
+}
+
+// -----
+
+func @testBitcast_v7(%arg0: tensor<3x2xi32>) -> tensor<3x2x3xi16> {
+  // expected-error @+1 {{output rightmost dimension size is not equal to the divisor. the last dimension of output is expected to be 2}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2x3xi16>
+  return %0 : tensor<3x2x3xi16>
+}
+
+// -----
+
+func @testBitcast_v8(%arg0: tensor<3x2xi32>) -> tensor<3x2xi16> {
+  // expected-error @+1 {{rank of input tensor is 2. rank of output tensor is expected to be 3, instead of 2.}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2xi16>
+  return %0 : tensor<3x2xi16>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBitcast_v9
+func @testBitcast_v9(%arg0: tensor<3x2xi32>) -> tensor<3x2xf32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+func @testBitcast_v10(%arg0: tensor<3x2xi32>) -> tensor<3x4xf32> {
+  // expected-error @+1 {{output tensor shape shall be equal to input tensor shape}}
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x2xi32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @testBitcast_v11
+func @testBitcast_v11(%arg0: tensor<10x10x2xf16>) -> tensor<*xf32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<10x10x2xf16>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @testReverseV2
 func @testReverseV2(%arg0: tensor<2x4x3xui8>, %arg1: tensor<1xi32>) -> tensor<2x4x3xui8> {
   %0 = "tf.ReverseV2"(%arg0, %arg1) : (tensor<2x4x3xui8>, tensor<1xi32>) -> tensor<2x4x3xui8>
@@ -2296,7 +2376,7 @@ func @testInvalidWhileRegionConditionOutputType(%arg : tensor<i32>) -> (tensor<i
 // and result shapes.
 // CHECK-LABEL: func @testShapeInvariantWhileRegion
 func @testShapeInvariantWhileRegion(%arg0: tensor<1x2x3xf32>) -> tensor<1x8x3xf32> {
-  %0 = "tf.WhileRegion"(%arg0) ( {
+  %0 = "tf.WhileRegion"(%arg0) ({
   ^cond(%carg0: tensor<1x?x3xf32>):
     %1 = "tf.SomeCondOp"(%carg0) : (tensor<1x?x3xf32>) -> tensor<i1>
     "tf.Yield"(%1) : (tensor<i1>) -> ()
@@ -4018,7 +4098,7 @@ func @testCaseRegionNoRegions(%arg0: tensor<i32>) {
 
 func @testCaseRegionBadBranchIndicesShape(%arg0: tensor<8xi32>) {
   // expected-error @+1 {{expects 'branch_index' to be a scalar, but got 'tensor<8xi32>'}}
-  "tf.CaseRegion"(%arg0) ( {
+  "tf.CaseRegion"(%arg0) ({
     "tf.Yield"() : () -> ()
   }) {is_stateless = false} : (tensor<8xi32>) -> ()
   return
@@ -4028,7 +4108,7 @@ func @testCaseRegionBadBranchIndicesShape(%arg0: tensor<8xi32>) {
 
 func @testCaseRegionMismatchedNumResults(%arg0: tensor<i32>) {
   // expected-error @+1 {{'tf.CaseRegion' op branch #0 results (size = 0) should have the same number of values as results (size = 1)}}
-  %1 = "tf.CaseRegion"(%arg0) ( {
+  %1 = "tf.CaseRegion"(%arg0) ({
     "tf.Yield"() : () -> ()
   }) {is_stateless = false} : (tensor<i32>) -> tensor<i1>
   return
@@ -4038,7 +4118,7 @@ func @testCaseRegionMismatchedNumResults(%arg0: tensor<i32>) {
 
 func @testCaseRegionMismatchedResultTypes(%arg0: tensor<i32>, %arg1: tensor<f32>) {
   // expected-error @+1 {{'tf.CaseRegion' op branch #0 result type tensor<f32> is incompatible with result type tensor<i1> at index 0}}
-  %1 = "tf.CaseRegion"(%arg0) ( {
+  %1 = "tf.CaseRegion"(%arg0) ({
     "tf.Yield"(%arg1) : (tensor<f32>) -> ()
   }) {is_stateless = false} : (tensor<i32>) -> tensor<i1>
   return
@@ -4312,6 +4392,164 @@ func @testXlaHostComputeMlir(%arg0: tensor<2xf32>) -> () {
 }
 
 // -----
+func @testXlaSelectAndScatterAttrs(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // expected-error @+1 {{'tf.XlaSelectAndScatter' op expects the size of window_dimensionsto be equal to the input rank (3 vs. 4)}}
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @no_scatter, select = @no_select} : (tensor<4x5x1x1xbf16>, tensor<3xi32>, tensor<4xi32>, tensor<4x2xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+// -----
+
+func @testXlaSelectAndScatterPadding(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2x3xi32>} : () -> tensor<4x2x3xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // expected-error @+1 {{'tf.XlaSelectAndScatter' op expects padding to be a matrix with minor dimension 2, got 4, 2, 3}}
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @no_scatter, select = @no_select} : (tensor<4x5x1x1xbf16>, tensor<4xi32>, tensor<4xi32>, tensor<4x2x3xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+// -----
+
+func @testXlaSelectAndScatterSelect(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // expected-error @+1 {{'tf.XlaSelectAndScatter' op has no select function specified}}
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @no_scatter, select = @no_select} : (tensor<4x5x1x1xbf16>, tensor<4xi32>, tensor<4xi32>, tensor<4x2xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+// -----
+
+func @testXlaSelectAndScatterSelectNumArgs(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // expected-error @+1 {{'tf.XlaSelectAndScatter' op expects select function to take 2 parameters, but has 3 parameter(s)}}
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @no_scatter, select = @xla_select_and_scatter_select_3_args} : (tensor<4x5x1x1xbf16>, tensor<4xi32>, tensor<4xi32>, tensor<4x2xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+func private @xla_select_and_scatter_select_3_args(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<bf16>) -> tensor<i1> {
+  %0 = "tf.GreaterEqual"(%arg0, %arg1) : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// -----
+
+func @testXlaSelectAndScatterSelectReturnType(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // expected-error @+1 {{'tf.XlaSelectAndScatter' op expects select function to return a single boolean result but got 'tensor<4xi32>'}}
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @no_scatter, select = @xla_select_and_scatter_select_return_int32_vector} : (tensor<4x5x1x1xbf16>, tensor<4xi32>, tensor<4xi32>, tensor<4x2xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+func private @xla_select_and_scatter_select_return_int32_vector(%arg0: tensor<bf16>, %arg1: tensor<bf16>) -> tensor<4xi32> {
+  %0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
+// -----
+
+func @testXlaSelectAndScatterScatter(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // expected-error @+1 {{'tf.XlaSelectAndScatter' op has no scatter function specified}}
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @no_scatter, select = @xla_select_and_scatter_select1} : (tensor<4x5x1x1xbf16>, tensor<4xi32>, tensor<4xi32>, tensor<4x2xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+func private @xla_select_and_scatter_select1(%arg0: tensor<bf16>, %arg1: tensor<bf16>) -> tensor<i1> {
+  %0 = "tf.GreaterEqual"(%arg0, %arg1) : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// -----
+
+func @testXlaSelectAndScatterSelectNumArgs(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // expected-error @+1 {{'tf.XlaSelectAndScatter' op expects scatter function to take 2 parameters, but has 3 parameter(s)}}
+  %0 = "tf.XlaSelectAndScatter"(%arg0, %cst_1, %cst_0, %cst, %arg1, %arg2) {scatter = @xla_select_and_scatter_scatter, select = @xla_select_and_scatter_select2} : (tensor<4x5x1x1xbf16>, tensor<4xi32>, tensor<4xi32>, tensor<4x2xi32>, tensor<2x2x1x1xbf16>, tensor<bf16>) -> tensor<?x?x?x?xbf16>
+  return %0 : tensor<?x?x?x?xbf16>
+}
+
+func private @xla_select_and_scatter_select2(%arg0: tensor<bf16>, %arg1: tensor<bf16>) -> tensor<i1> {
+  %0 = "tf.GreaterEqual"(%arg0, %arg1) : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+func private @xla_select_and_scatter_scatter(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>, %arg2: tensor<*xbf16>) -> tensor<*xbf16> {
+  %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+// -----
+
+func @testXlaReduceWindowAttrs(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_2 = "tf.Const"() {value = dense<3> : tensor<2xi32>} : () -> tensor<2xi32>
+  %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+  // expected-error @+1 {{tf.XlaReduceWindow' op expects the size of base_dilations to be equal to the input rank (2 vs. 1)}}
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @no_reducer} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @testXlaReduceWindowPadding(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<1x3xi32>} : () -> tensor<1x3xi32>
+  %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_2 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+  // expected-error @+1 {{'tf.XlaReduceWindow' op expects padding to be a matrix with minor dimension 2, got 1, 3}}
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @no_reducer} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x3xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @testXlaReduceWindowComputation(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_2 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+  // expected-error @+1 {{'tf.XlaReduceWindow' op has no reduction function specified}}
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @no_reducer} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @testXlaReduceWindowComputationNumArgs(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_2 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %cst_3 = "tf.Const"() {value = dense<4> : tensor<1xi32>} : () -> tensor<1xi32>
+  // expected-error @+1 {{'tf.XlaReduceWindow' op expects reduction function to take 2 parameters, but has 3 parameter(s)}}
+  %0 = "tf.XlaReduceWindow"(%arg0, %arg1, %cst_0, %cst_1, %cst_2, %cst_3, %cst) {computation = @xla_reduce_window_op_reducer} : (tensor<7xf32>, tensor<f32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+func private @xla_reduce_window_op_reducer(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
 
 func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<?xf16> {
   %dimension = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
@@ -4339,7 +4577,7 @@ func @testSetStaticDimensionBounds(%arg0: tensor<?x?x?xi32>, %arg1: tensor<?xi32
 // -----
 
 func @testSetStaticDimensionBounds(%arg0: tensor<?x?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi32> {
-  // expected-error @below {{'tf.SetStaticDimensionBounds' op static shape must be a ranked tensor of rank 1 (vector)}}
+  // expected-error @below {{'tf.SetStaticDimensionBounds' op static shape must be of rank 1 (vector)}}
   %dyn_arg0 = "tf.SetStaticDimensionBounds" (%arg0, %arg1) :(tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
   return %dyn_arg0 : tensor<?x?xi32>
 }

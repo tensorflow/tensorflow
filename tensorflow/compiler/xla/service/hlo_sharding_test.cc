@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <set>
 #include <string>
 #include <tuple>
@@ -189,9 +190,16 @@ TEST_F(HloShardingTest, NestedTuple) {
                                            /*num_devices=*/5));
 }
 
+TEST_F(HloShardingTest, NormalizeTrivialSubgroupToManual) {
+  HloSharding sharding =
+      HloSharding::Subgroup(MakeArray({1, 2, 1}, {0, 1}),
+                            {OpSharding::MANUAL, OpSharding::REPLICATED});
+  EXPECT_TRUE(sharding.IsManual());
+}
+
 TEST_F(HloShardingTest, Hash) {
   auto hash_compare_equal = [](const HloSharding& a, const HloSharding& b) {
-    if (a.Hash() != b.Hash()) {
+    if (absl::HashOf(a) != absl::HashOf(b)) {
       return false;
     }
     return a == b;

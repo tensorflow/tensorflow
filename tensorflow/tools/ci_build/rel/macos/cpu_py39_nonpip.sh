@@ -23,9 +23,10 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_11.3.app/Contents/Developer
 sudo xcode-select -s "${DEVELOPER_DIR}"
 
-# Set up py39 via pyenv and check it worked
-PY_VERSION=3.9.4
+# Set up python version via pyenv
+PY_VERSION=3.9.9
 setup_python_from_pyenv_macos "${PY_VERSION}"
+python -m venv .tf-venv && source .tf-venv/bin/activate
 
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps

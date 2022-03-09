@@ -696,9 +696,14 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
   if (!IsFusedBatchNorm(*node_def)) return false;
 
   // FusedBatchNormV2 and V3 have an extra type parameter.
+  // Conv2D + FusedBatchNormV2/V3 fusion is currently not supported for bf16.
+  // TODO(intel-tf): enable the fusion for bf16
+  bool dtypeU_is_float = HasDataType(node_def, DT_FLOAT, "U");
+  bool dtypeT_is_bf16 = HasDataType(node_def, DT_BFLOAT16, "T");
   if (node_view->GetOp() != "FusedBatchNorm" &&
-      !HasDataType(node_def, DT_FLOAT, "U"))
+      (!dtypeU_is_float || dtypeT_is_bf16)) {
     return false;
+  }
 
   // Check that batch normalization is in inference mode.
   const auto* training_attr = node_view->GetAttr(kIsTraining);
@@ -2860,13 +2865,19 @@ Status AddFusedBatchMatMul(RemapperContext* ctx,
   return Status::OK();
 }
 
+// This function supports below patterns that require inferred
+// shapes:
+// 1. Contraction + Add.
+// 2. Contraction + Add + Activation.
+// 3. Contraction + BiasAdd/BiasSemanticAdd + Add.
+// 4. Contraction + BiasAdd/BiasSemanticAdd + Add + Activation.
+// Contraction candidate: MatMul, Conv2D, Conv3D, DepthwiseConv2dNative.
 bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
 
-  // Candidate for Contraction + Add or Contraction + BiasAdd + Add fusion.
-  // Contraction candidate: MatMul, Conv2D, DepthwiseConv2dNative
   auto is_supported_add_input = [](const auto* node_view) -> bool {
     if (IsConvOrMatMul(*node_view->node())) return true;
+    // IsAdd will verify BiasSemanticAdd.
     if (IsBiasAdd(*node_view->node()) || IsAdd(*node_view->node())) {
       if (node_view->NumRegularFanins() < 2) return false;
       const auto& bias_add_fanin_0 = node_view->GetRegularFanin(0);
@@ -2889,14 +2900,125 @@ bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
-  bool ret = false;
-  for (int i = 0; i < node_view->NumRegularFanins(); i++) {
-    const auto& fanin_i = node_view->GetRegularFanin(i);
-    ret = is_supported_add(fanin_i.node_view());
-    if (ret) break;
+  // Dealing with the Contraction + Add or Contraction + BiasAdd/BiasSemanticAdd
+  // + Add patterns.
+  if (is_supported_add(node_view)) {
+    return true;
+  }
+  // Dealing with the Contraction + Add + Activation  or Contraction +
+  // BiasAdd/BiasSemanticAdd + Add + Activation pattern.
+  if (IsSupportedActivation(*node_view->node())) {
+    for (int i = 0; i < node_view->NumRegularFanins(); i++) {
+      const auto& fanin_i = node_view->GetRegularFanin(i);
+      if (is_supported_add(fanin_i.node_view())) return true;
+    }
   }
 
-  return ret;
+  return false;
+}
+
+bool FindSoftplusAndTanhAndMul(RemapperContext* ctx, int node_index,
+                               std::map<string, int>* matched_nodes_map,
+                               std::set<int>* remove_node_indices) {
+  // Mish fusion is enabled only with oneDNN library.
+  if (!IsMKLEnabled()) return false;
+
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+  // clang-format off
+  //                Convert Softplus+Tanh+Mul to Mish
+  //          From Graph                          To Graph
+  //          -----------                         ---------
+  //    Conv2D  <-  Filter(const)           Conv2D  <-  Filter(const)
+  //      !                                   !
+  //      V                                   V
+  //    BiasAdd <-  bias(const)             BiasAdd <-  bias(const)
+  //      !                                   !
+  //      V                                   !
+  //  ---- ----                               !
+  //  !       !                               !
+  //  !       V                               !
+  //  !    Softplus                           !
+  //  !       !                               !
+  //  !       V                               !
+  //  !     Tanh                              !
+  //  !       !                               !
+  //  !       V                               !
+  //  ---   ---                               !
+  //     !  !                                 !
+  //     !  !                                 !
+  //     V  V                                 V
+  //      Mul                           _MklFusedMish
+  //      !                                   !
+  //      V                                   V
+
+  utils::OpTypePattern softplustanhmul_pattern{ "Mul", "mul_to_mish", NodeStatus::kReplace,
+    {
+      { "Tanh", "tanh", NodeStatus::kRemove,
+        {
+          { "Softplus", "softplus", NodeStatus::kRemove,
+            {
+              { "*", "input", NodeStatus::kRemain}
+            }
+          }
+        }
+      },
+      { "*", "input", NodeStatus::kRemain}
+    }
+  };
+
+  // check for data types
+  auto* mul_node_def = ctx->graph_view.GetNode(node_index)->node();
+  if (!HasDataType(mul_node_def, DT_FLOAT) &&
+      !HasDataType(mul_node_def, DT_BFLOAT16))
+    return false;
+
+  if (!NodeIsOnCpu(mul_node_def)) return false;
+
+  // clang-format on
+  bool found_op_type_match = false;
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+  found_op_type_match = graph_matcher.GetMatchedNodes(
+      softplustanhmul_pattern, {}, ctx->graph_view.GetNode(node_index),
+      matched_nodes_map, remove_node_indices);
+
+  return found_op_type_match;
+}
+
+Status ReplaceSoftplusTanhAndMulWithMish(
+    RemapperContext* ctx, const std::map<string, int>* matched_nodes_map,
+    const std::set<int>* remove_node_indices,
+    std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
+  // Fuse Softplus + Tanh + Mul to Mish
+  auto* old_mul_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("mul_to_mish"))->node();
+  auto* softplus_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("softplus"))->node();
+
+  NodeDef fused_node;
+  fused_node.set_name(old_mul_node->name());
+  fused_node.set_op("_MklFusedMish");
+  fused_node.set_device(old_mul_node->device());
+  fused_node.add_input(softplus_node->input(0));
+
+  auto* fused_node_attr = fused_node.mutable_attr();
+  (*fused_node_attr)["T"] = old_mul_node->attr().at("T");
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_node), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+  (*invalidated_nodes)[matched_nodes_map->at("mul_to_mish")] = true;
+
+  for (const auto& node_index : *remove_node_indices) {
+    (*nodes_to_delete)[node_index] = true;
+  }
+
+  return Status::OK();
 }
 
 // Check if a node is a candidate to one of the patterns that require inferred
@@ -3086,6 +3208,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         TF_RETURN_IF_ERROR(AddFusedMatMulBiasAddAndGelu(
             &ctx, matched_nodes_map, remove_node_indices, &invalidated_nodes,
             &nodes_to_delete, is_gelu_approximate));
+        continue;
+      }
+
+      // Softplus + Tanh + Mul to Mish conversion
+      matched_nodes_map.clear();
+      remove_node_indices.clear();
+      if (FindSoftplusAndTanhAndMul(&ctx, i, &matched_nodes_map,
+                                    &remove_node_indices)) {
+        TF_RETURN_IF_ERROR(ReplaceSoftplusTanhAndMulWithMish(
+            &ctx, &matched_nodes_map, &remove_node_indices, &invalidated_nodes,
+            &nodes_to_delete));
         continue;
       }
 

@@ -29,7 +29,8 @@ namespace xla {
 namespace {
 
 TEST(PrimitiveUtilTest, StringToPrimitiveType) {
-  auto expect_ok_and_equal = [](const string& str, PrimitiveType expected) {
+  auto expect_ok_and_equal = [](const std::string& str,
+                                PrimitiveType expected) {
     TF_ASSERT_OK_AND_ASSIGN(PrimitiveType actual,
                             primitive_util::StringToPrimitiveType(str));
     EXPECT_EQ(expected, actual);

@@ -1225,6 +1225,40 @@ TEST_P(HloDataflowAnalysisTest, TupleCopy) {
       analysis.GetValueDefinedAt(copy, /*index=*/{}).live_out_of_module());
 }
 
+TEST_P(HloDataflowAnalysisTest, OptimizationBarrier) {
+  // Test that an optimization barrier is a nop.
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "param1"));
+  auto tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({param0, param1}));
+  auto barrier = builder.AddInstruction(HloInstruction::CreateUnary(
+      tuple->shape(), HloOpcode::kOptimizationBarrier, tuple));
+  module_->AddEntryComputation(builder.Build());
+  SCOPED_TRACE(module_->ToString());
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  EXPECT_EQ(analysis.values().size(), 3);
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(param0));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(param1));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(tuple, /*index=*/{}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(tuple, /*index=*/{0}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(tuple, /*index=*/{1}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(barrier, /*index=*/{}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(barrier, /*index=*/{0}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(barrier, /*index=*/{1}));
+
+  EXPECT_THAT(HloValuesAt(barrier, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(param0)));
+  EXPECT_THAT(HloValuesAt(barrier, /*index=*/{1}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(param1)));
+}
+
 TEST_P(HloDataflowAnalysisTest, CopyStartAndCopyDone) {
   // Test that a CopyDone forwards its operand tuple element at {0} to the
   // output.
@@ -1289,7 +1323,7 @@ TEST_P(HloDataflowAnalysisTest, SetDimensionSizeForwardsValue) {
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, vector_shape_, "param"));
   auto size = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(3)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(3)));
   auto sds = builder.AddInstruction(
       HloInstruction::CreateSetDimensionSize(vector_shape_, param, size, 0));
 
@@ -2036,7 +2070,7 @@ TEST_P(HloDataflowAnalysisTest, NestedConditionals) {
 }
 
 TEST_P(HloDataflowAnalysisTest, AddDependency) {
-  string module_string = R"(
+  std::string module_string = R"(
 HloModule AddDependency
 ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   %p = f32[3] parameter(0)
@@ -2199,7 +2233,7 @@ TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
@@ -2242,7 +2276,7 @@ TEST_F(DoesNotUseOperandBufferTest, IndirectUses) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
@@ -2480,7 +2514,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
@@ -2521,7 +2555,7 @@ TEST_F(CanShareOperandBufferWithUserTest,
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =

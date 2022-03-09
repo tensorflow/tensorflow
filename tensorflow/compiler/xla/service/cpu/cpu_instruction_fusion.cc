@@ -68,8 +68,8 @@ bool CanBeOutputFusedIntoSomeOperand(const HloInstruction* consumer) {
 }
 }  // namespace
 
-bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
-                                      int64_t operand_index) {
+FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
+                                                int64_t operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
   VLOG(2) << "Considering for fusion: operand " << operand_index << " of "
           << consumer->ToString();
@@ -78,45 +78,39 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   if (CanBeOutputFused(producer, consumer)) {
     VLOG(2) << "Fusion OK: Can create output fusion.";
-    return true;
+    return {};
   }
 
   if (CanBeOutputFusedIntoSomeOperand(producer)) {
-    VLOG(2)
-        << "Bailing because producer can be output-fused into some operand.";
-    return false;
+    return "Bailing because producer can be output-fused into some operand.";
   }
 
   if (!CanBeLoopFused(*producer)) {
-    VLOG(2) << "Producer is not fusible.";
-    return false;
+    return "Producer is not loop-fusible.";
   }
 
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
       ReusesOperandElements(consumer, operand_index)) {
-    VLOG(2) << "Fusion is not profitable.";
-    return false;
+    return "Fusion is not profitable.";
   }
 
-  if (!InstructionFusion::ShouldFuse(consumer, operand_index)) {
-    VLOG(2) << "Not fusing: !ShouldFuse(consumer).";
-    return false;
+  if (NoFusionPossible should_fuse =
+          !InstructionFusion::ShouldFuse(consumer, operand_index)) {
+    return !should_fuse;
   }
 
   // Fuse constants in general but avoid creating 2-instruction fusions with
   // just a constant and another node.
   if (producer->opcode() == HloOpcode::kConstant &&
       consumer->opcode() != HloOpcode::kFusion) {
-    VLOG(2) << "Not fusing: insufficient non-constant nodes.";
-    return false;
+    return "Not fusing: insufficient non-constant nodes.";
   }
 
   // Output fusion is not currently supported on CPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
-    VLOG(2) << "Not fusing: producer is itself a fusion node.";
-    return false;
+    return "Not fusing: producer is itself a fusion node.";
   }
 
   // Don't fuse if fusing would cause too much code duplication because of
@@ -134,7 +128,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     }
     if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(
             producer)) {
-      return false;
+      return "Code duplication too high";
     }
   }
 
@@ -157,42 +151,43 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
           ShapeUtil::ByteSizeOfElements(consumer->operand(0)->shape()) <
               kFusionThresholdBytes) {
         VLOG(2) << "Fusing small matrix-vector product.";
-        return true;
+        return {};
       } else if (consumer->operand(1)->shape().rank() == 1 &&
                  operand_index == 0 &&
                  ShapeUtil::ByteSizeOfElements(consumer->operand(1)->shape()) <
                      kFusionThresholdBytes) {
         VLOG(2) << "Fusing small matrix-vector product.";
-        return true;
+        return {};
       }
     }
   }
 
   // Don't fuse reductions over the major dimensions. These have an efficient
   // lowering that's only implemented for the unfused case.
-  if (consumer->opcode() == HloOpcode::kReduce) {
-    return absl::c_linear_search(
-        consumer->dimensions(),
-        LayoutUtil::Minor(consumer->operand(0)->shape().layout(), 0));
+  if (consumer->opcode() == HloOpcode::kReduce &&
+      !absl::c_linear_search(
+          consumer->dimensions(),
+          LayoutUtil::Minor(consumer->operand(0)->shape().layout(), 0))) {
+    return "Not fusing reductions over major dimensions";
   }
-  if (producer->opcode() == HloOpcode::kReduce) {
-    return absl::c_linear_search(
-        producer->dimensions(),
-        LayoutUtil::Minor(producer->operand(0)->shape().layout(), 0));
+  if (producer->opcode() == HloOpcode::kReduce &&
+      !absl::c_linear_search(
+          producer->dimensions(),
+          LayoutUtil::Minor(producer->operand(0)->shape().layout(), 0))) {
+    return "Not fusing reductions over major dimensions";
   }
 
   if (consumer->IsLoopFusion()) {
     VLOG(2) << "Fusing: consumer is a fusion node.";
-    return true;
+    return {};
   }
 
   if (CanBeLoopFused(*consumer)) {
     VLOG(2) << "Fusing: consumer is elementwise or fusible.";
-    return true;
+    return {};
   }
 
-  VLOG(2) << "Not fusing.";
-  return false;
+  return "Not fusing: not found a fusible case";
 }
 
 HloInstruction::FusionKind CpuInstructionFusion::ChooseKind(

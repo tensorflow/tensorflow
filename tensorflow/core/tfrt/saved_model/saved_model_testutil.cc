@@ -48,7 +48,7 @@ std::unique_ptr<tensorflow::tfrt_stub::Runtime> DefaultTfrtRuntime(
 SavedModel::Options DefaultSavedModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime) {
   SavedModel::Options options(runtime);
-  auto& compile_options = options.compile_options;
+  auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.enable_optimizer = absl::GetFlag(FLAGS_enable_optimizer);
   compile_options.enable_native_ops = absl::GetFlag(FLAGS_enable_native_ops);
   compile_options.enable_grappler = absl::GetFlag(FLAGS_enable_grappler);

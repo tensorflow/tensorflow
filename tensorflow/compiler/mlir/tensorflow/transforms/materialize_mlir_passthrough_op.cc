@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -38,11 +38,11 @@ namespace {
 class MaterializePassthroughOpPass
     : public TF::MaterializePassthroughOpBase<MaterializePassthroughOpPass> {
  public:
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void MaterializePassthroughOpPass::runOnFunction() {
-  getFunction().walk([](Operation *op) {
+void MaterializePassthroughOpPass::runOnOperation() {
+  getOperation().walk([](Operation *op) {
     auto passthrough_op = dyn_cast<TF::MlirPassthroughOp>(op);
     if (!passthrough_op) return;
     std::string module_string(passthrough_op.mlir_module());

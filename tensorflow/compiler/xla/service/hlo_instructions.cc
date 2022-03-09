@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
+#include <algorithm>
 #include <deque>
+#include <functional>
+#include <numeric>
 #include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
@@ -53,7 +58,7 @@ bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
   });
 }
 
-string PrecisionConfigToString(const PrecisionConfig& precision_config) {
+std::string PrecisionConfigToString(const PrecisionConfig& precision_config) {
   if (absl::c_all_of(
           precision_config.operand_precision(), [](int32_t precision) {
             return static_cast<PrecisionConfig::Precision>(precision) ==
@@ -66,7 +71,7 @@ string PrecisionConfigToString(const PrecisionConfig& precision_config) {
       "operand_precision={",
       StrJoin(
           precision_config.operand_precision(), ",",
-          [](string* out, int32_t precision) {
+          [](std::string* out, int32_t precision) {
             CHECK(PrecisionConfig::Precision_IsValid(precision)) << precision;
             StrAppend(out,
                       PrecisionToString(
@@ -102,7 +107,7 @@ HloInstructionProto HloBatchNormInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloBatchNormInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloBatchNormInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("epsilon=", epsilon()),
           StrCat("feature_index=", feature_index())};
@@ -185,7 +190,7 @@ HloInstructionProto HloFftInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloFftInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloFftInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("fft_type=", FftType_Name(fft_type())),
           StrCat("fft_length={", StrJoin(fft_length(), ","), "}")};
@@ -222,9 +227,9 @@ HloInstructionProto HloCopyStartInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloCopyStartInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloCopyStartInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> result;
+  std::vector<std::string> result;
   if (is_cross_program_prefetch()) {
     result.push_back("is_cross_program_prefetch=true");
   }
@@ -268,9 +273,9 @@ HloInstructionProto HloCompareInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloCompareInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloCompareInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> result;
+  std::vector<std::string> result;
   result.push_back(
       StrCat("direction=", ComparisonDirectionToString(direction())));
   if (compare_.GetType() !=
@@ -305,15 +310,15 @@ namespace {
 //
 // Currently implements a small subset of cases; feel free to add more as
 // needed.
-std::vector<string> AttributeProtoToStringVector(
+std::vector<std::string> AttributeProtoToStringVector(
     const tensorflow::protobuf::Message& message) {
   const tensorflow::protobuf::Reflection* reflection = message.GetReflection();
   std::vector<const tensorflow::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
 
-  std::vector<string> output;
+  std::vector<std::string> output;
   for (const tensorflow::protobuf::FieldDescriptor* field : fields) {
-    string s = absl::StrCat(field->name(), "=");
+    std::string s = absl::StrCat(field->name(), "=");
     CHECK(!field->is_repeated()) << "Repeated fields aren't implemented";
     switch (field->type()) {
       case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
@@ -352,7 +357,8 @@ HloInstructionProto HloTriangularSolveInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloTriangularSolveInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloTriangularSolveInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return AttributeProtoToStringVector(triangular_solve_options_);
 }
@@ -394,7 +400,7 @@ HloInstructionProto HloCholeskyInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloCholeskyInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloCholeskyInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return AttributeProtoToStringVector(cholesky_options_);
 }
@@ -439,9 +445,9 @@ HloInstructionProto HloChannelInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloChannelInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloChannelInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& /*options*/) const {
-  std::vector<string> result;
+  std::vector<std::string> result;
   if (channel_id_) {
     result.push_back(StrCat("channel_id=", *channel_id_));
   }
@@ -472,9 +478,9 @@ HloInstructionProto HloSendRecvInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloSendRecvInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloSendRecvInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> attrs =
+  std::vector<std::string> attrs =
       HloChannelInstruction::ExtraAttributesToStringImpl(options);
   if (is_host_transfer()) {
     attrs.push_back("is_host_transfer=true");
@@ -593,9 +599,9 @@ HloInstructionProto HloCollectiveInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloCollectiveInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloCollectiveInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> result =
+  std::vector<std::string> result =
       HloChannelInstruction::ExtraAttributesToStringImpl(options);
   result.push_back(
       StrCat("replica_groups=", ReplicaGroupsToString(replica_groups())));
@@ -630,9 +636,9 @@ HloAllGatherInstruction::HloAllGatherInstruction(
       all_gather_dimension_(all_gather_dimension),
       use_global_device_ids_(use_global_device_ids) {}
 
-std::vector<string> HloAllGatherInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloAllGatherInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> result =
+  std::vector<std::string> result =
       HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
   result.push_back(StrCat("dimensions={", all_gather_dimension_, "}"));
   if (use_global_device_ids_) {
@@ -686,9 +692,10 @@ HloInstructionProto HloAllReduceInstructionBase::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloAllReduceInstructionBase::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloAllReduceInstructionBase::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> result =
+  std::vector<std::string> result =
       HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
   if (use_global_device_ids_) {
     result.push_back("use_global_device_ids=true");
@@ -741,9 +748,10 @@ HloReduceScatterInstruction::HloReduceScatterInstruction(
           replica_groups, constrain_layout, channel_id, use_global_device_ids),
       scatter_dimension_(scatter_dimension) {}
 
-std::vector<string> HloReduceScatterInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloReduceScatterInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> result =
+  std::vector<std::string> result =
       HloAllReduceInstructionBase::ExtraAttributesToStringImpl(options);
   result.push_back(StrCat("dimensions={", scatter_dimension_, "}"));
   return result;
@@ -801,9 +809,9 @@ HloInstructionProto HloAllToAllInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloAllToAllInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloAllToAllInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> result =
+  std::vector<std::string> result =
       HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
   if (split_dimension_) {
     result.push_back(StrCat("dimensions={", *split_dimension_, "}"));
@@ -862,13 +870,13 @@ HloInstructionProto HloCollectivePermuteInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string>
+std::vector<std::string>
 HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> result =
+  std::vector<std::string> result =
       HloChannelInstruction::ExtraAttributesToStringImpl(options);
   {
-    std::vector<string> strs;
+    std::vector<std::string> strs;
     const auto& pairs = source_target_pairs();
     strs.reserve(pairs.size());
     for (const auto& pair : pairs) {
@@ -877,7 +885,7 @@ HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
     result.push_back(StrCat("source_target_pairs={", StrJoin(strs, ","), "}"));
   }
   if (!dynamic_slice_sizes_list().empty()) {
-    std::vector<string> strs;
+    std::vector<std::string> strs;
     const auto& sizes_list = dynamic_slice_sizes_list();
     strs.reserve(sizes_list.size());
     for (const auto& slice_sizes : dynamic_slice_sizes_list()) {
@@ -942,7 +950,7 @@ HloInstructionProto HloReverseInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloReverseInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloReverseInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
@@ -980,7 +988,7 @@ HloInstructionProto HloConcatenateInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloConcatenateInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloConcatenateInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
@@ -1022,7 +1030,7 @@ HloInstructionProto HloReduceInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloReduceInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloReduceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
@@ -1068,9 +1076,9 @@ HloInstructionProto HloSortInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloSortInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloSortInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> attrs;
+  std::vector<std::string> attrs;
   attrs.push_back(StrCat("dimensions={", StrJoin(dimensions(), ","), "}"));
   if (is_stable()) {
     attrs.push_back("is_stable=true");
@@ -1122,7 +1130,7 @@ HloInstructionProto HloTransposeInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloTransposeInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloTransposeInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
@@ -1160,7 +1168,7 @@ HloInstructionProto HloBroadcastInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloBroadcastInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloBroadcastInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
@@ -1217,7 +1225,7 @@ HloInstructionProto HloReshapeInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloReshapeInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloReshapeInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   if (inferred_dimension() == -1) {
     return {};
@@ -1279,7 +1287,7 @@ bool HloMapInstruction::IsElementwiseImpl(
   return true;
 }
 
-std::vector<string> HloMapInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloMapInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
@@ -1327,14 +1335,14 @@ HloInstructionProto HloSliceInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloSliceInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloSliceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> bounds;
+  std::vector<std::string> bounds;
   bounds.reserve(slice_starts_.size());
   const bool omit_stride = absl::c_all_of(
       slice_strides_, [](int64_t stride) { return stride == 1; });
   for (int i = 0; i < slice_starts_.size(); ++i) {
-    string stride_str = omit_stride ? "" : StrCat(":", slice_strides_[i]);
+    std::string stride_str = omit_stride ? "" : StrCat(":", slice_strides_[i]);
     bounds.push_back(
         StrCat("[", slice_starts_[i], ":", slice_limits_[i], stride_str, "]"));
   }
@@ -1421,7 +1429,7 @@ HloConstantInstruction::CloneWithNewOperandsImpl(
                                                    this->shape());
 }
 
-string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
+std::string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
   if (options.print_only_essential_constants()) {
@@ -1453,7 +1461,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
   }
 }
 
-HloTraceInstruction::HloTraceInstruction(const string& tag,
+HloTraceInstruction::HloTraceInstruction(const std::string& tag,
                                          HloInstruction* operand)
     : HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()),
       literal_(LiteralUtil::CreateR1U8(tag)) {
@@ -1485,7 +1493,16 @@ HloFusionInstruction::HloFusionInstruction(const Shape& shape,
                                            HloInstruction* fused_root)
     : HloInstruction(HloOpcode::kFusion, shape), fusion_kind_(fusion_kind) {
   CHECK(fused_root != nullptr);
-  SetAndSanitizeName("fusion");
+  std::string fusion_name = [&] {
+    if (fusion_kind == FusionKind::kInput) {
+      return absl::StrCat("input_fusion_",
+                          HloOpcodeString(fused_root->opcode()));
+
+    } else {
+      return std::string("fusion");
+    }
+  }();
+  SetAndSanitizeName(fusion_name);
   set_parent(fused_root->parent());
   set_metadata(fused_root->metadata());
   CloneAndFuseInternal(fused_root);
@@ -1527,7 +1544,7 @@ void HloFusionInstruction::ClearCalledComputations() {
   HloInstruction::ClearCalledComputations();
 }
 
-string HloFusionInstruction::ToCategory() const {
+std::string HloFusionInstruction::ToCategory() const {
   switch (fusion_kind()) {
     case FusionKind::kLoop:
       return "loop fusion";
@@ -1561,7 +1578,7 @@ bool HloFusionInstruction::IsElementwiseImpl(
   // A loop-fusion is elementwise on an operand if all operations (computed
   // using BFS) between the operand and the fused root are elementwise.
   std::deque<HloInstruction*> worklist;
-  std::unordered_set<const HloInstruction*> visited;
+  absl::flat_hash_set<const HloInstruction*> visited;
   worklist.push_back(fused_parameter(operand_idx.value()));
   visited.insert(fused_parameter(operand_idx.value()));
   while (!worklist.empty()) {
@@ -1589,7 +1606,7 @@ HloInstruction* HloFusionInstruction::AddFusionOperand(
   CHECK_EQ(operand_count(),
            fused_instructions_computation()->parameter_instructions().size());
   const int64_t param_no = operand_count();
-  string param_name = StrCat("param_", param_no);
+  std::string param_name = StrCat("param_", param_no);
   HloInstruction* fused_parameter =
       fused_instructions_computation()->AddParameter(
           HloInstruction::CreateParameter(param_no, new_operand->shape(),
@@ -1794,7 +1811,16 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
   if (called_computations().empty()) {
     // New fusion instruction. It should not be a multioutput instruction.
     CHECK(!add_output);
-    auto builder = HloComputation::Builder("fused_computation", this);
+    std::string computation_name = [&] {
+      if (fusion_kind_ == FusionKind::kInput) {
+        return absl::StrCat("input_fused_computation_",
+                            HloOpcodeString(instruction_to_fuse->opcode()));
+
+      } else {
+        return std::string("fused_computation");
+      }
+    }();
+    auto builder = HloComputation::Builder(computation_name, this);
     builder.AddInstruction(instruction_to_fuse->Clone(/*suffix=*/""));
     AppendComputation(
         CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build()));
@@ -1947,7 +1973,7 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
   return clone;
 }
 
-std::vector<string> HloFusionInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloFusionInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("kind=", xla::ToString(fusion_kind()))};
 }
@@ -1959,10 +1985,6 @@ bool HloFusionInstruction::IdenticalSlowPath(
   return fusion_kind() == other.fusion_kind() &&
          eq_computations(fused_instructions_computation(),
                          other.fused_instructions_computation());
-}
-
-uint64 HloFusionInstruction::InnerHash() const {
-  return fused_instructions_computation()->root_instruction()->Hash();
 }
 
 std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
@@ -2022,7 +2044,7 @@ HloInstructionProto HloRngInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloRngInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloRngInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("distribution=", RandomDistributionToString(distribution_))};
 }
@@ -2049,7 +2071,7 @@ std::unique_ptr<HloInstruction> HloRngInstruction::CloneWithNewOperandsImpl(
 
 HloParameterInstruction::HloParameterInstruction(int64_t parameter_number,
                                                  const Shape& shape,
-                                                 const string& name)
+                                                 const std::string& name)
     : HloInstruction(HloOpcode::kParameter, shape),
       parameter_number_(parameter_number) {
   SetAndSanitizeName(name);
@@ -2067,13 +2089,13 @@ HloInstructionProto HloParameterInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloParameterInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloParameterInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> result;
+  std::vector<std::string> result;
   if (!parameter_replicated_at_leaf_buffers_) {
     return result;
   }
-  std::vector<string> buffers_replicated_strs;
+  std::vector<std::string> buffers_replicated_strs;
   buffers_replicated_strs.reserve(
       parameter_replicated_at_leaf_buffers_->size());
   for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
@@ -2086,7 +2108,7 @@ std::vector<string> HloParameterInstruction::ExtraAttributesToStringImpl(
   return result;
 }
 
-string HloParameterInstruction::OperandsToStringWithCanonicalNameMap(
+std::string HloParameterInstruction::OperandsToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
   return StrCat(parameter_number_);
@@ -2126,7 +2148,8 @@ HloInstructionProto HloGetTupleElementInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloGetTupleElementInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloGetTupleElementInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("index=", tuple_index())};
 }
@@ -2165,7 +2188,8 @@ HloInstructionProto HloReducePrecisionInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloReducePrecisionInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloReducePrecisionInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("exponent_bits=", exponent_bits_),
           StrCat("mantissa_bits=", mantissa_bits_)};
@@ -2193,7 +2217,7 @@ HloReducePrecisionInstruction::CloneWithNewOperandsImpl(
 
 HloInfeedInstruction::HloInfeedInstruction(const Shape& infeed_shape,
                                            HloInstruction* token_operand,
-                                           const string& config)
+                                           const std::string& config)
     : HloInstruction(HloOpcode::kInfeed,
                      ShapeUtil::MakeTupleShape(
                          {infeed_shape, ShapeUtil::MakeTokenShape()})),
@@ -2207,7 +2231,7 @@ HloInstructionProto HloInfeedInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloInfeedInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloInfeedInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   if (!options.print_infeed_outfeed_config() || infeed_config_.empty()) {
     return {};
@@ -2249,9 +2273,9 @@ HloInstructionProto HloOutfeedInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloOutfeedInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> extra;
+  std::vector<std::string> extra;
   extra.push_back(StrCat("outfeed_shape=",
                          ShapeUtil::HumanStringWithLayout(outfeed_shape_)));
   if (options.print_infeed_outfeed_config() && !outfeed_config_.empty()) {
@@ -2298,8 +2322,8 @@ HloConvolutionInstruction::HloConvolutionInstruction(
   AppendOperand(rhs);
 }
 
-string HloConvolutionInstruction::ToCategory() const {
-  string category = "convolution";
+std::string HloConvolutionInstruction::ToCategory() const {
+  std::string category = "convolution";
   if (window_util::HasBaseDilation(window())) {
     category += " base-dilated";
   }
@@ -2320,9 +2344,9 @@ HloInstructionProto HloConvolutionInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> extra;
+  std::vector<std::string> extra;
   if (window_.dimensions_size() != 0) {
     extra.push_back(StrCat("window={", window_util::ToString(window()), "}"));
   }
@@ -2336,7 +2360,8 @@ std::vector<string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
     extra.push_back(StrCat("batch_group_count=", batch_group_count_));
   }
 
-  string precision_config_string = PrecisionConfigToString(precision_config_);
+  std::string precision_config_string =
+      PrecisionConfigToString(precision_config_);
   if (!precision_config_string.empty()) {
     extra.push_back(precision_config_string);
   }
@@ -2401,9 +2426,10 @@ HloInstructionProto HloReduceWindowInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloReduceWindowInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloReduceWindowInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> extra;
+  std::vector<std::string> extra;
   if (window_.dimensions_size() != 0) {
     extra.push_back(StrCat("window={", window_util::ToString(window()), "}"));
   }
@@ -2452,9 +2478,10 @@ HloInstructionProto HloSelectAndScatterInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloSelectAndScatterInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloSelectAndScatterInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> extra;
+  std::vector<std::string> extra;
   if (window_.dimensions_size() != 0) {
     extra.push_back(StrCat("window={", window_util::ToString(window()), "}"));
   }
@@ -2484,7 +2511,7 @@ HloSelectAndScatterInstruction::CloneWithNewOperandsImpl(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, string opaque,
+    absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
@@ -2504,7 +2531,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* to_apply, absl::string_view custom_call_target,
-    string opaque, CustomCallApiVersion api_version)
+    std::string opaque, CustomCallApiVersion api_version)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
       feature_group_count_(1),
@@ -2525,7 +2552,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<HloComputation* const> called_computations,
-    absl::string_view custom_call_target, string opaque,
+    absl::string_view custom_call_target, std::string opaque,
     CustomCallApiVersion api_version)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
@@ -2547,7 +2574,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, string opaque,
+    absl::string_view custom_call_target, std::string opaque,
     absl::Span<const Shape> operand_shapes_with_layout,
     CustomCallApiVersion api_version)
     : HloInstruction(HloOpcode::kCustomCall, shape),
@@ -2606,9 +2633,9 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> extra;
+  std::vector<std::string> extra;
   if (window_ != nullptr) {
     extra.push_back(StrCat("window={", window_util::ToString(*window_), "}"));
   }
@@ -2623,7 +2650,8 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   if (batch_group_count_ != 1) {
     extra.push_back(StrCat("batch_group_count=", batch_group_count_));
   }
-  string precision_config_string = PrecisionConfigToString(precision_config_);
+  std::string precision_config_string =
+      PrecisionConfigToString(precision_config_);
   if (!precision_config_string.empty()) {
     extra.push_back(precision_config_string);
   }
@@ -2637,7 +2665,7 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
       StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
 
   if (layout_constrained()) {
-    std::vector<string> shape_strings;
+    std::vector<std::string> shape_strings;
     shape_strings.reserve(operand_shapes_with_layout_.size());
     for (const Shape& shape : operand_shapes_with_layout_) {
       shape_strings.push_back(ShapeUtil::HumanStringWithLayout(shape));
@@ -2652,7 +2680,7 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     extra.push_back(StrCat("literal=", literal_->ToStringWithLayoutOneline()));
   }
   if (!output_to_operand_aliasing_.empty()) {
-    std::vector<string> pair_strings;
+    std::vector<std::string> pair_strings;
     pair_strings.reserve(output_to_operand_aliasing_.size());
     for (const auto& pair : output_to_operand_aliasing_) {
       pair_strings.push_back(StrCat(pair.first.ToString(), ": (",
@@ -2796,7 +2824,7 @@ HloInstructionProto HloPadInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloPadInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloPadInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("padding=", xla::PaddingConfigToString(padding_config_))};
 }
@@ -2867,7 +2895,8 @@ HloInstructionProto HloDynamicSliceInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloDynamicSliceInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloDynamicSliceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("dynamic_slice_sizes={", StrJoin(dynamic_slice_sizes(), ","),
                  "}")};
@@ -2908,21 +2937,21 @@ HloGatherInstruction::HloGatherInstruction(
   absl::c_copy(slice_sizes, std::back_inserter(gather_slice_sizes_));
 }
 
-/*static*/ string HloGatherInstruction::GatherDimensionNumbersToString(
+/*static*/ std::string HloGatherInstruction::GatherDimensionNumbersToString(
     const GatherDimensionNumbers& gather_dimension_numbers) {
-  string offset_dims =
+  std::string offset_dims =
       StrCat("offset_dims={",
              StrJoin(gather_dimension_numbers.offset_dims(), ","), "}");
-  string collapsed_slice_dims = StrCat(
+  std::string collapsed_slice_dims = StrCat(
       "collapsed_slice_dims={",
       StrJoin(gather_dimension_numbers.collapsed_slice_dims(), ","), "}");
-  string start_index_map =
+  std::string start_index_map =
       StrCat("start_index_map={",
              StrJoin(gather_dimension_numbers.start_index_map(), ","), "}");
-  string index_vector_dim =
+  std::string index_vector_dim =
       StrCat("index_vector_dim=", gather_dimension_numbers.index_vector_dim());
 
-  return StrJoin<std::initializer_list<string>>(
+  return StrJoin<std::initializer_list<std::string>>(
       {offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim},
       ", ");
 }
@@ -2956,9 +2985,9 @@ HloInstructionProto HloGatherInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloGatherInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloGatherInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> attrs{
+  std::vector<std::string> attrs{
       GatherDimensionNumbersToString(gather_dimension_numbers()),
       StrCat("slice_sizes={", StrJoin(gather_slice_sizes(), ","), "}")};
   if (indices_are_sorted()) {
@@ -3005,22 +3034,22 @@ HloScatterInstruction::HloScatterInstruction(
       absl::make_unique<ScatterDimensionNumbers>(scatter_dim_numbers);
 }
 
-/*static*/ string HloScatterInstruction::ScatterDimensionNumbersToString(
+/*static*/ std::string HloScatterInstruction::ScatterDimensionNumbersToString(
     const ScatterDimensionNumbers& scatter_dimension_numbers) {
-  string update_window_dims =
+  std::string update_window_dims =
       StrCat("update_window_dims={",
              StrJoin(scatter_dimension_numbers.update_window_dims(), ","), "}");
-  string inserted_window_dims = StrCat(
+  std::string inserted_window_dims = StrCat(
       "inserted_window_dims={",
       StrJoin(scatter_dimension_numbers.inserted_window_dims(), ","), "}");
-  string scatter_dims_to_operand_dims = StrCat(
+  std::string scatter_dims_to_operand_dims = StrCat(
       "scatter_dims_to_operand_dims={",
       StrJoin(scatter_dimension_numbers.scatter_dims_to_operand_dims(), ","),
       "}");
-  string index_vector_dim =
+  std::string index_vector_dim =
       StrCat("index_vector_dim=", scatter_dimension_numbers.index_vector_dim());
 
-  return StrJoin<std::initializer_list<string>>(
+  return StrJoin<std::initializer_list<std::string>>(
       {update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims,
        index_vector_dim},
       ", ");
@@ -3055,9 +3084,9 @@ HloInstructionProto HloScatterInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloScatterInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloScatterInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> attrs{
+  std::vector<std::string> attrs{
       ScatterDimensionNumbersToString(scatter_dimension_numbers())};
   if (indices_are_sorted()) {
     attrs.push_back("indices_are_sorted=true");
@@ -3101,7 +3130,7 @@ HloInstructionProto HloIotaInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloIotaInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloIotaInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("iota_dimension=", iota_dimension())};
 }
@@ -3138,12 +3167,13 @@ HloInstructionProto HloDotInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloDotInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloDotInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  std::vector<string> extra = {
+  std::vector<std::string> extra = {
       DotDimensionNumbersToString(dot_dimension_numbers_)};
 
-  string precision_config_string = PrecisionConfigToString(precision_config_);
+  std::string precision_config_string =
+      PrecisionConfigToString(precision_config_);
   if (!precision_config_string.empty()) {
     extra.push_back(precision_config_string);
   }
@@ -3180,7 +3210,7 @@ HloDomainInstruction::HloDomainInstruction(
   AppendOperand(operand);
 }
 
-std::vector<string> HloDomainInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloDomainInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
     return {StrCat("domain={kind=\"", operand_side_metadata_->Kind(),
@@ -3241,7 +3271,8 @@ HloInstructionProto HloGetDimensionSizeInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloGetDimensionSizeInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloGetDimensionSizeInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& /*options*/) const {
   return {StrCat("dimensions={", dimension(), "}")};
 }
@@ -3275,7 +3306,8 @@ HloSetDimensionSizeInstruction::HloSetDimensionSizeInstruction(
   AppendOperand(val);
 }
 
-std::vector<string> HloSetDimensionSizeInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloSetDimensionSizeInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& /*options*/) const {
   return {StrCat("dimensions={", dimension(), "}")};
 }
@@ -3316,7 +3348,7 @@ HloInstructionProto HloRngGetAndUpdateStateInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string>
+std::vector<std::string>
 HloRngGetAndUpdateStateInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& /*options*/) const {
   return {StrCat("delta=", delta())};
@@ -3354,7 +3386,8 @@ HloInstructionProto HloRngBitGeneratorInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<string> HloRngBitGeneratorInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string>
+HloRngBitGeneratorInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("algorithm=", RandomAlgorithmToString(algorithm_))};
 }

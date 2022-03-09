@@ -36,7 +36,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
   """A `dummy` generator dataset."""
 
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
-               source_device, element_spec):
+               source_device, element_spec, iterator_is_anonymous):
     self._element_spec = element_spec
 
     multi_device_iterator_string_handle = (
@@ -97,6 +97,11 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
 
     self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs
+
+    if iterator_is_anonymous:
+      self._next_captured_args = self._next_captured_args + [
+          multi_device_iterator_resource
+      ]
 
     self._incarnation_id_index = -1
     for i, arg in enumerate(self._next_captured_args):
@@ -262,10 +267,13 @@ class MultiDeviceIterator(object):
     self._prototype_device_datasets = []
     for i, device in enumerate(self._devices):
       with ops.device(device):
-        ds = _PerDeviceGenerator(i, self._multi_device_iterator_resource,
-                                 self._incarnation_id,
-                                 self._source_device_tensor,
-                                 self._dataset.element_spec)
+        ds = _PerDeviceGenerator(
+            i,
+            self._multi_device_iterator_resource,
+            self._incarnation_id,
+            self._source_device_tensor,
+            self._dataset.element_spec,
+            iterator_is_anonymous=False)
         self._prototype_device_datasets.append(ds)
 
     # TODO(rohanj): Explore the possibility of the MultiDeviceIterator to
@@ -291,18 +299,6 @@ class MultiDeviceIterator(object):
           iterator.initializer for iterator in self._device_iterators
       ]
       self._initializer = control_flow_ops.group(*device_iterator_initializers)
-
-  def _create_device_dataset(self, i):
-    """Uses _prototype_device_datasets[i] to build a dataset for the device."""
-    ds = self._prototype_device_datasets[i]
-    ds = _ReincarnatedPerDeviceGenerator(ds, self._incarnation_id)
-    if self._prefetch_buffer_size > 0:
-      if self._experimental_slack:
-        ds = dataset_ops.PrefetchDataset(
-            ds, self._prefetch_buffer_size, slack_period=1)
-      else:
-        ds = ds.prefetch(self._prefetch_buffer_size)
-    return ds
 
   def get_next(self, device=None):
     """Returns the next element given a `device`, else returns all in a list."""
@@ -356,44 +352,6 @@ class MultiDeviceIterator(object):
     return self._dataset.element_spec
 
 
-class MultiDeviceIteratorResourceDeleter(object):
-  """An object which cleans up a Multi Device Iterator resource.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectible.
-  """
-
-  __slots__ = [
-      "_deleter", "_multi_device_iterator", "_iterators", "_device",
-      "_eager_mode"
-  ]
-
-  def __init__(self, multi_device_iterator, iterators, device, deleter):
-    self._deleter = deleter
-    self._multi_device_iterator = multi_device_iterator
-    self._iterators = iterators
-    self._device = device
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    with ops.device(self._device):
-      # Make sure the resource is deleted in the same mode as it was created in.
-      # We pass in the iterator handles as inputs to the op to make sure that
-      # this op runs after all the iterators are deleted.
-      if self._eager_mode:
-        with context.eager_mode():
-          gen_dataset_ops.delete_multi_device_iterator(
-              multi_device_iterator=self._multi_device_iterator,
-              iterators=self._iterators,
-              deleter=self._deleter)
-      else:
-        with context.graph_mode():
-          gen_dataset_ops.delete_multi_device_iterator(
-              multi_device_iterator=self._multi_device_iterator,
-              iterators=self._iterators,
-              deleter=self._deleter)
-
-
 class MultiDeviceIteratorSpec(type_spec.TypeSpec):
   """Type specification for `OwnedMultiDeviceIterator`."""
 
@@ -415,7 +373,6 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
   def _component_specs(self):
     specs = [
         tensor_spec.TensorSpec([], dtypes.resource),
-        tensor_spec.TensorSpec([], dtypes.variant)
     ]
     for _ in range(len(self._devices)):
       specs.append(iterator_ops.IteratorSpec(self._element_spec))
@@ -423,7 +380,7 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
 
   def _to_components(self, value):
     # pylint: disable=protected-access
-    c = [value._multi_device_iterator_resource, value._deleter]
+    c = [value._multi_device_iterator_resource]
     c.extend(value._device_iterators)
     return c
 
@@ -502,11 +459,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       self._devices = devices
       self._source_device = source_device
       self._multi_device_iterator_resource = components[0]
-      self._deleter = components[1]
-      self._device_iterators = components[2:]
-      iterator_handles = []
-      for it in self._device_iterators:
-        iterator_handles.append(it._iterator_resource)  # pylint: disable=protected-access
+      self._device_iterators = components[1:]
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(
@@ -527,8 +480,8 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
 
       # Create the MultiDeviceIterator.
       with ops.device(self._source_device):
-        self._multi_device_iterator_resource, self._deleter = (
-            gen_dataset_ops.anonymous_multi_device_iterator(
+        self._multi_device_iterator_resource = (
+            gen_dataset_ops.anonymous_multi_device_iterator_v3(
                 devices=self._devices, **dataset._flat_structure))  # pylint: disable=protected-access
 
         # The incarnation ID is used to ensure consistency between the
@@ -541,9 +494,14 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       prototype_device_datasets = []
       for i, device in enumerate(self._devices):
         with ops.device(device):
-          ds = _PerDeviceGenerator(i, self._multi_device_iterator_resource,
-                                   incarnation_id, source_device_tensor,
-                                   dataset.element_spec)
+          ds = _PerDeviceGenerator(
+              i,
+              self._multi_device_iterator_resource,
+              incarnation_id,
+              source_device_tensor,
+              dataset.element_spec,
+              iterator_is_anonymous=True,
+          )
           prototype_device_datasets.append(ds)
 
       # TODO(rohanj): Explore the possibility of the MultiDeviceIterator to
@@ -552,7 +510,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       # into the device side from its input. It might be useful in rewriting.
       # Create the per device iterators.
       self._device_iterators = []
-      iterator_handles = []
+
       for i, device in enumerate(self._devices):
         with ops.device(device):
           ds = _create_device_dataset(prototype_device_datasets[i],
@@ -560,13 +518,6 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
                                       experimental_slack)
           iterator = iter(ds)
           self._device_iterators.append(iterator)
-          iterator_handles.append(iterator._iterator_resource)  # pylint: disable=protected-access
-
-      self._resource_deleter = MultiDeviceIteratorResourceDeleter(
-          multi_device_iterator=self._multi_device_iterator_resource,
-          iterators=iterator_handles,
-          device=self._source_device,
-          deleter=self._deleter)
 
   def get_next(self, device=None):
     """Returns the next element given a `device`, else returns all in a list."""

@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/compile_cache_item.pb.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
@@ -132,13 +132,17 @@ llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
         llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
   };
 
-  // Register all the symbols.
+  // Register TF framework symbols.
   bind("_mlir_ciface_tf_alloc", &_mlir_ciface_tf_alloc);
   bind("_mlir_ciface_tf_dealloc", &_mlir_ciface_tf_dealloc);
   bind("_mlir_ciface_tf_report_error", &_mlir_ciface_tf_report_error);
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
   bind("_mlir_ciface_tf_launch_kernel", &_mlir_ciface_tf_launch_kernel);
 #endif
+
+  // Register malloc/free to avoid unexpected implementations from shared libs.
+  bind("malloc", &malloc);
+  bind("free", &free);
 
   return symbol_map;
 }
@@ -147,7 +151,7 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
     const std::string code, llvm::SmallVectorImpl<std::string>& architectures,
     llvm::SmallVectorImpl<int64_t>& tile_sizes,
     llvm::SmallVectorImpl<int64_t>& unroll_factors, int64_t max_supported_rank,
-    bool enable_ftz, bool cpu_codegen) {
+    bool enable_ftz, bool index_64bit, bool cpu_codegen) {
   std::string cache_dir;
   if (const char* dir = getenv(kTFJitCacheDirEnvVar.data())) {
     cache_dir = dir;
@@ -170,18 +174,19 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   }
 
   // Create the kernel.
-  mlir::OwningModuleRef module;
+  mlir::OwningOpRef<mlir::ModuleOp> module;
   mlir::MLIRContext context;
 
   if (item.result_module().empty()) {
     // Otherwise, compile the module now.
-    tensorflow::StatusOr<mlir::OwningModuleRef> status_or_module =
+    tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> status_or_module =
         tensorflow::kernel_gen::GenerateKernelForTfCode(
             context, code, architectures, tile_sizes, unroll_factors,
             max_supported_rank, /*embed_memref_prints=*/false,
             /*print_ptx=*/false, /*print_llvmir=*/false, enable_ftz,
-            cpu_codegen,
-            /*jit_compile=*/false);
+            index_64bit, cpu_codegen,
+            /*jit_compile=*/false,
+            /*jit_i64_indexed_for_large_tensors=*/false);
     if (!status_or_module.ok()) return nullptr;
     module = std::move(status_or_module.ValueOrDie());
 
@@ -209,9 +214,10 @@ llvm::Expected<std::unique_ptr<ExecutionEngine>> Compile(
   // Create execution engine with an inner optimization pipeline.
   auto opt_pipeline = mlir::makeOptimizingTransformer(
       /*optLevel=*/2, /*sizeLevel=*/0, /*targetMachine=*/nullptr);
+  mlir::ExecutionEngineOptions engine_options;
+  engine_options.transformer = opt_pipeline;
   llvm::Expected<std::unique_ptr<ExecutionEngine>> engine =
-      mlir::ExecutionEngine::create(module.get(), /*llvmModuleBuilder=*/nullptr,
-                                    opt_pipeline);
+      mlir::ExecutionEngine::create(module.get(), engine_options);
   if (!engine) return nullptr;
 
   // Finally, register the missing symbols.
@@ -234,7 +240,7 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
     void* op_kernel_ctx, char* code, int64_t num_tile_sizes,
     int64_t* tile_sizes_ptr, int64_t num_unroll_factors,
     int64_t* unroll_factors_ptr, int64_t max_supported_rank, bool enable_ftz,
-    bool cpu_codegen) {
+    bool index_64bit, bool cpu_codegen) {
   // Get the resource manager.
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
   tensorflow::ResourceMgr* rm = ctx->resource_manager();
@@ -278,7 +284,7 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
   // Lookup or compile the execution module.
   ExecutionEngine* engine = jit_cache->LookupOrCompile(code, [&]() {
     return Compile(code, architectures, tile_sizes, unroll_factors,
-                   max_supported_rank, enable_ftz, cpu_codegen);
+                   max_supported_rank, enable_ftz, index_64bit, cpu_codegen);
   });
   if (engine == nullptr) {
     ReportError(op_kernel_ctx, ErrorCode::UNKNOWN, "JIT compilation failed.");

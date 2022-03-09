@@ -98,27 +98,6 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       py::return_value_policy::reference);
 
   m.def(
-      "TF_DATA_GetElementSpec",
-      [](int64_t dataset_id, const std::string& address,
-         const std::string& protocol) -> py::bytes {
-        std::string element_spec;
-        tensorflow::data::DataServiceDispatcherClient client(address, protocol);
-        int64_t deadline_micros = tensorflow::kint64max;
-        tensorflow::Status status;
-        Py_BEGIN_ALLOW_THREADS;
-        status = tensorflow::data::grpc_util::Retry(
-            [&]() { return client.GetElementSpec(dataset_id, element_spec); },
-            /*description=*/
-            tensorflow::strings::StrCat(
-                "get the element_spec with dispatcher at ", address),
-            deadline_micros);
-        Py_END_ALLOW_THREADS;
-        tensorflow::MaybeRaiseFromStatus(status);
-        return py::bytes(element_spec);
-      },
-      py::return_value_policy::reference);
-
-  m.def(
       "TF_DATA_GetDataServiceMetadata",
       [](int64_t dataset_id, const std::string& address,
          const std::string& protocol) -> tensorflow::data::DataServiceMetadata {

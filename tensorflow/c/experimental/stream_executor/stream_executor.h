@@ -450,9 +450,15 @@ typedef struct SP_Platform {
   // Whether to wrap allocator for this device with an allocator that uses BFC
   // (best-fit with coalescing) strategy.
   TF_Bool use_bfc_allocator;
+
+  // Whether to force the memory allocations to grow over time instead of
+  // allocating it all at once. When this is set to true, the value of
+  // allow_growth is ignored.
+  TF_Bool force_memory_growth;
 } SP_Platform;
 
-#define SP_PLATFORM_STRUCT_SIZE TF_OFFSET_OF_END(SP_Platform, use_bfc_allocator)
+#define SP_PLATFORM_STRUCT_SIZE \
+  TF_OFFSET_OF_END(SP_Platform, force_memory_growth)
 
 typedef struct SP_PlatformFns {
   size_t struct_size;

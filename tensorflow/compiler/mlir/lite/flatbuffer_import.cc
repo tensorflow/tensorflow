@@ -46,9 +46,9 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -62,7 +62,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -90,7 +90,7 @@ using mlir::MLIRContext;
 using mlir::OpBuilder;
 using mlir::Operation;
 using mlir::OperationState;
-using mlir::OwningModuleRef;
+using mlir::OwningOpRef;
 using mlir::RankedTensorType;
 using mlir::UnrankedTensorType;
 using mlir::Value;
@@ -120,7 +120,7 @@ Location TensorLoc(const TensorT& tensor, Builder builder, Location base) {
   if (tensor.name.empty()) {
     return base;
   }
-  return mlir::NameLoc::get(builder.getIdentifier(tensor.name), base);
+  return mlir::NameLoc::get(builder.getStringAttr(tensor.name), base);
 }
 
 // Create the MLIR Location corresponding to a given op. This is an
@@ -853,8 +853,8 @@ StatusOr<Operation*> ConvertOp(
     // with `none` value,
     llvm::SmallVector<Value, 4> none_operands(
         input_max_num - op_input_num,
-        builder.create<mlir::ConstantOp>(loc, builder.getNoneType(),
-                                         builder.getUnitAttr()));
+        builder.create<mlir::TFL::NoValueOp>(loc, builder.getNoneType(),
+                                             builder.getUnitAttr()));
     op_state.addOperands(ArrayRef<Value>(none_operands));
   }
 
@@ -1069,11 +1069,14 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
 }
 
 // Helper method that returns the index of the tensor with name 'tensor_name'
-// in the list of tensor names 'tensors'.
+// in the list of tensor names 'tensors'. It allows excluding some indices.
 int GetTensorIndex(const std::string& tensor_name,
-                   llvm::SmallVector<llvm::StringRef, 2> tensors) {
+                   llvm::SmallVector<llvm::StringRef, 2> tensors,
+                   const std::set<int>& exclude_indices = {}) {
   for (const auto& tensor_index_pair : llvm::enumerate(tensors)) {
-    if (tensor_index_pair.value() == tensor_name)
+    if (tensor_index_pair.value() == tensor_name &&
+        exclude_indices.find(tensor_index_pair.index()) ==
+            exclude_indices.end())
       return tensor_index_pair.index();
   }
   return -1;
@@ -1122,9 +1125,13 @@ void SetSignature(
         mlir::ArrayAttr::get(context, {mlir::StringAttr::get(
                                           context, input_pair.value()->name)}));
   }
+  // Multiple signature outputs can refer to the same tensor. Avoid setting
+  // signature output attribute at the same index by maintaining a set.
+  std::set<int> seen_indices;
   for (auto output_pair : llvm::enumerate(signature->outputs)) {
-    const int arg_index = GetTensorIndex(
-        tensors[output_pair.value()->tensor_index]->name, output_names);
+    const int arg_index =
+        GetTensorIndex(tensors[output_pair.value()->tensor_index]->name,
+                       output_names, seen_indices);
     if (arg_index == -1) {
       func->emitWarning("Invalid signature tensors specified.");
       return;
@@ -1133,6 +1140,7 @@ void SetSignature(
                        mlir::ArrayAttr::get(
                            context, {mlir::StringAttr::get(
                                         context, output_pair.value()->name)}));
+    seen_indices.insert(arg_index);
   }
   func->setAttr(
       kExportedNameAttr,
@@ -1164,7 +1172,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   llvm::SmallVector<mlir::Type, 2> ret_types;
   llvm::SmallVector<mlir::Type, 4> input_types;
 
-  auto func_loc = mlir::NameLoc::get(builder.getIdentifier(name), base_loc);
+  auto func_loc = mlir::NameLoc::get(builder.getStringAttr(name), base_loc);
 
   std::vector<int> func_inputs = subgraph.inputs;
   if (is_entry_point && !ordered_input_arrays.empty()) {
@@ -1305,8 +1313,8 @@ StatusOr<FuncOp> ConvertSubgraph(
         if (maybe_optional_arg_marker == nullptr) {
           maybe_optional_arg_marker =
               op_builder
-                  .create<mlir::ConstantOp>(base_loc, builder.getNoneType(),
-                                            builder.getUnitAttr())
+                  .create<mlir::TFL::NoValueOp>(base_loc, builder.getNoneType(),
+                                                builder.getUnitAttr())
                   .getResult();
         }
       } else if (!vals_map.at(input_num)) {
@@ -1385,7 +1393,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     return_operands.push_back(vals_map[index]);
   }
 
-  op_builder.create<mlir::ReturnOp>(base_loc, return_operands);
+  op_builder.create<mlir::func::ReturnOp>(base_loc, return_operands);
 
   return PostProcessFuncOp(func);
 }
@@ -1410,12 +1418,13 @@ std::string SubgraphName(bool set_implicit_main_func, unsigned index,
 void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
   OpBuilder op_builder{region};
   region.push_back(new mlir::Block());
-  region.addArguments(func.getType().getInputs());
+  Location loc = region.getLoc();
+  auto inputs = func.getType().getInputs();
+  region.addArguments(inputs, mlir::SmallVector<Location>(inputs.size(), loc));
   op_builder.setInsertionPointToStart(&region.front());
-  auto call_op = op_builder.create<mlir::CallOp>(
-      region.getLoc(), func.getType().getResults(), func.sym_name(),
-      region.getArguments());
-  op_builder.create<mlir::TFL::YieldOp>(region.getLoc(), call_op.getResults());
+  auto call_op = op_builder.create<mlir::func::CallOp>(
+      loc, func.getType().getResults(), func.sym_name(), region.getArguments());
+  op_builder.create<mlir::TFL::YieldOp>(loc, call_op.getResults());
 }
 
 // TFL::WhileOp has regions, so we add CallOp to call the FuncOp in the regions
@@ -1435,13 +1444,13 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
 }
 }  // namespace
 
-OwningModuleRef tflite::FlatBufferToMlir(
+OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     absl::string_view buffer, MLIRContext* context, Location base_loc,
     bool use_external_constant,
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally) {
-  context->loadDialect<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+  context->loadDialect<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                        mlir::quant::QuantizationDialect,
                        mlir::TFL::TensorFlowLiteDialect,
                        mlir::TF::TensorFlowDialect>();
@@ -1512,5 +1521,5 @@ OwningModuleRef tflite::FlatBufferToMlir(
     module.push_back(func_or_error.ConsumeValueOrDie());
   }
   AddRegionsForTflWhileOp(module);
-  return OwningModuleRef(module);
+  return OwningOpRef<mlir::ModuleOp>(module);
 }

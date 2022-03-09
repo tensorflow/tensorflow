@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 
 namespace mlir {
 class FuncOp;
@@ -30,14 +31,14 @@ class Type;
 
 namespace TFL {
 using StringSet = absl::flat_hash_set<std::string>;
-class QuantizationSpecs;
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 // When the given run_tfl_runtime_verification value is true, it will check each
 // TFL builtin op towards the TFL runtime capability and the incompatible TF ops
-// will be left in the graph without getting legalized.
+// will be left in the graph without getting legalized. If `preserve_assert_op`
+// is true, the TF::AssertOp will not be removed.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
-    bool run_tfl_runtime_verification);
+    bool run_tfl_runtime_verification, bool preserve_assert_op = false);
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
@@ -52,12 +53,15 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
 // pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
     bool allow_tensorlist_pass_through = false,
-    bool default_to_single_batch = false);
+    bool default_to_single_batch = false,
+    bool enable_dynamic_update_slice = false);
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
+// Use quant_specs.ops_blocklist and quant_specs.nodes_blocklist if possible
+// as they are now structure variables of QuantizationSpecs.
 std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
-    const QuantizationSpecs& quant_specs, const StringSet& ops_blocklist = {},
-    const StringSet& nodes_blocklist = {});
+    const quant::QuantizationSpecs& quant_specs,
+    const StringSet& ops_blocklist = {}, const StringSet& nodes_blocklist = {});
 
 // Overloading of CreateQuantizePass which takes only necessary flags to reduce
 // the binary size.
@@ -68,16 +72,16 @@ std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
-    const QuantizationSpecs& quant_specs);
+    const quant::QuantizationSpecs& quant_specs);
 
 // Creates an instance of the TensorFlow Lite dialect
 // PrepareDynamicRangeQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicRangeQuantizePass(
-    const QuantizationSpecs& quant_specs);
+    const quant::QuantizationSpecs& quant_specs);
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
-    bool emit_quant_adaptor_ops);
+    bool emit_quant_adaptor_ops, const quant::CustomOpMap& custom_op_map = {});
 
 // Creates an instance of the TensorFlow Lite pass that decomposes hybrid
 // quantization patterns to the same dense operation with tfl dequantization

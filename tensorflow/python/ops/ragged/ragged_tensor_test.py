@@ -21,6 +21,7 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1454,7 +1455,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           output_ragged_rank=1,
           input_ragged_rank=1)
 
-  def _testRaggedVarientGradient(self, func, x, expected_grad):
+  def _testRaggedVariantGradient(self, func, x, expected_grad):
     x = constant_op.constant(x)
     if context.executing_eagerly():
       with backprop.GradientTape() as t:
@@ -1464,7 +1465,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     else:
       y = func(x)
       g = gradients_impl.gradients(ys=y, xs=x)[0]
-    self.assertAllClose(g, expected_grad)
+    self.assertAllClose(ops.convert_to_tensor(g), expected_grad)
 
   def testRaggedVariantGradients(self):
 
@@ -1475,9 +1476,32 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       rt3 = RaggedTensor._from_variant(v, dtype=rt2.dtype, output_ragged_rank=1)
       return rt3.flat_values
 
-    self._testRaggedVarientGradient(
+    self._testRaggedVariantGradient(
         func, [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
         [10., 10., 10., 10., 100., 100., 100., 1000.])
+
+  def testRaggedVariantGradientsEmptyRows(self):
+
+    def func(x):
+      rt1 = RaggedTensor.from_row_splits(
+          values=x, row_splits=[0, 2, 2, 4, 7, 7, 8])
+      rt2 = rt1 * [[10], [20], [30], [40], [50], [60]]
+      v = rt2._to_variant(batched_input=False)
+      rt3 = RaggedTensor._from_variant(v, dtype=rt2.dtype, output_ragged_rank=1)
+      return rt3.flat_values
+
+    self._testRaggedVariantGradient(func,
+                                    [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
+                                    [10., 10., 30., 30., 40., 40., 40., 60.])
+
+  def testRaggedVariantSteps(self):
+    x = [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0]
+    rt1 = RaggedTensor.from_row_splits(values=x, row_splits=[0, 4, 7, 8])
+    rt2 = rt1 * [[10], [100], [1000]]
+    v = rt2._to_variant(batched_input=False)
+    rt3 = RaggedTensor._from_variant(v, dtype=rt2.dtype, output_ragged_rank=1)
+    self.assertAllClose([30., 10., 40., 10., 100., 0., 200., 1000.],
+                        rt3.flat_values)
 
   def testRaggedVariantGradientsBatched(self):
 
@@ -1488,9 +1512,35 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       rt3 = RaggedTensor._from_variant(v, dtype=rt2.dtype, output_ragged_rank=1)
       return rt3.flat_values
 
-    self._testRaggedVarientGradient(
+    self._testRaggedVariantGradient(
         func, [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
         [10., 10., 10., 10., 100., 100., 100., 1000.])
+
+  def testRaggedVariantGradientsEmptyRowsBatched(self):
+
+    def func(x):
+      rt1 = RaggedTensor.from_row_splits(
+          values=x, row_splits=[0, 2, 2, 4, 7, 7, 8])
+      rt2 = rt1 * [[10], [20], [30], [40], [50], [60]]
+      v = rt2._to_variant(batched_input=True)
+      rt3 = RaggedTensor._from_variant(v, dtype=rt2.dtype, output_ragged_rank=1)
+      return rt3.flat_values
+
+    self._testRaggedVariantGradient(func,
+                                    [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
+                                    [10., 10., 30., 30., 40., 40., 40., 60.])
+
+  def testRaggedVariantGradientsEmptyOutputBatched(self):
+
+    def func(x):
+      rt1 = RaggedTensor.from_row_splits(
+          values=x, row_splits=[0, 0, 0, 0, 0, 0, 0])
+      rt2 = rt1 * [[10], [20], [30], [40], [50], [60]]
+      v = rt2._to_variant(batched_input=True)
+      rt3 = RaggedTensor._from_variant(v, dtype=rt2.dtype, output_ragged_rank=1)
+      return rt3.flat_values
+
+    self._testRaggedVariantGradient(func, [], [])
 
   def testRaggedVariantGradientsBatchedAndSliced(self):
 
@@ -1501,15 +1551,44 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return RaggedTensor._from_variant(
           v_slice, dtype=rt2.dtype, output_ragged_rank=0)
 
-    self._testRaggedVarientGradient(
+    self._testRaggedVariantGradient(
         functools.partial(func, i=0), [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
         [10., 10., 10., 10., 0., 0., 0., 0.])
-    self._testRaggedVarientGradient(
+    self._testRaggedVariantGradient(
         functools.partial(func, i=1), [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
         [0., 0., 0., 0., 100., 100., 100., 0.])
-    self._testRaggedVarientGradient(
+    self._testRaggedVariantGradient(
         functools.partial(func, i=2), [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
         [0., 0., 0., 0., 0., 0., 0., 1000.])
+
+  def testRaggedVariantGradientsEmptyRowsBatchedAndSliced(self):
+
+    def func(x, i):
+      rt1 = RaggedTensor.from_row_splits(
+          values=x, row_splits=[0, 2, 2, 4, 7, 7, 8])
+      rt2 = rt1 * [[10], [20], [30], [40], [50], [60]]
+      v_slice = rt2._to_variant(batched_input=True)[i]
+      return RaggedTensor._from_variant(
+          v_slice, dtype=rt2.dtype, output_ragged_rank=0)
+
+    self._testRaggedVariantGradient(
+        functools.partial(func, i=0), [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
+        [10., 10., 0., 0., 0., 0., 0., 0.])
+    self._testRaggedVariantGradient(
+        functools.partial(func, i=1), [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
+        [0., 0., 0., 0., 0., 0., 0., 0.])
+    self._testRaggedVariantGradient(
+        functools.partial(func, i=2), [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
+        [0., 0., 30., 30., 0., 0., 0., 0.])
+    self._testRaggedVariantGradient(
+        functools.partial(func, i=3), [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
+        [0., 0., 0., 0., 40., 40., 40., 0.])
+    self._testRaggedVariantGradient(
+        functools.partial(func, i=4), [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
+        [0., 0., 0., 0., 0., 0., 0., 0.])
+    self._testRaggedVariantGradient(
+        functools.partial(func, i=5), [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
+        [0., 0., 0., 0., 0., 0., 0., 60.])
 
   def testRaggedVariantGradientsRaggedRank0(self):
 
@@ -1519,7 +1598,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           [], x2, batched_input=False)
       return RaggedTensor._from_variant(v, dtype=x2.dtype, output_ragged_rank=0)
 
-    self._testRaggedVarientGradient(func,
+    self._testRaggedVariantGradient(func,
                                     [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
                                     [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0])
 
@@ -1533,7 +1612,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       rt3 = RaggedTensor._from_variant(v, dtype=x2.dtype, output_ragged_rank=3)
       return rt3.flat_values
 
-    self._testRaggedVarientGradient(func,
+    self._testRaggedVariantGradient(func,
                                     [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
                                     [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0])
 
@@ -1549,7 +1628,35 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
       return math_ops.reduce_sum(map_fn.map_fn(transform_row, rt))
 
-    self._testRaggedVarientGradient(func, 3.0, 14.653377)
+    self._testRaggedVariantGradient(func, 3.0, 14.653377)
+
+  def testRaggedVariantGradientsEmptyRowsViaMapFn(self):
+    rt = RaggedTensor.from_row_splits(
+        values=[3, 1.0, 4, 1, 5, 9, 2, 6], row_splits=[0, 2, 2, 4, 7, 7, 8])
+
+    def func(x):
+
+      def transform_row(row):
+        return math_ops.sqrt(
+            math_ops.reduce_mean(math_ops.square(row * x), keepdims=True))
+
+      return math_ops.reduce_sum(map_fn.map_fn(transform_row, rt))
+
+    self._testRaggedVariantGradient(func, 3.0, 17.206844)
+
+  def testRaggedVariantGradientsEmptyOutputViaMapFn(self):
+    rt = RaggedTensor.from_row_splits(
+        values=[], row_splits=[0, 0, 0, 0])
+
+    def func(x):
+
+      def transform_row(row):
+        return math_ops.sqrt(
+            math_ops.reduce_mean(math_ops.square(row * x), keepdims=True))
+
+      return math_ops.reduce_sum(map_fn.map_fn(transform_row, rt))
+
+    self._testRaggedVariantGradient(func, 3.0, 0.0)
 
   def testRaggedVariantGradientsViaMapFnReduce(self):
 
@@ -1560,9 +1667,35 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           rt1,
           fn_output_signature=tensor_spec.TensorSpec((), x.dtype))
 
-    self._testRaggedVarientGradient(func,
+    self._testRaggedVariantGradient(func,
                                     [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
                                     [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0])
+
+  def testRaggedVariantGradientsEmptyRowsViaMapFnReduce(self):
+
+    def func(x):
+      rt1 = RaggedTensor.from_row_splits(
+          values=x, row_splits=[0, 2, 2, 4, 7, 7, 8])
+      return map_fn.map_fn(
+          math_ops.reduce_max,
+          rt1,
+          fn_output_signature=tensor_spec.TensorSpec((), x.dtype))
+
+    self._testRaggedVariantGradient(func,
+                                    [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
+                                    [1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0])
+
+  def testRaggedVariantGradientsEmptyOutputViaMapFnReduce(self):
+
+    def func(x):
+      rt1 = RaggedTensor.from_row_splits(
+          values=x, row_splits=[0, 0, 0, 0])
+      return map_fn.map_fn(
+          math_ops.reduce_max,
+          rt1,
+          fn_output_signature=tensor_spec.TensorSpec((), x.dtype))
+
+    self._testRaggedVariantGradient(func, [], [])
 
   def testRaggedVariantGradientsErrors(self):
     if context.executing_eagerly():
@@ -1814,6 +1947,48 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertAllTensorsEqual(actual_components, components)
     rt_reconstructed = rt_spec._from_components(actual_components)
     self.assertAllEqual(rt, rt_reconstructed)
+
+  @parameterized.parameters([
+      {
+          'flat_value_spec': tensor_spec.TensorSpec(None, dtypes.float32),
+          'row_splits_spec': tensor_spec.TensorSpec(None, dtypes.int64),
+      },
+      {
+          'flat_value_spec': tensor_spec.TensorSpec([None,], dtypes.float32),
+          'row_splits_spec': tensor_spec.TensorSpec(None, dtypes.int64),
+      },
+      {
+          'flat_value_spec': tensor_spec.TensorSpec(None, dtypes.float32),
+          'row_splits_spec': tensor_spec.TensorSpec([None,], dtypes.int64),
+      },
+      {
+          'flat_value_spec': tensor_spec.TensorSpec([None,], dtypes.float32),
+          'row_splits_spec': tensor_spec.TensorSpec([None,], dtypes.int64),
+      },
+      {
+          'flat_value_spec': tensor_spec.TensorSpec([4,], dtypes.float32),
+          'row_splits_spec': tensor_spec.TensorSpec(None, dtypes.int64),
+      },
+      {
+          'flat_value_spec': tensor_spec.TensorSpec(None, dtypes.float32),
+          'row_splits_spec': tensor_spec.TensorSpec([3,], dtypes.int64),
+      },
+  ])
+  def testToFromComponentsStaticUnknownShape(self, flat_value_spec,
+                                             row_splits_spec):
+    rt_spec = RaggedTensorSpec(shape=[2, None], ragged_rank=1)
+    tester = self
+
+    @def_function.function(input_signature=[flat_value_spec, row_splits_spec])
+    def test_fn(flat_value, row_splits):
+      # Apply static shape information saved in rt_spec to rt.
+      rt = rt_spec._from_components([flat_value, row_splits])
+      tester.assertEqual(rt.shape.as_list(), [2, None])
+      return rt + ragged_factory_ops.constant([[1.0, 1.0, 1.0], [1.0]])
+
+    result = test_fn([1.0, 2.0, 3.0, 4.0], [0, 3, 4])
+    expected_result = ragged_factory_ops.constant([[2.0, 3.0, 4.0], [5.0]])
+    self.assertAllEqual(result, expected_result)
 
   @test_util.run_v1_only('RaggedTensorValue is deprecated in v2')
   def testFromNumpyComponents(self):

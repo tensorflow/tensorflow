@@ -33,7 +33,7 @@ class DistributedRuntimeClient {
  public:
   struct Options {
     // This node's global ID. Required.
-    int32 node_id = -1;
+    int32_t node_id = -1;
 
     // Environment used for starting threads.
     tensorflow::Env* env = tensorflow::Env::Default();

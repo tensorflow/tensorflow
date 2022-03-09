@@ -23,11 +23,14 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/hash/hash.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -42,10 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -106,10 +106,10 @@ using DimensionVector = absl::InlinedVector<int64_t, InlineRank()>;
       &XLA_TimerStats##counter);
 
 struct TimerStats {
-  tensorflow::mutex stats_mutex;
+  absl::Mutex stats_mutex;
   double cumulative_secs ABSL_GUARDED_BY(stats_mutex) = 0;
   double max_secs ABSL_GUARDED_BY(stats_mutex) = 0;
-  uint64 times_called ABSL_GUARDED_BY(stats_mutex) = 0;
+  uint64_t times_called ABSL_GUARDED_BY(stats_mutex) = 0;
 };
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
@@ -123,7 +123,7 @@ class ScopedLoggingTimer {
   // line: Line number to display in logging.
   // `timer_stats`: unowned non-null pointer which is used to populate the
   // global timer statistics.
-  ScopedLoggingTimer(const std::string& label, bool enabled, const char* file,
+  ScopedLoggingTimer(absl::string_view label, bool enabled, const char* file,
                      int line, TimerStats* timer_stats);
 
   // Stop the timer and log the tracked time. Timer is disabled after this
@@ -133,12 +133,12 @@ class ScopedLoggingTimer {
   ~ScopedLoggingTimer();
 
  private:
+  const std::string label_;
+  const char* const file_;
+  const int line_;
+  TimerStats* const timer_stats_;
+  uint64_t start_micros_;
   bool enabled_;
-  const char* file_;
-  int line_;
-  string label_;
-  uint64 start_micros_;
-  TimerStats* timer_stats_;
 };
 
 // Given a vector<T>, returns a Span<char> that points at its
@@ -147,23 +147,23 @@ class ScopedLoggingTimer {
 // Warning: if the vector is updated its storage pointer may change, so use this
 // with caution (ideally in limited scopes with temporary lifetimes).
 template <typename T>
-absl::Span<uint8> MutableByteSlice(std::vector<T>* v) {
-  return absl::Span<uint8>(reinterpret_cast<uint8*>(v->data()),
-                           v->size() * sizeof(T));
+absl::Span<uint8_t> MutableByteSlice(std::vector<T>* v) {
+  return absl::Span<uint8_t>(reinterpret_cast<uint8_t*>(v->data()),
+                             v->size() * sizeof(T));
 }
 
 // Turns an immutable slice of type T into an immutable slice of bytes with the
 // same byte size.
 template <typename T>
-absl::Span<const uint8> CastToByteSlice(absl::Span<const T> slice) {
-  return absl::Span<const uint8>(reinterpret_cast<const uint8*>(slice.data()),
-                                 slice.size() * sizeof(T));
+absl::Span<const uint8_t> CastToByteSlice(absl::Span<const T> slice) {
+  return absl::Span<const uint8_t>(
+      reinterpret_cast<const uint8_t*>(slice.data()), slice.size() * sizeof(T));
 }
 
 // Casts a byte slice to a non-byte type T, checking that the original slice
 // length is a multiple of sizeof(T).
 template <typename T>
-absl::Span<const T> CastByteSlice(absl::Span<const uint8> slice) {
+absl::Span<const T> CastByteSlice(absl::Span<const uint8_t> slice) {
   CHECK_EQ(0, slice.size() % sizeof(T));
   return absl::Span<const T>(reinterpret_cast<const T*>(slice.data()),
                              slice.size() / sizeof(T));
@@ -179,6 +179,16 @@ bool ContainersEqual(const Container1T& c1,
   absl::Span<const ElementType> c2{il};
   return absl::c_equal(c1, c2);
 }
+
+#if defined(__cpp_lib_to_underlying) && __cpp_lib_to_underlying >= 202102L
+using to_underlying = std::to_underlying;
+#else
+// Helper function which implements C++23's std::to_underlying.
+template <typename T>
+constexpr absl::underlying_type_t<T> to_underlying(T value) noexcept {
+  return static_cast<absl::underlying_type_t<T>>(value);
+}
+#endif
 
 // Performs a copy of count values from src to dest, using different strides for
 // source and destination. The source starting index is src_base, while the
@@ -283,7 +293,7 @@ Status ResourceExhaustedStrCat(Args&&... concat) {
 //
 // Note: even different amounts of leading whitespace on different lines will be
 // uniformly replaced with "indentation".
-string Reindent(absl::string_view original, absl::string_view indentation);
+std::string Reindent(absl::string_view original, absl::string_view indentation);
 
 template <typename Container>
 int64_t PositionInContainer(const Container& container, int64_t value) {
@@ -294,11 +304,11 @@ int64_t PositionInContainer(const Container& container, int64_t value) {
 // appending the elements of the container. Prefix is prepended and suffix is
 // appended to the returned string.
 template <typename Container>
-string CommaSeparatedString(const Container& c, const char* prefix = "",
-                            const char* suffix = "") {
+std::string CommaSeparatedString(const Container& c, const char* prefix = "",
+                                 const char* suffix = "") {
   // Not using Join() since the implementation here is simple anyway and this
   // avoids copying the string to append prefix.
-  string comma_separated = prefix;
+  std::string comma_separated = prefix;
   const char* separator = "";
   for (const auto& entry : c) {
     absl::StrAppend(&comma_separated, separator, entry);
@@ -311,36 +321,37 @@ string CommaSeparatedString(const Container& c, const char* prefix = "",
 // Overload needed to allow the container to be an initializer list. The default
 // type for T makes an empty initializer list work as well.
 template <typename T = int>
-string CommaSeparatedString(const std::initializer_list<T>& c,
-                            const char* prefix = "", const char* suffix = "") {
+std::string CommaSeparatedString(const std::initializer_list<T>& c,
+                                 const char* prefix = "",
+                                 const char* suffix = "") {
   return CommaSeparatedString<std::initializer_list<T>>(c, prefix, suffix);
 }
 
 // Formats the container in the mathematical notation for a vector, e.g. (1, 3,
 // 7). StrAppend must support appending the elements of c.
 template <typename Container>
-string VectorString(const Container& c) {
+std::string VectorString(const Container& c) {
   return CommaSeparatedString(c, "(", ")");
 }
 
 // Overload needed to allow the container to be an initializer list. The default
 // type for T makes an empty initializer list work as well.
 template <typename T = int>
-string VectorString(const std::initializer_list<T>& c) {
+std::string VectorString(const std::initializer_list<T>& c) {
   return VectorString<std::initializer_list<T>>(c);
 }
 
 // Returns a string which can losslessly round trip to a bfloat.
-string RoundTripFpToString(tensorflow::bfloat16 value);
+std::string RoundTripFpToString(tensorflow::bfloat16 value);
 
 // Returns a string which can losslessly round trip to a fp16.
-string RoundTripFpToString(Eigen::half value);
+std::string RoundTripFpToString(Eigen::half value);
 
 // Returns a string which can losslessly round trip to a float.
-string RoundTripFpToString(float value);
+std::string RoundTripFpToString(float value);
 
 // Returns a string which can losslessly round trip to a double.
-string RoundTripFpToString(double value);
+std::string RoundTripFpToString(double value);
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64_t rank);
@@ -386,34 +397,104 @@ T RoundDownTo(T value, T divisor) {
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
-string HumanReadableNumFlops(double flops, double nanoseconds);
+std::string HumanReadableNumFlops(double flops, double nanoseconds);
 
 // Given a number of transcendental ops executed in an amount of time, produces
 // a string that represents the throughput;
 // e.g. HumanReadableNumTranscendentalOps(1e9, 1e9) => 1.00GTROP/s.
-string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
+std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
 void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 
+// Used on a function to trap bad calls: any call that matches the specified
+// condition will cause a compile-time error. This macro uses a clang-specific
+// "diagnose_if" attribute, as described at
+// https://clang.llvm.org/docs/AttributeReference.html#diagnose-if
+//
+// Example:
+//
+//   int compute_absolute_value(int c)
+//     XLA_DIAGNOSE_ERROR_IF(c >= 0, "'c' is already positive.");
+#if ABSL_HAVE_ATTRIBUTE(diagnose_if)
+#define XLA_DIAGNOSE_ERROR_IF(...) \
+  __attribute__((diagnose_if(__VA_ARGS__, "error")))
+#else
+#define XLA_DIAGNOSE_ERROR_IF(...)
+#endif
+
+constexpr bool IsRuntimeEvaluated() {
+#ifdef __cpp_lib_is_constant_evaluated
+  return !std::is_constant_evaluated();
+#elif ABSL_HAVE_BUILTIN(__builtin_is_constant_evaluated)
+  return !__builtin_is_constant_evaluated();
+#else
+  return false;
+#endif
+}
+
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
-inline T LsbMask(int width) {
+constexpr inline T LsbMask(int width)
+    XLA_DIAGNOSE_ERROR_IF(width < 0 || width >= std::numeric_limits<T>::digits,
+                          "width must be between [0, sizeof(T)*8)") {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
-  CHECK_GE(width, 0) << "Unsupported width " << width;
-  CHECK_LE(width, std::numeric_limits<T>::digits)
-      << "Unsupported width " << width;
+  if (IsRuntimeEvaluated()) {
+    DCHECK_GE(width, 0) << "Unsupported width " << width;
+    DCHECK_LE(width, std::numeric_limits<T>::digits)
+        << "Unsupported width " << width;
+  }
   return width == 0
              ? 0
              : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
 }
 
+// Return floor(log2(n)) for positive integer n.  Returns -1 iff n == 0.
+template <typename T>
+constexpr inline int Log2Floor(T x) {
+  static_assert(std::is_unsigned<T>::value,
+                "T should be an unsigned integer type");
+  return absl::bit_width(x) - 1;
+}
+
+// Return ceiling(log2(n)) for positive integer n.  Returns -1 iff n == 0.
+template <typename T>
+constexpr inline int Log2Ceiling(T x) {
+  static_assert(std::is_unsigned<T>::value,
+                "T should be an unsigned integer type");
+  return x == 0 ? -1 : absl::bit_width(x - 1);
+}
+
 // Returns the value with every bit except the lower 'width' bits set to zero.
 template <typename T>
-inline T ClearUpperBits(T value, int width) {
+constexpr inline T ClearUpperBits(T value, int width) {
   return value & LsbMask<T>(width);
+}
+
+// Returns `base` multiplied by itself `exponent` number of times.
+//
+// Note: returns 1 when `exponent` is zero.
+// Precondition: `exponent` is non-negative.
+template <typename T>
+constexpr T IPow(T base, int exponent)
+    XLA_DIAGNOSE_ERROR_IF(exponent < 0, "exponent must be non-negative") {
+  if (IsRuntimeEvaluated()) {
+    // A negative `exponent` is indicative of a logic bug for integral `base`.
+    // We disallow it for floating-point types for symmetry.
+    DCHECK_GE(exponent, 0);
+  }
+  // We use the right-to-left binary exponentiation algorithm.
+  T result{1};
+  while (exponent > 0) {
+    if ((exponent & 1) != 0) {
+      result *= base;
+    }
+    base *= base;
+    exponent >>= 1;
+  }
+  return result;
 }
 
 template <size_t>
@@ -509,6 +590,9 @@ struct ConvertedDimensionNumbers {
   DimensionVector transformed_from_dimensions;
   DimensionVector untransformed_from_dimensions;
   DimensionVector to_dimensions;
+  DimensionVector split_from_dimensions;
+  DimensionVector split_from_sizes;
+  DimensionVector split_to_dimensions;
 };
 
 // Convert and unsorted list of dimensions from one shapes dimension sizes to
@@ -518,7 +602,7 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
     absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes);
 
 // Removes illegal characters from filenames.
-string SanitizeFileName(string file_name);
+std::string SanitizeFileName(std::string file_name);
 
 template <typename C, typename Value>
 int64_t FindIndex(const C& c, Value&& value) {
@@ -553,7 +637,7 @@ bool IsInt32(T x) {
   // Following conversion rules: "the value is unchanged if it can be
   // represented in the destination type (and bit-field width); otherwise, the
   // value is implementation-defined."
-  return static_cast<int32>(x) == x;
+  return static_cast<int32_t>(x) == x;
 }
 
 template <typename T>

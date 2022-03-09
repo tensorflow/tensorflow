@@ -871,6 +871,32 @@ op {
   is_stateful: true
 }
 op {
+  name: "AnonymousMultiDeviceIteratorV3"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "devices"
+    type: "list(string)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "AnonymousMutableDenseHashTable"
   input_arg {
     name: "empty_key"
@@ -2292,6 +2318,7 @@ op {
     }
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -2305,6 +2332,8 @@ op {
     }
     allowed_values {
       list {
+        type: DT_INT16
+        type: DT_UINT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -2576,6 +2605,53 @@ op {
 }
 op {
   name: "AssertNextDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "transformations"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "AssertPrevDataset"
   input_arg {
     name: "input_dataset"
     type: DT_VARIANT
@@ -14424,7 +14500,7 @@ op {
 op {
   name: "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch"
   input_arg {
-    name: "sample_indices_or_row_lengths"
+    name: "sample_indices_or_row_splits"
     type_attr: "T1"
     number_attr: "N"
   }
@@ -15023,7 +15099,7 @@ op {
 op {
   name: "EnqueueTPUEmbeddingArbitraryTensorBatch"
   input_arg {
-    name: "sample_indices_or_row_lengths"
+    name: "sample_indices_or_row_splits"
     type_attr: "T1"
     number_attr: "N"
   }
@@ -15079,6 +15155,40 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "device_ordinal"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "combiners"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "EnqueueTPUEmbeddingBatch"
+  input_arg {
+    name: "batch"
+    type: DT_STRING
+    number_attr: "N"
+  }
+  input_arg {
+    name: "mode_override"
+    type: DT_STRING
   }
   attr {
     name: "N"
@@ -19798,6 +19908,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_FLOAT
       }
     }
@@ -20137,6 +20248,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -20177,6 +20289,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -23490,6 +23603,68 @@ op {
       }
     }
   }
+}
+op {
+  name: "LoadAllTPUEmbeddingParameters"
+  input_arg {
+    name: "parameters"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary1"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary2"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary3"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary4"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary5"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary6"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "auxiliary7"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  attr {
+    name: "NumTables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  is_stateful: true
 }
 op {
   name: "LoadAndRemapMatrix"
@@ -37496,6 +37671,13 @@ op {
   output_arg {
     name: "encoded_ragged"
     type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_RAGGED
+      args {
+        type_id: TFT_VAR
+        s: "Tvalues"
+      }
+    }
   }
   attr {
     name: "RAGGED_RANK"
@@ -37736,6 +37918,49 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RandomIndexShuffle"
+  input_arg {
+    name: "index"
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "seed"
+    type_attr: "Tseed"
+  }
+  input_arg {
+    name: "max_index"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_UINT32
+        type: DT_INT64
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tseed"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_UINT32
+        type: DT_INT64
+        type: DT_UINT64
       }
     }
   }
@@ -38212,6 +38437,7 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT16
         type: DT_UINT32
       }
     }
@@ -43111,6 +43337,68 @@ op {
   is_stateful: true
 }
 op {
+  name: "RetrieveAllTPUEmbeddingParameters"
+  output_arg {
+    name: "parameters"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary1"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary2"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary3"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary4"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary5"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary6"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  output_arg {
+    name: "auxiliary7"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  attr {
+    name: "NumTables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  is_stateful: true
+}
+op {
   name: "RetrieveTPUEmbeddingADAMParameters"
   output_arg {
     name: "parameters"
@@ -46559,6 +46847,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -55559,6 +55848,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -58993,8 +59283,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT16
       }
     }
   }

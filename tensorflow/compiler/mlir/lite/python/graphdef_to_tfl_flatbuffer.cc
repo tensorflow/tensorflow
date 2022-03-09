@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 
 #include <ostream>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/None.h"
@@ -51,7 +52,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   using ::tflite::optimize::ReducedPrecisionSupport;
   mlir::MLIRContext context;
   GraphImportConfig specs;
-  mlir::TFL::QuantizationSpecs quant_specs;
+  mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<string> node_names;
@@ -85,6 +86,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   specs.convert_legacy_fed_inputs = true;
   specs.graph_as_function = false;
   specs.upgrade_legacy = true;
+  specs.unconditionally_use_set_output_shapes = true;
   internal::WarningUnusedFlags(model_flags, toco_flags);
 
   // Register all custom ops, including user-specified custom ops.
@@ -105,6 +107,9 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   }
   pass_config.unfold_large_splat_constant =
       toco_flags.unfold_large_splat_constant();
+  pass_config.enable_dynamic_update_slice =
+      toco_flags.enable_dynamic_update_slice();
+  pass_config.preserve_assert_op = toco_flags.preserve_assert_op();
 
   return internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,

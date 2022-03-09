@@ -21,22 +21,20 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
 // Multiply two nonnegative int64_t's, returning negative for overflow
 inline int64_t MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
-  // Multiply in uint64 rather than int64_t since signed overflow is undefined.
-  // Negative values will wrap around to large unsigned values in the casts
-  // (see section 4.7 [conv.integral] of the C++14 standard).
-  const uint64 ux = x;
-  const uint64 uy = y;
-  const uint64 uxy = ux * uy;
+  // Multiply in uint64_t rather than int64_t since signed overflow is
+  // undefined. Negative values will wrap around to large unsigned values in the
+  // casts (see section 4.7 [conv.integral] of the C++14 standard).
+  const uint64_t ux = x;
+  const uint64_t uy = y;
+  const uint64_t uxy = ux * uy;
 
-  // Check if we overflow uint64, using a cheap check if both inputs are small
-  if (TF_PREDICT_FALSE((ux | uy) >> 32 != 0)) {
+  // Check if we overflow uint64_t, using a cheap check if both inputs are small
+  if (ABSL_PREDICT_FALSE((ux | uy) >> 32 != 0)) {
     // Ensure nonnegativity.  Note that negative numbers will appear "large"
     // to the unsigned comparisons above.
     CHECK(x >= 0 && y >= 0);
@@ -74,22 +72,22 @@ inline absl::optional<T> OverflowSafeAdd(T x, T y) {
 inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
   switch (ty) {
     case S8:
-      return std::numeric_limits<int8>::min() <= x &&
-             std::numeric_limits<int8>::max() >= x;
+      return std::numeric_limits<int8_t>::min() <= x &&
+             std::numeric_limits<int8_t>::max() >= x;
     case S16:
-      return std::numeric_limits<int16>::min() <= x &&
-             std::numeric_limits<int16>::max() >= x;
+      return std::numeric_limits<int16_t>::min() <= x &&
+             std::numeric_limits<int16_t>::max() >= x;
     case S32:
-      return std::numeric_limits<int32>::min() <= x &&
-             std::numeric_limits<int32>::max() >= x;
+      return std::numeric_limits<int32_t>::min() <= x &&
+             std::numeric_limits<int32_t>::max() >= x;
     case S64:
       return true;
     case U8:
-      return 0 <= x && std::numeric_limits<uint8>::max() >= x;
+      return 0 <= x && std::numeric_limits<uint8_t>::max() >= x;
     case U16:
-      return 0 <= x && std::numeric_limits<uint16>::max() >= x;
+      return 0 <= x && std::numeric_limits<uint16_t>::max() >= x;
     case U32:
-      return 0 <= x && std::numeric_limits<uint32>::max() >= x;
+      return 0 <= x && std::numeric_limits<uint32_t>::max() >= x;
     case U64:
       return 0 <= x;
     default:

@@ -220,27 +220,49 @@ class TRTNetworkBuilder {
     return layer;
   }
 
+  // Adds a sequence of elementwise multiplication operations to the network.
+  // The returned layer's output contains the cumulative elementwise product of
+  // all tensors in the input.
+  StatusOr<nvinfer1::ILayer*> CumulativeProd(
+      absl::Span<nvinfer1::ITensor*> inputs) noexcept {
+    TRT_ENSURE(!absl::c_any_of(
+        inputs, [](nvinfer1::ITensor* x) { return x == nullptr; }));
+    nvinfer1::ILayer* out = nullptr;
+    if (inputs.size() == 1) {
+      out = network_->addIdentity(*inputs[0]);
+      TRT_ENSURE(out != nullptr);
+      return out;
+    }
+    nvinfer1::ITensor* last = inputs[0];
+    for (int i = 1; i < inputs.size(); i++) {
+      StatusOr<nvinfer1::IElementWiseLayer*> mul = this->Mul(last, inputs[i]);
+      TRT_ENSURE_PTR_OK(mul);
+      out = *mul;
+      last = (*mul)->getOutput(0);
+    }
+    return out;
+  }
+
   // Adds a Constant layer whose output is a TensorRT shape tensor. The shape
   // tensor's size and values correspond to dim's nbDims and d[], respectively.
   StatusOr<nvinfer1::IConstantLayer*> ConstantShape(
-      const nvinfer1::Dims& shape_data) noexcept {
-    TRT_ENSURE(shape_data.nbDims > 0);
+      const DimsAdapter& shape_data) noexcept {
+    TRT_ENSURE(shape_data.NumDims() > 0);
     nvinfer1::Dims shape_dims;
     shape_dims.nbDims = 1;
-    shape_dims.d[0] = shape_data.nbDims;
-    TRT_ShapedWeights const_weights =
+    shape_dims.d[0] = shape_data.NumDims();
+    StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(nvinfer1::DataType::kINT32, shape_dims);
-    int32* values = const_weights.GetPointer<int32>();
-    for (int i = 0; i < shape_data.nbDims; i++) {
-      values[i] = static_cast<int32>(shape_data.d[i]);
-    }
-    nvinfer1::IConstantLayer* const_layer = network_->addConstant(
-        const_weights.shape_, const_weights.GetTrtWeights());
+    TRT_ENSURE_OK(const_weights);
+    absl::c_copy(shape_data, const_weights->GetPointer<int32>());
+    StatusOr<nvinfer1::Dims> trt_dims = const_weights->Shape().AsTrtDims();
+    TRT_ENSURE_OK(trt_dims);
+    nvinfer1::IConstantLayer* const_layer =
+        network_->addConstant(*trt_dims, const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     nvinfer1::ITensor* output = const_layer->getOutput(0);
     TRT_ENSURE(output);
     TRT_ENSURE(output->getType() == nvinfer1::DataType::kINT32);
-    TRT_ENSURE(const_layer);
     return const_layer;
   }
 
@@ -251,18 +273,37 @@ class TRTNetworkBuilder {
     nvinfer1::Dims shape_dims;
     shape_dims.nbDims = 1;
     shape_dims.d[0] = data.size();
-    TRT_ShapedWeights const_weights =
+    StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(nvinfer1::DataType::kINT32, shape_dims);
-    int32* values = const_weights.GetPointer<int32>();
+    TRT_ENSURE_OK(const_weights);
+    int32* values = const_weights->GetPointer<int32>();
     for (int i = 0; i < data.size(); i++) {
       values[i] = static_cast<int32>(data[i]);
     }
-    nvinfer1::IConstantLayer* const_layer = network_->addConstant(
-        const_weights.shape_, const_weights.GetTrtWeights());
+    StatusOr<nvinfer1::Dims> trt_dims = const_weights->Shape().AsTrtDims();
+    TRT_ENSURE_OK(trt_dims);
+    nvinfer1::IConstantLayer* const_layer =
+        network_->addConstant(*trt_dims, const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     nvinfer1::ITensor* output = const_layer->getOutput(0);
     TRT_ENSURE(output);
     TRT_ENSURE(output->getType() == nvinfer1::DataType::kINT32);
+    TRT_ENSURE(const_layer);
+    return const_layer;
+  }
+
+  // Adds a Constant layer that produces a tensor of shape "shape",
+  // type "data_type" and filled with value "scalar".
+  template <typename T>
+  StatusOr<nvinfer1::IConstantLayer*> Constant(
+      const T value, nvinfer1::Dims shape,
+      nvinfer1::DataType data_type) noexcept {
+    StatusOr<TRT_ShapedWeights> const_weights =
+        weight_store_->GetTempWeights(data_type, shape);
+    TRT_ENSURE_OK(const_weights);
+    TRT_ENSURE(const_weights->SetValues(value).ok());
+    nvinfer1::IConstantLayer* const_layer =
+        network_->addConstant(shape, const_weights->GetTrtWeights());
     TRT_ENSURE(const_layer);
     return const_layer;
   }
@@ -283,26 +324,22 @@ class TRTNetworkBuilder {
     nvinfer1::Dims zero_shape;
     zero_shape.nbDims = nb_dims;
     std::fill_n(zero_shape.d, nb_dims, 1);
-    TRT_ShapedWeights const_weights =
-        weight_store_->GetTempWeights(data_type, zero_shape);
-    const_weights.GetPointer<T>()[0] = scalar;
-    nvinfer1::IConstantLayer* const_layer =
-        network_->addConstant(zero_shape, const_weights.GetTrtWeights());
-    TRT_ENSURE(const_layer);
-    return const_layer;
-  };
+    return Constant<T>(scalar, zero_shape, data_type);
+  }
 
   // Adds a Constant layer from a TRT_ShapedWeights object.
   StatusOr<nvinfer1::IConstantLayer*> WeightsToConstant(
-      const nvinfer1::Weights& weights, const nvinfer1::Dims& dims) noexcept {
-    int volume =
-        std::accumulate(dims.d, dims.d + dims.nbDims, 1, std::multiplies<>());
-    TRT_ENSURE(volume == weights.count);
+      const nvinfer1::Weights& weights, const DimsAdapter& dims) noexcept {
+    StatusOr<int64_t> vol = dims.Volume();
+    TRT_ENSURE_OK(vol);
+    TRT_ENSURE(*vol == weights.count);
+    StatusOr<nvinfer1::Dims> trt_dims = dims.AsTrtDims();
+    TRT_ENSURE_OK(trt_dims);
     nvinfer1::IConstantLayer* const_layer =
-        network_->addConstant(dims, weights);
+        network_->addConstant(*trt_dims, weights);
     TRT_ENSURE(const_layer);
     return const_layer;
-  };
+  }
 
   // Creates a nvinfer1::Weights object containing a single scalar.
   template <typename T,
@@ -317,11 +354,12 @@ class TRTNetworkBuilder {
     nvinfer1::Dims weights_shape;
     weights_shape.nbDims = nb_dims;
     std::fill_n(weights_shape.d, nb_dims, 1);
-    TRT_ShapedWeights const_weights =
+    StatusOr<TRT_ShapedWeights> const_weights =
         weight_store_->GetTempWeights(data_type, weights_shape);
-    const_weights.GetPointer<T>()[0] = scalar;
-    return const_weights.GetTrtWeights();
-  };
+    TRT_ENSURE_OK(const_weights);
+    const_weights->GetPointer<T>()[0] = scalar;
+    return const_weights->GetTrtWeights();
+  }
 
   // Adds a TensorRT Slice operation to the network.
   StatusOr<nvinfer1::ISliceLayer*> Slice(
@@ -331,6 +369,25 @@ class TRTNetworkBuilder {
         network_->addSlice(*input, begin, size, stride);
     TRT_ENSURE(layer);
     return layer;
+  }
+
+  // Adds a TensorRT Concatenate operation to the network.
+  StatusOr<nvinfer1::IConcatenationLayer*> Concat(
+      absl::Span<nvinfer1::ITensor* const> inputs, const int axis) {
+    for (nvinfer1::ITensor* input : inputs) {
+      TRT_ENSURE(input);
+    }
+    nvinfer1::IConcatenationLayer* layer = network_->addConcatenation(
+        inputs.data(), static_cast<int32_t>(inputs.size()));
+    TRT_ENSURE(layer);
+    layer->setAxis(axis);
+    return layer;
+  }
+
+  // Adds a TensorRT Concatenate operation to the network.
+  StatusOr<nvinfer1::IConcatenationLayer*> Concat(
+      const std::vector<nvinfer1::ITensor*>& inputs, const int axis) {
+    return this->Concat(absl::MakeSpan(inputs), axis);
   }
 
   // Adds a TensorRT Shape operation, which determines the runtime shape of the
@@ -540,9 +597,57 @@ class TRTNetworkBuilder {
     return FindProducerOf(layer->getInput(input_idx));
   }
 
+  nvinfer1::INetworkDefinition* Network() { return network_; }
+
  private:
   nvinfer1::INetworkDefinition* const network_;
   TrtWeightStore* const weight_store_;
+};
+
+class ShuffleBuilder {
+ private:
+  explicit ShuffleBuilder(TRTNetworkBuilder* builder, nvinfer1::ITensor* input)
+      : builder_(builder) {
+    layer_ = builder->Network()->addShuffle(*input);
+  }
+
+ public:
+  static StatusOr<ShuffleBuilder> Create(TRTNetworkBuilder* builder,
+                                         nvinfer1::ITensor* input) {
+    TRT_ENSURE(builder != nullptr);
+    TRT_ENSURE(input != nullptr);
+    return ShuffleBuilder(builder, input);
+  }
+
+  ShuffleBuilder& SetReshape(const nvinfer1::Dims& dims) {
+    layer_->setReshapeDimensions(dims);
+    return *this;
+  }
+
+  ShuffleBuilder& SetReshape(nvinfer1::ITensor* shape) {
+    layer_->setInput(1, *shape);
+    return *this;
+  }
+
+  ShuffleBuilder& SetFirstTranspose(const nvinfer1::Permutation& perm) {
+    layer_->setFirstTranspose(perm);
+    return *this;
+  }
+
+  ShuffleBuilder& SetSecondTranspose(const nvinfer1::Permutation& perm) {
+    layer_->setSecondTranspose(perm);
+    return *this;
+  }
+
+  StatusOr<nvinfer1::ITensor*> Output() {
+    TRT_ENSURE(layer_ != nullptr);
+    TRT_ENSURE(layer_->getOutput(0) != nullptr);
+    return layer_->getOutput(0);
+  }
+
+ private:
+  TRTNetworkBuilder* builder_;
+  nvinfer1::IShuffleLayer* layer_;
 };
 
 }  // namespace convert

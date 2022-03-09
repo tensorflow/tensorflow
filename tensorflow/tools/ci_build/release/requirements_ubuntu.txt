@@ -2,7 +2,7 @@
 
 # Dependencies only required for Ubuntu
 # Needs to be addressed. Unblocked 2.4 branchcut cl/338377048
-PyYAML ~= 5.4.1
+PyYAML ~= 6.0
 
 # Test dependencies which don't exist on Windows
 jax ~= 0.2.26

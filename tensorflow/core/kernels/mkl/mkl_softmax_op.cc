@@ -38,7 +38,9 @@ class MklSoftmaxParams {
   memory::dims src_dims;
   MklTensorFormat src_fmt;
   int axis;
-
+#ifdef DNNL_AARCH64_USE_ACL
+  int aarch64_counter;
+#endif
   MklSoftmaxParams(memory::dims src_dims, MklTensorFormat src_fmt, int axis)
       : src_dims(src_dims), src_fmt(src_fmt), axis(axis) {}
 };
@@ -173,7 +175,9 @@ class MklSoftmaxPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(fwdParams.src_dims);
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.src_fmt));
     key_creator.AddAsKey<int>(fwdParams.axis);
-
+#ifdef DNNL_AARCH64_USE_ACL
+    key_creator.AddAsKey(fwdParams.aarch64_counter);
+#endif
     return key_creator.GetKey();
   }
 
@@ -269,6 +273,15 @@ class MklSoftmaxOp : public OpKernel {
 
       // Get a softmax fwd primitive from primitive pool.
       MklSoftmaxParams fwdParams(src_dims, src_fmt, axis);
+#ifdef DNNL_AARCH64_USE_ACL
+      // ACL does not support reuse of primitives with different data.
+      // For softmax, the previous approach (PR #47775) of using Tensor
+      // addresses does not work, as the addresses are re-used in matmul with
+      // different data The counter ensures we still benefit from caching via
+      // SetSoftmaxFwd().
+      static int counter = 1;
+      fwdParams.aarch64_counter = counter++;
+#endif
       MklSoftmaxPrimitive<T>* softmax_fwd =
           MklSoftmaxPrimitiveFactory<T>::Get(fwdParams);
 

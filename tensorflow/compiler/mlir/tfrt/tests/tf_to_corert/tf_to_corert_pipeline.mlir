@@ -70,14 +70,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NEXT: tfrt_fallback_async.const_dense_tensor dense<9> : tensor<i32>
     // CHECK-NEXT: tfrt_fallback_async.executeop key({{.*}}) cost({{.*}}) device("/device:CPU:0") "tf.Less"
     // CHECK-NEXT: [[pred:%.*]] = tfrt_fallback_async.predicate
-    // CHECK-NEXT: tfrt.while [[pred]] @"while_body_add2/tfrt_body"
+    // CHECK-NEXT: tfrt.while [[pred]] @"while_body_add2/tfrt_body_1"
     // CHECK-NEXT: tfrt.merge.chains
     // CHECK-NEXT: tfrt.return
     %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
-    %1 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
+    %1 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false, parallel_iterations = 1} : (tensor<i32>) -> (tensor<i32>)
     return %1 : tensor<i32>
   }
-  // CHECK: func @"while_body_add2/tfrt_body"
+  // CHECK: func @"while_body_add2/tfrt_body_1"
   // CHECK-NOT: tfrt.call
 
   // CHECK: func @"while_cond_lt9/tfrt_predicate"

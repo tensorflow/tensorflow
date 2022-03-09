@@ -143,7 +143,8 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph, NodeDef* node);
 
 // Sets the function name using the `prefix` name as a prefix while guaranteeing
 // the name is unique across the function library.
-void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
+void SetUniqueGraphFunctionName(StringPiece prefix,
+                                const FunctionDefLibrary* library,
                                 FunctionDef* function);
 
 // Copies attribute having name `attribute_name` from node `from` to node

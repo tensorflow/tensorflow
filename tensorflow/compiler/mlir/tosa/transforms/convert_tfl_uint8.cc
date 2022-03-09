@@ -57,7 +57,7 @@ class ConvertUint8ToInt8
     : public TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
  public:
   explicit ConvertUint8ToInt8() {}
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 struct ConvertUint8QConstOp : public RewritePattern {
@@ -326,13 +326,13 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
   return success();
 }
 
-void ConvertUint8ToInt8::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void ConvertUint8ToInt8::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   auto &ctx = getContext();
-  auto func = getFunction();
+  mlir::FuncOp func = getOperation();
 
   // Convert uint8 const tensor. const needs to be handled specifically.
-  patterns.insert<ConvertUint8QConstOp>(&ctx);
+  patterns.add<ConvertUint8QConstOp>(&ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Replace uint8 tensor in the graph and insert rescale as needed.

@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -390,7 +390,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
 
   builder.setInsertionPointToEnd(block);
   // Finish building the init function by inserting an return op.
-  builder.create<mlir::ReturnOp>(init_func_op.getLoc());
+  builder.create<mlir::func::ReturnOp>(init_func_op.getLoc());
 
   // Now that we have the index for each value that will be replaced, we can
   // create the tf._TfrtGetResource op in each function using these indices.
@@ -461,9 +461,9 @@ class LowerTFSavedModelPass
     module->removeAttr("tf_saved_model.semantics");
 
     mlir::OpBuilder builder(&getContext());
-    auto resource_id = builder.getIdentifier("tf.resource_name");
-    auto bound_id = builder.getIdentifier("tf_saved_model.bound_input");
-    auto path_id = builder.getIdentifier("tf_saved_model.index_path");
+    auto resource_id = builder.getStringAttr("tf.resource_name");
+    auto bound_id = builder.getStringAttr("tf_saved_model.bound_input");
+    auto path_id = builder.getStringAttr("tf_saved_model.index_path");
 
     module.walk([resource_id, bound_id, path_id,
                  &builder](mlir::Operation *op) mutable {
@@ -600,7 +600,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteFunctionArgument(
   cleanup_on_failure.release();
 
   // Update the function type accordingly.
-  auto return_op = llvm::cast<mlir::ReturnOp>(block.getTerminator());
+  auto return_op = llvm::cast<mlir::func::ReturnOp>(block.getTerminator());
   auto new_results = return_op.operands();
 
   func.setType(mlir::FunctionType::get(
@@ -624,7 +624,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
   // Next, we handle control flow ops.
   if (!llvm::isa<mlir::TF::IfOp, mlir::TF::CaseOp, mlir::TF::WhileOp,
                  mlir::CallOpInterface, mlir::TF::BatchFunctionOp,
-                 mlir::ReturnOp>(op))
+                 mlir::func::ReturnOp>(op))
     return op->emitOpError("unsupported users of resource variables");
 
   llvm::SmallVector<unsigned, 2> promoted_result_indices;

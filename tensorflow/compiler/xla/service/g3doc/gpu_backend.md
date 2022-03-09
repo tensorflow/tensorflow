@@ -1,6 +1,6 @@
 # XLA GPU Backend
 
-<!--* freshness: { owner: "sanjoy" owner: "timshen" reviewed: "2021-05-10" } *-->
+<!--* freshness: { owner: "jurahul" reviewed: "2022-02-04" } *-->
 
 ## Compile time
 

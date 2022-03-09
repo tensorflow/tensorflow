@@ -160,8 +160,8 @@ Status ImportNodes(ValueMapManager value_manager,
   Type control_ty = ControlType::get(context);
   TFGraphDialect* tfgDialect =
       cast<TFGraphDialect>(context->getLoadedDialect("tfg"));
-  Identifier device_attr = tfgDialect->getDeviceAttrIdentifier();
-  Identifier name_attr = tfgDialect->getNameAttrIdentifier();
+  StringAttr device_attr = tfgDialect->getDeviceAttrIdentifier();
+  StringAttr name_attr = tfgDialect->getNameAttrIdentifier();
   // Process every node and create a matching MLIR operation
   for (const NodeDef& node : nodes) {
     DVLOG(0) << "Processing node " << node.name() << "\n";
@@ -250,9 +250,7 @@ Status ImportGenericFunction(
   Location unknown_loc = builder.getUnknownLoc();
   MLIRContext* context = builder.getContext();
 
-  auto func_op = builder.create<GraphFuncOp>(unknown_loc, signature.name(),
-                                             FunctionType::get(context, {}, {}),
-                                             /*generic=*/true);
+  auto func_op = builder.create<GraphFuncOp>(unknown_loc);
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   NamedAttrList attrs;
   DictionaryAttr func_attrs = builder.getDictionaryAttr({});
@@ -364,8 +362,9 @@ Status ImportGenericFunction(
     args_attrs.push_back(NamedAttrList{}.getDictionary(context));
     arg_num++;
   }
-  attrs.push_back(builder.getNamedAttr(function_like_impl::getArgDictAttrName(),
-                                       builder.getArrayAttr(args_attrs)));
+  attrs.push_back(
+      builder.getNamedAttr(function_interface_impl::getArgDictAttrName(),
+                           builder.getArrayAttr(args_attrs)));
 
   // Process the results attributes now.
   int res_num = 0;
@@ -383,7 +382,7 @@ Status ImportGenericFunction(
     ++res_num;
   }
   attrs.push_back(
-      builder.getNamedAttr(function_like_impl::getResultDictAttrName(),
+      builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
                            builder.getArrayAttr(res_attrs)));
 
   values_map.clear();
@@ -393,10 +392,10 @@ Status ImportGenericFunction(
   // Create the block arguments and populate the `values_map` with the matching
   // input names.
   for (auto type_and_name : llvm::zip(arg_types, arg_names)) {
-    Value arg = body->addArgument(std::get<0>(type_and_name));
+    Value arg = body->addArgument(std::get<0>(type_and_name), unknown_loc);
     llvm::StringMap<SmallVector<Value, 1>>& values =
         values_map[std::get<1>(type_and_name)];
-    Value ctl = body->addArgument(control_ty);
+    Value ctl = body->addArgument(control_ty, unknown_loc);
     values[""].push_back(arg);
     values["^"].push_back(ctl);
   }
@@ -433,6 +432,7 @@ Status ImportGenericFunction(
     output_name_to_position[output.name()] = res_num;
     ++res_num;
   }
+  res_num = 0;
   llvm::StringMap<int> control_output_to_position;
   for (const std::string& output : signature.control_output()) {
     if (control_output_to_position.count(output))
@@ -444,8 +444,8 @@ Status ImportGenericFunction(
   // We pre-allocate the array of operands and populate it using the
   // `output_name_to_position` and `control_output_to_position` populated
   // previously.
-  SmallVector<Value> ret_vals;
-  ret_vals.resize(func.ret_size() + func.control_ret_size(), Value());
+  SmallVector<Value> ret_vals(func.ret_size() + func.control_ret_size(),
+                              Value());
   for (const auto& ret_val : func.ret()) {
     auto position = output_name_to_position.find(ret_val.first);
     if (position == output_name_to_position.end())
@@ -468,21 +468,24 @@ Status ImportGenericFunction(
     if (!result.getType().isa<ControlType>())
       return InvalidArgument("failed to map returned value ", ret_val.second,
                              ", isn't a control output");
-    ret_vals[position->second] = result;
+    ret_vals[func.ret_size() + position->second] = result;
   }
   // Check that all the of the return operands have been populated.
-  for (auto indexed_val : llvm::enumerate(ret_vals)) {
+  for (auto& indexed_val : llvm::enumerate(ret_vals)) {
     if (indexed_val.value()) continue;
     return InvalidArgument(
         "Failed to import function, missing output for position ",
         indexed_val.index());
   }
-  ReturnOp ret_op = body_builder.create<ReturnOp>(unknown_loc, ret_vals);
+  MutableArrayRef<Value> operands = ret_vals;
+  ReturnOp ret_op = body_builder.create<ReturnOp>(
+      unknown_loc, operands.slice(0, func.ret_size()),
+      operands.slice(func.ret_size()));
 
   // Now that we have all the types, set the function signature as the "type"
   // attribute.
   {
-    llvm::SmallVector<Type> arg_types_with_ctl;
+    SmallVector<Type> arg_types_with_ctl;
     for (Type type : arg_types) {
       arg_types_with_ctl.push_back(type);
       arg_types_with_ctl.push_back(control_ty);

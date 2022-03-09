@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_TFRT_CPU_PJRT_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_TFRT_CPU_PJRT_CLIENT_H_
 
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -430,7 +433,7 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
       bool wait_for_operations_to_complete) override;
 
-  using PjRtBuffer::ToLiteral;
+  using PjRtBuffer::ToLiteralSync;
   void ToLiteral(MutableLiteralBase* literal,
                  std::function<void(Status)> on_ready) override;
 
@@ -448,17 +451,26 @@ class TfrtCpuBuffer final : public PjRtBuffer {
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
-  Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override {
-    return Unimplemented("CopyToRemoteDevice not implemented.");
+  void CopyToRemoteDevice(absl::string_view serialized_descriptor,
+                          RemoteSendCallback on_done) override {
+    on_done(Unimplemented("CopyToRemoteDevice not implemented."),
+            /*sends_were_enqueued=*/false);
   }
 
-  Status CopyToRemoteDeviceScattered(
-      absl::Span<const std::string> serialized_descriptors,
+  void CopyToRemoteDeviceScattered(
+      absl::Span<const std::pair<std::string, RemoteSendCallback>>
+          serialized_descriptors_and_callbacks,
       const ScatterDetails& scatter_details) override {
-    return Unimplemented("CopyToRemoteDeviceScattered not implemented.");
+    for (const auto& d_and_cb : serialized_descriptors_and_callbacks) {
+      d_and_cb.second(
+          Unimplemented("CopyToRemoteDeviceScattered not implemented."),
+          /*sends_were_enqueued=*/false);
+    }
   }
 
   Status BlockHostUntilReady() override;
+
+  void OnReady(std::function<void(Status)> callback) override;
 
   bool IsOnCpu() const override { return true; }
 

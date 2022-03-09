@@ -61,6 +61,7 @@ TfLiteRegistration* Register_DEPTH_TO_SPACE();
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration* Register_DEQUANTIZE();
 TfLiteRegistration* Register_DIV();
+TfLiteRegistration* Register_DYNAMIC_UPDATE_SLICE();
 TfLiteRegistration* Register_ELU();
 TfLiteRegistration* Register_EMBEDDING_LOOKUP();
 TfLiteRegistration* Register_EMBEDDING_LOOKUP_SPARSE();
@@ -75,7 +76,6 @@ TfLiteRegistration* Register_FLOOR_MOD();
 TfLiteRegistration* Register_FULLY_CONNECTED();
 TfLiteRegistration* Register_GATHER();
 TfLiteRegistration* Register_GATHER_ND();
-// TODO(b/206869911): Implement GELU registerar.
 TfLiteRegistration* Register_GELU();
 TfLiteRegistration* Register_GREATER();
 TfLiteRegistration* Register_GREATER_EQUAL();

@@ -69,17 +69,29 @@ def TFGraphDialect : Dialect {
   }];
 
   let extraClassDeclaration = [{
-    Identifier getNameAttrIdentifier() const { return name_key_; }
-    static constexpr StringRef getNameAttrKey() { return "_mlir_name"; }
+    StringAttr getNameAttrIdentifier() const { return name_key_; }
+    static constexpr StringLiteral getNameAttrKey() { return {"_mlir_name"}; }
 
-    Identifier getDeviceAttrIdentifier() const { return device_key_; }
-    static constexpr StringRef getDeviceAttrKey() { return "_mlir_device"; }
+    StringAttr getDeviceAttrIdentifier() const { return device_key_; }
+    static constexpr StringLiteral getDeviceAttrKey() {
+      return {"_mlir_device"};
+    }
 
-    Identifier getAssignedDeviceAttrIdentifier() const {
+    StringAttr getAssignedDeviceAttrIdentifier() const {
       return assigned_device_key_;
     }
-    static constexpr StringRef getAssignedDeviceAttrKey() {
-      return "_mlir_assigned_device";
+    static constexpr StringLiteral getAssignedDeviceAttrKey() {
+      return {"_mlir_assigned_device"};
+    }
+
+    StringAttr getTfgNameAttrIdentifier() const { return tfg_name_key_; }
+    static constexpr StringRef getTfgNameAttrKey() { return "tfg.name"; }
+
+    StringAttr getTfgTpuReplicateAttrIdentifier() const {
+      return tfg_tpu_replicate_key_;
+    }
+    static constexpr StringLiteral getTfgTpuReplicateAttrKey() {
+      return {"tfg.tpu_replicate"};
     }
 
     // Cached accessor for the control type.
@@ -99,14 +111,21 @@ def TFGraphDialect : Dialect {
     getOperationPrinter(Operation *op) const override;
 
   private:
+    // Fallback implementation of OpAsmOpInterface.
+    TFGraphOpAsmInterface *fallbackOpAsmInterface_ = nullptr;
+
     // Cached identifier for efficiency purpose.
-    Identifier name_key_;
-    Identifier device_key_;
-    Identifier assigned_device_key_;
+    StringAttr name_key_;
+    StringAttr device_key_;
+    StringAttr assigned_device_key_;
+    StringAttr tfg_name_key_;
+    StringAttr tfg_tpu_replicate_key_;
     ControlType control_ty_;
   }];
 
   let cppNamespace = "::mlir::tfg";
+  let hasNonDefaultDestructor = 1;
+  let hasOperationInterfaceFallback = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -116,7 +135,7 @@ def TFGraphDialect : Dialect {
 include "tensorflow/core/ir/types/types.td"
 
 // Base class for the operations in this dialect.
-class TFGraph_Op<string mnemonic, list<OpTrait> traits = []> :
+class TFGraph_Op<string mnemonic, list<Trait> traits = []> :
     Op<TFGraphDialect, mnemonic, traits>;
 
 #endif // TFG_DIALECT

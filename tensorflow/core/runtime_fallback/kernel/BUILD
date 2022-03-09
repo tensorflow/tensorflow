@@ -343,9 +343,10 @@ cc_library(
     srcs = ["kernel_fallback_execute_compat.cc"],
     hdrs = ["kernel_fallback_execute_compat.h"],
     visibility = [
-        "//tensorflow/compiler/mlir/tfrt/benchmarks:__pkg__",
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:internal",
         "//tensorflow/core/tfrt/eager:__pkg__",
+        "//tensorflow/core/tfrt/graph_executor:__pkg__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
     ],
     deps = [

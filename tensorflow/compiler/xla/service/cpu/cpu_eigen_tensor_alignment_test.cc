@@ -28,7 +28,7 @@ namespace {
 using CpuEigenTensorAlignmentTest = HloTestBase;
 
 TEST_F(CpuEigenTensorAlignmentTest, EigenConvAlignment) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule ConvOperation
 
 ENTRY ConvOperation {

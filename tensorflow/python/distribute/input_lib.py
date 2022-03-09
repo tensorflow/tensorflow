@@ -708,17 +708,64 @@ class DistributedDatasetAndIteratorSpec(type_spec.TypeSpec):
       raise ValueError("tf.distribute strategy is not compatible with both %s "
                        "and %s" % (self, other))
 
+  def is_subtype_of(self, other):
+    """Returns True if `self` is subtype of `other`.
 
-class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
-  """Type specification for `DistributedIterator`."""
+    Args:
+      other: A `TypeSpec`.
+    """
+    try:
+      self.sanity_check_type(other)
+      nest.assert_same_structure(self._element_spec, other._element_spec)  # pylint: disable=protected-access
+    except (TypeError, ValueError):
+      return False
 
-  @property
-  def value_type(self):
-    return DistributedIterator
+    self_elements = nest.flatten(self._element_spec)
+    other_elements = nest.flatten(other._element_spec)  # pylint: disable=protected-access
+
+    return all(
+        self_element.is_subtype_of(other_element)
+        for (self_element, other_element) in zip(self_elements, other_elements))
+
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    try:
+      for other in others:
+        self.sanity_check_type(other)
+        nest.assert_same_structure(self._element_spec, other._element_spec)  # pylint: disable=protected-access
+    except (TypeError, ValueError):
+      return None
+
+    self_elements = nest.flatten(self._element_spec)
+    others_elements = [nest.flatten(other._element_spec) for other in others]  # pylint: disable=protected-access
+    common_elements = [None] * len(self_elements)
+
+    for i, self_element in enumerate(self_elements):
+      common_elements[i] = self_element.most_specific_common_supertype(
+          [other_elements[i] for other_elements in others_elements])
+      if common_elements[i] is None:
+        return None
+    common_element_spec = nest.pack_sequence_as(self._element_spec,
+                                                common_elements)
+    return type(self)(
+        self._input_workers,
+        common_element_spec,
+        self._strategy,
+        self._options,
+        cardinality=self._cardinality,
+        enable_get_next_as_optional=self._enable_get_next_as_optional)
 
   # Overriding this method so that we can merge and reconstruct the spec object
   def most_specific_compatible_type(self, other):
     """Returns the most specific TypeSpec compatible with `self` and `other`.
+
+    Deprecated. Use most_specific_common_supertype instead.
 
     Args:
       other: A `TypeSpec`.
@@ -732,13 +779,46 @@ class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
     element_spec = nest.map_structure(
         lambda a, b: a.most_specific_compatible_type(b), self._element_spec,
         other._element_spec)
-    return DistributedIteratorSpec(
+    return type(self)(
         self._input_workers,
         element_spec,
         self._strategy,
         self._options,
         cardinality=self._cardinality,
         enable_get_next_as_optional=self._enable_get_next_as_optional)
+
+  def _with_tensor_ranks_only(self):
+    element_spec = nest.map_structure(
+        lambda s: s._with_tensor_ranks_only(),  # pylint: disable=protected-access
+        self._element_spec)
+    return type(self)(
+        self._input_workers,
+        element_spec,
+        self._strategy,
+        self._options,
+        cardinality=self._cardinality,
+        enable_get_next_as_optional=self._enable_get_next_as_optional)
+
+  # TODO(b/206014848): Remove once names are not used.
+  def _without_tensor_names(self):
+    element_spec = nest.map_structure(
+        lambda s: s._without_tensor_names(),  # pylint: disable=protected-access
+        self._element_spec)
+    return type(self)(
+        self._input_workers,
+        element_spec,
+        self._strategy,
+        self._options,
+        cardinality=self._cardinality,
+        enable_get_next_as_optional=self._enable_get_next_as_optional)
+
+
+class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
+  """Type specification for `DistributedIterator`."""
+
+  @property
+  def value_type(self):
+    return DistributedIterator
 
   @property
   def _component_specs(self):
@@ -778,18 +858,6 @@ class DistributedIteratorSpec(DistributedDatasetAndIteratorSpec):
         value._options,
         cardinality=value._cardinality,
         enable_get_next_as_optional=value._enable_get_next_as_optional)
-
-  def _with_tensor_ranks_only(self):
-    element_spec = nest.map_structure(
-        lambda s: s._with_tensor_ranks_only(),  # pylint: disable=protected-access
-        self._element_spec)
-    return DistributedIteratorSpec(
-        self._input_workers,
-        element_spec,
-        self._strategy,
-        self._options,
-        cardinality=self._cardinality,
-        enable_get_next_as_optional=self._enable_get_next_as_optional)
 
 
 class DistributedIterator(DistributedIteratorBase,
@@ -895,29 +963,6 @@ class DistributedDatasetSpec(DistributedDatasetAndIteratorSpec):
   @property
   def value_type(self):
     return DistributedDataset
-
-  # Overriding this method so that we can merge and reconstruct the spec object
-  def most_specific_compatible_type(self, other):
-    """Returns the most specific TypeSpec compatible with `self` and `other`.
-
-    Args:
-      other: A `TypeSpec`.
-
-    Raises:
-      ValueError: If there is no TypeSpec that is compatible with both `self`
-        and `other`.
-    """
-    # pylint: disable=protected-access
-    self.sanity_check_type(other)
-    element_spec = nest.map_structure(
-        lambda a, b: a.most_specific_compatible_type(b), self._element_spec,
-        other._element_spec)
-    return DistributedDatasetSpec(
-        self._input_workers,
-        element_spec,
-        self._strategy,
-        self._options,
-        enable_get_next_as_optional=self._enable_get_next_as_optional)
 
   @property
   def _component_specs(self):
@@ -1239,26 +1284,6 @@ class DistributedDatasetsFromFunctionSpec(DistributedDatasetAndIteratorSpec):
           functools.partial(_replace_per_replica_spec, i=i), self._element_spec)
       specs.append(dataset_ops.DatasetSpec(element_spec))
     return specs
-
-  # Overriding this method so that we can merge and reconstruct the spec object
-  def most_specific_compatible_type(self, other):
-    """Returns the most specific TypeSpec compatible with `self` and `other`.
-
-    Args:
-      other: A `TypeSpec`.
-
-    Raises:
-      ValueError: If there is no TypeSpec that is compatible with both `self`
-        and `other`.
-    """
-    # pylint: disable=protected-access
-    self.sanity_check_type(other)
-    element_spec = nest.map_structure(
-        lambda a, b: a.most_specific_compatible_type(b), self._element_spec,
-        other._element_spec)  # pylint: disable=protected-access
-    return DistributedDatasetsFromFunctionSpec(self._input_workers,
-                                               element_spec, self._strategy,
-                                               self._options)
 
   def _to_components(self, value):
     return value._datasets  # pylint: disable=protected-access

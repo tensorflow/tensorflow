@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <iterator>
@@ -25,12 +26,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/internal/endian.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -40,8 +46,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -49,8 +57,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -169,7 +180,532 @@ StatusOr<Literal> Compare<complex128>(const Shape& shape,
   return std::move(result);
 }
 
+// Represents an index into the while argument tuple and / or a value.
+// At least one of param_index and value has a value; both of them could have
+// a value.
+struct ParamIndexAndValue {
+  absl::optional<int64_t> param_index;
+  absl::optional<int64_t> value;
+
+  bool IsValid() const { return param_index.has_value() || value.has_value(); }
+};
+
+// Represents the while loop condition comparison.
+// We assume comparison is of the form: lhs comp rhs.
+struct WhileCondComparison {
+  ComparisonDirection comparson_direction;
+  ParamIndexAndValue lhs;
+  ParamIndexAndValue rhs;
+};
+
+// Represents the parsed while loop condition. The loop induction variable may
+// either be used in a comparison or returned directly, i.e., NoOp. In the case
+// of NoOp, it contains the parameter index and initial value of the loop
+// induction variable.
+using WhileCondComparisonOrNoOp =
+    absl::variant<WhileCondComparison, ParamIndexAndValue>;
+
+// Finds the while loop condition comparison by matching the loop condition root
+// with known patterns.
+absl::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
+    HloInstruction* loop_cond_root) {
+  // Base pattern #1: gte-0 comp gte-1
+  if (Match(loop_cond_root,
+            match::Compare()
+                .WithOperand(0, match::GetTupleElement().WithOperand(
+                                    0, match::Parameter().WithParameterNum(0)))
+                .WithOperand(1,
+                             match::GetTupleElement().WithOperand(
+                                 0, match::Parameter().WithParameterNum(0))))) {
+    return WhileCondComparison{
+        loop_cond_root->comparison_direction(),
+        {/*param_index=*/loop_cond_root->operand(0)->tuple_index()},
+        {/*param_index=*/loop_cond_root->operand(1)->tuple_index()}};
+  }
+  // Base pattern #2: constant comp gte
+  if (Match(loop_cond_root,
+            match::Compare()
+                .WithOperand(0, match::Constant())
+                .WithOperand(1,
+                             match::GetTupleElement().WithOperand(
+                                 0, match::Parameter().WithParameterNum(0))))) {
+    absl::optional<int64_t> lhs_value =
+        loop_cond_root->operand(0)->literal().GetFirstInteger();
+    if (!lhs_value.has_value()) {
+      return absl::nullopt;
+    }
+    return WhileCondComparison{
+        loop_cond_root->comparison_direction(),
+        {/*param_index=*/absl::nullopt, /*value=*/*lhs_value},
+        {/*param_index=*/loop_cond_root->operand(1)->tuple_index()}};
+  }
+  // Base pattern #3: gte comp constant
+  if (Match(loop_cond_root,
+            match::Compare()
+                .WithOperand(0, match::GetTupleElement().WithOperand(
+                                    0, match::Parameter().WithParameterNum(0)))
+                .WithOperand(1, match::Constant()))) {
+    absl::optional<int64_t> rhs_value =
+        loop_cond_root->operand(1)->literal().GetFirstInteger();
+    if (!rhs_value.has_value()) {
+      return absl::nullopt;
+    }
+    return WhileCondComparison{
+        loop_cond_root->comparison_direction(),
+        {/*param_index=*/loop_cond_root->operand(0)->tuple_index(),
+         /*value=*/absl::nullopt},
+        {/*param_index=*/absl::nullopt, /*value=*/*rhs_value},
+    };
+  }
+  // Base pattern #4: gte is a boolean scalar and it was return immediately.
+  if (Match(loop_cond_root, match::GetTupleElement().WithOperand(
+                                0, match::Parameter().WithParameterNum(0)))) {
+    if (loop_cond_root->shape().element_type() != PrimitiveType::PRED &&
+        loop_cond_root->shape().rank() != 0) {
+      return absl::nullopt;
+    }
+    return ParamIndexAndValue{{/*param_index=*/loop_cond_root->tuple_index()}};
+  }
+
+  // Recursive pattern #1:
+  // loop_cond_root is a GetTupleElement whose operand is a call with a single
+  // parameter which takes the computation's single parameter.
+  // In this case, if the called computation's root is a tuple, we can recurse
+  // on that tuple's element as the new loop_cond_root.
+  if (Match(loop_cond_root,
+            match::GetTupleElement().WithOperand(
+                0, match::Call().WithNumOperands(1).WithOperand(
+                       0, match::Parameter().WithParameterNum(0))))) {
+    HloInstruction* call_instruction = loop_cond_root->mutable_operand(0);
+    HloComputation* to_apply = call_instruction->to_apply();
+    HloInstruction* to_apply_root = to_apply->root_instruction();
+    if (Match(to_apply_root, match::Tuple())) {
+      return PatternMatchLoopCondComparison(
+          to_apply_root->mutable_operand(loop_cond_root->tuple_index()));
+    }
+  }
+  // Recursive pattern #2:
+  // loop_cond_root is a GetTupleElement whose operand is a tuple.
+  // We can recurse on the tuple's element as the new loop_cond_root.
+  if (Match(loop_cond_root,
+            match::GetTupleElement().WithOperand(0, match::Tuple()))) {
+    HloInstruction* new_cond_root =
+        loop_cond_root->mutable_operand(0)->mutable_operand(
+            loop_cond_root->tuple_index());
+    return PatternMatchLoopCondComparison(new_cond_root);
+  }
+  return absl::nullopt;
+}
+
+// Tries to parse the loop body to find how the induction variable is updated
+// using pattern matching.
+absl::optional<int64_t> PatternMatchInductionVarUpdate(
+    HloInstruction* loop_body_root, int64_t tuple_index) {
+  // Pattern #1: induc_var = induc_var + constant
+  if (Match(loop_body_root,
+            match::Tuple().WithOperand(
+                tuple_index,
+                match::Add()
+                    .WithOperand(0, match::GetTupleElement()
+                                        .WithTupleIndex(tuple_index)
+                                        .WithOperand(0, match::Parameter()))
+                    .WithOperand(1, match::Constant())))) {
+    absl::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
+                                            ->operand(1)
+                                            ->literal()
+                                            .GetFirstInteger();
+    if (!step_size.has_value()) {
+      return absl::nullopt;
+    }
+    return *step_size;
+  }
+  // Pattern #2: induc_var = constant + induc_var
+  if (Match(
+          loop_body_root,
+          match::Tuple().WithOperand(
+              tuple_index,
+              match::Add()
+                  .WithOperand(0, match::Constant())
+                  .WithOperand(1, match::GetTupleElement()
+                                      .WithTupleIndex(tuple_index)
+                                      .WithOperand(0, match::Parameter()))))) {
+    absl::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
+                                            ->operand(0)
+                                            ->literal()
+                                            .GetFirstInteger();
+    if (!step_size.has_value()) {
+      return absl::nullopt;
+    }
+    return *step_size;
+  }
+
+  // Pattern #3: induc_var = induc_var - constant
+  if (Match(loop_body_root,
+            match::Tuple().WithOperand(
+                tuple_index,
+                match::Subtract()
+                    .WithOperand(0, match::GetTupleElement()
+                                        .WithTupleIndex(tuple_index)
+                                        .WithOperand(0, match::Parameter()))
+                    .WithOperand(1, match::Constant())))) {
+    absl::optional<int64_t> step_size = loop_body_root->operand(tuple_index)
+                                            ->operand(1)
+                                            ->literal()
+                                            .GetFirstInteger();
+    if (!step_size.has_value()) {
+      return absl::nullopt;
+    }
+    return -*step_size;
+  }
+
+  // Pattern #4: the induc_var is directly returned from the loop body with
+  // no changes.
+  if (Match(loop_body_root,
+            match::Tuple().WithOperand(
+                tuple_index,
+                match::GetTupleElement()
+                    .WithOperand(0, match::Parameter().WithParameterNum(0))
+                    .WithTupleIndex(tuple_index)))) {
+    return 0;
+  }
+  return absl::nullopt;
+}
+
+absl::optional<bool> PatternMatchLoopCondVarOverride(
+    HloInstruction* loop_body_root, int64_t tuple_index) {
+  if (Match(loop_body_root, match::Tuple()) &&
+      loop_body_root->operand_count() > tuple_index) {
+    HloInstruction* cond_var_override =
+        loop_body_root->mutable_operand(tuple_index);
+    HloEvaluator evaluator;
+    StatusOr<Literal> new_cond_var = evaluator.Evaluate(
+        cond_var_override, /*recursively_evaluate_nonconstant_operands=*/true);
+    if (new_cond_var.ok()) {
+      return new_cond_var->GetFirstElement<bool>();
+    }
+  }
+  return absl::nullopt;
+}
+
+// Repesents a value that might or might not be determined statically.
+struct DynamicOrStaticValue {
+  absl::optional<int64_t> static_value;
+  bool is_dynamic() const { return !static_value.has_value(); }
+};
+
+constexpr absl::string_view kEvalErrorDetailUrl = "EvalErrorDetailUrl";
+
+// Use this class to represent the precise details of the error to enable
+// special treatment.
+enum class EvalErrorDetail : uint32_t {
+  // The evaluation result depends on dynamic values such as parameters and
+  // infeed. Therefore, the HLO's value cannot be statically evaluated.
+  kDynamicValueDependence = 0,
+};
+
+Status MakeEvalErrorDueToParamOrInfeed() {
+  Status error = tensorflow::errors::FailedPrecondition(
+      "Failed to evaluate instruction since it depends on infeed or "
+      "parameters to its parent computation.");
+  std::string error_payload;
+  error_payload.resize(sizeof(EvalErrorDetail));
+  absl::little_endian::Store32(
+      const_cast<char*>(error_payload.data()),
+      static_cast<uint32_t>(EvalErrorDetail::kDynamicValueDependence));
+  error.SetPayload(kEvalErrorDetailUrl, error_payload);
+  return error;
+}
+
+absl::optional<EvalErrorDetail> ParseEvalErrorDetail(const Status& error) {
+  absl::optional<tensorflow::StringPiece> error_detail =
+      error.GetPayload(kEvalErrorDetailUrl);
+  if (!error_detail.has_value() && error_detail->empty()) {
+    return absl::nullopt;
+  }
+  return static_cast<EvalErrorDetail>(
+      absl::little_endian::Load32(error_detail->data()));
+}
+
+// A convenience wrapper to compute the while loop's argument's init value at
+// the given tuple_index. If the init value depends on parameters to the
+// while loop's parent computation or infeed, we consider the init value
+// dynamic.
+absl::optional<DynamicOrStaticValue> EvaluateWhileLoopParamInitValue(
+    HloInstruction* param_instruction, int64_t tuple_index) {
+  if (param_instruction->opcode() != HloOpcode::kTuple) {
+    return absl::nullopt;
+  }
+  HloInstruction* element_instruction =
+      param_instruction->mutable_operand(tuple_index);
+  HloEvaluator evaluator;
+  StatusOr<Literal> value = evaluator.Evaluate(
+      element_instruction, /*recursively_evaluate_nonconstant_operands=*/true);
+  if (value.ok()) {
+    if (element_instruction->shape().element_type() == PrimitiveType::PRED) {
+      return DynamicOrStaticValue{
+          static_cast<int64_t>(value->GetFirstElement<bool>())};
+    } else {
+      return DynamicOrStaticValue{value->GetFirstInteger()};
+    }
+  } else {
+    absl::optional<EvalErrorDetail> eval_error_detail =
+        ParseEvalErrorDetail(value.status());
+    if (eval_error_detail.has_value() &&
+        *eval_error_detail == EvalErrorDetail::kDynamicValueDependence) {
+      return DynamicOrStaticValue{absl::nullopt};
+    }
+  }
+  return absl::nullopt;
+}
+
 }  // namespace
+
+absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
+    HloInstruction* while_op) {
+  HloComputation* while_cond = while_op->while_condition();
+  HloComputation* while_body = while_op->while_body();
+  HloInstruction* while_operand = while_op->mutable_operand(0);
+  // Try to parse the loop condition comparison.
+  absl::optional<WhileCondComparisonOrNoOp> loop_comparison_or_noop =
+      PatternMatchLoopCondComparison(while_cond->root_instruction());
+  if (!loop_comparison_or_noop.has_value()) {
+    return absl::nullopt;
+  }
+  if (loop_comparison_or_noop->index() == 1) {
+    ParamIndexAndValue& parameter_index_and_value =
+        absl::get<ParamIndexAndValue>(*loop_comparison_or_noop);
+    CHECK(parameter_index_and_value.param_index.has_value());
+    int64_t loop_cond_var_index = *parameter_index_and_value.param_index;
+    absl::optional<DynamicOrStaticValue> noop_value =
+        EvaluateWhileLoopParamInitValue(while_operand, loop_cond_var_index);
+
+    if (noop_value.has_value()) {
+      if (noop_value->is_dynamic()) {
+        return kParsedDynamicWhileLoop;
+      } else if (*noop_value->static_value == 0) {
+        return ParsedWhileLoop{
+            ParsedStaticWhileLoop{/*trip_count=*/0,
+                                  /*induction_var_index=*/loop_cond_var_index,
+                                  /*induction_var_init_value=*/0,
+                                  /*step_size=*/0,
+                                  /*loop_bound=*/0}};
+      }
+      absl::optional<bool> updated_loop_cond_var =
+          PatternMatchLoopCondVarOverride(while_body->root_instruction(),
+                                          loop_cond_var_index);
+      if (updated_loop_cond_var.has_value()) {
+        if (!*updated_loop_cond_var) {
+          return ParsedWhileLoop{
+              ParsedStaticWhileLoop{/*trip_count=*/1,
+                                    /*induction_var_index=*/loop_cond_var_index,
+                                    /*induction_var_init_value=*/0,
+                                    /*step_size=*/1,
+                                    /*loop_bound=*/1}};
+        } else {
+          // This is an infinite loop and we set trip_count to -1.
+          return ParsedWhileLoop{
+              ParsedStaticWhileLoop{/*trip_count=*/-1,
+                                    /*induction_var_index=*/loop_cond_var_index,
+                                    /*induction_var_init_value=*/0,
+                                    /*step_size=*/0,
+                                    /*loop_bound=*/1}};
+        }
+      }
+    }
+    return absl::nullopt;
+  }
+  CHECK_EQ(loop_comparison_or_noop->index(), 0);
+  WhileCondComparison loop_comparison =
+      absl::get<WhileCondComparison>(*loop_comparison_or_noop);
+  CHECK(loop_comparison.lhs.IsValid() && loop_comparison.rhs.IsValid());
+
+  // If the while loop condition comparison's both sides take an init value
+  // from the while loop's parent computation's parameter, the loop is dynamic.
+  if (while_operand->opcode() == HloOpcode::kParameter) {
+    if (loop_comparison.lhs.param_index.has_value() ||
+        loop_comparison.rhs.param_index.has_value()) {
+      return kParsedDynamicWhileLoop;
+    }
+  }
+
+  // We can't handle the case when the while loop argument is not a Tuple
+  // instruction.
+  if (while_operand->opcode() != HloOpcode::kTuple) {
+    return absl::nullopt;
+  }
+
+  // If loop cond comparison LHS does not have a value defined inside the loop
+  // cond computation, try to evaluate its init value inside the while loop's
+  // parent computation.
+  if (!loop_comparison.lhs.value.has_value()) {
+    absl::optional<DynamicOrStaticValue> lhs_init_value =
+        EvaluateWhileLoopParamInitValue(while_operand,
+                                        *loop_comparison.lhs.param_index);
+    if (lhs_init_value.has_value()) {
+      if (lhs_init_value->is_dynamic()) {
+        return kParsedDynamicWhileLoop;
+      } else {
+        loop_comparison.lhs.value = *(lhs_init_value->static_value);
+      }
+    } else {
+      return absl::nullopt;
+    }
+  }
+
+  // If loop cond comparison RHS does not have a value defined inside the loop
+  // cond computation, try to evaluate its init value inside the while loop's
+  // parent computation.
+  if (!loop_comparison.rhs.value.has_value()) {
+    absl::optional<DynamicOrStaticValue> rhs_init_value =
+        EvaluateWhileLoopParamInitValue(while_operand,
+                                        *loop_comparison.rhs.param_index);
+    if (rhs_init_value.has_value()) {
+      if (rhs_init_value->is_dynamic()) {
+        return kParsedDynamicWhileLoop;
+      } else {
+        loop_comparison.rhs.value = *(rhs_init_value->static_value);
+      }
+    } else {
+      return absl::nullopt;
+    }
+  }
+
+  // We have either successfully evaluated the init value for both LHS and RHS
+  // or have returned as dynamic loop or failure.
+  CHECK(loop_comparison.lhs.value.has_value());
+  CHECK(loop_comparison.rhs.value.has_value());
+
+  if (loop_comparison.lhs.param_index.has_value()) {
+    VLOG(3) << __func__ << " lhs index: " << *loop_comparison.lhs.param_index;
+  }
+
+  VLOG(3) << __func__ << " lhs bound: " << *loop_comparison.lhs.value;
+
+  if (loop_comparison.rhs.param_index.has_value()) {
+    VLOG(3) << __func__ << " rhs index: " << *loop_comparison.rhs.param_index;
+  }
+
+  VLOG(3) << __func__ << " rhs bound: " << *loop_comparison.rhs.value;
+
+  // Check whether LHS is the loop induction var.
+  absl::optional<int64_t> lhs_induction_var_update;
+  if (loop_comparison.lhs.param_index.has_value()) {
+    lhs_induction_var_update = PatternMatchInductionVarUpdate(
+        while_body->root_instruction(), *loop_comparison.lhs.param_index);
+  }
+
+  // Check whether LHS is the loop induction var.
+  absl::optional<int64_t> rhs_induction_var_update;
+  if (loop_comparison.rhs.param_index.has_value()) {
+    rhs_induction_var_update = PatternMatchInductionVarUpdate(
+        while_body->root_instruction(), *loop_comparison.rhs.param_index);
+  }
+
+  // Lhs is the induction variable.
+  if (lhs_induction_var_update.has_value()) {
+    // We cannot handle the case when both LHS and RHS are updated inside
+    // the loop body.
+    if (rhs_induction_var_update.has_value() &&
+        *rhs_induction_var_update != 0) {
+      return absl::nullopt;
+    }
+    if (*lhs_induction_var_update > 0 &&
+        (loop_comparison.comparson_direction == Comparison::Direction::kLt ||
+         loop_comparison.comparson_direction == Comparison::Direction::kLe)) {
+      int64_t trip_count =
+          (*loop_comparison.rhs.value - *loop_comparison.lhs.value - 1) /
+              *lhs_induction_var_update +
+          1;
+      // Additional logic to deal with Equal comparison.
+      if (loop_comparison.comparson_direction == Comparison::Direction::kLe &&
+          (*loop_comparison.rhs.value - *loop_comparison.lhs.value) %
+                  *lhs_induction_var_update ==
+              0) {
+        trip_count += 1;
+      }
+      return ParsedWhileLoop{ParsedStaticWhileLoop{
+          /*trip_count=*/trip_count,
+          /*induction_var_index=*/*loop_comparison.lhs.param_index,
+          /*induction_var_init_value=*/*loop_comparison.lhs.value,
+          /*step_size=*/*lhs_induction_var_update,
+          /*loop_bound=*/*loop_comparison.rhs.value}};
+    } else if (*lhs_induction_var_update < 0 &&
+               (loop_comparison.comparson_direction ==
+                    Comparison::Direction::kGt ||
+                loop_comparison.comparson_direction ==
+                    Comparison::Direction::kGe)) {
+      int trip_count =
+          (*loop_comparison.lhs.value - *loop_comparison.rhs.value - 1) /
+              *lhs_induction_var_update +
+          1;
+      if (loop_comparison.comparson_direction == Comparison::Direction::kGe &&
+          (*loop_comparison.lhs.value - *loop_comparison.rhs.value) %
+                  *lhs_induction_var_update ==
+              0) {
+        trip_count += 1;
+      }
+      return ParsedWhileLoop{ParsedStaticWhileLoop{
+          /*trip_count=*/trip_count,
+          /*induction_var_index=*/*(loop_comparison.lhs.param_index),
+          /*induction_var_init_value=*/*(loop_comparison.lhs.value),
+          /*step_size=*/-*lhs_induction_var_update,
+          /*loop_bound=*/*(loop_comparison.rhs.value)}};
+    }
+    return absl::nullopt;
+  }
+  // Rhs is the induction variable.
+  if (rhs_induction_var_update.has_value()) {
+    // We cannot handle the case when both LHS and RHS are updated inside
+    // the loop body.
+    if (lhs_induction_var_update.has_value() &&
+        *lhs_induction_var_update == 0) {
+      return absl::nullopt;
+    }
+    if (*rhs_induction_var_update > 0 &&
+        (loop_comparison.comparson_direction == Comparison::Direction::kGt ||
+         loop_comparison.comparson_direction == Comparison::Direction::kGe)) {
+      int trip_count =
+          (*loop_comparison.lhs.value - *loop_comparison.rhs.value - 1) /
+              *rhs_induction_var_update +
+          1;
+      if (loop_comparison.comparson_direction == Comparison::Direction::kGe &&
+          (*loop_comparison.lhs.value - *loop_comparison.rhs.value) %
+                  *rhs_induction_var_update ==
+              0) {
+        trip_count += 1;
+      }
+      return ParsedWhileLoop{ParsedStaticWhileLoop{
+          /*trip_count=*/trip_count,
+          /*induction_var_index=*/*(loop_comparison.rhs.param_index),
+          /*induction_var_init_value=*/*(loop_comparison.rhs.value),
+          /*step_size=*/*rhs_induction_var_update,
+          /*loop_bound=*/*(loop_comparison.lhs.value)}};
+    } else if (*rhs_induction_var_update < 0 &&
+               (loop_comparison.comparson_direction ==
+                    Comparison::Direction::kLt ||
+                loop_comparison.comparson_direction ==
+                    Comparison::Direction::kLe)) {
+      int trip_count =
+          (*loop_comparison.rhs.value - *loop_comparison.lhs.value - 1) /
+              *rhs_induction_var_update +
+          1;
+      if (loop_comparison.comparson_direction == Comparison::Direction::kLe &&
+          (*loop_comparison.rhs.value - *loop_comparison.lhs.value) %
+                  *rhs_induction_var_update ==
+              0) {
+        trip_count += 1;
+      }
+      return ParsedWhileLoop{ParsedStaticWhileLoop{
+          /*trip_count=*/trip_count,
+          /*induction_var_index=*/*(loop_comparison.rhs.param_index),
+          /*induction_var_init_value=*/*(loop_comparison.rhs.value),
+          /*step_size=*/-*rhs_induction_var_update,
+          /*loop_bound=*/*(loop_comparison.lhs.value)}};
+    }
+    return absl::nullopt;
+  }
+  return absl::nullopt;
+}
 
 // Note that unsupported types by the typed visitor does not necessarily imply
 // the non-typed HloEvaluator (parent evaluator) would not support them either
@@ -181,18 +717,19 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
   typed_visitors_[PRED] =
       absl::make_unique<HloEvaluatorTypedVisitor<bool>>(this);
   typed_visitors_[U8] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint8>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<uint8_t>>(this);
   typed_visitors_[U16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint16>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<uint16_t>>(this);
   typed_visitors_[U32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<uint32>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<uint32_t>>(this);
   typed_visitors_[U64] =
       absl::make_unique<HloEvaluatorTypedVisitor<uint64_t>>(this);
-  typed_visitors_[S8] = absl::make_unique<HloEvaluatorTypedVisitor<int8>>(this);
+  typed_visitors_[S8] =
+      absl::make_unique<HloEvaluatorTypedVisitor<int8_t>>(this);
   typed_visitors_[S16] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int16>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<int16_t>>(this);
   typed_visitors_[S32] =
-      absl::make_unique<HloEvaluatorTypedVisitor<int32>>(this);
+      absl::make_unique<HloEvaluatorTypedVisitor<int32_t>>(this);
   typed_visitors_[S64] =
       absl::make_unique<HloEvaluatorTypedVisitor<int64_t>>(this);
   typed_visitors_[F16] =
@@ -275,38 +812,42 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   engine_.seed(seed_);
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
-
+  const Literal& result =
+      GetEvaluatedLiteralFor(computation.root_instruction());
   if (VLOG_IS_ON(100)) {
     for (const HloInstruction* instr : computation.instructions()) {
       VLOG(100) << instr->name() << " = " << GetEvaluatedLiteralFor(instr);
     }
   }
-
-  return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
+  if (!result.IsKnown()) {
+    return MakeEvalErrorDueToParamOrInfeed();
+  }
+  return result.Clone();
 }
 
-StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
-  if (instruction->opcode() == HloOpcode::kParameter) {
-    return tensorflow::errors::FailedPrecondition(
-        "Cannot evaluate a parameter.");
-  }
-  if (!hlo_query::AllOperandsAreConstants(*instruction)) {
-    return tensorflow::errors::FailedPrecondition(
-        "Not all operands are constants.");
-  }
-
+StatusOr<Literal> HloEvaluator::Evaluate(
+    HloInstruction* instruction,
+    bool recursively_evaluate_nonconstant_operands) {
   arg_literals_.clear();
   evaluated_.clear();
-
-  TF_RETURN_IF_ERROR(Preprocess(instruction));
-  TF_RETURN_IF_ERROR(instruction->Visit(this));
-  TF_RETURN_IF_ERROR(Postprocess(instruction));
-  return GetEvaluatedLiteralFor(instruction).Clone();
+  auto enable_partial_evaluation_cleanup =
+      absl::MakeCleanup([this] { enable_partial_evaluation_ = false; });
+  enable_partial_evaluation_ = recursively_evaluate_nonconstant_operands;
+  TF_RETURN_IF_ERROR(
+      EvaluateInternal(instruction, /*shape_index=*/{},
+                       recursively_evaluate_nonconstant_operands));
+  const Literal& result = GetEvaluatedLiteralFor(instruction);
+  if (!result.IsKnown()) {
+    return MakeEvalErrorDueToParamOrInfeed();
+  }
+  return result.Clone();
 }
 
-bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result) {
+bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result,
+                               bool recursively_evaluate_nonconstant_operands) {
   CHECK(result != nullptr);
-  auto result_or = Evaluate(instruction);
+  auto result_or =
+      Evaluate(instruction, recursively_evaluate_nonconstant_operands);
   if (!result_or.ok()) {
     VLOG(1) << "TryEvaluate failed:" << result_or.status();
     return false;
@@ -318,7 +859,7 @@ bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result) {
 
 StatusOr<Literal> HloEvaluator::EvaluateWithSubstitutions(
     const HloInstruction* instruction,
-    const std::unordered_map<const HloInstruction*, const Literal*>&
+    const absl::flat_hash_map<const HloInstruction*, const Literal*>&
         substitutions) {
   std::vector<std::unique_ptr<HloInstruction>> owned_operands;
   for (const HloInstruction* operand : instruction->operands()) {
@@ -427,6 +968,62 @@ StatusOr<Literal> HloEvaluator::EvaluateDotOp(
   return Evaluate(cloned_instruction.get());
 }
 
+Status HloEvaluator::EvaluateInternal(
+    HloInstruction* instruction, const ShapeIndex& shape_index,
+    bool recursively_evaluate_nonconstant_operands) {
+  // Don't need to evaluate this instruction again if it has already been
+  // evaluated.
+  if (IsAlreadyEvaluated(instruction, shape_index)) {
+    return Status::OK();
+  }
+
+  if (!recursively_evaluate_nonconstant_operands) {
+    if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+      return tensorflow::errors::FailedPrecondition(
+          "Not all operands are constants.");
+    }
+  } else {
+    if (instruction->opcode() == HloOpcode::kGetTupleElement) {
+      ShapeIndex new_shape_index = shape_index;
+      new_shape_index.push_front(instruction->tuple_index());
+      TF_RETURN_IF_ERROR(
+          EvaluateInternal(instruction->mutable_operand(0), new_shape_index,
+                           /*recursively_evaluate_nonconstant_operands=*/true));
+    } else if (instruction->opcode() == HloOpcode::kTuple &&
+               !shape_index.empty()) {
+      ShapeIndex new_shape_index = shape_index;
+      int64_t tuple_index = new_shape_index.front();
+      new_shape_index.pop_front();
+      TF_RETURN_IF_ERROR(EvaluateInternal(
+          instruction->mutable_operand(tuple_index), new_shape_index,
+          /*recursively_evaluate_nonconstant_operands=*/true));
+    } else {
+      for (HloInstruction* operand : instruction->operands()) {
+        TF_RETURN_IF_ERROR(EvaluateInternal(
+            operand, /*shape_index=*/{},
+            /*recursively_evaluate_nonconstant_operands=*/true));
+        // Except for the above and following cases, we do not support handling
+        // unknown operands for other HLOs. So mark the result as unknown.
+        if ((!GetEvaluatedLiteralFor(operand).IsKnown() &&
+             instruction->opcode() != HloOpcode::kCopy &&
+             instruction->opcode() != HloOpcode::kCopyStart &&
+             instruction->opcode() != HloOpcode::kCopyDone &&
+             instruction->opcode() != HloOpcode::kWhile)) {
+          evaluated_[instruction] =
+              Literal::CreateFromShapeWithUnknownLeafArrays(
+                  instruction->shape());
+          return Status::OK();
+        }
+      }
+    }
+  }
+  visitor_shape_index_ = shape_index;
+  TF_RETURN_IF_ERROR(Preprocess(instruction));
+  TF_RETURN_IF_ERROR(instruction->Visit(this));
+  TF_RETURN_IF_ERROR(Postprocess(instruction));
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
   Literal result(bitcast->shape());
@@ -457,7 +1054,7 @@ Status HloEvaluator::HandleGetDimensionSize(
   const Shape& shape = get_dimension_size->operand(0)->shape();
   Literal output(ShapeUtil::MakeShape(S32, {}));
   output.PopulateWithValue(
-      static_cast<int32>(shape.dimensions(get_dimension_size->dimension())));
+      static_cast<int32_t>(shape.dimensions(get_dimension_size->dimension())));
   evaluated_[get_dimension_size] = std::move(output);
   return Status::OK();
 }
@@ -472,12 +1069,23 @@ Status HloEvaluator::HandleSetDimensionSize(
   const Literal& size_literal =
       GetEvaluatedLiteralFor(set_dimension_size->operand(1));
   result.SetDynamicSize(set_dimension_size->dimension(),
-                        size_literal.Get<int32>({}));
+                        size_literal.Get<int32_t>({}));
   evaluated_[set_dimension_size] = std::move(result);
   return Status::OK();
 }
 
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
+  if (arg_literals_.empty()) {
+    if (!enable_partial_evaluation_) {
+      return tensorflow::errors::FailedPrecondition(
+          "Failed to evaluate instruction since its operands are unknown "
+          "or undetermined and partial evaluation is not enabled.");
+    }
+    evaluated_[parameter] =
+        Literal::CreateFromShapeWithUnknownLeafArrays(parameter->shape());
+    return Status::OK();
+  }
+
   // Nothing to do other than sanity checks. Parameters' values are stored in
   // arg_literals_.
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
@@ -493,6 +1101,17 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
       << ShapeUtil::HumanStringWithLayout(input_literal->shape());
 #endif
 
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleInfeed(HloInstruction* infeed) {
+  if (!enable_partial_evaluation_) {
+    return tensorflow::errors::FailedPrecondition(
+        "Failed to evaluate instruction since its operands are unknown "
+        "or undetermined and partial evaluation is not enabled.");
+  }
+  evaluated_[infeed] =
+      Literal::CreateFromShapeWithUnknownLeafArrays(infeed->shape());
   return Status::OK();
 }
 
@@ -677,6 +1296,14 @@ Status HloEvaluator::HandleReal(HloInstruction* real) {
 Status HloEvaluator::HandleImag(HloInstruction* imag) {
   auto operand = imag->operand(0);
   switch (operand->shape().element_type()) {
+    case BF16: {
+      auto result_or = ElementWiseUnaryOpImpl<bfloat16, bfloat16>(
+          imag, [](bfloat16 elem_operand) { return bfloat16(0); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
     case C64: {
       auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
           imag, [](complex64 elem_operand) { return std::imag(elem_operand); },
@@ -688,6 +1315,30 @@ Status HloEvaluator::HandleImag(HloInstruction* imag) {
     case C128: {
       auto result_or = ElementWiseUnaryOpImpl<double, complex128>(
           imag, [](complex128 elem_operand) { return std::imag(elem_operand); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    case F16: {
+      auto result_or = ElementWiseUnaryOpImpl<Eigen::half, Eigen::half>(
+          imag, [](Eigen::half elem_operand) { return Eigen::half(0); },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    case F32: {
+      auto result_or = ElementWiseUnaryOpImpl<float, float>(
+          imag, [](float elem_operand) { return 0; },
+          GetEvaluatedLiteralFor(imag->operand(0)));
+
+      TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+      break;
+    }
+    case F64: {
+      auto result_or = ElementWiseUnaryOpImpl<double, double>(
+          imag, [](double elem_operand) { return 0; },
           GetEvaluatedLiteralFor(imag->operand(0)));
 
       TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
@@ -754,18 +1405,18 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
     } break;
     case U8: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint8>(compare->shape(), direction,
-                                         lhs_literal, rhs_literal));
+                          Compare<uint8_t>(compare->shape(), direction,
+                                           lhs_literal, rhs_literal));
     } break;
     case U16: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint16>(compare->shape(), direction,
-                                          lhs_literal, rhs_literal));
+                          Compare<uint16_t>(compare->shape(), direction,
+                                            lhs_literal, rhs_literal));
     } break;
     case U32: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<uint32>(compare->shape(), direction,
-                                          lhs_literal, rhs_literal));
+                          Compare<uint32_t>(compare->shape(), direction,
+                                            lhs_literal, rhs_literal));
     } break;
     case U64: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
@@ -773,19 +1424,19 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
                                             lhs_literal, rhs_literal));
     } break;
     case S8: {
-      TF_ASSIGN_OR_RETURN(
-          evaluated_[compare],
-          Compare<int8>(compare->shape(), direction, lhs_literal, rhs_literal));
+      TF_ASSIGN_OR_RETURN(evaluated_[compare],
+                          Compare<int8_t>(compare->shape(), direction,
+                                          lhs_literal, rhs_literal));
     } break;
     case S16: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<int16>(compare->shape(), direction,
-                                         lhs_literal, rhs_literal));
+                          Compare<int16_t>(compare->shape(), direction,
+                                           lhs_literal, rhs_literal));
     } break;
     case S32: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
-                          Compare<int32>(compare->shape(), direction,
-                                         lhs_literal, rhs_literal));
+                          Compare<int32_t>(compare->shape(), direction,
+                                           lhs_literal, rhs_literal));
     } break;
     case S64: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
@@ -832,11 +1483,41 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
 
 Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
   std::vector<const Literal*> operand_literals;
-  for (auto operand : tuple->operands()) {
-    operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+  std::vector<Literal> operand_literal_values;
+  if (!visitor_shape_index_.empty()) {
+    // We only need to evaluate tuple at visitor_shape_index_. The other
+    // operands might not have been evaluated, so mark the other operands as
+    // undetermined.
+    int64_t tuple_index = visitor_shape_index_.front();
+    operand_literal_values.resize(tuple->operand_count());
+    for (int operand_index = 0; operand_index < tuple->operand_count();
+         ++operand_index) {
+      if (operand_index == tuple_index) {
+        operand_literals.push_back(
+            &GetEvaluatedLiteralFor(tuple->mutable_operand(operand_index)));
+      } else {
+        operand_literal_values[operand_index] =
+            Literal::CreateFromShapeWithUndeterminedLeafArrays(
+                ShapeUtil::GetSubshape(tuple->shape(), {operand_index}));
+        operand_literals.push_back(&operand_literal_values[operand_index]);
+      }
+    }
+  } else {
+    for (auto operand : tuple->operands()) {
+      operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
+    }
   }
 
-  evaluated_[tuple] = LiteralUtil::MakeTuple(operand_literals);
+  if (evaluated_.contains(tuple)) {
+    Literal new_result = LiteralUtil::MakeTuple(operand_literals);
+    CHECK(new_result.IsDetermined(visitor_shape_index_));
+    TF_RETURN_IF_ERROR(
+        evaluated_[tuple].CopyFrom(new_result,
+                                   /*dest_shape_index=*/visitor_shape_index_,
+                                   /*src_shape_index=*/visitor_shape_index_));
+  } else {
+    evaluated_[tuple] = LiteralUtil::MakeTuple(operand_literals);
+  }
   return Status::OK();
 }
 
@@ -1869,7 +2550,9 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
 
 Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   const Literal& operand = GetEvaluatedLiteralFor(broadcast->operand(0));
-
+  TF_RET_CHECK(broadcast->shape().element_type() ==
+               operand.shape().element_type())
+      << " broadcast from a different data type is not supported";
   TF_RET_CHECK(broadcast->dimensions().size() == operand.shape().rank())
       << "broadcast dimensions is of size: " << broadcast->dimensions().size()
       << " and rank of operand_to_broadcast is: " << operand.shape().rank();
@@ -1946,7 +2629,7 @@ Status HloEvaluator::HandleCopyStart(HloInstruction* copy_start) {
   // since we ensure that the only user of a kCopyStart is a kCopyDone which
   // consumes the context. Also note that MakeTuple copies its arguments, so
   // this is memory-safe.
-  const Literal context_literal = LiteralUtil::CreateR0<uint32>(0);
+  const Literal context_literal = LiteralUtil::CreateR0<uint32_t>(0);
   evaluated_[copy_start] = LiteralUtil::MakeTuple(
       {&GetEvaluatedLiteralFor(copy_start->operand(0)),
        &GetEvaluatedLiteralFor(copy_start->operand(0)), &context_literal});
@@ -1962,7 +2645,6 @@ Status HloEvaluator::HandleCopyDone(HloInstruction* copy_done) {
   }
 
   const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
-
   evaluated_[copy_done] =
       Literal(ShapeUtil::GetTupleElementShape(operand->shape(), /*index=*/0));
   TF_RETURN_IF_ERROR(evaluated_[copy_done].CopyFrom(operand_tuple_literal,
@@ -2034,7 +2716,7 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   if (conditional->operand(0)->shape().element_type() == PRED) {
     branch_index = branch_index_literal.Get<bool>({}) ? 0 : 1;
   } else {
-    branch_index = branch_index_literal.Get<int32>({});
+    branch_index = branch_index_literal.Get<int32_t>({});
     if (branch_index < 0 || branch_index >= conditional->branch_count()) {
       branch_index = conditional->branch_count() - 1;
     }
@@ -2085,11 +2767,108 @@ Status HloEvaluator::HandleTupleSelect(HloInstruction* tuple_select) {
   return Status::OK();
 }
 
+namespace {
+
+StatusOr<Literal> CreateScalarLiteral(int64_t value,
+                                      PrimitiveType element_type) {
+  Literal result;
+  switch (element_type) {
+    case S8:
+      result = LiteralUtil::CreateR0(static_cast<int8_t>(value));
+      break;
+    case U8:
+      result = LiteralUtil::CreateR0(static_cast<uint8_t>(value));
+      break;
+    case S16:
+      result = LiteralUtil::CreateR0(static_cast<int16_t>(value));
+      break;
+    case U16:
+      result = LiteralUtil::CreateR0(static_cast<uint16_t>(value));
+      break;
+    case S32:
+      result = LiteralUtil::CreateR0(static_cast<int32_t>(value));
+      break;
+    case U32:
+      result = LiteralUtil::CreateR0(static_cast<uint32_t>(value));
+      break;
+    case S64:
+      result = LiteralUtil::CreateR0(static_cast<int64_t>(value));
+      break;
+    case U64:
+      result = LiteralUtil::CreateR0(static_cast<uint64_t>(value));
+      break;
+    default:
+      return InvalidArgument("Unsupported element type.");
+  }
+  return result;
+}
+
+// Parses the while loop if it matches one of the known patterns. Returns the
+// value of the loop induction variable after the loop execution if the loop is
+// static.
+StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
+    HloInstruction* while_hlo) {
+  absl::optional<ParsedWhileLoop> parsed_while_loop =
+      PatternMatchParseWhileLoop(while_hlo);
+  if (!parsed_while_loop.has_value() || parsed_while_loop->is_dynamic()) {
+    return FailedPrecondition(
+        "Cannot evaluate a while loop's induction variable since the loop "
+        "does not match a known loop pattern or the loop is not static.");
+  }
+  int64_t induction_var_value =
+      parsed_while_loop->static_while_loop->induction_var_init_value +
+      parsed_while_loop->static_while_loop->trip_count *
+          parsed_while_loop->static_while_loop->step_size;
+  Shape result_shape = while_hlo->shape().tuple_shapes(
+      parsed_while_loop->static_while_loop->induction_var_index);
+  TF_ASSIGN_OR_RETURN(
+      Literal result,
+      CreateScalarLiteral(induction_var_value, result_shape.element_type()));
+  std::vector<Literal*> while_result_element_ptrs;
+  while_result_element_ptrs.reserve(while_hlo->shape().tuple_shapes_size());
+  std::vector<Literal> while_result_elements(
+      while_hlo->shape().tuple_shapes_size());
+  for (int i = 0; i < while_hlo->shape().tuple_shapes_size(); ++i) {
+    if (i == parsed_while_loop->static_while_loop->induction_var_index) {
+      while_result_element_ptrs.push_back(&result);
+    } else {
+      const Shape& shape = while_hlo->shape().tuple_shapes(i);
+      while_result_elements[i] =
+          Literal::CreateFromShapeWithUnknownLeafArrays(shape);
+    }
+  }
+  return LiteralUtil::MakeTuple(while_result_element_ptrs);
+}
+
+}  // namespace
+
 Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   HloComputation* cond_comp = while_hlo->while_condition();
   HloComputation* body_comp = while_hlo->while_body();
   // Initialize the loop carried valued with the input to the While instruction.
   auto lcv = GetEvaluatedLiteralFor(while_hlo->operand(0)).Clone();
+  if (!lcv.IsKnown()) {
+    absl::optional<ParsedWhileLoop> parsed_while_loop =
+        PatternMatchParseWhileLoop(while_hlo);
+    evaluated_[while_hlo] =
+        Literal::CreateFromShapeWithUnknownLeafArrays(while_hlo->shape());
+    if (!parsed_while_loop.has_value() || parsed_while_loop->is_dynamic() ||
+        visitor_shape_index_.size() != 1 ||
+        parsed_while_loop->static_while_loop->induction_var_index !=
+            visitor_shape_index_[0]) {
+      return Status::OK();
+    }
+    Shape induction_var_shape =
+        ShapeUtil::GetSubshape(while_hlo->shape(), visitor_shape_index_);
+    int64_t trip_count = parsed_while_loop->static_while_loop->trip_count;
+    TF_ASSIGN_OR_RETURN(
+        Literal induction_var_val,
+        CreateScalarLiteral(trip_count, induction_var_shape.element_type()));
+    TF_RETURN_IF_ERROR(evaluated_[while_hlo].CopyFrom(
+        induction_var_val, /*dest_shape_index=*/visitor_shape_index_,
+        /*src_shape_index=*/{}));
+    return Status::OK();
+  }
   bool keep_going = true;
   int64_t iteration_count = 0;
   HloEvaluator cond_evaluator(max_loop_iterations_);
@@ -2099,8 +2878,15 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
       dynamic_dimension_inference_);
   while (keep_going) {
     if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
-      return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
-                             while_hlo->name(), max_loop_iterations_);
+      StatusOr<Literal> result =
+          TryParseAndEvaluateWhileInductionVar(while_hlo);
+      if (result.ok()) {
+        lcv = result.ConsumeValueOrDie();
+        break;
+      } else {
+        return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
+                               while_hlo->name(), max_loop_iterations_);
+      }
     }
     TF_ASSIGN_OR_RETURN(auto cond_val,
                         cond_evaluator.Evaluate(*cond_comp, {&lcv}));
@@ -2148,12 +2934,12 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
                                                     extract_as_scalar);
     }
     case U8: {
-      return ExtractLiteralFromIndexPositions<uint8>(from, indices,
-                                                     extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint8_t>(from, indices,
+                                                       extract_as_scalar);
     }
     case S8: {
-      return ExtractLiteralFromIndexPositions<int8>(from, indices,
-                                                    extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int8_t>(from, indices,
+                                                      extract_as_scalar);
     }
     case BF16: {
       return ExtractLiteralFromIndexPositions<bfloat16>(from, indices,
@@ -2164,24 +2950,24 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
                                                            extract_as_scalar);
     }
     case U16: {
-      return ExtractLiteralFromIndexPositions<uint16>(from, indices,
-                                                      extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint16_t>(from, indices,
+                                                        extract_as_scalar);
     }
     case S16: {
-      return ExtractLiteralFromIndexPositions<int16>(from, indices,
-                                                     extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int16_t>(from, indices,
+                                                       extract_as_scalar);
     }
     case F32: {
       return ExtractLiteralFromIndexPositions<float>(from, indices,
                                                      extract_as_scalar);
     }
     case U32: {
-      return ExtractLiteralFromIndexPositions<uint32>(from, indices,
-                                                      extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<uint32_t>(from, indices,
+                                                        extract_as_scalar);
     }
     case S32: {
-      return ExtractLiteralFromIndexPositions<int32>(from, indices,
-                                                     extract_as_scalar);
+      return ExtractLiteralFromIndexPositions<int32_t>(from, indices,
+                                                       extract_as_scalar);
     }
     case F64: {
       return ExtractLiteralFromIndexPositions<double>(from, indices,
@@ -2595,6 +3381,16 @@ Status HloEvaluator::HandleCustomCall(HloInstruction* custom_call) {
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {
   VLOG(2) << "About to visit HLO: " << hlo->ToString();
+  if (!enable_partial_evaluation_) {
+    for (HloInstruction* operand : hlo->mutable_operands()) {
+      if (!IsAlreadyEvaluated(operand) ||
+          !GetEvaluatedLiteralFor(operand).IsKnown()) {
+        return tensorflow::errors::FailedPrecondition(
+            "Failed to evaluate instruction since its operands are unknown "
+            "or undetermined and partial evaluation is not enabled.");
+      }
+    }
+  }
   return ShapeUtil::ValidateShape(hlo->shape());
 }
 
@@ -2668,9 +3464,9 @@ std::unique_ptr<Array2D<std::complex<double>>> HloEvaluator::MatmulArray2D(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulC128);
 }
 
-std::unique_ptr<Array2D<int32>> HloEvaluator::MatmulArray2D(
-    const Array2D<int32>& lhs, const Array2D<int32>& rhs) {
-  return MatmulArray2DImpl<int32>(
+std::unique_ptr<Array2D<int32_t>> HloEvaluator::MatmulArray2D(
+    const Array2D<int32_t>& lhs, const Array2D<int32_t>& rhs) {
+  return MatmulArray2DImpl<int32_t>(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulS32);
 }
 

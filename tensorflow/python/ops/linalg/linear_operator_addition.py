@@ -16,8 +16,6 @@
 
 import abc
 
-import six
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -110,11 +108,7 @@ def add_operators(operators,
   _static_check_for_same_dimensions(operators)
   _static_check_for_broadcastable_batch_shape(operators)
 
-  graph_parents = []
-  for operator in operators:
-    graph_parents.extend(operator.graph_parents)
-
-  with ops.name_scope(name or "add_operators", values=graph_parents):
+  with ops.name_scope(name or "add_operators"):
 
     # Additions done in one of the tiers.  Try tier 0, 1,...
     ops_to_try_at_next_tier = list(operators)
@@ -219,7 +213,7 @@ def _static_check_for_broadcastable_batch_shape(operators):
     batch_shape = array_ops.broadcast_static_shape(batch_shape, op.batch_shape)
 
 
-class _Hints(object):
+class _Hints:
   """Holds 'is_X' flags that every LinearOperator is initialized with."""
 
   def __init__(self,
@@ -236,8 +230,7 @@ class _Hints(object):
 ################################################################################
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _Adder(object):
+class _Adder(metaclass=abc.ABCMeta):
   """Abstract base class to add two operators.
 
   Each `Adder` acts independently, adding everything it can, paying no attention
@@ -278,11 +271,10 @@ class _Adder(object):
     if operator_name is None:
       operator_name = "Add/" + op1.name + "__" + op2.name + "/"
 
-    values = op1.graph_parents + op2.graph_parents
     scope_name = self.name
     if scope_name.startswith("_"):
       scope_name = scope_name[1:]
-    with ops.name_scope(scope_name, values=values):
+    with ops.name_scope(scope_name):
       return self._add(op1, op2, operator_name, updated_hints)
 
 

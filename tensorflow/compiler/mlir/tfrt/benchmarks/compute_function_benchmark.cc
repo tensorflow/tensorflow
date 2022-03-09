@@ -84,7 +84,7 @@ static llvm::SmallVector<InputTensorSpec> Inputs13() {
   };
 }
 
-BM_Cpurt(Compute13, mlir_input13, "compute", Inputs13())->Arg(0);
+BM_Jitrt(Compute13, mlir_input13, "compute", Inputs13())->Arg(0);
 
 static const char* const mlir_fresh0 = R"(
   func @compute(%arg0: tensor<i64>) -> tensor<i64> {
@@ -122,7 +122,7 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh0() {
 
 #define BM(FN) BM_##FN->Arg(0)->Arg(4)->Arg(8);
 
-BM(Cpurt(Fresh0, mlir_fresh0, "compute", InputsFresh0()));
+BM(Jitrt(Fresh0, mlir_fresh0, "compute", InputsFresh0()));
 BM(Tfrt(Fresh0, mlir_fresh0, "compute", InputsFresh0()));
 
 static const char* const mlir_fresh1 = R"(
@@ -154,15 +154,15 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh1() {
   };
 }
 
-BM(Cpurt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
-BM(CpurtV(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
+BM(Jitrt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
+BM(JitrtV(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
 BM(Tfrt(Fresh1, mlir_fresh1, "compute", InputsFresh1()));
 
 static const char* const mlir_fresh2 = R"(
   func @compute(%arg0: tensor<?x?xf32>,
                 %arg1: tensor<?x128xf32>,
                 %arg2: tensor<?x?xf32>,
-                %arg3: tensor<*xf32> {cpurt.constraint = "rank"})
+                %arg3: tensor<*xf32> {jitrt.constraint = "rank"})
        -> tensor<?x128xf32> {
     %cst = "tf.Const"()
          {value = dense<1.000000e+00> : tensor<f32>,
@@ -200,8 +200,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFresh2() {
   };
 }
 
-BM(Cpurt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
-BM(CpurtV(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
+BM(Jitrt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
+BM(JitrtV(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 BM(Tfrt(Fresh2, mlir_fresh2, "compute", InputsFresh2()));
 
 static const char* const mlir_factorized0 = R"(
@@ -255,8 +255,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFactorized0() {
   };
 }
 
-BM(Cpurt(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
-BM(CpurtV(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
+BM(Jitrt(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
+BM(JitrtV(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
 BM(Tfrt(Factorized0, mlir_factorized0, "compute", InputsFactorized0()));
 
 static const char* const mlir_factorized1 = R"(
@@ -280,8 +280,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFactorized1() {
   };
 }
 
-BM(Cpurt(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
-BM(CpurtV(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
+BM(Jitrt(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
+BM(JitrtV(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
 BM(Tfrt(Factorized1, mlir_factorized1, "compute", InputsFactorized1()));
 
 static const char* const mlir_factorized2 = R"(
@@ -305,8 +305,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFactorized2() {
   };
 }
 
-BM(Cpurt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
-BM(CpurtV(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
+BM(Jitrt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
+BM(JitrtV(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
 BM(Tfrt(Factorized2, mlir_factorized2, "compute", InputsFactorized2()));
 
 static const char* const mlir_factorized3 = R"(
@@ -348,8 +348,8 @@ static llvm::SmallVector<InputTensorSpec> InputsFactorized3() {
   };
 }
 
-BM(Cpurt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
-BM(CpurtV(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
+BM(Jitrt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
+BM(JitrtV(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
 BM(Tfrt(Factorized3, mlir_factorized3, "compute", InputsFactorized3()));
 
 static const char* const mlir_factorized4 = R"(
@@ -382,9 +382,87 @@ static llvm::SmallVector<InputTensorSpec> InputsFactorized4() {
   };
 }
 
-BM(Cpurt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
-BM(CpurtV(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
+BM(Jitrt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
+BM(JitrtV(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
 BM(Tfrt(Factorized4, mlir_factorized4, "compute", InputsFactorized4()));
+
+static const char* const mlir_hitcat0 = R"(
+func @compute(%arg0: tensor<474xf32>,
+              %arg1: tensor<474xf32>,
+              %arg2: tensor<474xf32>,
+              %arg3: tensor<474xf32>,
+              %arg4: tensor<474xf32>,
+              %arg5: tensor<474xf32>,
+              %arg6: tensor<474xf32>,
+              %arg7: tensor<474x474xf32>) -> (tensor<474xf32>,
+                                              tensor<474x474xf32>) {
+    %cst = "tf.Const"()
+           {value = dense<0.000000e+00> : tensor<f32>,
+            device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+           : () -> tensor<f32>
+    %cst_0 = "tf.Const"()
+             {value = dense<1.000000e+00> : tensor<f32>,
+              device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+             : () -> tensor<f32>
+    %0 = "tf.Mul"(%arg0, %arg1)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %1 = "tf.AddV2"(%0, %arg2)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %2 = "tf.Mul"(%1, %arg0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %3 = "tf.AddV2"(%2, %arg3)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %4 = "tf.Mul"(%3, %arg0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %5 = "tf.AddV2"(%4, %arg4)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %6 = "tf.Mul"(%5, %arg0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %7 = "tf.AddV2"(%6, %arg5)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %8 = "tf.Mul"(%7, %arg0)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %9 = "tf.AddV2"(%8, %arg6)
+         {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+         : (tensor<474xf32>, tensor<474xf32>) -> tensor<474xf32>
+    %10 = "tf.Minimum"(%9, %cst_0)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<474xf32>, tensor<f32>) -> tensor<474xf32>
+    %11 = "tf.Maximum"(%10, %cst)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<474xf32>, tensor<f32>) -> tensor<474xf32>
+    %12 = "tf.Mul"(%11, %arg7)
+          {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
+          : (tensor<474xf32>, tensor<474x474xf32>) -> tensor<474x474xf32>
+    return %11, %12 : tensor<474xf32>, tensor<474x474xf32>
+  }
+)";
+
+static llvm::SmallVector<InputTensorSpec> InputsHitcat2() {
+  return {
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg0
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg1
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg2
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg3
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg4
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg5
+      InputTensorSpec(DT_FLOAT, {474}),       // %arg6
+      InputTensorSpec(DT_FLOAT, {474, 474}),  // %arg7
+  };
+}
+
+BM(Jitrt(Hitcat0, mlir_hitcat0, "compute", InputsHitcat2()));
+BM(JitrtV(Hitcat0, mlir_hitcat0, "compute", InputsHitcat2()));
+BM(Tfrt(Hitcat0, mlir_hitcat0, "compute", InputsHitcat2()));
 
 }  // namespace
 }  // namespace tensorflow

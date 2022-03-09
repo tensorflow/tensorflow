@@ -394,6 +394,9 @@ struct BucketizeOptionsT;
 struct GeluOptions;
 struct GeluOptionsT;
 
+struct DynamicUpdateSliceOptions;
+struct DynamicUpdateSliceOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -435,11 +438,12 @@ enum TensorType {
   TensorType_RESOURCE = 13,
   TensorType_VARIANT = 14,
   TensorType_UINT32 = 15,
+  TensorType_UINT16 = 16,
   TensorType_MIN = TensorType_FLOAT32,
-  TensorType_MAX = TensorType_UINT32
+  TensorType_MAX = TensorType_UINT16
 };
 
-inline const TensorType (&EnumValuesTensorType())[16] {
+inline const TensorType (&EnumValuesTensorType())[17] {
   static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
@@ -456,13 +460,14 @@ inline const TensorType (&EnumValuesTensorType())[16] {
     TensorType_UINT64,
     TensorType_RESOURCE,
     TensorType_VARIANT,
-    TensorType_UINT32
+    TensorType_UINT32,
+    TensorType_UINT16
   };
   return values;
 }
 
 inline const char * const *EnumNamesTensorType() {
-  static const char * const names[17] = {
+  static const char * const names[18] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -479,13 +484,14 @@ inline const char * const *EnumNamesTensorType() {
     "RESOURCE",
     "VARIANT",
     "UINT32",
+    "UINT16",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
-  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_UINT32)) return "";
+  if (flatbuffers::IsOutRange(e, TensorType_FLOAT32, TensorType_UINT16)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
@@ -868,11 +874,12 @@ enum BuiltinOperator {
   BuiltinOperator_RANDOM_UNIFORM = 148,
   BuiltinOperator_MULTINOMIAL = 149,
   BuiltinOperator_GELU = 150,
+  BuiltinOperator_DYNAMIC_UPDATE_SLICE = 151,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_GELU
+  BuiltinOperator_MAX = BuiltinOperator_DYNAMIC_UPDATE_SLICE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[151] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[152] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1024,13 +1031,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[151] {
     BuiltinOperator_BUCKETIZE,
     BuiltinOperator_RANDOM_UNIFORM,
     BuiltinOperator_MULTINOMIAL,
-    BuiltinOperator_GELU
+    BuiltinOperator_GELU,
+    BuiltinOperator_DYNAMIC_UPDATE_SLICE
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[152] = {
+  static const char * const names[153] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1182,13 +1190,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "RANDOM_UNIFORM",
     "MULTINOMIAL",
     "GELU",
+    "DYNAMIC_UPDATE_SLICE",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_GELU)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_DYNAMIC_UPDATE_SLICE)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1311,11 +1320,12 @@ enum BuiltinOptions {
   BuiltinOptions_RandomOptions = 114,
   BuiltinOptions_BucketizeOptions = 115,
   BuiltinOptions_GeluOptions = 116,
+  BuiltinOptions_DynamicUpdateSliceOptions = 117,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_GeluOptions
+  BuiltinOptions_MAX = BuiltinOptions_DynamicUpdateSliceOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[117] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[118] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1433,13 +1443,14 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[117] {
     BuiltinOptions_AssignVariableOptions,
     BuiltinOptions_RandomOptions,
     BuiltinOptions_BucketizeOptions,
-    BuiltinOptions_GeluOptions
+    BuiltinOptions_GeluOptions,
+    BuiltinOptions_DynamicUpdateSliceOptions
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[118] = {
+  static const char * const names[119] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -1557,13 +1568,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "RandomOptions",
     "BucketizeOptions",
     "GeluOptions",
+    "DynamicUpdateSliceOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_GeluOptions)) return "";
+  if (flatbuffers::IsOutRange(e, BuiltinOptions_NONE, BuiltinOptions_DynamicUpdateSliceOptions)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -2034,6 +2046,10 @@ template<> struct BuiltinOptionsTraits<tflite::BucketizeOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::GeluOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_GeluOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::DynamicUpdateSliceOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_DynamicUpdateSliceOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2995,6 +3011,14 @@ struct BuiltinOptionsUnion {
   const tflite::GeluOptionsT *AsGeluOptions() const {
     return type == BuiltinOptions_GeluOptions ?
       reinterpret_cast<const tflite::GeluOptionsT *>(value) : nullptr;
+  }
+  tflite::DynamicUpdateSliceOptionsT *AsDynamicUpdateSliceOptions() {
+    return type == BuiltinOptions_DynamicUpdateSliceOptions ?
+      reinterpret_cast<tflite::DynamicUpdateSliceOptionsT *>(value) : nullptr;
+  }
+  const tflite::DynamicUpdateSliceOptionsT *AsDynamicUpdateSliceOptions() const {
+    return type == BuiltinOptions_DynamicUpdateSliceOptions ?
+      reinterpret_cast<const tflite::DynamicUpdateSliceOptionsT *>(value) : nullptr;
   }
 };
 
@@ -10595,6 +10619,46 @@ inline flatbuffers::Offset<GeluOptions> CreateGeluOptions(
 
 flatbuffers::Offset<GeluOptions> CreateGeluOptions(flatbuffers::FlatBufferBuilder &_fbb, const GeluOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct DynamicUpdateSliceOptionsT : public flatbuffers::NativeTable {
+  typedef DynamicUpdateSliceOptions TableType;
+  DynamicUpdateSliceOptionsT() {
+  }
+};
+
+struct DynamicUpdateSliceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef DynamicUpdateSliceOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  DynamicUpdateSliceOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(DynamicUpdateSliceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<DynamicUpdateSliceOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const DynamicUpdateSliceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct DynamicUpdateSliceOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit DynamicUpdateSliceOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  DynamicUpdateSliceOptionsBuilder &operator=(const DynamicUpdateSliceOptionsBuilder &);
+  flatbuffers::Offset<DynamicUpdateSliceOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<DynamicUpdateSliceOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<DynamicUpdateSliceOptions> CreateDynamicUpdateSliceOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  DynamicUpdateSliceOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<DynamicUpdateSliceOptions> CreateDynamicUpdateSliceOptions(flatbuffers::FlatBufferBuilder &_fbb, const DynamicUpdateSliceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   int8_t deprecated_builtin_code;
@@ -11092,6 +11156,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   const tflite::GeluOptions *builtin_options_as_GeluOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_GeluOptions ? static_cast<const tflite::GeluOptions *>(builtin_options()) : nullptr;
+  }
+  const tflite::DynamicUpdateSliceOptions *builtin_options_as_DynamicUpdateSliceOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_DynamicUpdateSliceOptions ? static_cast<const tflite::DynamicUpdateSliceOptions *>(builtin_options()) : nullptr;
   }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
@@ -11591,6 +11658,10 @@ template<> inline const tflite::BucketizeOptions *Operator::builtin_options_as<t
 
 template<> inline const tflite::GeluOptions *Operator::builtin_options_as<tflite::GeluOptions>() const {
   return builtin_options_as_GeluOptions();
+}
+
+template<> inline const tflite::DynamicUpdateSliceOptions *Operator::builtin_options_as<tflite::DynamicUpdateSliceOptions>() const {
+  return builtin_options_as_DynamicUpdateSliceOptions();
 }
 
 struct OperatorBuilder {
@@ -15679,6 +15750,29 @@ inline flatbuffers::Offset<GeluOptions> CreateGeluOptions(flatbuffers::FlatBuffe
       _approximate);
 }
 
+inline DynamicUpdateSliceOptionsT *DynamicUpdateSliceOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new DynamicUpdateSliceOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void DynamicUpdateSliceOptions::UnPackTo(DynamicUpdateSliceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<DynamicUpdateSliceOptions> DynamicUpdateSliceOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const DynamicUpdateSliceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateDynamicUpdateSliceOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<DynamicUpdateSliceOptions> CreateDynamicUpdateSliceOptions(flatbuffers::FlatBufferBuilder &_fbb, const DynamicUpdateSliceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const DynamicUpdateSliceOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateDynamicUpdateSliceOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -16618,6 +16712,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const tflite::GeluOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_DynamicUpdateSliceOptions: {
+      auto ptr = reinterpret_cast<const tflite::DynamicUpdateSliceOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return true;
   }
 }
@@ -17100,6 +17198,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::GeluOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_DynamicUpdateSliceOptions: {
+      auto ptr = reinterpret_cast<const tflite::DynamicUpdateSliceOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -17570,6 +17672,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const tflite::GeluOptionsT *>(value);
       return CreateGeluOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_DynamicUpdateSliceOptions: {
+      auto ptr = reinterpret_cast<const tflite::DynamicUpdateSliceOptionsT *>(value);
+      return CreateDynamicUpdateSliceOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -18038,6 +18144,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_GeluOptions: {
       value = new tflite::GeluOptionsT(*reinterpret_cast<tflite::GeluOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_DynamicUpdateSliceOptions: {
+      value = new tflite::DynamicUpdateSliceOptionsT(*reinterpret_cast<tflite::DynamicUpdateSliceOptionsT *>(u.value));
       break;
     }
     default:
@@ -18624,6 +18734,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_GeluOptions: {
       auto ptr = reinterpret_cast<tflite::GeluOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_DynamicUpdateSliceOptions: {
+      auto ptr = reinterpret_cast<tflite::DynamicUpdateSliceOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -319,7 +319,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
   @parameterized.parameters(stateless_random_ops.Algorithm.THREEFRY,
                             stateless_random_ops.Algorithm.PHILOX,
                             stateless_random_ops.Algorithm.AUTO_SELECT)
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testRngBitGeneratorIsDeterministic(self, algorithm):
     dtype = np.uint32
     key = np.array([1, 2], dtype=np.uint64)
@@ -336,7 +335,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         expected=(np.zeros(key.shape, dtype=key.dtype),
                   np.zeros(shape, dtype=dtype)))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -574,7 +572,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(values_1, values_2),
           expected=(values_1, values_2))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testSelectAndScatter(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):

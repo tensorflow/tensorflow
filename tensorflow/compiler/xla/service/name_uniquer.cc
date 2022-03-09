@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -35,18 +34,18 @@ bool IsAllowed(char character) {
 
 }  // namespace
 
-NameUniquer::NameUniquer(const string& separator) {
+NameUniquer::NameUniquer(const std::string& separator) {
   CHECK(absl::c_all_of(separator, IsAllowed))
       << "separator should comprises allowed characters only";
   separator_ = separator;
 }
 
-/*static*/ string NameUniquer::GetSanitizedName(absl::string_view name) {
+/*static*/ std::string NameUniquer::GetSanitizedName(absl::string_view name) {
   if (name.empty()) {
     return "";
   }
 
-  string result(name);
+  std::string result(name);
   char c = static_cast<unsigned char>(result[0]);
   if (!absl::ascii_isalpha(c) && c != '_') {
     result[0] = '_';
@@ -74,17 +73,18 @@ NameUniquer::NameUniquer(const string& separator) {
   return result;
 }
 
-string NameUniquer::GetUniqueName(absl::string_view prefix) {
-  string root = GetSanitizedName(prefix.empty() ? "name" : string(prefix));
+std::string NameUniquer::GetUniqueName(absl::string_view prefix) {
+  std::string root =
+      GetSanitizedName(prefix.empty() ? "name" : std::string(prefix));
 
   // Strip away numeric suffix (if any). Only recognize separator if it is in
   // the middle of the name.
   bool has_numeric_suffix = false;
   int64_t numeric_suffix = 0;
   size_t separator_index = root.rfind(separator_);
-  if (separator_index != string::npos && (separator_index > 0) &&
+  if (separator_index != std::string::npos && (separator_index > 0) &&
       (separator_index < root.size() - 1)) {
-    string after_suffix = root.substr(separator_index + 1);
+    std::string after_suffix = root.substr(separator_index + 1);
     if (absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
       has_numeric_suffix = true;
       // Remove numeric suffix from root.

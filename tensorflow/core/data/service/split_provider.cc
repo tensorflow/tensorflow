@@ -36,20 +36,27 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
     dispatcher_ =
         absl::make_unique<DataServiceDispatcherClient>(address_, protocol_);
   }
-  return grpc_util::Retry(
+  TF_RETURN_IF_ERROR(grpc_util::Retry(
       [this, split, end_of_splits] {
-        return dispatcher_->GetSplit(job_id_, repetition_,
-                                     split_provider_index_, *split,
-                                     *end_of_splits);
+        return dispatcher_->GetSplit(job_id_, iteration_, split_provider_index_,
+                                     *split, *end_of_splits);
       },
       "get next split",
       /*deadline_micros=*/Env::Default()->NowMicros() +
-          (timeout_ms_ * EnvTime::kMillisToMicros));
+          (timeout_ms_ * EnvTime::kMillisToMicros)));
+  if (*end_of_splits) {
+    VLOG(1) << "Reached end of splits for job_id=" << job_id_
+            << ", iteration=" << iteration_;
+  } else {
+    VLOG(1) << "Requested split: " << split->DebugString()
+            << "; with job_id=" << job_id_ << ", iteration=" << iteration_;
+  }
+  return Status::OK();
 }
 
 Status DataServiceSplitProvider::Reset() {
   mutex_lock l(mu_);
-  repetition_++;
+  iteration_++;
   return Status::OK();
 }
 

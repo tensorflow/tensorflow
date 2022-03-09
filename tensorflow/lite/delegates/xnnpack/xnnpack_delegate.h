@@ -27,6 +27,8 @@ extern "C" {
 #define TFLITE_XNNPACK_DELEGATE_FLAG_QS8 0x00000001
 // Enable XNNPACK acceleration for unsigned quantized 8-bit inference.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_QU8 0x00000002
+// Force FP16 inference for FP32 operators.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 0x00000004
 
 typedef struct {
   // Number of threads to use in the thread pool.
@@ -35,6 +37,7 @@ typedef struct {
   // Bitfield with any combination of the following binary options:
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QS8
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QU8
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16
   uint32_t flags;
 } TfLiteXNNPackDelegateOptions;
 
@@ -44,7 +47,9 @@ TfLiteXNNPackDelegateOptionsDefault();
 
 // Creates a new delegate instance that need to be destroyed with
 // `TfLiteXNNPackDelegateDelete` when delegate is no longer used by TFLite.
-// When `options` is set to `nullptr`, the following default values are used:
+// When `options` is set to `nullptr`, default values are used (see
+// implementation of TfLiteXNNPackDelegateOptionsDefault in the .cc file for
+// details).
 TFL_CAPI_EXPORT TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options);
 

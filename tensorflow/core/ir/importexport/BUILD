@@ -3,7 +3,10 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
-    default_visibility = [":__subpackages__"],
+    default_visibility = [
+        ":__subpackages__",
+        "//tensorflow/core/ir:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -20,6 +23,7 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
     deps = [
         ":convert_attributes",
@@ -53,7 +57,10 @@ cc_library(
     hdrs = [
         "export.h",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
+    ],
     deps = [
         ":convert_attributes",
         ":convert_tensor",

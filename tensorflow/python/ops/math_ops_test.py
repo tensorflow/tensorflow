@@ -1039,7 +1039,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       error = TypeError
       error_message = (r"Failed to convert elements of .* to Tensor")
 
-    class RHSReturnsTrue(object):
+    class RHSReturnsTrue:
 
       def __radd__(self, other):
         return True
@@ -1047,7 +1047,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
     a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsTrue()
     self.assertEqual(a, True)
 
-    class RHSRaisesError(object):
+    class RHSRaisesError:
 
       def __radd__(self, other):
         raise TypeError("RHS not implemented")
@@ -1056,7 +1056,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSRaisesError()
       self.evaluate(a)
 
-    class RHSReturnsNotImplemented(object):
+    class RHSReturnsNotImplemented:
 
       def __radd__(self, other):
         return NotImplemented
@@ -1065,7 +1065,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsNotImplemented()
       self.evaluate(a)
 
-    class RHSNotImplemented(object):
+    class RHSNotImplemented:
       pass
 
     with self.assertRaisesRegex(error, error_message):
@@ -1206,6 +1206,17 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase):
       # Long tensor to ensure works with multithreading/GPU
       values = array_ops.zeros(shape=(193681,), dtype=dtype)
       self.assertAllEqual(math_ops.argmax(values), 0)
+
+  def testArgMaxUint16(self):
+    shape = (24, 8)
+    for dtype in self._getValidDtypes():
+      tf_values = self._generateRandomTensor(dtype, shape)
+      np_values = self.evaluate(tf_values)
+      for axis in range(0, len(shape)):
+        np_max = np.argmax(np_values, axis=axis)
+        tf_max = math_ops.argmax(
+            tf_values, axis=axis, output_type=dtypes.uint16)
+        self.assertAllEqual(tf_max, np_max)
 
   def testArgMin(self):
     shape = (24, 8)

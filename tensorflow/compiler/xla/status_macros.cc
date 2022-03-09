@@ -32,7 +32,8 @@ ABSL_CONST_INIT const char kPossibleAutoJitAlternative[] =
     "variable TF_XLA_FLAGS=\"tf_xla_auto_jit=2\" which will attempt to use xla "
     "to compile as much of the graph as the compiler is able to.";
 
-static Status MakeStatus(tensorflow::error::Code code, const string& message) {
+static Status MakeStatus(tensorflow::error::Code code,
+                         const std::string& message) {
   return Status(code, message);
 }
 
@@ -40,8 +41,8 @@ static Status MakeStatus(tensorflow::error::Code code, const string& message) {
 // If log_severity is NUM_SEVERITIES, nothing is logged.
 static void LogError(const Status& status, const char* filename, int line,
                      int log_severity, bool should_log_stack_trace) {
-  if (TF_PREDICT_TRUE(log_severity != tensorflow::NUM_SEVERITIES)) {
-    string stack_trace;
+  if (ABSL_PREDICT_TRUE(log_severity != tensorflow::NUM_SEVERITIES)) {
+    std::string stack_trace;
     if (should_log_stack_trace) {
       stack_trace = absl::StrCat("\n", tensorflow::CurrentStackTrace());
     }
@@ -73,15 +74,15 @@ static void LogError(const Status& status, const char* filename, int line,
 // trace is included in the log message (ignored if should_log is
 // false).
 static Status MakeError(const char* filename, int line,
-                        tensorflow::error::Code code, const string& message,
-                        bool should_log, int log_severity,
-                        bool should_log_stack_trace) {
-  if (TF_PREDICT_FALSE(code == tensorflow::error::OK)) {
+                        tensorflow::error::Code code,
+                        const std::string& message, bool should_log,
+                        int log_severity, bool should_log_stack_trace) {
+  if (ABSL_PREDICT_FALSE(code == tensorflow::error::OK)) {
     LOG(ERROR) << "Cannot create error with status OK";
     code = tensorflow::error::UNKNOWN;
   }
   const Status status = MakeStatus(code, message);
-  if (TF_PREDICT_TRUE(should_log)) {
+  if (ABSL_PREDICT_TRUE(should_log)) {
     LogError(status, filename, line, log_severity, should_log_stack_trace);
   }
   return status;
@@ -146,11 +147,11 @@ Status MakeErrorStream::Impl::GetStatus() {
 
   is_done_ = true;
 
-  const string& stream_str = stream_.str();
-  const string str = prior_message_handling_ == kAppendToPriorMessage
-                         ? absl::StrCat(prior_message_, stream_str)
-                         : absl::StrCat(stream_str, prior_message_);
-  if (TF_PREDICT_FALSE(str.empty())) {
+  const std::string& stream_str = stream_.str();
+  const std::string str = prior_message_handling_ == kAppendToPriorMessage
+                              ? absl::StrCat(prior_message_, stream_str)
+                              : absl::StrCat(stream_str, prior_message_);
+  if (ABSL_PREDICT_FALSE(str.empty())) {
     return MakeError(
         file_, line_, code_,
         absl::StrCat(str, "Error without message at ", file_, ":", line_),

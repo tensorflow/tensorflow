@@ -16,35 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TIME_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TIME_UTILS_H_
 
-#include "tensorflow/core/platform/types.h"
+#include <cstdint>
+
+#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
-
-// Converts among different time units.
-// NOTE: We use uint64 for picoseconds and nanoseconds, which are used in
-// storage, and double for other units that are used in the UI.
-inline double PicosToNanos(uint64 ps) { return ps / 1E3; }
-inline double PicosToMicros(uint64 ps) { return ps / 1E6; }
-inline double PicosToMillis(uint64 ps) { return ps / 1E9; }
-inline double PicosToSeconds(uint64 ps) { return ps / 1E12; }
-inline uint64 NanosToPicos(uint64 ns) { return ns * 1000; }
-inline double NanosToMicros(uint64 ns) { return ns / 1E3; }
-inline double MicrosToNanos(double us) { return us * 1E3; }
-inline double MicrosToMillis(double us) { return us / 1E3; }
-inline uint64 MillisToPicos(double ms) { return ms * 1E9; }
-inline uint64 MillisToNanos(double ms) { return ms * 1E6; }
-inline double MillisToSeconds(double ms) { return ms / 1E3; }
-inline uint64 SecondsToNanos(double s) { return s * 1E9; }
 
 // Returns the current CPU wallclock time in nanoseconds.
 int64_t GetCurrentTimeNanos();
 
 // Sleeps for the specified duration.
 void SleepForNanos(int64_t ns);
-inline void SleepForMicros(int64_t us) { SleepForNanos(us * 1000); }
-inline void SleepForMillis(int64_t ms) { SleepForNanos(ms * 1000000); }
-inline void SleepForSeconds(int64_t s) { SleepForNanos(s * 1000000000); }
+inline void SleepForMicros(int64_t us) { SleepForNanos(MicroToNano(us)); }
+inline void SleepForMillis(int64_t ms) { SleepForNanos(MilliToNano(ms)); }
+inline void SleepForSeconds(int64_t s) { SleepForNanos(UniToNano(s)); }
 
 // Spins to simulate doing some work instead of sleeping, because sleep
 // precision is poor. For testing only.

@@ -126,7 +126,7 @@ tflite_flex_cc_library(
 # ops and kernels. The output library name is platform dependent:
 #   - Linux/Android: `libtensorflowlite_flex.so`
 #   - Mac: `libtensorflowlite_flex.dylib`
-#   - Windows: `libtensorflowlite_flex.dll`
+#   - Windows: `tensorflowlite_flex.dll`
 tflite_flex_shared_library(
     name = "tensorflowlite_flex",
 )
@@ -166,7 +166,7 @@ cc_library(
         ":util",
         ":tflite_subgraph_execute",
         "@flatbuffers",
-        "@com_google_absl//absl/strings:strings",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
@@ -177,6 +177,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -186,8 +187,6 @@ cc_library(
         ],
         "//conditions:default": [
             "//tensorflow/core/common_runtime/eager:context",
-            "//tensorflow/core/common_runtime/eager:execute",
-            "//tensorflow/core/common_runtime/eager:tensor_handle",
             "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:framework",
@@ -303,6 +302,7 @@ tf_cc_test(
         ":delegate_data",
         ":test_util",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",

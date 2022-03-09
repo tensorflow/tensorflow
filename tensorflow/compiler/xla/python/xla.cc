@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -42,12 +44,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 #include "tensorflow/compiler/xla/python/pmap_lib.h"
+#include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 #include "tensorflow/compiler/xla/python/profiler.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -159,8 +163,9 @@ PYBIND11_MODULE(xla_extension, m) {
         return device.client->LiveBuffersOnDevice(device.get());
       });
 
-  py::class_<CpuDevice, PjRtDevice, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
-      .def("__repr__", [](const CpuDevice& device) {
+  py::class_<TfrtCpuDevice, PjRtDevice, ClientAndPtr<TfrtCpuDevice>>(
+      m, "CpuDevice")
+      .def("__repr__", [](const TfrtCpuDevice& device) {
         return absl::StrFormat("CpuDevice(id=%i)", device.id());
       });
 
@@ -352,6 +357,7 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildPytreeSubmodule(m);
   jax::BuildJaxjitSubmodule(m);
   jax::BuildPmapSubmodule(m);
+  jax::BuildTransferGuardSubmodule(m);
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
 
@@ -448,6 +454,13 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def("collect_garbage", []() { GlobalPyRefManager()->CollectGarbage(); });
 
   m.def("is_optimized_build", &IsOptimizedBuild);
+
+  m.def("json_to_pprof_profile", &JsonToPprofProfile,
+        "Encodes the JSON representation of a pprof Profile into its binary "
+        "protocol buffer encoding.");
+  m.def("pprof_profile_to_json", &PprofProfileToJson,
+        "Decodes an uncompressed pprof Profile protocol buffer into a JSON "
+        "representation");
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

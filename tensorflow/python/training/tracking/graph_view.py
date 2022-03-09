@@ -403,13 +403,7 @@ class ObjectGraphView(object):
           if cached_attributes is not None:
             cached_attributes[name] = saveables
 
-        optional_restore = None
         for saveable in saveables:
-          if optional_restore is None:
-            optional_restore = saveable.optional_restore
-          else:
-            optional_restore = optional_restore and saveable.optional_restore
-
           if hasattr(saveable, "full_name"):
             attribute.full_name = saveable.full_name
           if isinstance(saveable, base.PythonStateSaveable):
@@ -430,9 +424,6 @@ class ObjectGraphView(object):
                       "is already feeding a value.")
               feed_additions.update(saveable_feed_dict)
           named_saveable_objects.append(saveable)
-        if optional_restore is None:
-          optional_restore = False
-        attribute.optional_restore = optional_restore
 
     return named_saveable_objects, feed_additions
 

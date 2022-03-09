@@ -50,6 +50,7 @@ tf_py_test(
     shard_count = 20,
     tags = [
         "no_windows",
+        "nomsan",  # TODO(b/213581489): MSAN false positives from LAPACK use inside NumPy.
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -374,6 +375,7 @@ cuda_py_test(
     srcs = ["linear_operator_kronecker_test.py"],
     shard_count = 10,
     tags = [
+        "no_rocm",
         "noasan",
         "optonly",
     ],

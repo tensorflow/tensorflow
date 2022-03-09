@@ -24,6 +24,8 @@ exports_files([
     "captured_function.h",
     "dataset_utils.cc",
     "dataset_utils.h",
+    "finalization_utils.cc",
+    "finalization_utils.h",
     "name_utils.cc",
     "name_utils.h",
     "rewrite_utils.cc",
@@ -84,6 +86,9 @@ cc_library(
 tf_cc_test(
     name = "compression_utils_test",
     srcs = ["compression_utils_test.cc"],
+    tags = [
+        "requires-mem:24g",
+    ],
     deps = [
         ":compression_utils",
         ":dataset_test_base",
@@ -92,6 +97,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 

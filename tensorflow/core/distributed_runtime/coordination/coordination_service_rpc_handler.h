@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 
-#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 
@@ -59,8 +58,13 @@ class CoordinationServiceRpcHandler {
                            DeleteKeyValueResponse* response,
                            StatusCallback done);
 
+  void BarrierAsync(const BarrierRequest* request, BarrierResponse* response,
+                    StatusCallback done);
+
+  void CancelBarrierAsync(const CancelBarrierRequest* request,
+                          CancelBarrierResponse* response, StatusCallback done);
+
  private:
-  const int64_t leader_incarnation_id_ = random::New64();
   CoordinationServiceAgent* agent_;
 };
 

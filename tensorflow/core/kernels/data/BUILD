@@ -53,6 +53,7 @@ tf_kernel_library(
     hdrs = ["cache_dataset_ops.h"],
     deps = [
         ":cache_ops",
+        ":iterator_ops",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -60,6 +61,7 @@ tf_kernel_library(
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
         "//tensorflow/core/util/tensor_bundle",
     ],
 )
@@ -81,6 +83,7 @@ tf_cc_test(
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/framework:dataset_options_proto_cc",
     ],
 )
 
@@ -417,6 +420,7 @@ tf_kernel_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:finalization_utils",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data:unbounded_thread_pool",
@@ -528,6 +532,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/data:finalization_utils",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/kernels:ops_util",
@@ -1365,6 +1370,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/data:captured_function.h",
         "//tensorflow/core/data:dataset_utils.h",
+        "//tensorflow/core/data:finalization_utils.h",
         "//tensorflow/core/data:utils.h",
         "//tensorflow/core/data:name_utils.h",
         "//tensorflow/core/data:rewrite_utils.h",
@@ -1389,6 +1395,7 @@ filegroup(
         ":portable_all_op_kernels_headers",
         "//tensorflow/core/data:captured_function.cc",
         "//tensorflow/core/data:dataset_utils.cc",
+        "//tensorflow/core/data:finalization_utils.cc",
         "//tensorflow/core/data:name_utils.cc",
         "//tensorflow/core/data:utils.cc",
         "//tensorflow/core/data:rewrite_utils.cc",

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // This file defines enums used in MHLO and LMHLO.
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ENUMS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ENUMS_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ENUMS_H
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ENUMS_H
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -28,4 +28,4 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ENUMS_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_ENUMS_H

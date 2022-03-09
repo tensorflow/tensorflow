@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -76,12 +76,13 @@ void ModifyFunctionSignature(
     llvm::function_ref<bool(int64_t)> arg_buffer_size_is_fixed) {
   auto new_input_types = llvm::to_vector<8>(func.getType().getInputs());
   int64_t original_arg_count = new_input_types.size();
+  Location loc = func.getLoc();
   for (int64_t i = 0; i < original_arg_count; ++i) {
     auto buffer_type = arg_to_buffer_type(i);
     if (!buffer_type.hasValue()) continue;
     func.getArgument(i).setType(*buffer_type);
     new_input_types[i] = *buffer_type;
-    auto size_arg = func.front().addArgument(size_type);
+    auto size_arg = func.front().addArgument(size_type, loc);
     new_input_types.push_back(size_arg.getType());
     if (buffer_to_size) {
       (*buffer_to_size)[func.getArgument(i)] = {size_arg,
@@ -138,8 +139,8 @@ AddTensorListSizesToTerminator(
 // size_return_index, fixed_size).
 llvm::SmallVector<std::tuple<int64_t, int64_t, bool>, 8> ModifyFunctionReturn(
     FuncOp func, const llvm::SmallDenseMap<Value, SizeInfo>& buffer_to_size) {
-  auto output_buffer_to_size =
-      AddTensorListSizesToTerminator<ReturnOp>(func.front(), buffer_to_size);
+  auto output_buffer_to_size = AddTensorListSizesToTerminator<func::ReturnOp>(
+      func.front(), buffer_to_size);
   UpdateFuncType(func);
   return output_buffer_to_size;
 }
@@ -276,7 +277,8 @@ LogicalResult HandleWhileRegionOp(
       if (it == buffer_to_size->end()) continue;
       auto buffer_type = it->getFirst().getType();
       region.getArgument(i).setType(buffer_type);
-      auto size_arg = region.addArgument(cutil::GetSizeType(builder));
+      auto size_arg =
+          region.addArgument(cutil::GetSizeType(builder), region.getLoc());
       (*buffer_to_size)[region.getArgument(i)] = {size_arg,
                                                   it->getSecond().fixed};
     }

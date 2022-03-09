@@ -71,18 +71,18 @@ def get_test_function(test_function_name):
 
 RANDOM_SEED = 342
 
-TF_TYPE_INFO = {
-    tf.float32: (np.float32, "FLOAT"),
-    tf.float16: (np.float16, "FLOAT"),
-    tf.float64: (np.float64, "FLOAT64"),
-    tf.int32: (np.int32, "INT32"),
-    tf.uint32: (np.uint32, "UINT32"),
-    tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
-    tf.int8: (np.int8, "INT8"),
-    tf.int16: (np.int16, "QUANTIZED_INT16"),
-    tf.int64: (np.int64, "INT64"),
-    tf.bool: (np.bool_, "BOOL"),
-    tf.string: (np.string_, "STRING"),
+MAP_TF_TO_NUMPY_TYPE = {
+    tf.float32: np.float32,
+    tf.float16: np.float16,
+    tf.float64: np.float64,
+    tf.int32: np.int32,
+    tf.uint32: np.uint32,
+    tf.uint8: np.uint8,
+    tf.int8: np.int8,
+    tf.int16: np.int16,
+    tf.int64: np.int64,
+    tf.bool: np.bool_,
+    tf.string: np.string_,
 }
 
 
@@ -107,8 +107,8 @@ class ExtraConvertOptions(object):
 def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
   """Build tensor data spreading the range [min_value, max_value)."""
 
-  if dtype in TF_TYPE_INFO:
-    dtype = TF_TYPE_INFO[dtype][0]
+  if dtype in MAP_TF_TO_NUMPY_TYPE:
+    dtype = MAP_TF_TO_NUMPY_TYPE[dtype]
 
   if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random_sample(shape) + min_value
@@ -131,8 +131,8 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
 def create_scalar_data(dtype, min_value=-100, max_value=100):
   """Build scalar tensor data range from min_value to max_value exclusively."""
 
-  if dtype in TF_TYPE_INFO:
-    dtype = TF_TYPE_INFO[dtype][0]
+  if dtype in MAP_TF_TO_NUMPY_TYPE:
+    dtype = MAP_TF_TO_NUMPY_TYPE[dtype]
 
   if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random() + min_value

@@ -33,7 +33,7 @@ using SpaceToBatchConverterTest = HloTestBase;
 namespace op = testing::opcode_matchers;
 
 TEST_F(SpaceToBatchConverterTest, SimpleBatch1) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
   
   HloModule module
 ENTRY computation {
@@ -68,7 +68,7 @@ ENTRY computation {
 }
 
 TEST_F(SpaceToBatchConverterTest, SimpleBatch1ConvXpose) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
   
   HloModule module
 ENTRY computation {
@@ -101,7 +101,7 @@ ENTRY computation {
 }
 
 TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
   HloModule module  
   adder (lhs: bf16[], rhs: bf16[]) -> bf16[] {
     lhs = bf16[] parameter(0)
@@ -135,7 +135,7 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch1WithReduceWindow) {
 }
 
 TEST_F(SpaceToBatchConverterTest, SimpleBatch2) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
   HloModule module
   ENTRY computation {
     %p0 = bf16[2,258,258,32] parameter(0)
@@ -154,7 +154,7 @@ TEST_F(SpaceToBatchConverterTest, SimpleBatch2) {
 }
 
 TEST_F(SpaceToBatchConverterTest, UnpropagatableOp) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
   HloModule module
 
   ENTRY comp {
@@ -177,7 +177,7 @@ TEST_F(SpaceToBatchConverterTest, UnpropagatableOp) {
 }
 
 TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
   HloModule module
   ENTRY computation {
     %p0 = bf16[1,224,224,3]{3,2,1,0} parameter(0)
@@ -211,7 +211,7 @@ TEST_F(SpaceToBatchConverterTest, Batch1WithStrideAndPad) {
 }
 
 TEST_F(SpaceToBatchConverterTest, Batch1WithBaseDilation) {
-  string hlo_string = R"(
+  std::string hlo_string = R"(
   
   HloModule module
 ENTRY computation {

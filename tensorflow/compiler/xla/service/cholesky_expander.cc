@@ -220,7 +220,7 @@ bool CholeskyExpander::InstructionMatchesPattern(HloInstruction* instruction) {
 StatusOr<HloInstruction*> CholeskyExpander::ExpandInstruction(
     HloInstruction* instruction) {
   const CholeskyOptions& options = instruction->cholesky_options();
-  const string name = absl::StrFormat(
+  const std::string name = absl::StrFormat(
       "xla.cholesky_%s_%s", instruction->operand(0)->shape().ToString(),
       options.lower() ? "lower" : "upper");
 

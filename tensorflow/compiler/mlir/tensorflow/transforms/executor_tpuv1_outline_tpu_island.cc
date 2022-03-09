@@ -16,7 +16,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -120,7 +120,8 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
       // Replace the yield with a return
       OpBuilder replacer(yield_op);
       island_op.body().push_back(new Block);
-      replacer.create<ReturnOp>(yield_op.getLoc(), yield_op.getOperands());
+      replacer.create<mlir::func::ReturnOp>(yield_op.getLoc(),
+                                            yield_op.getOperands());
       yield_op.erase();
     }
 
@@ -128,8 +129,9 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     // created entry block arguments in the function body.
     {
       Block &entry_block = outlined_func.getBody().front();
+      auto loc = outlined_func.getLoc();
       for (Value operand : operands) {
-        BlockArgument newArg = entry_block.addArgument(operand.getType());
+        BlockArgument newArg = entry_block.addArgument(operand.getType(), loc);
         replaceAllUsesInRegionWith(operand, newArg, outlined_func.getBody());
       }
     }

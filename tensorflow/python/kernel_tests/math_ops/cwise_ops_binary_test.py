@@ -296,23 +296,35 @@ class BinaryOpTest(test.TestCase):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint8)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint8)
     self._compareBoth(x, y, np.add, math_ops.add)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
+    self._compareBoth(x, y, np.subtract, _SUB)
 
   def testInt8Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int8)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int8)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
     self._compareBoth(x, y, np.multiply, math_ops.multiply)
+    self._compareBoth(x, y, np.true_divide, math_ops.truediv)
+    self._compareBoth(x, y, np.floor_divide, math_ops.floordiv)
+    self._compareBoth(x, y, np.subtract, _SUB)
     self._compareBoth(x, y, np.multiply, _MUL)
+    self._compareBoth(x, y, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
 
   def testInt16Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int16)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int16)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
     self._compareBoth(x, y, np.multiply, math_ops.multiply)
+    self._compareBoth(x, y, np.subtract, _SUB)
     self._compareBoth(x, y, np.multiply, _MUL)
 
   def testUint16Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint16)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint16)
+    self._compareBoth(x, y, np.subtract, math_ops.subtract)
     self._compareBoth(x, y, np.multiply, math_ops.multiply)
+    self._compareBoth(x, y, np.subtract, _SUB)
     self._compareBoth(x, y, np.multiply, _MUL)
     self._compareBoth(x, y, np.true_divide, math_ops.truediv)
     self._compareBoth(x, y, np.floor_divide, math_ops.floordiv)
@@ -342,6 +354,10 @@ class BinaryOpTest(test.TestCase):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint32)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint32)
     self._compareBoth(x, y, np.add, math_ops.add_v2)
+    self._compareBoth(x, y, np.true_divide, math_ops.truediv)
+    self._compareBoth(x, y, np.floor_divide, math_ops.floordiv)
+    self._compareBoth(x, y, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
 
   def testInt64Basic(self):
     x = np.arange(1 << 40, 13 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)
@@ -356,6 +372,14 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y, np.true_divide, _TRUEDIV)
     self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
     self._compareBoth(x, y, np.mod, _MOD)
+
+  def testUint64Basic(self):
+    x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint32)
+    y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint32)
+    self._compareBoth(x, y, np.true_divide, math_ops.truediv)
+    self._compareBoth(x, y, np.floor_divide, math_ops.floordiv)
+    self._compareBoth(x, y, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
 
   @test_util.run_deprecated_v1
   def testComplex64Basic(self):

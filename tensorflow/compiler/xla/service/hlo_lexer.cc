@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <limits>
 #include <string>
-#include <unordered_map>
 
 #include "absl/base/casts.h"
 #include "absl/strings/ascii.h"
@@ -71,8 +70,8 @@ bool HloLexer::CanDereference(const char* ptr) const {
   return ptr < buf_.end() && ptr >= buf_.begin();
 }
 
-absl::string_view HloLexer::StringPieceFromPointers(const char* begin,
-                                                    const char* end) const {
+absl::string_view HloLexer::StringViewFromPointers(const char* begin,
+                                                   const char* end) const {
   CHECK(begin <= end);
   CHECK(begin == buf_.end() || CanDereference(begin));
   CHECK(end == buf_.end() || CanDereference(end));
@@ -230,13 +229,13 @@ absl::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
   if (!RE2::Consume(&consumable, *payload_pattern)) {
     return absl::nullopt;
   }
-  auto slice = StringPieceFromPointers(current_ptr_, consumable.begin());
+  auto slice = StringViewFromPointers(current_ptr_, consumable.begin());
   current_ptr_ = consumable.begin();
   CHECK(absl::StartsWith(slice, "(0x"));
   slice.remove_prefix(std::strlen("(0x"));
   CHECK(absl::EndsWith(slice, ")"));
   slice.remove_suffix(std::strlen(")"));
-  uint64 payload_value;
+  uint64_t payload_value;
   if (tensorflow::strings::HexStringToUint64(slice, &payload_value)) {
     if (payload_value <= 0 || payload_value > NanPayloadBitMask<double>()) {
       LOG(ERROR) << "NaN payload out of range: " << payload_value;
@@ -276,7 +275,7 @@ TokKind HloLexer::LexIdentifier() {
   }
 
   absl::string_view identifier =
-      StringPieceFromPointers(token_state_.token_start, current_ptr_);
+      StringViewFromPointers(token_state_.token_start, current_ptr_);
 
   // Primitive type strings are reserved words. The exception is 'tuple' whose
   // type is represented using nested parentheses without the string 'tuple'.
@@ -293,7 +292,7 @@ TokKind HloLexer::LexIdentifier() {
     absl::optional<int64_t> payload;
     if (PeekCurrentChar() == '(') {
       absl::string_view consumable =
-          StringPieceFromPointers(current_ptr_, buf_.end());
+          StringViewFromPointers(current_ptr_, buf_.end());
       payload = LexNanPayload(consumable);
       if (!payload.has_value()) {
         return TokKind::kError;
@@ -327,7 +326,7 @@ TokKind HloLexer::LexIdentifier() {
 
   {
     absl::string_view consumable =
-        StringPieceFromPointers(token_state_.token_start, buf_.end());
+        StringViewFromPointers(token_state_.token_start, buf_.end());
     static LazyRE2 dim_labels_pattern = {
         R"([0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,})"};
     if (RE2::Consume(&consumable, *dim_labels_pattern)) {
@@ -337,7 +336,7 @@ TokKind HloLexer::LexIdentifier() {
     }
   }
 
-  token_state_.str_val = string(identifier);
+  token_state_.str_val = std::string(identifier);
   return TokKind::kIdent;
 }
 
@@ -370,12 +369,12 @@ TokKind HloLexer::LexPercent() {
 // negative inf ::= '-inf'
 TokKind HloLexer::LexNumberOrPattern() {
   absl::string_view consumable =
-      StringPieceFromPointers(token_state_.token_start, buf_.end());
+      StringViewFromPointers(token_state_.token_start, buf_.end());
   static LazyRE2 float_pattern = {
       R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
     current_ptr_ = consumable.begin();
-    CHECK(absl::SimpleAtod(string(token_state_.token_start, current_ptr_),
+    CHECK(absl::SimpleAtod(std::string(token_state_.token_start, current_ptr_),
                            &token_state_.decimal_val));
     return TokKind::kDecimal;
   }
@@ -407,12 +406,11 @@ TokKind HloLexer::LexNumberOrPattern() {
   static LazyRE2 int_pattern = {R"([-]?\d+)"};
   if (RE2::Consume(&consumable, *int_pattern)) {
     current_ptr_ = consumable.begin();
-    auto slice =
-        StringPieceFromPointers(token_state_.token_start, current_ptr_);
+    auto slice = StringViewFromPointers(token_state_.token_start, current_ptr_);
     if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
       return TokKind::kInt;
     }
-    uint64 uint64_val;
+    uint64_t uint64_val;
     if (absl::SimpleAtoi(slice, &uint64_val)) {
       token_state_.int64_val = absl::bit_cast<int64_t>(uint64_val);
       return TokKind::kInt;
@@ -465,7 +463,7 @@ std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
   // Update the line number cache.
   line_no_cache_.last_query = ptr;
   line_no_cache_.line_no_of_query = line_no;
-  size_t line_offset = StringPieceFromPointers(start, ptr).rfind('\n');
+  size_t line_offset = StringViewFromPointers(start, ptr).rfind('\n');
   if (line_offset == absl::string_view::npos) {
     line_offset = 0;
   }
@@ -476,29 +474,28 @@ absl::string_view HloLexer::GetLine(LocTy loc) const {
   if (!CanDereference(loc)) {
     return "LINE OUT OF RANGE";
   }
-  size_t line_start =
-      StringPieceFromPointers(buf_.begin(), loc + 1).rfind('\n');
+  size_t line_start = StringViewFromPointers(buf_.begin(), loc + 1).rfind('\n');
   const char* start = line_start == absl::string_view::npos
                           ? buf_.begin()
                           : buf_.begin() + line_start + 1;
-  size_t line_end = StringPieceFromPointers(loc, buf_.end()).find('\n');
+  size_t line_end = StringViewFromPointers(loc, buf_.end()).find('\n');
   const char* end =
       line_end == absl::string_view::npos ? buf_.end() : loc + line_end;
 
-  return StringPieceFromPointers(start, end);
+  return StringViewFromPointers(start, end);
 }
 
 // Lexes quoted string with escaping characters. If matched, the quoted string
 // will be unescaped and stored to token_state_.str_val.
 TokKind HloLexer::LexString() {
   absl::string_view consumable =
-      StringPieceFromPointers(token_state_.token_start, buf_.end());
+      StringViewFromPointers(token_state_.token_start, buf_.end());
   static LazyRE2 escaping_pattern = {R"("([^"\\]|\\.)*")"};
   if (RE2::Consume(&consumable, *escaping_pattern)) {
     current_ptr_ = consumable.begin();
     absl::string_view raw =
-        StringPieceFromPointers(token_state_.token_start + 1, current_ptr_ - 1);
-    string error;
+        StringViewFromPointers(token_state_.token_start + 1, current_ptr_ - 1);
+    std::string error;
     if (!absl::CUnescape(raw, &token_state_.str_val, &error)) {
       LOG(ERROR) << "Failed unescaping string: " << raw << ". error: " << error;
       return TokKind::kError;
@@ -508,7 +505,7 @@ TokKind HloLexer::LexString() {
   return TokKind::kError;
 }
 
-string TokKindToString(TokKind kind) {
+std::string TokKindToString(TokKind kind) {
   switch (kind) {
     case TokKind::kEof:
       return "kEof";

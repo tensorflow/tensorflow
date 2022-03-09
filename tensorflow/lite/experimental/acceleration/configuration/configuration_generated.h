@@ -37,6 +37,9 @@ struct HexagonSettingsT;
 struct XNNPackSettings;
 struct XNNPackSettingsT;
 
+struct CoreMLSettings;
+struct CoreMLSettingsT;
+
 struct EdgeTpuDeviceSpec;
 struct EdgeTpuDeviceSpecT;
 
@@ -101,6 +104,8 @@ bool operator==(const HexagonSettingsT &lhs, const HexagonSettingsT &rhs);
 bool operator!=(const HexagonSettingsT &lhs, const HexagonSettingsT &rhs);
 bool operator==(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs);
 bool operator!=(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs);
+bool operator==(const CoreMLSettingsT &lhs, const CoreMLSettingsT &rhs);
+bool operator!=(const CoreMLSettingsT &lhs, const CoreMLSettingsT &rhs);
 bool operator==(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs);
 bool operator!=(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs);
 bool operator==(const EdgeTpuInactivePowerConfigT &lhs, const EdgeTpuInactivePowerConfigT &rhs);
@@ -182,11 +187,12 @@ enum Delegate {
   Delegate_XNNPACK = 4,
   Delegate_EDGETPU = 5,
   Delegate_EDGETPU_CORAL = 6,
+  Delegate_CORE_ML = 7,
   Delegate_MIN = Delegate_NONE,
-  Delegate_MAX = Delegate_EDGETPU_CORAL
+  Delegate_MAX = Delegate_CORE_ML
 };
 
-inline const Delegate (&EnumValuesDelegate())[7] {
+inline const Delegate (&EnumValuesDelegate())[8] {
   static const Delegate values[] = {
     Delegate_NONE,
     Delegate_NNAPI,
@@ -194,13 +200,14 @@ inline const Delegate (&EnumValuesDelegate())[7] {
     Delegate_HEXAGON,
     Delegate_XNNPACK,
     Delegate_EDGETPU,
-    Delegate_EDGETPU_CORAL
+    Delegate_EDGETPU_CORAL,
+    Delegate_CORE_ML
   };
   return values;
 }
 
 inline const char * const *EnumNamesDelegate() {
-  static const char * const names[8] = {
+  static const char * const names[9] = {
     "NONE",
     "NNAPI",
     "GPU",
@@ -208,13 +215,14 @@ inline const char * const *EnumNamesDelegate() {
     "XNNPACK",
     "EDGETPU",
     "EDGETPU_CORAL",
+    "CORE_ML",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameDelegate(Delegate e) {
-  if (flatbuffers::IsOutRange(e, Delegate_NONE, Delegate_EDGETPU_CORAL)) return "";
+  if (flatbuffers::IsOutRange(e, Delegate_NONE, Delegate_CORE_ML)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesDelegate()[index];
 }
@@ -389,6 +397,40 @@ inline const char *EnumNameGPUInferenceUsage(GPUInferenceUsage e) {
   const size_t index = static_cast<size_t>(e);
   return EnumNamesGPUInferenceUsage()[index];
 }
+
+namespace CoreMLSettings_ {
+
+enum EnabledDevices {
+  EnabledDevices_DEVICES_ALL = 0,
+  EnabledDevices_DEVICES_WITH_NEURAL_ENGINE = 1,
+  EnabledDevices_MIN = EnabledDevices_DEVICES_ALL,
+  EnabledDevices_MAX = EnabledDevices_DEVICES_WITH_NEURAL_ENGINE
+};
+
+inline const EnabledDevices (&EnumValuesEnabledDevices())[2] {
+  static const EnabledDevices values[] = {
+    EnabledDevices_DEVICES_ALL,
+    EnabledDevices_DEVICES_WITH_NEURAL_ENGINE
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesEnabledDevices() {
+  static const char * const names[3] = {
+    "DEVICES_ALL",
+    "DEVICES_WITH_NEURAL_ENGINE",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameEnabledDevices(EnabledDevices e) {
+  if (flatbuffers::IsOutRange(e, EnabledDevices_DEVICES_ALL, EnabledDevices_DEVICES_WITH_NEURAL_ENGINE)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesEnabledDevices()[index];
+}
+
+}  // namespace CoreMLSettings_
 
 namespace EdgeTpuDeviceSpec_ {
 
@@ -1328,6 +1370,96 @@ inline flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(
 
 flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct CoreMLSettingsT : public flatbuffers::NativeTable {
+  typedef CoreMLSettings TableType;
+  tflite::CoreMLSettings_::EnabledDevices enabled_devices;
+  int32_t coreml_version;
+  int32_t max_delegated_partitions;
+  int32_t min_nodes_per_partition;
+  CoreMLSettingsT()
+      : enabled_devices(tflite::CoreMLSettings_::EnabledDevices_DEVICES_ALL),
+        coreml_version(0),
+        max_delegated_partitions(0),
+        min_nodes_per_partition(2) {
+  }
+};
+
+struct CoreMLSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef CoreMLSettingsT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_ENABLED_DEVICES = 4,
+    VT_COREML_VERSION = 6,
+    VT_MAX_DELEGATED_PARTITIONS = 8,
+    VT_MIN_NODES_PER_PARTITION = 10
+  };
+  tflite::CoreMLSettings_::EnabledDevices enabled_devices() const {
+    return static_cast<tflite::CoreMLSettings_::EnabledDevices>(GetField<int32_t>(VT_ENABLED_DEVICES, 0));
+  }
+  int32_t coreml_version() const {
+    return GetField<int32_t>(VT_COREML_VERSION, 0);
+  }
+  int32_t max_delegated_partitions() const {
+    return GetField<int32_t>(VT_MAX_DELEGATED_PARTITIONS, 0);
+  }
+  int32_t min_nodes_per_partition() const {
+    return GetField<int32_t>(VT_MIN_NODES_PER_PARTITION, 2);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_ENABLED_DEVICES) &&
+           VerifyField<int32_t>(verifier, VT_COREML_VERSION) &&
+           VerifyField<int32_t>(verifier, VT_MAX_DELEGATED_PARTITIONS) &&
+           VerifyField<int32_t>(verifier, VT_MIN_NODES_PER_PARTITION) &&
+           verifier.EndTable();
+  }
+  CoreMLSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(CoreMLSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<CoreMLSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const CoreMLSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct CoreMLSettingsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_enabled_devices(tflite::CoreMLSettings_::EnabledDevices enabled_devices) {
+    fbb_.AddElement<int32_t>(CoreMLSettings::VT_ENABLED_DEVICES, static_cast<int32_t>(enabled_devices), 0);
+  }
+  void add_coreml_version(int32_t coreml_version) {
+    fbb_.AddElement<int32_t>(CoreMLSettings::VT_COREML_VERSION, coreml_version, 0);
+  }
+  void add_max_delegated_partitions(int32_t max_delegated_partitions) {
+    fbb_.AddElement<int32_t>(CoreMLSettings::VT_MAX_DELEGATED_PARTITIONS, max_delegated_partitions, 0);
+  }
+  void add_min_nodes_per_partition(int32_t min_nodes_per_partition) {
+    fbb_.AddElement<int32_t>(CoreMLSettings::VT_MIN_NODES_PER_PARTITION, min_nodes_per_partition, 2);
+  }
+  explicit CoreMLSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  CoreMLSettingsBuilder &operator=(const CoreMLSettingsBuilder &);
+  flatbuffers::Offset<CoreMLSettings> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<CoreMLSettings>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<CoreMLSettings> CreateCoreMLSettings(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    tflite::CoreMLSettings_::EnabledDevices enabled_devices = tflite::CoreMLSettings_::EnabledDevices_DEVICES_ALL,
+    int32_t coreml_version = 0,
+    int32_t max_delegated_partitions = 0,
+    int32_t min_nodes_per_partition = 2) {
+  CoreMLSettingsBuilder builder_(_fbb);
+  builder_.add_min_nodes_per_partition(min_nodes_per_partition);
+  builder_.add_max_delegated_partitions(max_delegated_partitions);
+  builder_.add_coreml_version(coreml_version);
+  builder_.add_enabled_devices(enabled_devices);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<CoreMLSettings> CreateCoreMLSettings(flatbuffers::FlatBufferBuilder &_fbb, const CoreMLSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct EdgeTpuDeviceSpecT : public flatbuffers::NativeTable {
   typedef EdgeTpuDeviceSpec TableType;
   tflite::EdgeTpuDeviceSpec_::PlatformType platform_type;
@@ -1815,6 +1947,7 @@ struct TFLiteSettingsT : public flatbuffers::NativeTable {
   std::unique_ptr<tflite::GPUSettingsT> gpu_settings;
   std::unique_ptr<tflite::HexagonSettingsT> hexagon_settings;
   std::unique_ptr<tflite::XNNPackSettingsT> xnnpack_settings;
+  std::unique_ptr<tflite::CoreMLSettingsT> coreml_settings;
   std::unique_ptr<tflite::CPUSettingsT> cpu_settings;
   int32_t max_delegated_partitions;
   std::unique_ptr<tflite::EdgeTpuSettingsT> edgetpu_settings;
@@ -1834,11 +1967,12 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_GPU_SETTINGS = 8,
     VT_HEXAGON_SETTINGS = 10,
     VT_XNNPACK_SETTINGS = 12,
-    VT_CPU_SETTINGS = 14,
-    VT_MAX_DELEGATED_PARTITIONS = 16,
-    VT_EDGETPU_SETTINGS = 18,
-    VT_CORAL_SETTINGS = 20,
-    VT_FALLBACK_SETTINGS = 22
+    VT_COREML_SETTINGS = 14,
+    VT_CPU_SETTINGS = 16,
+    VT_MAX_DELEGATED_PARTITIONS = 18,
+    VT_EDGETPU_SETTINGS = 20,
+    VT_CORAL_SETTINGS = 22,
+    VT_FALLBACK_SETTINGS = 24
   };
   tflite::Delegate delegate() const {
     return static_cast<tflite::Delegate>(GetField<int32_t>(VT_DELEGATE, 0));
@@ -1854,6 +1988,9 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   const tflite::XNNPackSettings *xnnpack_settings() const {
     return GetPointer<const tflite::XNNPackSettings *>(VT_XNNPACK_SETTINGS);
+  }
+  const tflite::CoreMLSettings *coreml_settings() const {
+    return GetPointer<const tflite::CoreMLSettings *>(VT_COREML_SETTINGS);
   }
   const tflite::CPUSettings *cpu_settings() const {
     return GetPointer<const tflite::CPUSettings *>(VT_CPU_SETTINGS);
@@ -1881,6 +2018,8 @@ struct TFLiteSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyTable(hexagon_settings()) &&
            VerifyOffset(verifier, VT_XNNPACK_SETTINGS) &&
            verifier.VerifyTable(xnnpack_settings()) &&
+           VerifyOffset(verifier, VT_COREML_SETTINGS) &&
+           verifier.VerifyTable(coreml_settings()) &&
            VerifyOffset(verifier, VT_CPU_SETTINGS) &&
            verifier.VerifyTable(cpu_settings()) &&
            VerifyField<int32_t>(verifier, VT_MAX_DELEGATED_PARTITIONS) &&
@@ -1914,6 +2053,9 @@ struct TFLiteSettingsBuilder {
   }
   void add_xnnpack_settings(flatbuffers::Offset<tflite::XNNPackSettings> xnnpack_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_XNNPACK_SETTINGS, xnnpack_settings);
+  }
+  void add_coreml_settings(flatbuffers::Offset<tflite::CoreMLSettings> coreml_settings) {
+    fbb_.AddOffset(TFLiteSettings::VT_COREML_SETTINGS, coreml_settings);
   }
   void add_cpu_settings(flatbuffers::Offset<tflite::CPUSettings> cpu_settings) {
     fbb_.AddOffset(TFLiteSettings::VT_CPU_SETTINGS, cpu_settings);
@@ -1949,6 +2091,7 @@ inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(
     flatbuffers::Offset<tflite::GPUSettings> gpu_settings = 0,
     flatbuffers::Offset<tflite::HexagonSettings> hexagon_settings = 0,
     flatbuffers::Offset<tflite::XNNPackSettings> xnnpack_settings = 0,
+    flatbuffers::Offset<tflite::CoreMLSettings> coreml_settings = 0,
     flatbuffers::Offset<tflite::CPUSettings> cpu_settings = 0,
     int32_t max_delegated_partitions = 0,
     flatbuffers::Offset<tflite::EdgeTpuSettings> edgetpu_settings = 0,
@@ -1960,6 +2103,7 @@ inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(
   builder_.add_edgetpu_settings(edgetpu_settings);
   builder_.add_max_delegated_partitions(max_delegated_partitions);
   builder_.add_cpu_settings(cpu_settings);
+  builder_.add_coreml_settings(coreml_settings);
   builder_.add_xnnpack_settings(xnnpack_settings);
   builder_.add_hexagon_settings(hexagon_settings);
   builder_.add_gpu_settings(gpu_settings);
@@ -3335,6 +3479,55 @@ inline flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(flatbuffers::F
 }
 
 
+inline bool operator==(const CoreMLSettingsT &lhs, const CoreMLSettingsT &rhs) {
+  return
+      (lhs.enabled_devices == rhs.enabled_devices) &&
+      (lhs.coreml_version == rhs.coreml_version) &&
+      (lhs.max_delegated_partitions == rhs.max_delegated_partitions) &&
+      (lhs.min_nodes_per_partition == rhs.min_nodes_per_partition);
+}
+
+inline bool operator!=(const CoreMLSettingsT &lhs, const CoreMLSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline CoreMLSettingsT *CoreMLSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new CoreMLSettingsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void CoreMLSettings::UnPackTo(CoreMLSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = enabled_devices(); _o->enabled_devices = _e; }
+  { auto _e = coreml_version(); _o->coreml_version = _e; }
+  { auto _e = max_delegated_partitions(); _o->max_delegated_partitions = _e; }
+  { auto _e = min_nodes_per_partition(); _o->min_nodes_per_partition = _e; }
+}
+
+inline flatbuffers::Offset<CoreMLSettings> CoreMLSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const CoreMLSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateCoreMLSettings(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<CoreMLSettings> CreateCoreMLSettings(flatbuffers::FlatBufferBuilder &_fbb, const CoreMLSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const CoreMLSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _enabled_devices = _o->enabled_devices;
+  auto _coreml_version = _o->coreml_version;
+  auto _max_delegated_partitions = _o->max_delegated_partitions;
+  auto _min_nodes_per_partition = _o->min_nodes_per_partition;
+  return tflite::CreateCoreMLSettings(
+      _fbb,
+      _enabled_devices,
+      _coreml_version,
+      _max_delegated_partitions,
+      _min_nodes_per_partition);
+}
+
+
 inline bool operator==(const EdgeTpuDeviceSpecT &lhs, const EdgeTpuDeviceSpecT &rhs) {
   return
       (lhs.platform_type == rhs.platform_type) &&
@@ -3579,6 +3772,7 @@ inline bool operator==(const TFLiteSettingsT &lhs, const TFLiteSettingsT &rhs) {
       ((lhs.gpu_settings == rhs.gpu_settings) || (lhs.gpu_settings && rhs.gpu_settings && *lhs.gpu_settings == *rhs.gpu_settings)) &&
       ((lhs.hexagon_settings == rhs.hexagon_settings) || (lhs.hexagon_settings && rhs.hexagon_settings && *lhs.hexagon_settings == *rhs.hexagon_settings)) &&
       ((lhs.xnnpack_settings == rhs.xnnpack_settings) || (lhs.xnnpack_settings && rhs.xnnpack_settings && *lhs.xnnpack_settings == *rhs.xnnpack_settings)) &&
+      ((lhs.coreml_settings == rhs.coreml_settings) || (lhs.coreml_settings && rhs.coreml_settings && *lhs.coreml_settings == *rhs.coreml_settings)) &&
       ((lhs.cpu_settings == rhs.cpu_settings) || (lhs.cpu_settings && rhs.cpu_settings && *lhs.cpu_settings == *rhs.cpu_settings)) &&
       (lhs.max_delegated_partitions == rhs.max_delegated_partitions) &&
       ((lhs.edgetpu_settings == rhs.edgetpu_settings) || (lhs.edgetpu_settings && rhs.edgetpu_settings && *lhs.edgetpu_settings == *rhs.edgetpu_settings)) &&
@@ -3605,6 +3799,7 @@ inline void TFLiteSettings::UnPackTo(TFLiteSettingsT *_o, const flatbuffers::res
   { auto _e = gpu_settings(); if (_e) _o->gpu_settings = std::unique_ptr<tflite::GPUSettingsT>(_e->UnPack(_resolver)); }
   { auto _e = hexagon_settings(); if (_e) _o->hexagon_settings = std::unique_ptr<tflite::HexagonSettingsT>(_e->UnPack(_resolver)); }
   { auto _e = xnnpack_settings(); if (_e) _o->xnnpack_settings = std::unique_ptr<tflite::XNNPackSettingsT>(_e->UnPack(_resolver)); }
+  { auto _e = coreml_settings(); if (_e) _o->coreml_settings = std::unique_ptr<tflite::CoreMLSettingsT>(_e->UnPack(_resolver)); }
   { auto _e = cpu_settings(); if (_e) _o->cpu_settings = std::unique_ptr<tflite::CPUSettingsT>(_e->UnPack(_resolver)); }
   { auto _e = max_delegated_partitions(); _o->max_delegated_partitions = _e; }
   { auto _e = edgetpu_settings(); if (_e) _o->edgetpu_settings = std::unique_ptr<tflite::EdgeTpuSettingsT>(_e->UnPack(_resolver)); }
@@ -3625,6 +3820,7 @@ inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(flatbuffers::Fla
   auto _gpu_settings = _o->gpu_settings ? CreateGPUSettings(_fbb, _o->gpu_settings.get(), _rehasher) : 0;
   auto _hexagon_settings = _o->hexagon_settings ? CreateHexagonSettings(_fbb, _o->hexagon_settings.get(), _rehasher) : 0;
   auto _xnnpack_settings = _o->xnnpack_settings ? CreateXNNPackSettings(_fbb, _o->xnnpack_settings.get(), _rehasher) : 0;
+  auto _coreml_settings = _o->coreml_settings ? CreateCoreMLSettings(_fbb, _o->coreml_settings.get(), _rehasher) : 0;
   auto _cpu_settings = _o->cpu_settings ? CreateCPUSettings(_fbb, _o->cpu_settings.get(), _rehasher) : 0;
   auto _max_delegated_partitions = _o->max_delegated_partitions;
   auto _edgetpu_settings = _o->edgetpu_settings ? CreateEdgeTpuSettings(_fbb, _o->edgetpu_settings.get(), _rehasher) : 0;
@@ -3637,6 +3833,7 @@ inline flatbuffers::Offset<TFLiteSettings> CreateTFLiteSettings(flatbuffers::Fla
       _gpu_settings,
       _hexagon_settings,
       _xnnpack_settings,
+      _coreml_settings,
       _cpu_settings,
       _max_delegated_partitions,
       _edgetpu_settings,

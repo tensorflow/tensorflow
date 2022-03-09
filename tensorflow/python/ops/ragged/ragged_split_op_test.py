@@ -416,7 +416,7 @@ class RaggedSplitOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @parameterized.parameters([
       dict(
           descr='lengths known rank, num and lengths mismatch',
-          rt_shape=(None, 1),
+          rt_shape=(2, None),
           lengths_shape=(None,),
           lengths=[1, 1, 0],
           num=2,

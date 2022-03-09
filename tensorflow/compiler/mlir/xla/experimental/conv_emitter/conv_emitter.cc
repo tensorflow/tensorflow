@@ -31,14 +31,14 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/experimental/conv_emitter/conv_emitter_transforms.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
@@ -318,15 +318,14 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
                       filter_spatial_indvars.end());
 
     return builder.create<mlir::arith::ExtFOp>(
-        location,
+        location, builder.getF32Type(),
         builder.createOrFold<mlir::AffineLoadOp>(
             location, input,
             mlir::AffineMap(input_shape_info.affine_map)
                 .compose(mlir::AffineMap::get(
                     /*dimCount=*/2 + num_spatial_dims * 2,
                     /*symbolCount=*/0, input_indices, builder.getContext())),
-            input_vars),
-        builder.getF32Type());
+            input_vars));
   }();
 
   mlir::Value loaded_filter = [&] {
@@ -337,10 +336,9 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
                        filter_spatial_indvars.end());
 
     return builder.create<mlir::arith::ExtFOp>(
-        location,
+        location, builder.getF32Type(),
         builder.createOrFold<mlir::AffineLoadOp>(
-            location, filter, filter_shape_info.affine_map, filter_vars),
-        builder.getF32Type());
+            location, filter, filter_shape_info.affine_map, filter_vars));
   }();
 
   auto accum_load_op =
@@ -363,9 +361,8 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
     builder.createOrFold<mlir::AffineStoreOp>(
         location,
         builder.create<mlir::arith::TruncFOp>(
-            location,
-            builder.createOrFold<mlir::AffineLoadOp>(location, output_acc),
-            builder.getF16Type()),
+            location, builder.getF16Type(),
+            builder.createOrFold<mlir::AffineLoadOp>(location, output_acc)),
         output, output_shape_info.affine_map, output_vars);
   }
 
@@ -567,7 +564,7 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
 
   auto* entry_block = function.addEntryBlock();
   builder.setInsertionPointToStart(entry_block);
-  builder.create<mlir::ReturnOp>(builder.getUnknownLoc());
+  builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
   builder.setInsertionPointToStart(entry_block);
 
   mlir::Value input = entry_block->getArgument(1);

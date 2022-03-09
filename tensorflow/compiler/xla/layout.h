@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -48,7 +47,7 @@ class Tile {
   }
   bool operator!=(const Tile& other) const { return !(*this == other); }
 
-  string ToString() const;
+  std::string ToString() const;
 
   // Returns the bound of the tile in the given dimension index.
   int64_t dimension(int i) const { return dimensions_.at(i); }
@@ -107,7 +106,7 @@ class Layout {
   LayoutProto ToProto() const;
 
   // Returns a human-readable string that represents this layout.
-  string ToString() const;
+  std::string ToString() const;
 
   // Equal is a configurable functor to check the equality of two layouts.
   //
@@ -231,7 +230,7 @@ class Layout {
   template <typename H>
   friend H AbslHashValue(H h, const Layout& l) {
     return H::combine(std::move(h), l.format_, l.minor_to_major_, l.tiles_,
-                      l.element_size_in_bits_);
+                      l.element_size_in_bits_, l.memory_space_);
   }
 
  private:

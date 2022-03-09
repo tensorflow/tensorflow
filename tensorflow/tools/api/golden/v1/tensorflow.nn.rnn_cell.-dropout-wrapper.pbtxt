@@ -1,10 +1,10 @@
 path: "tensorflow.nn.rnn_cell.DropoutWrapper"
 tf_class {
-  is_instance: "<class \'keras.layers.legacy_rnn.rnn_cell_impl.DropoutWrapper\'>"
-  is_instance: "<class \'keras.layers.legacy_rnn.rnn_cell_wrapper_impl.DropoutWrapperBase\'>"
-  is_instance: "<class \'keras.layers.legacy_rnn.rnn_cell_impl._RNNCellWrapperV1\'>"
-  is_instance: "<class \'keras.layers.legacy_rnn.rnn_cell_impl.RNNCell\'>"
+  is_instance: "<class \'keras.layers.rnn.legacy_cell_wrappers.DropoutWrapper\'>"
+  is_instance: "<class \'keras.layers.rnn.legacy_cell_wrappers._RNNCellWrapperV1\'>"
+  is_instance: "<class \'keras.layers.rnn.legacy_cells.RNNCell\'>"
   is_instance: "<class \'keras.legacy_tf_layers.base.Layer\'>"
+  is_instance: "<class \'keras.engine.base_layer_v1.Layer\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.autotrackable.AutoTrackable\'>"
@@ -153,7 +153,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'cell\', \'input_keep_prob\', \'output_keep_prob\', \'state_keep_prob\', \'variational_recurrent\', \'input_size\', \'dtype\', \'seed\', \'dropout_state_filter_visitor\'], varargs=None, keywords=kwargs, defaults=[\'1.0\', \'1.0\', \'1.0\', \'False\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"
@@ -161,11 +161,11 @@ tf_class {
   }
   member_method {
     name: "add_metric"
-    argspec: "args=[\'self\', \'value\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'value\', \'aggregation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "add_update"
-    argspec: "args=[\'self\', \'updates\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'updates\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "add_variable"
@@ -177,7 +177,7 @@ tf_class {
   }
   member_method {
     name: "apply"
-    argspec: "args=[\'self\', \'inputs\'], varargs=args, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "build"
@@ -185,7 +185,7 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\'], varargs=args, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "compute_mask"

@@ -6,6 +6,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_google",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -20,7 +21,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_ccsharedlib_extension")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
@@ -38,6 +39,28 @@ package(
         "-parse_headers",
     ],
     licenses = ["notice"],
+)
+
+# Whether or not to use the EfficientNMSPlugin from NVIDIA OSS archive.
+config_setting(
+    name = "use_efficient_nms_plugin",
+    define_values = {"use_efficient_nms_plugin": "1"},
+)
+
+# Config setting to conditionally link GPU targets.
+alias(
+    name = "efficient_nms_plugin_wrapper",
+    actual = if_google(
+        "//third_party/tensorrt/plugin:nvinfer_plugin_nms",
+        "@tensorrt_oss_archive//:nvinfer_plugin_nms",
+    ),
+)
+
+cc_library(
+    name = "efficient_nms_plugin",
+    deps = if_tensorrt([
+        ":efficient_nms_plugin_wrapper",
+    ]),
 )
 
 cc_library(
@@ -69,6 +92,10 @@ tf_cuda_cc_test(
     srcs = [
         "tensorrt_test.cc",
     ],
+    extra_copts = select({
+        ":use_efficient_nms_plugin": ["-DTF_TRT_USE_EFFICIENT_NMS_PLUGIN=1"],
+        "//conditions:default": [],
+    }),
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
@@ -84,8 +111,10 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
         ":tensorrt_lib",
-        "@local_config_tensorrt//plugin:nvinfer_plugin_nms",
-    ]),
+    ]) + select({
+        ":use_efficient_nms_plugin": [":efficient_nms_plugin"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -101,6 +130,7 @@ cc_library(
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/strings",
     ] + if_tensorrt([":tensorrt_lib"]),
@@ -580,8 +610,11 @@ tf_cuda_library(
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
         "convert/ops/data_format_vec_permute.cc",
+        "convert/ops/einsum.cc",
+        "convert/ops/fill_ops.cc",
         "convert/ops/quantization_ops.cc",
         "convert/ops/slice_ops.cc",
+        "convert/ops/tile.cc",
         "convert/trt_optimization_pass.cc",
     ],
     hdrs = [
@@ -592,6 +625,10 @@ tf_cuda_library(
         "convert/ops/slice_ops.h",
         "convert/trt_optimization_pass.h",
     ],
+    copts = tf_copts() + select({
+        ":use_efficient_nms_plugin": ["-DTF_TRT_USE_EFFICIENT_NMS_PLUGIN=1"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":common_utils",
         ":logger_registry",
@@ -631,7 +668,10 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
-    ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
+    ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps() + select({
+        ":use_efficient_nms_plugin": [":efficient_nms_plugin"],
+        "//conditions:default": [],
+    }),
     alwayslink = 1,
 )
 
@@ -876,13 +916,12 @@ cc_library(
     ]),
 )
 
-pybind_ccsharedlib_extension(
+pybind_extension(
     name = "_pywrap_py_utils",
     srcs = ["utils/py_utils_wrapper.cc"],
     link_in_framework = True,
     module_name = "_pywrap_py_utils",
     static_deps = [
-        # copybara:comment_begin(oss only)
         "@bazel_tools//:__subpackages__",
         "@boringssl//:__subpackages__",
         "@com_github_googlecloudplatform_tensorflow_gcp_tools//:__subpackages__",
@@ -917,7 +956,6 @@ pybind_ccsharedlib_extension(
         "@snappy//:__subpackages__",
         "//:__subpackages__",
         "@zlib//:__subpackages__",
-        # copybara:comment_end
     ],
     deps = [
         ":common_utils",
@@ -925,6 +963,7 @@ pybind_ccsharedlib_extension(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor",
         "@pybind11",
     ],
 )

@@ -227,11 +227,11 @@ void PropagateDevicesToResults(
 
 struct TPUDevicePropagation
     : public TF::TPUDevicePropagationPassBase<TPUDevicePropagation> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void TPUDevicePropagation::runOnFunction() {
-  FuncOp func = getFunction();
+void TPUDevicePropagation::runOnOperation() {
+  FuncOp func = getOperation();
   if (!IsSupportedGraph(func)) return;
 
   llvm::DenseMap<Value, llvm::StringRef> value_to_device;

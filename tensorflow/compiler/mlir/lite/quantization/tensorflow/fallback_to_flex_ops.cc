@@ -87,6 +87,7 @@ ABSL_ATTRIBUTE_NOINLINE const std::set<std::string>
           TF::Conv2DBackpropInputOp::getOperationName().str(),
           TF::Conv2DOp::getOperationName().str(),
           TF::DepthwiseConv2dNativeOp::getOperationName().str(),
+          TF::FusedBatchNormV3Op::getOperationName().str(),
           TF::GatherV2Op::getOperationName().str(),
           TF::MatMulOp::getOperationName().str(),
           TF::MaxPoolOp::getOperationName().str(),
@@ -119,6 +120,7 @@ ABSL_ATTRIBUTE_NOINLINE const std::set<std::string>
           TF::Conv2DBackpropInputOp::getOperationName().str(),
           TF::Conv2DOp::getOperationName().str(),
           TF::DepthwiseConv2dNativeOp::getOperationName().str(),
+          TF::FusedBatchNormV3Op::getOperationName().str(),
           TF::MatMulOp::getOperationName().str(),
           TF::Relu6Op::getOperationName().str(),
           TF::ReluOp::getOperationName().str(),
@@ -168,13 +170,14 @@ inline OpaqueElementsAttr CustomOptionForFlexOp(OpBuilder *builder,
 }
 
 // Fallbacks ops that are not supported by TF Quantization to TFLite Flex ops.
-class FallbackToFlexOps : public PassWrapper<FallbackToFlexOps, FunctionPass> {
+class FallbackToFlexOps
+    : public PassWrapper<FallbackToFlexOps, OperationPass<FuncOp>> {
  public:
   FallbackToFlexOps() {}
   explicit FallbackToFlexOps(const std::string &mode) { mode_ = mode; }
   FallbackToFlexOps(const FallbackToFlexOps &other) { mode_ = other.mode_; }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   StringRef getArgument() const final { return "quant-raise-flex-fallback"; }
 
@@ -202,7 +205,7 @@ class FallbackToFlexOps : public PassWrapper<FallbackToFlexOps, FunctionPass> {
     } else if (mode_ == kLegacyIntegerMode) {
       return QuantizableOpsInLegacyMode().count(op_name) > 0;
     } else {
-      mlir::emitError(getFunction().getLoc(), "Unregconized mode: " + mode_);
+      mlir::emitError(getOperation().getLoc(), "Unregconized mode: " + mode_);
       signalPassFailure();
       return true;
     }
@@ -267,14 +270,14 @@ bool RankEquals(Value value, int rank) {
 
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/fallback_to_flex_patterns.inc"
 
-void FallbackToFlexOps::runOnFunction() {
+void FallbackToFlexOps::runOnOperation() {
   if (mode_.empty()) return;
 
-  FuncOp func = getFunction();
+  FuncOp func = getOperation();
   MLIRContext *ctx = &getContext();
 
   // Convert binary ops to BiasAdd ops if possible.
-  OwningRewritePatternList patterns(ctx);
+  RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 

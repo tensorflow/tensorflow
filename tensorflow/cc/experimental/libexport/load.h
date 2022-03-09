@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
+#include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
+#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 namespace tensorflow {
 namespace libexport {
@@ -39,32 +41,16 @@ class TFPackage {
   // Load a SavedModel, parsing the associated protobuf for later access.
   static tensorflow::StatusOr<TFPackage> Load(const std::string& path);
 
-  // Reads and returns a list of variable checkpoint keys found in the
-  // SavedModel.
+  // Reads and returns a checkpoint key associated with a variable.
+  //
+  // The variable is identified by the index in the object graph node list.
   //
   // RestoreV2 is the operation that will ultimately be responsible for reading
   // and restoring the variable(s)' values.  Variable values are indexed in the
   // checkpoint files by "checkpoint keys".  These keys along with dtype and
   // shape / slice information allow RestoreV2 to look up a variable's value in
   // the SavedModel and restore it into a tensor.
-  //
-  // In an ideal world, we wouldn't need this extra layer of indirection; this
-  // class would be responsible for reading the values and providing them to the
-  // caller for registration in the runtime.  We should explore whether that is
-  // feasible and migrate to it if possible.
-  //
-  // Regardless of what we decide to do, we should eventually split this out
-  // into its own checkpoint abstraction.
-  struct CheckpointKey {
-    std::string key;
-    DataType dtype;
-    // Use an empty string for a non-partitioned variable.
-    //
-    // TODO(danielellis): Create a better description around what valid values
-    // look like for this.
-    std::string shape_and_slice;
-  };
-  tensorflow::StatusOr<std::vector<CheckpointKey>> GetVariableCheckpointKeys();
+  tensorflow::StatusOr<std::string> GetVariableCheckpointKey(int index);
 
   // Retrieves the object graph from the SavedModel.
   //
@@ -80,8 +66,17 @@ class TFPackage {
   // Returns a list of function defs in the SavedModel.
   const protobuf::RepeatedPtrField<FunctionDef>& GetFunctionDefs();
 
+  // Returns a BundleReader for reading variable values.
+  //
+  // This TFPackage retains ownership of the underlying reader.
+  tensorflow::BundleReader* GetVariableReader() {
+    return variable_reader_.get();
+  }
+
  private:
   SavedModel saved_model_proto_;
+  TrackableObjectGraph trackable_object_graph_;
+  std::unique_ptr<tensorflow::BundleReader> variable_reader_;
 };
 
 }  // namespace libexport

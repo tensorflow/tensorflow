@@ -118,6 +118,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     return math_ops.erfc
 
   @property
+  def trt_incompatible_binary_op(self):
+    return math_ops.igamma
+
+  @property
   def precision_modes(self):
     return ["FP32", "FP16", "INT8"]
 
@@ -284,6 +288,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build, implemented by subclass."""
     raise NotImplementedError()
+
+  def ExpectedConnections(self, run_params):
+    """Returns the expected edges or an empty dict to skip the check."""
+    return {}
 
   def ExpectedMaxBatchSizes(self, run_params):
     """Returns the expected maximum batch sizes of the build engines."""
@@ -570,7 +578,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _MayRemoveGraphSequenceNumber(self, name):
     return self._RemoveGraphSequenceNumberImpl(name, False)
 
-  def _VerifyConnections(self, expected_engines, original_gdef, converted_gdef):
+  def _VerifyConnections(self, expected_engines, expected_input_map,
+                         original_gdef, converted_gdef):
+    """Checks that the converted graph contains the expected connections."""
     old_to_new_node_map = {
         self._ToString(node.name): self._ToString(node.name)
         for node in original_gdef.node
@@ -578,9 +588,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     for engine_name, node_names in expected_engines.items():
       for node_name in node_names:
         old_to_new_node_map[node_name] = engine_name
-    name_to_node_map = {
-        self._ToString(node.name): node for node in original_gdef.node
-    }
 
     def _InputName(inp):
       inp = self._ToString(inp)
@@ -592,37 +599,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       if len(parts) > 1 and parts[-1].isdigit():
         inp = inp[:-len(parts[-1]) - 1]
       return (prefix, inp)
-
-    # Compute the expected mapping from each node to its input nodes.
-    expected_input_map = {}
-    removed_const_nodes = set([
-        self._ToString(node.name)
-        for node in original_gdef.node
-        if node.op == "Const"
-    ])
-    for node in original_gdef.node:
-      name_str = self._ToString(node.name)
-      target_node_name = old_to_new_node_map[name_str]
-      is_engine_op = (target_node_name != name_str)
-      if target_node_name not in expected_input_map:
-        expected_input_map[target_node_name] = set()
-      input_set = expected_input_map[target_node_name]
-      for inp in node.input:
-        (prefix, inp_name) = _InputName(inp)
-        mapped_input = old_to_new_node_map[inp_name]
-        # Add the input only if it's outside the segment (note that it could be
-        # in a different engine).
-        if not is_engine_op or (mapped_input != target_node_name and
-                                name_to_node_map[inp_name].op != "Const"):
-          input_set.add(prefix + mapped_input)
-          if mapped_input in removed_const_nodes:
-            removed_const_nodes.remove(mapped_input)
-    # Remove const nodes that have no outputs.
-    expected_input_map = {
-        k: v
-        for k, v in expected_input_map.items()
-        if k not in removed_const_nodes
-    }
 
     # Compute the actual mapping from each node to its input nodes. If a cast
     # op doesn't exist in the original graph, we replace the use of the cast op
@@ -842,8 +818,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(0, num_engines)
     else:
       self.assertEqual(num_engines, len(expected_engines))
-      if isinstance(expected_engines, dict):
-        self._VerifyConnections(expected_engines, original_gdef, gdef_to_verify)
+      expected_connections = self.ExpectedConnections(run_params)
+      if expected_connections:
+        self._VerifyConnections(expected_engines, expected_connections,
+                                original_gdef, gdef_to_verify)
       self._VerifyMaxBatchSizeAnnotations(
           expected_engines=expected_engines,
           original_gdef=original_gdef,

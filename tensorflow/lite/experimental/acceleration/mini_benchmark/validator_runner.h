@@ -67,20 +67,20 @@ class ValidatorRunner {
   // we expect that if the NnApiSupportLibrary was loaded by a shared library,
   // dlclose is called only after all this mini-benchmark object has been
   // deleted.
-  ValidatorRunner(
-      const std::string& model_path, const std::string& storage_path,
-      const std::string& data_directory_path,
-      const ::tflite::nnapi::NnApiSupportLibrary* nnapi_sl = nullptr,
-      const std::string validation_function_name =
-          TfLiteValidationFunctionName(),
-      ErrorReporter* error_reporter = DefaultErrorReporter());
-  ValidatorRunner(
-      int model_fd, size_t model_offset, size_t model_size,
-      const std::string& storage_path, const std::string& data_directory_path,
-      const ::tflite::nnapi::NnApiSupportLibrary* nnapi_sl = nullptr,
-      const std::string validation_function_name =
-          TfLiteValidationFunctionName(),
-      ErrorReporter* error_reporter = DefaultErrorReporter());
+  ValidatorRunner(const std::string& model_path,
+                  const std::string& storage_path,
+                  const std::string& data_directory_path,
+                  const NnApiSLDriverImplFL5* nnapi_sl = nullptr,
+                  const std::string validation_function_name =
+                      TfLiteValidationFunctionName(),
+                  ErrorReporter* error_reporter = DefaultErrorReporter());
+  ValidatorRunner(int model_fd, size_t model_offset, size_t model_size,
+                  const std::string& storage_path,
+                  const std::string& data_directory_path,
+                  const NnApiSLDriverImplFL5* nnapi_sl = nullptr,
+                  const std::string validation_function_name =
+                      TfLiteValidationFunctionName(),
+                  ErrorReporter* error_reporter = DefaultErrorReporter());
   MinibenchmarkStatus Init();
 
   // The following methods invalidate previously returned pointers.
@@ -119,7 +119,7 @@ class ValidatorRunner {
   ErrorReporter* error_reporter_;
   bool triggered_ = false;
   std::string nnapi_sl_path_;
-  const ::tflite::nnapi::NnApiSupportLibrary* nnapi_sl_;
+  const NnApiSLDriverImplFL5* nnapi_sl_;
 };
 
 }  // namespace acceleration

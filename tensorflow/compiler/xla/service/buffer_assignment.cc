@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <deque>
+#include <numeric>
 #include <ostream>
 #include <utility>
 
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 
 namespace xla {
@@ -206,7 +206,7 @@ Status GatherComputationsByAllocationType(
   return Status::OK();
 }
 
-string BufferAllocation::Slice::ToString() const {
+std::string BufferAllocation::Slice::ToString() const {
   return absl::StrCat("{index:", index(), ", offset:", offset_,
                       ", size:", size_, "}");
 }
@@ -315,8 +315,8 @@ static const HloInstruction* GetOutputInstruction(
   return nullptr;
 }
 
-string BufferAllocation::ToString() const {
-  string output;
+std::string BufferAllocation::ToString() const {
+  std::string output;
   StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
   if (color() != 0) {
     StrAppend(&output, ", color ", color());
@@ -725,8 +725,8 @@ Status BufferAssignment::ComputeSummaryStats() {
   return Status::OK();
 }
 
-string BufferAssignment::Stats::ToString() const {
-  string s;
+std::string BufferAssignment::Stats::ToString() const {
+  std::string s;
   StrAppendFormat(&s, "BufferAssignment stats:\n");
   StrAppendFormat(&s, "             parameter allocation: %10s\n",
                   HumanReadableNumBytes(parameter_allocation_bytes));
@@ -754,8 +754,8 @@ string BufferAssignment::Stats::ToString() const {
   return s;
 }
 
-string BufferAssignment::ToString() const {
-  string output;
+std::string BufferAssignment::ToString() const {
+  std::string output;
   absl::StrAppend(&output, "BufferAssignment:\n");
   std::vector<const HloValue*> used_values;
   int64_t total_size = 0;
@@ -803,15 +803,15 @@ std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
   return topk_descending;
 }
 
-string BufferAssignment::ToVerboseString() const {
+std::string BufferAssignment::ToVerboseString() const {
   // TODO(loreno): make this tunable via flag.
   const size_t kMaxBuffersToShow = 15;
-  string output =
+  std::string output =
       absl::StrCat("BufferAssignment OOM Debugging.\n", stats_.ToString());
 
   std::vector<std::pair<int64_t, const HloValue*>> peak_buffers =
       TopKPeakBuffers(kMaxBuffersToShow, allocations_);
-  std::vector<string> buf_strs;
+  std::vector<std::string> buf_strs;
   for (size_t i = 0; i < std::min(kMaxBuffersToShow, peak_buffers.size());
        ++i) {
     const HloValue* value = peak_buffers[i].second;
@@ -842,8 +842,8 @@ string BufferAssignment::ToVerboseString() const {
   return output;
 }
 
-string BufferAssignment::BufferInfoString() const {
-  string binfo;
+std::string BufferAssignment::BufferInfoString() const {
+  std::string binfo;
   // Columns in buffer information:
   // buffer_id: int. This value can be used to match the allocation in
   // allocation information.
@@ -958,7 +958,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allocate_buffers_for_constants, BufferAssigner::Colorer colorer,
-    const absl::flat_hash_set<HloOpcode>& must_not_live_out,
+    absl::optional<BufferAssigner::MustNotLiveOut> must_not_live_out,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
     std::unique_ptr<PresetAssignments> preset_assignments) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
@@ -1064,12 +1064,12 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     return false;
   }
 
-  if (!must_not_live_out_.empty()) {
+  if (must_not_live_out_.has_value()) {
     if (allocation->maybe_live_out()) {
-      // If a buffer maybe live out, the allocation cannot contain any node from
-      // the "must_not_live_out_" set.
+      // If a buffer maybe live out, the allocation cannot contain any node
+      // where must_not_live_out_ returns true.
       for (const HloValue* value : hlo_buffer.values()) {
-        if (must_not_live_out_.count(value->instruction()->opcode()) > 0) {
+        if ((*must_not_live_out_)(value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << value->instruction()->ToString()
                   << " cannot live out of the module";
           return false;
@@ -1077,14 +1077,14 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
       }
     }
     // The above check is not enough -- There could be the case where an
-    // allocation can be not live out and contains an instruction with opcode
-    // from the "must_not_live_out_" set, but assigning a live out buffer to
-    // that allocation makes the allocation live out and also contains
-    // instruction from the "must_not_live_out_" set.
+    // allocation can be not live out and contains an instruction where
+    // must_not_live_out_ returns true, but assigning a live out buffer to
+    // that allocation makes the allocation live out and also contain an
+    // instruction where ust_not_live_out_ returns true.
     if (assignment->alias_analysis().BufferLivesOut(hlo_buffer)) {
       for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
-        if (must_not_live_out_.count(
-                buffer_offset_size.first->instruction()->opcode()) > 0) {
+        const HloValue* value = buffer_offset_size.first;
+        if ((*must_not_live_out_)(value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << buffer_offset_size.first->instruction()
                   << " cannot live out of the module";
           return false;

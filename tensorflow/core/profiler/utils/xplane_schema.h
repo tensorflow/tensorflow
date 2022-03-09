@@ -204,6 +204,7 @@ enum StatType {
   kProgramId,
   kEquation,
   kIsEager,
+  kIsFunc,
   kTfFunctionCall,
   kTfFunctionTracingCount,
   kFlops,

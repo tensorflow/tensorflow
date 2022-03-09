@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/FunctionSupport.h"  // from @llvm-project
+#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 #define DEBUG_TYPE "graphdef-to-mlir"
 
@@ -80,7 +81,9 @@ using tensorflow::errors::InvalidArgument;
 namespace mlir {
 namespace tfg {
 namespace {
-constexpr char kDeviceAttr[] = "_mlir_device";
+
+constexpr StringRef kNameAttr = TFGraphDialect::getNameAttrKey();
+constexpr StringRef kDeviceAttr = TFGraphDialect::getDeviceAttrKey();
 constexpr char kAliasingAttr[] = "tf.aliasing_output";
 
 // Compute the name to use in GraphDef for a given Value (either the result of
@@ -97,7 +100,7 @@ static Status GetValueName(Value operand, std::string &name, Type control_ty) {
     // Function arguments are coming as pair: the even are the actual tensors
     // while the odd position are the associated control input.
     if (is_control) name = "^";
-    DictionaryAttr arg_attrs = function_like_impl::getArgAttrDict(
+    DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
         block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
     if (!arg_attrs)
       return InvalidArgument("Missing attribute for argument #", arg_num);
@@ -110,7 +113,7 @@ static Status GetValueName(Value operand, std::string &name, Type control_ty) {
     return {};
   }
   Operation *producer = op_result.getDefiningOp();
-  auto nameAttr = producer->getAttrOfType<StringAttr>("_mlir_name");
+  auto nameAttr = producer->getAttrOfType<StringAttr>(kNameAttr);
   if (!nameAttr)
     return InvalidArgument("Can't export graph with missing op-name");
 
@@ -129,7 +132,7 @@ Status GetArgumentNode(GraphFuncOp func, NodeDef *node_def, unsigned index,
   TensorType arg_type = func.getArgument(index).getType().cast<TensorType>();
 
   if (auto resource_type = arg_type.getElementType().dyn_cast<ResourceType>()) {
-    llvm::ArrayRef<TensorType> subtypes = resource_type.getSubtypes();
+    ArrayRef<TensorType> subtypes = resource_type.getSubtypes();
     if (!subtypes.empty()) {
       tensorflow::AttrValue handle_dtypes_attr;
       tensorflow::AttrValue handle_shapes_attr;
@@ -164,12 +167,11 @@ Status GetArgumentNode(GraphFuncOp func, NodeDef *node_def, unsigned index,
   if (auto device_attr = func.getArgAttrOfType<StringAttr>(index, kDeviceAttr))
     *node_def->mutable_device() = device_attr.getValue().str();
 
-  llvm::ArrayRef<NamedAttribute> func_arg_i_attrs = func.getArgAttrs(index);
-  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-      kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype", "tfg.handle_data"};
-  TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
-                                       /*remove_ref_type=*/false,
-                                       node_def->mutable_attr()));
+  ArrayRef<NamedAttribute> func_arg_i_attrs = func.getArgAttrs(index);
+  TF_RETURN_IF_ERROR(ConvertAttributes(
+      func_arg_i_attrs,
+      {kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype", "tfg.handle_data"},
+      /*remove_ref_type=*/false, node_def->mutable_attr()));
 
   return Status::OK();
 }
@@ -198,13 +200,11 @@ Status GetReturnNode(GraphFuncOp function, Value operand, unsigned index,
           function.getResultAttrOfType<StringAttr>(index, kDeviceAttr))
     *node_def->mutable_device() = device_attr.getValue().str();
 
-  llvm::ArrayRef<NamedAttribute> func_res_i_attrs =
-      function.getResultAttrs(index);
-  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
-      kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype", "tfg.handle_data"};
-  TF_RETURN_IF_ERROR(ConvertAttributes(func_res_i_attrs, attrs_to_ignore,
-                                       /*remove_ref_type=*/false,
-                                       node_def->mutable_attr()));
+  ArrayRef<NamedAttribute> func_res_i_attrs = function.getResultAttrs(index);
+  TF_RETURN_IF_ERROR(ConvertAttributes(
+      func_res_i_attrs,
+      {kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype", "tfg.handle_data"},
+      /*remove_ref_type=*/false, node_def->mutable_attr()));
 
   return Status::OK();
 }
@@ -234,7 +234,7 @@ void ExtractExperimentalDebugInfoFromLocation(
 // the `ControlType` to compare against and detect a control dependency case.
 Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
                                   GetValueNameFn get_value_name) {
-  auto nameAttr = op.getAttrOfType<StringAttr>("_mlir_name");
+  auto nameAttr = op.getAttrOfType<StringAttr>(kNameAttr);
   if (nameAttr) node->set_name(nameAttr.getValue().str());
   auto deviceAttr = op.getAttrOfType<StringAttr>(kDeviceAttr);
   if (deviceAttr) node->set_device(deviceAttr.getValue().str());
@@ -251,7 +251,7 @@ Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
     StringRef callee_name = callee.getName().getRootReference().getValue();
     node->set_op({callee_name.data(), callee_name.size()});
     TF_RETURN_IF_ERROR(ConvertAttributes(
-        callee.getAttrs().getValue(), {"_mlir_name", kDeviceAttr},
+        callee.getAttrs().getValue(), {kNameAttr, kDeviceAttr},
         /*remove_ref_type=*/false, node->mutable_attr()));
     auto optional_device =
         op.getAttrDictionary().getNamed("_mlir_assigned_device");
@@ -265,7 +265,7 @@ Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
   } else {
     node->set_op({op_name.data(), op_name.size()});
     TF_RETURN_IF_ERROR(
-        ConvertAttributes(op.getAttrs(), {"_mlir_name", kDeviceAttr},
+        ConvertAttributes(op.getAttrs(), {kNameAttr, kDeviceAttr},
                           /*remove_ref_type=*/false, node->mutable_attr()));
   }
   // Eliminate empty "_mlir_assigned_device" from the export. This is just
@@ -332,214 +332,53 @@ Status BuildFunctionSignature(GraphFuncOp func_op, FunctionDef &fdef) {
   if (func_op->getAttr("is_stateful")) signature->set_is_stateful(true);
   if (auto description = func_op->getAttrOfType<StringAttr>("description"))
     signature->set_description(description.getValue().str());
+
   // Handle the results now.
   // An ArgDef entry needs to be constructed for all non-control returned value.
-  auto return_op = cast<tfg::ReturnOp>(func_op.getBody()->getTerminator());
-  ArrayAttr results_attr = func_op.getAllResultAttrs();
-  auto control_ty = tfg::ControlType::get(func_op.getContext());
-  std::string ret_name;
-  for (auto indexed_result : llvm::enumerate(return_op->getOperands())) {
-    int res_num = indexed_result.index();
-    Value ret_val = indexed_result.value();
-    if (ret_val.getType() == control_ty) {
-      auto name = return_op->getAttrOfType<StringAttr>(
-          absl::StrCat("tfg.control_ret_name_", res_num));
-      if (!name)
-        return InvalidArgument("Can't export function ", func_name,
-                               " because missing \"tfg.control_ret_name_\" "
-                               "attribute for control result #",
-                               res_num);
-      signature->add_control_output(name.getValue().str());
-    } else {
-      auto res_attrs = results_attr[res_num].dyn_cast<DictionaryAttr>();
-      auto name = res_attrs.getAs<StringAttr>("tfg.name");
-      if (!name)
-        return InvalidArgument(
-            "Can't export function ", func_name,
-            " because missing \"tfg.name\" attribute for result #", res_num);
-      OpDef::ArgDef *arg = signature->add_output_arg();
-      arg->set_name(name.getValue().str());
-      StringAttr description = res_attrs.getAs<StringAttr>("tfg.description");
-      if (description) arg->set_description(description.getValue().str());
-      TF_RETURN_IF_ERROR(ConvertHandleData(
-          res_attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
-    }
+  auto return_op = cast<ReturnOp>(func_op.getBody()->getTerminator());
+  if (!return_op.control_ret_attrs()) {
+    return InvalidArgument(
+        "Can't export function ", func_name,
+        " because return op is missing \"control_ret_attrs\"");
   }
-  return Status::OK();
-}
+  StringAttr tfg_name_key =
+      cast<TFGraphDialect>(func_op->getDialect())->getTfgNameAttrIdentifier();
 
-// Export a GraphFunc operation as a new entry in the function library.
-static Status ExportFunction(GraphFuncOp func_op,
-                             tensorflow::FunctionLibraryDefinition &flib) {
-  const std::string func_name = func_op.getName().str();
-  // The function->gradient mapping is stored separately in the library.
-  if (auto gradient_attr =
-          func_op->getAttrOfType<FlatSymbolRefAttr>("gradient")) {
-    GradientDef gradient;
-    gradient.set_gradient_func(gradient_attr.getValue().str());
-    gradient.set_function_name(func_name);
-    TF_RETURN_IF_ERROR(flib.AddGradientDef(gradient));
-  }
-
-  auto control_ty = tfg::ControlType::get(func_op.getContext());
-  GraphDef graph_def;
-  ArrayAttr args_attr = func_op.getAllArgAttrs();
-  for (int arg_num : llvm::seq<int>(0, func_op.getNumArguments())) {
-    // Odd position are just for control dependencies.
-    if (arg_num % 2) continue;
-    DictionaryAttr arg_attrs = args_attr[arg_num].dyn_cast<DictionaryAttr>();
-    auto name = arg_attrs.getAs<StringAttr>("tfg.name");
-    if (!name || name.getValue().empty())
-      return tensorflow::errors::InvalidArgument(
-          "Missing tfg.name on argument ", arg_num);
-    NodeDef *node_def = graph_def.add_node();
-    TF_RETURN_IF_ERROR(
-        GetArgumentNode(func_op, node_def, arg_num, name.getValue()));
-  }
-  // Convert the invidual nodes in the function body, since the function is
-  // terminated by a return operation we skip it in this loop and handled it
-  // separately later.
-  for (Operation &op : func_op.getBody()->without_terminator())
-    TF_RETURN_IF_ERROR(ConvertOperationToNode(
-        op, graph_def.add_node(), [&](Value operand, std::string &output_name) {
-          return GetValueName(operand, output_name, control_ty);
-        }));
-
-  auto return_op = cast<tfg::ReturnOp>(func_op.getBody()->getTerminator());
-  ArrayAttr results_attr = func_op.getAllResultAttrs();
-  for (auto indexed_result : llvm::enumerate(return_op->getOperands())) {
-    int res_num = indexed_result.index();
-    Value ret_val = indexed_result.value();
-    if (ret_val.getType() == control_ty) continue;
-    auto res_attrs = results_attr[res_num].dyn_cast<DictionaryAttr>();
-    if (!res_attrs)
-      return InvalidArgument("Can't export function ", func_name,
-                             " because missing attributes for result #",
-                             res_num);
-    auto name = res_attrs.getAs<StringAttr>("tfg.name");
-    if (!name)
+  // Export the data operands.
+  for (auto it :
+       llvm::zip(llvm::enumerate(TFOp(return_op).getNonControlOperands()),
+                 func_op.getAllResultAttrs().getAsRange<DictionaryAttr>())) {
+    DictionaryAttr attrs = std::get<1>(it);
+    auto name = attrs.getAs<StringAttr>(tfg_name_key);
+    if (!name) {
       return InvalidArgument(
           "Can't export function ", func_name,
-          " because missing \"tfg.name\" attribute for result #", res_num);
-
-    NodeDef *node_def = graph_def.add_node();
-    TF_RETURN_IF_ERROR(GetReturnNode(func_op, ret_val, res_num, name.getValue(),
-                                     node_def, control_ty));
-  }
-
-  tensorflow::GraphConstructorOptions options;
-  options.allow_internal_ops = true;
-  options.add_default_attributes = true;
-  // TODO(aminim): remove dependency on the global registry and allow for
-  // injection.
-  tensorflow::Graph graph(&flib);
-
-  TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToGraph(
-      options, std::move(graph_def), &graph));
-
-  FunctionDef func_def;
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(graph, func_name, &func_def));
-
-  OpDef *signature = func_def.mutable_signature();
-  if (func_op->getAttr("is_stateful")) signature->set_is_stateful(true);
-  if (auto description = func_op->getAttrOfType<StringAttr>("description"))
-    signature->set_description(description.getValue().str());
-
-  // Some ArgDef updates couldn't be carried through the graph nodes, like
-  // "handle_data".
-  for (int arg_num : llvm::seq<int>(0, func_op.getNumArguments())) {
-    // Odd position are just for control dependencies.
-    if (arg_num % 2) continue;
-    DictionaryAttr arg_attrs =
-        function_like_impl::getArgAttrDict(func_op, arg_num);
-    OpDef::ArgDef *arg = signature->mutable_input_arg(arg_num / 2);
-    StringAttr description = arg_attrs.getAs<StringAttr>("tfg.description");
+          " because missing \"tfg.name\" attribute for result #",
+          std::get<0>(it).index());
+    }
+    OpDef::ArgDef *arg = signature->add_output_arg();
+    arg->set_name(name.getValue().str());
+    StringAttr description = attrs.getAs<StringAttr>("tfg.description");
     if (description) arg->set_description(description.getValue().str());
     TF_RETURN_IF_ERROR(
-        ConvertHandleData(arg_attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
+        ConvertHandleData(attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
   }
-  // Handle the results now.
-  // An ArgDef entry needs to be constructed for all non-control returned value,
-  // and a mapping from the output name to the signature is also recorded in the
-  // FunctionDef.
-  std::string ret_name;
-  for (auto indexed_result : llvm::enumerate(return_op->getOperands())) {
-    int res_num = indexed_result.index();
-    Value ret_val = indexed_result.value();
-    if (ret_val.getType() == control_ty) {
-      auto name = return_op->getAttrOfType<StringAttr>(
-          absl::StrCat("tfg.control_ret_name_", res_num));
-      if (!name)
-        return InvalidArgument("Can't export function ", func_name,
-                               " because missing \"tfg.control_ret_name_\" "
-                               "attribute for control result #",
-                               res_num);
-      // When we return a control dependency, it is not really a returned value
-      // but it is added to the `control_ret` field of the FunctionDef.
-      TF_RETURN_IF_ERROR(GetValueName(ret_val, ret_name, control_ty));
-      func_def.mutable_control_ret()->insert(
-          {name.getValue().str(), StringRef(ret_name).drop_front().str()});
-      signature->add_control_output(name.getValue().str());
-    } else {
-      auto res_attrs = results_attr[res_num].dyn_cast<DictionaryAttr>();
-      auto name = res_attrs.getAs<StringAttr>("tfg.name");
-      if (!name)
-        return InvalidArgument(
-            "Can't export function ", func_name,
-            " because missing \"tfg.name\" attribute for result #", res_num);
-      OpDef::ArgDef *arg = signature->mutable_output_arg(res_num);
-      auto it = func_def.mutable_ret()->find(arg->name());
-      if (it == func_def.mutable_ret()->end())
-        return tensorflow::errors::Internal(
-            "Mismatch in name mapping for returned value");
-      func_def.mutable_ret()->insert({name.getValue().str(), it->second});
-      func_def.mutable_ret()->erase(it);
-      arg->set_name(name.getValue().str());
-      StringAttr description = res_attrs.getAs<StringAttr>("tfg.description");
-      if (description) arg->set_description(description.getValue().str());
-      TF_RETURN_IF_ERROR(ConvertHandleData(
-          res_attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
+
+  // Export the control operands.
+  for (auto it : llvm::zip(
+           llvm::enumerate(TFOp(return_op).getControlOperands()),
+           return_op.control_ret_attrsAttr().getAsRange<DictionaryAttr>())) {
+    auto name = std::get<1>(it).getAs<StringAttr>(tfg_name_key);
+    if (!name) {
+      return InvalidArgument(
+          "Can't export function ", func_name,
+          " because missing \"tfg.name\" attribute for control result #",
+          std::get<0>(it).index());
     }
+    signature->add_control_output(name.getValue().str());
   }
 
-  // Handled the `resource_arg_unique_id` entries. At the moment it is
-  // represented as two vectors of integers which are expected of the same
-  // length.
-  auto unique_ids_keys = func_op->getAttrOfType<DenseIntElementsAttr>(
-      "resource_arg_unique_ids_keys");
-  if (unique_ids_keys) {
-    auto unique_ids_values = func_op->getAttrOfType<DenseIntElementsAttr>(
-        "resource_arg_unique_ids_values");
-    if (!unique_ids_values)
-      return InvalidArgument(
-          "Can't export function ", func_name,
-          " because \"resource_arg_unique_ids_keys\" attribute is present "
-          "but "
-          "\"resource_arg_unique_ids_values\" is missing");
-    if (unique_ids_keys.size() != unique_ids_values.size())
-      return InvalidArgument(
-          "Can't export function ", func_name,
-          " because \"resource_arg_unique_ids_keys\" array does not have the "
-          "same size as \"resource_arg_unique_ids_values\"");
-
-    auto *unique_ids_map = func_def.mutable_resource_arg_unique_id();
-    for (auto key_value : llvm::zip(unique_ids_keys.getValues<int32_t>(),
-                                    unique_ids_values.getValues<int32_t>()))
-      (*unique_ids_map)[std::get<0>(key_value)] = std::get<1>(key_value);
-  }
-
-  // Finally the dialect attributes (prefixed by `tf.` in general) are converted
-  // as-is and stored on the `attr` field of the FunctionDef.
-  SmallVector<NamedAttribute> funcAttrs(func_op->getDialectAttrs());
-  TF_RETURN_IF_ERROR(ConvertAttributes(funcAttrs, {},
-                                       /*remove_ref_type=*/false,
-                                       func_def.mutable_attr()));
-  if (flib.Find(func_def.signature().name()))
-    TF_RETURN_IF_ERROR(
-        flib.ReplaceFunction(func_def.signature().name(), func_def));
-  else
-    TF_RETURN_IF_ERROR(flib.AddFunctionDef(func_def));
-  return {};
+  return Status::OK();
 }
 
 // Given an MLIR module, returns a GraphDef.
@@ -585,7 +424,7 @@ Status ExportMlirToGraphdefImpl(ModuleOp module, GraphDef *graphdef) {
   // Export the functions, if any.
   for (GraphFuncOp func_op :
        llvm::reverse(module.getBody()->getOps<GraphFuncOp>())) {
-    LLVM_DEBUG(llvm::errs()
+    LLVM_DEBUG(llvm::dbgs()
                << "Exporting function @" << func_op.getName() << "\n");
     if (flib.Find(func_op.getName().str())) continue;
     if (!func_op.generic()) {
@@ -607,7 +446,7 @@ Status ExportMlirToGraphdefImpl(ModuleOp module, GraphDef *graphdef) {
   }
   for (GraphFuncOp func_op :
        llvm::reverse(module.getBody()->getOps<GraphFuncOp>())) {
-    LLVM_DEBUG(llvm::errs()
+    LLVM_DEBUG(llvm::dbgs()
                << "Exporting function @" << func_op.getName() << "\n");
     if (func_op.generic()) continue;
     TF_RETURN_IF_ERROR(ExportFunction(func_op, flib));
@@ -618,6 +457,189 @@ Status ExportMlirToGraphdefImpl(ModuleOp module, GraphDef *graphdef) {
 }
 
 }  // namespace
+
+Status ExportFunction(GraphFuncOp func_op,
+                      tensorflow::FunctionLibraryDefinition &flib) {
+  const std::string func_name = func_op.getName().str();
+  // The function->gradient mapping is stored separately in the library.
+  if (auto gradient_attr =
+          func_op->getAttrOfType<FlatSymbolRefAttr>("gradient")) {
+    GradientDef gradient;
+    gradient.set_gradient_func(gradient_attr.getValue().str());
+    gradient.set_function_name(func_name);
+    TF_RETURN_IF_ERROR(flib.AddGradientDef(gradient));
+  }
+
+  auto control_ty = tfg::ControlType::get(func_op.getContext());
+  GraphDef graph_def;
+  ArrayAttr args_attr = func_op.getAllArgAttrs();
+  for (int arg_num : llvm::seq<int>(0, func_op.getNumArguments())) {
+    // Odd position are just for control dependencies.
+    if (arg_num % 2) continue;
+    DictionaryAttr arg_attrs = args_attr[arg_num].dyn_cast<DictionaryAttr>();
+    auto name = arg_attrs.getAs<StringAttr>("tfg.name");
+    if (!name || name.getValue().empty())
+      return tensorflow::errors::InvalidArgument(
+          "Missing tfg.name on argument ", arg_num);
+    NodeDef *node_def = graph_def.add_node();
+    TF_RETURN_IF_ERROR(
+        GetArgumentNode(func_op, node_def, arg_num, name.getValue()));
+  }
+  // Convert the invidual nodes in the function body, since the function is
+  // terminated by a return operation we skip it in this loop and handled it
+  // separately later.
+  for (Operation &op : func_op.getBody()->without_terminator())
+    TF_RETURN_IF_ERROR(ConvertOperationToNode(
+        op, graph_def.add_node(), [&](Value operand, std::string &output_name) {
+          return GetValueName(operand, output_name, control_ty);
+        }));
+
+  auto return_op = cast<ReturnOp>(func_op.getBody()->getTerminator());
+  if (!return_op.control_ret_attrs()) {
+    return InvalidArgument(
+        "Can't export function ", func_name,
+        " because return op is missing \"control_ret_attrs\"");
+  }
+  ArrayAttr results_attr = func_op.getAllResultAttrs();
+  StringAttr tfg_name_key =
+      cast<TFGraphDialect>(func_op->getDialect())->getTfgNameAttrIdentifier();
+
+  for (auto it :
+       llvm::zip(llvm::enumerate(TFOp(return_op).getNonControlOperands()),
+                 results_attr.getAsRange<DictionaryAttr>())) {
+    unsigned res_num = std::get<0>(it).index();
+    auto name = std::get<1>(it).getAs<StringAttr>(tfg_name_key);
+    if (!name) {
+      return InvalidArgument(
+          "Can't export function ", func_name,
+          " because missing \"tfg.name\" attribute for result #", res_num);
+    }
+    NodeDef *node_def = graph_def.add_node();
+    TF_RETURN_IF_ERROR(GetReturnNode(func_op, std::get<0>(it).value(), res_num,
+                                     name.getValue(), node_def, control_ty));
+  }
+
+  tensorflow::GraphConstructorOptions options;
+  options.allow_internal_ops = true;
+  options.add_default_attributes = true;
+  // TODO(aminim): remove dependency on the global registry and allow for
+  // injection.
+  tensorflow::Graph graph(&flib);
+
+  TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToGraph(
+      options, std::move(graph_def), &graph));
+
+  FunctionDef func_def;
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(graph, func_name, &func_def));
+
+  OpDef *signature = func_def.mutable_signature();
+  if (func_op->getAttr("is_stateful")) signature->set_is_stateful(true);
+  if (auto description = func_op->getAttrOfType<StringAttr>("description"))
+    signature->set_description(description.getValue().str());
+
+  // Some ArgDef updates couldn't be carried through the graph nodes, like
+  // "handle_data".
+  for (int arg_num : llvm::seq<int>(0, func_op.getNumArguments())) {
+    // Odd position are just for control dependencies.
+    if (arg_num % 2) continue;
+    DictionaryAttr arg_attrs =
+        function_interface_impl::getArgAttrDict(func_op, arg_num);
+    OpDef::ArgDef *arg = signature->mutable_input_arg(arg_num / 2);
+    StringAttr description = arg_attrs.getAs<StringAttr>("tfg.description");
+    if (description) arg->set_description(description.getValue().str());
+    TF_RETURN_IF_ERROR(
+        ConvertHandleData(arg_attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
+  }
+  // Handle the results now.
+  // An ArgDef entry needs to be constructed for all non-control returned value,
+  // and a mapping from the output name to the signature is also recorded in the
+  // FunctionDef.
+  for (auto it :
+       llvm::zip(llvm::enumerate(TFOp(return_op).getNonControlOperands()),
+                 results_attr.getAsRange<DictionaryAttr>())) {
+    unsigned res_num = std::get<0>(it).index();
+    DictionaryAttr attrs = std::get<1>(it);
+    auto name = std::get<1>(it).getAs<StringAttr>(tfg_name_key);
+    if (!name) {
+      return InvalidArgument(
+          "Can't export function ", func_name,
+          " because missing \"tfg.name\" attribute for result #", res_num);
+    }
+    OpDef::ArgDef *arg = signature->mutable_output_arg(res_num);
+    auto ret_it = func_def.mutable_ret()->find(arg->name());
+    if (ret_it == func_def.mutable_ret()->end()) {
+      return tensorflow::errors::Internal(
+          "Mismatch in name mapping for returned value");
+    }
+    func_def.mutable_ret()->insert({name.getValue().str(), ret_it->second});
+    func_def.mutable_ret()->erase(ret_it);
+    arg->set_name(name.getValue().str());
+    StringAttr description = attrs.getAs<StringAttr>("tfg.description");
+    if (description) arg->set_description(description.getValue().str());
+    TF_RETURN_IF_ERROR(
+        ConvertHandleData(attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
+  }
+
+  std::string ret_name;
+  for (auto it : llvm::zip(
+           llvm::enumerate(TFOp(return_op).getControlOperands()),
+           return_op.control_ret_attrsAttr().getAsRange<DictionaryAttr>())) {
+    auto name = std::get<1>(it).getAs<StringAttr>(tfg_name_key);
+    if (!name) {
+      return InvalidArgument("Can't export function ", func_name,
+                             " because missing \"tfg.name\" "
+                             "attribute for control result #",
+                             std::get<0>(it).index());
+    }
+    // When we return a control dependency, it is not really a returned value
+    // but it is added to the `control_ret` field of the FunctionDef.
+    TF_RETURN_IF_ERROR(
+        GetValueName(std::get<0>(it).value(), ret_name, control_ty));
+    func_def.mutable_control_ret()->insert(
+        {name.getValue().str(), ret_name.substr(1)});
+    signature->add_control_output(name.getValue().str());
+  }
+
+  // Handled the `resource_arg_unique_id` entries. At the moment it is
+  // represented as two vectors of integers which are expected of the same
+  // length.
+  auto unique_ids_keys = func_op->getAttrOfType<DenseIntElementsAttr>(
+      "resource_arg_unique_ids_keys");
+  if (unique_ids_keys) {
+    auto unique_ids_values = func_op->getAttrOfType<DenseIntElementsAttr>(
+        "resource_arg_unique_ids_values");
+    if (!unique_ids_values)
+      return InvalidArgument(
+          "Can't export function ", func_name,
+          " because \"resource_arg_unique_ids_keys\" attribute is present "
+          "but "
+          "\"resource_arg_unique_ids_values\" is missing");
+    if (unique_ids_keys.size() != unique_ids_values.size())
+      return InvalidArgument(
+          "Can't export function ", func_name,
+          " because \"resource_arg_unique_ids_keys\" array does not have the "
+          "same size as \"resource_arg_unique_ids_values\"");
+
+    auto *unique_ids_map = func_def.mutable_resource_arg_unique_id();
+    for (auto key_value : llvm::zip(unique_ids_keys.getValues<int32_t>(),
+                                    unique_ids_values.getValues<int32_t>()))
+      (*unique_ids_map)[std::get<0>(key_value)] = std::get<1>(key_value);
+  }
+
+  // Finally the dialect attributes (prefixed by `tf.` in general) are converted
+  // as-is and stored on the `attr` field of the FunctionDef.
+  SmallVector<NamedAttribute> funcAttrs(func_op->getDialectAttrs());
+  TF_RETURN_IF_ERROR(ConvertAttributes(funcAttrs, {},
+                                       /*remove_ref_type=*/false,
+                                       func_def.mutable_attr()));
+  if (flib.Find(func_def.signature().name()))
+    TF_RETURN_IF_ERROR(
+        flib.ReplaceFunction(func_def.signature().name(), func_def));
+  else
+    TF_RETURN_IF_ERROR(flib.AddFunctionDef(func_def));
+  return {};
+}
+
 }  // namespace tfg
 }  // namespace mlir
 
@@ -631,9 +653,37 @@ Status ExportMlirToGraphdef(mlir::ModuleOp module, GraphDef *output_graph) {
   return mlir::tfg::ExportMlirToGraphdefImpl(module, output_graph);
 }
 
+Status ExportMlirToSavedModel(mlir::ModuleOp module,
+                              const SavedModel &original_saved_model,
+                              SavedModel *output_saved_model) {
+  if (original_saved_model.meta_graphs_size() == 0) {
+    return tensorflow::errors::InvalidArgument(
+        "Original saved model has no meta graphs");
+  }
+
+  tensorflow::GraphDef new_graphdef;
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(ExportMlirToGraphdef(module, &new_graphdef),
+                                  "while converting TFG to GraphDef");
+
+  // Overwrite the graph def portion of the saved model with the new one.
+  tensorflow::MetaGraphDef meta_graph_def = original_saved_model.meta_graphs(0);
+  *(meta_graph_def.mutable_graph_def()) = std::move(new_graphdef);
+  *output_saved_model = original_saved_model;
+  *(output_saved_model->mutable_meta_graphs(0)) = std::move(meta_graph_def);
+
+  return Status::OK();
+}
+
 Status ConvertOperationToNode(mlir::Operation &op, NodeDef *node,
                               GetValueNameFn get_value_name) {
   return mlir::tfg::ConvertOperationToNodeImpl(op, node, get_value_name);
+}
+Status ConvertOperationToNode(mlir::Operation &op, NodeDef *node) {
+  auto control_ty = mlir::tfg::ControlType::get(op.getContext());
+  return mlir::tfg::ConvertOperationToNodeImpl(
+      op, node, [&](mlir::Value operand, std::string &output_name) {
+        return mlir::tfg::GetValueName(operand, output_name, control_ty);
+      });
 }
 
 }  //  namespace tensorflow

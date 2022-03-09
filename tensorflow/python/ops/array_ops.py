@@ -18,10 +18,13 @@
 import numbers
 import numpy as np
 
+from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -32,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.framework.constant_op import constant
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 # go/tf-wildcard-import
@@ -41,10 +45,14 @@ from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint:
 from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
+
+math_ops = lazy_loader.LazyLoader(
+    "math_ops", globals(), "tensorflow.python.ops.math_ops")
 
 # Used for slicing to specify a new 1 size dimension
 newaxis = None
@@ -879,8 +887,8 @@ _SLICE_TYPE_ERROR = (
     "tf.newaxis (`None`) and scalar tf.int32/tf.int64 tensors are valid "
     "indices")
 
-_SUPPORTED_SLICE_DTYPES = (dtypes.int32, dtypes.int32_ref, dtypes.int64,
-                           dtypes.int64_ref)
+_SUPPORTED_SLICE_DTYPES = (dtypes.int16, dtypes.int32, dtypes.int32_ref,
+                           dtypes.int64, dtypes.int64_ref)
 
 
 def _check_index(idx):
@@ -994,23 +1002,44 @@ def _slice_helper(tensor, slice_spec, var=None):
   ellipsis_mask = 0
   for s in slice_spec:
     if isinstance(s, _BaseSlice):
+      # Finds the best dtype for begin, end, and strides.
+      dtype = None
+      for t in [s.start, s.stop, s.step]:
+        if t is None or not isinstance(t, ops.Tensor):
+          continue
+        if t.dtype == dtypes.int64:
+          dtype = dtypes.int64
+        elif t.dtype == dtypes.int32 and dtype != dtypes.int64:
+          dtype = dtypes.int32
+        elif t.dtype == dtypes.int16 and dtype is None:
+          dtype = dtypes.int16
+
       if s.start is not None and not _is_undefined_dimension(s.start):
         _check_index(s.start)
         begin.append(s.start)
       else:
-        begin.append(0)
+        if dtype is not None:
+          begin.append(constant_op.constant(0, dtype=dtype))
+        else:
+          begin.append(0)
         begin_mask |= (1 << index)
       if s.stop is not None and not _is_undefined_dimension(s.stop):
         _check_index(s.stop)
         end.append(s.stop)
       else:
-        end.append(0)
+        if dtype is not None:
+          end.append(constant_op.constant(0, dtype=dtype))
+        else:
+          end.append(0)
         end_mask |= (1 << index)
       if s.step is not None and not _is_undefined_dimension(s.step):
         _check_index(s.step)
         strides.append(s.step)
       else:
-        strides.append(1)
+        if dtype is not None:
+          strides.append(constant_op.constant(1, dtype=dtype))
+        else:
+          strides.append(1)
     elif s is Ellipsis:
       begin.append(0)
       end.append(0)
@@ -1025,7 +1054,12 @@ def _slice_helper(tensor, slice_spec, var=None):
       _check_index(s)
       begin.append(s)
       end.append(s + 1)
-      strides.append(1)
+      # TODO(mdan): Investigate why we can't set int32 here.
+      if isinstance(s, ops.Tensor) and (s.dtype == dtypes.int16 or
+                                        s.dtype == dtypes.int64):
+        strides.append(constant_op.constant(1, dtype=s.dtype))
+      else:
+        strides.append(1)
       shrink_axis_mask |= (1 << index)
     index += 1
 
@@ -1037,6 +1071,8 @@ def _slice_helper(tensor, slice_spec, var=None):
     if begin:
       packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
                                                   stack(strides))
+      # TODO(mdan): Instead of implicitly casting, it's better to enforce the
+      # same dtypes.
       if (packed_begin.dtype == dtypes.int64 or
           packed_end.dtype == dtypes.int64 or
           packed_strides.dtype == dtypes.int64):
@@ -1046,6 +1082,15 @@ def _slice_helper(tensor, slice_spec, var=None):
           packed_end = gen_math_ops.cast(packed_end, dtypes.int64)
         if packed_strides.dtype != dtypes.int64:
           packed_strides = gen_math_ops.cast(packed_strides, dtypes.int64)
+      elif (packed_begin.dtype == dtypes.int16 and
+            packed_end.dtype == dtypes.int16 and
+            packed_strides.dtype == dtypes.int16):
+        if packed_begin.dtype != dtypes.int16:
+          packed_begin = gen_math_ops.cast(packed_begin, dtypes.int16)
+        if packed_end.dtype != dtypes.int16:
+          packed_end = gen_math_ops.cast(packed_end, dtypes.int16)
+        if packed_strides.dtype != dtypes.int16:
+          packed_strides = gen_math_ops.cast(packed_strides, dtypes.int16)
     else:
       var_empty = constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = var_empty
@@ -1422,7 +1467,7 @@ def stack(values, axis=0, name="stack"):
     try:
       # If the input is a constant list, it can be converted to a constant op
       return ops.convert_to_tensor(values, name=name)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, NotImplementedError):
       pass  # Input list contains non-constant tensors
 
   value_shape = ops.convert_to_tensor(values[0], name=name)._shape_tuple()  # pylint: disable=protected-access
@@ -5142,7 +5187,7 @@ def gather(params,
          [3, 4],
          [5, 6]], dtype=int32)
 
-  This is is equivalent to:
+  This is equivalent to:
 
   >>> def manually_batched_gather(params, indices, axis):
   ...   batch_dims=1
@@ -5251,7 +5296,7 @@ gather_v2.__doc__ = gather.__doc__
 @dispatch.add_dispatch_support
 @deprecation.deprecated(
     "2017-10-25", "`tf.batch_gather` is deprecated, please use `tf.gather` "
-    "with `batch_dims=-1` instead.")  # pylint: disable=missing-docstring
+    "with `batch_dims=tf.rank(indices) - 1` instead.")  # pylint: disable=missing-docstring
 def batch_gather(params, indices, name=None):
   """Gather slices from params according to indices with leading batch dims."""
   with ops.name_scope(name, "BatchGather", [params, indices]):
@@ -6616,9 +6661,11 @@ def fingerprint(data, method="farmhash64", name=None):
 
 def convert_to_int_tensor(tensor, name, dtype=dtypes.int32):
   """Converts the given value to an integer Tensor."""
-  tensor = ops.convert_to_tensor(tensor, name=name, preferred_dtype=dtype)
+  tensor = ops.convert_to_tensor(
+      tensor, name=name, preferred_dtype=dtype or dtypes.int32)
   if tensor.dtype.is_integer:
-    tensor = gen_math_ops.cast(tensor, dtype)
+    if dtype is not None:
+      tensor = gen_math_ops.cast(tensor, dtype)
   else:
     raise TypeError(f"Argument `tensor` (name: {name}) must be of type integer."
                     f" Received `tensor` = {tensor} of dtype: {tensor.dtype}")
@@ -6710,12 +6757,17 @@ def repeat_with_axis(data, repeats, axis, name=None):
 
   with ops.name_scope(name, "Repeat", [data, repeats]):
     data = ops.convert_to_tensor(data, name="data")
-    repeats = convert_to_int_tensor(repeats, name="repeats")
+    # Note: We pass dtype=None so that the existing type is maintained instead
+    # of force-casting to int32.
+    if forward_compat.forward_compatible(2022, 3, 30):
+      repeats = convert_to_int_tensor(repeats, name="repeats", dtype=None)
+    else:
+      repeats = convert_to_int_tensor(repeats, name="repeats")
     repeats.shape.with_rank_at_most(1)
 
     # If `data` is a scalar, then upgrade it to a vector.
     data = _with_nonzero_rank(data)
-    data_shape = shape(data)
+    data_shape = shape(data, out_type=repeats.dtype)
 
     # If `axis` is negative, then convert it to a positive value.
     axis = get_positive_axis(axis, data.shape.rank, ndims_name="rank(data)")
@@ -6737,52 +6789,79 @@ def repeat_with_axis(data, repeats, axis, name=None):
       data.shape.dims[axis].assert_is_compatible_with(repeats.shape[0])
 
     repeats = broadcast_to(repeats, [data_shape[axis]])
-    repeats_original = repeats
 
-    # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.
-    if repeats.shape.ndims != axis + 1:
-      repeats_shape = shape(repeats)
-      repeats_ndims = rank(repeats)
-      broadcast_shape = concat(
-          [data_shape[:axis + 1 - repeats_ndims], repeats_shape], axis=0)
-      repeats = broadcast_to(repeats, broadcast_shape)
-      repeats.set_shape([None] * (axis + 1))
+    # The implementation on the else branch has better performance. However, it
+    # does not work on the XLA path since it relies on the range op with a
+    # shape that is not a compile-time constant.
+    if (control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
+        config.get_optimizer_jit() or
+        pywrap_tf_session.TF_GetXlaAutoJitEnabled() or
+        not forward_compat.forward_compatible(2022, 3, 30)):
+      repeats_original = repeats
 
-    # Create a "sequence mask" based on `repeats`, where slices across `axis`
-    # contain one `True` value for each repetition.  E.g., if
-    # `repeats = [3, 1, 2]`, then `mask = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]`.
-    max_repeat = gen_math_ops.maximum(
-        0, gen_math_ops._max(repeats, _all_dimensions(repeats)))
-    mask = sequence_mask(repeats, max_repeat)
+      # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.
+      if repeats.shape.ndims != axis + 1:
+        repeats_shape = shape(repeats)
+        repeats_ndims = rank(repeats)
+        broadcast_shape = concat(
+            [data_shape[:axis + 1 - repeats_ndims], repeats_shape], axis=0)
+        repeats = broadcast_to(repeats, broadcast_shape)
+        repeats.set_shape([None] * (axis + 1))
 
-    # Add a new dimension around each value that needs to be repeated, and
-    # then tile that new dimension to match the maximum number of repetitions.
-    expanded = expand_dims(data, axis + 1)
-    tiled = tile_one_dimension(expanded, axis + 1, max_repeat)
+      # Create a "sequence mask" based on `repeats`, where slices across `axis`
+      # contain one `True` value for each repetition.  E.g., if
+      # `repeats = [3, 1, 2]`, then `mask = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]`.
+      max_repeat = gen_math_ops._max(repeats, _all_dimensions(repeats))
+      max_repeat = gen_math_ops.maximum(
+          ops.convert_to_tensor(0, name="zero", dtype=max_repeat.dtype),
+          max_repeat)
 
-    # Use `boolean_mask` to discard the extra repeated values.  This also
-    # flattens all dimensions up through `axis`.
-    masked = boolean_mask(tiled, mask)
+      mask = sequence_mask(repeats, max_repeat)
 
-    # Reshape the output tensor to add the outer dimensions back.
-    if axis == 0:
-      result = masked
+      # Add a new dimension around each value that needs to be repeated, and
+      # then tile that new dimension to match the maximum number of repetitions.
+      expanded = expand_dims(data, axis + 1)
+      tiled = tile_one_dimension(expanded, axis + 1, max_repeat)
+
+      # Use `boolean_mask` to discard the extra repeated values.  This also
+      # flattens all dimensions up through `axis`.
+      masked = boolean_mask(tiled, mask)
+
+      # Reshape the output tensor to add the outer dimensions back.
+      if axis == 0:
+        result = masked
+      else:
+        repeated_dim_size = gen_math_ops._sum(
+            repeats_original,
+            axis=gen_math_ops._range(0, rank(repeats_original), 1))
+        result_shape = concat(
+            [data_shape[:axis], [repeated_dim_size], data_shape[axis + 1:]],
+            axis=0)
+        result = reshape(masked, result_shape)
+
+      # Preserve shape information.
+      if data.shape.ndims is not None:
+        new_axis_size = 0 if repeats.shape[0] == 0 else None
+        result.set_shape(data.shape[:axis].concatenate(
+            [new_axis_size]).concatenate(data.shape[axis + 1:]))
+
+      return result
+
     else:
-      repeated_dim_size = gen_math_ops._sum(
-          repeats_original,
-          axis=gen_math_ops._range(0, rank(repeats_original), 1))
-      result_shape = concat(
-          [data_shape[:axis], [repeated_dim_size], data_shape[axis + 1:]],
-          axis=0)
-      result = reshape(masked, result_shape)
-
-    # Preserve shape information.
-    if data.shape.ndims is not None:
-      new_axis_size = 0 if repeats.shape[0] == 0 else None
-      result.set_shape(data.shape[:axis].concatenate(
-          [new_axis_size]).concatenate(data.shape[axis + 1:]))
-
-    return result
+      # Non-XLA path implementation
+      # E.g., repeats = [3, 4, 0, 2, 1].
+      # E.g., repeats_scan = [3, 7, 7, 9, 10].
+      repeats_scan = math_ops.cumsum(repeats)
+      # This concat just prepends 0 to handle the case when repeats is empty.
+      # E.g., output_size = [0, 3, 7, 7, 9, 10][-1] = 10.
+      output_size = concat([zeros(1, dtype=repeats_scan.dtype), repeats_scan],
+                           axis=0)[-1]
+      # E.g., output_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].
+      output_indices = math_ops.range(output_size, dtype=repeats.dtype)
+      # E.g., gather_indices = [0, 0, 0, 1, 1, 1, 1, 3, 3, 4].
+      gather_indices = searchsorted(
+          repeats_scan, output_indices, side="right", out_type=repeats.dtype)
+      return gather(data, gather_indices, axis=axis)
 
 
 def tile_one_dimension(data, axis, multiple):

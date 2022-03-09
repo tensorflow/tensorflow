@@ -169,6 +169,7 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
     ],
@@ -223,7 +224,7 @@ cc_library(
     name = "bridge_graph_analysis",
     hdrs = ["bridge_graph_analysis.h"],
     visibility = [
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "//tensorflow/core/tfrt/graph_executor:__pkg__",
     ],
     deps = if_google([
         "//learning/brain/mlir/bridge:graph_analysis",

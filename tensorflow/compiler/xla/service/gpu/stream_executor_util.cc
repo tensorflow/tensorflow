@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 
+#include <random>
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -61,25 +64,6 @@ int64_t FindMissingDnum(absl::Span<const int64_t> vals) {
     }
   }
   return vals.size();
-}
-
-// Returns a mutex that can be used to lock the given stream executor.
-tensorflow::mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  // se::Platform*s are global singletons guaranteed to live forever.
-  static auto* mutexes =
-      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
-                   tensorflow::mutex>();
-
-  tensorflow::mutex_lock global_lock(mu);
-  auto it = mutexes
-                ->emplace(std::piecewise_construct,
-                          std::make_tuple(stream_exec->platform(),
-                                          stream_exec->device_ordinal()),
-                          std::make_tuple())
-                .first;
-
-  return it->second;
 }
 
 }  // anonymous namespace
@@ -330,20 +314,28 @@ FindVectorizedFeatureDims(const ConvolutionDimensionNumbers& dnums,
   };
 }
 
-tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
-  tensorflow::mutex& mu = GetGpuMutex(stream_exec);
-  return tensorflow::mutex_lock{mu};
-}
+// Returns a mutex that can be used to lock the given stream executor.
+absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
+  static absl::Mutex mu(absl::kConstInit);
+  // se::Platform*s are global singletons guaranteed to live forever.
+  static auto* mutexes =
+      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64_t>,
+                   absl::Mutex>();
 
-tensorflow::tf_shared_lock LockGpuShared(
-    const se::StreamExecutor* stream_exec) {
-  tensorflow::mutex& mu = GetGpuMutex(stream_exec);
-  return tensorflow::tf_shared_lock{mu};
+  absl::MutexLock global_lock(&mu);
+  auto it = mutexes
+                ->emplace(std::piecewise_construct,
+                          std::make_tuple(stream_exec->platform(),
+                                          stream_exec->device_ordinal()),
+                          std::make_tuple())
+                .first;
+
+  return it->second;
 }
 
 StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
-    absl::string_view kernel_name, uint64 num_args, absl::string_view ptx,
-    absl::Span<const uint8> cubin_data, se::StreamExecutor* stream_exec) {
+    absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
+    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec) {
   se::MultiKernelLoaderSpec loader_spec(num_args);
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
@@ -414,7 +406,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
       // For float or double, it is between [0,1].
       // For fp16, it ranges between [0, 0.1].
       // For integer types, element is either 0 or 1 for less overflows
-      // especially for int8.
+      // especially for int8_t.
       element = T(std::is_integral<T>::value ? rand_val + 0.5 : rand_val);
     }
     return ret;
@@ -457,9 +449,9 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
     case xla::C128:
       return InitializeTypedBuffer<double>(stream, buffer, rng_state);
     case xla::S8:
-      return InitializeTypedBuffer<int8>(stream, buffer, rng_state);
+      return InitializeTypedBuffer<int8_t>(stream, buffer, rng_state);
     case xla::S32:
-      return InitializeTypedBuffer<int32>(stream, buffer, rng_state);
+      return InitializeTypedBuffer<int32_t>(stream, buffer, rng_state);
     default:
       LOG(FATAL) << "Unexpected type: "
                  << primitive_util::LowercasePrimitiveTypeName(buffer_type);
@@ -493,9 +485,9 @@ StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
     case F64:
       return se::dnn::ToDataType<double>::value;
     case S8:
-      return se::dnn::ToDataType<int8>::value;
+      return se::dnn::ToDataType<int8_t>::value;
     case S32:
-      return se::dnn::ToDataType<int32>::value;
+      return se::dnn::ToDataType<int32_t>::value;
     case BF16:
       return se::dnn::ToDataType<Eigen::bfloat16>::value;
     default:

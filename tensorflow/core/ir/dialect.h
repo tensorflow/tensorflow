@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/types/dialect.h"
 
 namespace mlir {
@@ -62,6 +63,8 @@ using mlir::tf_type::Uint8RefType;       // NOLINT
 using mlir::tf_type::VariantRefType;     // NOLINT
 using mlir::tf_type::VariantType;        // NOLINT
 using mlir::tf_type::VersionAttr;        // NOLINT
+
+class TFGraphOpAsmInterface;
 }  // namespace tfg
 }  // namespace mlir
 // Dialect main class is defined in ODS, we include it here.

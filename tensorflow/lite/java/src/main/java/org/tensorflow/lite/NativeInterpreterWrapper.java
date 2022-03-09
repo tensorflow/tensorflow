@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.tensorflow.lite.annotations.UsedByReflection;
 import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
@@ -82,6 +83,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
         createInterpreter(modelHandle, errorHandle, options.getNumThreads(), delegateHandles);
     this.originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
     addDelegates(options);
+    initDelegatesWithInterpreterFactory();
     delegateHandles.ensureCapacity(delegates.size());
     for (Delegate delegate : delegates) {
       delegateHandles.add(Long.valueOf(delegate.getNativeHandle()));
@@ -511,6 +513,16 @@ class NativeInterpreterWrapper implements AutoCloseable {
     maybeAddXnnpackDelegate(options);
   }
 
+  // Complete the initialization of any delegates that require an InterpreterFactoryApi instance.
+  void initDelegatesWithInterpreterFactory() {
+    InterpreterFactoryApi interpreterFactoryApi = new InterpreterFactoryImpl();
+    for (Delegate delegate : delegates) {
+      if (delegate instanceof NnApiDelegate) {
+        ((NnApiDelegate) delegate).initWithInterpreterFactoryApi(interpreterFactoryApi);
+      }
+    }
+  }
+
   // Optionally add the XNNPACK delegate.
   private void maybeAddXnnpackDelegate(InterpreterImpl.Options options) {
     // Simply use "-1" to represent the default mode.
@@ -567,6 +579,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   private long cancellationFlagHandle = 0;
 
+  @UsedByReflection("nativeinterpreterwrapper_jni.cc")
   private long inferenceDurationNanoseconds = -1;
 
   private ByteBuffer modelByteBuffer;

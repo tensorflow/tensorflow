@@ -583,6 +583,7 @@ tf_cuda_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
@@ -829,6 +830,7 @@ cc_library(
 cc_library(
     name = "eigen_contraction_kernel",
     hdrs = ["eigen_contraction_kernel.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = select({
         ":no_mkldnn_contraction_kernel": [":eigen_contraction_kernel_no_mkl"],
         "//conditions:default": [":eigen_contraction_kernel_with_mkl"],
@@ -870,6 +872,7 @@ cc_library(
     name = "eigen_contraction_kernel_no_mkl",
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",
         "//third_party/eigen3",
@@ -925,6 +928,7 @@ cc_library(
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":eigen_contraction_kernel",
         ":eigen_convolution_helpers",
@@ -4132,7 +4136,7 @@ tf_kernel_library(
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
-    ]),
+    ]) + if_cuda_or_rocm([":gpu_utils"]),
 )
 
 tf_kernel_library(
@@ -4791,6 +4795,39 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "random_index_shuffle",
+    srcs = ["random_index_shuffle.cc"],
+    hdrs = ["random_index_shuffle.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "random_index_shuffle_test",
+    srcs = ["random_index_shuffle_test.cc"],
+    deps = [
+        ":random_index_shuffle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+tf_kernel_library(
+    name = "random_index_shuffle_ops",
+    prefix = "random_index_shuffle_ops",
+    deps = [
+        ":random_index_shuffle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
     name = "required",
     deps = [
         ":no_op",
@@ -4957,7 +4994,14 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_slice_op",
     prefix = "sparse_slice_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_device_array",
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
 )
 
 tf_kernel_library(
@@ -4971,7 +5015,14 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_split_op",
     prefix = "sparse_split_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + if_cuda_or_rocm([
+        ":gpu_device_array",
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
 )
 
 tf_kernel_library(
@@ -6290,6 +6341,7 @@ filegroup(
         "ragged_tensor_variant.h",
         "random_op.h",
         "random_poisson_op.h",
+        "random_index_shuffle.h",
         "reduction_ops.h",
         "reduction_ops_common.h",
         "relu_op.h",
@@ -6335,7 +6387,6 @@ filegroup(
         "where_op.h",
         "xent_op.h",
     ] + [
-        "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles_hdrs",
         "//tensorflow/core/kernels/data:portable_all_op_kernels_headers",
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
@@ -6549,6 +6600,9 @@ filegroup(
         "ragged_tensor_to_tensor_op.cc",
         "ragged_tensor_to_variant_op.cc",
         "ragged_tensor_from_variant_op.cc",
+        "random_index_shuffle.h",
+        "random_index_shuffle.cc",
+        "random_index_shuffle_ops.cc",
         "random_op.cc",
         "random_op_cpu.h",
         "random_ops_util.h",
@@ -6665,9 +6719,9 @@ filegroup(
         "unicode_ops.cc",
         "unique_op.cc",
         "where_op.cc",
+        "whole_file_read_ops.cc",
         "xent_op.cc",
     ] + [
-        "//tensorflow/core/kernels/boosted_trees:quantile_ops.cc",
         "//tensorflow/core/kernels/data:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:adjust_contrast_op.cc",
         "//tensorflow/core/kernels/image:adjust_hue_op.cc",
@@ -7499,12 +7553,7 @@ cc_library(
     ],
 )
 
-tf_kernel_library(
-    name = "boosted_trees_ops",
-    deps = [
-        "//tensorflow/core/kernels/boosted_trees:boosted_trees_ops",
-    ],
-)
+tf_kernel_library(name = "boosted_trees_ops")
 
 tf_kernel_library(
     name = "data_service_ops",
@@ -7705,47 +7754,47 @@ test_suite(
     ],
     tests = [
         ":batch_norm_op_test",
-        ":broadcast_to_op_test",
-        ":cast_op_test",
+        ":broadcast_to_op_test_cpu",
+        ":cast_op_test_cpu",
         ":concat_op_test",
         ":control_flow_ops_test",
-        ":cwise_ops_test",
+        ":cwise_ops_test_cpu",
         ":deep_conv2d_test",
         ":dequantize_op_test",
-        ":diag_op_test",
+        ":diag_op_test_cpu",
         ":eigen_activations_test",
         ":eigen_pooling_test",
         ":eigen_spatial_convolutions_test",
-        ":gather_nd_op_test",
-        ":matmul_op_test",
+        ":gather_nd_op_test_cpu",
+        ":matmul_op_test_cpu",
         ":mfcc_test",
-        ":multinomial_op_test",
-        ":nn_ops_test",
+        ":multinomial_op_test_cpu",
+        ":nn_ops_test_cpu",
         ":quantization_utils_test",
-        ":quantize_and_dequantize_op_test",
+        ":quantize_and_dequantize_op_test_cpu",
         ":quantize_op_test",
         ":quantized_activation_ops_test",
         ":quantized_batch_norm_op_test",
         ":quantized_conv_ops_test",
         ":quantized_matmul_op_test",
         ":quantized_pooling_ops_test",
-        ":random_binomial_op_test",
-        ":random_op_test",
-        ":random_poisson_op_test",
-        ":reduction_ops_test",
+        ":random_binomial_op_test_cpu",
+        ":random_op_test_cpu",
+        ":random_poisson_op_test_cpu",
+        ":reduction_ops_test_cpu",
         ":requantization_range_op_test",
         ":scatter_op_test",
         ":segment_reduction_ops_test",
         ":slice_op_test",
         ":spectrogram_test",
         ":split_op_test",
-        ":split_v_op_test",
+        ":split_v_op_test_cpu",
         ":strided_slice_op_test",
         ":unique_op_test",
         ":variable_ops_test",
         "//tensorflow/core/kernels/image:crop_and_resize_op_test",
         "//tensorflow/core/kernels/image:non_max_suppression_op_test",
-        "//tensorflow/core/kernels/image:resize_ops_test",
+        "//tensorflow/core/kernels/image:resize_ops_test_cpu",
     ],
 )
 

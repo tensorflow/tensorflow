@@ -132,3 +132,12 @@ func @multiple_non_static_1_fails(%arg0 : tensor<?x?xf64>,
  %result = tensor.extract %3[%c0] : tensor<2xindex>
  return %result : index
 }
+
+// -----
+
+// CHECK-LABEL: func @extract_no_crash
+// CHECK-NEXT:   tensor.extract
+func @extract_no_crash(%arg0 : tensor<index>) -> index {
+ %result = tensor.extract %arg0[] : tensor<index>
+ return %result : index
+}

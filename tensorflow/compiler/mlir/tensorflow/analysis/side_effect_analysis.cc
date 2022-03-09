@@ -16,14 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 
 #include <bitset>
+#include <string>
 
+#include "absl/container/node_hash_map.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -294,7 +296,7 @@ class OpSideEffectCollector {
     if (!MayHaveSideEffect(op)) return;
     // Skip following ops to avoid that every island, graph and function is
     // classified as unknown side-effecting.
-    if (isa<tf_executor::YieldOp, tf_executor::FetchOp, mlir::ReturnOp>(op))
+    if (isa<tf_executor::YieldOp, tf_executor::FetchOp, mlir::func::ReturnOp>(op))
       return;
 
     // Propagate side effects from regions or functions attached to `op` for
@@ -359,14 +361,14 @@ class OpSideEffectCollector {
           continue;
 
         // Add side effects for op resource ID.
-        int64_t instance_id = -1;
+        std::string instance_str = "";
         SideEffects side_effects(GetSideEffectsFromEffectInstance(effect, op));
         if (auto resource_instance_op =
             dyn_cast<GetResourceInstanceInterface>(op)) {
-          instance_id = resource_instance_op.GetResourceInstanceId();
+          instance_str = resource_instance_op.GetResourceInstanceStr();
         }
-        ResourceId resource_id =
-            GetOpResourceId(effect.getResource()->getResourceID(), instance_id);
+        ResourceId resource_id = GetOpResourceId(
+            effect.getResource()->getResourceID(), instance_str);
         side_effects.SetResourceId(resource_id);
         UpdateSideEffectsByResourceId(side_effects,
                                       side_effects_by_resource_id);
@@ -375,13 +377,13 @@ class OpSideEffectCollector {
   }
 
   // Get internal op resource ID from MLIR type ID and instance ID.
-  ResourceId GetOpResourceId(TypeID type_id, int64_t instance_id) {
-    auto emplace_result =
-        type_instance_ids_to_op_resource_id_.try_emplace(
-            std::make_pair(type_id, instance_id), next_op_resource_id_);
+  ResourceId GetOpResourceId(TypeID type_id, std::string instance_str) {
+    auto emplace_result = type_instance_str_to_op_resource_id_.try_emplace(
+        std::make_pair(type_id.getAsOpaquePointer(), instance_str),
+        next_op_resource_id_);
     // Increment type ID if we have encountered a new resource type.
     if (emplace_result.second) ++next_op_resource_id_;
-    return emplace_result.first->getSecond();
+    return emplace_result.first->second;
   }
 
   // We use [0, kMaxResourceId] for resource IDs returned by resource alias
@@ -393,9 +395,10 @@ class OpSideEffectCollector {
   // alias analysis).
   ResourceId next_op_resource_id_ = kMaxResourceId + 1;
   // Maps (type ID, instance ID) pairs to internal IDs for op-based resources.
-  // Also see comment above.
-  llvm::SmallDenseMap<std::pair<TypeID, int64_t>, ResourceId>
-    type_instance_ids_to_op_resource_id_;
+  // Also see comment above. Instead of using TypeID directly we use its opaque
+  // pointer.
+  absl::node_hash_map<std::pair<const void*, std::string>, ResourceId>
+    type_instance_str_to_op_resource_id_;
   // Used for faster callable resolution.
   SymbolTableCollection symbol_table_collection_;
   // Collect all op-based side effects here.

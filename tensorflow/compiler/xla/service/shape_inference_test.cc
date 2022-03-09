@@ -2238,7 +2238,7 @@ TEST_F(ShapeInferenceTest, ConditionalPred) {
       {vector_32_, vector_64_});
   EXPECT_FALSE(inferred_status_error0.ok());
   EXPECT_THAT(inferred_status_error0.status().error_message(),
-              HasSubstr("must be bool or int32"));
+              HasSubstr("must be bool or int32_t"));
 
   auto inferred_status_error1 = ShapeInference::InferConditionalShape(
       pred_,

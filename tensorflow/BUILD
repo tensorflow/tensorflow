@@ -23,6 +23,10 @@ load(
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# copybara:uncomment_begin
+# load("//tools/build_defs/license:license.bzl", "license")
+# copybara:uncomment_end
+
 # copybara:comment_begin(oss-only)
 load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
@@ -40,7 +44,17 @@ load(
 )
 # copybara:comment_end
 
-package(default_visibility = [":internal"])
+package(
+    # copybara:uncomment default_applicable_licenses = [":license"],
+    default_visibility = [":internal"],
+)
+
+# copybara:uncomment_begin
+# license(
+#     name = "license",
+#     package_name = "tensorflow",
+# )
+# copybara:uncomment_end
 
 licenses(["notice"])
 
@@ -792,6 +806,7 @@ package_group(
         "//tensorflow_federated/...",
         "//third_party/cloud_tpu/inference_converter/...",
         "//third_party/py/envlogger/...",
+        "//third_party/py/keras/...",
         "//third_party/yggdrasil_decision_forests/...",
     ],
 )
@@ -826,7 +841,6 @@ bzl_library(
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
-        "//tensorflow/core/platform/default:experimental_cc_shared_library_bzl",  # copybara:comment(oss only)
         "//third_party/llvm_openmp:openmp_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",

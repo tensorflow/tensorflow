@@ -91,13 +91,15 @@ class MklLayerNormOp : public OpKernel {
       // Copy of reorder scale and shift tensor data into scale_shift_tensor.
       void* scale_buf_src =
           static_cast<void*>(const_cast<T*>(scale_tensor.flat<T>().data()));
-      auto scale_mem_src =
-          memory({{num_elements_scale}, MklDnnType<T>(), memory::format_tag::x},
-                 cpu_engine, scale_buf_src);
+      auto scale_mem_src = memory({{static_cast<ptrdiff_t>(num_elements_scale)},
+                                   MklDnnType<T>(),
+                                   memory::format_tag::x},
+                                  cpu_engine, scale_buf_src);
       void* scale_buf_dst = scale_shift_buf;
-      auto scale_mem_dst = memory(
-          {{num_elements_scale}, MklDnnType<float>(), memory::format_tag::x},
-          cpu_engine, scale_buf_dst);
+      auto scale_mem_dst = memory({{static_cast<ptrdiff_t>(num_elements_scale)},
+                                   MklDnnType<float>(),
+                                   memory::format_tag::x},
+                                  cpu_engine, scale_buf_dst);
       auto scale_reorder_prim = reorder(scale_mem_src, scale_mem_dst);
       std::unordered_map<int, memory> scale_reorder_args;
       scale_reorder_args.insert({DNNL_ARG_FROM, scale_mem_src});
@@ -106,14 +108,16 @@ class MklLayerNormOp : public OpKernel {
 
       void* shift_buf_src =
           static_cast<void*>(const_cast<T*>(shift_tensor.flat<T>().data()));
-      auto shift_mem_src =
-          memory({{num_elements_shift}, MklDnnType<T>(), memory::format_tag::x},
-                 cpu_engine, shift_buf_src);
-      void* shift_buf_dst =
-          scale_shift_buf + sizeof(float) * num_elements_scale;
-      auto shift_mem_dst = memory(
-          {{num_elements_shift}, MklDnnType<float>(), memory::format_tag::x},
-          cpu_engine, shift_buf_dst);
+      auto shift_mem_src = memory({{static_cast<ptrdiff_t>(num_elements_shift)},
+                                   MklDnnType<T>(),
+                                   memory::format_tag::x},
+                                  cpu_engine, shift_buf_src);
+      void* shift_buf_dst = static_cast<char*>(scale_shift_buf) +
+                            sizeof(float) * num_elements_scale;
+      auto shift_mem_dst = memory({{static_cast<ptrdiff_t>(num_elements_shift)},
+                                   MklDnnType<float>(),
+                                   memory::format_tag::x},
+                                  cpu_engine, shift_buf_dst);
       auto shift_reorder_prim = reorder(shift_mem_src, shift_mem_dst);
       std::unordered_map<int, memory> shift_reorder_args;
       shift_reorder_args.insert({DNNL_ARG_FROM, shift_mem_src});

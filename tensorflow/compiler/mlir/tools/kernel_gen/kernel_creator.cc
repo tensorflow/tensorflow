@@ -26,11 +26,13 @@ limitations under the License.
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
@@ -43,12 +45,10 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/Utils.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
@@ -56,7 +56,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -74,6 +73,7 @@ namespace tensorflow {
 namespace kernel_gen {
 namespace {
 
+using mlir::FuncOp;
 using mlir::Value;
 using mlir::memref::RankOp;
 using mlir::scf::ParallelOp;
@@ -85,7 +85,6 @@ constexpr llvm::StringRef kGpuBinaryAttrName = "gpu.binary";
 /// exceed the stack space.
 bool IsSmallAlloc(Value alloc) {
   constexpr unsigned kMaximumSizeInBytes = 64;
-  constexpr unsigned kBitwidthOfIndexType = 64;
   constexpr unsigned kMaxRankOfAllocatedMemRef = 1;
 
   auto type = alloc.getType().dyn_cast<mlir::ShapedType>();
@@ -98,7 +97,7 @@ bool IsSmallAlloc(Value alloc) {
     // values by multiplying several small values.
     if (type.getRank() <= kMaxRankOfAllocatedMemRef) {
       for (Value alloc_arg : alloc.getDefiningOp()->getOperands()) {
-        if (auto select = alloc_arg.getDefiningOp<mlir::SelectOp>()) {
+        if (auto select = alloc_arg.getDefiningOp<mlir::arith::SelectOp>()) {
           if (!select.getTrueValue().getDefiningOp<RankOp>() ||
               !select.getFalseValue().getDefiningOp<RankOp>())
             return false;
@@ -110,17 +109,16 @@ bool IsSmallAlloc(Value alloc) {
     }
     return false;
   }
-  // For index types, use the provided size, as the type does not know.
-  unsigned int bitwidth = type.getElementType().isIndex()
-                              ? kBitwidthOfIndexType
-                              : type.getElementTypeBitWidth();
+  unsigned bitwidth = mlir::DataLayout::closest(alloc.getDefiningOp())
+                          .getTypeSizeInBits(type.getElementType());
   return type.getNumElements() * bitwidth <= kMaximumSizeInBytes * 8;
 }
 
 struct CollapseParallelLoopsTo1D
-    : public mlir::PassWrapper<CollapseParallelLoopsTo1D, mlir::FunctionPass> {
-  void runOnFunction() override {
-    getFunction().walk([&](ParallelOp op) {
+    : public mlir::PassWrapper<CollapseParallelLoopsTo1D,
+                               mlir::OperationPass<FuncOp>> {
+  void runOnOperation() override {
+    getOperation().walk([&](ParallelOp op) {
       unsigned num_loops = op.getNumLoops();
       if (num_loops == 1) return;
       std::vector<unsigned> combinedLoops;
@@ -133,7 +131,8 @@ struct CollapseParallelLoopsTo1D
   }
 };
 
-class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
+class TileLoops
+    : public mlir::PassWrapper<TileLoops, mlir::OperationPass<FuncOp>> {
  public:
   explicit TileLoops(llvm::ArrayRef<int64_t> tile_sizes,
                      llvm::ArrayRef<int64_t> unroll_factors) {
@@ -150,9 +149,9 @@ class TileLoops : public mlir::PassWrapper<TileLoops, mlir::FunctionPass> {
     }
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     llvm::SmallVector<ParallelOp, 2> innermostPloops;
-    mlir::getInnermostParallelLoops(this->getFunction().getOperation(),
+    mlir::getInnermostParallelLoops(this->getOperation().getOperation(),
                                     innermostPloops);
     auto is_simple_access_pattern = [](ParallelOp ploop) {
       for (mlir::Operation& nested : ploop.getBody()->without_terminator()) {
@@ -198,14 +197,15 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
                               llvm::ArrayRef<int64_t> tile_sizes,
                               llvm::ArrayRef<int64_t> unroll_factors,
                               int64_t max_supported_rank, bool enable_ftz,
-                              bool cpu_codegen) {
+                              bool index_64bit, bool cpu_codegen,
+                              bool jit_i64_indexed_for_large_tensors) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
           tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
-          cpu_codegen));
+          index_64bit, cpu_codegen, jit_i64_indexed_for_large_tensors));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
   pm.addPass(
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
@@ -220,38 +220,50 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
 
 Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
                       llvm::ArrayRef<int64_t> unroll_factors,
-                      int64_t max_supported_rank, bool cpu_codegen) {
+                      int64_t max_supported_rank, bool enable_ftz,
+                      bool index_64bit, bool cpu_codegen,
+                      bool jit_i64_indexed_for_large_tensors) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
-
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
+  if (jit_i64_indexed_for_large_tensors) {
+    pm.addNestedPass<FuncOp>(
+        mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
+            tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
+            index_64bit, cpu_codegen,
+            /*jit_i64_indexed_for_large_tensors=*/true));
+  }
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFNoFallbackPass(
       /*allow_partial_conversion=*/false));
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::mhlo::createRankSpecializationClusterPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createRankSpecializationClusterPass());
+  pm.addNestedPass<FuncOp>(
       mlir::mhlo::createRankSpecializationToSCFPass(max_supported_rank));
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
 
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreateShapeSimplification());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
+  pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(mlir::createCSEPass());
 
-  // Transform HLO operations to LinAlg.
-  pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
+  // Transform HLO operations to LinAlg and standard.
+  pm.addNestedPass<FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
+  pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(mlir::createCSEPass());
 
   // Convert operations from the Complex dialect to the Standard/Math dialects.
-  pm.addNestedPass<mlir::FuncOp>(::mlir::createConvertComplexToStandardPass());
+  pm.addNestedPass<FuncOp>(::mlir::createConvertComplexToStandardPass());
 
   // Fuse linalg operations.
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
+  pm.addNestedPass<FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
 
   // Partial bufferization: Transforms inparticular HLO and Linalg operations to
   // their corresponding LHLO operations and converts the function signature.
@@ -262,58 +274,57 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   // BufferizeTypeConverter.
   pm.addPass(
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   // Now that all compute operations are converted to standard (as a sideeffect
   // of bufferizing to memref dialect) we can remove the remaining references
   // to unsigned types.
   pm.addPass(mlir::kernel_gen::transforms::CreateConvertToSignlessPass());
   // Remove UnrealizedConversionCastOps and TensorLoadOps.
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   // Remove copies which are introduced by canonicalizing
   // BufferCastOp(TensorLoadOp).
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreateCopyCleanupPass());
   // Find candidates for buffer reuse. This is only successful if buffer size
   // equality can be determined based on `linalg.generic` operations.
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreateBufferReusePass());
   // Approximate Tanh using standard operations.
-  pm.addNestedPass<::mlir::FuncOp>(
+  pm.addNestedPass<FuncOp>(
       ::mlir::mhlo::createLegalizeTrigonometricToApproximationPass());
   if (cpu_codegen) {
-    pm.addNestedPass<mlir::FuncOp>(
+    pm.addNestedPass<FuncOp>(
         mlir::kernel_gen::transforms::CreateVectorizationPass());
-    pm.addNestedPass<mlir::FuncOp>(mlir::createBufferLoopHoistingPass());
-    pm.addNestedPass<::mlir::FuncOp>(
+    pm.addNestedPass<FuncOp>(
+        mlir::bufferization::createBufferLoopHoistingPass());
+    pm.addNestedPass<FuncOp>(
         mlir::kernel_gen::transforms::CreateShapeSimplification());
-    pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-    pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
-    pm.addNestedPass<mlir::FuncOp>(
+    pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
+    pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
+    pm.addNestedPass<FuncOp>(
         mlir::kernel_gen::transforms::CreateVectorizationCleanupPass());
-    pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
+    pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   }
   // Transform the Linalg ops inside of the loop nest into parallel loops.
-  pm.addNestedPass<mlir::FuncOp>(
-      ::mlir::createConvertLinalgToParallelLoopsPass());
+  pm.addNestedPass<FuncOp>(::mlir::createConvertLinalgToParallelLoopsPass());
   // Canonicalize the code to simplify index computations. This is needed so
   // that loop bounds have the same value.
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   // Run CSE to ensure that loads and stores to the same subview get
   // recognized as such.
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
 
   if (!cpu_codegen) {
     // Collapse and tile parallel loops. Collapsing shouldn't provide benefits
     // to CPU and tiling is handled by vectorization.
-    pm.addNestedPass<mlir::FuncOp>(
-        std::make_unique<CollapseParallelLoopsTo1D>());
-    pm.addNestedPass<mlir::FuncOp>(
+    pm.addNestedPass<FuncOp>(std::make_unique<CollapseParallelLoopsTo1D>());
+    pm.addNestedPass<FuncOp>(
         std::make_unique<TileLoops>(tile_sizes, unroll_factors));
   }
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   if (failed(pm.run(module))) {
     return tensorflow::errors::Internal("Lowering TF to loops failed.");
   }
@@ -327,21 +338,21 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
 
   if (!cpu_codegen) {
     // Greedily map the remaining loop to GPU hardware dimensions.
-    pm.addNestedPass<::mlir::FuncOp>(
+    pm.addNestedPass<FuncOp>(
         mlir::kernel_gen::transforms::CreateMapParallelLoopsPass());
   }
 
   // Expand memref_reshape to its ranked form so that we can propagate
   // scalars and avoid allocation.
-  pm.addNestedPass<mlir::FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createStdExpandOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::memref::createExpandOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
   // Before bufferizing further, remove unused tensor_to_memref, so that we do
   // not create allocations for tensor computations that are not actually
   // needed.
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(mlir::createCSEPass());
   // Before inserting more allocs, map the ones we already have to the
   // tf runtime. That ensures that all allocations for the actual computation
   // end up on the device, whereas allocations for shape computation and host
@@ -352,11 +363,11 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // deallocs.
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
   // TODO(herhut): Enable once no-longer broken.
-  pm.addNestedPass<mlir::FuncOp>(::mlir::createBufferHoistingPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(
+  pm.addNestedPass<FuncOp>(::mlir::bufferization::createBufferHoistingPass());
+  pm.addNestedPass<FuncOp>(mlir::bufferization::createPromoteBuffersToStackPass(
       [](Value alloc) { return IsSmallAlloc(alloc); }));
   // Free all temporaries,
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<FuncOp>(
       ::mlir::bufferization::createBufferDeallocationPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
@@ -364,29 +375,32 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // interfaces on the GPU dialect.
   // TODO(b/174830459): Move up once implemented.
   if (!cpu_codegen) {
-    pm.addNestedPass<::mlir::FuncOp>(mlir::createParallelLoopToGpuPass());
+    pm.addNestedPass<FuncOp>(mlir::createParallelLoopToGpuPass());
   }
 
   // Some basic cleanup.
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
+  pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
   // Make loops with min bounds into a conditional plus static bounds.
-  pm.addNestedPass<::mlir::FuncOp>(mlir::createForLoopSpecializationPass());
+  pm.addNestedPass<FuncOp>(mlir::createForLoopSpecializationPass());
   // Take launches to launches with kernels.
   if (!cpu_codegen) {
-    pm.addPass(::mlir::createGpuKernelOutliningPass());
+    pm.addPass(mlir::createGpuLauchSinkIndexComputationsPass());
+    const std::string gpuDataLayoutSpec =
+        "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
+    pm.addPass(mlir::createGpuKernelOutliningPass(gpuDataLayoutSpec));
   }
 
   pm.addPass(::mlir::createLowerAffinePass());
   // Constraints are removed as late as possible and before lowering to CFG.
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
-  pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
-  pm.addPass(::mlir::createLowerToCFGPass());
+  pm.addNestedPass<FuncOp>(::mlir::createConvertShapeConstraintsPass());
+  pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
+  pm.addPass(::mlir::createConvertSCFToCFPass());
   if (cpu_codegen) pm.addPass(::mlir::createConvertVectorToLLVMPass());
   // Map asserts to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
   if (embed_memref_prints) {
-    pm.addNestedPass<::mlir::FuncOp>(
+    pm.addNestedPass<FuncOp>(
         mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
   }
   if (failed(pm.run(module))) {
@@ -406,7 +420,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
   // pm.enableVerifier(false);
   tensorflow::applyTensorflowAndCLOptions(pm);
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
-  kernelPm.addPass(::mlir::createLowerToCFGPass());
+  kernelPm.addPass(::mlir::createConvertSCFToCFPass());
 #if TENSORFLOW_USE_ROCM
   kernelPm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToRocdlPass());
 #elif GOOGLE_CUDA
@@ -427,9 +441,9 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreatePropagateShapeKnowledgeToKernels());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreatePropagateTfAbiKnowledgeToKernels());
 
   return failed(pm.run(module))
@@ -475,7 +489,7 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module) {
 
 }  // namespace
 
-StatusOr<mlir::OwningModuleRef> SetupContextAndParseModule(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
     mlir::MLIRContext& context, llvm::StringRef tf_code) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialects(registry);
@@ -484,29 +498,34 @@ StatusOr<mlir::OwningModuleRef> SetupContextAndParseModule(
   mlir::registerNVVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);
   context.appendDialectRegistry(registry);
-  mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString(tf_code, &context);
   if (!module)
     return tensorflow::Status(tensorflow::error::Code::INVALID_ARGUMENT,
                               "invalid kernel IR");
   return module;
 }
 
-StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
-    bool print_llvmir, bool enable_ftz, bool cpu_codegen, bool jit_compile) {
-  TF_ASSIGN_OR_RETURN(mlir::OwningModuleRef module,
+    bool print_llvmir, bool enable_ftz, bool index_64bit, bool cpu_codegen,
+    bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       SetupContextAndParseModule(context, tf_code));
 
   if (jit_compile) {
-    TF_RETURN_IF_ERROR(
-        LowerTFToJITInvocation(module.get(), tile_sizes, unroll_factors,
-                               max_supported_rank, enable_ftz, cpu_codegen));
+    TF_RETURN_IF_ERROR(LowerTFToJITInvocation(
+        module.get(), tile_sizes, unroll_factors, max_supported_rank,
+        enable_ftz, index_64bit, cpu_codegen,
+        /*jit_i64_indexed_for_large_tensors=*/false));
   } else {
     TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
-                                      max_supported_rank, cpu_codegen));
+                                      max_supported_rank, enable_ftz,
+                                      index_64bit, cpu_codegen,
+                                      jit_i64_indexed_for_large_tensors));
     TF_RETURN_IF_ERROR(
         LowerLoopsToGPUorCPU(module.get(), embed_memref_prints, cpu_codegen));
     if (!cpu_codegen) {

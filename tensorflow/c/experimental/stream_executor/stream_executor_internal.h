@@ -70,6 +70,7 @@ class CPlatform : public Platform {
     return visible_device_count;
   }
   bool UseBfcAllocator() const { return platform_.use_bfc_allocator; }
+  bool ForceMemoryGrowth() const { return platform_.force_memory_growth; }
   port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
   port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;

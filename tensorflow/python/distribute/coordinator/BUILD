@@ -66,6 +66,7 @@ distribute_py_test(
     shard_count = 50,
     tags = [
         "multi_gpu",
+        "no_oss",  # TODO(b/214432000): Very flaky under Docker
         "no_pip",
         "noasan",  # TODO(b/171040359): Flaky timeout, even if maximum shards
         "notpu",
@@ -103,6 +104,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 36,
     tags = [
+        "no_oss",  # TODO(b/219580021)
         "noasan",  # Multi-process runner does not work with test sanitizers
         "nomac",  # TODO(b/177065434)
         "notsan",  # Multi-process runner does not work with test sanitizers

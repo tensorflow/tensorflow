@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -100,7 +100,7 @@ void ModifyFunctionSignature(
     if (!stack_type.hasValue()) continue;
     func.getArgument(i).setType(*stack_type);
     new_input_types[i] = *stack_type;
-    auto size_arg = func.front().addArgument(size_var_type);
+    auto size_arg = func.front().addArgument(size_var_type, func.getLoc());
     new_input_types.push_back(size_arg.getType());
     if (stack_var_to_size_var) {
       (*stack_var_to_size_var)[func.getArgument(i)] = size_arg;
@@ -145,7 +145,8 @@ LogicalResult HandleWhileOp(
     auto body_ret = body.front().getTerminator();
     auto new_body_returns = llvm::to_vector<8>(body_ret->getOperands());
     for (auto arg : new_args) new_body_returns.push_back(arg);
-    OpBuilder(body_ret).create<ReturnOp>(body_ret->getLoc(), new_body_returns);
+    OpBuilder(body_ret).create<func::ReturnOp>(body_ret->getLoc(),
+                                               new_body_returns);
     body_ret->erase();
   };
   // Handle body.

@@ -48,8 +48,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
-                                         mlir::OwningModuleRef* module) {
+Status HandleInputOutputArraysWithModule(
+    const toco::ModelFlags& model_flags,
+    mlir::OwningOpRef<mlir::ModuleOp>* module) {
   mlir::FuncOp entry_function = nullptr;
   for (auto func : module->get().getOps<mlir::FuncOp>()) {
     if (auto tf_attrs =
@@ -127,7 +128,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                            const toco::TocoFlags& toco_flags,
                                            string* result) {
   mlir::MLIRContext context;
-  mlir::TFL::QuantizationSpecs quant_specs;
+  mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<string> node_names;
@@ -190,6 +191,9 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   }
   pass_config.unfold_large_splat_constant =
       toco_flags.unfold_large_splat_constant();
+  pass_config.enable_dynamic_update_slice =
+      toco_flags.enable_dynamic_update_slice();
+  pass_config.preserve_assert_op = toco_flags.preserve_assert_op();
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(

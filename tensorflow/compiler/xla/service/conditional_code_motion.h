@@ -90,7 +90,7 @@ class ConditionalCodeMotion : public HloModulePass {
   // during identical comparison. Otherwise, layout is ignored.
   // The search configuration is a single integer but is split into four parts:
   // (sign, n, m, p), where n,m,p each occupy 8 bits and together make the 24
-  // bits at the end of the int32. For the sign part, if search_config is <0,
+  // bits at the end of the int32_t. For the sign part, if search_config is <0,
   // the reuse_config_ cost model is modified (tuned); if search_config is >0,
   // the move_config_ cost model is modified (tuned); if search_config == 0,
   // the default cost model is used with no tuning. When tuning, the entries in
@@ -148,15 +148,15 @@ class ConditionalCodeMotion : public HloModulePass {
     return config;
   }
 
-  static int16 flip_start(int64_t search_config) {
+  static int16_t flip_start(int64_t search_config) {
     return (search_config >> kStartPos) & kValueMask;
   }
 
-  static int16 flip_stride(int64_t search_config) {
+  static int16_t flip_stride(int64_t search_config) {
     return (search_config >> kStridePos) & kValueMask;
   }
 
-  static int16 DecrementMaxFlip(int64_t* search_config) {
+  static int16_t DecrementMaxFlip(int64_t* search_config) {
     const int16_t max_flip = ((*search_config) >> kMaxPos) & kValueMask;
     // Decrement flip count so we can stop if it reaches 0.
     if (max_flip > 0) {
@@ -171,7 +171,7 @@ class ConditionalCodeMotion : public HloModulePass {
   // Optimization decision for each boundary of the conditional instruction.
   class Decision {
    public:
-    enum class Direction : uint8 {
+    enum class Direction : uint8_t {
       kMoveOutOfBranch,
       kMoveIntoBranch,
       kNoChange
