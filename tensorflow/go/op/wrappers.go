@@ -52445,6 +52445,33 @@ func XlaConvV2(scope *Scope, lhs tf.Output, rhs tf.Output, window_strides tf.Out
 	return op.Output(0)
 }
 
+// Wraps the XLA CustomCall operator
+//
+//   documented at https://www.tensorflow.org/xla/operation_semantics#customcall.
+//
+// Arguments:
+//	args: A list of `Tensor` with possibly different types.
+//	target_name: Name of the function. A call instruction will be emitted which
+// targets this symbol name.
+//	backend_config: String, used to encode serialized metadata to the backend.
+//	dtype: Output tensor data type.
+//	shape: Output tensor shape.
+func XlaCustomCall(scope *Scope, args []tf.Output, target_name string, backend_config string, dtype tf.DataType, shape tf.Shape) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"target_name": target_name, "backend_config": backend_config, "dtype": dtype, "shape": shape}
+	opspec := tf.OpSpec{
+		Type: "XlaCustomCall",
+		Input: []tf.Input{
+			tf.OutputList(args),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Takes the packed uint32 input and unpacks the input to uint8 to do
 //
 // Dequantization on device.
