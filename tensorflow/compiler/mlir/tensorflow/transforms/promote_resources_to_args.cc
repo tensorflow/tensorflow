@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -171,7 +171,8 @@ LogicalResult PromoteResourcesToArguments(
     FuncOp function, llvm::ArrayRef<std::string> var_handle_shared_names) {
   Block& block = function.front();
 
-  auto return_op = llvm::dyn_cast_or_null<ReturnOp>(block.getTerminator());
+  auto return_op =
+      llvm::dyn_cast_or_null<func::ReturnOp>(block.getTerminator());
   if (!return_op)
     return function.emitError() << "expects function '" << function.getName()
                                 << "' to have a MLIR ReturnOp";
@@ -317,7 +318,7 @@ LogicalResult PromoteResourcesToArguments(
   // Rewrite return if there are variable writes.
   const int return_operands_size = return_operands.size();
   if (return_operands_size > num_results_before) {
-    builder.create<ReturnOp>(return_op.getLoc(), return_operands);
+    builder.create<func::ReturnOp>(return_op.getLoc(), return_operands);
     return_op.erase();
   }
 

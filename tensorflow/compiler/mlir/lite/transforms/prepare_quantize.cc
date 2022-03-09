@@ -16,6 +16,7 @@ limitations under the License.
 // This transformation pass applies quantization propagation on TFLite dialect.
 #include <iterator>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/Optional.h"
@@ -176,11 +177,28 @@ class PrepareQuantizePass
 bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   StringRef func_name = func.getName();
   auto& target_func = quant_specs_.target_func;
-
   // Skip this function because it isn't the target function from the spec or
   // in the function while list.
   if (target_func != func_name &&
       !llvm::is_contained(quantize_allowlist, func_name)) {
+    return false;
+  }
+  auto has_quantize_op = [&](const Value arg) {
+    return (arg.hasOneUse() &&
+            llvm::isa<quant::QuantizeCastOp>(*arg.user_begin()));
+  };
+
+  bool need_to_set_input_nodes_quantization_params = false;
+  for (const BlockArgument arg : func.getArguments()) {
+    auto shaped = arg.getType().dyn_cast<ShapedType>();
+    if (shaped && shaped.getElementType().isa<FloatType>() &&
+        !has_quantize_op(arg)) {
+      need_to_set_input_nodes_quantization_params = true;
+      break;
+    }
+  }
+
+  if (!need_to_set_input_nodes_quantization_params) {
     return false;
   }
 
@@ -202,8 +220,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
       if (shaped.getElementType().isa<FloatType>()) {
         // If there are existing quantize ops, they are from training and we
         // should respect them.
-        if (arg.hasOneUse() &&
-            llvm::isa<quant::QuantizeCastOp>(*arg.user_begin())) {
+        if (has_quantize_op(arg)) {
           return;
         }
 
@@ -259,7 +276,7 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
   // so this op can be quantized. This is only applied on the returned result
   // because the error will not be accumulated.
 
-  func.walk([&](ReturnOp ret) {
+  func.walk([&](func::ReturnOp ret) {
     int i = 0;
     for (Value returned : ret.getOperands()) {
       llvm::SmallVector<Value, 4> quantized;

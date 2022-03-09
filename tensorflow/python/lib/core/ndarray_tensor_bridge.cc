@@ -79,6 +79,7 @@ static void TensorReleaser_dealloc(PyObject* pself) {
   TensorReleaserType.tp_free(pself);
 }
 
+// clang-format off
 PyTypeObject TensorReleaserType = {
     PyVarObject_HEAD_INIT(nullptr, 0) /* head init */
     "tensorflow_wrapper",             /* tp_name */
@@ -86,7 +87,11 @@ PyTypeObject TensorReleaserType = {
     0,                                /* tp_itemsize */
     /* methods */
     TensorReleaser_dealloc,      /* tp_dealloc */
-    0,                           /* tp_print */
+#if PY_VERSION_HEX < 0x03080000
+    nullptr,                     /* tp_print */
+#else
+    0,                           /* tp_vectorcall_offset */
+#endif
     nullptr,                     /* tp_getattr */
     nullptr,                     /* tp_setattr */
     nullptr,                     /* tp_compare */
@@ -106,6 +111,7 @@ PyTypeObject TensorReleaserType = {
     nullptr,                     /* tp_clear */
     nullptr,                     /* tp_richcompare */
 };
+// clang-format on
 
 Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
                                    int* out_pyarray_type) {

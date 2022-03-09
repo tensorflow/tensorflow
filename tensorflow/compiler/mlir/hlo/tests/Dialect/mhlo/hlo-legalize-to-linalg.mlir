@@ -934,6 +934,17 @@ func @reshape_2D_0D_dynamic(%arg0: tensor<?x?xi32>) -> tensor<i32> {
 
 // -----
 
+// CHECK-LABEL: func @reshape_3D_1D_semidynamic
+func @reshape_3D_1D_semidynamic(%arg0: tensor<16x1x?xi32>) -> tensor<16xi32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<16x1x?xi32>) -> tensor<16xi32>
+  return %0 : tensor<16xi32>
+}
+// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<16x1x?xi32> to tensor<16x1x1xi32>
+// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<16x1x1xi32> into tensor<16xi32>
+// CHECK: return %[[COLLAPSE:.*]] : tensor<16xi32>
+
+// -----
+
 // CHECK-LABEL: func @minf
 func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %0 = "mhlo.minimum"(%lhs, %rhs) {someattr}
@@ -2533,11 +2544,7 @@ func @pad_cst(%arg0: tensor<12x4xf32>) -> tensor<18x12xf32> {
 // CHECK-LABEL: func @pad_cst
 // CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]*]]
 //   CHECK-DAG: %[[CST:.+]] = arith.constant 0.000000e+00 : f32
-//   CHECK-DAG: %[[C4:.+]] = arith.constant 4 : index
-//   CHECK-DAG: %[[C2:.+]] = arith.constant 2 : index
-//   CHECK-DAG: %[[C5:.+]] = arith.constant 5 : index
-//   CHECK-DAG: %[[C3:.+]] = arith.constant 3 : index
-//       CHECK: tensor.pad %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
+//       CHECK: tensor.pad %[[ARG0]] low[4, 5] high[2, 3]
 //       CHECK:  tensor.yield %[[CST]] : f32
 //       CHECK: } : tensor<12x4xf32> to tensor<18x12xf32>
 
@@ -2554,12 +2561,8 @@ func @pad_tensor(%arg0: tensor<12x4xf32>, %arg1: tensor<f32>) -> tensor<18x12xf3
 // CHECK-LABEL: func @pad_tensor
 //  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]*]]
 //  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]*]]
-//   CHECK-DAG:   %[[C4:.+]] = arith.constant 4 : index
-//   CHECK-DAG:   %[[C2:.+]] = arith.constant 2 : index
-//   CHECK-DAG:   %[[C5:.+]] = arith.constant 5 : index
-//   CHECK-DAG:   %[[C3:.+]] = arith.constant 3 : index
 //   CHECK-DAG:   %[[PAD:.+]] = tensor.extract %[[ARG1]][] : tensor<f32>
-//       CHECK:   tensor.pad %[[ARG0]] low[%[[C4]], %[[C5]]] high[%[[C2]], %[[C3]]]
+//       CHECK:   tensor.pad %[[ARG0]] low[4, 5] high[2, 3]
 //       CHECK:     tensor.yield %[[PAD]] : f32
 //       CHECK:   } : tensor<12x4xf32> to tensor<18x12xf32>
 

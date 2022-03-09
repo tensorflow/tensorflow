@@ -36,7 +36,7 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
                        llvm::StringRef mlir_input,
                        llvm::StringRef function_name,
                        llvm::ArrayRef<InputTensorSpec> input_specs,
-                       bool vectorize = false);
+                       bool vectorize = false, bool codegen_transpose = false);
 
 // Benchmark arbitrary Tensorflow dialect MLIR function using inputs of given
 // type and shape by compiling it to BEF with fallback kernels.
@@ -61,10 +61,10 @@ void RunEigenBenchmark(
   }                                                                 \
   BENCHMARK(BM_Jitrt_##NAME)->MeasureProcessCPUTime()
 
-#define BM_JitrtV(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \
-  static void BM_Jitrtv_##NAME(::testing::benchmark::State& state) { \
-    RunJitRtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC, true);      \
-  }                                                                  \
+#define BM_JitrtV(NAME, MLIR_INPUT, FN, INPUT_SPEC)                   \
+  static void BM_Jitrtv_##NAME(::testing::benchmark::State& state) {  \
+    RunJitRtBenchmark(state, MLIR_INPUT, FN, INPUT_SPEC, true, true); \
+  }                                                                   \
   BENCHMARK(BM_Jitrtv_##NAME)->MeasureProcessCPUTime()
 
 #define BM_Tfrt(NAME, MLIR_INPUT, FN, INPUT_SPEC)                  \

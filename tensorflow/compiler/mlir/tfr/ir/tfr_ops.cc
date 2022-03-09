@@ -29,9 +29,9 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -145,9 +145,9 @@ Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
   if (arith::ConstantOp::isBuildableWith(value, type))
     return builder.create<arith::ConstantOp>(loc, type, value);
-  if (ConstantOp::isBuildableWith(value, type))
-    return builder.create<ConstantOp>(loc, type,
-                                      value.cast<FlatSymbolRefAttr>());
+  if (func::ConstantOp::isBuildableWith(value, type))
+    return builder.create<func::ConstantOp>(loc, type,
+                                            value.cast<FlatSymbolRefAttr>());
   return nullptr;
 }
 

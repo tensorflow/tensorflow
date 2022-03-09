@@ -83,7 +83,7 @@ tf_cc_test(
     ],
 )
 
-# TODO(mdan): Get rid of if_static, it's nonstandard.
+# TODO(b/221223841): Get rid of if_static, it's nonstandard.
 tf_python_pybind_extension(
     name = "runtime_client_pybind",
     srcs = ["runtime_client_pybind.cc"],

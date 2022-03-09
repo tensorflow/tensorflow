@@ -728,6 +728,14 @@ class IrEmitterUnnested : public IrEmitter {
   // __shared__ memory uses a different address space, so we cast it to
   // global address space before writing or reading.
   llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Twine name = "");
+
+  // Returns the ShapedSlices for the given operands.
+  StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
+      mlir::Operation::operand_range operands);
+
+  // Returns the buffer allocation Slice for the given operands.
+  StatusOr<std::vector<BufferAllocation::Slice>> GetSlices(
+      mlir::Operation::operand_range operands);
 };
 
 }  // namespace gpu

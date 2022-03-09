@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"

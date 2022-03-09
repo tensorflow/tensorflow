@@ -5,8 +5,8 @@ load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 package(
     default_compatible_with = get_compatible_with_cloud(),
     default_visibility = [
-        ":__subpackages__",
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+        "//tensorflow/core:__subpackages__",
         "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
@@ -46,6 +46,7 @@ cc_library(
     hdrs = ["pass_registration.h"],
     deps = [
         ":PassIncGen",
+        "//tensorflow/core/transforms/cf_sink:Pass",
         "//tensorflow/core/transforms/const_dedupe_hoist:Pass",
         "//tensorflow/core/transforms/drop_unregistered_attribute:OutputShapesPass",
         "//tensorflow/core/transforms/graph_to_func:Pass",
@@ -94,7 +95,9 @@ tf_native_cc_binary(
     deps = [
         ":PassRegistration",
         "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/core:ops",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir:tf_op_registry",
         "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Transforms",

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 #include <memory>
+#include <utility>
 
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
@@ -400,20 +401,79 @@ absl::Status MetalSpatialTensor::WriteData(
 
 absl::Status MetalSpatialTensor::CreateFromDescriptor(
     const TensorDescriptor& desc, id<MTLDevice> device) {
-  shape_ = desc.shape;
+  shape_ = desc.GetBHWDCShape();
   descriptor_.data_type = desc.data_type;
   descriptor_.storage_type = desc.storage_type;
   descriptor_.layout = desc.layout;
   memory_owner_ = true;
-  uint8_t* data_ptr = desc.data.empty()
-                          ? nullptr
-                          : const_cast<unsigned char*>(desc.data.data());
+  const uint8_t* data_ptr =
+      desc.GetData().empty() ? nullptr : desc.GetData().data();
   id<MTLBuffer> buffer;
   id<MTLTexture> texture;
   RETURN_IF_ERROR(AllocateTensorMemory(device, shape_, descriptor_, data_ptr,
                                        &buffer, &texture));
   memory_ = buffer;
   texture_mem_ = texture;
+  return absl::OkStatus();
+}
+
+absl::Status MetalSpatialTensor::ToDescriptor(TensorDescriptor* desc,
+                                              id<MTLDevice> device) const {
+  *desc = descriptor_;
+  desc->SetBHWDCShape(shape_);
+  std::vector<uint8_t> data(GetMemorySizeInBytes());
+  RETURN_IF_ERROR(ReadData(device, data.data()));
+  desc->SetData(std::move(data));
+  return absl::OkStatus();
+}
+
+absl::Status MetalSpatialTensor::WriteData(id<MTLDevice> device,
+                                           const void* ptr) {
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      std::memcpy(
+          reinterpret_cast<uint8_t*>([memory_ contents]) + buffer_offset_, ptr,
+          GetMemorySizeInBytes());
+      break;
+    case TensorStorageType::TEXTURE_2D:
+      WriteDataToTexture2D(texture_mem_, device, ptr);
+      break;
+    case TensorStorageType::TEXTURE_3D:
+      WriteDataToTexture3D(texture_mem_, device, ptr);
+      break;
+    case TensorStorageType::TEXTURE_ARRAY:
+      WriteDataToTexture2DArray(texture_mem_, device, ptr);
+      break;
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+    default:
+      return absl::InternalError("Unsupported tensor storage type");
+  }
+  return absl::OkStatus();
+}
+
+absl::Status MetalSpatialTensor::ReadData(id<MTLDevice> device,
+                                          void* ptr) const {
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      std::memcpy(
+          ptr, reinterpret_cast<uint8_t*>([memory_ contents]) + buffer_offset_,
+          GetMemorySizeInBytes());
+      break;
+    case TensorStorageType::TEXTURE_2D:
+      ReadDataFromTexture2D(texture_mem_, device, ptr);
+      break;
+    case TensorStorageType::TEXTURE_3D:
+      ReadDataFromTexture3D(texture_mem_, device, ptr);
+      break;
+    case TensorStorageType::TEXTURE_ARRAY:
+      ReadDataFromTexture2DArray(texture_mem_, device, ptr);
+      break;
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+    default:
+      return absl::InternalError("Unsupported tensor storage type");
+  }
   return absl::OkStatus();
 }
 

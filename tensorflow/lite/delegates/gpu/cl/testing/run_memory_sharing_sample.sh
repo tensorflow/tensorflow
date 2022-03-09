@@ -69,10 +69,19 @@ fi
 
 SHELL_DIR=$(dirname "$0")
 BINARY_NAME=memory_sharing_sample
+declare -a BUILD_CONFIG
 
 if [[ "$host" == "HOST" ]]
 then
-bazel build -c opt //"$SHELL_DIR":"$BINARY_NAME"
+
+os_name=$(uname -s)
+if [[ "$os_name" == "Darwin" ]]; then
+BUILD_CONFIG=( --config=darwin_x86_64 -c opt )
+else
+BUILD_CONFIG=( -c opt )
+fi
+
+bazel build "${BUILD_CONFIG[@]}" //"$SHELL_DIR":"$BINARY_NAME"
 chmod +x bazel-bin/"$SHELL_DIR"/"$BINARY_NAME"
 ./bazel-bin/"$SHELL_DIR"/"$BINARY_NAME" "$model1_path" "$model2_path"
 exit
@@ -88,7 +97,6 @@ ADB shell mkdir -p $OPENCL_DIR
 ADB push "$model1_path" "$OPENCL_DIR"
 ADB push "$model2_path" "$OPENCL_DIR"
 
-declare -a BUILD_CONFIG
 abi_version=$(ADB shell getprop ro.product.cpu.abi | tr -d '\r')
 if [[ "$abi_version" == "armeabi-v7a" ]]; then
 #"32 bit ARM"

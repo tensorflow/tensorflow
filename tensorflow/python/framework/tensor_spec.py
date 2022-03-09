@@ -28,7 +28,7 @@ from tensorflow.python.util.tf_export import tf_export
 class DenseSpec(type_spec.TypeSpec):
   """Describes a dense object with shape, dtype, and name."""
 
-  __slots__ = ["_shape", "_shape_tuple", "_dtype", "_name"]
+  __slots__ = ["_shape", "_dtype", "_name"]
 
   _component_specs = property(lambda self: self)
 
@@ -45,8 +45,6 @@ class DenseSpec(type_spec.TypeSpec):
         not convertible to a `tf.DType`.
     """
     self._shape = tensor_shape.TensorShape(shape)
-    # TODO(b/216204766): Remove once uses are deleted.
-    self._shape_tuple = None
     self._dtype = dtypes.as_dtype(dtype)
     self._name = name
 
@@ -224,8 +222,15 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
   def _to_batched_tensor_list(self, value):
     return self._to_tensor_list(value)
 
-  def __tf_tracing_type__(self, signature_context):
-    return ops.TensorType(signature_context, self.shape, self.dtype, self.name)
+  # TODO(b/206014848): Helper function to support logic that does not consider
+  # Tensor name. Will be removed once load-bearing usages of Tensor name are
+  # fixed.
+  def _without_tensor_names(self) -> "TensorSpec":
+    """Returns a version of `TensorSpec` with the name removed."""
+    if self.name is None:
+      return self
+    else:
+      return TensorSpec(self.shape, self.dtype)
 
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?

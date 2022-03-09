@@ -407,6 +407,15 @@ class HloModule {
     profile_info_list_.push_back(profile_info);
   }
 
+  void set_profile_info(
+      const std::vector<HloModuleProto::ProfileInfo>& profile_info) {
+    profile_info_list_ = profile_info;
+  }
+
+  const std::vector<HloModuleProto::ProfileInfo>& profile_info() const {
+    return profile_info_list_;
+  }
+
   void set_relative_speedup(double relative_speedup) {
     relative_speedup_ = relative_speedup;
   }

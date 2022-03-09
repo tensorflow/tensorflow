@@ -31,11 +31,11 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
   // Load the MLIR module.
   mlir::DialectRegistry registry;
   registry.insert<mlir::TF::TensorFlowDialect, mlir::TFL::TensorFlowLiteDialect,
-                  mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect>();
+                  mlir::arith::ArithmeticDialect, mlir::func::FuncDialect>();
   mlir::MLIRContext context(registry);
 
   llvm::SourceMgr source_mgr;

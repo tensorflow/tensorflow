@@ -81,15 +81,17 @@ Status BuildNodeMap(const Graph& graph,
   return Status::OK();
 }
 
-EngineInfo::EngineType GetEngineType(const ConversionParams& params) {
-  return (params.is_dyn_op || params.use_calibration)
+EngineInfo::EngineType GetEngineType(
+    const TRTOptimizationPass::ConversionParams& params) {
+  return (params.is_dynamic_op || params.use_calibration)
              ? EngineInfo::EngineType::TRTDynamic
              : EngineInfo::EngineType::TRTStatic;
 }
 
 // Returns true when use_implicit_batch is false or when we are building dynamic
 // engine, to allow unknown size for dimensions rather than dimension 0.
-bool AllowDynamicNonBatchDimension(const ConversionParams& params) {
+bool AllowDynamicNonBatchDimension(
+    const TRTOptimizationPass::ConversionParams& params) {
   return !params.use_implicit_batch ||
          GetEngineType(params) == EngineInfo::EngineType::TRTDynamic;
 }
@@ -133,7 +135,6 @@ bool ShallKeepControlEdgeFrom(const Node* input_node) {
 Status GetEngineInfo(const Graph* g,
                      const grappler::GraphProperties& graph_properties,
                      const Segment& segment,
-                     const std::unordered_map<string, Node*>& node_map,
                      const std::vector<Node*>& reverse_topo_order,
                      EngineInfo* info) {
   std::vector<const Node*> subgraph_nodes;  // Topologically sorted nodes.
@@ -343,10 +344,11 @@ tensorflow::TensorShapeProto ComputeTRTNodeIOShape(
 //         one). Connect to the pre-existing engine node instead.
 // 3. In this way, we ensure the graph is topologically sort-able after each
 //    invocation of CreateTRTNode().
-Status CreateTRTNode(const ConversionParams& params, grappler::Cluster* cluster,
+Status CreateTRTNode(const TRTOptimizationPass::ConversionParams& params,
                      const std::vector<EngineInfo>& infos, int pos,
                      int default_max_batch_size, Graph* graph,
-                     std::vector<Node*>* engine_nodes) {
+                     std::vector<Node*>* engine_nodes,
+                     grappler::Cluster* cluster) {
   const auto& info = infos.at(pos);
   std::vector<tensorflow::TensorShapeProto> input_shape_protos;
   std::vector<tensorflow::TensorShapeProto> output_shape_protos;
@@ -460,9 +462,9 @@ Status CreateTRTNode(const ConversionParams& params, grappler::Cluster* cluster,
                            : default_max_batch_size;
 
   if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
-    TF_RETURN_IF_ERROR(CreateStaticEngine(params, cluster, info, max_batch_size,
+    TF_RETURN_IF_ERROR(CreateStaticEngine(params, info, max_batch_size,
                                           input_shapes, nullptr,
-                                          &segment_string));
+                                          &segment_string, cluster));
   }
 
   string prec_string;
@@ -637,8 +639,7 @@ Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
 }
 
 std::pair<int, Allocator*> GetDeviceAndAllocator(
-    const ConversionParams& params, const EngineInfo& engine,
-    const grappler::Cluster* cluster) {
+    const grappler::Cluster* cluster, const EngineInfo& engine) {
   int cuda_device_id = -1;
   Allocator* dev_allocator = nullptr;
   if (cluster == nullptr || cluster->GetDeviceSet() == nullptr ||
@@ -687,14 +688,13 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(
   return std::make_pair(cuda_device_id, dev_allocator);
 }
 
-Status CreateStaticEngine(const ConversionParams& params,
-                          grappler::Cluster* cluster, const EngineInfo& info,
-                          int max_batch_size,
+Status CreateStaticEngine(const TRTOptimizationPass::ConversionParams& params,
+                          const EngineInfo& info, int max_batch_size,
                           const std::vector<PartialTensorShape>& input_shapes,
                           TrtShapeOptimizationProfile* profile,
-                          string* segment_string) {
+                          string* segment_string, grappler::Cluster* cluster) {
   std::pair<int, Allocator*> device_allocator =
-      GetDeviceAndAllocator(params, info, cluster);
+      GetDeviceAndAllocator(cluster, info);
   int cuda_device_id = 0;
   std::unique_ptr<TRTBaseAllocator> trt_allocator;
   if (device_allocator.first >= 0) {
@@ -727,25 +727,20 @@ Status CreateStaticEngine(const ConversionParams& params,
   return Status::OK();
 }
 
-// Entry function from optimization pass.
-Status ConvertAfterShapes(const ConversionParams& params,
-                          grappler::Cluster* cluster) {
+Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
+                    grappler::GrapplerItem& grappler_item,
+                    const std::vector<string>& input_output_names,
+                    grappler::Cluster* cluster, GraphDef* output) {
   // Sanity checks.
+  TRT_ENSURE(output != nullptr)
   if (params.precision_mode != TrtPrecisionMode::INT8 &&
       params.use_calibration) {
     return errors::InvalidArgument(
         "Calibration with FP32 or FP16 is not supported.");
   }
 
-  // Make a copy of the input_graph_def because grappler doesn't allow changes
-  // to the input_graph_def and GraphProperties only accepts GraphDef, but not
-  // Graph, as inputs.
-  //
-  // If the overhead of copying the input_graph_def becomes a concern, we can
-  // avoid the copy by (1) enhancing the GraphPropertiers representation to
-  // allow adding shape properties for newly created graph nodes and (2) rewrite
-  // the GraphDef transformation to Graph transformation.
-  GraphDef modified_graph_def = params.grappler_item->graph;
+  GraphDef& graph_def = grappler_item.graph;
+
   // When precision_mode is FP16, transform cast(x, fp32) to
   // cast(cast(x, fp16), fp32). This creates cast(fp16, f32) that can be
   // included in the TRTEngineOp as an TensorRT Identity layer for performance:
@@ -754,18 +749,14 @@ Status ConvertAfterShapes(const ConversionParams& params,
   //  . Changing the input to the TRTEngine from fp32 to fp16 may reduce data
   //    moving from the host to the GPU.
   if (params.precision_mode == TrtPrecisionMode::FP16) {
-    for (int i = 0; i < modified_graph_def.node_size(); i++) {
-      NodeDef* node_def = modified_graph_def.mutable_node(i);
-      TF_RETURN_IF_ERROR(MaybeRewriteCastToFp32(&modified_graph_def, node_def));
+    for (int i = 0; i < graph_def.node_size(); i++) {
+      NodeDef* node_def = graph_def.mutable_node(i);
+      TF_RETURN_IF_ERROR(MaybeRewriteCastToFp32(&graph_def, node_def));
     }
   }
 
   // Construct a GrapplerItem using the modified graph_def and the input
   // grappler_item.
-  grappler::GrapplerItem grappler_item =
-      params.grappler_item->WithGraph(std::move(modified_graph_def));
-  const GraphDef& graph_def = grappler_item.graph;
-
   grappler::GraphProperties static_graph_properties(grappler_item);
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
 
@@ -778,7 +769,7 @@ Status ConvertAfterShapes(const ConversionParams& params,
   // Segment the graph into subgraphs that can be converted to TensorRT
   segment::SegmentOptions segment_options;
   // TODO(ben,jie,sami): exclude output nodes (DISCUSS IT)
-  for (const auto& node : *(params.input_output_names)) {
+  for (const auto& node : input_output_names) {
     segment_options.exclude_node_list.insert(node);
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
@@ -819,7 +810,7 @@ Status ConvertAfterShapes(const ConversionParams& params,
     EngineInfo curr_engine;
     curr_engine.engine_name = StrCat(engine_name_prefix, t);
 
-    bool int8_no_calib = (params.use_calibration == false &&
+    bool int8_no_calib = (!params.use_calibration &&
                           params.precision_mode == TrtPrecisionMode::INT8);
     bool has_qdq = false;
     if (int8_no_calib) {
@@ -827,7 +818,7 @@ Status ConvertAfterShapes(const ConversionParams& params,
     }
 
     Status status = GetEngineInfo(&graph, static_graph_properties, curr_segment,
-                                  node_map, reverse_topo_order, &curr_engine);
+                                  reverse_topo_order, &curr_engine);
     if (!status.ok()) {
       LOG_WARNING_WITH_PREFIX << "Failed to get engine info for segment " << t
                               << ": " << status;
@@ -877,7 +868,7 @@ Status ConvertAfterShapes(const ConversionParams& params,
   // Save the cuda device since we may need to switch to another cuda device to
   // build static engines.
   absl::optional<int> old_cuda_device = absl::nullopt;
-  if (!params.is_dyn_op) {
+  if (!params.is_dynamic_op) {
     int cuda_device_id;
     cudaError_t cuda_error = cudaGetDevice(&cuda_device_id);
     if (cuda_error != cudaSuccess) {
@@ -904,8 +895,9 @@ Status ConvertAfterShapes(const ConversionParams& params,
     engine.max_workspace_size_bytes = params.max_workspace_size_bytes;
     VLOG(1) << "Assigned " << engine.max_workspace_size_bytes << " bytes to "
             << engine.engine_name;
-    auto status = CreateTRTNode(params, cluster, engine_segments, i,
-                                params.max_batch_size, &graph, &engine_nodes);
+    auto status =
+        CreateTRTNode(params, engine_segments, i, params.max_batch_size, &graph,
+                      &engine_nodes, cluster);
 
     string msg = StrCat("segment ", i, " consisting of ",
                         converted_segments.at(i).nodes.size(), " nodes by ",
@@ -934,8 +926,7 @@ Status ConvertAfterShapes(const ConversionParams& params,
       }
     }
   }
-  graph.ToGraphDef(params.output_graph_def);
-  VLOG(1) << "Returning from conversion";
+  graph.ToGraphDef(output);
   return Status::OK();
 }
 

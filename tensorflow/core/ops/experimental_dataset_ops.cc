@@ -62,6 +62,21 @@ REGISTER_OP("ExperimentalAssertNextDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("AssertPrevDataset")
+    .Input("input_dataset: variant")
+    .Input("transformations: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // transformations should be a vector.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("AutoShardDataset")
     .Input("input_dataset: variant")
     .Input("num_workers: int64")

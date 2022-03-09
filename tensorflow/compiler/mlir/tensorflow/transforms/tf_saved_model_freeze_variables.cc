@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -262,14 +262,14 @@ void UpdateTerminatorArguments(
   for (auto arg_index : arguments_to_erase) {
     auto argument = func.getArgument(arg_index);
     for (auto& use : argument.getUses()) {
-      if (llvm::isa<ReturnOp, TF::YieldOp>(use.getOwner())) {
+      if (llvm::isa<func::ReturnOp, TF::YieldOp>(use.getOwner())) {
         int operand_index = use.getOperandNumber();
         erase_indices.set(operand_index);
       }
     }
     func.getArgument(arg_index).dropAllUses();
   }
-  if (llvm::isa<ReturnOp, TF::YieldOp>(func.front().getTerminator())) {
+  if (llvm::isa<func::ReturnOp, TF::YieldOp>(func.front().getTerminator())) {
     terminator->eraseOperands(erase_indices);
   }
 }

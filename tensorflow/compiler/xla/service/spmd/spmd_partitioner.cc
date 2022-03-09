@@ -1687,8 +1687,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
-  logger_->RegisterLogEntry(GetPartitionedHlo(hlo).hlo(),
-                            b_.derived_instructions(hlo));
+  logger_->RegisterLogEntry(hlo, b_.derived_instructions(hlo));
   visiting_hlo_ = nullptr;
   b_.set_visiting_hlo(nullptr);
   // Revert fake one-device shardings for manually partitioned ops.
@@ -2761,8 +2760,8 @@ Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
           return branch_b.AddInstruction(
               HloInstruction::CreateTuple(padded_elements));
         }
-        const Shape& pad_shape =
-            ShapeUtil::GetSubshape(shard_shape, ShapeIndexView(index, 1));
+        const Shape& pad_shape = ShapeUtil::GetSubshape(
+            shard_shape, ShapeIndexView(index).subspan(1));
         if (ShapeUtil::Compatible(element_shape, pad_shape)) {
           return infeed_element;
         }
@@ -3945,9 +3944,11 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
       TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
           old_entry_layout.parameter_shape(i),
           new_program_shape.mutable_parameters(i)));
+      UpdateLayout(new_program_shape.mutable_parameters(i));
     }
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         old_entry_layout.result_shape(), new_program_shape.mutable_result()));
+    UpdateLayout(new_program_shape.mutable_result());
 
     HloModuleConfig config = module->config();
     *config.mutable_entry_computation_layout() =

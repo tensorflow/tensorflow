@@ -738,8 +738,7 @@ TEST_F(CoordinationBarrierTest, BarrierByNonClusterTask) {
   EXPECT_TRUE(errors::IsInvalidArgument(barrier_status_0));
 }
 
-// TODO(hanyangtay): Enable test after barrier implementation.
-TEST_F(CoordinationBarrierTest, DISABLED_BarrierTimeout) {
+TEST_F(CoordinationBarrierTest, BarrierTimeout) {
   const std::string barrier_id = "barrier_id";
   absl::Duration timeout = absl::Seconds(1);
   Status barrier_status_0;

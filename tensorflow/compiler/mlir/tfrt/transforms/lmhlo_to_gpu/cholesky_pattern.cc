@@ -46,7 +46,7 @@ struct CholeskyRewritePattern
 
     mlir::Type element_type =
         op.input().getType().cast<mlir::MemRefType>().getElementType();
-    auto data_type = MlirTypeToCudaDataType(element_type);
+    auto data_type = MlirTypeToBlasDataType(element_type);
 
     const xla::Shape shape = xla::gpu::GetShape(op.input());
     int rank = shape.dimensions_size();

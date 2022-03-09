@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TESTING_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_TESTING_UTIL_H_
 
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
@@ -40,6 +41,18 @@ class TestExecutionEnvironment {
   virtual std::vector<TensorStorageType>
   GetSupportedStoragesWithHWZeroClampSupport() const = 0;
 
+  // returns storage types that supports int32/uint32
+  virtual std::vector<TensorStorageType> GetStoragesWith32bitIntSupport()
+      const = 0;
+
+  // returns storage types that supports int16/uint16
+  virtual std::vector<TensorStorageType> GetStoragesWith16bitIntSupport()
+      const = 0;
+
+  // returns storage types that supports int8/uint8
+  virtual std::vector<TensorStorageType> GetStoragesWith8bitIntSupport()
+      const = 0;
+
   virtual const GpuInfo& GetGpuInfo() const = 0;
 
   virtual absl::Status ExecuteGPUOperation(
@@ -53,6 +66,11 @@ class TestExecutionEnvironment {
       std::unique_ptr<GPUOperation>&& operation,
       const std::vector<BHWDC>& dst_sizes,
       const std::vector<Tensor5DFloat32*>& dst_cpu) = 0;
+
+  virtual absl::Status ExecuteGPUOperation(
+      const std::vector<TensorDescriptor*>& src_cpu,
+      const std::vector<TensorDescriptor*>& dst_cpu,
+      std::unique_ptr<GPUOperation>&& operation) = 0;
 
   absl::Status ExecuteGPUOperation(const TensorFloat32& src_cpu,
                                    std::unique_ptr<GPUOperation>&& operation,

@@ -30,8 +30,8 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -1038,7 +1038,7 @@ static void BuildBodyWithCall(PatternRewriter &rewriter, const Location &loc,
   Block *block = rewriter.createBlock(body);
   auto inputs = func_ty.getInputs();
   block->addArguments(inputs, SmallVector<Location>(inputs.size(), loc));
-  mlir::CallOp call_op = rewriter.create<mlir::CallOp>(
+  mlir::func::CallOp call_op = rewriter.create<mlir::func::CallOp>(
       loc, func, func_ty.getResults(), block->getArguments());
   rewriter.create<mhlo::ReturnOp>(loc, call_op.getResults());
 }
@@ -2212,9 +2212,10 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
       return failure();
     }
 
+    int64_t expected_dim = fft_length;
     std::string fft_string = "RFFT";
     if (typeid(OpTy) == typeid(TF::IRFFTOp)) {
-      fft_length = fft_length / 2 + 1;
+      expected_dim = fft_length / 2 + 1;
       fft_string = "IRFFT";
     }
     Location loc = op.getLoc();
@@ -2225,15 +2226,15 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
     }
 
     auto expected_shape = llvm::to_vector<4>(input_shape.drop_back());
-    expected_shape.push_back(fft_length);
+    expected_shape.push_back(expected_dim);
 
     // Zero pad or truncate the last axis
     Value reshaped = op.input();
     SmallVector<int64_t, 4> begin_indices(input_shape.size(), 0);
     SmallVector<int64_t, 4> strides(input_shape.size(), 1);
 
-    // Last dim larger than fft_length, slice the input
-    if (input_shape.back() > fft_length) {
+    // Last dim larger than expected_dim, slice the input
+    if (input_shape.back() > expected_dim) {
       reshaped = rewriter.create<SliceOp>(
           op.getLoc(),
           RankedTensorType::get(expected_shape, input_ty.getElementType()),
@@ -2241,11 +2242,11 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
           GetI64ElementsAttr(expected_shape, &rewriter),
           GetI64ElementsAttr(strides, &rewriter));
 
-      // Last dim smaller than fft_length, zero-pad the input
-    } else if (input_ty.getShape().back() < fft_length) {
+      // Last dim smaller than expected_dim, zero-pad the input
+    } else if (input_ty.getShape().back() < expected_dim) {
       SmallVector<int64_t, 4> no_padding(input_shape.size(), 0);
       SmallVector<int64_t, 4> padding(input_shape.size() - 1, 0);
-      padding.push_back(fft_length - input_shape.back());
+      padding.push_back(expected_dim - input_shape.back());
       Value zero =
           GetScalarConstOfType(input_ty.getElementType(), loc, 0, &rewriter);
       reshaped = rewriter.create<PadOp>(
@@ -5329,7 +5330,8 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
 // operations within a computation. The token type can come from other
 // infeed/outfeed/send/recv ops or can be generated using create_token op with
 // no operands. Here we emit a create_token op to generate the token type
-// operand of infeed.
+// operand of infeed. The mhlo.InfeedOp can produce multiple results and later
+// will be exported to XLA infeed op with single tuple return type.
 //
 // For example the following IR:
 // %0:2 = "tf.InfeedDequeueTuple"() : () -> (tensor<3xi32>, tensor<4xf32>)
@@ -5338,11 +5340,7 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
 //
 // %token = "mhlo.create_token"() : () -> !mhlo.token
 // %data_and_token = "mhlo.infeed"(%token) {infeed_config = ""} :
-//      (!mhlo.token) -> tuple<tuple<tensor<3xi32>, tensor<4xf32>>,
-//      !mhlo.token>
-// %data = "mhlo.get_tuple_element"(%data_and_token) {index = 0}
-// %0#0 = "mhlo.get_tuple_element"(%data) {index = 0}
-// %0#1 = "mhlo.get_tuple_element"(%data) {index = 1}
+//      (!mhlo.token) -> tensor<3xi32>, tensor<4xf32>, !mhlo.token>
 //
 class ConvertInfeedDequeueTupleOp
     : public OpRewritePattern<TF::InfeedDequeueTupleOp> {
@@ -5351,15 +5349,14 @@ class ConvertInfeedDequeueTupleOp
 
   LogicalResult matchAndRewrite(TF::InfeedDequeueTupleOp op,
                                 PatternRewriter &rewriter) const override {
-    std::vector<Type> result_types(op.outputs().size());
-    for (const auto &idx_and_output : llvm::enumerate(op.outputs())) {
-      result_types[idx_and_output.index()] = (idx_and_output.value().getType());
-    }
-
-    for (Type t : result_types) {
-      if (auto ty = t.dyn_cast<RankedTensorType>()) {
-        if (!ty.hasStaticShape()) return failure();
+    SmallVector<Type> result_types;
+    result_types.reserve(op.outputs().size() + 1);
+    for (const auto &output : op.outputs()) {
+      Type ty = output.getType();
+      if (auto tensor_ty = ty.dyn_cast<RankedTensorType>()) {
+        if (!tensor_ty.hasStaticShape()) return failure();
       }
+      result_types.push_back(ty);
     }
 
     // Infeed takes a single token operand. Generate the token using
@@ -5367,19 +5364,15 @@ class ConvertInfeedDequeueTupleOp
     auto token = rewriter.create<CreateTokenOp>(
         op.getLoc(), mhlo::TokenType::get(rewriter.getContext()));
 
-    // Emit infeed op.
-    // The result type of infeed is a tuple(tuple(result types), token type).
-    auto data_tuple_type =
-        mlir::TupleType::get(rewriter.getContext(), result_types);
-    auto data_and_token_type = mlir::TupleType::get(
-        rewriter.getContext(), {data_tuple_type, token.getType()});
+    result_types.push_back(token.getType());
 
     ArrayAttr layout;  // filled in during the xla-adjust-layout pass
-
     auto data_and_token =
-        rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
+        rewriter.create<InfeedOp>(op.getLoc(), result_types, token,
                                   /*infeed_config=*/rewriter.getStringAttr(""),
                                   /*layout=*/layout);
+
+    result_types.pop_back();  // remove the token type.
 
     if (op._XlaSharding().hasValue()) {
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
@@ -5401,20 +5394,16 @@ class ConvertInfeedDequeueTupleOp
       }
     }
 
-    // The infeed instruction produces a tuple of the infeed data and a token
-    // type. Emit get_tuple_element to get infeed data tuple.
-    auto data_tuple = rewriter.create<GetTupleElementOp>(
-        op.getLoc(), data_tuple_type, data_and_token.getResult(0),
-        rewriter.getI32IntegerAttr(0));
-
-    // Emit get_tuple_element for each result.
+    if (op->hasAttr("layouts")) {
+      // Append a UnitAttr for the "token" operand of the mhlo.infeed op here to
+      // avoid compilation failure when exporting "layouts" attribute of the
+      // corresponding InfeedDequeueTupleOp to a graph node.
+      data_and_token->setAttr("layout", op->getAttr("layouts"));
+    }
     llvm::SmallVector<Value> results;
     results.reserve(result_types.size());
     for (auto idx_and_type : llvm::enumerate(result_types)) {
-      auto tuple_element = rewriter.create<GetTupleElementOp>(
-          op.getLoc(), idx_and_type.value(), data_tuple,
-          rewriter.getI32IntegerAttr(idx_and_type.index()));
-      results.push_back(tuple_element);
+      results.push_back(data_and_token.getResult(idx_and_type.index()));
     }
     rewriter.replaceOp(op, ValueRange(results));
     return success();
@@ -5433,11 +5422,10 @@ class ConvertInfeedDequeueTupleOp
 //
 // would be lowered to
 //
-// %tuple = "mhlo.tuple"(%val_1, %val_2) : (tensor<3xi32>, tensor<4xf32>) ->
-//      tuple<tensor<3xi32>, tensor<4xf32>>
 // %token = "mhlo.create_token"() : () -> !mhlo.token
-// %outfeed_token = "mhlo.outfeed"(%tuple, %token) {outfeed_config = ""} :
-//      (tuple<tensor<3xi32>, tensor<4xf32>>, !mhlo.token) -> !mhlo.token
+// %outfeed_token = "mhlo.outfeed"(%val_1, %val_2, %token) {outfeed_config = ""}
+// :
+//      (tensor<3xi32>, tensor<4xf32>, !mhlo.token) -> !mhlo.token
 //
 class ConvertOutfeedEnqueueTupleOp
     : public OpRewritePattern<TF::OutfeedEnqueueTupleOp> {
@@ -5447,10 +5435,9 @@ class ConvertOutfeedEnqueueTupleOp
   LogicalResult matchAndRewrite(TF::OutfeedEnqueueTupleOp op,
                                 PatternRewriter &rewriter) const override {
     auto token_type = mhlo::TokenType::get(rewriter.getContext());
-    auto tuple = rewriter.create<TupleOp>(op.getLoc(), op.inputs());
     auto token = rewriter.create<CreateTokenOp>(op.getLoc(), token_type);
-    SmallVector<Value> outfeed_data({tuple});
-    rewriter.create<OutfeedOp>(op.getLoc(), token_type, outfeed_data, token,
+
+    rewriter.create<OutfeedOp>(op.getLoc(), token_type, op.inputs(), token,
                                /*outfeed_config=*/rewriter.getStringAttr(""));
     rewriter.eraseOp(op);
     return success();
@@ -5691,44 +5678,6 @@ class ConvertUnpackOpDynamic : public OpRewritePattern<TF::UnpackOp> {
     }
 
     rewriter.replaceOp(op, results);
-    return success();
-  }
-};
-
-// Converts the tf.Sign op into mhlo.sign
-// TODO(disc): To recover static special case's performance with folding and
-// canonicalization.
-class ConvertSignOpDynamic : public OpRewritePattern<TF::SignOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::SignOp op,
-                                PatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    Value x = op.x();
-    auto x_type = x.getType().dyn_cast<RankedTensorType>();
-    if (!x_type) return failure();
-    // TODO(disc): Remove this constraint once fold and canonicalization
-    // implemented.
-    if (x_type.hasStaticShape()) return failure();
-
-    Value hlo_sign = rewriter.create<mhlo::SignOp>(loc, x);
-    const StringAttr kNe = rewriter.getStringAttr(
-        mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
-    Value hlo_cmp = rewriter.create<mhlo::CompareOp>(loc, x, x, kNe);
-
-    auto zero =
-        GetScalarConstOfType(x_type.getElementType(), loc, 0, &rewriter);
-    Value shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), x);
-
-    auto broadcast_dims_attr =
-        GetI64ElementsAttr(ArrayRef<int64_t>({}), &rewriter);
-    Value broadcasted_zero = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
-        loc, x_type, zero, shape_op, broadcast_dims_attr);
-
-    auto hlo_select = rewriter.create<mhlo::SelectOp>(
-        loc, hlo_cmp, broadcasted_zero, hlo_sign);
-
-    rewriter.replaceOp(op, hlo_select.getResult());
     return success();
   }
 };
@@ -7365,7 +7314,6 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
     ConvertSliceOpDynamic,
     ConvertTileOpDynamic,
     ConvertUnpackOpDynamic,
-    ConvertSignOpDynamic,
     ConvertSigmoidGradOpDynamic,
     ConvertConv2DDynamic,
     ConvertPadOpDynamic,

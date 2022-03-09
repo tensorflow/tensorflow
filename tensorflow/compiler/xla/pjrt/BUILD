@@ -394,10 +394,10 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -421,6 +421,7 @@ cc_library(
     srcs = ["tfrt_cpu_pjrt_client.cc"],
     hdrs = ["tfrt_cpu_pjrt_client.h"],
     compatible_with = [],
+    visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
         ":mlir_to_hlo",
         ":pjrt_client",

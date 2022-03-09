@@ -196,6 +196,12 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
     GetEagerContext()->SetRunEagerOpAsFunction(enable);
   }
 
+  void SetJitCompileRewrite(bool enable) override {
+    // TODO(tfrt-devs): Move this flag to a common place that can be shared
+    // by current TF and TFRT.
+    GetEagerContext()->SetJitCompileRewrite(enable);
+  }
+
   tensorflow::EagerExecutor& Executor() override {
     return GetEagerContext()->Executor();
   }

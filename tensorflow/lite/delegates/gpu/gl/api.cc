@@ -379,10 +379,7 @@ absl::Status Compile(const CompilationOptions& options,
                      const NodeShader& node_shader,
                      const WorkgroupsCalculator& workgroup_calculator,
                      std::unique_ptr<CompiledModel>* compiled_model) {
-  if (!IsBatchMatchesForAllValues(model)) {
-    return absl::InvalidArgumentError(
-        "Only identical batch dimension is supported");
-  }
+  RETURN_IF_ERROR(CheckBatchSizeForAllValues(model));
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
   if (!gpu_info.IsApiOpenGl31OrAbove()) {

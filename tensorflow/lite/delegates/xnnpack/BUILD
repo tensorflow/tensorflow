@@ -121,6 +121,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -151,6 +152,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -201,6 +203,23 @@ cc_library(
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "concatenation_tester",
+    testonly = 1,
+    srcs = ["concatenation_tester.cc"],
+    hdrs = ["concatenation_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -589,6 +608,23 @@ cc_library(
 )
 
 cc_library(
+    name = "split_tester",
+    testonly = 1,
+    srcs = ["split_tester.cc"],
+    hdrs = ["split_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "softmax_tester",
     testonly = 1,
     srcs = ["softmax_tester.cc"],
@@ -757,6 +793,21 @@ cc_test(
     }),
     deps = [
         ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "concatenation_test",
+    srcs = ["concatenation_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":concatenation_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1199,6 +1250,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_concatenation_test",
+    srcs = ["signed_quantized_concatenation_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":concatenation_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantized_conv_2d_test",
     srcs = ["signed_quantized_conv_2d_test.cc"],
     linkopts = select({
@@ -1222,6 +1288,21 @@ cc_test(
     }),
     deps = [
         ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_depth_to_space_test",
+    srcs = ["signed_quantized_depth_to_space_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":depth_to_space_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1343,7 +1424,22 @@ cc_test(
     deps = [
         ":quantized_resize_bilinear_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_split_test",
+    srcs = ["signed_quantized_split_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":split_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1373,7 +1469,22 @@ cc_test(
     deps = [
         ":quantized_transpose_conv_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "split_test",
+    srcs = ["split_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":split_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1463,7 +1574,7 @@ cc_test(
     deps = [
         ":test_main",
         ":transpose_conv_tester",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1514,6 +1625,21 @@ cc_test(
 )
 
 cc_test(
+    name = "unsigned_quantized_concatenation_test",
+    srcs = ["unsigned_quantized_concatenation_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":concatenation_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "unsigned_quantized_conv_2d_test",
     srcs = ["unsigned_quantized_conv_2d_test.cc"],
     linkopts = select({
@@ -1537,6 +1663,21 @@ cc_test(
     }),
     deps = [
         ":quantized_depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_depth_to_space_test",
+    srcs = ["unsigned_quantized_depth_to_space_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":depth_to_space_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1643,7 +1784,22 @@ cc_test(
     deps = [
         ":quantized_resize_bilinear_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_split_test",
+    srcs = ["unsigned_quantized_split_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":split_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1673,7 +1829,7 @@ cc_test(
     deps = [
         ":quantized_transpose_conv_tester",
         ":test_main",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_test_mode",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
 )

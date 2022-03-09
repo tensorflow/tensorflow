@@ -19,9 +19,9 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 
@@ -53,7 +53,7 @@ struct ChloLegalizeToHloPass
     // that are needed by the patterns.
     conversionTarget
         .addLegalDialect<MhloDialect, mlir::arith::ArithmeticDialect,
-                         mlir::StandardOpsDialect, mlir::tensor::TensorDialect,
+                         mlir::func::FuncDialect, mlir::tensor::TensorDialect,
                          mlir::shape::ShapeDialect, mlir::scf::SCFDialect>();
     conversionTarget.addLegalOp<chlo::MinimumBroadcastShapesOp>();
 

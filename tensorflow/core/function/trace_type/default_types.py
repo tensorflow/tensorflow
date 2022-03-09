@@ -16,7 +16,7 @@
 """TraceType implementations for common Python types."""
 
 from typing import Dict as PythonDict
-from typing import Hashable, Optional, Sequence, Type
+from typing import Hashable, Optional, Sequence, Type, Any
 from typing import Tuple as PythonTuple
 
 from tensorflow.python.types import trace
@@ -34,10 +34,7 @@ class Generic(trace.TraceType):
 
   def most_specific_common_supertype(
       self, types: Sequence[trace.TraceType]) -> Optional[trace.TraceType]:
-    if not types:
-      raise ValueError(f"`types` must be a non-empty sequence, got{types}")
-
-    return None
+    return self if all(self == other for other in types) else None
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -113,9 +110,6 @@ class OrderedCollection(trace.TraceType):
 
   def most_specific_common_supertype(self, types: Sequence[trace.TraceType]):
     """See base class."""
-    if not types:
-      raise ValueError(f"`types` must be a non-empty sequence, got{types}")
-
     if not all(self._has_same_structure(other) for other in types):
       return None
 
@@ -198,10 +192,6 @@ class Dict(trace.TraceType):
 
   def most_specific_common_supertype(self, types: Sequence[trace.TraceType]):
     """See base class."""
-
-    if not types:
-      raise ValueError(f"`types` must be a non-empty sequence, got{types}")
-
     if not all(self._has_same_structure(other) for other in types):
       return None
 
@@ -230,3 +220,46 @@ class Dict(trace.TraceType):
 
   def __repr__(self):
     return f"{self.__class__.__name__}(mapping={self.mapping!r})"
+
+
+class Reference(trace.TraceType):
+  """Represents a resource with an identifier.
+
+  Resource identifiers are useful to denote identical resources, that is,
+  resources which are known at compilation time to point to the same thing.
+  This information is useful in automatic control dependencies for instance,
+  where ops using the same resource don't run concurrently.
+  """
+
+  def __init__(self, base: trace.TraceType, identifier: Hashable):
+    self.base = base
+    self.identifier = identifier
+
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    if isinstance(other, Reference) and self.identifier == other.identifier:
+      return self.base.is_subtype_of(other.base)
+    return False
+
+  def most_specific_common_supertype(
+      self, types: Sequence[trace.TraceType]) -> Optional[trace.TraceType]:
+    if all(
+        isinstance(other, Reference) and self.identifier == other.identifier
+        for other in types):
+      return Reference(self.base.most_specific_common_supertype(
+          [other.base for other in types]), self.identifier)
+    return None
+
+  def __eq__(self, other: Any) -> bool:
+    if not isinstance(other, trace.TraceType):
+      return NotImplemented
+
+    return isinstance(
+        other, Reference
+    ) and self.identifier == other.identifier and self.base == other.base
+
+  def __hash__(self) -> int:
+    return hash((self.identifier, self.base))
+
+  def __repr__(self):
+    return (f"{self.__class__.__name__}(base={self.base!r}, "
+            f"identifier={self.identifier!r})")

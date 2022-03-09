@@ -62,6 +62,7 @@ test_files = glob(
 
 glob_lit_tests(
     data = [":test_utilities"],
+    default_size = "medium",
     default_tags = [
         "no_mac",  # TODO(b/191167848)
         "no_oss",  # TODO(b/190855110)
@@ -77,6 +78,5 @@ glob_lit_tests(
         file: [file[:-3]]
         for file in test_files
     },
-    size_override = {"multi_arguments_results_v1.py": "medium"},
     test_file_exts = ["py"],
 )

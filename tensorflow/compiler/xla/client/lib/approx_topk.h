@@ -22,10 +22,6 @@ limitations under the License.
 
 namespace xla {
 
-// EXPERIMENTAL
-// This method is only implemented on TPU, and must have the flag
-// `xla_tpu_nested_dot_fusion` set to true.
-//
 // Computes approximate top-ks by aggregating top-1s in equal-sized windows.
 // The number and the size of the windows are determined by the `recall_target`.
 //

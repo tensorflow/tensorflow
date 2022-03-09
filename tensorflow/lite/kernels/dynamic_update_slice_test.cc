@@ -98,6 +98,21 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestF32) {
                                                7, -2, 9})));
 }
 
+TEST(DynamicUpdateSliceOpTest, SimpleTestI1) {
+  DynamicUpdateSliceOpModel m({TensorType_BOOL, {3, 3}},
+                              {TensorType_BOOL, {2, 1}},
+                              {TensorType_INT32, {2}});
+  m.SetInput<bool>({true, true, true,  //
+                    true, true, true,  //
+                    true, true, true});
+  m.SetUpdate<bool>({false, false});
+  m.SetStartIndices<int32_t>({1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<bool>(), ElementsAreArray({true, true, true,   //
+                                                     true, false, true,  //
+                                                     true, false, true}));
+}
+
 TEST(DynamicUpdateSliceOpTest, SimpleTestI8) {
   DynamicUpdateSliceOpModel m({TensorType_INT8, {3, 3}},
                               {TensorType_INT8, {2, 1}},

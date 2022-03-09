@@ -946,7 +946,7 @@ func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f3
 // -----
 
 // CHECK:  HloModule
-func @main(%arg0: tensor<2x17x31x7xi32>) -> tensor<2x3x5x7xi32> {
+func @main(%arg0: tensor<2x17x31x7xi32>) -> tensor<2x5x8x7xi32> {
   %0 = mhlo.constant dense<-2147483648> : tensor<i32>
   %1 = "mhlo.reduce_window"(%arg0, %0) ({
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):	
@@ -958,8 +958,8 @@ func @main(%arg0: tensor<2x17x31x7xi32>) -> tensor<2x3x5x7xi32> {
     padding = dense<[[0, 0], [2, 0], [0, 2], [0, 0]]> : tensor<4x2xi64>,
     base_dilations = dense<[1, 1, 1, 1]> : tensor<4xi64>,
     window_dilations = dense<[1, 2, 2, 1]> : tensor<4xi64>
-  } : (tensor<2x17x31x7xi32>, tensor<i32>) -> tensor<2x3x5x7xi32>
-  return %1 : tensor<2x3x5x7xi32>
+  } : (tensor<2x17x31x7xi32>, tensor<i32>) -> tensor<2x5x8x7xi32>
+  return %1 : tensor<2x5x8x7xi32>
 }
 
 // CHECK:  %[[MAX_COMPUTATION:.*]] ([[ARG0:.*]]: s32[], [[ARG1:.*]]: s32[]) -> s32[]
@@ -1558,8 +1558,7 @@ func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f32>, 
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>, %b1: tensor<i32>):
               %2 = mhlo.add %a0, %b0 : tensor<f32>
               %3 = mhlo.add %a1, %b1 : tensor<i32>
-              %4 = "mhlo.tuple"(%2, %3) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-              "mhlo.return"(%4) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+              "mhlo.return"(%2, %3) : (tensor<f32>, tensor<i32>) -> ()
             })
          { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
            window_dimensions = dense<[5, 1]> : tensor<2xi64>,

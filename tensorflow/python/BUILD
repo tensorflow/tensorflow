@@ -830,6 +830,10 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "random_index_shuffle_ops_gen",
+)
+
+tf_gen_op_wrapper_private_py(
     name = "list_ops_gen",
 )
 
@@ -2177,6 +2181,7 @@ py_library(
     deps = [
         ":array_ops",
         ":math_ops",
+        ":random_index_shuffle_ops_gen",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
         "//tensorflow/python/framework:dtypes",
@@ -3264,6 +3269,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:pybind11_proto",
+        "//tensorflow/python/framework:op_def_util_cc",
         "//tensorflow/python/framework:python_api_dispatcher",
         "//tensorflow/python/framework:python_api_info",
         "//tensorflow/python/framework:python_api_parameter_converter",
@@ -3315,6 +3321,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/compiler/mlir/python:mlir",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",
     ] + (tf_additional_lib_deps() +
          tf_monitoring_python_deps() +
          tf_additional_plugin_deps() +
@@ -3345,6 +3352,7 @@ filegroup(
         ":numpy_lib",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
         "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/framework:op_def_util_cc",  # op_def_util
         "//tensorflow/python/framework:python_api_dispatcher",  # python_api_dispatcher
         "//tensorflow/python/framework:python_tensor_converter",  # python_tensor_converter
         "//tensorflow/python/framework:python_op_gen",  # python_op_gen
@@ -3409,6 +3417,7 @@ filegroup(
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",  # quantization
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
@@ -3930,6 +3939,21 @@ py_library(
     deps = [
         ":_pywrap_sanitizers",
         ":pywrap_tensorflow",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "flags_pybind",
+    srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
+    module_name = "flags_pybind",
+    visibility = ["//tensorflow/core/config:__subpackages__"],
+    deps = [
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core/config:flags_headers",
+        "//tensorflow/python:pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
     ],
 )
 

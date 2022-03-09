@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 #define RETURN_IF_ERROR(s) \
   {                        \
@@ -31,7 +32,6 @@ namespace tensorflow {
 namespace libexport {
 
 using protobuf::RepeatedPtrField;
-using CheckpointKey = TFPackage::CheckpointKey;
 
 tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
   // Load the proto
@@ -51,12 +51,41 @@ tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
                   "directory path: " +
                       path);
   }
+
+  // Load the trackable object graph for restoring checkpoint values
+  const std::string variables_dir =
+      tensorflow::io::JoinPath(path, tensorflow::kSavedModelVariablesDirectory);
+  const std::string variables_prefix = tensorflow::io::JoinPath(
+      variables_dir, tensorflow::kSavedModelVariablesFilename);
+  tf_package.variable_reader_ = std::make_unique<tensorflow::BundleReader>(
+      tensorflow::Env::Default(), variables_prefix);
+  tensorflow::Tensor object_graph_tensor;
+  RETURN_IF_ERROR(tf_package.variable_reader_->Lookup(
+      tensorflow::kObjectGraphProtoKey, &object_graph_tensor));
+  const auto* object_graph_string =
+      reinterpret_cast<const tensorflow::tstring*>(
+          object_graph_tensor.tensor_data().data());
+  // TODO(danielellis): make sure parse was successful
+  tf_package.trackable_object_graph_.ParseFromString(*object_graph_string);
   return tf_package;
 }
 
-tensorflow::StatusOr<std::vector<CheckpointKey>>
-TFPackage::GetVariableCheckpointKeys() {
-  return errors::Unimplemented("GetVariableCheckpointKeys not implemented.");
+tensorflow::StatusOr<std::string> TFPackage::GetVariableCheckpointKey(
+    int index) {
+  // TODO(danielellis): make sure valid index
+  const auto& trackable_object = trackable_object_graph_.nodes(index);
+  const TrackableObjectGraph::TrackableObject::SerializedTensor*
+      serialized_tensor = nullptr;
+  for (auto& maybe_serialized_tensor : trackable_object.attributes()) {
+    if (maybe_serialized_tensor.name() == "VARIABLE_VALUE") {
+      serialized_tensor = &maybe_serialized_tensor;
+    }
+  }
+  if (serialized_tensor == nullptr) {
+    return tensorflow::Status(error::INTERNAL,
+                              "Failed to find variable value field.");
+  }
+  return serialized_tensor->checkpoint_key();
 }
 
 const SavedObjectGraph& TFPackage::GetObjectGraph() {

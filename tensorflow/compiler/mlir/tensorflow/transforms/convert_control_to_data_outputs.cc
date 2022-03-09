@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -227,7 +227,7 @@ void AppendFunctionResults(FuncOp func, int num_resources,
   graph_op->replaceAllUsesWith(
       new_graph_op->getResults().drop_back(num_resources));
   graph_op.erase();
-  ReturnOp return_op = cast<ReturnOp>(block.getTerminator());
+  func::ReturnOp return_op = cast<func::ReturnOp>(block.getTerminator());
   int num_old_arguments = return_op.getNumOperands();
   for (int i = 0; i < num_resources; ++i) {
     return_op.operandsMutable().append(

@@ -50,7 +50,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -429,14 +429,6 @@ class ImporterBase {
       const std::unordered_map<string, Node*>& node_name_map,
       std::unordered_set<const Node*>* nodes);
 
-  static bool AddUnmodelledOpName(llvm::StringRef op_name) {
-    static auto* mutex = new tensorflow::mutex();
-    // All the TF ops encountered that aren't modelled in dialect.
-    static auto* unmodelled_op_names = new llvm::StringSet<>();
-    tensorflow::mutex_lock lock(*mutex);
-    return unmodelled_op_names->insert(op_name).second;
-  }
-
   // The input graph with backedges removed. The removed backedges are stored
   // in the back_edge_helper.
   BackEdgeHelper back_edge_helper_;
@@ -469,6 +461,8 @@ class ImporterBase {
   std::unique_ptr<ShapeRefiner> shape_refiner_ = nullptr;
   NameUniquifier* function_name_uniquifier_;
   mlir::StatusScopedDiagnosticHandler error_handler_;
+  // All the TF ops encountered that aren't modelled in dialect.
+  llvm::DenseSet<mlir::StringAttr> unmodelled_op_names_;
 
  protected:
   // Maps feed as TensorId to new Placeholder node name.
@@ -1716,8 +1710,8 @@ Status ImporterBase::ConvertFunctionArgAndRets(
   builder_.create<mlir::tf_executor::FetchOp>(graph_op.getLoc(),
                                               inst_to_return);
   builder_.setInsertionPointToEnd(bb);
-  builder_.create<mlir::ReturnOp>(mlir::UnknownLoc::get(context_),
-                                  graph_op.getResults());
+  builder_.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(context_),
+                                        graph_op.getResults());
 
   func.setAllArgAttrs(
       llvm::to_vector<4>(llvm::map_range(arg_attrs, [&](NamedAttrList& list) {
@@ -1968,40 +1962,44 @@ mlir::Operation* ImporterBase::CreateOperation(
     }
   }
 
-  mlir::OperationName name = inner_op->getName();
-  if (!name.isRegistered() &&
-      // Skip unmodelled ops that are handled differently.
-      (node_type_name != "_Arg" && node_type_name != "_Retval") &&
-      // Skip if warning already reported.
-      AddUnmodelledOpName(name.getStringRef())) {
-    if (node.op_def().is_stateful()) {
-      LOG(INFO) << "[potentially conservative] Op type `" << node.type_string()
+  if (VLOG_IS_ON(1)) {
+    mlir::OperationName name = inner_op->getName();
+    if (!name.isRegistered() &&
+        // Skip unmodelled ops that are handled differently.
+        (node_type_name != "_Arg" && node_type_name != "_Retval") &&
+        !unmodelled_op_names_.count(name.getIdentifier())) {
+      if (node.op_def().is_stateful()) {
+        VLOG(1) << "[potentially conservative] Op type `" << node.type_string()
                 << "` is stateful but effects not modelled";
-    } else {
-      // See if any resource type is used.
-      bool resource = false;
-      std::function<bool(mlir::Type)> record_resource;
-      record_resource = [&](mlir::Type type) {
-        if (resource) return true;
-        if (type.isa<mlir::TF::ResourceType>()) {
-          resource = true;
-          return true;
-        }
-        if (auto with_subtype =
-                type.dyn_cast<mlir::SubElementTypeInterface>()) {
-          with_subtype.walkSubTypes([&](mlir::Type t) { record_resource(t); });
-        }
-        return resource;
-      };
+      } else {
+        // See if any resource type is used.
+        bool resource = false;
+        std::function<bool(mlir::Type)> record_resource;
+        record_resource = [&](mlir::Type type) {
+          if (resource) return true;
+          if (type.isa<mlir::TF::ResourceType>()) {
+            resource = true;
+            return true;
+          }
+          if (auto with_subtype =
+                  type.dyn_cast<mlir::SubElementTypeInterface>()) {
+            with_subtype.walkSubTypes(
+                [&](mlir::Type t) { record_resource(t); });
+          }
+          return resource;
+        };
 
-      for (mlir::Type t : inner_op->getResultTypes())
-        if (record_resource(t)) break;
-      for (mlir::Type t : inner_op->getOperandTypes())
-        if (record_resource(t)) break;
-      if (resource)
-        LOG(INFO) << "[potentially conservative] Op type `"
+        for (mlir::Type t : inner_op->getResultTypes())
+          if (record_resource(t)) break;
+        for (mlir::Type t : inner_op->getOperandTypes())
+          if (record_resource(t)) break;
+        if (resource) {
+          unmodelled_op_names_.insert(name.getIdentifier());
+          VLOG(1) << "[potentially conservative] Op type `"
                   << node.type_string()
                   << "` has resource operands/results but effects not modelled";
+        }
+      }
     }
   }
 
@@ -3341,7 +3339,8 @@ Status CreateSavedModelIR(
             /*config=*/builder.getStringAttr(""),
             /*config_proto=*/builder.getStringAttr(""),
             /*executor_type=*/builder.getStringAttr(""));
-        body_builder.create<mlir::ReturnOp>(func.getLoc(), call.getResults());
+        body_builder.create<mlir::func::ReturnOp>(func.getLoc(),
+                                                  call.getResults());
       }
       func->setAttr(
           "tf_saved_model.exported_names",

@@ -16,7 +16,7 @@
 
 # pylint: disable=invalid-import-order, g-bad-import-order, unused-import
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.core.config import flags_pybind
+from tensorflow.python import flags_pybind
 
 
 FLAGS = None

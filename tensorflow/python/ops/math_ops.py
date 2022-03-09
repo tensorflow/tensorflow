@@ -5541,7 +5541,7 @@ def acos(x, name=None):
   Args:
     x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
       `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
-      `complex64`, `complex128`, `string`.
+      `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:

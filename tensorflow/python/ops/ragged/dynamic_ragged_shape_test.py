@@ -2129,6 +2129,10 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
     a = DynamicRaggedShape._from_inner_shape([1, 2, 3])
     self.assertAllEqual(1, a._dimension(0))
 
+  def testGetItemIsInstanceTensor(self):
+    a = dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape([1, 2, 3])
+    self.assertIsInstance(a[0], ops.Tensor)
+
   @parameterized.parameters([
       dict(
           lengths=[2, 2],

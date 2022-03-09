@@ -175,6 +175,9 @@ struct LinalgTrivialBufferForwardingPattern
             });
 
         reused_inputs.insert(input_buffer);
+        // We have found an input buffer which we can forward. No need to keep
+        // looking for another input buffer to forward.
+        break;
       }
     }
 

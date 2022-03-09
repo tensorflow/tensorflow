@@ -159,7 +159,7 @@ class ConvertGraphOp : public OpConversionPattern<tfg::GraphOp> {
 
     // Add terminator of func
     rewriter.setInsertionPointToEnd(&func.body().front());
-    rewriter.create<ReturnOp>(loc);
+    rewriter.create<func::ReturnOp>(loc);
 
     rewriter.replaceOp(graph.getOperation(), func.getOperation()->getResults());
 
@@ -227,7 +227,8 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
                                 executor_graph.body().end());
 
     rewriter.setInsertionPointToEnd(&func.body().front());
-    rewriter.create<ReturnOp>(loc, executor_graph.getOperation()->getResults());
+    rewriter.create<func::ReturnOp>(
+        loc, executor_graph.getOperation()->getResults());
 
     rewriter.replaceOp(graph_func.getOperation(),
                        func.getOperation()->getResults());
@@ -502,7 +503,7 @@ void LegalizeTFGToTFE::runOnOperation() {
   target.addLegalDialect<tf_executor::TensorFlowExecutorDialect>();
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<FuncOp>();
-  target.addLegalOp<ReturnOp>();
+  target.addLegalOp<func::ReturnOp>();
 
   RewritePatternSet patterns(&context);
   patterns.add<ConvertGraphOp>(&context);

@@ -48,6 +48,7 @@ cc_library(
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
+        "@com_google_absl//absl/hash",
         "@farmhash_archive//:farmhash",
     ],
 )
@@ -67,6 +68,7 @@ cc_library(
         "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
+        "@com_google_absl//absl/hash",
     ],
 )
 
@@ -108,6 +110,7 @@ cc_library(
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
+        "@com_google_absl//absl/hash",
         "@farmhash_archive//:farmhash",
     ],
 )

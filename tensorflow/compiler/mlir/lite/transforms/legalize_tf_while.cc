@@ -15,7 +15,7 @@ limitations under the License.
 
 // Converts TF While to TFL While with single call in body and cond.
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -63,7 +63,7 @@ void CreateRegionWithCall(FuncOp func, Region& region, Location loc) {
   SmallVector<Value, 4> new_operands;
   for (Type t : func.getType().getInputs())
     new_operands.push_back(block->addArgument(t, loc));
-  auto call = builder.create<CallOp>(loc, func, new_operands);
+  auto call = builder.create<func::CallOp>(loc, func, new_operands);
   builder.create<YieldOp>(loc, call.getResults());
   // Mark old function as private so that it can be DCE'd if not called.
   func.setPrivate();

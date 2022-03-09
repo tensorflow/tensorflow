@@ -49,6 +49,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_v2
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
 from tensorflow.python.platform import test
 
@@ -2041,6 +2043,25 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       v = array_ops.gather(ret, [0])
       return gradients_impl.gradients(v, [x])[0]  # 4*x^3
     self.assertAllEqual(self.evaluate(F()), [32.])
+
+  def testShapeInvariantsRaggedTensor(self):
+
+    @def_function.function
+    def TestFn(x):
+      _, ret = while_loop_v2(
+          lambda i, _: i < 1,
+          lambda i, y: (i + 1, array_ops.concat([y, y], axis=0)),
+          [0, x],
+          shape_invariants=[
+              tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32),
+              ragged_tensor.RaggedTensorSpec(shape=[None, None])],
+      )
+      return ret
+
+    x = ragged_factory_ops.constant([[1., 2.], [3.]])
+    result = TestFn(x)
+    expected_result = [[1., 2.], [3.], [1., 2.], [3.]]
+    self.assertAllEqual(result, expected_result)
 
 
 def ScalarShape():

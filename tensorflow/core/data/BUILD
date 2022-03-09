@@ -86,6 +86,9 @@ cc_library(
 tf_cc_test(
     name = "compression_utils_test",
     srcs = ["compression_utils_test.cc"],
+    tags = [
+        "requires-mem:24g",
+    ],
     deps = [
         ":compression_utils",
         ":dataset_test_base",
@@ -94,6 +97,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 

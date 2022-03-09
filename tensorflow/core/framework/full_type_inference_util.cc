@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/full_type_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -162,6 +164,38 @@ ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
                        ", but got ", in_el_t.DebugString()));
     }
   };
+}
+
+ForwardTypeInferenceFn MultiaryUnstack(
+    FullTypeId t, std::function<FullTypeDef(const FullTypeDef&)> unstack) {
+  return [t,
+          unstack](const std::vector<std::reference_wrapper<const FullTypeDef>>&
+                       input_types) -> StatusOr<FullTypeDef> {
+    FullTypeDef ret_type;
+    ret_type.set_type_id(TFT_PRODUCT);
+    FullTypeDef* cont_t = ret_type.add_args();
+    cont_t->set_type_id(t);
+    FullTypeDef* el_t = cont_t->add_args();
+    el_t->set_type_id(TFT_PRODUCT);
+    for (int element_idx = 0; element_idx < input_types.size(); ++element_idx) {
+      *(el_t->add_args()) = unstack(input_types[element_idx].get());
+    }
+    return ret_type;
+  };
+}
+
+FullTypeDef UnstackTensor(const FullTypeDef& t) {
+  // For now, only TFT_TENSOR and TFT_RAGGED are supported and
+  // only if they have a single argument (i.e. they don't specify a shape).
+  // If these have a shape in the future, this function needs to changed
+  // so that the output shape is computed based on the input shape and the
+  // effect of the unstack operation (e.g. a dimension is removed).
+  // TFT_UNSET is also allowed to support weak type inference where
+  // not having a fulltype is allowed.
+  DCHECK((t.type_id() == TFT_TENSOR) || (t.type_id() == TFT_RAGGED) ||
+         (t.type_id() == TFT_UNSET));
+  DCHECK_LE(t.args_size(), 1);
+  return t;
 }
 
 }  // namespace full_type

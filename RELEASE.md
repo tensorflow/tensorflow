@@ -28,6 +28,9 @@
         optimizers, and the previous generation of optimizers will be moved to
         `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
     *   Added L2 unit normalization layer `tf.keras.layers.UnitNormalization`.
+    *   Added `tf.keras.regularizers.OrthogonalRegularizer`, a new regularizer
+        that encourages orthogonality between the rows (or columns) or a
+        weight matrix.
     *   Added `tf.keras.layers.RandomBrightness` layer for image preprocessing.
     *   Added APIs for switching between interactive logging and absl logging.
         By default, Keras always writes the logs to stdout. However, this is not
@@ -42,6 +45,12 @@
         and `Model.predict()` to `"auto"`, which defaults to `verbose=1` for
         most cases and defaults to `verbose=2` when used with
         `ParameterServerStrategy` or with interactive logging disabled.
+   *    Argument `jit_compile` in `Model.compile()` now applies
+        to `Model.evaluate()` and `Model.predict()`.
+        Setting `jit_compile=True` in `compile()` compiles the model's
+        training, evaluation, and inference steps to
+        [XLA](https://www.tensorflow.org/xla).
+        Note that `jit_compile=True` may not necessarily work for all models.
 
 *   `tf.lite`:
 
@@ -72,6 +81,12 @@
         Now the correct feature key will be used. This aligns the behavior of
         `tf.data.experimental.parse_example_dataset` to match the behavior of
         `tf.io.parse_example`.
+
+*    `tf.keras`:
+
+    *   Fixed bug in optimizers that prevented them from properly checkpointing
+        slot variables when they are `ShardedVariable`s (used for training with
+        `tf.distribute.experimental.ParameterServerStrategy`).
 
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>

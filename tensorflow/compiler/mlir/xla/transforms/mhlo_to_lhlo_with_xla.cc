@@ -26,8 +26,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -45,7 +45,7 @@ limitations under the License.
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -175,7 +175,7 @@ class XlaHloToLhloPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<arith::ArithmeticDialect, bufferization::BufferizationDialect,
-                StandardOpsDialect, memref::MemRefDialect, mhlo::MhloDialect,
+                func::FuncDialect, memref::MemRefDialect, mhlo::MhloDialect,
                 lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
   }
 
@@ -307,7 +307,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
         GetI64DenseElementsAttr(dimensions));
 
     TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-        *instr->called_computations()[0], &reduce_op.body(), &builder_));
+        *instr->called_computations()[0], &reduce_op.body(), &builder_,
+        /*flatten_region_arg_tuple=*/true));
     op = reduce_op;
   } else {
     TF_ASSIGN_OR_RETURN(
@@ -1641,7 +1642,7 @@ Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
       ->loadDialect<arith::ArithmeticDialect,
-                    bufferization::BufferizationDialect, StandardOpsDialect,
+                    bufferization::BufferizationDialect, func::FuncDialect,
                     memref::MemRefDialect, mhlo::MhloDialect,
                     lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
 

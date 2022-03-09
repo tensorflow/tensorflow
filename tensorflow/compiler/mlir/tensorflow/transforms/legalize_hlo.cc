@@ -33,7 +33,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -2864,7 +2864,7 @@ void LegalizeHloToTf::runOnOperation() {
 
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
-  target.addLegalOp<CallOp, ConstantOp, arith::ConstantOp>();
+  target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addLegalOp<mhlo::TupleOp>();
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {

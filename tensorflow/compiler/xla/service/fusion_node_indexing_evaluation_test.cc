@@ -35,7 +35,6 @@ class InstructionFusionForTesting : public InstructionFusion {
  public:
   explicit InstructionFusionForTesting(HloModule* module)
       : InstructionFusion(InstructionFusion::IsExpensive) {
-    module_ = module;
     computation_ = module->entry_computation();
   }
 

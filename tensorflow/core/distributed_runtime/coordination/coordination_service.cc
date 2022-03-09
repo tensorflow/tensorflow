@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -49,6 +51,7 @@ namespace tensorflow {
 namespace {
 
 constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
+constexpr size_t kOngoingBarriersSoftLimit = 20;
 constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
 
 std::string GetTaskName(absl::string_view job_name, int task_id) {
@@ -135,19 +138,21 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
  private:
   const CoordinationServiceDeviceInfo& ListClusterDevices() override
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  void StartCheckStaleness();
+  uint64_t GetServiceIncarnation() override;
+  void StartCheckStaleness();  // Checks both heartbeat and barrier timeouts.
   void Stop();
   void PropagateError(const CoordinatedTask& task, Status error,
                       bool is_reported_by_agent = false)
       TF_LOCKS_EXCLUDED(state_mu_);
-  void DoneClusterRegistration(Status s) TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void SetTaskError(absl::string_view task_name, Status error)
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   struct BarrierState {
-    bool passed;
-    Status result;  // Only valid if `passed` is true.
-    int num_pending_tasks;
+    bool passed = false;
+    Status result = errors::Unknown(
+        "Invalid barrier result.");  // Only valid if `passed` is true.
+    uint64_t deadline_in_micros = 0;
+    int num_pending_tasks = 0;
     // Specifies which tasks have called the barrier so far.
     absl::flat_hash_map<CoordinatedTask, bool, CoordinatedTaskHash,
                         CoordinatedTaskEqual>
@@ -187,10 +192,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     State GetState() { return state_; }
     Status GetStatus() { return status_; }
     void SetConnected(uint64_t task_incarnation);
-    void SetRegisteredCallback(StatusCallback cb);
     Status RecordHeartbeat(uint64_t task_incarnation);
     int64 TimeSinceLastHeartbeatMs();
-    void InvokeRegisteredCallback(Status s);
     void SetError(Status status);
     absl::flat_hash_set<std::string> GetOngoingBarriers();
     void JoinBarrier(absl::string_view barrier_id);
@@ -199,28 +202,25 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
    private:
     // Incarnation ID for CPU:0 on remote task.
     uint64_t task_incarnation_ = 0;
-    // WaitForAllTasks callback invoked when all tasks are registered. Must be
-    // invoked exactly once.
-    StatusCallback registered_callback_;
-    std::atomic_bool is_callback_invoked_{true};
 
     State state_ = State::DISCONNECTED;
     Status status_;
     mutex last_heartbeat_mu_;
     int64 last_heartbeat_us_ TF_GUARDED_BY(last_heartbeat_mu_);
-    absl::flat_hash_set<std::string> ongoing_barriers_;
+    // For now, we assume there won't be many simultaneous barriers so we simply
+    // use a set.
+    absl::flat_hash_set<std::string> ongoing_barriers_for_task_;
   };
 
   std::unique_ptr<CoordinationClientCache> client_cache_;
   Env& env_;
-  const uint64 heartbeat_timeout_ms_;
+  const uint64_t service_incarnation_ = random::New64();
+  const uint64_t heartbeat_timeout_ms_;
 
   mutex state_mu_;
-  condition_variable cluster_registered_cv_;
   absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
       TF_GUARDED_BY(state_mu_);
   CoordinationServiceDeviceInfo cluster_devices_ TF_GUARDED_BY(state_mu_);
-  int cluster_pending_workers_ TF_GUARDED_BY(state_mu_);
 
   mutex kv_mu_;
   // Ordered map to store config key-values
@@ -236,6 +236,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 
   absl::flat_hash_map<std::string, BarrierState> barriers_
       TF_GUARDED_BY(state_mu_);
+  // For now, we assume there won't be many simultaneous barriers so we simply
+  // use a set.
+  absl::flat_hash_set<std::string> ongoing_barriers_ TF_GUARDED_BY(state_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceStandaloneImpl);
 };
@@ -247,12 +250,6 @@ void CoordinationServiceStandaloneImpl::TaskState::SetConnected(
   task_incarnation_ = task_incarnation;
   mutex_lock l(last_heartbeat_mu_);
   last_heartbeat_us_ = Env::Default()->NowMicros();
-}
-
-void CoordinationServiceStandaloneImpl::TaskState::SetRegisteredCallback(
-    StatusCallback cb) {
-  is_callback_invoked_.store(false);
-  registered_callback_ = cb;
 }
 
 void CoordinationServiceStandaloneImpl::TaskState::SetError(
@@ -280,35 +277,26 @@ int64 CoordinationServiceStandaloneImpl::TaskState::TimeSinceLastHeartbeatMs() {
   return (Env::Default()->NowMicros() - last_heartbeat_us_) / 1000;
 }
 
-void CoordinationServiceStandaloneImpl::TaskState::InvokeRegisteredCallback(
-    Status s) {
-  if (!is_callback_invoked_.exchange(true, std::memory_order_acq_rel)) {
-    registered_callback_(s);
-    mutex_lock l(last_heartbeat_mu_);
-    last_heartbeat_us_ = Env::Default()->NowMicros();
-  }
-}
-
 absl::flat_hash_set<std::string>
 CoordinationServiceStandaloneImpl::TaskState::GetOngoingBarriers() {
-  return ongoing_barriers_;
+  return ongoing_barriers_for_task_;
 }
 
 void CoordinationServiceStandaloneImpl::TaskState::JoinBarrier(
     absl::string_view barrier_id) {
-  ongoing_barriers_.emplace(barrier_id);
+  ongoing_barriers_for_task_.emplace(barrier_id);
 }
 
 void CoordinationServiceStandaloneImpl::TaskState::ExitBarrier(
     absl::string_view barrier_id) {
-  ongoing_barriers_.erase(barrier_id);
+  ongoing_barriers_for_task_.erase(barrier_id);
 }
 CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
     std::unique_ptr<CoordinationClientCache> client_cache, Env* env,
     const ServerDef& server_def)
     : client_cache_(std::move(client_cache)),
       env_(*env),
-      heartbeat_timeout_ms_([&server_def]() -> uint64 {
+      heartbeat_timeout_ms_([&server_def]() -> uint64_t {
         const auto& configs = server_def.default_session_config()
                                   .experimental()
                                   .coordination_config();
@@ -332,15 +320,17 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
       cluster_state_.emplace(task_name, std::make_unique<TaskState>());
     }
   }
-  cluster_pending_workers_ = cluster_state_.size();
   StartCheckStaleness();
 }
 
+// Checks both heartbeat and barrier timeouts in the same thread, since threads
+// are a constrained resource.
 void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
   check_staleness_thread_.reset(
       env_.StartThread({}, kHealthCheckThread, [this]() {
         // Used to store the job and task info if a task becomes stale
         CoordinatedTask stale_task;
+        absl::flat_hash_map<std::string, BarrierState*> expired_barriers;
         while (true) {
           {
             mutex_lock l(check_staleness_thread_shutdown_mu_);
@@ -349,6 +339,7 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
               return;
             }
           }
+          // Heartbeat check.
           Status status = Status::OK();
           {
             mutex_lock l(state_mu_);
@@ -376,6 +367,31 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
           }
           if (!status.ok()) {
             PropagateError(stale_task, status);
+          }
+
+          // Barrier timeout check.
+          uint64_t current_time_micros = Env::Default()->NowMicros();
+          {
+            mutex_lock l(state_mu_);
+            // Gather barriers which have timed out.
+            for (const std::string& barrier_id : ongoing_barriers_) {
+              auto* barrier = &barriers_[barrier_id];
+              if (current_time_micros > barrier->deadline_in_micros) {
+                expired_barriers[barrier_id] = barrier;
+              }
+            }
+            // Pass these barriers with the time out error.
+            for (const std::pair<const std::string, BarrierState*>& barrier_kv :
+                 expired_barriers) {
+              absl::string_view barrier_id = barrier_kv.first;
+              BarrierState* barrier = barrier_kv.second;
+              const Status error =
+                  MakeCoordinationError(errors::DeadlineExceeded(absl::StrCat(
+                      "Barrier timed out. Barrier_id: ", barrier_id)));
+              PassBarrier(barrier_id, error, barrier);
+            }
+            // Reset this for the next barrier check.
+            expired_barriers.clear();
           }
         }
       }));
@@ -405,7 +421,6 @@ void CoordinationServiceStandaloneImpl::Stop() {
     mutex_lock l(check_staleness_thread_shutdown_mu_);
     shutting_down_ = true;
     check_staleness_thread_cv_.notify_all();
-    cluster_registered_cv_.notify_all();
   }
   check_staleness_thread_.reset();
 }
@@ -431,7 +446,6 @@ void CoordinationServiceStandaloneImpl::RegisterWorker(
 
       SetTaskError(task_name, status);
       status = s;
-      DoneClusterRegistration(s);
     } else {
       // Hit this path when the task is registering itself for the first time,
       // or it's already in ERROR state and now register again. In both cases,
@@ -448,20 +462,13 @@ void CoordinationServiceStandaloneImpl::RegisterWorker(
 void CoordinationServiceStandaloneImpl::WaitForAllTasks(
     const CoordinatedTask& task, const CoordinationServiceDeviceInfo& devices,
     StatusCallback done) {
-  const std::string& task_name = GetTaskName(task);
-  mutex_lock l(state_mu_);
-  if (!cluster_state_.contains(task_name)) {
-    done(MakeCoordinationError(errors::InvalidArgument(
-        "Unexpected worker request with task_name=", task_name)));
-    return;
+  {
+    mutex_lock l(state_mu_);
+    cluster_devices_.MergeFrom(devices);
   }
-  DCHECK_GT(cluster_pending_workers_, 0);
-  cluster_state_[task_name]->SetRegisteredCallback(std::move(done));
-  cluster_devices_.MergeFrom(devices);
-  cluster_pending_workers_--;
-  if (cluster_pending_workers_ == 0) {
-    DoneClusterRegistration(Status::OK());
-  }
+  BarrierAsync(
+      absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_)),
+      absl::InfiniteDuration(), task, {}, std::move(done));
 }
 
 const CoordinationServiceDeviceInfo&
@@ -469,13 +476,8 @@ CoordinationServiceStandaloneImpl::ListClusterDevices() {
   return cluster_devices_;
 }
 
-void CoordinationServiceStandaloneImpl::DoneClusterRegistration(Status s) {
-  for (const auto& task_state : cluster_state_) {
-    if (task_state.second != nullptr) {
-      task_state.second->InvokeRegisteredCallback(s);
-    }
-  }
-  cluster_registered_cv_.notify_all();
+uint64_t CoordinationServiceStandaloneImpl::GetServiceIncarnation() {
+  return service_incarnation_;
 }
 
 Status CoordinationServiceStandaloneImpl::ReportTaskError(
@@ -732,8 +734,17 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
         return;
       }
     }
+    barrier->deadline_in_micros =
+        Env::Default()->NowMicros() + (timeout / absl::Microseconds(1));
 
     // Add ongoing barrier to cluster state.
+    ongoing_barriers_.emplace(barrier_id);
+    const size_t num_ongoing_barriers = ongoing_barriers_.size();
+    if (num_ongoing_barriers > kOngoingBarriersSoftLimit) {
+      LOG(WARNING) << "There is a high number of ongoing barriers in "
+                      "coordination service: "
+                   << num_ongoing_barriers;
+    }
     for (const auto& pending_task : barrier->tasks_at_barrier) {
       const CoordinatedTask& task = pending_task.first;
       cluster_state_[GetTaskName(task)]->JoinBarrier(barrier_id);
@@ -822,6 +833,7 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
   }
   barrier->tasks_at_barrier.clear();
   barrier->done_callbacks.clear();
+  ongoing_barriers_.erase(barrier_id);
 }
 
 bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(

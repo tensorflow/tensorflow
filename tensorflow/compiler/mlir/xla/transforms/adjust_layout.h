@@ -29,6 +29,10 @@ std::unique_ptr<Pass> CreateAdjustLayoutPass();
 // Register the pass for command line testing.
 void RegisterAdjustLayoutPass();
 
+// Try to determine the right TPU infeed layout.
+FailureOr<Attribute> GetTPUInfeedLayout(const ArrayRef<Type> types,
+                                        OpBuilder &rewriter);
+
 }  // namespace mhlo
 }  // namespace mlir
 

@@ -508,6 +508,20 @@ void UpdateTfMlirGraphOptimizationPassStateCounter(
   metric->GetCell(pass_state, processing_state)->IncrementBy(1);
 }
 
+void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
+                                         const std::string& bridge_version,
+                                         bool fallback_enabled,
+                                         const std::string& result) {
+  static auto* metric = monitoring::Counter<4>::New(
+      "/tensorflow/core/tf_mlir_bridge_first_phase_counter",
+      "Tracks processing state in first phase of mlir bridge", "device",
+      "version", "fallback", "result");
+  std::string fallback_status =
+      fallback_enabled ? "fallback_enabled" : "fallback_disabled";
+  metric->GetCell(device_type, bridge_version, fallback_status, result)
+      ->IncrementBy(1);
+}
+
 void UpdateTpuErrorCounter(const string& op, const string& error_type) {
   tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
 }

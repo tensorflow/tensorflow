@@ -275,7 +275,8 @@ Status MetaOptimizer::InitializeOptimizers(
   // #TODO(b/200087693): LLVM does not build on Fuchsia.
 #ifndef __Fuchsia__
   // Hooks the MLIR optimizer, it won't run any optimizations right now.
-  optimizers->push_back(MakeUnique<mlir::tfg::TfgGrapplerOptimizer>(""));
+  optimizers->push_back(MakeUnique<mlir::tfg::TFGGrapplerOptimizer>(
+      mlir::tfg::DefaultGrapplerPipeline));
 #endif
 
 #define USER_IS_ON(CFG) cfg_.CFG() == RewriterConfig::ON
