@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -146,6 +147,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       TF_LOCKS_EXCLUDED(state_mu_);
   void SetTaskError(absl::string_view task_name, Status error)
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  void SetXlaGlobalDeviceIds() TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   struct BarrierState {
     bool passed = false;
@@ -216,6 +218,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   Env& env_;
   const uint64_t service_incarnation_ = random::New64();
   const uint64_t heartbeat_timeout_ms_;
+
+  const std::string device_propagation_barrier_id_ =
+      absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_));
 
   mutex state_mu_;
   absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
@@ -476,9 +481,8 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
     mutex_lock l(state_mu_);
     cluster_devices_.MergeFrom(devices);
   }
-  BarrierAsync(
-      absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_)),
-      absl::InfiniteDuration(), task, {}, std::move(done));
+  BarrierAsync(device_propagation_barrier_id_, absl::InfiniteDuration(), task,
+               {}, std::move(done));
 }
 
 const CoordinationServiceDeviceInfo&
@@ -837,6 +841,10 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
     absl::string_view barrier_id, Status result, BarrierState* barrier) {
   barrier->passed = true;
   barrier->result = result;
+  // Special hook for device propagation barrier to set global device ids.
+  if (barrier_id == device_propagation_barrier_id_) {
+    SetXlaGlobalDeviceIds();
+  }
   // Propagate results to participating tasks.
   for (const auto& callback : barrier->done_callbacks) {
     callback(result);
@@ -871,6 +879,19 @@ bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
   return true;
 }
 
+void CoordinationServiceStandaloneImpl::SetXlaGlobalDeviceIds() {
+  // No-op if TF devices are specified.
+  if (cluster_devices_.has_xla()) {
+    int global_id = 0;
+    for (xla::LocalTopologyProto& local_topology :
+         *cluster_devices_.mutable_xla()->mutable_devices()->mutable_nodes()) {
+      for (xla::DeviceProto& device : *local_topology.mutable_devices()) {
+        device.set_global_device_id(global_id);
+        ++global_id;
+      }
+    }
+  }
+}
 }  // namespace
 
 std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService(

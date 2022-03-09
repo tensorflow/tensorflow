@@ -635,6 +635,10 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
   n.WaitForNotification();
 
   CoordinationServiceDeviceInfo expected_cluster_devices;
+  local_0.mutable_devices(0)->set_global_device_id(0);
+  local_0.mutable_devices(1)->set_global_device_id(1);
+  local_1.mutable_devices(0)->set_global_device_id(2);
+  local_2.mutable_devices(0)->set_global_device_id(3);
   *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
       local_0;
   *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
