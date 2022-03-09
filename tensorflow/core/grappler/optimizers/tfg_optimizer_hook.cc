@@ -96,9 +96,7 @@ Status TFGGrapplerOptimizer::Optimize(
     tensorflow::grappler::Cluster* cluster,
     const tensorflow::grappler::GrapplerItem& item,
     tensorflow::GraphDef* optimized_graph) {
-#ifndef NDEBUG
   VLOG(5) << "TFG Before Graph: \n" << item.graph.DebugString();
-#endif  // NDEBUG
 
   // Import the GraphDef to TFG.
   tensorflow::GraphDebugInfo debug_info;
