@@ -27,7 +27,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -54,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/port.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tensorflow {
 
@@ -112,6 +112,9 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
   if (!IsGoogleCudaEnabled() && use_gpu) {
     state.SetLabel(
         strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
     return;
   }
   state.SetLabel(label);
@@ -521,6 +524,9 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
   if (!IsGoogleCudaEnabled() && use_gpu) {
     state.SetLabel(
         strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
     return;
   }
   state.SetLabel(label);
@@ -1124,6 +1130,15 @@ static void BM_MaxPoolBk(::testing::benchmark::State& state, int batch_size,
                          int rows, int cols, int depth, int kernel_rows,
                          int kernel_cols, int stride, Padding padding,
                          int num_threads, bool use_gpu, const string& label) {
+  if (!IsGoogleCudaEnabled() && use_gpu) {
+    state.SetLabel(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
+    return;
+  }
+
   auto root = Scope::NewRootScope().ExitOnError();
 
   int64_t out_height, out_width, pad_rows, pad_cols;
@@ -1352,6 +1367,15 @@ static void BM_ImageNetSoftmaxFwd(::testing::benchmark::State& state,
                                   int batch_size, int node_depth,
                                   int num_threads, bool use_gpu,
                                   const string& label) {
+  if (!IsGoogleCudaEnabled() && use_gpu) {
+    state.SetLabel(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
+    return;
+  }
+
   auto root = Scope::NewRootScope().ExitOnError();
 
   Tensor input(DT_FLOAT, TensorShape({batch_size, node_depth}));
@@ -1398,6 +1422,16 @@ BM_ImageNetSoftmaxFwd(8192, 32768, 1, true, "softmax128");
 
 static void BM_TopK(::testing::benchmark::State& state, int rows, int cols,
                     int k, int num_threads, bool use_gpu, const string& label) {
+  if (!IsGoogleCudaEnabled() && use_gpu) {
+    state.SetLabel(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
+    state.SkipWithError(
+        strings::StrCat("Skipping GPU test (no --config=cuda): ", label)
+            .c_str());
+    return;
+  }
+  state.SetLabel(label);
+
   auto root = Scope::NewRootScope().ExitOnError();
 
   Tensor input(DT_FLOAT, TensorShape({rows, cols}));
