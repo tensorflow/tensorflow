@@ -914,13 +914,14 @@ def depthwise_conv2d_v2(input,
 
   In detail, with the default NHWC format,
 
-      output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
-           filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
-                                           strides[2] * j + rate[1] * dj, k]
+      output[b, i, j, k * channel_multiplier + q] =
+          sum_{di, dj} filter[di, dj, k, q] *
+                       input[b, strides[1] * i + dilations[0] * di,
+                                strides[2] * j + dilations[1] * dj, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the
   same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
-  If any value in `rate` is greater than 1, we perform atrous depthwise
+  If any value in `dilations` is greater than 1, we perform atrous depthwise
   convolution, in which case all values in the `strides` tensor must be equal
   to 1.
 
