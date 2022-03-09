@@ -2819,6 +2819,50 @@ func @depthwise_conv(%arg0: tensor<2x4x5x2xf32>,
 
 // -----
 
+func @depthwise_conv_with_padding(
+    %arg0: tensor<2x4x5x2xf32>,
+    %arg1: tensor<2x2x2x3xf32>) -> tensor<2x3x6x6xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 2,
+      kernel_output_feature_dimension = 3,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [1, 2]
+    >,
+    feature_group_count = 2 : i64,
+    padding = dense<[[0, 0], [1, 1]]> : tensor<2x2xi64>,
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>,
+    someattr} : (tensor<2x4x5x2xf32>, tensor<2x2x2x3xf32>) -> tensor<2x3x6x6xf32>
+  return %0 : tensor<2x3x6x6xf32>
+}
+// CHECK:      func @depthwise_conv_with_padding
+// CHECK-SAME:   %[[IN:[a-zA-Z0-9_]*]]
+// CHECK-SAME:   %[[FILTER:[a-zA-Z0-9_]*]]
+// CHECK:        %[[ZERO:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:        %[[PAD:.*]] = tensor.pad %[[IN]] low[0, 0, 1, 0] high[0, 0, 1, 0]  {
+// CHECK:        ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
+// CHECK:          tensor.yield %[[ZERO]] : f32
+// CHECK         } : tensor<2x4x5x2xf32> to tensor<2x4x7x1xf32>
+// CHECK:        %[[INIT:.+]] = linalg.init_tensor [2, 3, 6, 2, 3] : tensor<2x3x6x2x3xf32>
+// CHECK:        %[[CST:.+]] = arith.constant 0.000000e+00 : f32
+// CHECK:        %[[FILL:.+]] = linalg.fill(%[[CST]], %[[INIT]]) : f32, tensor<2x3x6x2x3xf32> -> tensor<2x3x6x2x3xf32>
+// CHECK:        %[[OUT:.+]] = linalg.depthwise_conv_2d_nhwc_hwcm
+// CHECK-SAME:     {dilations = dense<1> : tensor<2xi64>, someattr, strides = dense<1> : tensor<2xi64>}
+// CHECK-SAME:     ins(%[[PAD]], %[[FILTER]] : tensor<2x4x7x2xf32>, tensor<2x2x2x3xf32>)
+// CHECK-SAME:     outs(%[[FILL]] : tensor<2x3x6x2x3xf32>) -> tensor<2x3x6x2x3xf32>
+// CHECK:        %{{.+}} = tensor.collapse_shape %[[OUT]]
+// CHECK-SAME:     [0], [1], [2], [3, 4]
+// CHECK-SAME:     : tensor<2x3x6x2x3xf32> into tensor<2x3x6x6xf32>
+
+// -----
+
 func @depthwise_conv_multiplier_1(%arg0: tensor<1x113x113x96xf32>,
                                   %arg1: tensor<3x3x1x96xf32>) -> tensor<1x56x56x96xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -2853,6 +2897,49 @@ func @depthwise_conv_multiplier_1(%arg0: tensor<1x113x113x96xf32>,
 // CHECK-SAME:      {dilations = dense<1> : tensor<2xi64>, strides = dense<2> : tensor<2xi64>}
 // CHECK-SAME:       ins(%[[IN]], %[[RESHAPED_FILTER]] : tensor<1x113x113x96xf32>, tensor<3x3x96xf32>)
 // CHECK-SAME:      outs(%[[FILL]] : tensor<1x56x56x96xf32>) -> tensor<1x56x56x96xf32>
+
+// -----
+
+func @depthwise_conv_multiplier_1_with_padding(
+    %arg0: tensor<1x113x113x96xf32>,
+    %arg1: tensor<3x3x1x96xf32>) -> tensor<1x56x56x96xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<raw
+      input_batch_dimension = 0,
+      input_feature_dimension = 3,
+      input_spatial_dimensions = [1, 2],
+      kernel_input_feature_dimension = 2,
+      kernel_output_feature_dimension = 3,
+      kernel_spatial_dimensions = [0, 1],
+      output_batch_dimension = 0,
+      output_feature_dimension = 3,
+      output_spatial_dimensions = [1, 2]
+    >,
+    feature_group_count = 96 : i64,
+    padding = dense<[[1, 1], [2, 2]]> : tensor<2x2xi64>,
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<2> : tensor<2xi64>} : (tensor<1x113x113x96xf32>, tensor<3x3x1x96xf32>) -> tensor<1x56x56x96xf32>
+  return %0 : tensor<1x56x56x96xf32>
+}
+// CHECK:       func @depthwise_conv_multiplier_1_with_padding
+// CHECK-SAME:    %[[IN:[a-zA-Z0-9_]*]]
+// CHECK-SAME:    %[[FILTER:[a-zA-Z0-9_]*]]
+// CHECK:         %[[ZERO:.*]] = arith.constant 0.000000e+00 : f32
+// CHECK:         %[[PAD:.*]] = tensor.pad %[[IN]] low[0, 1, 2, 0] high[0, 1, 2, 0]  {
+// CHECK:         ^bb0(%{{.*}}: index, %{{.*}}: index, %{{.*}}: index, %{{.*}}: index):
+// CHECK:           tensor.yield %[[ZERO]] : f32
+// CHECK          } : tensor<1x113x113x96xf32> to tensor<1x115x117x96xf32>
+// CHECK:         %[[INIT:.+]] = linalg.init_tensor [1, 56, 56, 96] : tensor<1x56x56x96xf32>
+// CHECK:         %[[CST:.+]] = arith.constant 0.000000e+00 : f32
+// CHECK:         %[[FILL:.+]] = linalg.fill(%[[CST]], %[[INIT]]) : f32, tensor<1x56x56x96xf32> -> tensor<1x56x56x96xf32>
+// CHECK:         %[[RESHAPED_FILTER:.+]] = tensor.collapse_shape %[[FILTER]]
+// CHECK-SAME:     [0], [1], [2, 3]
+// CHECK-SAME:     : tensor<3x3x1x96xf32> into tensor<3x3x96xf32>
+// CHECK:         %{{.+}} = linalg.depthwise_conv_2d_nhwc_hwc
+// CHECK-SAME:      {dilations = dense<1> : tensor<2xi64>, strides = dense<2> : tensor<2xi64>}
+// CHECK-SAME:       ins(%[[PAD]], %[[RESHAPED_FILTER]] : tensor<1x115x117x96xf32>, tensor<3x3x96xf32>)
+// CHECK-SAME:       outs(%[[FILL]] : tensor<1x56x56x96xf32>) -> tensor<1x56x56x96xf32>
 
 // -----
 
