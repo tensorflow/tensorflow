@@ -24,6 +24,108 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
+namespace {
+template <DataType T>
+absl::Status TransposeIntTest(TestExecutionEnvironment* env) {
+  tflite::gpu::Tensor<BHWC, T> src;
+  src.shape = BHWC(1, 1, 2, 3);
+  src.data = {1, 2, -3, -4, 3, 6};
+
+  TransposeAttributes attr;
+  attr.perm = BHWC(0, 1, 3, 2);
+
+  tflite::gpu::Tensor<BHWC, T> ref_tensor;
+  ref_tensor.shape = BHWC(1, 1, 3, 2);
+  ref_tensor.data = {1, -4, 2, 3, -3, 6};
+
+  std::vector<TensorStorageType> supported_storages;
+  if (T == DataType::INT32) {
+    supported_storages = env->GetStoragesWith32bitIntSupport();
+  } else if (T == DataType::INT16) {
+    supported_storages = env->GetStoragesWith16bitIntSupport();
+  } else if (T == DataType::INT8) {
+    supported_storages = env->GetStoragesWith8bitIntSupport();
+  }
+  for (auto storage : supported_storages) {
+    OperationDef op_def;
+    op_def.precision = CalculationsPrecision::F32;
+    op_def.src_tensors.push_back({T, storage, Layout::HWC});
+    op_def.dst_tensors.push_back({T, storage, Layout::HWC});
+    TensorDescriptor src_0, dst;
+    src_0 = op_def.src_tensors[0];
+    src_0.UploadData(src);
+    dst.SetBHWCShape(BHWC(1, 1, 3, 2));
+    GPUOperation operation = CreateTranspose(op_def, attr);
+    RETURN_IF_ERROR(env->ExecuteGPUOperation(
+        {&src_0}, {&dst},
+        absl::make_unique<GPUOperation>(std::move(operation))));
+    tflite::gpu::Tensor<BHWC, T> dst_tensor;
+    dst.DownloadData(&dst_tensor);
+    if (dst_tensor.data != ref_tensor.data) {
+      return absl::InternalError("not equal");
+    }
+  }
+  return absl::OkStatus();
+}
+
+template absl::Status TransposeIntTest<DataType::INT32>(
+    TestExecutionEnvironment* env);
+template absl::Status TransposeIntTest<DataType::INT16>(
+    TestExecutionEnvironment* env);
+template absl::Status TransposeIntTest<DataType::INT8>(
+    TestExecutionEnvironment* env);
+
+template <DataType T>
+absl::Status TransposeUintTest(TestExecutionEnvironment* env) {
+  tflite::gpu::Tensor<BHWC, T> src;
+  src.shape = BHWC(1, 1, 2, 3);
+  src.data = {1, 2, 3, 4, 5, 6};
+
+  TransposeAttributes attr;
+  attr.perm = BHWC(0, 1, 3, 2);
+
+  tflite::gpu::Tensor<BHWC, T> ref_tensor;
+  ref_tensor.shape = BHWC(1, 1, 3, 2);
+  ref_tensor.data = {1, 4, 2, 5, 3, 6};
+
+  std::vector<TensorStorageType> supported_storages;
+  if (T == DataType::UINT32) {
+    supported_storages = env->GetStoragesWith32bitIntSupport();
+  } else if (T == DataType::UINT16) {
+    supported_storages = env->GetStoragesWith16bitIntSupport();
+  } else if (T == DataType::UINT8) {
+    supported_storages = env->GetStoragesWith8bitIntSupport();
+  }
+  for (auto storage : supported_storages) {
+    OperationDef op_def;
+    op_def.precision = CalculationsPrecision::F32;
+    op_def.src_tensors.push_back({T, storage, Layout::HWC});
+    op_def.dst_tensors.push_back({T, storage, Layout::HWC});
+    TensorDescriptor src_0, dst;
+    src_0 = op_def.src_tensors[0];
+    src_0.UploadData(src);
+    dst.SetBHWCShape(BHWC(1, 1, 3, 2));
+    GPUOperation operation = CreateTranspose(op_def, attr);
+    RETURN_IF_ERROR(env->ExecuteGPUOperation(
+        {&src_0}, {&dst},
+        absl::make_unique<GPUOperation>(std::move(operation))));
+    tflite::gpu::Tensor<BHWC, T> dst_tensor;
+    dst.DownloadData(&dst_tensor);
+    if (dst_tensor.data != ref_tensor.data) {
+      return absl::InternalError("not equal");
+    }
+  }
+  return absl::OkStatus();
+}
+
+template absl::Status TransposeUintTest<DataType::UINT32>(
+    TestExecutionEnvironment* env);
+template absl::Status TransposeUintTest<DataType::UINT16>(
+    TestExecutionEnvironment* env);
+template absl::Status TransposeUintTest<DataType::UINT8>(
+    TestExecutionEnvironment* env);
+
+}  // namespace
 
 absl::Status TransposeTest(TestExecutionEnvironment* env) {
   TensorFloat32 src_tensor;
@@ -51,6 +153,13 @@ absl::Status TransposeTest(TestExecutionEnvironment* env) {
                                     dst_tensor.data, 0.0f));
     }
   }
+
+  RETURN_IF_ERROR(TransposeIntTest<DataType::INT32>(env));
+  RETURN_IF_ERROR(TransposeIntTest<DataType::INT16>(env));
+  RETURN_IF_ERROR(TransposeIntTest<DataType::INT8>(env));
+  RETURN_IF_ERROR(TransposeUintTest<DataType::UINT32>(env));
+  RETURN_IF_ERROR(TransposeUintTest<DataType::UINT16>(env));
+  RETURN_IF_ERROR(TransposeUintTest<DataType::UINT8>(env));
   return absl::OkStatus();
 }
 

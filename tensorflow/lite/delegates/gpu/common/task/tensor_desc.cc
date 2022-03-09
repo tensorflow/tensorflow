@@ -86,26 +86,28 @@ std::string AddressModeToCLSampler(AddressMode address_mode) {
   }
 }
 
-std::string GetTypeDeclaration(const GpuInfo& gpu_info, DataType data_type) {
+std::string GetTypeDeclaration(const GpuInfo& gpu_info, DataType data_type,
+                               int vec_size) {
   if (gpu_info.IsApiOpenCl()) {
-    return ToCLDataType(data_type, 4);
+    return ToCLDataType(data_type, vec_size);
   } else if (gpu_info.IsApiMetal()) {
-    return ToMetalDataType(data_type, 4);
+    return ToMetalDataType(data_type, vec_size);
   } else if (gpu_info.IsGlsl()) {
-    return ToGlslShaderDataType(data_type, 4, true,
+    return ToGlslShaderDataType(data_type, vec_size, true,
                                 gpu_info.IsGlslSupportsExplicitFp16());
   } else {
     return "";
   }
 }
 
-std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type) {
+std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type,
+                         int vec_size) {
   if (gpu_info.IsApiOpenCl()) {
-    return "(" + ToCLDataType(data_type, 4) + ")(0)";
+    return "(" + ToCLDataType(data_type, vec_size) + ")(0)";
   } else if (gpu_info.IsApiMetal()) {
-    return ToMetalDataType(data_type, 4) + "(0)";
+    return ToMetalDataType(data_type, vec_size) + "(0)";
   } else if (gpu_info.IsGlsl()) {
-    return ToGlslShaderDataType(data_type, 4, false,
+    return ToGlslShaderDataType(data_type, vec_size, false,
                                 gpu_info.IsGlslSupportsExplicitFp16()) +
            "(0)";
   } else {
@@ -341,11 +343,13 @@ GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
 absl::Status TensorDescriptor::PerformConstExpr(const GpuInfo& gpu_info,
                                                 const std::string& const_expr,
                                                 std::string* result) const {
-  if (const_expr == "type") {
-    *result = GetTypeDeclaration(gpu_info, data_type);
+  if (const_expr == "type" || const_expr == "scalar_type") {
+    const int vec_size = const_expr == "scalar_type" ? 1 : 4;
+    *result = GetTypeDeclaration(gpu_info, data_type, vec_size);
     return absl::OkStatus();
-  } else if (const_expr == "zero_value") {
-    *result = GetZeroValue(gpu_info, data_type);
+  } else if (const_expr == "zero_value" || const_expr == "scalar_zero_value") {
+    const int vec_size = const_expr == "scalar_zero_value" ? 1 : 4;
+    *result = GetZeroValue(gpu_info, data_type, vec_size);
     return absl::OkStatus();
   } else {
     return absl::UnimplementedError(
