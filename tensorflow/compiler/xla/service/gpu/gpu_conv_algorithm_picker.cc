@@ -200,10 +200,10 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
   std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
   TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
       /* use_cudnn_frontend = */ false, kind, dtype, dtype, stream,
-      params.config.input_descriptor, params.input_buf,
-      params.config.filter_descriptor, params.filter_buf,
-      params.config.output_descriptor, params.output_buf,
-      params.config.conv_desc, /* use_fallback = */ false, scratch_allocator,
+      params.config->input_descriptor, params.input_buf,
+      params.config->filter_descriptor, params.filter_buf,
+      params.config->output_descriptor, params.output_buf,
+      params.config->conv_desc, /* use_fallback = */ false, scratch_allocator,
       &runners));
 
   return runners;
