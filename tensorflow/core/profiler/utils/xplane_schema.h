@@ -196,7 +196,6 @@ enum StatType {
   kGroupId,
   kFlow,
   kStepName,
-  kLevel0,
   kTfOp,
   kHloOp,
   kHloCategory,
