@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "absl/hash/hash.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
@@ -213,11 +212,9 @@ class NNAPIExecutionCache {
     std::vector<int> dynamic_dimensions;
 
     bool operator==(const Signature& other) const;
-    template <typename H>
-    friend H AbslHashValue(H h, const Signature& signature) {
-      return H::combine(std::move(h), signature.tensor_handles,
-                        signature.dynamic_dimensions);
-    }
+    struct Hasher {
+      std::size_t operator()(const Signature& signature) const;
+    };
   };
 
   explicit NNAPIExecutionCache(uint32_t max_cache_size)
@@ -252,7 +249,7 @@ class NNAPIExecutionCache {
   // A hash map to lookup a managed execution by its signature.
   std::unordered_map<Signature,
                      std::pair<std::list<Signature>::iterator, UniqueExecution>,
-                     absl::Hash<Signature>>
+                     Signature::Hasher>
       lookup_;
 };
 
