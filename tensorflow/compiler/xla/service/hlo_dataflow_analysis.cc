@@ -1433,7 +1433,7 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   for (auto& pair : dataflow_analysis->values_) {
     HloValue::Id value_id = pair.first;
     HloValue& value = *pair.second;
-    value.SetPositionsAndComputeUses(value_positions[value_id]);
+    value.SetPositions(value_positions[value_id]);
   }
 
   // Construct vector of values.

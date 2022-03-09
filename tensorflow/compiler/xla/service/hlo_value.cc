@@ -151,8 +151,7 @@ bool MayUseOperandValue(int64_t operand_number, const ShapeIndex& index,
 
 }  // namespace
 
-void HloValue::SetPositionsAndComputeUses(
-    absl::Span<const HloPosition> positions) {
+void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
   CHECK_EQ(positions_.size(), 1) << "SetPositions should only be called once.";
 
   // The positions must be unique and should not contain the defining position
@@ -167,12 +166,21 @@ void HloValue::SetPositionsAndComputeUses(
   }
 
   positions_.insert(positions_.end(), positions.begin(), positions.end());
+  for (const HloPosition& position : positions_) {
+    // Update liveout status of this HloValue.
+    const HloModule& module = *position.instruction->parent()->parent();
+    if (position.instruction ==
+        module.entry_computation()->root_instruction()) {
+      live_out_of_module_ = true;
+    }
+  }
+}
 
+void HloValue::ComputeUses(std::vector<HloUse>& uses) const {
   // Gather the computation roots at which this value appears.
   absl::flat_hash_set<HloInstruction*> root_positions;
   for (const HloPosition& position : positions_) {
-    if (position.instruction ==
-        position.instruction->parent()->root_instruction()) {
+    if (position.instruction->IsRoot()) {
       root_positions.insert(position.instruction);
     }
   }
@@ -188,24 +196,17 @@ void HloValue::SetPositionsAndComputeUses(
         // Root instructions of computations are considered to be uses whether
         // or not the root instruction itself actually uses the value.
         if (MayUseOperandValue(i, position.index, user) ||
-            ContainsKey(root_positions, user)) {
+            root_positions.contains(user)) {
           HloUse new_use{user, i, position.index};
 
-          // The new use must not already exist in uses_.
-          for (const HloUse& use : uses_) {
+          // The new use must not already exist in uses.
+          for (const HloUse& use : uses) {
             DCHECK_NE(use, new_use);
           }
 
-          uses_.push_back(std::move(new_use));
+          uses.push_back(std::move(new_use));
         }
       }
-    }
-
-    // Update liveout status of this HloValue.
-    const HloModule& module = *position.instruction->parent()->parent();
-    if (position.instruction ==
-        module.entry_computation()->root_instruction()) {
-      live_out_of_module_ = true;
     }
   }
 }
