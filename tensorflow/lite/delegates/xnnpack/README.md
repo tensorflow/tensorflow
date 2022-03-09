@@ -310,7 +310,7 @@ Below is the list of currently supported floating-point operators:
 #### `SPLIT`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Only split into 2 outputs is supported.
+* Only split into two or three outputs is supported.
 
 #### `SOFTMAX`
 
@@ -598,7 +598,7 @@ Below is the list of currently supported quantized operators:
 #### `SPLIT`
 
 * Inputs and outputs must be in 8-bit quantized format.
-* Only split into two outputs is supported.
+* Only split into two or three outputs is supported.
 
 #### `SUB`
 
