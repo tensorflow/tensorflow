@@ -358,6 +358,19 @@ Status AtanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Atan", AtanGrad);
 
+Status Atan2Grad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  auto y = op.input(0);
+  auto x = op.input(1);
+  Output grad_inv = Div(scope, grad_inputs[0],
+                        Add(scope, Square(scope, x), Square(scope, y)));
+  grad_outputs->push_back(Mul(scope, x, grad_inv));
+  grad_outputs->push_back(Mul(scope, Neg(scope, y), grad_inv));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Atan2", Atan2Grad);
+
 // BinaryGradCommon handles the setup for binary ops that broadcast
 // their inputs.
 Status BinaryGradCommon(const Scope& scope, const Operation& op,
