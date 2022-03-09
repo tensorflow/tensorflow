@@ -1316,12 +1316,12 @@ void PjRtStreamExecutorBuffer::DropHold(ScopedHold::Type type,
   }
 }
 
-void PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal,
-                                         std::function<void(Status)> on_ready) {
+PjRtFuture<Status> PjRtStreamExecutorBuffer::ToLiteral(
+    MutableLiteralBase* literal) {
   VLOG(1) << "PjRtStreamExecutorBuffer::ToLiteral";
   if (IsEmptyTuple()) {
-    on_ready(InvalidArgument("ToLiteral called on empty tuple"));
-    return;
+    return PjRtFuture<Status>(
+        InvalidArgument("ToLiteral called on empty tuple"));
   }
   LocalDeviceState* local_device = device_->local_device_state();
   se::Stream* stream = local_device->GetDeviceToHostStream();
@@ -1331,9 +1331,8 @@ void PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal,
     // We can't perform any other action while a donation hold is in progress.
     WaitForOutstandingDonationHold();
     if (device_buffer_ == nullptr) {
-      on_ready(InvalidArgument(
+      return PjRtFuture<Status>(InvalidArgument(
           "CopyToHostAsync() called on deleted or donated buffer"));
-      return;
     }
     AcquireHoldLocked(&device_buffer);
   }
@@ -1343,11 +1342,12 @@ void PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal,
   StatusOr<EventPool::Handle> event_or =
       local_device->event_pool().AllocateEvent(stream->parent());
   if (!event_or.ok()) {
-    on_ready(event_or.status());
-    return;
+    return PjRtFuture<Status>(event_or.status());
   }
+  auto promise = PjRtFuture<Status>::CreatePromise();
   client_->client()->backend().transfer_manager()->TransferLiteralFromDevice(
-      stream, shaped_buffer, literal, std::move(on_ready));
+      stream, shaped_buffer, literal,
+      [promise](Status status) mutable { promise.Set(status); });
 
   auto usage_event = std::make_shared<BufferSequencingEvent>();
   local_device->event_pool().ThenRecordEvent(stream, event_or.ValueOrDie());
@@ -1364,6 +1364,22 @@ void PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal,
   RecordUsage(std::move(device_buffer), local_device, local_device, usage_event,
               stream,
               /*prefer_to_retain_reference=*/true);
+
+  return PjRtFuture<Status>(
+      std::move(promise),
+      /*on_block_start=*/
+      []() {
+        tensorflow::profiler::TraceMeProducer traceme(
+            "PjRtStreamExecutorBuffer::ToLiteral");
+        VLOG(1) << "PjRtStreamExecutorBuffer::ToLiteral";
+        return PjRtFutureHelpers::ProfilingKeys(
+            {/*traceme_context_id =*/traceme.GetContextId()});
+      },
+      /*on_block_end=*/
+      [](PjRtFutureHelpers::ProfilingKeys keys) {
+        tensorflow::profiler::TraceMeConsumer traceme(
+            "PjRtStreamExecutorBuffer::ToLiteral", keys.traceme_context_id);
+      });
 }
 
 StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes() const {

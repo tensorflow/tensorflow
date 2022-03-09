@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/utils.h"
@@ -985,12 +986,11 @@ static void EnqueueWorkWhenReady(
   });
 }
 
-void TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal,
-                              std::function<void(Status)> on_ready) {
+PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
   tensorflow::profiler::TraceMe traceme("TfrtCpuBuffer::ToLiteral");
   if (IsEmptyTuple()) {
-    on_ready(InvalidArgument("ToLiteral called on empty tuple"));
-    return;
+    return PjRtFuture<Status>(
+        InvalidArgument("ToLiteral called on empty tuple"));
   }
   TfrtCpuBuffer::ScopedHold device_buffer(this, ScopedHold::kUsage);
   {
@@ -998,9 +998,8 @@ void TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal,
     // We can't perform any other action while a donation hold is in progress.
     WaitForOutstandingDonationHold();
     if (tracked_device_buffer_ == nullptr) {
-      on_ready(InvalidArgument(
+      return PjRtFuture<Status>(InvalidArgument(
           "CopyToHostAsync() called on deleted or donated buffer"));
-      return;
     }
     AcquireHoldLocked(&device_buffer);
   }
@@ -1028,8 +1027,9 @@ void TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal,
       }
     }
     // Unblock ToLiteral caller.
-    on_ready(Status::OK());
+    return PjRtFuture<Status>(Status::OK());
   } else {
+    auto ready_event = tfrt::MakeUnconstructedAsyncValueRef<Status>();
     // Wait for buffer definition events to finish before d2h dispatch.
     // D2H dispatch should be in parallel, e.g. one Execute event finish may
     // trigger multiple outputs' D2H, they should happen in different threads in
@@ -1038,13 +1038,13 @@ void TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal,
         host_ctx, device_buffer_wait_avs,
         [this, movable_device_buffer{device_buffer.ToClosure()},
          device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
-         literal, on_ready{std::move(on_ready)}] {
+         literal, ready_event = ready_event.CopyRef()] {
           tensorflow::profiler::TraceMe traceme("D2H Dispatch");
           TfrtCpuBuffer::ScopedHold device_buffer(movable_device_buffer);
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
-              on_ready(
+              ready_event.emplace(
                   Internal("Error converting to literal: %s", error->message));
               return;
             }
@@ -1064,8 +1064,23 @@ void TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal,
             }
           }
 
-          // Unblock ToLiteral caller.
-          on_ready(Status::OK());
+          // Unblock ToLiteral event.
+          ready_event.emplace(Status::OK());
+        });
+    return PjRtFuture<Status>(
+        client_->GetHostContext(), std::move(ready_event),
+        /*on_block_start=*/
+        []() {
+          tensorflow::profiler::TraceMeProducer traceme(
+              "TfrtCpuBuffer::ToLiteral");
+          VLOG(1) << "TfrtCpuBuffer::ToLiteral";
+          return PjRtFutureHelpers::ProfilingKeys(
+              {/*traceme_context_id =*/traceme.GetContextId()});
+        },
+        /*on_block_end=*/
+        [](PjRtFutureHelpers::ProfilingKeys keys) {
+          tensorflow::profiler::TraceMeConsumer traceme(
+              "TfrtCpuBuffer::ToLiteral", keys.traceme_context_id);
         });
   }
 }

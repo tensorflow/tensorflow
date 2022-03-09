@@ -558,8 +558,7 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
       bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteralSync;
-  void ToLiteral(MutableLiteralBase* literal,
-                 std::function<void(Status)> on_ready) override;
+  PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 

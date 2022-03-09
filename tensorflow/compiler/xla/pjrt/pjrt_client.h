@@ -610,11 +610,21 @@ class PjRtBuffer {
   virtual StatusOr<std::unique_ptr<ExternalReference>>
   AcquireExternalReference() = 0;
 
+  // Asynchronously copies the buffer's value into `literal`.
+  //
+  // Return value is a future the caller can use to discover when the copy has
+  // completed. The transfer respects the layout of `literal`; to specify a
+  // particular layout, set the layout before calling `ToLiteral`.
+  virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
+
   // Copies the buffer's value into `literal`. Calls `on_ready` when the value
   // (or an error) is ready. The transfer respects the layout of `literal`; to
   // specify a particular layout, set the layout before calling `ToLiteral`.
-  virtual void ToLiteral(MutableLiteralBase* literal,
-                         std::function<void(Status)> on_ready) = 0;
+  ABSL_DEPRECATED("Use ToLiteral(...).OnReady() instead")
+  void ToLiteral(MutableLiteralBase* literal,
+                 std::function<void(Status)> on_ready) {
+    ToLiteral(literal).OnReady(std::move(on_ready));
+  }
 
   // Synchronous overload of ToLiteral, as a convenience.
   Status ToLiteralSync(MutableLiteralBase* literal) {
