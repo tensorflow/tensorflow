@@ -374,6 +374,52 @@ TEST(CoordinationServiceTest, TestWorkerHeartbeatTimeout) {
       coord_service->RecordHeartbeat(worker_1, w1_incarnation)));
 }
 
+TEST(CoordinationServiceTest, HeartbeatTimeoutWithoutServerToClientConnection) {
+  ServerDef server_def = GetMultiClientServerDef("worker", 2);
+  const uint64_t w0_incarnation = random::New64();
+  const uint64_t w1_incarnation = random::New64();
+  CoordinatedTask worker_0;
+  worker_0.set_job_name("worker");
+  worker_0.set_task_id(0);
+  CoordinatedTask worker_1;
+  worker_1.set_job_name("worker");
+  worker_1.set_task_id(1);
+
+  auto* coord_config = server_def.mutable_default_session_config()
+                           ->mutable_experimental()
+                           ->mutable_coordination_config();
+  coord_config->set_service_type(kCoordinationServiceType);
+  coord_config->set_heartbeat_timeout_in_ms(kHeartbeatTimeoutMs);
+  // No service-to-client connection cache is provided.
+  std::unique_ptr<CoordinationServiceInterface> coord_service =
+      CoordinationServiceInterface::EnableCoordinationService(
+          kCoordinationServiceType, Env::Default(), server_def,
+          /*cache=*/nullptr);
+
+  absl::Notification register0;
+  coord_service->RegisterWorker(worker_0, w0_incarnation, [&](Status s) {
+    TF_ASSERT_OK(s);
+    register0.Notify();
+  });
+  register0.WaitForNotification();
+  absl::Notification register1;
+  coord_service->RegisterWorker(worker_1, w1_incarnation, [&](Status s) {
+    TF_ASSERT_OK(s);
+    register1.Notify();
+  });
+  register1.WaitForNotification();
+
+  // No heartbeat for a while, leader consider the worker as stale.
+  // Service stops and disconnects both workers.
+  Env::Default()->SleepForMicroseconds(2 * kHeartbeatTimeoutMs * 1000);
+  // Unexpected heartbeat from unregistered workers since service state has been
+  // reset.
+  EXPECT_TRUE(errors::IsInvalidArgument(
+      coord_service->RecordHeartbeat(worker_0, w0_incarnation)));
+  EXPECT_TRUE(errors::IsInvalidArgument(
+      coord_service->RecordHeartbeat(worker_1, w1_incarnation)));
+}
+
 TEST(CoordinationServiceTest, TestWorkerRestart) {
   const ServerDef& server_def = GetMultiClientServerDef("worker", 2);
   const uint64_t w0_incarnation = random::New64();

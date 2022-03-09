@@ -140,7 +140,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   uint64_t GetServiceIncarnation() override;
   void StartCheckStaleness();  // Checks both heartbeat and barrier timeouts.
-  void Stop();
+  void Stop(bool shut_staleness_thread = true);
   void PropagateError(const CoordinatedTask& task, Status error,
                       bool is_reported_by_agent = false)
       TF_LOCKS_EXCLUDED(state_mu_);
@@ -366,6 +366,11 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             }
           }
           if (!status.ok()) {
+            // Error cannot be propagated since there is no service-to-client
+            // connection, so stop heartbeat loop and shut down service instead.
+            if (client_cache_ == nullptr) {
+              break;
+            }
             PropagateError(stale_task, status);
           }
 
@@ -394,10 +399,13 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             expired_barriers.clear();
           }
         }
+        // Note: we cannot destroy the thread within its own function.
+        // However, this thread will be destroyed once the function exits.
+        Stop(/*shut_staleness_thread=*/false);
       }));
 }
 
-void CoordinationServiceStandaloneImpl::Stop() {
+void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   {
     mutex_lock l(kv_mu_);
     get_cb_.clear();
@@ -422,7 +430,9 @@ void CoordinationServiceStandaloneImpl::Stop() {
     shutting_down_ = true;
     check_staleness_thread_cv_.notify_all();
   }
-  check_staleness_thread_.reset();
+  if (shut_staleness_thread) {
+    check_staleness_thread_.reset();
+  }
 }
 
 void CoordinationServiceStandaloneImpl::RegisterWorker(
@@ -552,6 +562,11 @@ void CoordinationServiceStandaloneImpl::PropagateError(
         continue;
     }
 
+    // Don't propagate error if there is no service-to-client connection.
+    if (client_cache_ == nullptr) {
+      LOG(ERROR) << error.error_message();
+      return;
+    }
     CoordinationClient* client = client_cache_->GetClient(std::string(task));
     auto response = std::make_shared<ReportErrorToAgentResponse>();
     auto n = std::make_shared<Notification>();
