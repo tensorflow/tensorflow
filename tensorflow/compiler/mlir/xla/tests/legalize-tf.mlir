@@ -6410,8 +6410,8 @@ func @xla_rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10
   %cst = "tf.Const"() {value = dense<[10, 12]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-NEXT: %1 = mhlo.constant dense<3> : tensor<i32>
   %cst_0 = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
-  // CHECK-NEXT: %2:2 = "mhlo.rng_bit_generator"(%[[STATE]]) {rng_algorithm = 0 : i32} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
-  // CHECK-NEXT: return %2#0, %2#1 : tensor<2xui64>, tensor<10x12xui32>
+  // CHECK-NEXT: %[[OUTPUT_STATE:.*]], %[[OUTPUT:.*]] = "mhlo.rng_bit_generator"(%[[STATE]]) {rng_algorithm = 0 : i32} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
+  // CHECK-NEXT: return %[[OUTPUT_STATE]], %[[OUTPUT]] : tensor<2xui64>, tensor<10x12xui32>
   %output_key, %output = "tf.XlaRngBitGenerator"(%cst_0, %arg0, %cst) : (tensor<i32>, tensor<2xui64>, tensor<2xi32>) -> (tensor<2xui64>, tensor<10x12xui32>)
   return %output_key, %output : tensor<2xui64>, tensor<10x12xui32>
 }

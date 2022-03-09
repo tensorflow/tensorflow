@@ -4239,6 +4239,21 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
 }
 
 //===----------------------------------------------------------------------===//
+// RngBitGeneratorOp
+//===----------------------------------------------------------------------===//
+
+// Verify that input state has the same shape as output shape
+LogicalResult RngBitGeneratorOp::verify() {
+  auto initial_shape = initial_state().getType().dyn_cast<RankedTensorType>();
+  auto output_shape = output_state().getType().dyn_cast<RankedTensorType>();
+  if (initial_shape.getShape() != output_shape.getShape())
+    return emitOpError()
+           << "output state shape must match initial state shape. Got: "
+           << initial_shape << " and " << output_shape;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // RngNormalOp
 //===----------------------------------------------------------------------===//
 

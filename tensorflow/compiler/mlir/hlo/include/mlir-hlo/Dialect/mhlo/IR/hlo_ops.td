@@ -2275,8 +2275,12 @@ def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]> {
     HLO_IntOrFpTensor:$initial_state
   );
 
-  let results = (outs Variadic<HLO_TensorOrToken>);
+  let results = (outs
+      HLO_IntOrFpTensor:$output_state,
+      HLO_IntOrFpTensor:$output
+      );
 
+  let hasVerifier = 1;
   // TODO(jpienaar): This should not be needed.
   let hasCustomHLOConverter = 1;
 }

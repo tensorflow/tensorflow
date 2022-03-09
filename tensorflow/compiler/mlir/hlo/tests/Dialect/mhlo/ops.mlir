@@ -874,6 +874,29 @@ func @replica_id() -> tensor<ui32> {
 
 // -----
 
+// CHECK-LABEL: func @rng_bit_generator
+func @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>) {
+  %4 = mhlo.constant dense<[10, 12]> : tensor<2xui64>
+  %0 = mhlo.constant dense<[10, 12]> : tensor<2xi32>
+  %1 = mhlo.constant dense<3> : tensor<i32>
+  %2, %3 = "mhlo.rng_bit_generator"(%4) {rng_algorithm = 0 : i32} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
+  return %2, %3 : tensor<2xui64>, tensor<10x12xui32>
+}
+
+// -----
+
+func @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>) {
+  %4 = mhlo.constant dense<[10, 12]> : tensor<2xui64>
+  %0 = mhlo.constant dense<[10, 12]> : tensor<2xi32>
+  %1 = mhlo.constant dense<3> : tensor<i32>
+  // expected-error@+1 {{output state shape must match initial state shape. Got: 'tensor<2xui64>' and 'tensor<3xui64>'}}
+  %2, %3 = "mhlo.rng_bit_generator"(%4) {rng_algorithm = 0 : i32} : (tensor<2xui64>) -> (tensor<3xui64>, tensor<10x12xui32>)
+  return %2, %3 : tensor<3xui64>, tensor<10x12xui32>
+}
+
+// -----
+
+
 func @rng_uniform_invalid_type(%mu: tensor<complex<f32>>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
   %shape = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
   // expected-error@+1 {{but got 'tensor<complex<f32>>'}}
