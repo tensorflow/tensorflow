@@ -1613,7 +1613,7 @@ PjRtFuture<Status> PjRtStreamExecutorBuffer::GetReadyFuture() {
             "PjRtStreamExecutorBuffer::Await");
         VLOG(1) << "PjRtStreamExecutorBuffer::Await";
         return PjRtFutureHelpers::ProfilingKeys(
-            {.traceme_context_id = traceme.GetContextId()});
+            {/*traceme_context_id=*/traceme.GetContextId()});
       },
       /*on_block_end=*/
       [](PjRtFutureHelpers::ProfilingKeys keys) {

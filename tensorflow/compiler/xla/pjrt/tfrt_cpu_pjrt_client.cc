@@ -1229,7 +1229,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
           tensorflow::profiler::TraceMeProducer traceme("TfrtCpuBuffer::Await");
           VLOG(1) << "TfrtCpuBuffer::Await";
           return PjRtFutureHelpers::ProfilingKeys(
-              {.traceme_context_id = traceme.GetContextId()});
+              {/*traceme_context_id=*/traceme.GetContextId()});
         },
         /*on_block_end=*/
         [](PjRtFutureHelpers::ProfilingKeys keys) {
