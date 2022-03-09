@@ -23,13 +23,13 @@ limitations under the License.
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project

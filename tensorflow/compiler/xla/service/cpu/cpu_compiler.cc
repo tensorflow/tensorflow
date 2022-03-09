@@ -53,12 +53,12 @@ limitations under the License.
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -939,7 +939,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addNestedPass<mlir::FuncOp>(mlir::createConvertMathToLLVMPass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::arith::createConvertArithmeticToLLVMPass());
-  pm.addPass(mlir::createLowerToLLVMPass());
+  pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   if (pm.run(mlir_module).failed()) {
     mlir_module->dump();

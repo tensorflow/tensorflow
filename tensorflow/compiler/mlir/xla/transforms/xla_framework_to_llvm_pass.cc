@@ -23,13 +23,13 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Constants.h"
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Transforms/Passes.h"  // from @llvm-project
