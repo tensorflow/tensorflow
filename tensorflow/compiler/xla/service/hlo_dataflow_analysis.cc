@@ -1487,14 +1487,14 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
     const HloInstruction* user) const {
   // Return false if no value at 'operand' and 'index' is used at 'user'.
   for (const HloValue* value : GetValueSet(operand, index).values()) {
-    for (const HloUse& use : value->uses()) {
+    for (const HloUse& use : value->GetUses()) {
       if (use.instruction == user) {
         if (user->IsLoopFusion()) {
           HloInstruction* fusion_param =
               user->fused_parameter(use.operand_number);
           const HloValue& value =
               GetValueDefinedAt(fusion_param, use.operand_index);
-          return value.uses().empty();
+          return value.GetUses().empty();
         }
         return false;
       }
@@ -1657,7 +1657,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     if (operand_and_output_index.second != user_index) {
       continue;
     }
-    for (const HloUse& use : GetUniqueValueAt(operand, operand_index).uses()) {
+    for (const HloUse& use :
+         GetUniqueValueAt(operand, operand_index).GetUses()) {
       if (use == operand_and_output_index.first) {
         return true;
       }
@@ -1702,8 +1703,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       // Returns true iff there is exactly one use of 'operand' at shape index
       // 'operand_index', and this singleton use is the fused root (at operand
       // index 'other_add_operand_index').
-      if (fusion_param_value.uses().size() == 1) {
-        const HloUse& use = fusion_param_value.uses()[0];
+      if (fusion_param_value.GetUses().size() == 1) {
+        const HloUse& use = fusion_param_value.GetUses()[0];
         return use.instruction == user->fused_expression_root() &&
                use.operand_number == other_add_operand_index;
       }
@@ -1749,7 +1750,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   }
   if (user->opcode() == HloOpcode::kCall) {
     // Get all uses of value defined by 'operand' at 'operand_index'.
-    const auto& uses = GetValueDefinedAt(operand, operand_index).uses();
+    auto uses = GetValueDefinedAt(operand, operand_index).GetUses();
     // Return true iff:
     // *) There exists two uses of 'operand'.
     // *) One use is by 'user' (caller).

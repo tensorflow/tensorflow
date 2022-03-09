@@ -134,11 +134,11 @@ TEST_P(HloDataflowAnalysisTest, BinaryOperation) {
               UnorderedElementsAre(HloPosition{add, {}}));
 
   // Verify the uses of the values.
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).GetUses(),
               UnorderedElementsAre(HloUse{add, 0, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).GetUses(),
               UnorderedElementsAre(HloUse{add, 1, {}}));
-  EXPECT_TRUE(analysis.GetValueDefinedAt(add).uses().empty());
+  EXPECT_TRUE(analysis.GetValueDefinedAt(add).GetUses().empty());
 
   // Verify liveout values from the module.
   EXPECT_FALSE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
@@ -193,11 +193,11 @@ TEST_P(HloDataflowAnalysisTest, TupleAndGtes) {
 
   // Verify uses. Of interest is that a GetTupleElement instruction is only a
   // use of the top-level value in the tuple operand.
-  EXPECT_THAT(analysis.GetValueDefinedAt(param0).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(param0).GetUses(),
               UnorderedElementsAre(HloUse{add, 0, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(param1).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(param1).GetUses(),
               UnorderedElementsAre(HloUse{add, 1, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(tuple, /*index=*/{}).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(tuple, /*index=*/{}).GetUses(),
               UnorderedElementsAre(HloUse{gte0, 0, {}}, HloUse{gte1, 0, {}}));
   EXPECT_TRUE(analysis.GetValueDefinedAt(add).live_out_of_module());
 }
@@ -235,14 +235,14 @@ TEST_P(HloDataflowAnalysisTest, NestedTuple) {
           HloPosition{gte_out, {}}));
   // Constant values should have only a single use, which is the root of the
   // computation.
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant1, /*index=*/{}).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant1, /*index=*/{}).GetUses(),
               UnorderedElementsAre(HloUse{gte_out, 0, {0}}));
-  EXPECT_TRUE(analysis.GetValueDefinedAt(constant2).uses().empty());
+  EXPECT_TRUE(analysis.GetValueDefinedAt(constant2).GetUses().empty());
 
   // The top-level tuple values are used in GTE instructions.
-  EXPECT_THAT(analysis.GetValueDefinedAt(tuple, /*index=*/{}).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(tuple, /*index=*/{}).GetUses(),
               UnorderedElementsAre(HloUse{gte_out, 0, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(nested_tuple, /*index=*/{}).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(nested_tuple, /*index=*/{}).GetUses(),
               UnorderedElementsAre(HloUse{gte_tuple, 0, {}}));
 
   EXPECT_TRUE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
@@ -296,9 +296,9 @@ TEST_P(HloDataflowAnalysisTest, SingleCall) {
             analysis.GetValueDefinedAt(constant2));
   EXPECT_EQ(analysis.GetUniqueValueAt(call), analysis.GetValueDefinedAt(add));
 
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).GetUses(),
               UnorderedElementsAre(HloUse{call, 0, {}}, HloUse{add, 0, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).GetUses(),
               UnorderedElementsAre(HloUse{call, 1, {}}, HloUse{add, 1, {}}));
 
   EXPECT_TRUE(analysis.GetValueDefinedAt(add).live_out_of_module());
@@ -360,11 +360,11 @@ TEST_P(HloDataflowAnalysisTest, NestedCalls) {
   // Verify that the uses of the constants are properly swizzled by parameter
   // permutation in nested_call.
   EXPECT_THAT(
-      analysis.GetValueDefinedAt(constant1).uses(),
+      analysis.GetValueDefinedAt(constant1).GetUses(),
       UnorderedElementsAre(HloUse{call, 0, {}}, HloUse{nested_call, 1, {}},
                            HloUse{add, 1, {}}));
   EXPECT_THAT(
-      analysis.GetValueDefinedAt(constant2).uses(),
+      analysis.GetValueDefinedAt(constant2).GetUses(),
       UnorderedElementsAre(HloUse{call, 1, {}}, HloUse{nested_call, 0, {}},
                            HloUse{add, 0, {}}));
 
@@ -447,7 +447,7 @@ TEST_P(HloDataflowAnalysisTest, SingleWhile) {
     EXPECT_TRUE(analysis.GetValueDefinedAt(cond_param, /*index=*/{1}).is_phi());
 
     EXPECT_THAT(
-        analysis.GetValueDefinedAt(constant1).uses(),
+        analysis.GetValueDefinedAt(constant1).GetUses(),
         UnorderedElementsAre(HloUse{add, 0, {}}, HloUse{body_root, 0, {}},
                              HloUse{xla_while, 0, {0}}));
 
@@ -990,15 +990,15 @@ TEST_P(HloDataflowAnalysisTest, TupleSelect) {
                                    analysis.GetValueDefinedAt(constant4)));
 
   EXPECT_THAT(
-      analysis.GetValueDefinedAt(tuple1, /*index=*/{}).uses(),
+      analysis.GetValueDefinedAt(tuple1, /*index=*/{}).GetUses(),
       UnorderedElementsAre(HloUse{select11, 1, {}}, HloUse{select11, 2, {}},
                            HloUse{select12, 1, {}}));
 
   // The two constant values just pass through the Selects and are not
   // used except at the root. They are live out however.
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).GetUses(),
               UnorderedElementsAre(HloUse{select1234, 1, {0}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).GetUses(),
               UnorderedElementsAre(HloUse{select1234, 1, {0}}));
   EXPECT_TRUE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
   EXPECT_TRUE(analysis.GetValueDefinedAt(constant2).live_out_of_module());
@@ -1793,11 +1793,11 @@ TEST_P(HloDataflowAnalysisTest, ConditionalWithIdentity) {
   EXPECT_EQ(analysis.GetUniqueValueAt(false_param),
             analysis.GetValueDefinedAt(constant2));
 
-  EXPECT_THAT(analysis.GetValueDefinedAt(pred).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(pred).GetUses(),
               ElementsAre(HloUse{conditional, 0, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).GetUses(),
               ElementsAre(HloUse{conditional, 1, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).GetUses(),
               ElementsAre(HloUse{conditional, 2, {}}));
 
   bool ssa_form = GetParam();
@@ -1902,17 +1902,17 @@ TEST_P(HloDataflowAnalysisTest, ConditionalTakingTupleOperand) {
   EXPECT_EQ(analysis.GetUniqueValueAt(false_y),
             analysis.GetValueDefinedAt(constant2));
 
-  EXPECT_THAT(analysis.GetValueDefinedAt(pred).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(pred).GetUses(),
               ElementsAre(HloUse{conditional, 0, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).GetUses(),
               UnorderedElementsAre(HloUse{conditional, 1, {0}},
                                    HloUse{conditional, 2, {0}},
                                    HloUse{add, 0, {}}, HloUse{sub, 0, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).GetUses(),
               UnorderedElementsAre(HloUse{conditional, 1, {1}},
                                    HloUse{conditional, 2, {1}},
                                    HloUse{add, 1, {}}, HloUse{sub, 1, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(tuple_operand).uses(),
+  EXPECT_THAT(analysis.GetValueDefinedAt(tuple_operand).GetUses(),
               UnorderedElementsAre(
                   HloUse{conditional, 1, {}}, HloUse{conditional, 2, {}},
                   HloUse{true_x, 0, {}}, HloUse{true_y, 0, {}},
@@ -2120,9 +2120,9 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDone) {
   EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{}));
   EXPECT_FALSE(analysis->ValueIsDefinedAt(done));
 
-  EXPECT_THAT(analysis->GetValueDefinedAt(param0).uses(),
+  EXPECT_THAT(analysis->GetValueDefinedAt(param0).GetUses(),
               UnorderedElementsAre(HloUse{start, 0, {}}));
-  EXPECT_THAT(analysis->GetValueDefinedAt(start).uses(),
+  EXPECT_THAT(analysis->GetValueDefinedAt(start).GetUses(),
               UnorderedElementsAre(HloUse{done, 0, {}}));
 }
 
@@ -2157,11 +2157,11 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDoneTwoOperands) {
   EXPECT_TRUE(analysis->ValueIsDefinedAt(start, /*index=*/{1}));
   EXPECT_FALSE(analysis->ValueIsDefinedAt(done));
 
-  EXPECT_THAT(analysis->GetValueDefinedAt(param0).uses(),
+  EXPECT_THAT(analysis->GetValueDefinedAt(param0).GetUses(),
               UnorderedElementsAre(HloUse{start, 0, {}}));
-  EXPECT_THAT(analysis->GetValueDefinedAt(param1).uses(),
+  EXPECT_THAT(analysis->GetValueDefinedAt(param1).GetUses(),
               UnorderedElementsAre(HloUse{start, 1, {}}));
-  EXPECT_THAT(analysis->GetValueDefinedAt(start, {}).uses(),
+  EXPECT_THAT(analysis->GetValueDefinedAt(start, {}).GetUses(),
               UnorderedElementsAre(HloUse{done, 0, {}}));
 }
 

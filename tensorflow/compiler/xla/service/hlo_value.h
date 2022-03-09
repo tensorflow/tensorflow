@@ -148,8 +148,10 @@ class HloValue : public BufferValue {
   const std::vector<HloPosition>& positions() const { return positions_; }
 
   // Return all uses of the HloValue. This computes the uses lazily, and the
-  // overhead could be non-trivial for the first invocation.
-  const std::vector<HloUse>& uses() const {
+  // overhead could be non-trivial for the first invocation. Therefore even
+  // though it is marked `const`, it actually can mutate its data members. It is
+  // kept this way to allow passing around const references.
+  absl::Span<const HloUse> GetUses() const {
     return uses_.MaybeInitAndGet(
         [this](std::vector<HloUse>& uses) { ComputeUses(uses); });
   }

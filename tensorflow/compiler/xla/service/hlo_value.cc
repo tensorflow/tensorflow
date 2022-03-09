@@ -102,7 +102,7 @@ std::string HloValue::ToString(int indent) const {
     StrAppend(&out, indentation, "  ", position.ToString(), "\n");
   }
   StrAppend(&out, indentation, " uses:\n");
-  for (const HloUse& use : uses()) {
+  for (const HloUse& use : GetUses()) {
     StrAppend(&out, indentation, "  ", use.ToString(), "\n");
   }
   StrAppend(&out, indentation, " from instruction:", instruction()->ToString(),
