@@ -75,8 +75,6 @@ constexpr unsigned kFallbackBenefit = 1;
 constexpr unsigned kCoreRTBenefit = 2;
 constexpr char kGpuDeviceName[] =
     "/job:localhost/replica:0/task:0/device:GPU:0";
-constexpr char kCpuDeviceName[] =
-    "/job:localhost/replica:0/task:0/device:CPU:0";
 constexpr char kTFDeviceAttr[] = "tf.device";
 constexpr char kTFRTDeviceAttr[] = "tfrt.device";
 constexpr char kDeviceAttr[] = "device";
@@ -384,8 +382,8 @@ class FallbackSetResourceOp
     // TODO(chky): Support resource on other devices.
     llvm::SmallVector<mlir::Value, 4> new_operands;
     if (mlir::failed(tfrt_compiler::ConvertFallbackOperands(
-            op, kCpuDeviceName, adaptor.getOperands(), &new_operands,
-            rewriter)))
+            op, tfrt_compiler::GetDefaultCpuDeviceName(), adaptor.getOperands(),
+            &new_operands, rewriter)))
       return failure();
 
     assert(new_operands.size() == 1);
@@ -867,8 +865,9 @@ LogicalResult ConvertFunctionCallOperands(
     mlir::ConversionPatternRewriter &rewriter, bool func_use_fallback_tensor) {
   if (func_use_fallback_tensor) {
     // TODO(b/182232457): Support other devices.
-    return tfrt_compiler::ConvertFallbackOperands(op, kCpuDeviceName, operands,
-                                                  new_operands, rewriter);
+    return tfrt_compiler::ConvertFallbackOperands(
+        op, tfrt_compiler::GetDefaultCpuDeviceName(), operands, new_operands,
+        rewriter);
   } else {
     return tfrt_compiler::ConvertCoreRTOperands(op, operands, new_operands,
                                                 rewriter);
@@ -1024,7 +1023,8 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
                   tfrt::fallback_async::FallbackTensorToCoreRTTensorHandleOp>(
                   op.getLoc(),
                   rewriter.getType<tfrt::corert::TensorHandleType>(),
-                  adaptor.getOperands()[0], kCpuDeviceName)
+                  adaptor.getOperands()[0],
+                  tfrt_compiler::GetDefaultCpuDeviceName())
               .getResult(0);
     }
     if (!index_operand.getType().isa<tfrt::corert::TensorHandleType>())
@@ -1053,7 +1053,8 @@ static mlir::Value GetPredicate(mlir::Operation *op, mlir::Value cond_operand,
                                 mlir::ConversionPatternRewriter &rewriter) {
   if (!cond_operand.getType().isa<tfrt::fallback::TFTensorType>()) {
     cond_operand = tfrt_compiler::ConvertCoreRTTensorHandleToFallbackTensor(
-        op->getLoc(), kCpuDeviceName, cond_operand, rewriter);
+        op->getLoc(), tfrt_compiler::GetDefaultCpuDeviceName(), cond_operand,
+        rewriter);
     if (!cond_operand) {
       op->emitWarning("failed to convert the cond operand to fallback tensor.");
       return {};
