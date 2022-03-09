@@ -22,6 +22,7 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
