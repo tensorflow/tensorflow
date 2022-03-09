@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
@@ -102,7 +102,7 @@ tf_cc_test(
 )
 
 # Custom `mlir-opt` replacement that links our dialect and passes
-tf_native_cc_binary(
+tf_cc_binary(
     name = "tfg-transforms-opt",
     srcs = ["tfg-transforms-opt.cc"],
     deps = [
