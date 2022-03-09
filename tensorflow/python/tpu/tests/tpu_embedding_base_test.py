@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,27 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for TPU Embeddings mid level API on TPU."""
+"""Base Class for TPU Embedding tests."""
 
-import itertools
 import os
 
 from absl import flags
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-from tensorflow.python.eager import backprop
-from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import init_ops_v2
@@ -52,7 +46,7 @@ flags.DEFINE_string('model_dir', os.environ.get('TEST_TMPDIR'),
                     'A temporary directory.')
 
 
-class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
+class TPUEmbeddingBaseTest(parameterized.TestCase, test.TestCase):
 
   def skip_if_oss(self):
     if FLAGS.project is not None or FLAGS.zone is not None:
@@ -61,7 +55,7 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
       )
 
   def setUp(self):
-    super(TPUEmbeddingCorrectness, self).setUp()
+    super(TPUEmbeddingBaseTest, self).setUp()
     self.embedding_values = np.array(list(range(32)), dtype=np.float64)
     self.initializer = init_ops_v2.Constant(self.embedding_values)
     # Embedding for video initialized to
@@ -86,13 +80,12 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
         initializer=self.initializer,
         combiner='mean',
         name='user')
-    self.feature_config = (
-        tpu_embedding_v2_utils.FeatureConfig(
-            table=self.table_video, name='watched'),
-        tpu_embedding_v2_utils.FeatureConfig(
-            table=self.table_video, name='favorited'),
-        tpu_embedding_v2_utils.FeatureConfig(
-            table=self.table_user, name='friends'))
+    self.feature_config = (tpu_embedding_v2_utils.FeatureConfig(
+        table=self.table_video, name='watched'),
+                           tpu_embedding_v2_utils.FeatureConfig(
+                               table=self.table_video, name='favorited'),
+                           tpu_embedding_v2_utils.FeatureConfig(
+                               table=self.table_user, name='friends'))
 
     self.batch_size = 2
     self.data_batch_size = 4
@@ -103,8 +96,8 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     # row 1: 0, 1
     # row 2: 0, 1
     # row 3: 1
-    self.feature_watched_indices = [[0, 0], [1, 0], [1, 1],
-                                    [2, 0], [2, 1], [3, 0]]
+    self.feature_watched_indices = [[0, 0], [1, 0], [1, 1], [2, 0], [2, 1],
+                                    [3, 0]]
     self.feature_watched_values = [0, 0, 1, 0, 1, 1]
     self.feature_watched_row_lengths = [1, 2, 2, 1]
     # sparse tensor for favorited:
@@ -112,8 +105,8 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     # row 1: 1
     # row 2: 0
     # row 3: 0, 1
-    self.feature_favorited_indices = [[0, 0], [0, 1], [1, 0],
-                                      [2, 0], [3, 0], [3, 1]]
+    self.feature_favorited_indices = [[0, 0], [0, 1], [1, 0], [2, 0], [3, 0],
+                                      [3, 1]]
     self.feature_favorited_values = [0, 1, 1, 0, 0, 1]
     self.feature_favorited_row_lengths = [2, 1, 1, 2]
     # sparse tensor for friends:
@@ -121,8 +114,8 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     # row 1: 0, 1, 2
     # row 2: 3
     # row 3: 0, 1, 2
-    self.feature_friends_indices = [[0, 0], [1, 0], [1, 1], [1, 2],
-                                    [2, 0], [3, 0], [3, 1], [3, 2]]
+    self.feature_friends_indices = [[0, 0], [1, 0], [1, 1], [1, 2], [2, 0],
+                                    [3, 0], [3, 1], [3, 2]]
     self.feature_friends_values = [3, 0, 1, 2, 3, 0, 1, 2]
     self.feature_friends_row_lengths = [1, 3, 1, 3]
     self.resolver = None
@@ -157,9 +150,20 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
   def _get_strategy(self):
     self.resolver = tpu_cluster_resolver.TPUClusterResolver(
         tpu=FLAGS.tpu, zone=FLAGS.zone, project=FLAGS.project)
+    if hasattr(self.resolver, '_cloud_tpu_client'):
+      self.resolver._cloud_tpu_client.configure_tpu_version(
+          version='nightly', restart_type='always')
     remote.connect_to_cluster(self.resolver)
     tpu_strategy_util.initialize_tpu_system(self.resolver)
     return tpu_strategy.TPUStrategy(self.resolver)
+
+  def _create_mid_level(self, optimizer=None):
+    # Create `TPUEmbedding` object.
+    if optimizer is None:
+      optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
+
+    return tpu_embedding_v2.TPUEmbedding(
+        feature_config=self.feature_config, optimizer=optimizer)
 
   def _create_strategy_and_mid_level(self, optimizer_name):
     strategy = self._get_strategy()
@@ -187,121 +191,29 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
 
     return strategy, mid_level_api, optimizer
 
-  @parameterized.parameters(
-      *itertools.product(['sgd', 'adagrad', 'adam', 'ftrl', 'adagrad_momentum'],
-                         [True, False], [True, False], [True, False]))
-  def test_embedding(self, optimizer_name, training, sparse,
-                     is_high_dimensional):
-    if optimizer_name != 'sgd' or not training:
-      self.skip_if_oss()
-    strategy, mid_level_api, optimizer = (
-        self._create_strategy_and_mid_level(optimizer_name))
-
-    if sparse:
-      if is_high_dimensional:
-        dataset = self._create_high_dimensional_sparse_dataset(strategy)
-      else:
-        dataset = self._create_sparse_dataset(strategy)
-    else:
-      if is_high_dimensional:
-        dataset = self._create_high_dimensional_sparse_dataset(strategy)
-      else:
-        dataset = self._create_ragged_dataset(strategy)
-
-    if is_high_dimensional:
-      if sparse:
-        mid_level_api.build([
-            TensorShape([self.batch_size, self.data_batch_size, 2]),
-            TensorShape([self.batch_size, self.data_batch_size, 2]),
-            TensorShape([self.batch_size, self.data_batch_size, 3]),
-        ])
-      else:
-        mid_level_api.build([
-            TensorShape([self.batch_size, self.data_batch_size, None]),
-            TensorShape([self.batch_size, self.data_batch_size, None]),
-            TensorShape([self.batch_size, self.data_batch_size, None]),
-        ])
-
-    dist = strategy.experimental_distribute_dataset(
-        dataset,
-        options=distribute_lib.InputOptions(experimental_fetch_to_device=False))
-    dist_iter = iter(dist)
-
-    @def_function.function
-    def test_fn():
-
-      def step():
-        """Create and run computation that returns the embedding activations."""
-        if not training:
-          activations = mid_level_api.dequeue()
-          total_loss = _get_total_loss_tensor(activations)
-          ret_val = [total_loss] + list(activations)
-          return ret_val
-        else:
-          with backprop.GradientTape() as tape:
-            activations = mid_level_api.dequeue()
-            tape.watch(activations)
-            total_loss = _get_total_loss_tensor(activations)
-            loss_per_replica = total_loss / strategy.num_replicas_in_sync
-          gradients = tape.gradient(loss_per_replica, activations)
-          mid_level_api.apply_gradients(gradients)
-        ret_val = [total_loss] + list(activations)
-        return ret_val
-
-      mid_level_api.enqueue(next(dist_iter), training=training)
-      result = strategy.run(step)
-      return result
-
-    # Run model.
-    shard_out_val = test_fn()
-
-    # Retrieve TPU weights to CPU.
-    mid_level_api._retrieve_variables()
-
-    # Compute sparse tensors for global batch.
-    if is_high_dimensional:
-      input_data = next(
-          iter(self._create_high_dimensional_sparse_dataset(strategy)))
-    else:
-      input_data = next(iter(self._create_sparse_dataset(strategy)))
-
-    # Check results.
-    self._check_results(strategy, shard_out_val, training, input_data,
-                        mid_level_api._variables, optimizer,
-                        is_high_dimensional)
-
-  def _create_mid_level(self, optimizer=None):
-    # Create `TPUEmbedding` object.
-    if optimizer is None:
-      optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
-
-    return tpu_embedding_v2.TPUEmbedding(
-        feature_config=self.feature_config,
-        optimizer=optimizer)
-
   def _create_sparse_data(self, include_weights, weight=0.5):
-    sparse_features = (
-        sparse_tensor.SparseTensor(
-            indices=self.feature_watched_indices,
-            values=self.feature_watched_values,
-            dense_shape=[self.data_batch_size, 2]),
-        sparse_tensor.SparseTensor(
-            indices=self.feature_favorited_indices,
-            values=self.feature_favorited_values,
-            dense_shape=[self.data_batch_size, 2]),
-        sparse_tensor.SparseTensor(
-            indices=self.feature_friends_indices,
-            values=self.feature_friends_values,
-            dense_shape=[self.data_batch_size, 3]))
+    sparse_features = (sparse_tensor.SparseTensor(
+        indices=self.feature_watched_indices,
+        values=self.feature_watched_values,
+        dense_shape=[self.data_batch_size, 2]),
+                       sparse_tensor.SparseTensor(
+                           indices=self.feature_favorited_indices,
+                           values=self.feature_favorited_values,
+                           dense_shape=[self.data_batch_size, 2]),
+                       sparse_tensor.SparseTensor(
+                           indices=self.feature_friends_indices,
+                           values=self.feature_friends_values,
+                           dense_shape=[self.data_batch_size, 3]))
     if include_weights:
       weights = []
       for sparse in sparse_features:
         values = (
             array_ops.ones_like(sparse.values, dtype=dtypes.float32) * weight)
-        weights.append(sparse_tensor.SparseTensor(
-            indices=sparse.indices,
-            values=values,
-            dense_shape=sparse.dense_shape))
+        weights.append(
+            sparse_tensor.SparseTensor(
+                indices=sparse.indices,
+                values=values,
+                dense_shape=sparse.dense_shape))
       sparse_features = (sparse_features, tuple(weights))
     return sparse_features
 
@@ -354,13 +266,13 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
                                               include_weights=False,
                                               weight=0.5):
     ragged_features = (
-        ragged_tensor.RaggedTensor(
+        ragged_tensor.RaggedTensor.from_row_lengths(
             row_lengths=self.feature_watched_row_lengths_high_dimensional,
             values=self.feature_watched_values_high_dimensional),
-        ragged_tensor.RaggedTensor(
+        ragged_tensor.RaggedTensor.from_row_lengths(
             row_lengths=self.feature_favorited_row_lengths_high_dimensional,
             values=self.feature_favorited_values_high_dimensional),
-        ragged_tensor.RaggedTensor(
+        ragged_tensor.RaggedTensor.from_row_lengths(
             row_lengths=self.feature_friends_row_lengths_high_dimensional,
             values=self.feature_friends_values_high_dimensional))
     if include_weights:
@@ -390,65 +302,64 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     return dataset.unbatch().repeat().batch(
         self.batch_size * strategy.num_replicas_in_sync, drop_remainder=True)
 
-  def _create_dense_input_fn(self, strategy, include_weights=False, weight=0.5):
+  def _create_dense_dataset(self, strategy, include_weights=False, weight=0.5):
 
-    def input_fn(ctx):
-      del ctx
-      features = (
-          constant_op.constant(self.feature_watched_values[-2:],
-                               dtype=dtypes.int32),
-          constant_op.constant(self.feature_favorited_values[-2:],
-                               dtype=dtypes.int32),
-          constant_op.constant(self.feature_friends_values[-2:],
-                               dtype=dtypes.int32))
-      if include_weights:
-        weights = [array_ops.ones_like(t, dtype=dtypes.float32) * weight
-                   for t in features]
-        features = (features, tuple(weights))
-      return dataset_ops.DatasetV2.from_tensors(features).repeat()
+    features = (constant_op.constant(
+        self.feature_watched_values[:self.data_batch_size], dtype=dtypes.int32),
+                constant_op.constant(
+                    self.feature_favorited_values[:self.data_batch_size],
+                    dtype=dtypes.int32),
+                constant_op.constant(
+                    self.feature_friends_values[:self.data_batch_size],
+                    dtype=dtypes.int32))
+    if include_weights:
+      weights = [
+          array_ops.ones_like(t, dtype=dtypes.float32) * weight
+          for t in features
+      ]
+      features = (features, tuple(weights))
 
-    return input_fn
+    dataset = dataset_ops.DatasetV2.from_tensors(features)
+    return dataset.unbatch().repeat().batch(
+        self.batch_size * strategy.num_replicas_in_sync, drop_remainder=True)
 
-  def _create_high_dimensional_dense_input_fn(self,
-                                              strategy,
-                                              include_weights=False,
-                                              weight=0.5):
+  def _create_high_dimensional_dense_dataset(self,
+                                             strategy,
+                                             include_weights=False,
+                                             weight=0.5):
 
-    def input_fn(ctx):
-      del ctx
-      dense_size = self.data_batch_size * 2
-      features = (
-          constant_op.constant(
-              self.feature_watched_values_high_dimensional[:dense_size],
-              shape=(self.data_batch_size, 2, 1),
-              dtype=dtypes.int32),
-          constant_op.constant(
-              self.feature_favorited_values_high_dimensional[:dense_size],
-              shape=(self.data_batch_size, 2, 1),
-              dtype=dtypes.int32),
-          constant_op.constant(
-              self.feature_friends_values_high_dimensional[:dense_size],
-              shape=(self.data_batch_size, 2, 1),
-              dtype=dtypes.int32))
-      if include_weights:
-        weights = [
-            array_ops.ones_like(t, dtype=dtypes.float32) * weight
-            for t in features
-        ]
-        features = (features, tuple(weights))
-      return dataset_ops.DatasetV2.from_tensors(features).repeat()
-
-    return input_fn
+    dense_size = self.data_batch_size * self.data_batch_size
+    features = (constant_op.constant(
+        self.feature_watched_values_high_dimensional[:dense_size],
+        shape=(self.data_batch_size, self.data_batch_size, 1),
+        dtype=dtypes.int32),
+                constant_op.constant(
+                    self.feature_favorited_values_high_dimensional[:dense_size],
+                    shape=(self.data_batch_size, self.data_batch_size, 1),
+                    dtype=dtypes.int32),
+                constant_op.constant(
+                    self.feature_friends_values_high_dimensional[:dense_size],
+                    shape=(self.data_batch_size, self.data_batch_size, 1),
+                    dtype=dtypes.int32))
+    if include_weights:
+      weights = [
+          array_ops.ones_like(t, dtype=dtypes.float32) * weight
+          for t in features
+      ]
+      features = (features, tuple(weights))
+    dataset = dataset_ops.DatasetV2.from_tensors(features)
+    return dataset.unbatch().repeat().batch(
+        self.batch_size * strategy.num_replicas_in_sync, drop_remainder=True)
 
   def _check_results(self, strategy, shard_out_val, training, input_data,
                      table_to_variable, optimizer, is_high_dimensional):
     num_replicas = strategy.num_replicas_in_sync
 
     # Unpack the values `strategy.run()` returns.
-    loss = _unpack(strategy, shard_out_val[0])
-    activation_watched = _unpack(strategy, shard_out_val[1])
-    activation_favorited = _unpack(strategy, shard_out_val[2])
-    activation_friends = _unpack(strategy, shard_out_val[3])
+    loss = self._unpack(strategy, shard_out_val[0])
+    activation_watched = self._unpack(strategy, shard_out_val[1])
+    activation_favorited = self._unpack(strategy, shard_out_val[2])
+    activation_friends = self._unpack(strategy, shard_out_val[3])
 
     # Core 0:
     # Calculate the values of embedding activations.
@@ -460,9 +371,9 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     # row 2: 4 5
     activation_friends_gold0 = np.array([[6, 7], [2, 3]])
 
-    loss_gold0 = _compute_loss(activation_watched_gold0,
-                               activation_favorited_gold0,
-                               activation_friends_gold0)
+    loss_gold0 = self._compute_loss(activation_watched_gold0,
+                                    activation_favorited_gold0,
+                                    activation_friends_gold0)
 
     # Add on values from other cores:
     # Activations for watched are an alternating sequence of
@@ -519,17 +430,16 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
 
       # Calculate gradients wrt embedding tables.
       gradients_wrt_user = (
-          _compute_gradients_wrt_embedding_table(gradient_wrt_friends_gold,
-                                                 embedding_table_user_before,
-                                                 input_data[2].indices.numpy(),
-                                                 input_data[2].values.numpy(),
-                                                 self.table_user.combiner))
+          self._compute_gradients_wrt_embedding_table(
+              gradient_wrt_friends_gold, embedding_table_user_before,
+              input_data[2].indices.numpy(), input_data[2].values.numpy(),
+              self.table_user.combiner))
       gradients_wrt_video = (
-          _compute_gradients_wrt_embedding_table(
+          self._compute_gradients_wrt_embedding_table(
               gradient_wrt_favorited_gold, embedding_table_video_before,
               input_data[1].indices.numpy(), input_data[1].values.numpy(),
               self.table_video.combiner) +
-          _compute_gradients_wrt_embedding_table(
+          self._compute_gradients_wrt_embedding_table(
               gradient_wrt_watched_gold, embedding_table_video_before,
               input_data[0].indices.numpy(), input_data[0].values.numpy(),
               self.table_video.combiner))
@@ -537,15 +447,13 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
       self._check_embedding_and_slot_variables(embedding_table_user_before,
                                                gradients_wrt_user,
                                                embedding_table_video_before,
-                                               gradients_wrt_video,
-                                               optimizer,
+                                               gradients_wrt_video, optimizer,
                                                table_to_variable)
 
   def _check_embedding_and_slot_variables(self, embedding_table_user_before,
                                           gradients_wrt_user,
                                           embedding_table_video_before,
-                                          gradients_wrt_video,
-                                          optimizer,
+                                          gradients_wrt_video, optimizer,
                                           table_to_variable):
     if isinstance(optimizer, tpu_embedding_v2_utils.SGD):
       check_fn = self._check_embedding_and_slot_variables_for_sgd
@@ -559,24 +467,22 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
       check_fn = self._check_embedding_and_slot_variables_for_ftrl
     else:
       raise ValueError('optimizer is not recognized: ', type(optimizer))
-    check_fn(embedding_table_user_before, gradients_wrt_user,
-             optimizer, table_to_variable[self.table_user.name])
-    check_fn(embedding_table_video_before, gradients_wrt_video,
-             optimizer, table_to_variable[self.table_video.name])
+    check_fn(embedding_table_user_before, gradients_wrt_user, optimizer,
+             table_to_variable[self.table_user.name])
+    check_fn(embedding_table_video_before, gradients_wrt_video, optimizer,
+             table_to_variable[self.table_video.name])
 
   def _check_embedding_and_slot_variables_for_sgd(self, embedding_table_before,
-                                                  gradients,
-                                                  optimizer,
+                                                  gradients, optimizer,
                                                   variables):
     embedding_table = np.copy(embedding_table_before)
     embedding_table -= optimizer.learning_rate * np.sum(gradients, axis=0)
-    self.assertAllClose(_get_variable(variables['parameters']).numpy(),
-                        embedding_table)
+    self.assertAllClose(
+        self._get_variable(variables['parameters']).numpy(), embedding_table)
 
   def _check_embedding_and_slot_variables_for_adagrad(self,
                                                       embedding_table_before,
-                                                      gradients,
-                                                      optimizer,
+                                                      gradients, optimizer,
                                                       variable):
     embedding_table = np.copy(embedding_table_before)
     accumulator = (
@@ -585,15 +491,15 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
         optimizer.learning_rate * np.sum(gradients, axis=0) /
         np.sqrt(accumulator))
     self.assertAllClose(
-        _get_variable(variable['parameters']).numpy(), embedding_table)
+        self._get_variable(variable['parameters']).numpy(), embedding_table)
     self.assertAllClose(
-        _get_variable(variable['accumulators']).numpy(), accumulator)
+        self._get_variable(variable['accumulators']).numpy(), accumulator)
 
   def _check_embedding_and_slot_variables_for_adagrad_momentum(
       self, embedding_table_before, gradients, optimizer, variable):
     embedding_table = np.copy(embedding_table_before)
-    accumulator = np.zeros(_get_variable(variable['accumulators']).shape)
-    momenta = np.zeros(_get_variable(variable['momenta']).shape)
+    accumulator = np.zeros(self._get_variable(variable['accumulators']).shape)
+    momenta = np.zeros(self._get_variable(variable['momenta']).shape)
     gradients = np.sum(gradients, axis=0)
     if optimizer.beta2 == 1.0:
       accumulator += gradients**2
@@ -609,17 +515,18 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
       update = momenta
     embedding_table -= optimizer.learning_rate * update
     self.assertAllClose(
-        _get_variable(variable['parameters']).numpy(),
+        self._get_variable(variable['parameters']).numpy(),
         embedding_table,
         rtol=1e-3)
     self.assertAllClose(
-        _get_variable(variable['accumulators']).numpy(), accumulator, rtol=1e-3)
+        self._get_variable(variable['accumulators']).numpy(),
+        accumulator,
+        rtol=1e-3)
     self.assertAllClose(
-        _get_variable(variable['momenta']).numpy(), momenta, rtol=1e-3)
+        self._get_variable(variable['momenta']).numpy(), momenta, rtol=1e-3)
 
   def _check_embedding_and_slot_variables_for_adam(self, embedding_table_before,
-                                                   gradients,
-                                                   optimizer,
+                                                   gradients, optimizer,
                                                    variable):
     embedding_table = np.copy(embedding_table_before)
     g = np.sum(gradients, axis=0)
@@ -630,12 +537,14 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     lr_modifier = 1
     embedding_table -= (
         m * optimizer.learning_rate * lr_modifier / (np.sqrt(v) + epsilon))
-    self.assertAllClose(_get_variable(variable['parameters']).numpy(),
-                        embedding_table, rtol=1e-4)
-    self.assertAllClose(_get_variable(variable['momenta']).numpy(),
-                        m, rtol=1e-4)
-    self.assertAllClose(_get_variable(variable['velocities']).numpy(),
-                        v, rtol=1e-4)
+    self.assertAllClose(
+        self._get_variable(variable['parameters']).numpy(),
+        embedding_table,
+        rtol=1e-4)
+    self.assertAllClose(
+        self._get_variable(variable['momenta']).numpy(), m, rtol=1e-4)
+    self.assertAllClose(
+        self._get_variable(variable['velocities']).numpy(), v, rtol=1e-4)
 
   def _check_embedding_and_slot_variables_for_ftrl(self, embedding_table_before,
                                                    gradients, optimizer,
@@ -649,7 +558,7 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     linear = np.sum(gradients, axis=0) - sigma * embedding_table
     quadratic = accumulator**neg_lr_p / optimizer.learning_rate
     embedding_table = -linear / quadratic
-    actual_parameters = _get_variable(variable['parameters']).numpy()
+    actual_parameters = self._get_variable(variable['parameters']).numpy()
     # For entries where `linear` == 0, it is not worth comparing since the
     # initial values have not been touched yet and they will not agree with what
     # the actual values should be.
@@ -657,220 +566,85 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     # FTRL has a bit more precision diff on parameters.
     self.assertAllClose(actual_parameters, embedding_table, rtol=5e-5)
     self.assertAllClose(
-        _get_variable(variable['linears']).numpy(), linear, rtol=5e-4)
+        self._get_variable(variable['linears']).numpy(), linear, rtol=5e-4)
     self.assertAllClose(
-        _get_variable(variable['accumulators']).numpy(), accumulator)
+        self._get_variable(variable['accumulators']).numpy(), accumulator)
 
   def _get_replica_numpy(self, structured, strategy, replica_id):
+
     def select_replica(x):
       x = strategy.experimental_local_results(x)
       if len(x) == 1:
         return x.numpy()
       return x[replica_id].numpy()
+
     return nest.map_structure(select_replica, structured)
 
-  @parameterized.parameters([True, False])
-  def test_dense_lookup(self, is_high_dimensional):
-    strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+  def _compute_gradients_wrt_embedding_table(self, gradient_wrt_activation,
+                                             embedding_table, feature_indices,
+                                             feature_values, combiner):
+    """Compute gradients wrt embedding_table.
 
-    if is_high_dimensional:
-      input_fn = self._create_high_dimensional_dense_input_fn(strategy)
-    else:
-      input_fn = self._create_dense_input_fn(strategy)
-    dist = strategy.distribute_datasets_from_function(
-        input_fn,
-        options=distribute_lib.InputOptions(experimental_fetch_to_device=False))
-    dist_iter = iter(dist)
+    Args:
+      gradient_wrt_activation: `np.array` with shape `batch_size` by embedding
+        `dimension`.
+      embedding_table: `np.array` with shape `vocabulary_size` by embedding
+        `dimension`.
+      feature_indices: `indices` as used to construct `SparseTensor`.
+      feature_values: `values` as used to construct `SparseTensor`.
+      combiner: `String`, 'mean' or 'sum'.
 
-    @def_function.function
-    def test_fn():
-      def step():
-        return mid_level_api.dequeue()
+    Returns:
+      Gradients wrt `embedding_table`, an `np.array`s with shape
+        `batch_size` by `vocabulary_size` by
+        embedding `dimension`.
 
-      mid_level_api.enqueue(next(dist_iter), training=False)
-      return strategy.run(step)
+    Raises:
+      ValueError: if `combiner` is not one of 'mean' or 'sum'.
+    """
+    if combiner not in ('mean', 'sum'):
+      raise ValueError(
+          '`combiner` must be mean or sum; got {}.'.format(combiner))
+    grads_shape = gradient_wrt_activation.shape[:-1] + embedding_table.shape
+    grads = np.zeros(shape=grads_shape)
+    count = np.zeros(shape=grads_shape)
+    for feature_indice, vocabulary_id in zip(feature_indices, feature_values):
+      batch_index = tuple(feature_indice[:-1])
+      grads[batch_index][vocabulary_id] += gradient_wrt_activation[batch_index]
+      count[batch_index] += 1
+    count[count == 0] = 1
+    if combiner == 'mean':
+      grads = grads / count
+    return np.reshape(grads, (-1, *embedding_table.shape))
 
-    # Run model.
-    shard0 = self._get_replica_numpy(test_fn(), strategy, 0)
+  def _unpack(self, strategy, per_replica_output):
+    per_replica_output = strategy.experimental_local_results(per_replica_output)
+    per_replica_output = array_ops.concat(per_replica_output, axis=0).numpy()
+    return per_replica_output
 
-    # embedding_values is a linear list, so we reshape to match the correct
-    # shape of the corresponding table before performing the lookup.
-    numpy_videos = np.reshape(self.embedding_values, (8, 4))
-    numpy_users = np.reshape(self.embedding_values, (16, 2))
-    golden = ((numpy_videos[self.feature_watched_values[-2:]],
-               numpy_videos[self.feature_favorited_values[-2:]],
-               numpy_users[self.feature_friends_values[-2:]]))
-    if is_high_dimensional:
-      dense_size = self.data_batch_size * 2
-      golden = ((numpy_videos[
-          self.feature_watched_values_high_dimensional[:dense_size]].reshape(
-              self.data_batch_size, 2, -1), numpy_videos[
-                  self.feature_favorited_values_high_dimensional[:dense_size]]
-                 .reshape(self.data_batch_size, 2, -1), numpy_users[
-                     self.feature_friends_values_high_dimensional[:dense_size]]
-                 .reshape(self.data_batch_size, 2, -1)))
-    self.assertAllClose(shard0, golden)
+  def _get_total_loss_tensor(self, activations):
+    losses = []
+    for activation in activations:
+      losses.append(
+          math_ops.reduce_mean(
+              math_ops.reduce_sum(
+                  gen_math_ops.squared_difference(activation, 0), axis=-1)))
+    total_loss = array_ops.expand_dims_v2(sum(losses), 0)
+    return total_loss
 
-  @parameterized.parameters([True, False])
-  def test_sequence_embeddings(self, sparse):
-    feature_config = (
-        tpu_embedding_v2_utils.FeatureConfig(
-            table=self.table_video, name='watched',
-            max_sequence_length=2),
-        tpu_embedding_v2_utils.FeatureConfig(
-            table=self.table_video, name='favorited',
-            max_sequence_length=2),
-        tpu_embedding_v2_utils.FeatureConfig(
-            table=self.table_user, name='friends',
-            max_sequence_length=3))
-    optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
-    strategy = self._get_strategy()
-    num_replicas = strategy.num_replicas_in_sync
-    with strategy.scope():
-      mid_level = tpu_embedding_v2.TPUEmbedding(
-          feature_config=feature_config,
-          optimizer=optimizer)
-    # Call build here. We call 'next' outside of the tf.function and this
-    # results in data where the shape of the sparse tensor is a tensor which we
-    # can't tell the shape of at tracing time.
-    mid_level.build(self.batch_size)
-    if sparse:
-      dataset = self._create_sparse_dataset(strategy)
-    else:
-      dataset = self._create_ragged_dataset(strategy)
-    data = next(
-        iter(
-            strategy.experimental_distribute_dataset(
-                dataset,
-                options=distribute_lib.InputOptions(
-                    experimental_fetch_to_device=False))))
+  def _compute_loss(self, activation_watched, activation_favorited,
+                    activation_friends):
+    watched_loss = np.mean(np.sum(activation_watched**2, axis=-1))
+    favorited_loss = np.mean(np.sum(activation_favorited**2, axis=-1))
+    friends_loss = np.mean(np.sum(activation_friends**2, axis=-1))
+    loss = watched_loss + favorited_loss + friends_loss
+    return loss
 
-    @def_function.function
-    def embedding_and_set_gradients(data):
-      def tpu_fn():
-        activations = mid_level.dequeue()
-        mid_level.apply_gradients(nest.map_structure(array_ops.ones_like,
-                                                     activations))
-        return activations
-      mid_level.enqueue(data)
-      return strategy.run(tpu_fn)
+  def _get_variable(self, variable):
+    if isinstance(variable, tpu_embedding_v2.TPUShardedVariable):
+      return variable.variables[0]
+    return variable
 
-    @def_function.function
-    def embedding_only(data):
-      def tpu_fn():
-        return mid_level.dequeue()
-      mid_level.enqueue(data)
-      return strategy.run(tpu_fn)
-
-    # Only check core 0.
-    before_update = self._get_replica_numpy(
-        embedding_and_set_gradients(data), strategy, 0)
-    after_update = self._get_replica_numpy(embedding_only(data), strategy, 0)
-
-    # For videos table, row 0 and row 1 are looked up 3*num_replicas times as
-    # they occur 3 times per replica (considering the features 0 and 1 which are
-    # both looked up in the videos table).
-    # Feature 0 has ids [0, 0, 1], [0, 1, 1], ... repeated over num_replicas
-    # Feature 1 has ids [0, 1, 1], [0, 0, 1], ... repeated over num_replicas
-    # This means that both rows 0 and 1 get a -0.1*3*num_replicas update
-    # For users table, each row is looked up twice:
-    # Feature 2 has ids [3, 0, 1, 2], .. repeated over num_replicas
-    # This means that we get a -0.1*num_replicas update to the third feature.
-
-    # In general this means that after the update, if we lookup feature 0 and 1
-    # the values will be 0.3*num_replicas lower per entry and for feature 2 they
-    # will be 0.1*num_replicas lower.
-    # The one issue is that these lookups contain padding values.
-    # For core 0, we get the first 2 elements of the 4 element batch.
-    # For feature 0, the indices are [[0, 0], [1, 0], [1, 1]] with max sequence
-    # length of 2, which means that [0, 1] will be 0s.
-    # For feature 1, the indices are [[0, 0], [0, 1], [1, 0]] with max sequence
-    # length of 2, which means that [1, 1] will be 0s.
-    # For feature 2, the indices are [[0, 0], [1, 0], [1, 1], [1, 2]] with max
-    # sequence length of 3, which means that [0, 1], [0, 2] will be 0s.
-    # The following masks represent that so that we only apply the above updates
-    # to the non-padding rows:
-    masks = (
-        np.array([[[1], [0]], [[1], [1]]]),
-        np.array([[[1], [1]], [[1], [0]]]),
-        np.array([[[1], [0], [0]], [[1], [1], [1]]]))
-
-    per_row_update = (0.3 * num_replicas,
-                      0.3 * num_replicas,
-                      0.1 * num_replicas)
-    golden = tuple([before - update * mask for before, update, mask in
-                    zip(before_update, per_row_update, masks)])
-    self.assertAllClose(golden, after_update)
-
-
-def _compute_gradients_wrt_embedding_table(gradient_wrt_activation,
-                                           embedding_table, feature_indices,
-                                           feature_values, combiner):
-  """Compute gradients wrt embedding_table.
-
-  Args:
-    gradient_wrt_activation: `np.array` with shape `batch_size` by
-      embedding `dimension`.
-    embedding_table: `np.array` with shape `vocabulary_size` by embedding
-      `dimension`.
-    feature_indices: `indices` as used to construct `SparseTensor`.
-    feature_values: `values` as used to construct `SparseTensor`.
-    combiner: `String`, 'mean' or 'sum'.
-
-  Returns:
-    Gradients wrt `embedding_table`, an `np.array`s with shape
-      `batch_size` by `vocabulary_size` by
-      embedding `dimension`.
-
-  Raises:
-    ValueError: if `combiner` is not one of 'mean' or 'sum'.
-  """
-  if combiner not in ('mean', 'sum'):
-    raise ValueError('`combiner` must be mean or sum; got {}.'.format(combiner))
-  grads_shape = gradient_wrt_activation.shape[:-1] + embedding_table.shape
-  grads = np.zeros(shape=grads_shape)
-  count = np.zeros(shape=grads_shape)
-  for feature_indice, vocabulary_id in zip(feature_indices, feature_values):
-    batch_index = tuple(feature_indice[:-1])
-    grads[batch_index][vocabulary_id] += gradient_wrt_activation[batch_index]
-    count[batch_index] += 1
-  count[count == 0] = 1
-  if combiner == 'mean':
-    grads = grads / count
-  return np.reshape(grads, (-1, *embedding_table.shape))
-
-
-def _unpack(strategy, per_replica_output):
-  per_replica_output = strategy.experimental_local_results(per_replica_output)
-  per_replica_output = array_ops.concat(per_replica_output, axis=0).numpy()
-  return per_replica_output
-
-
-def _get_total_loss_tensor(activations):
-  losses = []
-  for activation in activations:
-    losses.append(
-        math_ops.reduce_mean(
-            math_ops.reduce_sum(
-                gen_math_ops.squared_difference(activation, 0), axis=-1)))
-  total_loss = array_ops.expand_dims_v2(sum(losses), 0)
-  return total_loss
-
-
-def _compute_loss(activation_watched, activation_favorited, activation_friends):
-  watched_loss = np.mean(np.sum(activation_watched**2, axis=-1))
-  favorited_loss = np.mean(np.sum(activation_favorited**2, axis=-1))
-  friends_loss = np.mean(np.sum(activation_friends**2, axis=-1))
-  loss = watched_loss + favorited_loss + friends_loss
-  return loss
-
-
-def _get_variable(variable):
-  if isinstance(variable, tpu_embedding_v2.TPUShardedVariable):
-    return variable.variables[0]
-  return variable
-
-
-if __name__ == '__main__':
-  v2_compat.enable_v2_behavior()
-  test.main()
+  def _get_tmpdir(self, name, subdir=''):
+    segments = [FLAGS.model_dir, name] + ([subdir] if subdir else [])
+    return os.path.join(*segments)
