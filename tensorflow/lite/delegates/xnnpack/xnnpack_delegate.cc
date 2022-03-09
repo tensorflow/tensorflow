@@ -2157,21 +2157,8 @@ class Subgraph {
       const TfLiteConcatenationParams* concat_params,
       const std::vector<uint32_t>& xnnpack_tensors) {
     TF_LITE_ENSURE_STATUS(
-        CheckNumInputsAndOutputs(logging_context, node, 2, 1, node_index));
-
-    const TfLiteTensor& input1_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input1_tensor,
-                                       node->inputs->data[0], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        logging_context, input1_tensor, node->inputs->data[0], node_index));
-
-    const TfLiteTensor& input2_tensor = tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input2_tensor,
-                                       node->inputs->data[1], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
-        logging_context, input2_tensor, node->inputs->data[1], node_index));
+        CheckNumInputsAndOutputs(logging_context, node, 2, 3, 1, node_index));
+    const int num_inputs = NumInputs(node);
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
@@ -2182,23 +2169,32 @@ class Subgraph {
 
     // Check dimensions
     int axis = concat_params->axis;
-    if (axis < 0) axis += NumDimensions(&input1_tensor);
+    if (axis < 0) axis += NumDimensions(&output_tensor);
+    int sum_axis = 0;
 
-    for (int i = 0; i < NumDimensions(&output_tensor); i++) {
-      // All dimensions must match except the 'axis'.
-      if (i == axis) {
-        continue;
+    for (int i = 0; i < num_inputs; i++) {
+      const TfLiteTensor& input_tensor = tensors[node->inputs->data[i]];
+      TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
+          delegate, logging_context, input_tensor, node->inputs->data[i],
+          node_index));
+      TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+          logging_context, input_tensor, node->inputs->data[i], node_index));
+
+      TF_LITE_ENSURE_EQ(logging_context, NumDimensions(&input_tensor),
+                        NumDimensions(&output_tensor));
+
+      for (int d = 0; d < NumDimensions(&output_tensor); d++) {
+        // All dimensions must match except the 'axis'.
+        if (d == axis) {
+          continue;
+        }
+        const TfLiteTensor& input_tensor = tensors[node->inputs->data[i]];
+        TF_LITE_ENSURE_STATUS(CheckTensorsDimensionMatch(
+            logging_context, input_tensor, output_tensor, d, node_index,
+            "CONCATENATE"));
       }
-      TF_LITE_ENSURE_STATUS(CheckTensorsDimensionMatch(
-          logging_context, input1_tensor, output_tensor, i, node_index,
-          "CONCATENATE"));
-      TF_LITE_ENSURE_STATUS(CheckTensorsDimensionMatch(
-          logging_context, input2_tensor, output_tensor, i, node_index,
-          "CONCATENATE"));
+      sum_axis += SizeOfDimension(&input_tensor, axis);
     }
-
-    int sum_axis = SizeOfDimension(&input1_tensor, axis) +
-                   SizeOfDimension(&input2_tensor, axis);
 
     if (SizeOfDimension(&output_tensor, axis) != sum_axis) {
       TF_LITE_MAYBE_KERNEL_LOG(
@@ -2210,12 +2206,23 @@ class Subgraph {
     }
 
     if (subgraph != nullptr) {
-      const xnn_status status = xnn_define_concatenate2(
-          subgraph, axis,
-          /*input1_id=*/xnnpack_tensors[node->inputs->data[0]],
-          /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
-          /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
-          /*flags=*/0);
+      xnn_status status = xnn_status_invalid_parameter;
+      if (num_inputs == 2) {
+        status = xnn_define_concatenate2(
+            subgraph, axis,
+            /*input1_id=*/xnnpack_tensors[node->inputs->data[0]],
+            /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
+            /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+            /*flags=*/0);
+      } else if (num_inputs == 3) {
+        status = xnn_define_concatenate3(
+            subgraph, axis,
+            /*input1_id=*/xnnpack_tensors[node->inputs->data[0]],
+            /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
+            /*input3_id=*/xnnpack_tensors[node->inputs->data[2]],
+            /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+            /*flags=*/0);
+      }
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context,
                            "failed to delegate CONCATENATION node #%d",

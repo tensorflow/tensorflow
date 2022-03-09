@@ -172,7 +172,7 @@ Below is the list of currently supported floating-point operators:
 #### `CONCATENATION`
 
 * Inputs and outputs must be in 32-bit floating-point format.
-* Only concatenation with two inputs is supported.
+* Only concatenation with two or three inputs is supported.
 
 #### `CONV_2D`
 
@@ -505,7 +505,7 @@ Below is the list of currently supported quantized operators:
 #### `CONCATENATION`
 
 * Inputs and outputs must be in 8-bit quantized format.
-* Only concatenation with two inputs is supported.
+* Only concatenation with two or three inputs is supported.
 
 #### `CONV_2D`
 
