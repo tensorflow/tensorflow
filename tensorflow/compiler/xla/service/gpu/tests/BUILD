@@ -116,7 +116,7 @@ tf_cc_test(
 tf_cc_test(
     name = "mlir_fft_test",
     srcs = ["mlir_fft_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_rocm"] + tf_cuda_tests_tags(),
     deps = [
         ":mlir_gpu_test_base",
         "//tensorflow/compiler/jit:xla_gpu_jit",
