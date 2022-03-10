@@ -1614,7 +1614,7 @@ class PFor:
           try:
             try:
               if (converter.__name__ == "_fallback_converter"):
-                new_outputs = converter(pfor_inputs, root_cause=" has variant outputs")
+                new_outputs = converter(pfor_inputs, root_cause="has variant outputs")
               else: 
                 new_outputs = converter(pfor_inputs)
             except ConversionNotImplementedError as e:
@@ -1623,7 +1623,7 @@ class PFor:
                   y_op.inputs)
               if (self._fallback_to_while_loop
                   and not has_vectorized_variant_inputs):
-                new_outputs = _fallback_converter(pfor_inputs, root_cause=" has not a vectorized variant inputs")
+                new_outputs = _fallback_converter(pfor_inputs, root_cause="has not a vectorized variant inputs")
               else:
                 raise ValueError(str(e)).with_traceback(sys.exc_info()[2])
           except Exception as e:  # pylint: disable=broad-except
