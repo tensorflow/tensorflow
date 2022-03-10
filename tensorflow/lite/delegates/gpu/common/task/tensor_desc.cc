@@ -1300,16 +1300,8 @@ bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
     *zc = args[offset++];
   }
   if (HasAxis(Axis::CHANNELS)) {
-    if (offset >= args.size()) {
-      auto it = state_vars_.find("slice_id");
-      if (it == state_vars_.end()) {
-        return false;
-      } else {
-        *sc = it->second;
-      }
-    } else {
-      *sc = args[offset++];
-    }
+    if (offset >= args.size()) return false;
+    *sc = args[offset++];
   }
   if (HasAxis(Axis::BATCH) && !IsBatchedWidth()) {
     if (offset >= args.size()) {
