@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -112,7 +112,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(memory_buffer), llvm::SMLoc());
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceFile(source_mgr, mlir_ctx);
+      mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, mlir_ctx);
   // The MLIRContext owns the module
   auto module_op = module.release();
 

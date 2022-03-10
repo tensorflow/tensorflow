@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -44,7 +44,7 @@ PYBIND11_MODULE(tfr_wrapper, m) {
     llvm::SourceMgr source_mgr = llvm::SourceMgr();
     source_mgr.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(input),
                                   llvm::SMLoc());
-    auto module = mlir::parseSourceFile(source_mgr, &ctx);
+    auto module = mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, &ctx);
     if (!module) {
       return false;
     }

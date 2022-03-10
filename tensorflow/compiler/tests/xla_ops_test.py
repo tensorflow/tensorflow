@@ -651,6 +651,13 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           (r'op has mismatched number of slice sizes \(2\) and number of start'
            r' indices \(3\)'))
 
+  def test_optimization_barrier(self):
+    args = (np.array([[5, 6, 7]],
+                     dtype=np.float32), np.array([[1, 2, 3]], dtype=int))
+
+    self._assertOpOutputMatchesExpected(
+        xla.optimization_barrier, args=args, expected=args)
+
 
 class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
 

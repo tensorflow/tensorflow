@@ -16,11 +16,6 @@
 name: Update RBE Configs
 on:
   workflow_dispatch:
-  schedule:
-    # Run once a week on Sunday at 3am. See http://crontab.guru
-    # Runs at 3am to make sure it picks up the latest images built every week.
-    # See https://github.com/tensorflow/build/blob/master/.github/workflows/docker.yml
-    - cron: '0 3 * * 0'
 
 jobs:
   rbe:

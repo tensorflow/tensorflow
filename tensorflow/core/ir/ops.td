@@ -426,7 +426,8 @@ def TFGraph_YieldOp : TFGraph_Op<"yield",
 
 // Base class for TFGraph if-like operations with regions.
 class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
-    mnemonic, [DeclareOpInterfaceMethods<RegionBranchOpInterface>]> {
+    mnemonic, [DeclareOpInterfaceMethods<RegionBranchOpInterface,
+                                         ["getRegionInvocationBounds"]>]> {
   let arguments = (ins
     // Op operands.
     I1Tensor:$cond,
@@ -462,8 +463,15 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     void $cppClass::getSuccessorRegions(
         Optional<unsigned> index, ArrayRef<Attribute> operands,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      getIfLikeRegionOpSuccessorRegions(*this, index, operands, regions);
+      GetIfLikeRegionOpSuccessorRegions(*this, index, operands, regions);
     }
+    void $cppClass::getRegionInvocationBounds(
+        ArrayRef<Attribute> operands,
+        SmallVectorImpl<InvocationBounds> &invocationBounds) {
+      invocationBounds.append(/*NumInputs=*/2, /*Elt=*/{0, 1});
+    }
+
+    LogicalResult $cppClass::verify() { return VerifyIfLikeRegionOp(*this); }
   }];
 
   let assemblyFormat = [{
@@ -489,7 +497,8 @@ def TFGraph_StatefulIfRegionOp : TFGraph_IfLikeRegionOp<"StatefulIfRegion"> {
 
 // Base calss for TFGraph case-like operations with regions.
 class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
-    mnemonic, [DeclareOpInterfaceMethods<RegionBranchOpInterface>]> {
+    mnemonic, [DeclareOpInterfaceMethods<RegionBranchOpInterface,
+                                         ["getRegionInvocationBounds"]>]> {
   let arguments = (ins
     // Op operands.
     I32Tensor:$branch_index,
@@ -518,8 +527,15 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     void $cppClass::getSuccessorRegions(
         Optional<unsigned> index, ArrayRef<Attribute> operands,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      getCaseLikeRegionOpSuccessorRegions(*this, index, operands, regions);
+      GetCaseLikeRegionOpSuccessorRegions(*this, index, operands, regions);
     }
+    void $cppClass::getRegionInvocationBounds(
+        ArrayRef<Attribute> operands,
+        SmallVectorImpl<InvocationBounds> &invocationBounds) {
+      invocationBounds.append(getNumRegions(), /*Elt=*/{0, 1});
+    }
+
+    LogicalResult $cppClass::verify() { return VerifyCaseLikeRegionOp(*this); }
   }];
 
   let assemblyFormat = [{
@@ -554,7 +570,8 @@ def TFGraph_ConditionOp : TFGraph_Op<"condition",
     Variadic<TFGraph_Tensor>:$args,
     Variadic<ControlType>:$ctls
   );
-  let assemblyFormat = "$cond `:` type($cond) (` ` `(` $args^ `)`)? (`[` $ctls^ `]`)? attr-dict (`:` type($args)^)?";
+  let assemblyFormat = [{ $cond `:` type($cond) (` ` `(` $args^ `)`)?
+                          (`[` $ctls^ `]`)? attr-dict (`:` type($args)^)? }];
 }
 
 // TF graph while loop op with regions.
@@ -615,8 +632,11 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     void $cppClass::getSuccessorRegions(
         Optional<unsigned> index, ArrayRef<Attribute> operands,
         SmallVectorImpl<RegionSuccessor> &regions) {
-      return getWhileLikeRegionOpSuccessorRegions(*this, index, operands, regions);
+      return GetWhileLikeRegionOpSuccessorRegions(*this, index, operands,
+                                                  regions);
     }
+
+    LogicalResult $cppClass::verify() { return VerifyWhileLikeRegionOp(*this); }
 
     BlockArgument $cppClass::getDataValueOf(BlockArgument ctl) {
       return GetLoopRegionDataOf(ctl);

@@ -1115,16 +1115,16 @@ def assert_shallow_structure(shallow_tree,
         raise TypeError(_STRUCTURES_HAVE_MISMATCHING_TYPES.format(
             input_type=type(input_tree),
             shallow_type=type(shallow_tree)))
+      # pylint: disable=protected-access
       type_spec_1 = (shallow_tree if _is_type_spec(shallow_tree) else
-                     shallow_tree._type_spec)  # pylint: disable=protected-access
+                     shallow_tree._type_spec)._without_tensor_names()
       type_spec_2 = (input_tree if _is_type_spec(input_tree) else
-                     input_tree._type_spec)  # pylint: disable=protected-access
-      try:
-        _ = type_spec_1.most_specific_compatible_type(type_spec_2)
-      except (TypeError, ValueError) as e:
-        raise ValueError(
-            "Incompatible CompositeTensor TypeSpecs: %s vs. %s -- %s" %
-            (type_spec_1, type_spec_2, e))
+                     input_tree._type_spec)._without_tensor_names()
+      # pylint: enable=protected-access
+      result = type_spec_1.most_specific_common_supertype([type_spec_2])
+      if result is None:
+        raise ValueError("Incompatible CompositeTensor TypeSpecs: %s vs. %s" %
+                         (type_spec_1, type_spec_2))
 
     elif _is_type_spec(shallow_tree):
       if not _is_type_spec(input_tree):

@@ -883,8 +883,8 @@ std::string BufferAssignment::BufferInfoString() const {
     }
     // Ordering uses by their use position.
     std::vector<std::pair<int64_t, std::string>> uses;
-    uses.reserve(buffer.uses().size());
-    for (const HloUse& use : buffer.uses()) {
+    uses.reserve(buffer.GetUses().size());
+    for (const HloUse& use : buffer.GetUses()) {
       uses.emplace_back(instruction_schedule.at(use.instruction),
                         use.ToString());
     }

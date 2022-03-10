@@ -265,6 +265,7 @@ cc_library(
         ":timespan",
         ":trace_utils",
         ":xplane_builder",
+        ":xplane_schema",
         ":xplane_visitor",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",

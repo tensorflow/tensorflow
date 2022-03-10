@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/platform/test.h"
@@ -38,7 +38,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
   )",
                                         &context);
   mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
-  mlir::Operation* op = &func.body().front().front();
+  mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }
 
@@ -55,7 +55,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
   )",
                                         &context);
   mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
-  mlir::Operation* op = &func.body().front().front();
+  mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }
 
@@ -72,7 +72,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
   )",
                                         &context);
   mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
-  mlir::Operation* op = &func.body().front().front();
+  mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }
 

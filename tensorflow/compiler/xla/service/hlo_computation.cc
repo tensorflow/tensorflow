@@ -232,8 +232,7 @@ Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   int64_t removed = 0;
   for (int64_t i = 0; i < param_instructions_.size(); ++i) {
     HloInstruction* param_instruction = param_instructions_[i];
-    if (param_instruction->user_count() == 0 &&
-        param_instruction != root_instruction()) {
+    if (param_instruction->IsDead()) {
       TF_RETURN_IF_ERROR(
           RemoveInstructionImpl(param_instruction, allow_non_fusion));
       ++removed;
@@ -289,7 +288,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
 
-  TF_RET_CHECK(instruction->user_count() == 0);
+  TF_RET_CHECK(instruction->IsDead());
   TF_RET_CHECK(IsSafelyRemovable(instruction))
       << "Cannot remove instruction: " << instruction->ToString();
   absl::flat_hash_set<HloInstruction*> removed;
@@ -299,8 +298,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* item = worklist.front();
     worklist.pop();
 
-    if (removed.contains(item) || item->user_count() != 0 ||
-        item == root_instruction() || !IsSafelyRemovable(item) ||
+    if (removed.contains(item) || !item->IsDead() || !IsSafelyRemovable(item) ||
         (item->HasSideEffect() && item != instruction)) {
       continue;
     }
@@ -331,11 +329,8 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
           << " from computation " << name();
   TF_RET_CHECK(ignore_safety_check || IsSafelyRemovable(instruction))
       << "cannot remove instruction: " << instruction->ToString();
-  TF_RET_CHECK(root_instruction() != instruction)
-      << "cannot remove root instruction " << instruction->name();
-  TF_RET_CHECK(instruction->user_count() == 0)
-      << "instruction " << instruction->name()
-      << " has users and cannot be removed";
+  TF_RET_CHECK(instruction->IsDead()) << "instruction " << instruction->name()
+                                      << " is live and cannot be removed";
   TF_RET_CHECK(instruction->control_predecessors().empty())
       << "instruction " << instruction->name()
       << " has control predecessors and cannot be removed";
@@ -775,7 +770,7 @@ void HloComputation::FuseInstructionsInto(
   for (size_t i = 1; i < instructions_to_fuse.size(); ++i) {
     HloInstruction* instruction = instructions_to_fuse[i];
     fusion_instruction->FuseInstruction(instruction);
-    if (instruction->user_count() == 0) {
+    if (instruction->IsDead()) {
       TF_CHECK_OK(RemoveInstruction(instruction));
     }
   }
@@ -1033,9 +1028,7 @@ Status HloComputation::ReplaceInstructionWithDifferentShape(
 std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
   std::vector<HloInstruction*> unreachable_roots;
   for (auto* instruction : instructions()) {
-    if (instruction->user_count() == 0 &&
-        instruction->control_successors().empty() &&
-        instruction != root_instruction()) {
+    if (instruction->IsDead() && instruction->control_successors().empty()) {
       unreachable_roots.push_back(instruction);
     }
   }

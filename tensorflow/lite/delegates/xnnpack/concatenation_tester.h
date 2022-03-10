@@ -27,6 +27,11 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
+// Creates a new shape with the same dimensions as `shape`, except for the axis
+// dimension, which will have the value `size`.
+std::vector<int32_t> SameShapeDifferentAxis(std::vector<int32_t> shape,
+                                            int axis, int32_t size);
+
 class ConcatenationTester {
  public:
   ConcatenationTester() = default;
@@ -38,36 +43,33 @@ class ConcatenationTester {
     return *this;
   }
 
-  inline ConcatenationTester& Input1Shape(const std::vector<int32_t>& shape) {
-    for (auto it = shape.begin(); it != shape.end(); ++it) {
-      EXPECT_GT(*it, 0);
-    }
-    input1_shape_ = std::vector<int32_t>(shape.begin(), shape.end());
-    return *this;
-  }
-
   inline const int Axis() const { return axis_; }
 
-  inline const std::vector<int32_t>& Input1Shape() const {
-    return input1_shape_;
-  }
-
-  inline ConcatenationTester& Input2Shape(const std::vector<int32_t>& shape) {
-    for (auto it = shape.begin(); it != shape.end(); ++it) {
-      EXPECT_GT(*it, 0);
+  inline ConcatenationTester& InputShapes(
+      const std::initializer_list<std::vector<int32_t>> shapes) {
+    for (auto shape : shapes) {
+      for (auto it = shape.begin(); it != shape.end(); ++it) {
+        EXPECT_GT(*it, 0);
+      }
     }
-    input2_shape_ = std::vector<int32_t>(shape.begin(), shape.end());
+    input_shapes_ = shapes;
     return *this;
   }
 
-  inline const std::vector<int32_t>& Input2Shape() const {
-    return input2_shape_;
+  inline std::vector<int32_t> InputShape(size_t i) const {
+    return input_shapes_[i];
   }
 
+  inline size_t NumInputs() const { return input_shapes_.size(); }
+
   std::vector<int32_t> OutputShape() const {
-    std::vector<int32_t> output_shape = Input1Shape();
-    int concat_axis = Axis() < 0 ? Axis() + Input1Shape().size() : Axis();
-    output_shape[concat_axis] += Input2Shape()[concat_axis];
+    std::vector<int32_t> output_shape = InputShape(0);
+    int concat_axis = Axis() < 0 ? Axis() + output_shape.size() : Axis();
+    size_t axis_dim_size = 0;
+    for (size_t i = 0; i < NumInputs(); i++) {
+      axis_dim_size += InputShape(i)[concat_axis];
+    }
+    output_shape[concat_axis] = axis_dim_size;
     return output_shape;
   }
 
@@ -82,9 +84,8 @@ class ConcatenationTester {
   static int32_t ComputeSize(const std::vector<int32_t>& shape);
 
   int axis_;
-  std::vector<int32_t> input1_shape_;
-  std::vector<int32_t> input2_shape_;
   std::vector<int32_t> output_shape_;
+  std::vector<std::vector<int32_t>> input_shapes_;
 };
 
 }  // namespace xnnpack

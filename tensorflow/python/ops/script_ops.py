@@ -440,17 +440,15 @@ def eager_py_func(func, inp, Tout, name=None):
     else:
       return m**2 * (1 - 2 * tf.math.log(m) + tf.math.log(x**2))
 
-  x = tf.compat.v1.placeholder(tf.float32)
-  m = tf.compat.v1.placeholder(tf.float32)
+  x = tf.constant(1.0)
+  m = tf.constant(2.0)
 
-  y = tf.py_function(func=log_huber, inp=[x, m], Tout=tf.float32)
-  dy_dx = tf.gradients(y, x)[0]
+  with tf.GradientTape() as t:
+    t.watch([x, m])
+    y = tf.py_function(func=log_huber, inp=[x, m], Tout=tf.float32)
 
-  with tf.compat.v1.Session() as sess:
-    # The session executes `log_huber` eagerly. Given the feed values below,
-    # it will take the first branch, so `y` evaluates to 1.0 and
-    # `dy_dx` evaluates to 2.0.
-    y, dy_dx = sess.run([y, dy_dx], feed_dict={x: 1.0, m: 2.0})
+  dy_dx = t.gradient(y, x)
+  assert dy_dx.numpy() == 2.0
   ```
 
   You can also use `tf.py_function` to debug your models at runtime
@@ -465,14 +463,18 @@ def eager_py_func(func, inp, Tout, name=None):
   `tf.py_function` is similar in spirit to `tf.compat.v1.py_func`, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped
   Python function. In particular, while `tf.compat.v1.py_func` only runs on CPUs
-  and
-  wraps functions that take NumPy arrays as inputs and return NumPy arrays as
-  outputs, `tf.py_function` can be placed on GPUs and wraps functions
+  and wraps functions that take NumPy arrays as inputs and return NumPy arrays
+  as outputs, `tf.py_function` can be placed on GPUs and wraps functions
   that take Tensors as inputs, execute TensorFlow operations in their bodies,
   and return Tensors as outputs.
 
-  Like `tf.compat.v1.py_func`, `tf.py_function` has the following limitations
-  with respect to serialization and distribution:
+  Note: We recommend to avoid using `tf.py_function` outside of prototyping
+  and experimentation due to the following known limitations:
+
+  * Calling `tf.py_function` will acquire the Python Global Interpreter Lock
+    (GIL) that allows only one thread to run at any point in time. This will
+    preclude efficient parallelization and distribution of the execution of the
+    program.
 
   * The body of the function (i.e. `func`) will not be serialized in a
     `GraphDef`. Therefore, you should not use this function if you need to
@@ -484,6 +486,9 @@ def eager_py_func(func, inp, Tout, name=None):
     program that calls `tf.py_function()` and you must pin the created
     operation to a device in that server (e.g. using `with tf.device():`).
 
+  * Currently `tf.py_function` is not compatible with XLA. Calling
+    `tf.py_function` inside `tf.function(jit_comiple=True)` will raise an
+    error.
 
   Args:
     func: A Python function that accepts `inp` as arguments, and returns a
@@ -707,8 +712,14 @@ def numpy_function(func, inp, Tout, stateful=True, name=None):
   function to contain `tf.Tensors`, and have any TensorFlow operations executed
   in the function be differentiable, please use `tf.py_function`.
 
-  Note: The `tf.numpy_function` operation has the following known
-  limitations:
+  Note: We recommend to avoid using `tf.numpy_function` outside of
+  prototyping and experimentation due to the following known limitations:
+
+  * Calling `tf.numpy_function` will acquire the Python Global Interpreter Lock
+    (GIL) that allows only one thread to run at any point in time. This will
+    preclude efficient parallelization and distribution of the execution of the
+    program. Therefore, you are discouraged to use `tf.numpy_function` outside
+    of prototyping and experimentation.
 
   * The body of the function (i.e. `func`) will not be serialized in a
     `tf.SavedModel`. Therefore, you should not use this function if you need to
@@ -719,6 +730,10 @@ def numpy_function(func, inp, Tout, stateful=True, name=None):
     TensorFlow, you must run a `tf.distribute.Server` in the same process as the
     program that calls `tf.numpy_function`  you must pin the created
     operation to a device in that server (e.g. using `with tf.device():`).
+
+  * Currently `tf.numpy_function` is not compatible with XLA. Calling
+    `tf.numpy_function` inside `tf.function(jit_comiple=True)` will raise an
+    error.
 
   * Since the function takes numpy arrays, you cannot take gradients
     through a numpy_function. If you require something that is differentiable,

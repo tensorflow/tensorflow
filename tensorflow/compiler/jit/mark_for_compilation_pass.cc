@@ -95,10 +95,6 @@ class MarkForCompilationPassImpl {
     // If true, do not respect the _XlaCompile=false attribute.
     bool ignore_xla_compile_attr;
 
-    // If true, compute the cluster name in a deterministic way so that its
-    // stable from run to rum.
-    bool deterministic_cluster_names;
-
     int max_cluster_size;
     int min_cluster_size;
 
@@ -639,11 +635,9 @@ StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
     TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(*graph_, &deadness_analysis_));
   }
 
-  // If the user is requesting deterministic cluster names compute a hash of the
+  // Compute a hash of the
   // input graph to provide a stable but unique prefix for the name.
-  if (debug_options_.deterministic_cluster_names) {
-    TF_ASSIGN_OR_RETURN(graph_fingerprint_, FingerprintGraph(*graph_));
-  }
+  TF_ASSIGN_OR_RETURN(graph_fingerprint_, FingerprintGraph(*graph_));
 
   // Each compilation candidate belongs to a cluster. The cluster's
   // representative names the node in the 'cycles' graph that represents the
@@ -925,13 +919,8 @@ Status MarkForCompilationPassImpl::CreateClusters() {
       string& name = cluster_names[cluster->cycles_graph_node_id()];
 
       if (name.empty()) {
-        if (debug_options_.deterministic_cluster_names) {
-          name = absl::StrCat("cluster_", graph_fingerprint_, "_",
-                              GetNextClusterSequenceNumber(graph_fingerprint_));
-        } else {
-          name = absl::StrCat("cluster_",
-                              GetNextClusterSequenceNumber(graph_fingerprint_));
-        }
+        name = absl::StrCat("cluster_", graph_fingerprint_, "_",
+                            GetNextClusterSequenceNumber(graph_fingerprint_));
       }
 
       n->AddAttr(kXlaClusterAttr, name);
@@ -1803,8 +1792,6 @@ Status MarkForCompilationPass::Run(
   debug_options.ignore_resource_variable_checks =
       flags->tf_xla_disable_resource_variable_safety_checks_for_debugging;
   debug_options.ignore_xla_compile_attr = false;
-  debug_options.deterministic_cluster_names =
-      flags->tf_xla_deterministic_cluster_names;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
   debug_options.fuel = GetPointerToFuel(flags->tf_xla_clustering_fuel);
@@ -1814,8 +1801,8 @@ Status MarkForCompilationPass::Run(
 }
 
 Status MarkForCompilationPass::RunForTest(
-    const GraphOptimizationPassOptions& options, bool disable_deadness_analysis,
-    bool deterministic_cluster_names) {
+    const GraphOptimizationPassOptions& options,
+    bool disable_deadness_analysis) {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
 
   MarkForCompilationPassImpl::DebugOptions debug_options;
@@ -1823,7 +1810,6 @@ Status MarkForCompilationPass::RunForTest(
   debug_options.ignore_resource_variable_checks =
       flags->tf_xla_disable_resource_variable_safety_checks_for_debugging;
   debug_options.ignore_xla_compile_attr = true;
-  debug_options.deterministic_cluster_names = deterministic_cluster_names;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
   debug_options.fuel = GetPointerToFuel(flags->tf_xla_clustering_fuel);
@@ -1860,6 +1846,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
             "LeakyReluGrad", "Elu", "EluGrad", "Selu", "SeluGrad", "Select",
             "SelectV2", "Transpose", "ConjugateTranspose",
             "_UnaryOpsComposition", "CollectiveReduceV2",
+            "CollectiveAssignGroupV2",
             // The following 5 operations are converted to identity
             "PlaceholderWithDefault", "PreventGradient", "StopGradient",
             "Snapshot", "_EagerConst"}},
@@ -2147,6 +2134,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "XlaConcatND",
       "XlaConv",
       "XlaConvV2",
+      "XlaCustomCall",
       "XlaDequantize",
       "XlaDot",
       "XlaDotV2",
@@ -2156,6 +2144,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "XlaGather",
       "XlaIf",
       "XlaKeyValueSort",
+      "XlaOptimizationBarrier",
       "XlaPad",
       "XlaRecv",
       "XlaReduce",

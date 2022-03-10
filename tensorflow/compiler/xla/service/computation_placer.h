@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -57,6 +58,10 @@ class DeviceAssignment : public Array2D<int> {
   StatusOr<LogicalID> LogicalIdForDevice(GlobalDeviceId device_id) const;
   // Finds the replica ID for the given device.
   StatusOr<int> ReplicaIdForDevice(GlobalDeviceId device_id) const;
+  // Returns a map from device ID to logical ID. Querying this map is much more
+  // efficient than `LogicalIdForDevice` if queried repeatedly.
+  absl::flat_hash_map<GlobalDeviceId, LogicalID> GetDeviceToLogicalIdMap()
+      const;
 
   // Protocol buffer serialization and deserialization.
   Status Serialize(DeviceAssignmentProto* proto) const;

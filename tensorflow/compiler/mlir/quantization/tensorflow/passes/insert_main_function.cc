@@ -203,7 +203,7 @@ bool CreateMainFunction(ModuleOp& module) {
 
     auto call_op = builder.create<TF::PartitionedCallOp>(
         module.getLoc(), new_types, new_args,
-        SymbolRefAttr::get(context, function.sym_name()),
+        SymbolRefAttr::get(context, function.getSymName()),
         /*config=*/builder.getStringAttr(""),
         /*config_proto=*/builder.getStringAttr(""),
         /*executor_type=*/builder.getStringAttr(""));

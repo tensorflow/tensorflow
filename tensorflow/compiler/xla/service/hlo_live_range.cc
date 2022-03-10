@@ -163,7 +163,7 @@ HloLiveRange::TimeBound HloLiveRange::GetLastPosition(
 HloLiveRange::LogicalTime HloLiveRange::GetLastUsageTime(
     const HloValue& value) const {
   LogicalTime end_time = -1;
-  for (const HloUse& use : value.uses()) {
+  for (const HloUse& use : value.GetUses()) {
     const HloInstruction* used = use.instruction;
     // As an optimization, we deem a while's init value's live range ends as
     // soon as the loop body starts. This optimization is only applicable in

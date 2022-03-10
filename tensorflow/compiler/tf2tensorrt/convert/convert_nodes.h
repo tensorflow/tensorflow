@@ -529,6 +529,14 @@ constexpr std::array<std::pair<const char*, nvinfer1::ElementWiseOperation>, 10>
         {"Pow", nvinfer1::ElementWiseOperation::kPOW},
     }};
 
+template <typename T>
+absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
+  absl::InlinedVector<std::string, 10> result;
+  absl::c_transform(set, std::back_inserter(result),
+                    [](const auto x) { return x.first; });
+  return result;
+}
+
 // Adds a matrix multiplication operation to the TensorRT graph. The "params"
 // pointer is only used to access the TRT network builder. The inputs and
 // parameters for the op are fully specified by input_[a|b] and transpose_[a|b].

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -300,6 +301,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("release_dynamic_tensors",
                           BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("use_dynamic_tensors_for_large_tensors",
+                          BenchmarkParam::Create<int32_t>(0));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
   delegate_providers.AddAllDelegateParams();
@@ -372,7 +375,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "include allocated memory size of each tensor etc."),
       CreateFlag<bool>("release_dynamic_tensors", &params_,
                        "Ensure dynamic tensor's memory is released when they "
-                       "are not used.")};
+                       "are not used."),
+      CreateFlag<int32_t>(
+          "use_dynamic_tensors_for_large_tensors", &params_,
+          "Use dynamic tensor for large tensors to optimize memory usage.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -413,6 +419,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Print post-invoke interpreter state", verbose);
   LOG_BENCHMARK_PARAM(bool, "release_dynamic_tensors",
                       "Release dynamic tensor memory", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "use_dynamic_tensors_for_large_tensors",
+                      "Use dynamic tensor for large tensors", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -624,6 +632,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   InterpreterOptions options;
   options.SetPreserveAllTensors(params_.Get<bool>("release_dynamic_tensors"));
+  options.SetDynamicAllocationForLargeTensors(
+      params_.Get<int32_t>("use_dynamic_tensors_for_large_tensors"));
   interpreter_->ApplyOptions(&options);
 
   owned_delegates_.clear();

@@ -602,6 +602,48 @@ class XlaTest(test.TestCase, parameterized.TestCase):
 
 
 @combinations.generate(
+    combinations.combine(
+        required_physical_gpus=2, mode='eager', jit_compile=[True, False]))
+class GroupAssignmentTest(test.TestCase, parameterized.TestCase):
+
+  def testGroupAssignmentBeforeAllReduce(self, jit_compile):
+    device0 = '/device:GPU:0'
+    device1 = '/device:GPU:1'
+    instance_key = 100
+    results = []
+
+    group_size = 1
+    group_assignment = [[0], [1]]
+
+    def all_reduce(device, device_index):
+
+      with ops.device(device):
+        token = create_ordering_token()
+
+      @def_function.function(jit_compile=jit_compile)
+      def f(device_index):
+        group_key = _collective_ops.assign_group_v2(
+            group_assignment=group_assignment, device_index=device_index)
+        return _collective_ops.all_reduce_v2([1.],
+                                             group_size,
+                                             group_key,
+                                             instance_key,
+                                             ordering_token=token)
+
+      with ops.device(device):
+        results.append(f(device_index))
+
+    t0 = threading.Thread(target=all_reduce, args=(device0, 0))
+    t1 = threading.Thread(target=all_reduce, args=(device1, 1))
+    t0.start()
+    t1.start()
+    t0.join()
+    t1.join()
+
+    self.assertAllEqual(results, [[1.], [1.]])
+
+
+@combinations.generate(
     combinations.times(collective_op_combinations, device_combination))
 class AbortCollectiveOpsTest(test.TestCase, parameterized.TestCase):
 

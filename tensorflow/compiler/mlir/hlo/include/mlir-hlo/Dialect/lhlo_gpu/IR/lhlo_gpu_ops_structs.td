@@ -19,7 +19,8 @@ limitations under the License.
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 
 def ConvolutionBackendConfigAttr : StructAttr<"ConvolutionBackendConfig",
-                                          LHLO_GPU_Dialect, [
+                                          LmhloGpuDialect, [
+
    // These six fields are a TableGen transliteration of AlgorithmProto.
    StructFieldAttr<"algorithm", I64Attr>,
    StructFieldAttr<"tensor_ops_enabled", BoolAttr>,

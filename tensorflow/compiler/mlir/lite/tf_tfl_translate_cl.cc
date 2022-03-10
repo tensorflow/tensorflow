@@ -165,3 +165,9 @@ opt<bool> enable_hlo_to_tf_conversion(
     "enable-hlo-to-tf-conversion",
     llvm::cl::desc("Whether to enable the hlo to tf ops conversion."),
     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> preserve_assert_op(
+    "preserve-assert-op",
+    llvm::cl::desc("Preserve AssertOp during tfl legalization."),
+    llvm::cl::init(false));

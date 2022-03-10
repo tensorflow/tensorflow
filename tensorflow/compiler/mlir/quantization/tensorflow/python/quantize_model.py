@@ -14,6 +14,7 @@
 # ==============================================================================
 """Defines TF Quantization API from SavedModel to SavedModel."""
 
+import enum
 import tempfile
 import uuid
 import warnings
@@ -35,6 +36,22 @@ from tensorflow.python.saved_model.load import load as saved_model_load
 
 # The signature key of the saved model init op.
 _INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
+
+
+class OptimizationMethod(enum.Enum):
+  """Model Optimization methods."""
+
+  # Static range quantization. Quantized tensor value ranges will be
+  # statically determined.
+  STATIC_RANGE_QUANT = 'STATIC_RANGE_QUANTIZATION'
+
+  # Dynamic range quantization. Quantized tensor value ranges will be
+  # determined in the graph executions.
+  DYNAMIC_RANGE_QUANT = 'DYNAMIC_RANGE_QUANTIZATION'
+
+  # Automatic quantization. Quantized algorithms will be selected automatically
+  # based on the model structure and the data set.
+  AUTOMATIC_QUANT = 'AUTOMATIC_QUANTIZATION'
 
 
 def _legalize_tensor_name(tensor_name: str) -> str:
@@ -133,12 +150,12 @@ def _fix_tensor_names(signatures, exported_graph):
   return signatures
 
 
-def quantize(saved_model_path: str,
-             signature_keys=None,
-             tags=None,
-             output_directory=None,
-             representative_dataset=None):
-  """Quantizes the given SavedModel.
+def _static_range_quantize(saved_model_path: str,
+                           signature_keys=None,
+                           tags=None,
+                           output_directory=None,
+                           representative_dataset=None):
+  """Quantizes the given SavedModel via static range quantization.
 
   Args:
     saved_model_path: Path to the saved model. When representative_dataset is
@@ -161,11 +178,6 @@ def quantize(saved_model_path: str,
   Raises:
     ValueError: when representative_dataset is not provided for non-QAT model.
   """
-  if tags is None:
-    tags = set([tag_constants.SERVING])
-  if signature_keys is None:
-    signature_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
-
   is_qat_saved_model = _is_qat_saved_model(saved_model_path)
   signatures = _get_signatures_from_saved_model(saved_model_path,
                                                 signature_keys, tags)
@@ -292,3 +304,53 @@ def quantize(saved_model_path: str,
   v1_builder.save()
 
   return saved_model_load(output_directory)
+
+
+def quantize(saved_model_path: str,
+             signature_keys=None,
+             tags=None,
+             output_directory=None,
+             optimization_method: OptimizationMethod = OptimizationMethod
+             .AUTOMATIC_QUANT,
+             representative_dataset=None):
+  """Quantizes the given SavedModel.
+
+  Args:
+    saved_model_path: Path to the saved model. When representative_dataset is
+      not provided, this should be a model trained with QAT.
+    signature_keys: List of keys identifying SignatureDef containing inputs and
+      outputs.
+    tags: Set of tags identifying the MetaGraphDef within the SavedModel to
+      analyze.
+    output_directory: The path to save the output SavedModel (must be an empty
+      directory).
+    optimization_method: Optimization method to apply.
+    representative_dataset: a generator that returns a dictionary in
+      {input_name: input_tensor} format or a tuple with signature key and a
+      dictionary in {input_name: input_tensor} format that feeds calibration
+        data for quantizing model. This should be provided when the model is not
+        a QAT model.
+
+  Returns:
+    A SavedModel object with TF quantization applied.
+
+  Raises:
+    ValueError: when representative_dataset is not provided for non QAT model
+      for enabling static range quantization.
+  """
+  if tags is None:
+    tags = set([tag_constants.SERVING])
+  if signature_keys is None:
+    signature_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+
+  if optimization_method == OptimizationMethod.STATIC_RANGE_QUANT:
+    return _static_range_quantize(
+        saved_model_path=saved_model_path,
+        signature_keys=signature_keys,
+        tags=tags,
+        output_directory=output_directory,
+        representative_dataset=representative_dataset)
+  else:
+    raise NotImplementedError(
+        'Optimization method "%s" is not implemented yet' %
+        optimization_method.name)

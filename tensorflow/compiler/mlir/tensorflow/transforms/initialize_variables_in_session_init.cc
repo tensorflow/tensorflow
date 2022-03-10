@@ -60,7 +60,7 @@ constexpr char kTfSavedModelExportedNameAttr[] =
 FuncOp CreateSessionInitFunc(ModuleOp module) {
   constexpr char kSessionInitFuncName[] = "SessionInitializerFunction";
 
-  mlir::OpBuilder builder(module.body());
+  mlir::OpBuilder builder(module.getBodyRegion());
   auto func_type =
       FunctionType::get(module.getContext(), /*inputs=*/{}, /*results=*/{});
   auto func =

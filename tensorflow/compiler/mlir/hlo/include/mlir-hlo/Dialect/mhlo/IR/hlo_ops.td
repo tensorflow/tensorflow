@@ -1838,7 +1838,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
-    HLO_Tensor:$scatter_indices,
+    TensorOf<[AnyInteger, Index]>:$scatter_indices,
     HLO_Tensor:$updates,
     ScatterDimensionNumbers:$scatter_dimension_numbers,
     DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
@@ -1852,6 +1852,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
   let hasCustomHLOConverter = 1;
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
@@ -2274,8 +2275,12 @@ def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]> {
     HLO_IntOrFpTensor:$initial_state
   );
 
-  let results = (outs Variadic<HLO_TensorOrToken>);
+  let results = (outs
+      HLO_IntOrFpTensor:$output_state,
+      HLO_IntOrFpTensor:$output
+      );
 
+  let hasVerifier = 1;
   // TODO(jpienaar): This should not be needed.
   let hasCustomHLOConverter = 1;
 }
@@ -2373,7 +2378,7 @@ def HLO_BitcastOp : HLO_Op<"bitcast", [NoSideEffect]> {
 }
 
 def HLO_ReducePrecisionOp :
-    HLO_Op<"reduce_precision", [SameOperandsAndResultShape]> {
+    HLO_Op<"reduce_precision", [SameOperandsAndResultShape, SameOperandsAndResultElementType]> {
   let summary = "Reduce precision operator";
   let description = [{
     Models the effect of converting floating - point values to a lower -
@@ -2390,6 +2395,7 @@ def HLO_ReducePrecisionOp :
     I32Attr:$exponent_bits,
     I32Attr:$mantissa_bits
   );
+  let hasVerifier = 1;
   let results = (outs HLO_FpTensor:$output);
 }
 

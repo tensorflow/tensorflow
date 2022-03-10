@@ -773,7 +773,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto scatter_op = func_builder->create<mlir::mhlo::ScatterOp>(
           loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*scatter->to_apply(),
-                                        &scatter_op.update_computation()));
+                                        &scatter_op.update_computation(),
+                                        /*flatten_region_arg_tuple=*/true));
       return scatter_op.getOperation();
     }
     case HloOpcode::kSelectAndScatter: {

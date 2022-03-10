@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/utility.h"
 
 namespace mlir {
 namespace detail {
@@ -65,26 +66,16 @@ class TFOp {
   }
 
   // Split the operands into data and control operands.
-  std::tuple<OperandRange, OperandRange> splitOperands() {
+  std::pair<OperandRange, OperandRange> splitOperands() {
     ControlType ctl_type = getDialect()->getControlType();
-    OperandRange operands = op_->getOperands();
-    unsigned num_ctl = 0;
-    for (Value operand : llvm::reverse(operands)) {
-      if (operand.getType() == ctl_type)
-        ++num_ctl;
-      else
-        break;
-    }
-    unsigned split_idx = operands.size() - num_ctl;
-    return std::make_tuple(operands.slice(0, split_idx),
-                           operands.slice(split_idx, num_ctl));
+    return SplitDataAndControlValues(op_->getOperands(), ctl_type);
   }
 
   // Returns the regular operands, the control operands will be excluded.
-  OperandRange getNonControlOperands() { return std::get<0>(splitOperands()); }
+  OperandRange getNonControlOperands() { return splitOperands().first; }
 
   // The control operands are always after the regular inputs.
-  OperandRange getControlOperands() { return std::get<1>(splitOperands()); }
+  OperandRange getControlOperands() { return splitOperands().second; }
 
   // Returns the control token produced by this operation.
   Value controlRet() { return op_->getResult(op_->getNumResults() - 1); }

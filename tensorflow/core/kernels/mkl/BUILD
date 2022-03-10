@@ -67,6 +67,7 @@ tf_mkl_kernel_library(
     deps = [
         "//tensorflow/core/kernels:batch_matmul_op",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/stream_executor:matmul_util",
     ] + MKL_DEPS,
 )
 

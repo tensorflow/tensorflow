@@ -125,7 +125,7 @@ summary {
   unclustered_node_count: 4
   clustered_node_count: 14
   clusters {
-    name: "cluster_0"
+    name: "cluster_8258404559786205771_0"
     size: 14
     op_histogram {
       op: "Add"
@@ -162,7 +162,6 @@ summary {
   EXPECT_EQ(listener()->auto_clustering_activity().DebugString(),
             expected_auto_clustering_activity.DebugString());
 
-  EXPECT_EQ(listener()->jit_compilation_activity().cluster_name(), "cluster_0");
   EXPECT_EQ(listener()->jit_compilation_activity().compile_count(), 1);
 
   int64_t first_compile_time =
@@ -179,7 +178,6 @@ summary {
                               /*target_node_names=*/{}, &outputs));
   }
 
-  EXPECT_EQ(listener()->jit_compilation_activity().cluster_name(), "cluster_0");
   EXPECT_EQ(listener()->jit_compilation_activity().compile_count(), 2);
 
   EXPECT_GT(listener()->jit_compilation_activity().compile_time_us(), 0);

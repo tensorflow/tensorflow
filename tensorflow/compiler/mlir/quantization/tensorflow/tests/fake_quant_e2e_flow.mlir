@@ -14,29 +14,30 @@
 
 // RUN: tf-quant-opt %s -quant-convert-fake-quant-to-qdq -quant-lift-quantizable-spots-as-functions -quant-insert-quantized-functions -quant-quantize-composite-functions -symbol-dce | FileCheck %s
 
-func @fake_quant_add(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<8xf32> {
-  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 8} : (tensor<8xf32>) -> tensor<8xf32>
-  %1 = "tf.FakeQuantWithMinMaxArgs"(%arg1) {min = -0.3 : f32, max = 0.4 : f32, num_bits = 8} : (tensor<8xf32>) -> tensor<8xf32>
-  %2 = "tf.AddV2"(%0, %1) : (tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
-  %3 = "tf.FakeQuantWithMinMaxArgs"(%2) {min = -0.4 : f32, max = 0.6 : f32, num_bits = 8} : (tensor<8xf32>) -> tensor<8xf32>
-  return %3 : tensor<8xf32>
+func @fake_quant_conv(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> tensor<*xf32> {
+  %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg1) {device = "", max = 2.000000e+00 : f32, min = -1.000000e+00 : f32, narrow_range = false, num_bits = 8 : i64} : (tensor<2x3x3x2xf32>) -> tensor<*xf32>
+  %1 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {device = "", max = 2.000000e-01 : f32, min = -1.000000e-01 : f32, narrow_range = false, num_bits = 8 : i64} : (tensor<1x3x4x3xf32>) -> tensor<*xf32>
+  %2 = "tf._FusedConv2D"(%1, %0, %cst) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], epsilon = 0.000000e+00 : f32, explicit_paddings = [], fused_ops = ["BiasAdd"], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
+  %3 = "tf.FakeQuantWithMinMaxArgs"(%2) {device = "", max = 4.000000e-01 : f32, min = -3.000000e-01 : f32, narrow_range = false, num_bits = 8 : i64} : (tensor<*xf32>) -> tensor<*xf32>
+  return %3 : tensor<*xf32>
 }
 
-// TODO(b/213253905): Enable again once the pipeline is ready to emit quantized composite op
-// CHECK: func @fake_quant_add
-// NO-CHECK-NEXT:  [[lhs_scale:%.*]] = "tf.Const"() {value = dense<0.00117647066> : tensor<f32>} : () -> tensor<f32>
-// NO-CHECK-NEXT:  [[lhs_zp:%.*]] = "tf.Const"() {value = dense<-43> : tensor<i32>} : () -> tensor<i32>
-// NO-CHECK-NEXT:  [[rhs_scale:%.*]] = "tf.Const"() {value = dense<0.0027450982> : tensor<f32>} : () -> tensor<f32>
-// NO-CHECK-NEXT:  [[rhs_zp:%.*]] = "tf.Const"() {value = dense<-19> : tensor<i32>} : () -> tensor<i32>
-// NO-CHECK-NEXT:  [[out_scale:%.*]] = "tf.Const"() {value = dense<0.00392156886> : tensor<f32>} : () -> tensor<f32>
-// NO-CHECK-NEXT:  [[out_zp:%.*]] = "tf.Const"() {value = dense<-26> : tensor<i32>} : () -> tensor<i32>
-// NO-CHECK-NEXT: [[lhs_i8:%.*]] = "tf.StatefulPartitionedCall"(%arg0, [[lhs_zp]], [[lhs_scale]]) {config = "", config_proto = "", executor_type = "", f = @quantize_i8} : (tensor<8xf32>, tensor<i32>, tensor<f32>) -> tensor<8xi8>
-// NO-CHECK-NEXT: [[rhs_i8:%.*]] = "tf.StatefulPartitionedCall"(%arg1, [[rhs_zp]], [[rhs_scale]]) {config = "", config_proto = "", executor_type = "", f = @quantize_i8} : (tensor<8xf32>, tensor<i32>, tensor<f32>) -> tensor<8xi8>
-// NO-CHECK-NEXT: [[add_i8:%.*]] = "tf.StatefulPartitionedCall"([[lhs_i8]], [[rhs_i8]], [[lhs_zp]], [[lhs_scale]], [[rhs_zp]], [[rhs_scale]], [[out_zp]], [[out_scale]]) {config = "", config_proto = "", executor_type = "", f = @quantized_add_fn} : (tensor<8xi8>, tensor<8xi8>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>) -> tensor<8xi8>
-// NO-CHECK-NEXT: [[add:%.*]] = "tf.StatefulPartitionedCall"([[add_i8]], [[out_zp]], [[out_scale]]) {config = "", config_proto = "", executor_type = "", f = @dequantize_i8} : (tensor<8xi8>, tensor<i32>, tensor<f32>) -> tensor<8xf32>
-// NO-CHECK-NEXT: return [[add:%.*]] : tensor<8xf32>
+// CHECK: func @fake_quant_conv(
+// CHECK-NEXT: %cst = "tf.Const"() {value = dense<0.00117647066> : tensor<f32>} : () -> tensor<f32>
+// CHECK-NEXT: %cst_0 = "tf.Const"() {value = dense<-43> : tensor<i32>} : () -> tensor<i32>
+// CHECK-NEXT: %cst_1 = "tf.Const"() {value = dense<0.0117647061> : tensor<f32>} : () -> tensor<f32>
+// CHECK-NEXT: %cst_2 = "tf.Const"() {value = dense<1.38408304E-5> : tensor<f32>} : () -> tensor<f32>
+// CHECK-NEXT: %cst_3 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK-NEXT: %cst_4 = "tf.Const"() {value = dense<0.0027450982> : tensor<f32>} : () -> tensor<f32>
+// CHECK-NEXT: %cst_5 = "tf.Const"() {value = dense<-19> : tensor<i32>} : () -> tensor<i32>
+// CHECK-NEXT: %cst_6 = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK-NEXT: %0 = "tf.PartitionedCall"(%arg1, %cst_1, %cst_0) {config = "", config_proto = "", executor_type = "", f = @quantize_i8} : (tensor<2x3x3x2xf32>, tensor<f32>, tensor<i32>) -> tensor<2x3x3x2xi8>
+// CHECK-NEXT: %1 = "tf.PartitionedCall"(%arg0, %cst, %cst_0) {config = "", config_proto = "", executor_type = "", f = @quantize_i8} : (tensor<1x3x4x3xf32>, tensor<f32>, tensor<i32>) -> tensor<1x3x4x3xi8>
+// CHECK-NEXT: %2 = "tf.PartitionedCall"(%1, %0, %cst_6, %cst, %cst_0, %cst_1, %cst_0, %cst_2, %cst_3, %cst_4, %cst_5) {config = "", config_proto = "", executor_type = "", f = @quantized_conv2d_fn_0} : (tensor<1x3x4x3xi8>, tensor<2x3x3x2xi8>, tensor<2xi32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>) -> tensor<*xi8>
+// CHECK-NEXT: %3 = "tf.PartitionedCall"(%2, %cst_4, %cst_5) {config = "", config_proto = "", executor_type = "", f = @dequantize_i8} : (tensor<*xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+// CHECK-NEXT: return %3 : tensor<*xf32>
 
-// CHECK-NOT: func private @quantized_conv2d_relu6_fn
-// CHECK: func private @quantize_i8
-// CHECK: func private @dequantize_i8
-// CHECK: func private @quantized_add_fn_0
+// CHECK: func private @quantize_i8(
+// CHECK: func private @dequantize_i8(
+// CHECK: func private @quantized_conv2d_fn_0(

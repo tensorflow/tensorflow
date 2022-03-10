@@ -2201,11 +2201,26 @@ NNAPIExecutionCache::Signature CreateExecutionCacheSignature(
                                         std::move(dynamic_dimensions)};
 }
 
+std::size_t HashIntVector(const std::vector<int>& vec) {
+  std::size_t seed = vec.size();
+  auto hasher = std::hash<int>{};
+  for (const auto& i : vec) {
+    seed = CombineHashes({seed, hasher(i)});
+  }
+  return seed;
+}
+
 }  // namespace
 
 bool NNAPIExecutionCache::Signature::operator==(const Signature& other) const {
   return tensor_handles == other.tensor_handles &&
          dynamic_dimensions == other.dynamic_dimensions;
+}
+
+std::size_t NNAPIExecutionCache::Signature::Hasher::operator()(
+    const Signature& signature) const {
+  return CombineHashes({HashIntVector(signature.tensor_handles),
+                        HashIntVector(signature.dynamic_dimensions)});
 }
 
 ANeuralNetworksExecution* NNAPIExecutionCache::Get(const Signature& signature) {
@@ -5421,7 +5436,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
         context, node_index, &node, &registration));
     if (IsDequantizeConstFloat16(context, node, registration)) {
       builder.AddTensorInput(node->inputs->data[0], /*hybrid_op=*/false,
-                             NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION);
+                             NN_TENSOR_FLAG_HALF_TO_FLOAT_CONVERSION |
+                                 NN_TENSOR_FLAG_SCALAR_AS_TENSOR);
     }
     if (IsDensifyConstTensor(context, node, registration)) {
       densify_output_to_node_mapping_[node->outputs->data[0]] = node_index;

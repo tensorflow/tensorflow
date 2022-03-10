@@ -28,6 +28,14 @@ namespace tensorflow {
 
 namespace full_type {
 
+// Note about error handling:
+// For inputs which depend on the correctness of the op definition
+// (i.e. if the op has three inputs, don't set an `i` that exceeds that),
+// use DCHECK - an incorrect op def is considered a bug.
+// Whereas for inputs that depend on the correctness of the graph (i.e. user
+// used the correct ops), use Status - an incorrect graph is considered a user
+// error.
+
 ForwardTypeInferenceFn ReplicateInput(int i, int n) {
   return [i, n](const std::vector<std::reference_wrapper<const FullTypeDef>>&
                     input_types) {
@@ -195,6 +203,53 @@ FullTypeDef UnstackTensor(const FullTypeDef& t) {
   DCHECK((t.type_id() == TFT_TENSOR) || (t.type_id() == TFT_RAGGED) ||
          (t.type_id() == TFT_UNSET));
   DCHECK_LE(t.args_size(), 1);
+  return t;
+}
+
+ForwardTypeInferenceFn ContainerMap(
+    FullTypeId t, int input_idx,
+    std::function<FullTypeDef(const FullTypeDef&)> map) {
+  return [t, input_idx,
+          map](const std::vector<std::reference_wrapper<const FullTypeDef>>&
+                   input_types) -> StatusOr<FullTypeDef> {
+    DCHECK_GE(input_types.size(), input_idx);
+    const FullTypeDef& in_cont_t = input_types.at(input_idx).get();
+    FullTypeDef ret_type;
+    if (in_cont_t.type_id() == TFT_UNSET) {
+      return ret_type;
+    }
+    if (in_cont_t.type_id() != t) {
+      return Status(error::INVALID_ARGUMENT,
+                    absl::StrCat("expected type ", t, " for input ", input_idx,
+                                 ", got ", in_cont_t.DebugString()));
+    }
+    ret_type.set_type_id(TFT_PRODUCT);
+    FullTypeDef* out_cont_t = ret_type.add_args();
+    out_cont_t->set_type_id(t);
+    const FullTypeDef& in_el_t = GetArgDefaultUnset(in_cont_t, 0);
+    if (in_el_t.type_id() == TFT_UNSET) {
+      return ret_type;
+    }
+    if (in_el_t.type_id() != TFT_PRODUCT) {
+      return Status(error::INVALID_ARGUMENT,
+                    absl::StrCat("expected PRODUCT element type for input ",
+                                 input_idx, ", got ", in_el_t.DebugString()));
+    }
+    FullTypeDef* out_el_t = out_cont_t->add_args();
+    out_el_t->set_type_id(TFT_PRODUCT);
+    for (int k = 0; k < in_el_t.args_size(); k++) {
+      *(out_el_t->add_args()) = map(in_el_t.args(k));
+    }
+    return ret_type;
+  };
+}
+
+FullTypeDef BatchTensor(const FullTypeDef& t) {
+  // For now, just return the input type.
+  // If the input type has a shape in the future, this function needs to be
+  // changed so that the output shape is computed based on the input shape and
+  // the effect the op that changes the batch size (and this function would
+  // require more information to do this computation).
   return t;
 }
 

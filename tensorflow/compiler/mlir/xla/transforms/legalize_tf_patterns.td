@@ -843,3 +843,10 @@ def : Pat<(TF_XlaDynamicSliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indi
 
 def : Pat<(TF_XlaEinsumOp $lhs, $rhs, $equation),
           (HLO_EinsumOp $lhs, $rhs, $equation)>;
+
+//===----------------------------------------------------------------------===//
+// XlaOptimizationBarrierOp op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaOptimizationBarrierOp $args),
+          (HLO_OptimizationBarrierOp $args)>;

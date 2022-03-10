@@ -46,7 +46,7 @@ bool IsSessionInitializer(mlir::FuncOp op) {
   if (!session_initializer_op) return false;
 
   for (auto sym_ref : session_initializer_op.initializers()) {
-    if (op.sym_name() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
+    if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
       return true;
   }
 
@@ -342,7 +342,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
 
   mlir::TF::SideEffectAnalysis side_effect_analysis(module);
 
-  mlir::OpBuilder builder(&module.body());
+  mlir::OpBuilder builder(&module.getBodyRegion());
   // "_tfrt_resource_init" is the special function that executes all invariant
   // ops (eg. read-only variables) used in the model. This function should be
   // executed after user-specified initialization.
@@ -359,8 +359,8 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     // Skips hoisting if this function is an init function or any callees,
     // including recursive ones, of an init functions, because otherwise the
     // hoisted values won't be initialized when this function is called.
-    if (IsSessionInitializer(func) || init_callees.contains(func.sym_name()) ||
-        func == init_func_op)
+    if (IsSessionInitializer(func) ||
+        init_callees.contains(func.getSymName()) || func == init_func_op)
       continue;
 
     HoistInvariantOpsInFunction(func, read_only_vars,

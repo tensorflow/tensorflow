@@ -302,8 +302,8 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TF::CreateInitTextFileToImportPass(saved_model_dir.str()));
 
-    pass_manager->addNestedPass<mlir::FuncOp>(
-        mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
+    pass_manager->addNestedPass<mlir::FuncOp>(mlir::TFL::CreateLegalizeTFPass(
+        pass_config.runtime_verification, pass_config.preserve_assert_op));
     pass_manager->addPass(mlir::TFL::CreateAnalyzeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeVariablesPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeHashTablesPass());
@@ -427,7 +427,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
       /*allow_bf16_and_f16_type_legalization=*/false));
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(
-      mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
+      mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true,
+                                      /*preserve_assert_op=*/false));
   pm.addPass(mlir::TFL::CreateLegalizeHashTablesPass());
   pm.addPass(mlir::TFL::CreateOptimizePass(/*enable_canonicalization=*/true));
   pm.addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
