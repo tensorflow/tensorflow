@@ -352,7 +352,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       is_initialized_op=None,
       cached_value=None,
       save_slice_info=None,
-      handle_deleter=None,
       caching_device=None,
       in_graph_mode=None,
       **unused_kwargs):
@@ -396,8 +395,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       cached_value: Pre-created operation to read this variable in a specific
         device.
       save_slice_info: Metadata for variable partitioning.
-      handle_deleter: EagerResourceDeleter responsible for cleaning up the
-        handle.
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
@@ -435,7 +432,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint
-    self._handle_deleter = handle_deleter
     self._cached_shape_as_list = None
 
   def __repr__(self):
@@ -867,7 +863,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
         dtype=self.dtype,
         shape=self._shape,
         in_graph_mode=self._in_graph_mode,
-        deleter=self._handle_deleter if not self._in_graph_mode else None,
         parent_op=op,
         unique_id=self._unique_id)
 
@@ -2072,7 +2067,7 @@ class _UnreadVariable(BaseResourceVariable):
   Pretends to be the tensor if anyone looks.
   """
 
-  def __init__(self, handle, dtype, shape, in_graph_mode, deleter, parent_op,
+  def __init__(self, handle, dtype, shape, in_graph_mode, parent_op,
                unique_id):
     if isinstance(handle, ops.EagerTensor):
       handle_name = ""
@@ -2094,7 +2089,6 @@ class _UnreadVariable(BaseResourceVariable):
         handle_name=handle_name,
         unique_id=unique_id,
         dtype=dtype,
-        handle_deleter=deleter,
         graph_element=graph_element)
     self._parent_op = parent_op
 
