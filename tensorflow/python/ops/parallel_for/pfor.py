@@ -1076,9 +1076,10 @@ def _wrap_and_tile_variants(tensor, length):
   return wrap(tensor)
 
 
-def _fallback_converter(pfor_input, warn=True):
+def _fallback_converter(pfor_input, root_cause="", warn=True):
   if warn:
-    logging.warning("Using a while_loop for converting %s", pfor_input.op_type)
+    logging.warning("Using a while_loop for converting %s cause %s",
+                    pfor_input.op_type, root_cause)
   output_dtypes = [x.dtype for x in pfor_input.outputs]
   iters = pfor_input.pfor.loop_len_vector[0]
 
@@ -1612,14 +1613,17 @@ class PFor:
           pfor_inputs = _PforInput(self, y_op, converted_inputs)
           try:
             try:
-              new_outputs = converter(pfor_inputs)
+              if (converter.__name__ == "_fallback_converter"):
+                new_outputs = converter(pfor_inputs, root_cause=" has variant outputs")
+              else 
+                new_outputs = converter(pfor_inputs)
             except ConversionNotImplementedError as e:
               has_vectorized_variant_inputs = any(
                   _is_variant_with_internal_stacking(x) for x in
                   y_op.inputs)
               if (self._fallback_to_while_loop
                   and not has_vectorized_variant_inputs):
-                new_outputs = _fallback_converter(pfor_inputs)
+                new_outputs = _fallback_converter(pfor_inputs, root_cause=" has not a vectorized variant inputs")
               else:
                 raise ValueError(str(e)).with_traceback(sys.exc_info()[2])
           except Exception as e:  # pylint: disable=broad-except
