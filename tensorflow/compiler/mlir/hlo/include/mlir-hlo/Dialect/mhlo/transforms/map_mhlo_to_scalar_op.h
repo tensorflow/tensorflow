@@ -440,6 +440,7 @@ inline Value MapMhloOpToStdScalarOp<mhlo::RealOp>(Location loc,
                                                   ArrayRef<Type> arg_types,
                                                   ValueRange args,
                                                   OpBuilder* b) {
+  if (!args[0].getType().isa<ComplexType>()) return args[0];
   return MapMhloOpToScalarOpImpl<complex::ReOp>{}(loc, result_types, arg_types,
                                                   args, b);
 }
@@ -450,6 +451,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ImagOp>(Location loc,
                                                   ArrayRef<Type> arg_types,
                                                   ValueRange args,
                                                   OpBuilder* b) {
+  if (!args[0].getType().isa<ComplexType>())
+    return b->create<arith::ConstantOp>(loc, b->getZeroAttr(args[0].getType()));
   return MapMhloOpToScalarOpImpl<complex::ImOp>{}(loc, result_types, arg_types,
                                                   args, b);
 }
