@@ -1615,7 +1615,7 @@ class PFor:
             try:
               if (converter.__name__ == "_fallback_converter"):
                 new_outputs = converter(pfor_inputs, root_cause=" has variant outputs")
-              else 
+              else: 
                 new_outputs = converter(pfor_inputs)
             except ConversionNotImplementedError as e:
               has_vectorized_variant_inputs = any(
