@@ -1148,6 +1148,7 @@ tf_cc_test(
 tf_cc_test(
     name = "xla_activity_listener_test",
     srcs = ["xla_activity_listener_test.cc"],
+    tags = ["no_rocm"],
     deps = [
         ":flags",
         ":xla_activity_listener",
