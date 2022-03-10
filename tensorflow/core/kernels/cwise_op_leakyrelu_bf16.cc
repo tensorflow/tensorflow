@@ -35,7 +35,7 @@ namespace internal {
 template <typename Scalar>
 struct leakyrelu_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-  explicit leakyrelu_op(float val = 0.2) EIGEN_NO_THROW {
+  explicit leakyrelu_op(float val = 0.2f) EIGEN_NO_THROW {
     alpha_ = Scalar(val);
   }
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
@@ -55,8 +55,9 @@ template <typename Scalar>
 struct functor_traits<leakyrelu_op<Scalar>> {
   enum {
     Cost = Eigen::NumTraits<Scalar>::AddCost +
-        Eigen::NumTraits<Scalar>::MulCost,
-    PacketAccess = packet_traits<Scalar>::HasMul,
+           Eigen::NumTraits<Scalar>::MulCost,
+    PacketAccess = packet_traits<Scalar>::HasMul &&
+                   packet_traits<Scalar>::HasCmp,
   };
 };
 
