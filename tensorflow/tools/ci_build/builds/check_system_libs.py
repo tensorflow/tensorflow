@@ -34,12 +34,13 @@ third_party_glob = os.path.join(third_party_path, '*', 'workspace.bzl')
 if not os.path.isdir(tf_source_path):
   raise ValueError('The path to the TensorFlow source must be passed as'
                    ' the first argument')
-  if not os.path.isfile(syslibs_configure_path):
-    raise ValueError('Could not find syslibs_configure.bzl at %s' %
-                     syslibs_configure_path)
-                
-  if not os.path.isfile(workspace0_path):
-    raise ValueError('Could not find workspace0.bzl at %s' % workspace0_path)
+                   
+if not os.path.isfile(syslibs_configure_path):
+  raise ValueError('Could not find syslibs_configure.bzl at %s' %
+                    syslibs_configure_path)
+              
+if not os.path.isfile(workspace0_path):
+  raise ValueError('Could not find workspace0.bzl at %s' % workspace0_path)
 
 def extract_valid_libs(filepath):
   """Evaluate syslibs_configure.bzl, return the VALID_LIBS set from that file."""
