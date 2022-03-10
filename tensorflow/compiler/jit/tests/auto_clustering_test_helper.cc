@@ -52,6 +52,7 @@ StatusOr<string> SummarizeClustering(const GraphDef& auto_clustered_graph_def) {
     if (absl::optional<absl::string_view> maybe_cluster =
             GetXlaClusterForNode(*n)) {
       maybe_cluster->remove_prefix(absl::string_view("cluster_").size());
+      maybe_cluster->remove_prefix(maybe_cluster->find('_') + 1);
       TF_RET_CHECK(absl::SimpleAtoi(*maybe_cluster, &cluster));
       clustered_nodes++;
     }
