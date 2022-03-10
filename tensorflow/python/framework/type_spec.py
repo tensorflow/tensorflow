@@ -30,6 +30,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -201,9 +202,12 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
       return False
     return self.__is_compatible(self._serialize(), spec_or_value._serialize())  # pylint: disable=protected-access
 
-  # TODO(b/202447704): Deprecate.
+  @deprecation.deprecated(None, "Use most_specific_common_supertype instead.")
   def most_specific_compatible_type(self, other: "TypeSpec") -> "TypeSpec":
     """Returns the most specific TypeSpec compatible with `self` and `other`.
+
+    Deprecated. Please use `most_specific_common_supertype` instead.
+    Do not override this function.
 
     Args:
       other: A `TypeSpec`.
@@ -212,19 +216,11 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
       ValueError: If there is no TypeSpec that is compatible with both `self`
         and `other`.
     """
-    # === Subclassing ===
-    # If not overridden by a subclass, the default behavior is to raise a
-    # `ValueError` if `self` and `other` have different types, or if their type
-    # serializations differ by anything other than `TensorShape`s.  Otherwise,
-    # the two type serializations are combined (using
-    # `most_specific_compatible_shape` to combine `TensorShape`s), and the
-    # result is used to construct and return a new `TypeSpec`.
-    if type(self) is not type(other):
+    result = self.most_specific_common_supertype([other])
+    if result is None:
       raise ValueError("No TypeSpec is compatible with both %s and %s" %
                        (self, other))
-    merged = self.__most_specific_compatible_type_serialization(
-        self._serialize(), other._serialize())  # pylint: disable=protected-access
-    return self._deserialize(merged)
+    return result
 
   def _with_tensor_ranks_only(self) -> "TypeSpec":
     """Returns a TypeSpec compatible with `self`, with tensor shapes relaxed.
@@ -563,6 +559,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
       return a.is_compatible_with(b)
     return a == b
 
+  # TODO(b/221459366): Remove after usages are removed.
   @staticmethod
   def __most_specific_compatible_type_serialization(a, b):
     """Helper for most_specific_compatible_type.
