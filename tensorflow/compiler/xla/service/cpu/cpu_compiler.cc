@@ -990,7 +990,7 @@ StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
   auto result_mapping = builder.getI32IntegerAttr(
       static_cast<int32_t>(output_allocation->index()));
   mlir_module->walk([&](mlir::FuncOp f) {
-    if (f.sym_name() == "main") {
+    if (f.getSymName() == "main") {
       for (auto& p : llvm::enumerate(operand_mapping)) {
         f.setArgAttr(p.index(), "xla_framework.input_mapping", p.value());
       }

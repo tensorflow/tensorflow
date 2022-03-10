@@ -242,7 +242,7 @@ bool IsQuantizedCall(TF::PartitionedCallOp call_op) {
 LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
   // A map to find an attribute from its identifier.
   llvm::StringMap<Attribute> identifier_to_attr;
-  for (Operation& inner_op : float_func.body().front().getOperations()) {
+  for (Operation& inner_op : float_func.getBody().front().getOperations()) {
     if (!inner_op.hasAttr(kAttrMapAttribute)) continue;
     std::string attr_map_str =
         inner_op.getAttrOfType<StringAttr>(kAttrMapAttribute).str();
@@ -261,7 +261,7 @@ LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
   }
 
   // Set the attributes for ops with the attr_map attribute.
-  for (Operation& inner_op : quantized_func.body().front().getOperations()) {
+  for (Operation& inner_op : quantized_func.getBody().front().getOperations()) {
     if (!inner_op.hasAttr(kAttrMapAttribute)) continue;
 
     std::string attr_map_str =

@@ -3645,7 +3645,7 @@ LogicalResult XlaVariadicReduceV2Op::verify() {
   auto function = dyn_cast_or_null<mlir::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.reducer()));
   if (!function) return op.emitOpError() << "No reducer";
-  if (!function.body().hasOneBlock())
+  if (!function.getBody().hasOneBlock())
     return op.emitOpError() << "reducer has more than one block";
 
   return success();
@@ -3684,7 +3684,7 @@ LogicalResult XlaVariadicSortOp::verify() {
   auto function = dyn_cast_or_null<mlir::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.comparator()));
   if (!function) return op.emitOpError() << "No comparator";
-  if (!function.body().hasOneBlock())
+  if (!function.getBody().hasOneBlock())
     return op.emitOpError() << "comparator has more than one block";
 
   return success();

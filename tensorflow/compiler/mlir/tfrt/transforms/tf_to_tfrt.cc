@@ -1221,7 +1221,7 @@ class TFRTWhileOpConversion
 
     // Insert a call op to call the pred function for the first iteration.
     auto call_pred_fn = rewriter.create<tfrt::compiler::CallOp>(
-        op.getLoc(), pred_fn.getType().getResults(), pred_fn.sym_name(),
+        op.getLoc(), pred_fn.getType().getResults(), pred_fn.getSymName(),
         pred_args);
 
     auto pred_chain = call_pred_fn.getResult(0);
@@ -1240,7 +1240,7 @@ class TFRTWhileOpConversion
 
     auto new_op = rewriter.create<tfrt::compiler::WhileOp>(
         op.getLoc(), while_arg_result_types, first_iteration_bool_cond,
-        while_args, new_body_fn.sym_name(), parallel_iterations);
+        while_args, new_body_fn.getSymName(), parallel_iterations);
 
     rewriter.replaceOp(op, new_op.getResults().drop_front());
 
@@ -1410,7 +1410,7 @@ mlir::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
   // cond function and the predicate kernel that converts the tensor to boolean
   // value.
   auto call_pred_fn = rewriter.create<tfrt::compiler::CallOp>(
-      op.getLoc(), pred_fn.getType().getResults(), pred_fn.sym_name(),
+      op.getLoc(), pred_fn.getType().getResults(), pred_fn.getSymName(),
       call_original_body_fn.getResults());
 
   auto pred_chain = call_pred_fn.getResult(0);
@@ -1765,7 +1765,7 @@ class TfToTfrtConversionPass
   void CreateFallbackInitializationFunction(
       mlir::ModuleOp module,
       tfrt_compiler::FallbackConverter &fallback_converter) {
-    mlir::OpBuilder builder(&module.body());
+    mlir::OpBuilder builder(&module.getBodyRegion());
 
     auto chain_type = builder.getType<tfrt::compiler::ChainType>();
 
@@ -2074,7 +2074,7 @@ LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
   FuncOp func = compiled.entrypoint;
 
   // Functions outlined from jitrt device clusters must have a single block.
-  assert(func.body().getBlocks().size() == 1 && "expected single block");
+  assert(func.getBody().getBlocks().size() == 1 && "expected single block");
 
   mlir::TFDevice::ClusteringPolicySet policies;
   populateTfJitRtConstraintsPolicies(policies);
@@ -2083,7 +2083,7 @@ LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
   // (including function entry block arguments).
   mlir::TFDevice::ValuesConstraintSet constraints;
   if (failed(mlir::TFDevice::PropagateValuesConstraints(
-          func.body(), policies, constraints, /*resolve=*/true)))
+          func.getBody(), policies, constraints, /*resolve=*/true)))
     return failure();
 
   // Annotate arguments with inferred constraints.
@@ -2112,8 +2112,8 @@ LogicalResult OutlineJitRtClustersPass::OutlineClusterOp(
   if (failed(SetEntrypointConstraints(compiled_module))) return failure();
 
   // Replace device cluster with a jitrt.call operation.
-  auto module_name = *compiled_module.module.sym_name();
-  auto func_name = compiled_func.sym_name();
+  auto module_name = *compiled_module.module.getSymName();
+  auto func_name = compiled_func.getSymName();
   auto func_flat_ref =
       mlir::SymbolRefAttr::get(builder.getContext(), func_name);
   auto func_ref = mlir::SymbolRefAttr::get(builder.getContext(), module_name,

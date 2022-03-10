@@ -709,7 +709,7 @@ void EmitInputsConstraintsRemarks(FuncOp func,
                                   const ValuesConstraintSet &constraints) {
   constraints.Walk([&](Value value, ValueConstraint constraint) {
     if (auto arg = value.dyn_cast<BlockArgument>())
-      if (arg.getOwner() == &func.body().front())
+      if (arg.getOwner() == &func.getBody().front())
         func.emitRemark(llvm::formatv("input #{0} constrained to: {1}",
                                       arg.getArgNumber(), constraint));
   });
@@ -727,7 +727,7 @@ LogicalResult InferFunctionBodyValuesConstraints(
                                      .Case("value", ValueConstraint::kValue);
 
     // Propagate constraints through function return operations.
-    for (Block &block : func.body()) {
+    for (Block &block : func.getBody()) {
       func::ReturnOp ret = dyn_cast<func::ReturnOp>(block.back());
       if (ret) constraints.Insert(ret.getOperand(i), constraint);
     }
