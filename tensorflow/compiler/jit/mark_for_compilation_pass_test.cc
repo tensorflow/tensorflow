@@ -1796,7 +1796,8 @@ TEST(XlaCompilationTest, DeterministicClusterNames) {
   };
 
   testing::ResetClusterSequenceNumber();
-  auto options = MarkForCompilationPassTestHelper::Options();
+  auto options = MarkForCompilationPassTestHelper::Options()
+                     .WithDeterministicClusterNames();
 
   // Cluster the same graphs twice so we can observe that the prefix contains
   // the stable fingerprint.

@@ -80,6 +80,10 @@ struct MarkForCompilationPassFlags {
   // variable concurrency semantics.  This is unsound in general, but can be
   // used as a debugging aid.
   bool tf_xla_disable_resource_variable_safety_checks_for_debugging;
+
+  // If true names of clustered operations will be computed deterministically
+  // so that they remain stable from run to run of auto clusteing.
+  bool tf_xla_deterministic_cluster_names;
 };
 
 // Flags associated with the XLA bridge's xla_device module.
