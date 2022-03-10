@@ -400,6 +400,8 @@ absl::Status TensorDescriptor::PerformSelector(
     return PerformReadNearestSelector(gpu_info, args, result);
   } else if (selector == "ReadBilinear") {
     return PerformReadBilinearSelector(gpu_info, args, result);
+  } else if (selector == "ReadPerChannel") {
+    return PerformReadPerChannelSelector(gpu_info, args, template_args, result);
   } else if (selector == "Write") {
     return PerformWriteSelector(gpu_info, args, template_args, result);
   } else if (selector == "WriteLinear") {
@@ -560,6 +562,50 @@ absl::Status TensorDescriptor::PerformReadBilinearSelector(
          " = TO_FLT4(mix(mix(src0_TMP, src1_TMP, x_scale_TMP), mix(src2_TMP, "
          "src3_TMP, x_scale_TMP), y_scale_TMP));\n";
   }
+  c += "  }";
+  *result = c;
+  return absl::OkStatus();
+}
+
+absl::Status TensorDescriptor::PerformReadPerChannelSelector(
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    const std::vector<std::string>& template_args, std::string* result) const {
+  std::vector<std::string> coord_args =
+      std::vector<std::string>(args.begin() + 1, args.end());
+  int channels_index = 0;
+  if (HasAxis(Axis::WIDTH)) {
+    channels_index++;
+  }
+  if (HasAxis(Axis::HEIGHT)) {
+    channels_index++;
+  }
+  if (HasAxis(Axis::DEPTH)) {
+    channels_index++;
+  }
+  if (channels_index >= coord_args.size()) {
+    std::cout << channels_index << " " << coord_args.size() << std::endl;
+    return absl::NotFoundError(
+        "Wrong number of coordinates in ReadPerChannel.");
+  }
+  std::string c = "  {\n";
+  c += "  int slice_coord_TMP = (" + coord_args[channels_index] + ") / 4;\n";
+  c += "  int sub_ch_coord_TMP = (" + coord_args[channels_index] + ") % 4;\n";
+  coord_args[channels_index] = "slice_coord_TMP";
+  std::string src_value;
+  RETURN_IF_ERROR(
+      PerformReadSelector(gpu_info, coord_args, template_args, &src_value));
+  if (gpu_info.IsApiOpenCl()) {
+    DataType dst_type = data_type;
+    RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &dst_type));
+    c += "  " + GetTypeDeclaration(gpu_info, dst_type, 4) +
+         " src_TMP = " + src_value + ";\n";
+    c +=
+        "  " + args[0] + " = (" + ToCLDataType(dst_type, 1) +
+        "[4]){src_TMP.x, src_TMP.y, src_TMP.z, src_TMP.w}[sub_ch_coord_TMP];\n";
+  } else {
+    c += "  " + args[0] + " = " + src_value + "[sub_ch_coord_TMP];\n";
+  }
+
   c += "  }";
   *result = c;
   return absl::OkStatus();

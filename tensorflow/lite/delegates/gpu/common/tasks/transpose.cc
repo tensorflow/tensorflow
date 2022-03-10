@@ -77,13 +77,7 @@ std::string GetTransposeCode(const OperationDef& op_def,
     c += "      int s_y = " + bhwc[remap[1]] + ";\n";
     c += "      int s_x = " + bhwc[remap[2]] + ";\n";
     c += "      int s_c = " + bhwc[remap[3]] + ";\n";
-    c += "      int s_z = s_c / 4;\n";
-    c += "      int src_sub_ch = s_c % 4;\n";
-    c += "      args.src_tensor::type t = args.src_tensor.Read(s_x, s_y, "
-         "s_z);\n";
-    c += "      temps[i] = "
-         "SELECT_BY_INDEX_FROM_VEC4(args.src_tensor::scalar_type, t, "
-         "src_sub_ch);\n";
+    c += "      args.src_tensor.ReadPerChannel(temps[i], s_x, s_y, s_c);\n";
     c += "    }\n";
     c += "  }\n";
   }
