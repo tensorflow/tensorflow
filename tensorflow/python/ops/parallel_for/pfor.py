@@ -4651,6 +4651,7 @@ class WhileV2:
                 "While loop conversion is only supported for TensorLists. Got "
                 f"another variant {inp.t}, probably an optional. Please file "
                 "a bug.")
+
           # For TensorLists, the input format is:
           #
           #   List[user_list_len, Tensor[loop_len, ...]]
@@ -4663,7 +4664,7 @@ class WhileV2:
           # vectorization" format, so we want to keep it that way as much as
           # possible. We'll accumulate finished iterations (only relevant for
           # pfor-loop-variant while_loop conditions) in an accumulator with
-          # type:
+          # type : 
           #
           #   List[user_list_len, List[loop_len, Tensor[...]]]
           #
