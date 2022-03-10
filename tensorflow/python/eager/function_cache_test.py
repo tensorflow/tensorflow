@@ -339,9 +339,9 @@ class FunctionCacheBenchmark(test.Benchmark):
 
     iterations = 10000
     subtyping_time = timeit.timeit(
-        lambda: cache.lookup(keys[-1], True), number=iterations)
+        lambda: cache.lookup(keys[-1][0], True), number=iterations)
     equality_time = timeit.timeit(
-        lambda: cache.lookup(keys[-1], False), number=iterations)
+        lambda: cache.lookup(keys[-1][0], False), number=iterations)
 
     self.report_benchmark(
         name="cache_hit_50th_key_miss",
@@ -378,9 +378,9 @@ class FunctionCacheBenchmark(test.Benchmark):
 
     iterations = 10000
     subtyping_time = timeit.timeit(
-        lambda: cache.lookup(keys[-1], True), number=iterations)
+        lambda: cache.lookup(keys[-1][0], True), number=iterations)
     equality_time = timeit.timeit(
-        lambda: cache.lookup(keys[-1], False), number=iterations)
+        lambda: cache.lookup(keys[-1][0], False), number=iterations)
 
     self.report_benchmark(
         name="cache_hit_50th_key_equal",
