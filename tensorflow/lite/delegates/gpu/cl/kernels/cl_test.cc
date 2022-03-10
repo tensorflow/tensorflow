@@ -29,29 +29,15 @@ ClExecutionEnvironment::GetSupportedPrecisions() const {
   return env_.GetSupportedPrecisions();
 }
 
-std::vector<TensorStorageType> ClExecutionEnvironment::GetSupportedStorages()
-    const {
+std::vector<TensorStorageType> ClExecutionEnvironment::GetSupportedStorages(
+    DataType data_type) const {
   return env_.GetSupportedStorages();
 }
 
 std::vector<TensorStorageType>
-ClExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport() const {
+ClExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport(
+    DataType data_type) const {
   return env_.GetSupportedStoragesWithHWZeroClampSupport();
-}
-
-std::vector<TensorStorageType>
-ClExecutionEnvironment::GetStoragesWith32bitIntSupport() const {
-  return env_.GetSupportedStorages();
-}
-
-std::vector<TensorStorageType>
-ClExecutionEnvironment::GetStoragesWith16bitIntSupport() const {
-  return env_.GetSupportedStorages();
-}
-
-std::vector<TensorStorageType>
-ClExecutionEnvironment::GetStoragesWith8bitIntSupport() const {
-  return env_.GetSupportedStorages();
 }
 
 const GpuInfo& ClExecutionEnvironment::GetGpuInfo() const {

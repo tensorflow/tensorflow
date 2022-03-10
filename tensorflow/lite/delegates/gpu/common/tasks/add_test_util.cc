@@ -35,15 +35,7 @@ absl::Status AddTwoEqualIntTensorsTest(TestExecutionEnvironment* env) {
   ref_tensor.shape = BHWC(1, 2, 1, 2);
   ref_tensor.data = {-1, 16, 22, 4};
 
-  std::vector<TensorStorageType> supported_storages;
-  if (T == DataType::INT32) {
-    supported_storages = env->GetStoragesWith32bitIntSupport();
-  } else if (T == DataType::INT16) {
-    supported_storages = env->GetStoragesWith16bitIntSupport();
-  } else if (T == DataType::INT8) {
-    supported_storages = env->GetStoragesWith8bitIntSupport();
-  }
-  for (auto storage : supported_storages) {
+  for (auto storage : env->GetSupportedStorages(T)) {
     OperationDef op_def;
     op_def.precision = CalculationsPrecision::F32;
     op_def.src_tensors.push_back({T, storage, Layout::HWC});
@@ -87,15 +79,7 @@ absl::Status AddTwoEqualUintTensorsTest(TestExecutionEnvironment* env) {
   ref_tensor.shape = BHWC(1, 2, 1, 2);
   ref_tensor.data = {7, 16, 22, 8};
 
-  std::vector<TensorStorageType> supported_storages;
-  if (T == DataType::UINT32) {
-    supported_storages = env->GetStoragesWith32bitIntSupport();
-  } else if (T == DataType::UINT16) {
-    supported_storages = env->GetStoragesWith16bitIntSupport();
-  } else if (T == DataType::UINT8) {
-    supported_storages = env->GetStoragesWith8bitIntSupport();
-  }
-  for (auto storage : supported_storages) {
+  for (auto storage : env->GetSupportedStorages(T)) {
     OperationDef op_def;
     op_def.precision = CalculationsPrecision::F32;
     op_def.src_tensors.push_back({T, storage, Layout::HWC});
@@ -135,12 +119,12 @@ absl::Status AddTwoEqualTensorsTest(TestExecutionEnvironment* env) {
   src1.data = {0.0f, 1.0f, -0.05f, -0.045f};
   std::vector<int> channels = {2, 2};
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
@@ -172,12 +156,12 @@ absl::Status AddFirstTensorHasMoreChannelsThanSecondTest(
   src1.shape = BHWC(1, 2, 1, 2);
   src1.data = {0.0f, 1.0f, -0.05f, -0.045f};
   std::vector<int> channels = {6, 2};
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
@@ -203,12 +187,12 @@ absl::Status AddFirstTensorHasLessChannelsThanSecond(
   src0.shape = BHWC(1, 2, 1, 2);
   src0.data = {0.0f, 1.0f, -0.05f, -0.045f};
   std::vector<int> channels = {2, 6};
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});

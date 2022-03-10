@@ -38,15 +38,7 @@ absl::Status TransposeIntTest(TestExecutionEnvironment* env) {
   ref_tensor.shape = BHWC(1, 1, 3, 2);
   ref_tensor.data = {1, -4, 2, 3, -3, 6};
 
-  std::vector<TensorStorageType> supported_storages;
-  if (T == DataType::INT32) {
-    supported_storages = env->GetStoragesWith32bitIntSupport();
-  } else if (T == DataType::INT16) {
-    supported_storages = env->GetStoragesWith16bitIntSupport();
-  } else if (T == DataType::INT8) {
-    supported_storages = env->GetStoragesWith8bitIntSupport();
-  }
-  for (auto storage : supported_storages) {
+  for (auto storage : env->GetSupportedStorages(T)) {
     OperationDef op_def;
     op_def.precision = CalculationsPrecision::F32;
     op_def.src_tensors.push_back({T, storage, Layout::HWC});
@@ -88,15 +80,7 @@ absl::Status TransposeUintTest(TestExecutionEnvironment* env) {
   ref_tensor.shape = BHWC(1, 1, 3, 2);
   ref_tensor.data = {1, 4, 2, 5, 3, 6};
 
-  std::vector<TensorStorageType> supported_storages;
-  if (T == DataType::UINT32) {
-    supported_storages = env->GetStoragesWith32bitIntSupport();
-  } else if (T == DataType::UINT16) {
-    supported_storages = env->GetStoragesWith16bitIntSupport();
-  } else if (T == DataType::UINT8) {
-    supported_storages = env->GetStoragesWith8bitIntSupport();
-  }
-  for (auto storage : supported_storages) {
+  for (auto storage : env->GetSupportedStorages(T)) {
     OperationDef op_def;
     op_def.precision = CalculationsPrecision::F32;
     op_def.src_tensors.push_back({T, storage, Layout::HWC});
@@ -136,11 +120,11 @@ absl::Status TransposeTest(TestExecutionEnvironment* env) {
   TransposeAttributes attr;
   attr.perm = BHWC(0, 1, 3, 2);
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
