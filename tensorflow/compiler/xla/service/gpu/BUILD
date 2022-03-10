@@ -743,7 +743,6 @@ cc_library(
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor:blas",
-        "//tensorflow/stream_executor:matmul_util",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:kernel",
@@ -902,12 +901,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core/platform:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:matmul_util",
         "//tensorflow/stream_executor:stream_header",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
@@ -931,14 +928,13 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:stream_executor_no_cuda",
-        "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:matmul_util",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
     ]),
 )
@@ -2506,6 +2502,8 @@ cc_library(
     ],
 )
 
+# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_bef_thunk
+# See tap/tensorflow.xla_gpu_tfrt.
 # TODO(b/187959015): Expand test patterns; see cl/377552996.
 test_suite(
     name = "bef_thunk_tests",
@@ -2536,6 +2534,8 @@ test_suite(
     ]),
 )
 
+# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_bef_executable
+# See tap/tensorflow.xla_gpu_tfrt_executable.
 test_suite(
     name = "bef_executable_tests",
     tests = [
@@ -2574,6 +2574,8 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_unrolling_test",
         "//tensorflow/compiler/xla/service/gpu/tests:kernel_launch_test",
         "//tensorflow/compiler/xla/service/gpu/tests:launch_dimensions.hlo.test",
+        "//tensorflow/compiler/xla/service/gpu/tests:mlir_fft_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
         "//tensorflow/compiler/xla/service/gpu/tests:mlir_gpu_compile_test",
         "//tensorflow/compiler/xla/service/gpu/tests:pad_to_static.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:parallel_reduction_test",

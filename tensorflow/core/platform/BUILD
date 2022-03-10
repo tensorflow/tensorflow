@@ -1159,12 +1159,6 @@ filegroup(
     compatible_with = get_compatible_with_portable(),
 )
 
-cc_library(
-    name = "tensor_float_32_hdr_lib",
-    hdrs = [":tensor_float_32_hdr"],
-    compatible_with = get_compatible_with_portable(),
-)
-
 filegroup(
     name = "enable_tf2_hdr",
     srcs = ["enable_tf2_utils.h"],
