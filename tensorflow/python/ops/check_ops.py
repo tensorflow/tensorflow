@@ -1235,7 +1235,8 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
             '%sTensor %s must have rank %d.  Received rank %d, shape %s' %
             (message, name, e.args[2], e.args[1], x.get_shape()))
       else:
-        raise
+        raise ValueError(e.args[0])
+
 
   return assert_op
 
