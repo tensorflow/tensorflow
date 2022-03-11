@@ -1850,12 +1850,14 @@ cc_library(
 CAPI_HEADERS = [
     "include/mlir-hlo-c/Attributes.h",
     "include/mlir-hlo-c/Dialects.h",
+    "include/mlir-hlo-c/Passes.h",
     "include/mlir-hlo-c/Types.h",
 ]
 
 CAPI_SOURCES = [
     "lib/CAPI/Attributes.cpp",
     "lib/CAPI/Dialects.cpp",
+    "lib/CAPI/Passes.cpp",
     "lib/CAPI/Types.cpp",
 ]
 
@@ -1864,6 +1866,7 @@ cc_library(
     srcs = CAPI_SOURCES,
     hdrs = CAPI_HEADERS,
     deps = [
+        ":all_passes",
         ":hlo",
         "@llvm-project//mlir:CAPIIR",
     ],
@@ -1885,6 +1888,7 @@ cc_library(
     srcs = CAPI_SOURCES,
     hdrs = CAPI_HEADERS,
     deps = [
+        ":all_passes",
         ":hlo",
         "@llvm-project//mlir:CAPIIRObjects",
     ],
