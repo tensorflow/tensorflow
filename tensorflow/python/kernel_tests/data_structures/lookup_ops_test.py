@@ -3373,7 +3373,8 @@ class MutableHashTableOpTest(test.TestCase):
     def f():
       # Cover https://github.com/tensorflow/tensorflow/issues/24439
       with self.assertRaisesRegex(TypeError,
-                                  "can't convert Operation 'MutableHashTable' to Tensor"):
+                                  "can't convert Operation 'MutableHashTable' \
+                                  to Tensor"):
         saver.import_meta_graph(meta_graph)
       return ops.get_default_graph().get_tensor_by_name(op.name)
 
