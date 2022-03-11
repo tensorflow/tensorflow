@@ -817,7 +817,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(
   mlir::IntegerAttr num_partitions_attr =
       builder.getI64IntegerAttr(hlo_module->config().num_partitions());
   mlir::FuncOp func =
-      mlir_module.lookupSymbol<mlir::FuncOp>(entry_function_name);
+      mlir_module.lookupSymbol<mlir::LLVM::LLVMFuncOp>(entry_function_name);
   func->setAttr("replica_count", replica_count_attr);
   func->setAttr("num_partitions", num_partitions_attr);
 
