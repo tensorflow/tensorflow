@@ -89,6 +89,7 @@ REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp").Device(DEVICE_CPU),
 
 ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
   OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+  OP_REQUIRES_OK(c, c->GetAttr("no_copy", &no_copy_));
 }
 
 namespace {
@@ -145,6 +146,16 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
                   "Debug info: container=", handle.container(),
                   ", status error message=", status.error_message()));
 
+  // If no_copy_ is true, prevent a copy of the variable
+  // by setting the access mode to copy-on-write
+  if (no_copy_) {
+    // If the variable is currently in copy-on-read mode, its refcount is 1
+    if (variable->copy_on_read_mode.load()) {
+      // Obtain an exclusive lock on the variable and change the access mode
+      mutex_lock ml(*variable->mu());
+      variable->copy_on_read_mode.store(false);
+    }
+  }
   tf_shared_lock ml(*variable->mu());
   // We're acquiring a reference to the underlying buffer while
   // holding a shared lock to guarantee ordering of reads and

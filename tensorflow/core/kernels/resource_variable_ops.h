@@ -46,6 +46,7 @@ class ReadVariableOp : public OpKernel {
 
  private:
   DataType dtype_;
+  bool no_copy_;
 };
 
 class ReadVariablesOp : public OpKernel {

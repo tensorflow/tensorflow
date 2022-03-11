@@ -670,21 +670,21 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     resource_map = {self.handle: new_variable.handle}
     return obj_map, resource_map
 
-  def _read_variable_op(self):
+  def _read_variable_op(self, no_copy = False):
     variable_accessed(self)
 
-    def read_and_set_handle():
+    def read_and_set_handle(no_copy):
       result = gen_resource_variable_ops.read_variable_op(
-          self.handle, self._dtype)
+          self.handle, self._dtype, no_copy = no_copy)
       _maybe_set_handle_data(self._dtype, self.handle, result)
       return result
 
     if getattr(self, "_caching_device", None) is not None:
       with ops.colocate_with(None, ignore_existing=True):
         with ops.device(self._caching_device):
-          result = read_and_set_handle()
+          result = read_and_set_handle(no_copy)
     else:
-      result = read_and_set_handle()
+      result = read_and_set_handle(no_copy)
 
     if not context.executing_eagerly():
       # Note that if a control flow context is active the input of the read op
@@ -706,6 +706,20 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     """
     with ops.name_scope("Read"):
       value = self._read_variable_op()
+    # Return an identity so it can get placed on whatever device the context
+    # specifies instead of the device where the variable is.
+    return array_ops.identity(value)
+
+  def read_value_no_copy(self):
+    """Constructs an op which reads the value of this variable
+    without making a copy even when the variable has been previously
+    sparsely accessed.
+
+    Returns:
+     the read operation.
+    """
+    with ops.name_scope("Read"):
+      value = self._read_variable_op(no_copy = True)
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)

@@ -135,6 +135,7 @@ REGISTER_OP("ReadVariableOp")
     .Input("resource: resource")
     .Output("value: dtype")
     .Attr("dtype: type")
+    .Attr("no_copy: bool = false")
     .SetShapeFn(ReadVariableShapeFn);
 
 REGISTER_OP("_ReadVariablesOp")
