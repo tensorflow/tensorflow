@@ -3354,9 +3354,9 @@ class MutableHashTableOpTest(test.TestCase):
     sorted_values = np.sort(self.evaluate(exported_values))
     self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
     self.assertAllEqual([0, 1, 2], sorted_values)
-  
-  @test_util.run_v2_only
+
   @unittest.expectedFailure
+  @test_util.run_v2_only
   def testImportedHashTable(self, is_anonymous):
     # (TODO #24439) 
     # Confirm unfixed https://github.com/tensorflow/tensorflow/issues/24439
