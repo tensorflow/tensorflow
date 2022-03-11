@@ -5478,6 +5478,37 @@ LogicalResult SortOp::verify() {
     }
   }
 
+  // Mapped computation must return single output.
+  auto comparator_result = block.getTerminator()->getOperands();
+  if (comparator_result.size() != 1)
+    return emitOpError() << "comparator must return single output, but got: "
+                         << comparator_result.size();
+
+  // The output of computation must be 0-ranked tensor with element-type i1.
+  auto comparator_result_type =
+      comparator_result[0].getType().dyn_cast<RankedTensorType>();
+  if (!comparator_result_type || comparator_result_type.getRank() != 0 ||
+      !comparator_result_type.getElementType().isInteger(1))
+    return emitOpError() << "comparator must return tensor<i1>, but got: "
+                         << comparator_result[0].getType();
+
+  // check number of return-values and their element-types.
+  auto result_types = getResultTypes();
+  if (result_types.size() != num_operands)
+    return emitOpError() << "expects the number of results to be same as "
+                            "number of operands. Got number of results = "
+                         << result_types.size()
+                         << " and number of operands = " << num_operands;
+
+  for (auto it : llvm::zip(operands, getResultTypes()))
+    if (std::get<0>(it).getType().cast<TensorType>().getElementType() !=
+        std::get<1>(it).cast<TensorType>().getElementType())
+      return emitOpError()
+             << "expects the operands and results to have pairwize equal "
+                "element-types, but got "
+             << std::get<0>(it).getType().cast<TensorType>().getElementType()
+             << " vs " << std::get<1>(it).cast<TensorType>().getElementType();
+
   return success();
 }
 
@@ -6431,8 +6462,7 @@ LogicalResult WhileOp::verify() {
     auto operandType =
         condReturnOp->getOperand(0).getType().dyn_cast<RankedTensorType>();
     if (!operandType || operandType.getRank() != 0 ||
-        !operandType.getElementType().isa<IntegerType>() ||
-        operandType.getElementType().cast<IntegerType>().getWidth() != 1)
+        !operandType.getElementType().isInteger(1))
       return condReturnOp.emitOpError()
              << "expects a zero-ranked tensor of i1, got "
              << condReturnOp->getOperand(0).getType();

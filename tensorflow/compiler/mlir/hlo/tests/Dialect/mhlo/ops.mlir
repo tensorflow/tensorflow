@@ -1459,6 +1459,54 @@ func @sort_wrong_block_arg_type(%input0: tensor<16x16xf32>, %input1: tensor<16x1
 
 // -----
 
+func @sort_invalid_comparator_return_type(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
+  // expected-error @+1 {{comparator must return tensor<i1>, but got: 'tensor<3xi64>'}}
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
+    %cst = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+    "mhlo.return"(%cst) : (tensor<3xi64>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
+  return
+}
+
+// -----
+
+func @sort_invalid_comparator_return_type(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
+  // expected-error @+1 {{comparator must return single output, but got: 2}}
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
+    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7, %7) : (tensor<i1>, tensor<i1>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
+  return
+}
+
+// -----
+
+func @sort_invalid_return_types(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
+  // expected-error @+1 {{expects the number of results to be same as number of operands. Got number of results = 1 and number of operands = 2}}
+  %0 = "mhlo.sort"(%input0, %input1) ({
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
+    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>)
+  return
+}
+
+// -----
+
+func @sort_invalid_return_types(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
+  // expected-error @+1 {{expects the operands and results to have pairwize equal element-types, but got 'i32' vs 'f32'}}
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
+    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xf32>)
+  return
+}
+
+// -----
+
 // CHECK: func @dequantize
 func @dequantize(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
   %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
