@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/set_shape_invariant_in_while_ops.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/tstring.h"
