@@ -1171,6 +1171,7 @@ cc_library(
     name = "hlo_legalize_to_memref",
     srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_memref.cc"],
     hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
     ],
