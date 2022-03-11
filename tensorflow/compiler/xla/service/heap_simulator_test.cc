@@ -501,10 +501,10 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
   auto can_share_buffer =
       [](const HloInstruction* instr, const HloInstruction* operand,
          const ShapeIndex& user_index) -> absl::optional<bool> {
-    return instr->opcode() == HloOpcode::kFusion &&
-           operand->shape().IsArray() &&
-           ShapeUtil::Equal(operand->shape(),
-                            ShapeUtil::GetSubshape(instr->shape(), user_index));
+    if (instr->opcode() == HloOpcode::kFusion) {
+      return true;
+    }
+    return false;
   };
 
   HloModuleConfig config;
