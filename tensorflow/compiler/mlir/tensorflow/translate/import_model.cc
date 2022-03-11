@@ -3592,7 +3592,7 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
         graph_(std::move(graph)) {}
 
   StatusOr<const Graph*> GetSubGraph(absl::string_view name,
-                                     const GraphImportConfig& specs) override {
+                                     GraphImportConfig& specs) override {
     DCHECK(CheckGraphNameValidity(name));
     DCHECK(CheckGraphContainsFeedsAndFetches(specs));
     return graph_.get();
