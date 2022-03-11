@@ -1450,14 +1450,15 @@ class TrtGraphConverterV2(object):
     # for each field is a space.
     columns = [
         # (column name, column size in % of line)
-        ("TRTEngineOP Name", .21),  # 21%
-        ("# Nodes", .09),  # 30%
-        ("# Inputs", .09),  # 39%
-        ("# Outputs", .09),  # 48%
-        ("Input DTypes", .13),  # 61%
-        ("Output Dtypes", .13),  # 74%
-        ("Input Shapes", .13),  # 87%
-        ("Output Shapes", .13)  # 100%
+        ("TRTEngineOP Name", .20),  # 20%
+        ("Device", .09),            # 29%
+        ("# Nodes", .05),           # 34%
+        ("# Inputs", .09),          # 43%
+        ("# Outputs", .09),         # 52%
+        ("Input DTypes", .12),      # 64%
+        ("Output Dtypes", .12),     # 76%
+        ("Input Shapes", .12),      # 88%
+        ("Output Shapes", .12)      # 100%
     ]
 
     positions = [int(line_length * p) for _, p in columns]
@@ -1483,6 +1484,7 @@ class TrtGraphConverterV2(object):
         n_engines += 1
 
     for name, node in sorted(trtengineops_dict.items()):
+      node_device = node.device.split("/")[-1]
       in_shapes = _extract_shapes_from_node(node, "input_shapes")
       out_shapes = _extract_shapes_from_node(node, "_output_shapes")
       in_dtypes = _get_engine_dtypes_from_node(node, "InT")
@@ -1498,8 +1500,8 @@ class TrtGraphConverterV2(object):
 
       _print_row(
           fields=[
-              name, node_count, in_nodes_count, out_nodes_count, in_dtypes,
-              out_dtypes, in_shapes, out_shapes
+              name, node_device, node_count, in_nodes_count, out_nodes_count,
+              in_dtypes, out_dtypes, in_shapes, out_shapes
           ],
           positions=positions,
           print_fn=print_fn)
