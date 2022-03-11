@@ -3355,7 +3355,6 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
     self.assertAllEqual([0, 1, 2], sorted_values)
   
-  # @unittest.expectedFailure
   @test_util.run_v2_only
   def testImportedHashTable(self, is_anonymous):
     g = ops.Graph()
@@ -3373,7 +3372,10 @@ class MutableHashTableOpTest(test.TestCase):
       meta_graph = saver.export_meta_graph()
 
     def f():
-      saver.import_meta_graph(meta_graph)
+      # Cover https://github.com/tensorflow/tensorflow/issues/24439
+      with self.assertRaisesRegex(TypeError,
+                                  "can't convert Operation 'MutableHashTable' to Tensor"):
+        saver.import_meta_graph(meta_graph)
       return ops.get_default_graph().get_tensor_by_name(op.name)
 
     wrapped = wrap_function.wrap_function(f, [])
