@@ -78,6 +78,60 @@ bool HasTPUDevice(const DeviceSet& device_set) {
   }
   return false;
 }
+
+// Check if the `graph` has parameter serverjobs and resource variable arguments
+// that are on parameter servers
+bool HasPsWithResourceVariable(const Graph& graph) {
+  // Check parameter serverjobs and resource variable arguments that are
+  // on parameter servers.
+  const std::string jobType = "ps";
+  const std::string nodeType = "_Arg";
+  const std::string attrKey = "T";
+  for (const Node* node : graph.nodes()) {
+    if (node->type_string() == nodeType) {
+      auto device_name = node->assigned_device_name();
+      DeviceNameUtils::ParsedName device;
+      if (DeviceNameUtils::ParseFullName(device_name, &device) &&
+          device.has_job && device.job == jobType) {
+        for (const auto& attr : node->attrs()) {
+          auto attr_key = attr.first;
+          auto attr_value = attr.second;
+          if (attr_key == attrKey &&
+              attr_value.value_case() == AttrValue::kType &&
+              attr_value.type() == DT_RESOURCE_REF) {
+            return true;
+            break;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Check that graph has tf.StatefulPartitionedCall op with _XlaMustCompile.
+bool HasQualifiedNonTPUOp(const Graph& graph) {
+  const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
+  const std::string kXlaMustCompile = "_XlaMustCompile";
+  for (const Node* node : graph.nodes()) {
+    auto node_op = node->type_string();
+    if (node_op == kStatefulPartitionedCallOp) {
+      auto attr = node->attrs().FindByString(kXlaMustCompile);
+      if (attr != nullptr && attr->b() == true) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Check if non TPU pipeline should be used
+bool EnableNonTpuBridge(const Graph& graph) {
+  // Remark that this is staging change. It will be expanded later for further
+  // check based on the requirement.
+  return HasPsWithResourceVariable(graph) && HasQualifiedNonTPUOp(graph);
+}
+
 }  // namespace
 
 // Analyzes the user requested policy as well as the contents of the graph and
@@ -96,7 +150,8 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     const FunctionLibraryDefinition& function_library) const {
   // Skip MLIR TPU Bridge if no TPU devices found.
   if (device_set && !HasTPUDevice(*device_set)) {
-    return MlirOptimizationPassState::Disabled;
+    return EnableNonTpuBridge(graph) ? MlirOptimizationPassState::Enabled
+                                     : MlirOptimizationPassState::Disabled;
   }
 
   // We set `uses_uninitialized_resource_args` to false here because the first
