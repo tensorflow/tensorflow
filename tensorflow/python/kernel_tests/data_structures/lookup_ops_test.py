@@ -15,6 +15,7 @@
 """Tests for lookup ops."""
 import os
 import tempfile
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -3353,6 +3354,33 @@ class MutableHashTableOpTest(test.TestCase):
     sorted_values = np.sort(self.evaluate(exported_values))
     self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
     self.assertAllEqual([0, 1, 2], sorted_values)
+  
+  @unittest.expectedFailure
+  @test_util.run_v2_only
+  def testImportedHashTable(self, is_anonymous):
+    g = ops.Graph()
+    with g.as_default():
+      default_val = -1
+      keys = constant_op.constant(["brain", "salad", "surgery", "tarkus"])
+      values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
+      t = lookup_ops.MutableHashTable(
+        dtypes.string,
+        dtypes.int64,
+        default_val,
+        experimental_is_anonymous=is_anonymous)
+      init_op = t._init_op
+      op = t.lookup(constant_op.constant(["brain", "salad", "tank"]))
+      meta_graph = saver.export_meta_graph()
+
+    def f():
+      saver.import_meta_graph(meta_graph)
+      return ops.get_default_graph().get_tensor_by_name(op.name)
+
+    wrapped = wrap_function.wrap_function(f, [])
+    pruned_init_fn = wrapped.prune(
+        (), [wrapped.graph.get_operation_by_name(init_op.name)])
+    self.evaluate(pruned_init_fn())
+    self.assertAllEqual([0, 1, -1], wrapped())
 
   @test_util.run_v1_only("SaverV1")
   def testSaveRestore(self, is_anonymous):
