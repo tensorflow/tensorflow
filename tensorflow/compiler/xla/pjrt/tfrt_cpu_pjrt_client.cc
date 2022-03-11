@@ -1210,26 +1210,55 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
 }
 
 PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
-  absl::MutexLock lock(&mu_);
-  if (tracked_device_buffer_) {
+  tfrt::AsyncValueRef<Status> definition_event;
+  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer;
+  {
+    absl::MutexLock lock(&mu_);
+    if (!tracked_device_buffer_) {
+      return PjRtFuture<Status>(InvalidArgument(
+          "GetReadyFuture() called on deleted or donated buffer"));
+    }
     if (!definition_event_) {
       definition_event_ = tfrt::MakeUnconstructedAsyncValueRef<Status>();
-      absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4> events;
-      absl::InlinedVector<tfrt::RCReference<tfrt::AsyncValue>, 4>
-          events_to_copy;
-      events.reserve(tracked_device_buffer_->DefinitionEvents().size());
-      events_to_copy.reserve(tracked_device_buffer_->DefinitionEvents().size());
-      for (const auto& ev : tracked_device_buffer_->DefinitionEvents()) {
-        events.push_back(ev.CopyRCRef());
-        events_to_copy.push_back(ev.CopyRCRef());
+      tracked_device_buffer = tracked_device_buffer_;
+    }
+    definition_event = definition_event_;
+  }
+  if (tracked_device_buffer) {
+    auto events = tracked_device_buffer->DefinitionEvents();
+    if (events.size() == 1) {
+      auto& event = events[0];
+      if (event.IsAvailable()) {
+        if (auto* error = event.GetErrorIfPresent()) {
+          definition_event.emplace(FailedPrecondition(
+              "Buffer Definition Event: %s", error->message));
+        } else {
+          definition_event.emplace(Status::OK());
+        }
+      } else {
+        event.AndThen([event = event.CopyRef(),
+                       definition_event = definition_event.CopyRef()]() {
+          if (auto* error = event.GetErrorIfPresent()) {
+            definition_event.emplace(FailedPrecondition(
+                "Buffer Definition Event: %s", error->message));
+          } else {
+            definition_event.emplace(Status::OK());
+          }
+        });
+      }
+    } else {
+      absl::InlinedVector<tfrt::AsyncValue*, 4> events;
+      events.reserve(tracked_device_buffer->DefinitionEvents().size());
+      for (const auto& ev : tracked_device_buffer->DefinitionEvents()) {
+        events.push_back(ev.GetAsyncValue());
       }
       tfrt::RunWhenReady(
-          {events.begin(), events.end()},
-          [definition_event = definition_event_.CopyRef(),
-           events = std::move(events_to_copy)]() {
+          {events.data(), events.size()},
+          [definition_event = definition_event.CopyRef(),
+           tracked_device_buffer = tracked_device_buffer]() {
             Status s;
-            for (const auto& e : events) {
-              if (auto* error = e->GetErrorIfPresent()) {
+            for (const auto& e : tracked_device_buffer->DefinitionEvents()) {
+              if (auto* error = e.GetErrorIfPresent()) {
                 s.Update(FailedPrecondition("Buffer Definition Event: %s",
                                             error->message));
               }
@@ -1237,8 +1266,12 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
             definition_event.emplace(s);
           });
     }
+  }
+  if (definition_event.IsAvailable()) {
+    return PjRtFuture<Status>(*definition_event);
+  } else {
     return PjRtFuture<Status>(
-        client_->GetHostContext(), definition_event_.CopyRef(),
+        client_->GetHostContext(), definition_event.CopyRef(),
         /*on_block_start=*/
         []() {
           tensorflow::profiler::TraceMeProducer traceme("TfrtCpuBuffer::Await");
@@ -1251,9 +1284,6 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
           tensorflow::profiler::TraceMeConsumer traceme(
               "TfrtCpuBuffer::Await", keys.traceme_context_id);
         });
-  } else {
-    return PjRtFuture<Status>(InvalidArgument(
-        "GetReadyFuture() called on deleted or donated buffer"));
   }
 }
 
