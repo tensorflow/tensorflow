@@ -15,6 +15,7 @@
 """Tests for lookup ops."""
 import os
 import tempfile
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -3355,7 +3356,10 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertAllEqual([0, 1, 2], sorted_values)
   
   @test_util.run_v2_only
+  @unittest.expectedFailure
   def testImportedHashTable(self, is_anonymous):
+    # (TODO #24439) 
+    # Confirm unfixed https://github.com/tensorflow/tensorflow/issues/24439
     g = ops.Graph()
     with g.as_default():
       default_val = -1
@@ -3371,12 +3375,7 @@ class MutableHashTableOpTest(test.TestCase):
       meta_graph = saver.export_meta_graph()
 
     def f():
-      # (TODO #24439) 
-      # Confirm unfixed https://github.com/tensorflow/tensorflow/issues/24439
-      with self.assertRaisesRegex(TypeError,
-                                  "can't convert Operation 'MutableHashTable' \
-                                  to Tensor"):
-        saver.import_meta_graph(meta_graph)
+      saver.import_meta_graph(meta_graph)
       return ops.get_default_graph().get_tensor_by_name(op.name)
 
     wrapped = wrap_function.wrap_function(f, [])
