@@ -15,7 +15,6 @@
 """Tests for lookup ops."""
 import os
 import tempfile
-import unittest
 
 from absl.testing import parameterized
 import numpy as np
