@@ -110,13 +110,10 @@ void BFloat16Propagation::RevertIfFusionInternalBF16Changes(
               if (subshape.element_type() != F32) {
                 return;
               }
-              for (const HloValue* value :
-                   dataflow_->GetValueSet(inst, index).values()) {
-                if (ContainsKey(changed_root_buffers, value)) {
-                  aliasing = true;
-                  break;
-                }
-              }
+
+              aliasing =
+                  absl::c_any_of(dataflow_->GetValueSet(inst, index).values(),
+                                 IsValueIn(changed_root_buffers));
             });
         return aliasing;
       };

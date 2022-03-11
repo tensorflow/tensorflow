@@ -436,13 +436,9 @@ BufferAllocation* BufferAssignment::GetMutableAllocation(
 
 bool BufferAssignment::HasAllocationAt(const HloInstruction* instruction,
                                        const ShapeIndex& index) const {
-  for (const HloValue* value :
-       dataflow_analysis().GetValueSet(instruction, index).values()) {
-    if (allocation_index_for_value_.contains(value)) {
-      return true;
-    }
-  }
-  return false;
+  return absl::c_any_of(
+      dataflow_analysis().GetValueSet(instruction, index).values(),
+      IsKeyIn(allocation_index_for_value_));
 }
 
 bool BufferAssignment::HasTopLevelAllocation(
