@@ -32,6 +32,7 @@ fake_tf.nn = tf.nn
 fake_tf.summary = tf.summary
 fake_tf.raw_ops = types.ModuleType('raw_ops')
 fake_tf.Module = tf.Module
+fake_tf.__version__ = tf.__version__
 
 for name in sorted(dir(tf.raw_ops))[:5]:
   setattr(fake_tf.raw_ops, name, getattr(tf.raw_ops, name))
