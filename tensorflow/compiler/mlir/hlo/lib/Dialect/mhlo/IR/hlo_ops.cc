@@ -4543,9 +4543,9 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
 
   // If any padding is negative then it isn't supported by the folder (yet).
   auto is_negative = [](const APInt& i) { return i.slt(0); };
-  if (llvm::all_of(edge_padding_low().getValues<APInt>(), is_negative) &&
-      llvm::all_of(edge_padding_high().getValues<APInt>(), is_negative) &&
-      llvm::all_of(interior_padding().getValues<APInt>(), is_negative))
+  if (llvm::any_of(edge_padding_low().getValues<APInt>(), is_negative) ||
+      llvm::any_of(edge_padding_high().getValues<APInt>(), is_negative) ||
+      llvm::any_of(interior_padding().getValues<APInt>(), is_negative))
     return {};
 
   DenseElementsAttr input = operands[0].dyn_cast_or_null<DenseElementsAttr>();
