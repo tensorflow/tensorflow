@@ -3361,13 +3361,13 @@ class MutableHashTableOpTest(test.TestCase):
       default_val = -1
       keys = constant_op.constant(["brain", "salad", "surgery", "tarkus"])
       values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
-      t = lookup_ops.MutableHashTable(
-        dtypes.string,
-        dtypes.int64,
-        default_val,
-        experimental_is_anonymous=is_anonymous)
-      init_op = t._init_op
-      op = t.lookup(constant_op.constant(["brain", "salad", "tank"]))
+      self.evaluate(table.insert(keys, values))
+      table = lookup_ops.MutableHashTable(
+            dtypes.string,
+            dtypes.int64,
+            default_val,
+            experimental_is_anonymous=is_anonymous)
+      op = table.lookup(constant_op.constant(["brain", "salad", "tank"]))
       meta_graph = saver.export_meta_graph()
 
     def f():
@@ -3380,9 +3380,6 @@ class MutableHashTableOpTest(test.TestCase):
       return ops.get_default_graph().get_tensor_by_name(op.name)
 
     wrapped = wrap_function.wrap_function(f, [])
-    pruned_init_fn = wrapped.prune(
-        (), [wrapped.graph.get_operation_by_name(init_op.name)])
-    self.evaluate(pruned_init_fn())
     self.assertAllEqual([0, 1, -1], wrapped())
 
   @test_util.run_v1_only("SaverV1")
