@@ -353,6 +353,12 @@ class LayoutAssignment : public HloModulePass {
   Status SetInstructionLayout(const Shape& shape_with_layout,
                               const HloInstruction* instruction, bool mandatory,
                               bool dfs, bool allow_alias, int64_t priority);
+  // Set the same given layout across all components of the instruction output.
+  // It works the same as the API above if the output is a single array.
+  Status SetInstructionLayout(const Layout& layout,
+                              const HloInstruction* instruction,
+                              bool mandatory = true, bool dfs = true,
+                              bool allow_alias = false, int64_t priority = -1);
   // Add a constraint on the layout of a LogicalBuffer, the layout of the
   // operand of the instruction, or the layout of the result of the computation,
   // respectively.
