@@ -2167,7 +2167,7 @@ class Subgraph {
       const TfLiteConcatenationParams* concat_params,
       const std::vector<uint32_t>& xnnpack_tensors) {
     TF_LITE_ENSURE_STATUS(
-        CheckNumInputsAndOutputs(logging_context, node, 2, 3, 1, node_index));
+        CheckNumInputsAndOutputs(logging_context, node, 2, 4, 1, node_index));
     const int num_inputs = NumInputs(node);
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
@@ -2230,6 +2230,15 @@ class Subgraph {
             /*input1_id=*/xnnpack_tensors[node->inputs->data[0]],
             /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
             /*input3_id=*/xnnpack_tensors[node->inputs->data[2]],
+            /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
+            /*flags=*/0);
+      } else if (num_inputs == 4) {
+        status = xnn_define_concatenate4(
+            subgraph, axis,
+            /*input1_id=*/xnnpack_tensors[node->inputs->data[0]],
+            /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
+            /*input3_id=*/xnnpack_tensors[node->inputs->data[2]],
+            /*input4_id=*/xnnpack_tensors[node->inputs->data[3]],
             /*output_id=*/xnnpack_tensors[node->outputs->data[0]],
             /*flags=*/0);
       }
