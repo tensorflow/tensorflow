@@ -2050,13 +2050,13 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteSplitParams* split_params,
       const std::vector<uint32_t>& xnnpack_tensors) {
-    int num_outputs = NumOutputs(node);
+    const int num_outputs = NumOutputs(node);
     TF_LITE_ENSURE_EQ(logging_context, split_params->num_splits, num_outputs);
     TF_LITE_ENSURE_STATUS(CheckNumInputs(logging_context, node, 2, node_index));
     TF_LITE_ENSURE_STATUS(
-        CheckNumOutputs(logging_context, node, 2, 3, node_index));
+        CheckNumOutputs(logging_context, node, 2, 4, node_index));
 
-    int split_dim_idx = node->inputs->data[0];
+    const int split_dim_idx = node->inputs->data[0];
     const TfLiteTensor& split_dim_tensor = tensors[split_dim_idx];
     TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, split_dim_tensor,
                                           kTfLiteInt32, split_dim_idx,
@@ -2066,7 +2066,7 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, split_dim_tensor, split_dim_idx, node_index));
 
-    int input_idx = node->inputs->data[1];
+    const int input_idx = node->inputs->data[1];
     const TfLiteTensor& input_tensor = tensors[input_idx];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
         delegate, logging_context, input_tensor, input_idx, node_index));
@@ -2078,7 +2078,7 @@ class Subgraph {
     TF_LITE_ENSURE(logging_context, split_dim >= 0);
     TF_LITE_ENSURE(logging_context, split_dim < NumDimensions(&input_tensor));
 
-    int input_split_dim_size = SizeOfDimension(&input_tensor, split_dim);
+    const int input_split_dim_size = SizeOfDimension(&input_tensor, split_dim);
     if (input_split_dim_size % num_outputs != 0) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
@@ -2087,10 +2087,11 @@ class Subgraph {
       return kTfLiteError;
     }
 
-    int32_t expected_output_split_dim_size = input_split_dim_size / num_outputs;
+    const int32_t expected_output_split_dim_size =
+        input_split_dim_size / num_outputs;
 
     for (int i = 0; i < NumOutputs(node); i++) {
-      int output_idx = node->outputs->data[i];
+      const int output_idx = node->outputs->data[i];
       const TfLiteTensor& output_tensor = tensors[output_idx];
 
       TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQUInt8Type(
@@ -2137,6 +2138,15 @@ class Subgraph {
             /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
             /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
             /*output3_id=*/xnnpack_tensors[node->outputs->data[2]],
+            /*flags=*/0);
+      } else if (num_outputs == 4) {
+        status = xnn_define_even_split4(
+            subgraph, split_dim,
+            /*input_id=*/xnnpack_tensors[input_idx],
+            /*output1_id=*/xnnpack_tensors[node->outputs->data[0]],
+            /*output2_id=*/xnnpack_tensors[node->outputs->data[1]],
+            /*output3_id=*/xnnpack_tensors[node->outputs->data[2]],
+            /*output4_id=*/xnnpack_tensors[node->outputs->data[3]],
             /*flags=*/0);
       }
 

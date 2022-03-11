@@ -228,5 +228,106 @@ TEST(Split, 4D_to_3_outputs) {
   }
 }
 
+TEST(Split, 1D_to_4_outputs) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(1, 5), std::ref(rng));
+  const std::vector<int32_t> shape({shape_rng() * 4});
+
+  for (int i = -1; i < 1; i++) {
+    // clang-format off
+    SplitTester()
+        .InputShape(shape)
+        .SplitDimension(i)
+        .NumSplits(4)
+        .Test(TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format on
+  }
+}
+
+TEST(Split, 2D_to_4_outputs) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 10), std::ref(rng));
+  auto split_dim_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(1, 5), std::ref(rng));
+
+  for (int i = -2; i < 2; i++) {
+    std::vector<int32_t> shape({shape_rng(), shape_rng()});
+    shape[i < 0 ? i + shape.size() : i] = split_dim_rng() * 4;
+
+    // clang-format off
+    SplitTester()
+        .InputShape(shape)
+        .SplitDimension(i)
+        .NumSplits(4)
+        .Test(TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format on
+  }
+}
+
+TEST(Split, 3D_to_4_outputs) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 10), std::ref(rng));
+  auto split_dim_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(1, 5), std::ref(rng));
+
+  for (int i = -3; i < -2; i++) {
+    std::vector<int32_t> shape({shape_rng(), shape_rng(), shape_rng()});
+    shape[i < 0 ? i + shape.size() : i] = split_dim_rng() * 4;
+
+    // clang-format off
+    SplitTester()
+        .InputShape(shape)
+        .SplitDimension(i)
+        .NumSplits(4)
+        .Test(TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format on
+  }
+}
+
+TEST(Split, 4D_to_4_outputs) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 10), std::ref(rng));
+  auto split_dim_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(1, 5), std::ref(rng));
+
+  for (int i = -4; i < 4; i++) {
+    std::vector<int32_t> shape(
+        {shape_rng(), shape_rng(), shape_rng(), shape_rng()});
+    shape[i < 0 ? i + shape.size() : i] = split_dim_rng() * 4;
+
+    // clang-format off
+    SplitTester()
+        .InputShape(shape)
+        .SplitDimension(i)
+        .NumSplits(4)
+        .Test(TensorType_UINT8, xnnpack_delegate.get());
+    // clang-format on
+  }
+}
+
 }  // namespace xnnpack
 }  // namespace tflite
