@@ -189,6 +189,7 @@ class CoordinationServiceInterface {
   friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
 
   virtual const CoordinationServiceDeviceInfo& ListClusterDevices() = 0;
+  virtual uint64_t GetServiceIncarnation() = 0;
 
   static std::unordered_map<std::string, CoordinationServiceFactory>*
   GetCoordinationServiceFactories() {

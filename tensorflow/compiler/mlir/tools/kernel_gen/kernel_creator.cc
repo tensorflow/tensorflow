@@ -23,13 +23,13 @@ limitations under the License.
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
@@ -48,7 +48,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
@@ -198,9 +198,10 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
                               llvm::ArrayRef<int64_t> unroll_factors,
                               int64_t max_supported_rank, bool enable_ftz,
                               bool index_64bit, bool cpu_codegen,
-                              bool jit_i64_indexed_for_large_tensors) {
+                              bool jit_i64_indexed_for_large_tensors,
+                              bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
-  applyTensorflowAndCLOptions(pm);
+  if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
   pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
@@ -222,9 +223,10 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
                       llvm::ArrayRef<int64_t> unroll_factors,
                       int64_t max_supported_rank, bool enable_ftz,
                       bool index_64bit, bool cpu_codegen,
-                      bool jit_i64_indexed_for_large_tensors) {
+                      bool jit_i64_indexed_for_large_tensors,
+                      bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
-  applyTensorflowAndCLOptions(pm);
+  if (apply_cl_options) applyTensorflowAndCLOptions(pm);
   if (jit_i64_indexed_for_large_tensors) {
     pm.addNestedPass<FuncOp>(
         mlir::kernel_gen::transforms::CreateTFToJITInvocationPass(
@@ -332,9 +334,9 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
 }
 
 Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
-                            bool cpu_codegen, bool index_64bit) {
+                            bool cpu_codegen, bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
-  applyTensorflowAndCLOptions(pm);
+  if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
   if (!cpu_codegen) {
     // Greedily map the remaining loop to GPU hardware dimensions.
@@ -387,8 +389,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   if (!cpu_codegen) {
     pm.addPass(mlir::createGpuLauchSinkIndexComputationsPass());
     const std::string gpuDataLayoutSpec =
-        index_64bit ? "#dlti.dl_spec<#dlti.dl_entry<index,64:i64>>"
-                    : "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
+        "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
     pm.addPass(mlir::createGpuKernelOutliningPass(gpuDataLayoutSpec));
   }
 
@@ -410,7 +411,8 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   return Status::OK();
 }
 
-Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
+Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
+                                     bool apply_cl_options) {
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
   return tensorflow::errors::Internal(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
@@ -434,7 +436,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
   // We cannot verify as the signature of the kernel is rewritten.
   // pm.enableVerifier(false);
-  tensorflow::applyTensorflowAndCLOptions(pm);
+  if (apply_cl_options) tensorflow::applyTensorflowAndCLOptions(pm);
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
   kernelPm.addPass(::mlir::createConvertSCFToCFPass());
 #if TENSORFLOW_USE_ROCM
@@ -453,9 +455,10 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
   return Status::OK();
 }
 
-Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module) {
+Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module,
+                                            bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
-  applyTensorflowAndCLOptions(pm);
+  if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
   pm.addNestedPass<FuncOp>(
       mlir::kernel_gen::transforms::CreatePropagateShapeKnowledgeToKernels());
@@ -471,9 +474,10 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module) {
 Status GenerateDeviceCode(mlir::ModuleOp module,
                           llvm::StringRef gpu_binary_attr_name,
                           llvm::ArrayRef<std::string> architectures,
-                          bool print_ptx, bool print_llvmir, bool enable_ftz) {
+                          bool print_ptx, bool print_llvmir, bool enable_ftz,
+                          bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
-  applyTensorflowAndCLOptions(pm);
+  if (apply_cl_options) applyTensorflowAndCLOptions(pm);
   mlir::registerLLVMDialectTranslation(*module->getContext());
 
   auto& kernel_pm = pm.nest<mlir::gpu::GPUModuleOp>();
@@ -488,9 +492,9 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
              : Status::OK();
 }
 
-Status LowerHostSideToFinalForm(mlir::ModuleOp module) {
+Status LowerHostSideToFinalForm(mlir::ModuleOp module, bool apply_cl_options) {
   mlir::PassManager pm(module.getContext());
-  applyTensorflowAndCLOptions(pm);
+  if (apply_cl_options) applyTensorflowAndCLOptions(pm);
 
   pm.addPass(mlir::kernel_gen::transforms::CreateTFKernelToLLVMPass(
       kGpuBinaryAttrName));
@@ -528,7 +532,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
     bool print_llvmir, bool enable_ftz, bool index_64bit, bool cpu_codegen,
-    bool jit_compile, bool jit_i64_indexed_for_large_tensors) {
+    bool jit_compile, bool jit_i64_indexed_for_large_tensors,
+    bool apply_cl_options) {
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       SetupContextAndParseModule(context, tf_code));
 
@@ -536,24 +541,26 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
     TF_RETURN_IF_ERROR(LowerTFToJITInvocation(
         module.get(), tile_sizes, unroll_factors, max_supported_rank,
         enable_ftz, index_64bit, cpu_codegen,
-        /*jit_i64_indexed_for_large_tensors=*/false));
+        /*jit_i64_indexed_for_large_tensors=*/false, apply_cl_options));
   } else {
-    TF_RETURN_IF_ERROR(LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
-                                      max_supported_rank, enable_ftz,
-                                      index_64bit, cpu_codegen,
-                                      jit_i64_indexed_for_large_tensors));
+    TF_RETURN_IF_ERROR(
+        LowerTFtoLoops(module.get(), tile_sizes, unroll_factors,
+                       max_supported_rank, enable_ftz, index_64bit, cpu_codegen,
+                       jit_i64_indexed_for_large_tensors, apply_cl_options));
     TF_RETURN_IF_ERROR(LowerLoopsToGPUorCPU(module.get(), embed_memref_prints,
-                                            cpu_codegen, index_64bit));
+                                            cpu_codegen, apply_cl_options));
     if (!cpu_codegen) {
-      TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(module.get()));
-      TF_RETURN_IF_ERROR(AmendKernelLLVMIRWithStaticKnowledge(module.get()));
-      TF_RETURN_IF_ERROR(GenerateDeviceCode(module.get(), kGpuBinaryAttrName,
-                                            architectures, print_ptx,
-                                            print_llvmir, enable_ftz));
+      TF_RETURN_IF_ERROR(
+          LowerKernelBodiesToLowLevelIr(module.get(), apply_cl_options));
+      TF_RETURN_IF_ERROR(
+          AmendKernelLLVMIRWithStaticKnowledge(module.get(), apply_cl_options));
+      TF_RETURN_IF_ERROR(GenerateDeviceCode(
+          module.get(), kGpuBinaryAttrName, architectures, print_ptx,
+          print_llvmir, enable_ftz, apply_cl_options));
     }
   }
 
-  TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get()));
+  TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get(), apply_cl_options));
 
   return module;
 }

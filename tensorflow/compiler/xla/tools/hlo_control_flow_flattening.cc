@@ -106,10 +106,10 @@ bool IsNotContainedInLoop(const HloInstruction& while_hlo,
                           const CallGraph& call_graph) {
   const HloComputation* computation = while_hlo.parent();
   while (!computation->IsEntryComputation()) {
-    auto node = call_graph.GetNode(computation);
+    auto& node = call_graph.GetNode(computation);
     CHECK_EQ(node.caller_callsites().size(), 1)
         << "The module is not flattened!";
-    auto callsite = node.caller_callsites()[0];
+    auto& callsite = node.caller_callsites()[0];
     if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
       // Another while loop has been found traversing up the call tree.
       return false;

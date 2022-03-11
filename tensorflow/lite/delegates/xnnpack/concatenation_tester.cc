@@ -35,6 +35,13 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
+std::vector<int32_t> SameShapeDifferentAxis(std::vector<int32_t> shape,
+                                            int axis, int32_t size) {
+  std::vector<int32_t> new_shape{shape};
+  new_shape[axis < 0 ? axis + shape.size() : axis] = size;
+  return new_shape;
+}
+
 template <class T>
 void ConcatenationTester::Test(Interpreter *delegate_interpreter,
                                Interpreter *default_interpreter) const {
@@ -44,25 +51,17 @@ void ConcatenationTester::Test(Interpreter *delegate_interpreter,
       std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
   auto input_rng = std::bind(input_distribution, std::ref(rng));
 
-  T *default_input1_data = default_interpreter->typed_input_tensor<T>(0);
-  std::generate(default_input1_data,
-                default_input1_data + ComputeSize(Input1Shape()),
-                std::ref(input_rng));
+  for (size_t i = 0; i < NumInputs(); i++) {
+    T *default_input_data = default_interpreter->typed_input_tensor<T>(i);
+    std::generate(default_input_data,
+                  default_input_data + ComputeSize(InputShape(i)),
+                  std::ref(input_rng));
 
-  T *xnnpack_input1_data = delegate_interpreter->typed_input_tensor<T>(0);
-  std::copy(default_input1_data,
-            default_input1_data + ComputeSize(Input1Shape()),
-            xnnpack_input1_data);
-
-  T *default_input2_data = default_interpreter->typed_input_tensor<T>(1);
-  std::generate(default_input2_data,
-                default_input2_data + ComputeSize(Input2Shape()),
-                std::ref(input_rng));
-
-  T *xnnpack_input2_data = delegate_interpreter->typed_input_tensor<T>(1);
-  std::copy(default_input2_data,
-            default_input2_data + ComputeSize(Input2Shape()),
-            xnnpack_input2_data);
+    T *xnnpack_input_data = delegate_interpreter->typed_input_tensor<T>(i);
+    std::copy(default_input_data,
+              default_input_data + ComputeSize(InputShape(i)),
+              xnnpack_input_data);
+  }
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
@@ -84,29 +83,19 @@ void ConcatenationTester::Test<float>(Interpreter *delegate_interpreter,
   std::uniform_real_distribution<float> input_distribution(-25.0f, 25.0f);
   auto input_rng = std::bind(input_distribution, std::ref(rng));
 
-  float *default_input1_data =
-      default_interpreter->typed_input_tensor<float>(0);
-  std::generate(default_input1_data,
-                default_input1_data + ComputeSize(Input1Shape()),
-                std::ref(input_rng));
+  for (size_t i = 0; i < NumInputs(); i++) {
+    float *default_input_data =
+        default_interpreter->typed_input_tensor<float>(i);
+    std::generate(default_input_data,
+                  default_input_data + ComputeSize(InputShape(i)),
+                  std::ref(input_rng));
 
-  float *xnnpack_input1_data =
-      delegate_interpreter->typed_input_tensor<float>(0);
-  std::copy(default_input1_data,
-            default_input1_data + ComputeSize(Input1Shape()),
-            xnnpack_input1_data);
-
-  float *default_input2_data =
-      default_interpreter->typed_input_tensor<float>(1);
-  std::generate(default_input2_data,
-                default_input2_data + ComputeSize(Input2Shape()),
-                std::ref(input_rng));
-
-  float *xnnpack_input2_data =
-      delegate_interpreter->typed_input_tensor<float>(1);
-  std::copy(default_input2_data,
-            default_input2_data + ComputeSize(Input2Shape()),
-            xnnpack_input2_data);
+    float *xnnpack_input_data =
+        delegate_interpreter->typed_input_tensor<float>(i);
+    std::copy(default_input_data,
+              default_input_data + ComputeSize(InputShape(i)),
+              xnnpack_input_data);
+  }
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
@@ -143,8 +132,8 @@ void ConcatenationTester::Test(TensorType tensor_type,
 
   ASSERT_TRUE(delegate_interpreter);
   ASSERT_TRUE(default_interpreter);
-  ASSERT_EQ(delegate_interpreter->inputs().size(), 2);
-  ASSERT_EQ(default_interpreter->inputs().size(), 2);
+  ASSERT_EQ(delegate_interpreter->inputs().size(), NumInputs());
+  ASSERT_EQ(default_interpreter->inputs().size(), NumInputs());
   ASSERT_EQ(delegate_interpreter->outputs().size(), 1);
   ASSERT_EQ(default_interpreter->outputs().size(), 1);
 
@@ -178,38 +167,36 @@ std::vector<char> ConcatenationTester::CreateTfLiteModel(
       CreateBuffer(builder, builder.CreateVector({})),
   }};
 
-  std::vector<flatbuffers::Offset<Tensor>> tensors{{
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(Input1Shape().data(),
-                                                 Input1Shape().size()),
-                   tensor_type,
-                   /*buffer=*/0, /*name=*/0,
-                   CreateQuantizationParameters(
-                       builder, /*min=*/0, /*max=*/0,
-                       builder.CreateVector<float>({/*scale=*/1.0f}),
-                       builder.CreateVector<int64_t>({/*zero_point=*/0}))),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(Input2Shape().data(),
-                                                 Input2Shape().size()),
-                   tensor_type,
-                   /*buffer=*/0, /*name=*/0,
-                   CreateQuantizationParameters(
-                       builder, /*min=*/0, /*max=*/0,
-                       builder.CreateVector<float>({/*scale=*/1.0f}),
-                       builder.CreateVector<int64_t>({/*zero_point=*/0}))),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(OutputShape().data(),
-                                                 OutputShape().size()),
-                   tensor_type,
-                   /*buffer=*/0, /*name=*/0,
-                   CreateQuantizationParameters(
-                       builder, /*min=*/0, /*max=*/0,
-                       builder.CreateVector<float>({/*scale=*/1.0f}),
-                       builder.CreateVector<int64_t>({/*zero_point=*/0}))),
-  }};
+  std::vector<flatbuffers::Offset<Tensor>> tensors;
+  for (size_t i = 0; i < NumInputs(); i++) {
+    tensors.push_back(
+        CreateTensor(builder,
+                     builder.CreateVector<int32_t>(InputShape(i).data(),
+                                                   InputShape(i).size()),
+                     tensor_type,
+                     /*buffer=*/0, /*name=*/0,
+                     CreateQuantizationParameters(
+                         builder, /*min=*/0, /*max=*/0,
+                         builder.CreateVector<float>({/*scale=*/1.0f}),
+                         builder.CreateVector<int64_t>({/*zero_point=*/0}))));
+  }
 
-  const std::array<int32_t, 2> op_inputs{0, 1};
-  const std::array<int32_t, 1> op_outputs{2};
+  tensors.push_back(CreateTensor(
+      builder,
+      builder.CreateVector<int32_t>(OutputShape().data(), OutputShape().size()),
+      tensor_type,
+      /*buffer=*/0, /*name=*/0,
+      CreateQuantizationParameters(
+          builder, /*min=*/0, /*max=*/0,
+          builder.CreateVector<float>({/*scale=*/1.0f}),
+          builder.CreateVector<int64_t>({/*zero_point=*/0}))));
+
+  std::vector<int32_t> op_inputs;
+  for (size_t i = 0; i < NumInputs(); i++) {
+    op_inputs.push_back(static_cast<int32_t>(i));
+  }
+
+  const std::array<int32_t, 1> op_outputs{static_cast<int32_t>(NumInputs())};
   BuiltinOptions builtin_options_type = tflite::BuiltinOptions_NONE;
   flatbuffers::Offset<void> builtin_options = 0;
   builtin_options_type = tflite::BuiltinOptions_ConcatenationOptions;
@@ -220,7 +207,7 @@ std::vector<char> ConcatenationTester::CreateTfLiteModel(
       builder.CreateVector<int32_t>(op_outputs.data(), op_outputs.size()),
       builtin_options_type, builtin_options);
 
-  const std::array<int32_t, 2> subgraph_inputs = op_inputs;
+  const std::vector<int32_t> subgraph_inputs = op_inputs;
   const std::array<int32_t, 1> subgraph_outputs = op_outputs;
   flatbuffers::Offset<SubGraph> subgraph = CreateSubGraph(
       builder, builder.CreateVector(tensors.data(), tensors.size()),

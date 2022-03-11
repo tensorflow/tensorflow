@@ -456,6 +456,13 @@ TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
     }
   }
 
+  // Handle `experimental_dynamic_allocation_for_large_tensors_`.
+  if (options->GetDynamicAllocationForLargeTensors() > 0) {
+    auto& main_subgraph = subgraphs_[0];
+    main_subgraph->UseDynamicAllocationForLargeTensors(
+        options->GetDynamicAllocationForLargeTensors());
+    main_subgraph->EnsureDynamicTensorsAreReleased();
+  }
   return kTfLiteOk;
 }
 

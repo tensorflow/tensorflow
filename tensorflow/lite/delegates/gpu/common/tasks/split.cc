@@ -154,12 +154,8 @@ std::string Split::GetSplitChannelsCode() {
     for (int j = 0; j < 4; ++j) {
       c += "    if (i * 4 + " + std::to_string(j) + " < " + dst_name +
            ".Channels()) {\n";
-      c += "      int src_slice = src_channel >> 2;\n";
-      c += "      int src_sub_ch = src_channel & 3;\n";
-      c += "      FLT4 t = args.src_tensor.Read(" + coords + ", src_slice" +
-           batch_coord + ");\n";
-      c += "      result." + postfixes[j] +
-           " = SELECT_BY_INDEX_FROM_FLT4(t, src_sub_ch);\n";
+      c += "      args.src_tensor.ReadPerChannel(result." + postfixes[j] +
+           ", " + coords + ", src_channel" + batch_coord + ");\n";
       c += "      src_channel++;\n";
       c += "    }\n";
     }

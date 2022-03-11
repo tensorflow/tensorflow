@@ -212,7 +212,7 @@ class BufferValueMap {
                                   std::vector<BufferNumber>* aliased_buffers) {
     VLOG(3) << "Compute kWhile aliases";
     // Value is init of a while (use is while).
-    for (const HloUse& use : value.uses()) {
+    for (const HloUse& use : value.GetUses()) {
       if (use.instruction->opcode() == HloOpcode::kWhile) {
         // Determine the while value that this shares a buffer with.
         const HloValue& while_value =
@@ -329,7 +329,7 @@ class BufferValueMap {
       }
     }
 
-    for (const HloUse& use : value.uses()) {
+    for (const HloUse& use : value.GetUses()) {
       for (const auto& operand_and_output_index :
            HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction)) {
         if (use == operand_and_output_index.first) {
@@ -345,7 +345,7 @@ class BufferValueMap {
   // Compute and return a vector of buffers that the given value must be
   // contained in due to HLO aliasing rules.
   std::vector<BufferNumber> ComputeAliasedBuffers(const HloValue& value) {
-    for (const HloUse& use : value.uses()) {
+    for (const HloUse& use : value.GetUses()) {
       VLOG(2) << "Use of value " << value.ToShortString() << ": " << use;
     }
     std::vector<BufferNumber> aliased_buffers;

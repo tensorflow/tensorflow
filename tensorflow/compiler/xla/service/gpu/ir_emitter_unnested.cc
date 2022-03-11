@@ -245,33 +245,12 @@ bool MayPreventVectorization(mlir::Operation* op) {
   static constexpr int kMaxConcatArgumentsForUnrolling = 10;
 
   auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
-  const bool is_single_instruction = IsSingleInstructionFusion(fusion);
 
   for (mlir::Operation& instr : fusion.region().front()) {
     if (mlir::isa<mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp,
                   mlir::bufferization::ToTensorOp, mlir::memref::TensorStoreOp>(
             &instr)) {
       continue;
-    }
-    if (is_single_instruction) {
-      auto instr_opcode = *MhloToHloOpcode(&instr);
-      if (MhloOpIsElementwise(&instr)) {
-        switch (instr_opcode) {
-          case HloOpcode::kSin:
-          case HloOpcode::kCos:
-          case HloOpcode::kPower:
-          case HloOpcode::kAtan2:
-            return true;
-          default:
-            return false;
-        }
-      } else if (instr_opcode == HloOpcode::kReduce &&
-                 instr.getNumResults() == 1) {
-        // TODO(timshen): check if the to_apply() attribute contains
-        // instructions that break LLVM vectorization.
-        return false;
-      }
-      return true;
     }
 
     CHECK(instr.getDialect() ==
@@ -1156,6 +1135,8 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
     }
     backend.set_lhs_stride(op.lhs_stride());
     backend.set_rhs_stride(op.rhs_stride());
+    config.use_cublaslt =
+        hlo_module_config_.debug_options().xla_gpu_enable_cublaslt();
 
     auto& dims = *backend.mutable_dot_dimension_numbers();
     auto mlir_dims = op.dot_dimension_numbers();
@@ -1502,6 +1483,15 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
   auto fft_length_values = fft_op.fft_length().getValues<int64_t>();
   std::vector<int64_t> fft_length(fft_length_values.begin(),
                                   fft_length_values.end());
+
+  if (IsBefThunkEnabled(hlo_module_config_)) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Thunk> thunk,
+        CreateBefThunk(GetThunkInfo(op), op, {arg_slice, dest_slice}));
+    AddThunkToThunkSequence(std::move(thunk));
+    return Status::OK();
+  }
+
   AddThunkToThunkSequence(
       absl::make_unique<FftThunk>(GetThunkInfo(op), fft_type, fft_length,
                                   /*input_buffer=*/arg_slice,

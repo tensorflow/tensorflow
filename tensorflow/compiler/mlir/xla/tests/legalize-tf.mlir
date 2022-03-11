@@ -6410,8 +6410,8 @@ func @xla_rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10
   %cst = "tf.Const"() {value = dense<[10, 12]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-NEXT: %1 = mhlo.constant dense<3> : tensor<i32>
   %cst_0 = "tf.Const"() {value = dense<3> : tensor<i32>} : () -> tensor<i32>
-  // CHECK-NEXT: %2:2 = "mhlo.rng_bit_generator"(%[[STATE]]) {rng_algorithm = 0 : i32} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
-  // CHECK-NEXT: return %2#0, %2#1 : tensor<2xui64>, tensor<10x12xui32>
+  // CHECK-NEXT: %[[OUTPUT_STATE:.*]], %[[OUTPUT:.*]] = "mhlo.rng_bit_generator"(%[[STATE]]) {rng_algorithm = 0 : i32} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
+  // CHECK-NEXT: return %[[OUTPUT_STATE]], %[[OUTPUT]] : tensor<2xui64>, tensor<10x12xui32>
   %output_key, %output = "tf.XlaRngBitGenerator"(%cst_0, %arg0, %cst) : (tensor<i32>, tensor<2xui64>, tensor<2xi32>) -> (tensor<2xui64>, tensor<10x12xui32>)
   return %output_key, %output : tensor<2xui64>, tensor<10x12xui32>
 }
@@ -6550,4 +6550,15 @@ func private @add_scatter(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tenso
 func private @ge_select(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xi1> {
   %0 = "tf.GreaterEqual"(%arg0, %arg1) {device = ""} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xi1>
   return %0 : tensor<*xi1>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.XlaOptimizationBarrier legalization
+//===----------------------------------------------------------------------===//
+
+func @test_xla_optimization_barrier(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xi32>) -> (tensor<4x4xf32>, tensor<3x4xi32>) {
+  // CHECK: %[[OPT_BARRIER:.*]]:2 = "mhlo.optimization_barrier"(%arg0, %arg1)
+  // CHECK-NEXT: return %[[OPT_BARRIER]]#0, %[[OPT_BARRIER]]#1
+  %0, %1 = "tf.XlaOptimizationBarrier"(%arg0, %arg1) : (tensor<4x4xf32>, tensor<3x4xi32>) -> (tensor<4x4xf32>, tensor<3x4xi32>)
+  return %0, %1 : tensor<4x4xf32>, tensor<3x4xi32>
 }

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/platform/errors.h"

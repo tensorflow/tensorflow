@@ -45,7 +45,7 @@ limitations under the License.
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -940,8 +940,8 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         backend_config.activation_mode());
     TF_ASSIGN_OR_RETURN(mlir::lmhlo_gpu::Activation activation,
                         GetLHLOActivation(se_activation));
-    StringAttr activation_attr = builder_.getStringAttr(
-        mlir::lmhlo_gpu::stringifyActivation(activation));
+    auto activation_attr = ::mlir::lmhlo_gpu::ActivationAttr::get(
+        getLocation(custom_call).getContext(), activation);
     op.activation_modeAttr(activation_attr);
     return Status::OK();
   };

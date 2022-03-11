@@ -68,6 +68,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_cudnn_frontend(true);
 
+  opts.set_xla_gpu_enable_cublaslt(false);
+
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
   opts.set_xla_gpu_enable_fast_min_max(false);
@@ -686,6 +688,11 @@ static void AllocateFlags() {
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_cudnn_frontend),
       flag_values->xla_gpu_enable_cudnn_frontend(),
       "Use the cuDNN frontend API for convolutions when possible."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_enable_cublaslt",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_cublaslt),
+      flag_values->xla_gpu_enable_cublaslt(),
+      "Use cuBLASLt for GEMMs when possible."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_dump_disable_metadata",
       bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),

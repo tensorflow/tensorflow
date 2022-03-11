@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(*file_or_err), llvm::SMLoc());
   mlir::OwningOpRef<mlir::ModuleOp> module(
-      mlir::parseSourceFile(source_mgr, &context));
+      mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, &context));
   if (!module) return 1;
 
   // TODO(jpienaar): Expand to support inputs.

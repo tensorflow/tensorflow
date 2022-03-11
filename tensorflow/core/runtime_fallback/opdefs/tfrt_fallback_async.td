@@ -325,8 +325,7 @@ def CreateOp: FallbackAsync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
   );
 
   let hasVerifier = 1;
-  let printer = [{ return tfrt::fallback_async::print(p, *this); }];
-  let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def ExecuteOp : FallbackAsync_Op<"executeop",
@@ -383,8 +382,7 @@ def ExecuteOp : FallbackAsync_Op<"executeop",
       "int64_t":$op_key, "::llvm::StringRef":$op_name, "int64_t":$_tfrt_cost)>];
 
   let hasVerifier = 1;
-  let printer = [{ return tfrt::fallback_async::print(p, *this); }];
-  let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def ExecuteOpSeq : FallbackAsync_Op<"executeop.seq",
@@ -437,8 +435,7 @@ def ExecuteOpSeq : FallbackAsync_Op<"executeop.seq",
   );
 
   let hasVerifier = 1;
-  let printer = [{ return tfrt::fallback_async::print(p, *this); }];
-  let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def BatchFunctionOp : FallbackAsync_Op<"batch_function", [CoreRT_TypedAttributeTrait]> {
@@ -477,8 +474,7 @@ def BatchFunctionOp : FallbackAsync_Op<"batch_function", [CoreRT_TypedAttributeT
   );
 
   let hasVerifier = 1;
-  let printer = [{ return tfrt::fallback_async::print(p, *this); }];
-  let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def ExecuteOpWithAllocator : FallbackAsync_Op<"executeop.allocator",
@@ -504,8 +500,7 @@ def ExecuteOpWithAllocator : FallbackAsync_Op<"executeop.allocator",
   );
 
   let hasVerifier = 1;
-  let printer = [{ return tfrt::fallback_async::print(p, *this); }];
-  let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def ExecuteOpSeqWithAllocator : FallbackAsync_Op<"executeop.seq.allocator",
@@ -539,8 +534,7 @@ def ExecuteOpSeqWithAllocator : FallbackAsync_Op<"executeop.seq.allocator",
   );
 
   let hasVerifier = 1;
-  let printer = [{ return tfrt::fallback_async::print(p, *this); }];
-  let parser = [{ return tfrt::fallback_async::parse$cppClass(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 #endif

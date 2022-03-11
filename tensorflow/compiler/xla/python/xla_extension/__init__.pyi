@@ -251,6 +251,7 @@ class OpSharding:
   Type: typing.Type[OpSharding_Type]
   type: OpSharding_Type
   replicate_on_last_tile_dim: bool
+  last_tile_dims: Sequence[Type]
   tile_assignment_dimensions: Sequence[int]
   tile_assignment_devices: Sequence[int]
   tuple_shardings: Sequence[OpSharding]

@@ -56,8 +56,8 @@ bool AreEquivalent(FuncOp& lhs, FuncOp& rhs) {
     if (lhs_arg.getType() != rhs_arg.getType()) return false;
   }
 
-  auto lhs_ops = lhs.body().getOps();
-  auto rhs_ops = rhs.body().getOps();
+  auto lhs_ops = lhs.getBody().getOps();
+  auto rhs_ops = rhs.getBody().getOps();
   if (std::distance(lhs_ops.begin(), lhs_ops.end()) !=
       std::distance(rhs_ops.begin(), rhs_ops.end()))
     return false;
@@ -144,7 +144,7 @@ mlir::LogicalResult DeduplicateFunctionsInovkedByBatchFunction::Run() {
             "different");
       }
       if (failed(SymbolTable::replaceAllSymbolUses(
-              func_op_to_remove, func_op_to_keep.sym_nameAttr(), module))) {
+              func_op_to_remove, func_op_to_keep.getSymNameAttr(), module))) {
         return func_op_to_remove.emitError("unable to replace the symbol use");
       }
       symbol_table.erase(func_op_to_remove);

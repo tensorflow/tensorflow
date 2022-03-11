@@ -441,13 +441,20 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
 
   stream_ = StreamGroupFactory::Global().GetOrCreate(
       tf_device_id_, 0, executor_, options.config.gpu_options());
+
+  // Get an allocator that allocates pinned memory on host.
+  AllocatorAttributes attr;
+  attr.set_on_host(true);
+  attr.set_gpu_compatible(true);
+  Allocator* host_memory_allocator = GetAllocator(attr);
+
   device_context_ =
       new GPUDeviceContext(0, stream_->compute,
 #if TENSORFLOW_USE_ROCM
                            stream_->nccl,
 #endif
                            stream_->host_to_device, stream_->device_to_host,
-                           stream_->device_to_device);
+                           stream_->device_to_device, host_memory_allocator);
 
   em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
                                                   options.config.gpu_options());

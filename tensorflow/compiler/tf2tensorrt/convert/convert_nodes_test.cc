@@ -6940,7 +6940,7 @@ TEST_P(OpConverter_FP32_Test, ConvertUnary) {
     if (trt_mode_ == TrtTestMode::kImplicitBatch &&
         (op_name == "Sign" || op_name == "Round")) {
       conv_status = errors::Unimplemented(
-          "Unary op: ", op_name, " not supported in implicit batch mode");
+          "Unary op: '", op_name, "' is not supported in implicit batch mode");
     }
 
     SCOPED_TRACE(op_name);

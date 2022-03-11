@@ -1041,7 +1041,7 @@ class RowPartitionSpecTest(test_util.TensorFlowTestCase,
       (RowPartitionSpec(), RowPartitionSpec(dtype=dtypes.int32)),
   ])
   def testMostSpecificCompatibleTypeError(self, spec1, spec2):
-    with self.assertRaisesRegex(ValueError, 'Encountered incompatible types'):
+    with self.assertRaisesRegex(ValueError, 'No TypeSpec is compatible'):
       spec1.most_specific_compatible_type(spec2)
 
   def testNumRowsInt64(self):

@@ -109,7 +109,7 @@ class RemoveTfIfConstArgs
     auto new_branch_type =
         branch.getType().getWithoutArgsAndResults(const_arg_indices_bv, {});
     std::string new_branch_name =
-        absl::StrCat(branch.sym_name().str(), branch_suffix);
+        absl::StrCat(branch.getSymName().str(), branch_suffix);
     // Create the wrapper function with the new arguments that calls the
     // original branch.
     auto new_branch = builder.create<mlir::FuncOp>(
@@ -147,11 +147,11 @@ class RemoveTfIfConstArgs
     // Now create the call op to the original branch.
     auto call_op = builder.create<mlir::TF::StatefulPartitionedCallOp>(
         new_branch.getLoc(), new_branch_type.getResults(), call_args,
-        branch.sym_name(), "", "", "");
+        branch.getSymName(), "", "", "");
     // Note that the outputs are not changed.
     builder.create<mlir::func::ReturnOp>(new_branch.getLoc(), call_op.output());
 
-    return new_branch.sym_name();
+    return new_branch.getSymName();
   }
 
   int id_ = 0;

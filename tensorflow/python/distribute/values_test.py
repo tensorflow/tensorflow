@@ -33,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -278,6 +279,31 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
     for i in range(len(distribution.extended.worker_devices)):
       self.assertAllEqual(distributed_values._values[i].device,
                           worker_devices[i])
+
+
+class PerReplicaTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ] + strategy_combinations.multiworker_strategies,
+          mode=["eager"]))
+  def testUsePerReplicaInvalidContextGivesError(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+    multiple_values = range(distribution.num_replicas_in_sync)
+    def value_fn(ctx):
+      return multiple_values[ctx.replica_id_in_sync_group]
+    distributed_values = (
+        distribution.experimental_distribute_values_from_function(value_fn))
+    with self.assertRaisesRegex(ValueError, "not inside a replica context"):
+      math_ops.cast(distributed_values, dtypes.float32)
 
 
 class PerWorkerResourceTest(test.TestCase, parameterized.TestCase):

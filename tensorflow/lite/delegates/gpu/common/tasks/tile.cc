@@ -80,10 +80,8 @@ std::string GetTileCode(const OperationDef& op_def, bool src_channels_x4) {
     c += "  tmp[3] = INIT_FLT(0.0f);\n";
     c += "  for (int i = 0; i < 4; ++i) {\n";
     c += "    int dst_c = 4 * S + i;\n";
-    c += "    int src_c = dst_c % args.src_tensor.Channels();\n";
-    c += "    int src_s = src_c / 4;\n";
-    c += "    FLT4 t = args.src_tensor.Read(" + src_coords + ");\n";
-    c += "    tmp[i] = SELECT_BY_INDEX_FROM_FLT4(t, src_c % 4);\n";
+    c += "    int src_s = dst_c % args.src_tensor.Channels();\n";
+    c += "    args.src_tensor.ReadPerChannel(tmp[i], " + src_coords + ");\n";
     c += "  }\n";
     c += "  FLT4 result;\n";
     c += "  result.x = tmp[0];\n";

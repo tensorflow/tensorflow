@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -228,7 +228,8 @@ TEST(CreateTest, MlirFromGraphDef) {
       )mlir",
       &mctx);
 
-  mlir::tfg::GraphFuncOp fop = *m->body().op_begin<mlir::tfg::GraphFuncOp>();
+  mlir::tfg::GraphFuncOp fop =
+      *m->getBody()->op_begin<mlir::tfg::GraphFuncOp>();
 
   EagerContextPtr ectx = TestingEagerCtx();
   Runtime rt(*ectx);

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/quantized_transpose_conv_tester.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <functional>
@@ -76,7 +77,11 @@ void QuantizedTransposeConvTester::Test(TfLiteDelegate* delegate) const {
   const int input_data_size =
       BatchSize() * InputHeight() * InputWidth() * InputChannels();
 
-  auto uint8rng = std::bind(std::uniform_int_distribution<uint8_t>(), rng);
+  // std::uniform_int_distribution<T> is undefined behavior when T is not short,
+  // int, long, long long, or their respective unsigned variants:
+  // https://en.cppreference.com/w/cpp/numeric/random/uniform_int_distribution.
+  auto uint8rng =
+      std::bind(std::uniform_int_distribution<int32_t>(0, 255), rng);
   uint8_t* default_input_data = reinterpret_cast<uint8_t*>(
       default_interpreter->input_tensor(0)->data.data);
   std::generate(default_input_data, default_input_data + input_data_size,
@@ -163,7 +168,8 @@ std::vector<char> QuantizedTransposeConvTester::CreateTfLiteModel() const {
   std::vector<uint8_t> filter_data(OutputChannels() * KernelHeight() *
                                    KernelWidth() * InputChannels());
 
-  auto uint8rng = std::bind(std::uniform_int_distribution<uint8_t>(), rng);
+  auto uint8rng =
+      std::bind(std::uniform_int_distribution<int32_t>(0, 255), rng);
   std::generate(filter_data.begin(), filter_data.end(), uint8rng);
 
   const int buffer_index_filter = buffers.size();

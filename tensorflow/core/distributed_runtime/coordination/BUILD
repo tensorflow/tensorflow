@@ -51,6 +51,7 @@ tf_cuda_library(
         ":coordination_client",
         ":coordination_service",
         ":coordination_service_error_util",
+        "//tensorflow/compiler/xla/pjrt/distributed:protocol_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

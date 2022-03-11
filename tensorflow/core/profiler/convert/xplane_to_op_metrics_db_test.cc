@@ -44,7 +44,7 @@ void AddTensorFlowOpEvent(std::string&& tf_op_fullname,
   event.SetDurationNs(duration_ns);
   if (!on_device) return;
   event.AddStatValue(
-      *plane->GetOrCreateStatMetadata("level 0"),
+      *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
       *plane->GetOrCreateStatMetadata(std::move(tf_op_fullname)));
 }
 

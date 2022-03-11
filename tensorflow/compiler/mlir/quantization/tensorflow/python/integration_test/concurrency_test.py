@@ -70,12 +70,12 @@ class MultiThreadedTest(test.TestCase):
 
     model = quantize_model.quantize(
         temp_path, ['serving_default'], [tag_constants.SERVING],
+        optimization_method=quantize_model.OptimizationMethod
+        .STATIC_RANGE_QUANT,
         representative_dataset=data_gen)
-    self.assertIsNotNone(model)
+    return model
 
   def testMultipleConversionJobsWithCalibration(self):
-    self.skipTest('calibration')
-
     # Ensure that multiple conversion jobs with calibration won't encounter any
     # concurrency issue.
     with self.pool:
@@ -84,7 +84,7 @@ class MultiThreadedTest(test.TestCase):
         jobs.append(self.pool.submit(self._convert_with_calibration))
 
       for job in jobs:
-        job.result()
+        self.assertIsNotNone(job.result())
 
 
 if __name__ == '__main__':

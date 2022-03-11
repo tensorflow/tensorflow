@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_SPMD_PARTITIONER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_SPMD_PARTITIONER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_STATEFUL_RNG_SPMD_PARTITIONER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_STATEFUL_RNG_SPMD_PARTITIONER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -23,11 +23,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 
 namespace xla {
-namespace gpu {
+namespace spmd {
 
-class GpuSpmdPartitioningVisitor : public spmd::SpmdPartitioningVisitor {
+class StatefulRngSpmdPartitioningVisitor
+    : public spmd::SpmdPartitioningVisitor {
  public:
-  GpuSpmdPartitioningVisitor(
+  StatefulRngSpmdPartitioningVisitor(
       HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
       int64_t* next_channel_id, spmd::SpmdLogger* logger,
@@ -39,9 +40,9 @@ class GpuSpmdPartitioningVisitor : public spmd::SpmdPartitioningVisitor {
   Status HandleRngGetAndUpdateState(HloInstruction* hlo) override;
 };
 
-class GpuSpmdPartitioner : public spmd::SpmdPartitioner {
+class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
  public:
-  GpuSpmdPartitioner(int64_t num_partitions, int64_t num_replicas)
+  StatefulRngSpmdPartitioner(int64_t num_partitions, int64_t num_replicas)
       : spmd::SpmdPartitioner(num_partitions, num_replicas,
                               GetSpmdPartitionerOptions()) {}
 
@@ -64,7 +65,7 @@ class GpuSpmdPartitioner : public spmd::SpmdPartitioner {
   }
 };
 
-}  // namespace gpu
+}  // namespace spmd
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_SPMD_PARTITIONER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_STATEFUL_RNG_SPMD_PARTITIONER_H_
