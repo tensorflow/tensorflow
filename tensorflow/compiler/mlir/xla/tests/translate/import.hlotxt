@@ -1171,6 +1171,24 @@ add {
   ROOT %subtract.3 = f32[4] subtract(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
+// Test sort with comparator returing tuple
+%compare_returning_tuple {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+  ROOT tple = (pred[]) tuple(lt)
+}
+
+%test_sort_with_comp_returning_tuple {
+  x = f32[1024]{0} parameter(0)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare_returning_tuple
+}
+// CHECK-LABEL:  func private @test_sort_with_comp_returning_tuple
+// CHECK:  "mhlo.sort"
+// CHECK:    ^bb0
+// CHECK:      [[CMP:%.*]] = "mhlo.compare"
+// CHECK:      "mhlo.return"([[CMP]]) : (tensor<i1>) -> ()
+
 // CHECK-LABEL:  func private @test_tanh(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>
 %test_tanh (arg0.1: f32[1,16,16,3]) -> f32[1,16,16,3] {
   %arg0.1 = f32[1,16,16,3]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}

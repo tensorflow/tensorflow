@@ -830,8 +830,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           loc, return_types, operands,
           builder_->getI64IntegerAttr(sort_instruction->sort_dimension()),
           builder_->getBoolAttr(sort_instruction->is_stable()));
-      TF_RETURN_IF_ERROR(
-          ImportAsRegion(*sort_instruction->to_apply(), &sort_op.comparator()));
+      TF_RETURN_IF_ERROR(ImportAsRegion(*sort_instruction->to_apply(),
+                                        &sort_op.comparator(),
+                                        /*flatten_region_arg_tuple=*/true));
 
       // Check if the output needs to be tupled.
       if (return_types.size() == 1 && return_types.front() == result_type) {

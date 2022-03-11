@@ -1472,6 +1472,19 @@ func @sort_invalid_comparator_return_type(%input0: tensor<16x16xf32>, %input1: t
 // -----
 
 func @sort_invalid_comparator_return_type(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
+  // expected-error @+1 {{comparator must return tensor<i1>, but got: 'tuple<tensor<i1>>'}}
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
+    %1 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %2 = "mhlo.tuple"(%1) : (tensor<i1>) -> tuple<tensor<i1>>
+    "mhlo.return"(%2) : (tuple<tensor<i1>>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
+  return
+}
+
+// -----
+
+func @sort_invalid_comparator_return_type(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   // expected-error @+1 {{comparator must return single output, but got: 2}}
   %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
