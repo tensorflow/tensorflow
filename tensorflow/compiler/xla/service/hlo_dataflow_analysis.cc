@@ -1645,22 +1645,21 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
                fusion_param, user->fused_expression_root(), user_index);
   }
 
+  auto shapes_equal = ShapeUtil::Equal(operand_subshape, user_subshape);
   // Check that operand and user emit the same shape and layout.
-  if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
-    return false;
-  }
-
-  // Must-alias relationship returns true for in-place operations (DUS and DUS
-  // fusions), regardless of the backend.
-  for (const auto& operand_and_output_index :
-       GetInPlaceInputOutputPairs(user)) {
-    if (operand_and_output_index.second != user_index) {
-      continue;
-    }
-    for (const HloUse& use :
-         GetUniqueValueAt(operand, operand_index).GetUses()) {
-      if (use == operand_and_output_index.first) {
-        return true;
+  if (shapes_equal) {
+    // Must-alias relationship returns true for in-place operations (DUS and DUS
+    // fusions), regardless of the backend.
+    for (const auto& operand_and_output_index :
+         GetInPlaceInputOutputPairs(user)) {
+      if (operand_and_output_index.second != user_index) {
+        continue;
+      }
+      for (const HloUse& use :
+           GetUniqueValueAt(operand, operand_index).GetUses()) {
+        if (use == operand_and_output_index.first) {
+          return true;
+        }
       }
     }
   }
@@ -1670,6 +1669,10 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
             can_share_buffer_(user, operand, user_index)) {
       return *hint;
     }
+  }
+
+  if (!shapes_equal) {
+    return false;
   }
 
   if (user->opcode() == HloOpcode::kFusion) {
