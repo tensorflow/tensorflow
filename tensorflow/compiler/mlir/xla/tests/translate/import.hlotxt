@@ -645,7 +645,26 @@ add {
   ROOT map = f32[4]{0} map(param0, param1), dimensions={0}, to_apply=%map_computation
 }
 
+// Test mhlo.map
+%map_computation_returning_tuple {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  ROOT tple = (f32[]) tuple(add)
+}
 
+// CHECK-LABEL:  func private @test_map_with_reducer_returning_tuple
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<4xf32>, [[ARG_1:%.*]]: tensor<4xf32>) -> tensor<4xf32>
+%test_map_with_reducer_returning_tuple {
+  param0 = f32[4]{0} parameter(0)
+  param1 = f32[4]{0} parameter(1)
+// CHECK:  "mhlo.map"([[ARG_0]], [[ARG_1]]) ({
+// CHECK:    ^bb0([[ARG_2:%.*]]: tensor<f32>, [[ARG_3:%.*]]: tensor<f32>):
+// CHECK:    [[ADD:%.*]] = mhlo.add [[ARG_2]], [[ARG_3]]
+// CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+// CHECK:  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  ROOT map = f32[4]{0} map(param0, param1), dimensions={0}, to_apply=%map_computation_returning_tuple
+}
 
 // CHECK-LABEL:  func private @test_maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
 %test_maximum (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
