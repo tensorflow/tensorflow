@@ -30,6 +30,8 @@ namespace quant {
 constexpr char kAttrMapAttribute[] = "attr_map";
 // This attribute will be set for functions created by this pass.
 constexpr char kFusedFunctionAttr[] = "tf_quant.fused_function";
+// The keyword to detect if this is a `NullAttribute`.
+constexpr char kNullAttributeValue[] = "N/A";
 
 // Checks if the op is inside a lifted function.
 bool IsInLiftedFunc(Operation *op) {
@@ -137,6 +139,13 @@ LogicalResult SetAttributeMap(MLIRContext *context,
 
   for (int idx : llvm::seq<int>(0, attributes.size())) {
     const Attribute &attribute = attributes[idx];
+    // Skip following steps if this attribute is a `NullAttribute`.
+    auto string_attr = attribute.dyn_cast_or_null<StringAttr>();
+    if (string_attr != nullptr &&
+        string_attr.getValue().equals(kNullAttributeValue)) {
+      continue;
+    }
+
     if (attr_to_op_map.count(attribute) == 0) {
       return failure();
     }

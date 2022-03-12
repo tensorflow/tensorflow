@@ -34,3 +34,8 @@ def AttributeList : NativeCodeCall<"llvm::SmallVector<Attribute>{$0...}">;
 // `tf_quant.fused_function` attribute.
 def IsNotInLiftedFunc :
       Constraint<CPred<"!IsInLiftedFunc($0.getDefiningOp())">>;
+
+// This attribute can be used in the `AttributeList` for missing attributes. It
+// is necessary to keep other attributes in the same index as the quantized
+// composite function.
+def NullAttribute : NativeCodeCall<"$_builder.getStringAttr(\"N/A\")">;
