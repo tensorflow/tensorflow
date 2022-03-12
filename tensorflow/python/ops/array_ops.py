@@ -5714,7 +5714,7 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   """
   batch_dims_ = tensor_util.constant_value(batch_dims)
   if batch_dims_ is not None:
-    batch_dims = int(batch_dims_)
+    batch_dims = batch_dims_
   if batch_dims == 0:
     try:
       # TODO(apassos) find a less bad way of detecting resource variables

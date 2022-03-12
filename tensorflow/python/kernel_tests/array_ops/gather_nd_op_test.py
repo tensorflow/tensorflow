@@ -380,6 +380,17 @@ class GatherNdTest(test.TestCase):
         self.assertEqual("ResourceGatherNd", gather.op.inputs[0].op.type)
       self.assertAllEqual([2, 5], gather)
 
+  def testInvalidBatchDims(self):
+    with self.session():
+      indices = [[0, 0], [1, 1]]
+      params = [[0, 1], [2, 3]]
+      with self.assertRaisesOpError(r"but is a bool tensor"):
+        gather_nd = array_ops.gather_nd(
+            indices=[[1], [0], [4], [2], [1]],
+            params=array_ops.zeros([5, 7, 3]),
+            batch_dims=True)
+        self.evaluate(gather_nd)
+
 
 class GatherNdOpBenchmark(test.Benchmark):
 
