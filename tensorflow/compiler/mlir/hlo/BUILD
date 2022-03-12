@@ -4,9 +4,6 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 
-# TODO(b/160617323): Decouple MLIR HLO from TensorFlow/XLA
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
@@ -1214,44 +1211,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "cycle_detector",
-    srcs = ["lib/utils/cycle_detector.cc"],
-    hdrs = ["include/mlir-hlo/utils/cycle_detector.h"],
-    includes = ["include"],
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-tf_cc_test(
-    name = "cycle_detector_test",
-    srcs = ["lib/utils/cycle_detector_test.cc"],
-    deps = [
-        ":cycle_detector",
-        # TODO(b/160617323): Decouple MLIR HLO from TensorFlow/XLA
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_library(
-    name = "mhlo_fusion",
-    srcs = ["lib/Dialect/mhlo/transforms/mhlo_fusion.cc"],
-    deps = [
-        ":cycle_detector",
-        ":hlo",
-        ":mhlo_pass_details",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
 gentbl_cc_library(
     name = "legalize_to_standard_inc_gen",
     compatible_with = get_compatible_with_cloud(),
@@ -1648,7 +1607,6 @@ cc_library(
         ":merge_assuming_ops",
         ":mhlo_canonicalize_reduction",
         ":mhlo_flatten_tuple",
-        ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
         ":rank_specialization",
         ":reshape_simplifier",
