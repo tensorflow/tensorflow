@@ -3204,13 +3204,12 @@ LogicalResult InfeedOp::verify() {
                            << child_layout;
     }
 
-    for (int64_t i = 0; i < child_layout_arr.size(); i++) {
-      mlir::IntegerAttr attr =
-          child_layout_arr[i].dyn_cast<mlir::IntegerAttr>();
+    for (auto i : child_layout_arr) {
+      mlir::IntegerAttr attr = i.dyn_cast<mlir::IntegerAttr>();
       if (!attr) {
         return emitOpError() << "layout-attribute's leaf elements are "
                                 "expected to be of type integer, but got "
-                             << child_layout_arr[i];
+                             << i;
       }
     }
   }
