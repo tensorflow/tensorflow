@@ -139,7 +139,7 @@ class MergeTfIfOpsPass
       // be given unique names.
       MergeIfOpsWithSameArgs(builder, iter.first->getLoc(),
                              /*branch_prefix=*/
-                             absl::StrCat(op.sym_name().str(), "_merged_if_",
+                             absl::StrCat(op.getSymName().str(), "_merged_if_",
                                           iteration, "_", id++),
                              iter.second);
 
@@ -238,7 +238,7 @@ class MergeTfIfOpsPass
 
     builder.create<mlir::func::ReturnOp>(loc, results);
 
-    return branch.sym_name();
+    return branch.getSymName();
   }
 };
 

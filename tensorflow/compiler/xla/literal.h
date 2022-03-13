@@ -460,9 +460,8 @@ class LiteralBase {
     void set_buffer(char* buffer) { buffer_ = buffer; }
 
     // Gets/sets the buffer holding dynamic sizes.
-    int32_t* dynamic_size_buffer() const { return dynamic_size_buffer_; }
-    void set_dynamic_size_buffer(int32_t* dynamic_size_buffer) {
-      dynamic_size_buffer_ = dynamic_size_buffer;
+    int32_t* dynamic_size_buffer() const {
+      return reinterpret_cast<int32_t*>(buffer_ + size_bytes());
     }
 
     int64_t dynamic_size_buffer_bytes() const {
@@ -476,6 +475,15 @@ class LiteralBase {
 
     // Returns the size in bytes of the buffer holding the array data.
     int64_t size_bytes() const { return ShapeUtil::ByteSizeOf(subshape()); }
+
+    // Total size in bytes, including the dynamic size addition.
+    //
+    // The shape can become dynamic after this literal is allocated, so we
+    // over-allocate the margin for the dynamic shape description in case we
+    // need it.
+    int64_t total_bytes() const {
+      return size_bytes() + dynamic_size_buffer_bytes();
+    }
 
     // Returns the number of elements in this piece's array.
     int64_t element_count() const { return ShapeUtil::ElementsIn(subshape()); }
@@ -634,8 +642,6 @@ class LiteralBase {
 
     // For array-shaped pieces, this is the buffer holding the literal data.
     char* buffer_ = nullptr;
-
-    int32_t* dynamic_size_buffer_ = nullptr;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).

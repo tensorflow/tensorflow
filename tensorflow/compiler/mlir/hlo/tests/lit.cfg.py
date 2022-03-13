@@ -51,6 +51,8 @@ llvm_config.use_default_substitutions()
 config.excludes = [
     'Inputs', 'Examples', 'CMakeLists.txt', 'README.txt', 'LICENSE.txt'
 ]
+# Disabled for now, see b/223274383.
+config.excludes.append('lhlo-legalize-select-and-scatter.mlir')
 
 # test_source_root: The root path where tests are located.
 config.test_source_root = os.path.dirname(__file__)

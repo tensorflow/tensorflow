@@ -86,26 +86,28 @@ std::string AddressModeToCLSampler(AddressMode address_mode) {
   }
 }
 
-std::string GetTypeDeclaration(const GpuInfo& gpu_info, DataType data_type) {
+std::string GetTypeDeclaration(const GpuInfo& gpu_info, DataType data_type,
+                               int vec_size) {
   if (gpu_info.IsApiOpenCl()) {
-    return ToCLDataType(data_type, 4);
+    return ToCLDataType(data_type, vec_size);
   } else if (gpu_info.IsApiMetal()) {
-    return ToMetalDataType(data_type, 4);
+    return ToMetalDataType(data_type, vec_size);
   } else if (gpu_info.IsGlsl()) {
-    return ToGlslShaderDataType(data_type, 4, true,
+    return ToGlslShaderDataType(data_type, vec_size, true,
                                 gpu_info.IsGlslSupportsExplicitFp16());
   } else {
     return "";
   }
 }
 
-std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type) {
+std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type,
+                         int vec_size) {
   if (gpu_info.IsApiOpenCl()) {
-    return "(" + ToCLDataType(data_type, 4) + ")(0)";
+    return "(" + ToCLDataType(data_type, vec_size) + ")(0)";
   } else if (gpu_info.IsApiMetal()) {
-    return ToMetalDataType(data_type, 4) + "(0)";
+    return ToMetalDataType(data_type, vec_size) + "(0)";
   } else if (gpu_info.IsGlsl()) {
-    return ToGlslShaderDataType(data_type, 4, false,
+    return ToGlslShaderDataType(data_type, vec_size, false,
                                 gpu_info.IsGlslSupportsExplicitFp16()) +
            "(0)";
   } else {
@@ -341,11 +343,13 @@ GPUResources TensorDescriptor::GetGPUResources(const GpuInfo& gpu_info) const {
 absl::Status TensorDescriptor::PerformConstExpr(const GpuInfo& gpu_info,
                                                 const std::string& const_expr,
                                                 std::string* result) const {
-  if (const_expr == "type") {
-    *result = GetTypeDeclaration(gpu_info, data_type);
+  if (const_expr == "type" || const_expr == "scalar_type") {
+    const int vec_size = const_expr == "scalar_type" ? 1 : 4;
+    *result = GetTypeDeclaration(gpu_info, data_type, vec_size);
     return absl::OkStatus();
-  } else if (const_expr == "zero_value") {
-    *result = GetZeroValue(gpu_info, data_type);
+  } else if (const_expr == "zero_value" || const_expr == "scalar_zero_value") {
+    const int vec_size = const_expr == "scalar_zero_value" ? 1 : 4;
+    *result = GetZeroValue(gpu_info, data_type, vec_size);
     return absl::OkStatus();
   } else {
     return absl::UnimplementedError(
@@ -396,6 +400,8 @@ absl::Status TensorDescriptor::PerformSelector(
     return PerformReadNearestSelector(gpu_info, args, result);
   } else if (selector == "ReadBilinear") {
     return PerformReadBilinearSelector(gpu_info, args, result);
+  } else if (selector == "ReadPerChannel") {
+    return PerformReadPerChannelSelector(gpu_info, args, template_args, result);
   } else if (selector == "Write") {
     return PerformWriteSelector(gpu_info, args, template_args, result);
   } else if (selector == "WriteLinear") {
@@ -556,6 +562,50 @@ absl::Status TensorDescriptor::PerformReadBilinearSelector(
          " = TO_FLT4(mix(mix(src0_TMP, src1_TMP, x_scale_TMP), mix(src2_TMP, "
          "src3_TMP, x_scale_TMP), y_scale_TMP));\n";
   }
+  c += "  }";
+  *result = c;
+  return absl::OkStatus();
+}
+
+absl::Status TensorDescriptor::PerformReadPerChannelSelector(
+    const GpuInfo& gpu_info, const std::vector<std::string>& args,
+    const std::vector<std::string>& template_args, std::string* result) const {
+  std::vector<std::string> coord_args =
+      std::vector<std::string>(args.begin() + 1, args.end());
+  int channels_index = 0;
+  if (HasAxis(Axis::WIDTH)) {
+    channels_index++;
+  }
+  if (HasAxis(Axis::HEIGHT)) {
+    channels_index++;
+  }
+  if (HasAxis(Axis::DEPTH)) {
+    channels_index++;
+  }
+  if (channels_index >= coord_args.size()) {
+    std::cout << channels_index << " " << coord_args.size() << std::endl;
+    return absl::NotFoundError(
+        "Wrong number of coordinates in ReadPerChannel.");
+  }
+  std::string c = "  {\n";
+  c += "  int slice_coord_TMP = (" + coord_args[channels_index] + ") / 4;\n";
+  c += "  int sub_ch_coord_TMP = (" + coord_args[channels_index] + ") % 4;\n";
+  coord_args[channels_index] = "slice_coord_TMP";
+  std::string src_value;
+  RETURN_IF_ERROR(
+      PerformReadSelector(gpu_info, coord_args, template_args, &src_value));
+  if (gpu_info.IsApiOpenCl()) {
+    DataType dst_type = data_type;
+    RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &dst_type));
+    c += "  " + GetTypeDeclaration(gpu_info, dst_type, 4) +
+         " src_TMP = " + src_value + ";\n";
+    c +=
+        "  " + args[0] + " = (" + ToCLDataType(dst_type, 1) +
+        "[4]){src_TMP.x, src_TMP.y, src_TMP.z, src_TMP.w}[sub_ch_coord_TMP];\n";
+  } else {
+    c += "  " + args[0] + " = " + src_value + "[sub_ch_coord_TMP];\n";
+  }
+
   c += "  }";
   *result = c;
   return absl::OkStatus();
@@ -1250,16 +1300,8 @@ bool TensorDescriptor::ParseCoordsFromArgs(const std::vector<std::string>& args,
     *zc = args[offset++];
   }
   if (HasAxis(Axis::CHANNELS)) {
-    if (offset >= args.size()) {
-      auto it = state_vars_.find("slice_id");
-      if (it == state_vars_.end()) {
-        return false;
-      } else {
-        *sc = it->second;
-      }
-    } else {
-      *sc = args[offset++];
-    }
+    if (offset >= args.size()) return false;
+    *sc = args[offset++];
   }
   if (HasAxis(Axis::BATCH) && !IsBatchedWidth()) {
     if (offset >= args.size()) {

@@ -48,9 +48,7 @@ namespace xla {
   std::vector<HloInstruction*> dead_roots;
   for (auto* instruction : computation->instructions()) {
     auto maybe_collective_op = DynCast<HloCollectiveInstruction>(instruction);
-    if (instruction != computation->root_instruction() &&
-        instruction->user_count() == 0 &&
-        computation->IsSafelyRemovable(instruction) &&
+    if (instruction->IsDead() && computation->IsSafelyRemovable(instruction) &&
         (!instruction->HasSideEffect() ||
          (remove_cross_partition_collective_ops && maybe_collective_op &&
           !maybe_collective_op->constrain_layout()))) {

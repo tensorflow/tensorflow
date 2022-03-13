@@ -121,14 +121,14 @@ absl::Status ConverterToConvWeights1x1OutX4Test(TestExecutionEnvironment* env) {
     weights.data[i] = half(static_cast<float>(i));
   }
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       for (auto weights_layout : {WeightsLayout::kOSpatialIOGroupI4O4,
                                   WeightsLayout::kOSpatialIOGroupO4I4}) {
         conv_weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;
-        auto data_type = DeduceDataTypeFromPrecision(precision);
         op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
         op_def.dst_tensors.push_back(
             {data_type, TensorStorageType::BUFFER, Layout::UNKNOWN});
@@ -155,14 +155,14 @@ absl::Status ConverterToConvWeights1x1OutX4UnalignedTest(
     weights.data[i] = half(static_cast<float>(i));
   }
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       for (auto weights_layout : {WeightsLayout::kOSpatialIOGroupI4O4,
                                   WeightsLayout::kOSpatialIOGroupO4I4}) {
         conv_weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;
-        auto data_type = DeduceDataTypeFromPrecision(precision);
         op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
         op_def.dst_tensors.push_back(
             {data_type, TensorStorageType::BUFFER, Layout::UNKNOWN});
@@ -188,14 +188,14 @@ absl::Status ConverterToConvWeights1x1OutX2Test(TestExecutionEnvironment* env) {
     weights.data[i] = half(static_cast<float>(i));
   }
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       for (auto weights_layout : {WeightsLayout::kOSpatialIOGroupI4O4,
                                   WeightsLayout::kOSpatialIOGroupO4I4}) {
         conv_weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;
-        auto data_type = DeduceDataTypeFromPrecision(precision);
         op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
         op_def.dst_tensors.push_back(
             {data_type, TensorStorageType::BUFFER, Layout::UNKNOWN});
@@ -221,14 +221,14 @@ absl::Status ConverterToConvWeightsOutX2Test(TestExecutionEnvironment* env) {
     weights.data[i] = half(static_cast<float>(i));
   }
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       for (auto weights_layout : {WeightsLayout::kOSpatialIOGroupI4O4,
                                   WeightsLayout::kOSpatialIOGroupO4I4}) {
         conv_weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;
-        auto data_type = DeduceDataTypeFromPrecision(precision);
         op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
         op_def.dst_tensors.push_back(
             {data_type, TensorStorageType::BUFFER, Layout::UNKNOWN});
@@ -256,14 +256,14 @@ absl::Status ConverterToConvTransposedWeights4x4Test(
     weights.data[i] = half(static_cast<float>(i));
   }
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       for (auto weights_layout : {WeightsLayout::kOICustomSpatialI4O4,
                                   WeightsLayout::kOICustomSpatialO4I4}) {
         weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;
-        auto data_type = DeduceDataTypeFromPrecision(precision);
         op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
         op_def.dst_tensors.push_back(
             {data_type, TensorStorageType::BUFFER, Layout::UNKNOWN});
@@ -290,15 +290,15 @@ absl::Status ConverterToConvWeights4xTexturesTest(
     weights.data[i] = half(static_cast<float>(i));
   }
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       for (auto weights_layout :
            {WeightsLayout::k2DX4I4YIsSpatialIAndXIsOOGroupO4,
             WeightsLayout::k2DX4O4YIsSpatialIAndXIsOOGroupI4}) {
         conv_weight_desc.layout = weights_layout;
         OperationDef op_def;
         op_def.precision = precision;
-        auto data_type = DeduceDataTypeFromPrecision(precision);
         op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
         op_def.dst_tensors.push_back(
             {data_type, TensorStorageType::TEXTURE_2D, Layout::HWC});

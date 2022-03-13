@@ -1236,6 +1236,8 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
                           crs->shape(), &shape_length, &b_));
 
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  bool use_global_device_ids =
+      Cast<HloAllReduceInstruction>(crs)->use_global_device_ids();
   EmitCallToFunc(
       runtime::kAllReduceSymbolName,
       {/*run_options=*/GetExecutableRunOptionsArgument(),
@@ -1244,6 +1246,8 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
 
        /*channel_id_present=*/
        b_.getInt32(static_cast<int32_t>(crs->channel_id().has_value())),
+       /*use_global_device_ids=*/
+       b_.getInt32(static_cast<int32_t>(use_global_device_ids)),
        /*op_id=*/
        b_.getInt64(crs->channel_id().has_value()
                        ? *crs->channel_id()
@@ -1262,7 +1266,8 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
 }
 
 Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
-  if (hlo_module_config_.replica_count() == 1) {
+  if (hlo_module_config_.replica_count() == 1 &&
+      hlo_module_config_.num_partitions() == 1) {
     return HandleAllReduceSingleReplica(crs);
   }
   return HandleAllReduceMultipleReplica(crs);
@@ -1358,6 +1363,20 @@ Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
        /*source_target_pairs_size=*/b_.getInt32(source_target_pairs.size())},
       b_.getVoidTy());
 
+  return Status::OK();
+}
+
+Status IrEmitter::HandlePartitionId(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      assignment_.GetUniqueSlice(hlo, {}));
+  llvm::Value* output_buffer = EmitBufferPointer(output_slice, hlo->shape());
+  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  EmitCallToFunc(
+      runtime::kPartitionIdSymbolName,
+      {/*run_options=*/GetExecutableRunOptionsArgument(),
+       /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type)},
+      b_.getVoidTy());
   return Status::OK();
 }
 

@@ -86,7 +86,7 @@ class RewriteXlaHostComputeMlir
       cloned_func =
           llvm::dyn_cast_or_null<FuncOp>(rewriter.clone(*func.getOperation()));
       manager.insert(cloned_func);
-      rewriter.setInsertionPointToStart(&cloned_func.body().front());
+      rewriter.setInsertionPointToStart(&cloned_func.getBody().front());
       auto result_type =
           RankedTensorType::get({3}, rewriter.getType<TF::StringType>());
       auto dynamic_key =
@@ -102,10 +102,10 @@ class RewriteXlaHostComputeMlir
         std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
       }
 
-      rewriter.setInsertionPoint(cloned_func.body().front().getTerminator());
+      rewriter.setInsertionPoint(cloned_func.getBody().front().getTerminator());
       rewriter.create<TF::_XlaSendFromHostOp>(
           func.getLoc(),
-          cloned_func.body().front().getTerminator()->getOperands(),
+          cloned_func.getBody().front().getTerminator()->getOperands(),
           /*dynamic_key=*/dynamic_key, op.recv_keyAttr(),
           /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
     }

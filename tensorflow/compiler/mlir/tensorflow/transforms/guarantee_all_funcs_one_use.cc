@@ -97,7 +97,7 @@ class GuaranteeAllFuncsOneUse
           symbol_table.insert(new_func);
           new_func.setPrivate();
           if (failed(SymbolTable::replaceAllSymbolUses(
-                  func, new_func.sym_nameAttr(), user))) {
+                  func, new_func.getSymNameAttr(), user))) {
             return func.emitError() << "could not replace symbol use";
           }
         }

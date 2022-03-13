@@ -1481,6 +1481,15 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
   auto fft_length_values = fft_op.fft_length().getValues<int64_t>();
   std::vector<int64_t> fft_length(fft_length_values.begin(),
                                   fft_length_values.end());
+
+  if (IsBefThunkEnabled(hlo_module_config_)) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Thunk> thunk,
+        CreateBefThunk(GetThunkInfo(op), op, {arg_slice, dest_slice}));
+    AddThunkToThunkSequence(std::move(thunk));
+    return Status::OK();
+  }
+
   AddThunkToThunkSequence(
       absl::make_unique<FftThunk>(GetThunkInfo(op), fft_type, fft_length,
                                   /*input_buffer=*/arg_slice,
@@ -1969,7 +1978,7 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     }
   }
 
-  TF_ASSIGN_OR_RETURN(const bool matched_021, CheckAndEmitHloWithTile021(op));
+  TF_ASSIGN_OR_RETURN(bool matched_021, CheckAndEmitHloWithTile021(fusion_op));
   if (matched_021) {
     return Status::OK();
   }
@@ -4564,9 +4573,7 @@ std::vector<int64_t> FilterInputsForShmemTranspose(
 }  // namespace
 
 StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
-    mlir::Operation* op) {
-  auto fusion = mlir::cast<mlir::lmhlo::FusionOp>(op);
-
+    mlir::lmhlo::FusionOp fusion) {
   // If the output_shape is reduced to 021 shape, find all the parameters of
   // the HLO that are in the corresponding 012 shape.
   std::vector<int64_t> params_012;
@@ -4601,11 +4608,9 @@ StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
     return false;
   }
 
-  if (auto fusion_op = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    params_012 = FilterInputsForShmemTranspose(fusion_op, params_012);
-    if (params_012.empty()) {
-      return false;
-    }
+  params_012 = FilterInputsForShmemTranspose(fusion, params_012);
+  if (params_012.empty()) {
+    return false;
   }
 
   // Each of our shared memory tiles has 32*33 elements (so ~4kb, if the
@@ -4660,9 +4665,9 @@ StatusOr<bool> IrEmitterUnnested::CheckAndEmitHloWithTile021(
       tiling_scheme.GetNumberOfBlocksPhysical(),
       tiling_scheme.GetNumThreadsPerBlockPhysical());
   std::vector<llvm_ir::IrArray> ir_arrays;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Thunk> kernel_thunk,
-      BuildKernelThunk(op, GetThunkInfo(op), &ir_arrays, launch_dimensions));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> kernel_thunk,
+                      BuildKernelThunk(fusion, GetThunkInfo(fusion), &ir_arrays,
+                                       launch_dimensions));
 
   EmitHlo021Tile(
       fusion, kernel_thunk.get(),

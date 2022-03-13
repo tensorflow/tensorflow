@@ -38,7 +38,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
   )",
                                         &context);
   mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
-  mlir::Operation* op = &func.body().front().front();
+  mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }
 
@@ -55,7 +55,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
   )",
                                         &context);
   mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
-  mlir::Operation* op = &func.body().front().front();
+  mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }
 
@@ -72,7 +72,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
   )",
                                         &context);
   mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
-  mlir::Operation* op = &func.body().front().front();
+  mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }
 

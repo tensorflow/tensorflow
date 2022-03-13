@@ -34,11 +34,11 @@ absl::Status MeanStddevNormSeparateBatchesTest(float mean, float diff,
   src_tensor.shape = BHWC(1, 1, 1, 4);
   src_tensor.data = {mean - 2 * diff, mean - diff, mean + diff,
                      mean + 2 * diff};
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor;
@@ -79,13 +79,13 @@ absl::Status MeanStddevNormalizationAllBatchesTest(
       98.0f,   99.0f,   101.0f, 102.0f,  // large mean, small variance
       -100.0f, 0.0f,    200.0f, 300.0f,  // large mean, large variance
   };
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps =
           precision == CalculationsPrecision::F32 ? 2.53e-05f : 3.57e-4f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor;
@@ -134,13 +134,13 @@ absl::Status MeanStddevNormalizationLargeVectorTest(
     src_tensor.data[i + 1] = mean - diff;
   }
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps =
           precision == CalculationsPrecision::F32 ? 0.0f : 8.60e-4f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor;

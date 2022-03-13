@@ -249,12 +249,11 @@ class InstructionFusion : public HloModulePass {
 
   // Whether multi-output fusion would introduce a cycle into the HLO graph.
   bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
-                                     HloInstruction* consumer);
+                                     HloInstruction* consumer,
+                                     const HloReachabilityMap& reachability);
 
   // Current HloComputation instance the loop fuser is traversing.
   HloComputation* computation_;
-  // Reachability information for the current computation.
-  std::unique_ptr<HloReachabilityMap> reachability_;
 
   FusionConfigCollection config_collection_mode() {
     return config_collection_mode_;
@@ -271,7 +270,8 @@ class InstructionFusion : public HloModulePass {
   // Computes the set of nodes that we do not want to fuse into any of their
   // consumers based on a global analysis of the HLO graph.
   virtual HloInstructionSet ComputeGloballyUnfusible(
-      absl::Span<HloInstruction* const> post_order);
+      absl::Span<HloInstruction* const> post_order,
+      const HloReachabilityMap& reachability);
 
  private:
   // Returns the reused operands of `instruction` from reused_fusion_operands_,
@@ -299,6 +299,7 @@ class InstructionFusion : public HloModulePass {
   bool CanFuseOnAllPaths(
       HloInstruction* producer, HloInstruction* consumer,
       const HloInstructionSet& do_not_fuse,
+      const HloReachabilityMap& reachability,
       absl::flat_hash_map<std::pair<HloInstruction*, HloInstruction*>, bool>*
           result_cache);
 

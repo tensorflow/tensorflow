@@ -100,7 +100,7 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
     }
   }
 
-  for (const HloUse& use : value.uses()) {
+  for (const HloUse& use : value.GetUses()) {
     // For fusion uses, propagate the memory space to the fusion parameter.
     if (use.instruction->opcode() == HloOpcode::kFusion) {
       modified |= Propagate(

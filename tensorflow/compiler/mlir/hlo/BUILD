@@ -4,9 +4,6 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 
-# TODO(b/160617323): Decouple MLIR HLO from TensorFlow/XLA
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
@@ -290,6 +287,44 @@ gentbl_cc_library(
     deps = [":lhlo_gpu_ops_td_files"],
 )
 
+gentbl_cc_library(
+    name = "lhlo_gpu_ops_dialect_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-dialect-decls"],
+            "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_dialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_dialect.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td",
+    deps = [":lhlo_gpu_ops_td_files"],
+)
+
+gentbl_cc_library(
+    name = "lhlo_gpu_ops_attrdefs_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            ["-gen-attrdef-decls"],
+            "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.h.inc",
+        ),
+        (
+            ["-gen-attrdef-defs"],
+            "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td",
+    deps = [":lhlo_gpu_ops_td_files"],
+)
+
 gentbl_filegroup(
     name = "hlo_ops_doc_gen",
     compatible_with = get_compatible_with_cloud(),
@@ -360,8 +395,11 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":lhlo_gpu_ops_attrdefs_inc_gen",
+        ":lhlo_gpu_ops_dialect_inc_gen",
         ":lhlo_gpu_ops_enums_inc_gen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -641,8 +679,6 @@ cc_library(
 cc_library(
     name = "lhlo_gpu",
     srcs = [
-        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc.inc",
-        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h.inc",
         "lib/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc",
     ],
     hdrs = [
@@ -656,9 +692,39 @@ cc_library(
         ":hlo_ops_common",
         ":infer_shape_equality_op_interface",
         ":lhlo",
+        ":lhlo_gpu_ops_attrdefs_inc_gen",
+        ":lhlo_gpu_ops_dialect_inc_gen",
         ":lhlo_gpu_ops_enums",
         ":lhlo_gpu_ops_inc_gen",
+        ":lhlo_gpu_ops_ops",
         ":lhlo_gpu_ops_structs",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:CopyOpInterface",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:LoopLikeInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:ViewLikeInterface",
+    ],
+)
+
+cc_library(
+    name = "lhlo_gpu_ops_ops",
+    srcs = [
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc.inc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h.inc",
+    ],
+    includes = ["include"],
+    deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ControlFlowInterfaces",
@@ -881,6 +947,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:SparseTensor",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorUtils",
@@ -1101,6 +1168,7 @@ cc_library(
     name = "hlo_legalize_to_memref",
     srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_memref.cc"],
     hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
         "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
     ],
@@ -1140,44 +1208,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
-    name = "cycle_detector",
-    srcs = ["lib/utils/cycle_detector.cc"],
-    hdrs = ["include/mlir-hlo/utils/cycle_detector.h"],
-    includes = ["include"],
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-tf_cc_test(
-    name = "cycle_detector_test",
-    srcs = ["lib/utils/cycle_detector_test.cc"],
-    deps = [
-        ":cycle_detector",
-        # TODO(b/160617323): Decouple MLIR HLO from TensorFlow/XLA
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_library(
-    name = "mhlo_fusion",
-    srcs = ["lib/Dialect/mhlo/transforms/mhlo_fusion.cc"],
-    deps = [
-        ":cycle_detector",
-        ":hlo",
-        ":mhlo_pass_details",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -1577,7 +1607,6 @@ cc_library(
         ":merge_assuming_ops",
         ":mhlo_canonicalize_reduction",
         ":mhlo_flatten_tuple",
-        ":mhlo_fusion",
         ":mhlo_to_mhlo_lowering_patterns",
         ":rank_specialization",
         ":reshape_simplifier",
@@ -1779,12 +1808,14 @@ cc_library(
 CAPI_HEADERS = [
     "include/mlir-hlo-c/Attributes.h",
     "include/mlir-hlo-c/Dialects.h",
+    "include/mlir-hlo-c/Passes.h",
     "include/mlir-hlo-c/Types.h",
 ]
 
 CAPI_SOURCES = [
     "lib/CAPI/Attributes.cpp",
     "lib/CAPI/Dialects.cpp",
+    "lib/CAPI/Passes.cpp",
     "lib/CAPI/Types.cpp",
 ]
 
@@ -1793,6 +1824,7 @@ cc_library(
     srcs = CAPI_SOURCES,
     hdrs = CAPI_HEADERS,
     deps = [
+        ":all_passes",
         ":hlo",
         "@llvm-project//mlir:CAPIIR",
     ],
@@ -1814,6 +1846,7 @@ cc_library(
     srcs = CAPI_SOURCES,
     hdrs = CAPI_HEADERS,
     deps = [
+        ":all_passes",
         ":hlo",
         "@llvm-project//mlir:CAPIIRObjects",
     ],

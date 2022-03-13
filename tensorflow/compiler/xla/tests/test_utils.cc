@@ -523,7 +523,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
   std::vector<HloInstruction*> constrained_uses;
   for (const auto& pair : dataflow.GetInstructionValueSet(&param)) {
     const HloValue& value = dataflow.GetUniqueValueAt(&param, pair.first);
-    for (const HloUse& use : value.uses()) {
+    for (const HloUse& use : value.GetUses()) {
       HloInstruction* instruction = use.instruction;
       const HloOpcode opcode = instruction->opcode();
       const int64_t op_num = use.operand_number;

@@ -21,6 +21,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Ftrl"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Nadam"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Optimizer"
     mtype: "<type \'type\'>"
   }

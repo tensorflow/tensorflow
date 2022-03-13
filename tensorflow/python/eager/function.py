@@ -323,14 +323,6 @@ class _EagerDefinedFunctionDeleter(object):
       # been unloaded. Will catch other module unloads as well.
 
 
-class FunctionAlreadyGarbageCollectedError(Exception):
-
-  def __init__(self, function_name):
-    super(FunctionAlreadyGarbageCollectedError, self).__init__(
-        "{} has already been garbage collected and cannot be called.".format(
-            function_name))
-
-
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
 # so it doesn't have the definition-generating logic and is just a container for
 # an already-defined function.
@@ -384,6 +376,8 @@ class _EagerDefinedFunction(object):
         None,
         compat.as_str(""))
 
+    self._c_func = c_api_util.ScopedTFFunction(fn, name)
+
     for name, attr_value in attrs.items():
       serialized = attr_value.SerializeToString()
       # TODO(iga): this creates and deletes a new TF_Status for every attr.
@@ -391,34 +385,57 @@ class _EagerDefinedFunction(object):
       pywrap_tf_session.TF_FunctionSetAttrValueProto(fn, compat.as_str(name),
                                                      serialized)
 
-    # TODO(apassos) avoid creating a FunctionDef (specially to grab the
-    # signature, but also in general it's nice not to depend on it.
-    with c_api_util.tf_buffer() as buffer_:
-      pywrap_tf_session.TF_FunctionToFunctionDef(fn, buffer_)
-      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
-    function_def = function_pb2.FunctionDef()
-    function_def.ParseFromString(compat.as_bytes(proto_data))
-    self._name = compat.as_bytes(function_def.signature.name)
+    # NOTE(feyu): Do not cache signature and definition at initialization to
+    # save memory usage of concrete functions never called through Python. We
+    # cache them on the first call of .definition and .signature.
+    signature = self._get_definition().signature
+
+    self._name = compat.as_bytes(signature.name)
     with ops.init_scope():
       if context.executing_eagerly():
         context.ensure_initialized()
         context.add_function(fn)
         self._function_deleter = _EagerDefinedFunctionDeleter(self.name)
         self._registered_on_context = True
-    self.definition = function_def
-    self.signature = function_def.signature
-    self._num_outputs = len(self.signature.output_arg)
-    self._output_types = [o.type for o in self.signature.output_arg]
+
+    self._num_outputs = len(signature.output_arg)
+    self._output_types = [o.type for o in signature.output_arg]
     self._output_shapes = [o.shape for o in outputs]
     self._control_captures = graph.control_captures
     # Shallow copy outputs since ConcreteFunction may mutate it.
     self._func_graph_outputs = list(outputs)
     self.grad_func_name = None
     self.python_grad_func = None
-    self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
     self.graph = graph
     self._stateful_ops = tuple(op for op in operations if op._is_stateful)  # pylint: disable=protected-access
+
+  @property
+  def signature(self):
+    try:
+      return self._signature
+    except AttributeError:
+      self._signature = self.definition.signature
+    return self._signature
+
+  @property
+  def definition(self):
+    try:
+      return self._definition
+    except AttributeError:
+      self._definition = self._get_definition()
+    return self._definition
+
+  def _get_definition(self):
+    # TODO(apassos) avoid creating a FunctionDef (specially to grab the
+    # signature, but also in general it's nice not to depend on it.
+    with c_api_util.tf_buffer() as buffer_:
+      with self._c_func.get() as func:
+        pywrap_tf_session.TF_FunctionToFunctionDef(func, buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
+    function_def = function_pb2.FunctionDef()
+    function_def.ParseFromString(compat.as_bytes(proto_data))
+    return function_def
 
   def add_to_graph(self, g=None):
     """Add the function to the current context or a graph, if supplied.
@@ -472,14 +489,6 @@ class _EagerDefinedFunction(object):
       raise ValueError(
           f"Signature specifies {len(list(self.signature.input_arg))} "
           f"arguments, got: {len(args)}.")
-
-    # If the `ScopedTFFunction` (accessed via `_c_func`) has already been
-    # cleaned up as a part of garbage collection, this `_EagerDefinedFunction`
-    # should also be garbage and is likely being called as part of a `__del__`
-    # elsewhere. In that case, there's nothing we can do, so we raise an
-    # exception for the caller to handle.
-    if self._c_func.has_been_garbage_collected:
-      raise FunctionAlreadyGarbageCollectedError(self.name)
 
     function_call_options = ctx.function_call_options
     if function_call_options.config_proto_serialized is None:

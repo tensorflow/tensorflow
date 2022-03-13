@@ -86,13 +86,11 @@ std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def,
     c += "  int4 ind = INIT_INT4v4(0, 0, 0, 0);\n";
     c += "  if (!outside) {\n";
     c += "    src = args.src_tensor.Read(" + src_args + ");\n";
-    c +=
-        "    ind = CONVERT_TO_INT4(args.src_indices.Read(" + src_args + "));\n";
+    c += "    ind = args.src_indices.Read<int>(" + src_args + ");\n";
     c += "  }\n";
   } else {
     c += "  FLT4 src = args.src_tensor.Read(" + src_args + ");\n";
-    c += "  int4 ind = CONVERT_TO_INT4(args.src_indices.Read(" + src_args +
-         "));\n";
+    c += "  int4 ind = args.src_indices.Read<int>(" + src_args + ");\n";
   }
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int t_x = X0 - (src_x0 * args.stride_x - args.padding_x * "

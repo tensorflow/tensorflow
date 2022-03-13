@@ -30,10 +30,6 @@ from tensorflow.python.ops import variables as variables_lib
 # pylint: disable=protected-access
 
 
-class _DummyResourceDeleter(object):
-  pass
-
-
 class DistributedVariable(resource_variable_ops.BaseResourceVariable):
   """Represents variables that are replicated.
 
@@ -90,7 +86,6 @@ class DistributedVariable(resource_variable_ops.BaseResourceVariable):
           initializer_op=initializer,
           is_initialized_op=None,
           cached_value=None,
-          handle_deleter=_DummyResourceDeleter(),
           caching_device=None,
           is_variables=True)
 

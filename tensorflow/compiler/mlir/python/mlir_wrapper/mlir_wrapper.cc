@@ -44,7 +44,7 @@ PYBIND11_MODULE(mlir_wrapper, m) {
     mlir::RegisterAllTensorFlowDialects(registry);
     mlir::MLIRContext ctx(registry);
     ctx.loadAllAvailableDialects();
-    auto module = mlir::parseSourceFile(SM, &ctx);
+    auto module = mlir::parseSourceFile<mlir::ModuleOp>(SM, &ctx);
     if (!module) {
       return false;
     }

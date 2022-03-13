@@ -45,8 +45,8 @@ MetalExecutionEnvironment::GetSupportedPrecisions() const {
           CalculationsPrecision::F16};
 }
 
-std::vector<TensorStorageType> MetalExecutionEnvironment::GetSupportedStorages()
-    const {
+std::vector<TensorStorageType> MetalExecutionEnvironment::GetSupportedStorages(
+    DataType data_type) const {
   return {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER,
           TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
           TensorStorageType::TEXTURE_ARRAY};
@@ -55,29 +55,9 @@ std::vector<TensorStorageType> MetalExecutionEnvironment::GetSupportedStorages()
 // returns storage types that support zero clamping when reading OOB in HW
 // (Height/Width) dimensions.
 std::vector<TensorStorageType>
-MetalExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport() const {
+MetalExecutionEnvironment::GetSupportedStoragesWithHWZeroClampSupport(
+    DataType data_type) const {
   return {TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
-          TensorStorageType::TEXTURE_ARRAY};
-}
-
-std::vector<TensorStorageType>
-MetalExecutionEnvironment::GetStoragesWith32bitIntSupport() const {
-  return {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER,
-          TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
-          TensorStorageType::TEXTURE_ARRAY};
-}
-
-std::vector<TensorStorageType>
-MetalExecutionEnvironment::GetStoragesWith16bitIntSupport() const {
-  return {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER,
-          TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
-          TensorStorageType::TEXTURE_ARRAY};
-}
-
-std::vector<TensorStorageType>
-MetalExecutionEnvironment::GetStoragesWith8bitIntSupport() const {
-  return {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER,
-          TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_3D,
           TensorStorageType::TEXTURE_ARRAY};
 }
 

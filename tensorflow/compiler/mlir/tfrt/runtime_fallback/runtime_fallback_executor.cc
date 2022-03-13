@@ -134,7 +134,7 @@ void RuntimeFallbackExecutor::Prepare(llvm::StringRef mlir_input) {
 
   // Parse a kernel source code into the MLIR Module.
   mlir::OwningOpRef<mlir::ModuleOp> module(
-      mlir::parseSourceFile(source_mgr, &context));
+      mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, &context));
   CHECK(module) << "failed to parse mlir module";
 
   // Collect all diagnostics emitted while lowering parsed kernel module.

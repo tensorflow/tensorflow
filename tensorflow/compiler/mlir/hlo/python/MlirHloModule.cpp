@@ -14,6 +14,7 @@ limitations under the License.
 #include "mlir-c/Registration.h"
 #include "mlir-hlo-c/Attributes.h"
 #include "mlir-hlo-c/Dialects.h"
+#include "mlir-hlo-c/Passes.h"
 #include "mlir-hlo-c/Types.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"
 
@@ -38,6 +39,10 @@ std::vector<int64_t> attributePropertyVector(
 PYBIND11_MODULE(_mlirHlo, m) {
   m.doc() = "mlir-hlo main python extension";
 
+  //
+  // Dialects.
+  //
+
   m.def(
       "register_mhlo_dialect",
       [](MlirContext context, bool load) {
@@ -59,6 +64,12 @@ PYBIND11_MODULE(_mlirHlo, m) {
         }
       },
       py::arg("context"), py::arg("load") = true);
+
+  //
+  // Passes.
+  //
+
+  m.def("register_mhlo_passes", []() { mlirRegisterAllMhloPasses(); });
 
   //
   // Types.

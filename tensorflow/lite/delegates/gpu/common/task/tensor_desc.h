@@ -155,6 +155,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformReadBilinearSelector(const GpuInfo& gpu_info,
                                            const std::vector<std::string>& args,
                                            std::string* result) const;
+  absl::Status PerformReadPerChannelSelector(
+      const GpuInfo& gpu_info, const std::vector<std::string>& args,
+      const std::vector<std::string>& template_args, std::string* result) const;
 
   absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
                                          std::string* result) const;

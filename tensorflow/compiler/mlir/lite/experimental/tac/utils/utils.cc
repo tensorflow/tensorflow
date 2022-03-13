@@ -55,7 +55,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
     context->appendDialectRegistry(registry);
     source_mgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
     return mlir::OwningOpRef<mlir::ModuleOp>(
-        mlir::parseSourceFile(*source_mgr, context));
+        mlir::parseSourceFile<mlir::ModuleOp>(*source_mgr, context));
   }
 
   mlir::Location loc =

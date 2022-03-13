@@ -6,13 +6,13 @@
 # BatchFunction Op (the shared_name is the same) and the same copy of
 # inference_func.
 
-# CHECK: func @predict0
 # CHECK: f = @inference_func[[post_fix:[^,]*]]
 # CHECK-SAME: shared_name = "batch"
+# CH#CK: sym_name = "predict0"
 
-# CHECK: func @predict1
 # CHECK: f = @inference_func[[post_fix]],
 # CHECK-SAME: shared_name = "batch"
+# CH#CK: sym_name = "predict1"
 
 meta_graphs: {
   meta_info_def: {

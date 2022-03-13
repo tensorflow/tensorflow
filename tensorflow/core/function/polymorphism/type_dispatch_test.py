@@ -30,13 +30,18 @@ class MockShape(trace.TraceType):
     if len(self.shape) != len(other.shape):
       return False
 
-    if any(s is not None and s != o for s, o in zip(self.shape, other.shape)):
-      return False
+    return all(o is None or s == o for s, o in zip(self.shape, other.shape))
 
-    return True
+  def most_specific_common_supertype(self, others):
+    if any(len(other.shape) != len(self.shape) for other in others):
+      return None
 
-  def most_specific_common_supertype(self, _):
-    raise NotImplementedError
+    dims = [
+        dim if all(dim == other.shape[i]
+                   for other in others) else None
+        for i, dim in enumerate(self.shape)
+    ]
+    return MockShape(*dims)
 
   def __str__(self):
     return str(self.shape)
@@ -60,7 +65,7 @@ class TypeDispatchTableTest(test.TestCase):
     table.add_target(MockShape(None, 1, 1))
     table.add_target(MockShape(1, 1, 1))
     self.assertEqual(
-        table.all_targets(), [
+        list(table.targets), [
             MockShape(None, None, None),
             MockShape(None, None, 1),
             MockShape(None, 1, 1),
@@ -73,7 +78,7 @@ class TypeDispatchTableTest(test.TestCase):
     table.add_target(MockShape(1, 2))
     table.add_target(MockShape(1, 2, 3))
     self.assertEqual(
-        table.all_targets(), [
+        list(table.targets), [
             MockShape(1,),
             MockShape(1, 2),
             MockShape(1, 2, 3)
@@ -86,7 +91,7 @@ class TypeDispatchTableTest(test.TestCase):
     table.add_target(MockShape(None, 2))
     table.add_target(MockShape(None, None))
     self.assertEqual(
-        table.all_targets(), [
+        list(table.targets), [
             MockShape(None, None),
             MockShape(1, None),
             MockShape(None, 2)
@@ -99,7 +104,7 @@ class TypeDispatchTableTest(test.TestCase):
     table.add_target(MockShape(None, 2))
 
     self.assertEqual(
-        table.all_targets(), [
+        list(table.targets), [
             MockShape(None, None),
             MockShape(None, 1),
             MockShape(None, 2)
@@ -108,7 +113,7 @@ class TypeDispatchTableTest(test.TestCase):
     table.delete(MockShape(None, 2))  # Should remove the target
 
     self.assertEqual(
-        table.all_targets(), [
+        list(table.targets), [
             MockShape(None, None),
             MockShape(None, 1),
         ])
@@ -116,7 +121,7 @@ class TypeDispatchTableTest(test.TestCase):
     table.delete(MockShape(None, 2))  # Should have no effect
 
     self.assertEqual(
-        table.all_targets(), [
+        list(table.targets), [
             MockShape(None, None),
             MockShape(None, 1),
         ])
@@ -128,15 +133,15 @@ class TypeDispatchTableTest(test.TestCase):
     table.add_target(MockShape(1, 1))
     table.add_target(MockShape(None, 2, 1))
 
-    self.assertTrue(table.contains(MockShape(None, None, None)))
-    self.assertTrue(table.contains(MockShape(None, 1)))
-    self.assertTrue(table.contains(MockShape(1, 1)))
-    self.assertTrue(table.contains(MockShape(None, 2, 1)))
+    self.assertIn(MockShape(None, None, None), table.targets)
+    self.assertIn(MockShape(None, 1), table.targets)
+    self.assertIn(MockShape(1, 1), table.targets)
+    self.assertIn(MockShape(None, 2, 1), table.targets)
 
-    self.assertFalse(table.contains(MockShape(None, None, 1)))
-    self.assertFalse(table.contains(MockShape(1, None)))
-    self.assertFalse(table.contains(MockShape(1, 2)))
-    self.assertFalse(table.contains(MockShape(None, 2, None)))
+    self.assertNotIn(MockShape(None, None, 1), table.targets)
+    self.assertNotIn(MockShape(1, None), table.targets)
+    self.assertNotIn(MockShape(1, 2), table.targets)
+    self.assertNotIn(MockShape(None, 2, None), table.targets)
 
   def testDispatchExactMatches(self):
     table = type_dispatch.TypeDispatchTable()
@@ -233,8 +238,8 @@ class TypeDispatchTableTest(test.TestCase):
     table_3.add_target(MockShape(None, 2, None))
 
     # table_1, table_2, table_3 have the same targets
-    self.assertEqual(set(table_1.all_targets()), set(table_2.all_targets()))
-    self.assertEqual(set(table_2.all_targets()), set(table_3.all_targets()))
+    self.assertEqual(set(table_1.targets), set(table_2.targets))
+    self.assertEqual(set(table_2.targets), set(table_3.targets))
 
     # But they dispatch to the first target they find which does not have any
     # more specific viable target.
@@ -242,6 +247,32 @@ class TypeDispatchTableTest(test.TestCase):
     self.assertEqual(table_1.dispatch(shape), MockShape(1, None, None))
     self.assertEqual(table_2.dispatch(shape), MockShape(None, 2, None))
     self.assertEqual(table_3.dispatch(shape), MockShape(None, None, 3))
+
+  def testGeneralizedExisting(self):
+    table = type_dispatch.TypeDispatchTable()
+    table.add_target(MockShape(None, None, None))
+    table.add_target(MockShape(None, 1, None))
+    table.add_target(MockShape(None, 1, 2))
+    self.assertEqual(
+        table.try_generalizing_trace_type(MockShape(None, 1, 3)),
+        MockShape(None, None, None))
+
+  def testGeneralizedNovel(self):
+    table = type_dispatch.TypeDispatchTable()
+    table.add_target(MockShape(None, 1, None))
+    table.add_target(MockShape(None, 1, 2))
+    self.assertEqual(
+        table.try_generalizing_trace_type(MockShape(None, 2, 3)),
+        MockShape(None, None, None))
+
+  def testGeneralizedUnknown(self):
+    table = type_dispatch.TypeDispatchTable()
+    table.add_target(MockShape(None, 1))
+    table.add_target(MockShape(None, 2))
+    table.add_target(MockShape(None, 3))
+    self.assertEqual(
+        table.try_generalizing_trace_type(MockShape(None, 4, 3)),
+        MockShape(None, 4, 3))
 
 if __name__ == "__main__":
   test.main()

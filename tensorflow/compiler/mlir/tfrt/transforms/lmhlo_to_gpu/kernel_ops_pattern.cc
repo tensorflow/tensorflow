@@ -204,7 +204,7 @@ Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
       IrEmitterUnnested::Create(hlo_module_config, &ir_emitter_context);
   if (!ir_emitter.ok()) return MakeError(ir_emitter.status());
 
-  auto emit_status = (*ir_emitter)->EmitLmhloRegion(&func_op.body());
+  auto emit_status = (*ir_emitter)->EmitLmhloRegion(&func_op.getBody());
   if (!emit_status.ok()) return MakeError(emit_status);
 
   return std::make_tuple((*ir_emitter)->ConsumeThunkSequence(),

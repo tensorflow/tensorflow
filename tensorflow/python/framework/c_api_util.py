@@ -15,6 +15,7 @@
 
 """Utilities for using the TensorFlow C API."""
 
+import contextlib
 from tensorflow.core.framework import api_def_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
@@ -84,27 +85,41 @@ class ScopedTFImportGraphDefResults(object):
       c_api.TF_DeleteImportGraphDefResults(self.results)
 
 
+class FunctionAlreadyGarbageCollectedError(Exception):
+
+  def __init__(self, function_name):
+    super(FunctionAlreadyGarbageCollectedError, self).__init__(
+        "{} has already been garbage collected and cannot be called.".format(
+            function_name))
+
+
 class ScopedTFFunction(object):
   """Wrapper around TF_Function that handles deletion."""
 
-  __slots__ = ["func", "deleter"]
+  __slots__ = ["_func", "name", "deleter"]
 
-  def __init__(self, func):
-    self.func = func
+  def __init__(self, func, name):
+    self._func = func
+    self.name = name
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we may have already deleted other modules. By capturing the
     # DeleteFunction function here, we retain the ability to cleanly destroy the
     # Function at shutdown, which satisfies leak checkers.
     self.deleter = c_api.TF_DeleteFunction
 
-  @property
-  def has_been_garbage_collected(self):
-    return self.func is None
+  @contextlib.contextmanager
+  def get(self):
+    # Thread-safety: __del__ never runs during the call of this function
+    if not self._func:
+      raise FunctionAlreadyGarbageCollectedError(self.name)
+
+    yield self._func
 
   def __del__(self):
-    if not self.has_been_garbage_collected:
-      self.deleter(self.func)
-      self.func = None
+    func = self._func
+    if func:
+      self._func = None
+      self.deleter(func)
 
 
 class ScopedTFBuffer(object):

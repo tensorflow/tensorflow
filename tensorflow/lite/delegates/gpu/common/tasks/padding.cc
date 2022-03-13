@@ -90,8 +90,8 @@ std::string GetPaddingCode(const OperationDef& op_def,
              "0, "
              "args.src_tensor.Channels() - "
              "1);\n";
-        c += "    FLT4 t = args.src_tensor.Read(s_x, s_y, s_z / 4);\n";
-        c += "    result" + s + " = SELECT_BY_INDEX_FROM_FLT4(t, s_z % 4);\n";
+        c += "    args.src_tensor.ReadPerChannel(result" + s +
+             ", s_x, s_y, s_z);\n";
         c += "  }\n";
       }
     }
@@ -119,8 +119,8 @@ std::string GetPaddingCode(const OperationDef& op_def,
         c += "    int channel = start_channel + " + std::to_string(i) + ";\n";
         c += "    int s_z = channel - args.prepended_z;\n";
         c += "    if (s_z >= 0 && s_z < args.src_tensor.Channels()) {\n";
-        c += "      FLT4 t = args.src_tensor.Read(s_x, s_y, s_z / 4);\n";
-        c += "      result" + s + " = SELECT_BY_INDEX_FROM_FLT4(t, s_z % 4);\n";
+        c += "      args.src_tensor.ReadPerChannel(result" + s +
+             ", s_x, s_y, s_z);\n";
         c += "    }\n";
         c += "    }\n";
       }

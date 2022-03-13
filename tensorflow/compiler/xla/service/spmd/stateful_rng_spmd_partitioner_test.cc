@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_spmd_partitioner.h"
+#include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -31,10 +31,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
-namespace gpu {
+namespace spmd {
 namespace {
 
-class GpuSpmdPartitionerTest : public HloTestBase {
+class StatefulRngSpmdPartitionerTest : public HloTestBase {
  public:
   StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_partitions,
@@ -44,14 +44,15 @@ class GpuSpmdPartitionerTest : public HloTestBase {
                          hlo_module, GetModuleConfigForTest(
                                          /*replica_count=*/1,
                                          /*num_partitions=*/num_partitions)));
-    HloPassPipeline pass("gpu-partitioning");
+    HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     if (add_passes) {
       add_passes(pass);
     }
     pass.AddPass<ShardingPropagation>(/*is_spmd=*/true);
-    pass.AddPass<GpuSpmdPartitioner>(num_partitions, /*num_replicas=*/1);
+    pass.AddPass<StatefulRngSpmdPartitioner>(num_partitions,
+                                             /*num_replicas=*/1);
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(module.get()).status());
@@ -67,7 +68,7 @@ class GpuSpmdPartitionerTest : public HloTestBase {
   }
 };
 
-TEST_F(GpuSpmdPartitionerTest, RngReplicatedConsumer) {
+TEST_F(StatefulRngSpmdPartitionerTest, RngReplicatedConsumer) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -91,7 +92,7 @@ ENTRY entry {
   VerifyNoAllReduce(module.get());
 }
 
-TEST_F(GpuSpmdPartitionerTest, RngPartitionedConsumer) {
+TEST_F(StatefulRngSpmdPartitionerTest, RngPartitionedConsumer) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -116,5 +117,5 @@ ENTRY entry {
 }
 
 }  // namespace
-}  // namespace gpu
+}  // namespace spmd
 }  // namespace xla

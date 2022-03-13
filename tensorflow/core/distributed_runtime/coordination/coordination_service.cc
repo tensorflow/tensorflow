@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -140,12 +141,13 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   uint64_t GetServiceIncarnation() override;
   void StartCheckStaleness();  // Checks both heartbeat and barrier timeouts.
-  void Stop();
+  void Stop(bool shut_staleness_thread = true);
   void PropagateError(const CoordinatedTask& task, Status error,
                       bool is_reported_by_agent = false)
       TF_LOCKS_EXCLUDED(state_mu_);
   void SetTaskError(absl::string_view task_name, Status error)
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  void SetXlaGlobalDeviceIds() TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   struct BarrierState {
     bool passed = false;
@@ -216,6 +218,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   Env& env_;
   const uint64_t service_incarnation_ = random::New64();
   const uint64_t heartbeat_timeout_ms_;
+
+  const std::string device_propagation_barrier_id_ =
+      absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_));
 
   mutex state_mu_;
   absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
@@ -366,6 +371,11 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             }
           }
           if (!status.ok()) {
+            // Error cannot be propagated since there is no service-to-client
+            // connection, so stop heartbeat loop and shut down service instead.
+            if (client_cache_ == nullptr) {
+              break;
+            }
             PropagateError(stale_task, status);
           }
 
@@ -394,10 +404,13 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             expired_barriers.clear();
           }
         }
+        // Note: we cannot destroy the thread within its own function.
+        // However, this thread will be destroyed once the function exits.
+        Stop(/*shut_staleness_thread=*/false);
       }));
 }
 
-void CoordinationServiceStandaloneImpl::Stop() {
+void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   {
     mutex_lock l(kv_mu_);
     get_cb_.clear();
@@ -422,7 +435,9 @@ void CoordinationServiceStandaloneImpl::Stop() {
     shutting_down_ = true;
     check_staleness_thread_cv_.notify_all();
   }
-  check_staleness_thread_.reset();
+  if (shut_staleness_thread) {
+    check_staleness_thread_.reset();
+  }
 }
 
 void CoordinationServiceStandaloneImpl::RegisterWorker(
@@ -466,9 +481,8 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
     mutex_lock l(state_mu_);
     cluster_devices_.MergeFrom(devices);
   }
-  BarrierAsync(
-      absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_)),
-      absl::InfiniteDuration(), task, {}, std::move(done));
+  BarrierAsync(device_propagation_barrier_id_, absl::InfiniteDuration(), task,
+               {}, std::move(done));
 }
 
 const CoordinationServiceDeviceInfo&
@@ -552,6 +566,11 @@ void CoordinationServiceStandaloneImpl::PropagateError(
         continue;
     }
 
+    // Don't propagate error if there is no service-to-client connection.
+    if (client_cache_ == nullptr) {
+      LOG(ERROR) << error.error_message();
+      return;
+    }
     CoordinationClient* client = client_cache_->GetClient(std::string(task));
     auto response = std::make_shared<ReportErrorToAgentResponse>();
     auto n = std::make_shared<Notification>();
@@ -822,6 +841,10 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
     absl::string_view barrier_id, Status result, BarrierState* barrier) {
   barrier->passed = true;
   barrier->result = result;
+  // Special hook for device propagation barrier to set global device ids.
+  if (barrier_id == device_propagation_barrier_id_) {
+    SetXlaGlobalDeviceIds();
+  }
   // Propagate results to participating tasks.
   for (const auto& callback : barrier->done_callbacks) {
     callback(result);
@@ -856,6 +879,19 @@ bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
   return true;
 }
 
+void CoordinationServiceStandaloneImpl::SetXlaGlobalDeviceIds() {
+  // No-op if TF devices are specified.
+  if (cluster_devices_.has_xla()) {
+    int global_id = 0;
+    for (xla::LocalTopologyProto& local_topology :
+         *cluster_devices_.mutable_xla()->mutable_devices()->mutable_nodes()) {
+      for (xla::DeviceProto& device : *local_topology.mutable_devices()) {
+        device.set_global_device_id(global_id);
+        ++global_id;
+      }
+    }
+  }
+}
 }  // namespace
 
 std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService(

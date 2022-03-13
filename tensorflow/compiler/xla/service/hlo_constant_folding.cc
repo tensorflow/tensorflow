@@ -76,8 +76,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
   for (auto* computation : module->MakeNonfusionComputations()) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
-      if (instruction->user_count() == 0 &&
-          computation->root_instruction() != instruction) {
+      if (instruction->IsDead()) {
         continue;
       }
 

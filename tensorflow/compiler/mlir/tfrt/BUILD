@@ -347,7 +347,6 @@ cc_library(
         "transforms/remove_device_attribute.cc",
         "transforms/remove_tf_if_const_args.cc",
         "transforms/reorder_assert.cc",
-        "transforms/set_shape_invariant_in_while_ops.cc",
         "transforms/tf_to_tfrt.cc",
         "transforms/tpu_passes.h",
     ],
@@ -361,6 +360,7 @@ cc_library(
         ":tensor_array_side_effect_analysis",
         ":tf_jitrt_opdefs",
         ":tf_jitrt_pipeline",
+        ":transforms/set_shape_invariant_in_while_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -631,6 +631,17 @@ cc_library(
     ] + if_google([
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
+)
+
+cc_library(
+    name = "transforms/set_shape_invariant_in_while_ops",
+    srcs = ["transforms/set_shape_invariant_in_while_ops.cc"],
+    hdrs = ["transforms/set_shape_invariant_in_while_ops.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
 )
 
 tf_cc_binary(
