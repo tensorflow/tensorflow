@@ -477,9 +477,12 @@ def check_bazel_version(min_version, max_version):
   """
   bazel_executable = which('bazel')
   if bazel_executable is None:
-    print('Cannot find bazel. Please install bazel.')
-    sys.exit(1)
-
+    bazel_executable = which('bazelisk')
+    if bazel_executable is None:
+      print('Cannot find bazel. Please install bazel.')
+      sys.exit(1)
+    else:
+        print('bazel_executable not found, instead using bazelisk @ ',bazel_executable)
   stderr = open(os.devnull, 'wb')
   curr_version = run_shell([bazel_executable, '--version'],
                            allow_non_zero=True,
