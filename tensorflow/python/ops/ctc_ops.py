@@ -313,9 +313,8 @@ def ctc_greedy_decoder(inputs,
 
   Notes:
 
-  - Regardless of the value of `merge_repeated`, if an index of a
-    given time and batch corresponds to the `blank_index`, no new
-    element is emitted.
+  - Unlike `ctc_beam_search_decoder`, `ctc_greedy_decoder` omits blanks up-to
+    the special treatment under `merge_repeated`.
   - Default `blank_index` is `(num_classes - 1)`, unless overriden.
 
   If `merge_repeated` is `True`, merge repeated classes in output.
