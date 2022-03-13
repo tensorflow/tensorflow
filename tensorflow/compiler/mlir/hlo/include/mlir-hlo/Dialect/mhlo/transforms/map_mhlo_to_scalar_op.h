@@ -477,7 +477,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::ConvertOp>(
                                                targetType)) {
     return b->create<mlir::arith::SIToFPOp>(loc, result_types, args,
                                             mlir::None);
-  } else if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
+  }
+  if (sourceType.isa<FloatType>() && targetType.isa<FloatType>()) {
     FloatType src = sourceType.cast<FloatType>();
     FloatType res = targetType.cast<FloatType>();
     if (src.getWidth() > res.getWidth()) {
@@ -884,7 +885,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::SignOp>(Location loc,
         b->create<::mlir::arith::ShRSIOp>(loc, args[0], bitwidth_minus_one);
     Value or_op = b->create<::mlir::arith::OrIOp>(loc, ashr, one);
     return b->create<::mlir::arith::SelectOp>(loc, cmp, zero, or_op);
-  } else if (element_type.isa<ComplexType>()) {
+  }
+  if (element_type.isa<ComplexType>()) {
     return b->create<::mlir::complex::SignOp>(loc, element_type, args.front());
   }
   return nullptr;
