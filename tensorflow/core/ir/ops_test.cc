@@ -49,9 +49,7 @@ TEST(TestTFGRegionOps, TestIfLikeRegionOpSuccessorRegions) {
         yield(%arg1) : tensor<f32>
       } else {
         yield(%arg1) : tensor<f32>
-      } {Tcond = i1, Tout = [f32], output_shapes = [#tf_type.shape<>],
-         then_attrs = {}, else_attrs = {}}
-      : (tensor<i1>) -> (tensor<f32>)
+      } : (tensor<i1>) -> (tensor<f32>)
       return(%IfRegion) : tensor<f32>
     }
   )mlir";
@@ -91,8 +89,7 @@ TEST(TestTFGRegionOps, TestCaseLikeRegionOpSuccessorRegions) {
         yield(%arg1) : tensor<f32>
       }, {
         yield(%arg1) : tensor<f32>
-      } {Tout = [f32], output_shapes = [#tf_type.shape<>], branch_attrs = [{}, {}]}
-      : (tensor<i32>) -> (tensor<f32>)
+      } : (tensor<i32>) -> (tensor<f32>)
       return(%CaseRegion) : tensor<f32>
     }
   )mlir";
@@ -136,9 +133,7 @@ TEST(TestTFGRegionOps, TestWhileLikeRegionOpSuccessorRegions) {
       } do {
       ^bb0(%arg1: tensor<f32>, %arg2: !tf_type.control):
         yield(%arg1) : tensor<f32>
-      } {T = [f32], body_attrs = {}, cond_attrs = {},
-         output_shapes = [#tf_type.shape<>], parallel_iterations = 10 : i64}
-      : tensor<f32>
+      } {parallel_iterations = 10 : i64} : (tensor<f32>) -> (tensor<f32>)
       return(%WhileRegion) : tensor<f32>
     }
   )mlir";
@@ -176,8 +171,7 @@ TEST(TestTFGRegionOps, TestForLikeRegionOpSuccessorRegions) {
         ^bb0(%arg2: tensor<i32>, %arg3: tensor<f32>,
              %arg4: !tf_type.control, %arg5: !tf_type.control):
         yield(%arg3) : tensor<f32>
-      } {T = [f32], body_attrs = {}, output_shapes = [#tf_type.shape<>]}
-      : tensor<f32>
+      } : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<f32>) -> (tensor<f32>)
       return(%ForRegion) : tensor<f32>
     }
   )mlir";

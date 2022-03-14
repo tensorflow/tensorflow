@@ -27,7 +27,6 @@ include "mlir/IR/RegionKindInterface.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
-include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //===----------------------------------------------------------------------===//
@@ -445,6 +444,10 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     Block &else_block() { return else_region().front(); }
     YieldOp then_yield();
     YieldOp else_yield();
+
+    bool areTypesCompatible(Type lhs, Type rhs) {
+      return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+    }
   }];
 
   let extraClassDefinition = [{
@@ -512,6 +515,10 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
   let extraClassDeclaration = [{
     Block &branch_block(unsigned idx) { return branches()[idx].front(); }
     YieldOp branch_yield(unsigned idx);
+
+    bool areTypesCompatible(Type lhs, Type rhs) {
+      return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+    }
   }];
 
   let extraClassDefinition = [{
@@ -576,8 +583,7 @@ def TFGraph_ConditionOp : TFGraph_Op<"condition",
 
 // TF graph while loop op with regions.
 class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
-    mnemonic, [InferTypeOpInterface, AttrSizedOperandSegments,
-               DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    mnemonic, [AttrSizedOperandSegments,
                DeclareOpInterfaceMethods<RegionBranchOpInterface,
                                          ["getSuccessorEntryOperands"]>,
                DeclareOpInterfaceMethods<ControlArgumentInterface,
@@ -600,6 +606,10 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     Block &body_block() { return body_region().front(); }
     ConditionOp cond_condition();
     YieldOp body_yield();
+
+    bool areTypesCompatible(Type lhs, Type rhs) {
+      return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+    }
   }];
 
   let extraClassDefinition = [{
@@ -613,17 +623,6 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
     YieldOp $cppClass::body_yield() {
       return cast<YieldOp>(body_block().getTerminator());
-    }
-
-    LogicalResult $cppClass::inferReturnTypes(
-        MLIRContext *context, Optional<Location> location, ValueRange operands,
-        DictionaryAttr attributes, RegionRange regions,
-        SmallVectorImpl<Type> &inferredReturnTypes) {
-      TypeRange arg_types = $cppClass::Adaptor(operands, attributes)
-                                .init().getTypes();
-      inferredReturnTypes.assign(arg_types.begin(), arg_types.end());
-      inferredReturnTypes.push_back(tf_type::ControlType::get(context));
-      return success();
     }
 
     OperandRange $cppClass::getSuccessorEntryOperands(unsigned index) {
@@ -657,7 +656,7 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
       $cond_region
     `do`
       $body_region
-    attr-dict (`:` type($init)^)?
+    attr-dict (`:` functional-type($init, $outs)^)?
   }];
 
   let hasVerifier = 1;
@@ -673,25 +672,18 @@ def TFGraph_StatefulWhileRegionOp : TFGraph_WhileLikeRegionOp<"StatefulWhileRegi
   let summary = "A stateful region-based while loop operation.";
 }
 
-// The indices of a for-loop op will be scalar i32 tensors. Make this type a
-// buildable type.
-def I32ScalarTensor : 0DTensorOf<[I32]> {
-  let builderCall = "RankedTensorType::get({}, $_builder.getI32Type())";
-}
-
 // TF graph for loop op with region.
 def TFGraph_ForRegionOp : TFGraph_RegionOp<
-    "ForRegion", [InferTypeOpInterface, AttrSizedOperandSegments,
-                  DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    "ForRegion", [AttrSizedOperandSegments,
                   DeclareOpInterfaceMethods<RegionBranchOpInterface,
                                             ["getSuccessorEntryOperands"]>,
                   DeclareOpInterfaceMethods<ControlArgumentInterface,
                                             ["getControlToken"]>]> {
   let arguments = (ins
     // Op Operands.
-    I32ScalarTensor:$start,
-    I32ScalarTensor:$limit,
-    I32ScalarTensor:$delta,
+    I32Tensor:$start,
+    I32Tensor:$limit,
+    I32Tensor:$delta,
     Variadic<TFGraph_Tensor>:$init,
     Variadic<ControlType>:$ctls,
     // Optional attributes.
@@ -703,6 +695,10 @@ def TFGraph_ForRegionOp : TFGraph_RegionOp<
   let extraClassDeclaration = [{
     Block &body_block() { return body_region().front(); }
     YieldOp body_yield();
+
+    bool areTypesCompatible(Type lhs, Type rhs) {
+      return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+    }
   }];
 
   let extraClassDefinition = [{
@@ -720,7 +716,8 @@ def TFGraph_ForRegionOp : TFGraph_RegionOp<
     (`(` $init^ `)`)? (`[` $ctls^ `]`)?
     `from` $start `to` $limit `by` $delta
       $body_region
-    attr-dict (`:` type($init)^)?
+    attr-dict `:` `(` type($start) `,` type($limit) `,` type($delta)
+    (`,` type($init)^)? `)` (`->` `(` type($outs)^ `)`)?
   }];
 
   let hasVerifier = 1;
