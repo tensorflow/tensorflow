@@ -379,17 +379,15 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
   For example:
 
   >>> # real number
-  >>> x = tf.constant([-2.25, 3.25])
+  >>> x = tf.ragged.constant([[3.5, 1.4, -4.5, 1.3], [-5.4, 9.6, 2.0], [-6.4]])
   >>> tf.abs(x)
-  <tf.Tensor: shape=(2,), dtype=float32,
-  numpy=array([2.25, 3.25], dtype=float32)>
+  <tf.RaggedTensor [[3.5, 1.4, 4.5, 1.3], [5.4, 9.6, 2.0], [6.4]]>
 
   >>> # complex number
-  >>> x = tf.constant([[-2.25 + 4.75j], [-3.25 + 5.75j]])
+  >>> x = tf.ragged.constant([[-2.25 + 4.75j], [-3.25 + 5.75j]])
   >>> tf.abs(x)
-  <tf.Tensor: shape=(2, 1), dtype=float64, numpy=
-  array([[5.25594901],
-         [6.60492241]])>
+  <tf.RaggedTensor [[5.25594901040716],
+ [6.604922406811453]]>
 
   Args:
     x: A `Tensor` or `SparseTensor` of type `float16`, `float32`, `float64`,
