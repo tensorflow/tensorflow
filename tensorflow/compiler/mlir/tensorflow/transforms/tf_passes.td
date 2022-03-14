@@ -1351,6 +1351,11 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
     ```
   }];
 
+  let options = [
+    Option<"tpu_compile_metadata_debug_", "tpu-compile-metadata-debug", "bool", /*default=*/"false",
+           "Whether to serialize TPUCompileMetadataProto metadata in 'tf._TPUCompileMlir' op as a proto debug string">
+  ];
+
   let constructor = "TFTPU::CreateTPURewritePass()";
 }
 
