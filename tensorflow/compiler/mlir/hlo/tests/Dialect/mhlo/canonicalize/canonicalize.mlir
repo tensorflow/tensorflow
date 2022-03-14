@@ -1978,6 +1978,19 @@ func @pad_fold() -> tensor<4x5xi32> {
   // CHECK-SAME: ]> : tensor<4x5xi32>
 }
 
+// CHECK-LABEL: @pad_negative_fold
+func @pad_negative_fold() -> tensor<4x4xi32> {
+  %0 = arith.constant dense<[[2, 3], [4, 5]]> : tensor<2x2xi32>
+  %1 = arith.constant dense<1> : tensor<i32>
+  %3 = "mhlo.pad"(%0, %1) {
+    edge_padding_low = dense<[1, -1]> : tensor<2xi64>,
+    edge_padding_high = dense<[1, 2]> : tensor<2xi64>,
+    interior_padding = dense<[0, 1]> : tensor<2xi64>
+  } : (tensor<2x2xi32>, tensor<i32>) -> tensor<4x4xi32>
+  return %3 : tensor<4x4xi32>
+  // CHECK: "mhlo.pad"
+}
+
 func @pad_fold_zero_elements() -> tensor<3xi32> {
   %0 = mhlo.constant dense<> : tensor<0xi32>
   %1 = mhlo.constant dense<7> : tensor<i32>

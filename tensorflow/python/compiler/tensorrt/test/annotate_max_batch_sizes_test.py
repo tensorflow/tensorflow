@@ -73,7 +73,7 @@ class MaxBatchSizesTestBase(trt_test.TfTrtIntegrationTestBase):
     There shall be engines generated for each maximum batch size.
     """
     return [
-        'TRTEngineOp_{}'.format(seq_id)
+        f'TRTEngineOp_{seq_id:03d}'
         for seq_id in range(len(self.max_batch_sizes))
     ]
 

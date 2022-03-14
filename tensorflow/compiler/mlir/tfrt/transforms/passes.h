@@ -31,10 +31,6 @@ namespace tensorflow {
 
 namespace tfrt_compiler {
 
-// Create a pass to set shape_invariant attribute for all tf.While ops.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
-CreateSetShapeInvariantInWhileOps();
-
 // Create a pass to insert kernels that copy fallback tensors when they are
 // passed to multiple threads, to avoid atomic contention on their refcounts.
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>

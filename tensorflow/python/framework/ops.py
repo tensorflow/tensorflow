@@ -3594,10 +3594,12 @@ class Graph(object):
 
     # Add function to graph
     # pylint: disable=protected-access
-    gradient = (
-        function._grad_func._c_func.func if function._grad_func else None)
-    pywrap_tf_session.TF_GraphCopyFunction(self._c_graph, function._c_func.func,
-                                           gradient)
+    with function._c_func.get() as func:
+      if function._grad_func:
+        with function._grad_func._c_func.get() as gradient:
+          pywrap_tf_session.TF_GraphCopyFunction(self._c_graph, func, gradient)
+      else:
+        pywrap_tf_session.TF_GraphCopyFunction(self._c_graph, func, None)
     # pylint: enable=protected-access
 
     self._functions[compat.as_str(name)] = function

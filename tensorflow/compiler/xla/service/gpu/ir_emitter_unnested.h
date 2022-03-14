@@ -478,7 +478,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
-  StatusOr<bool> CheckAndEmitHloWithTile021(mlir::Operation* op);
+  StatusOr<bool> CheckAndEmitHloWithTile021(mlir::lmhlo::FusionOp fusion);
 
   // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm.
   // This is a helper to support the implementation of

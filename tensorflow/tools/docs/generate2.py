@@ -25,7 +25,7 @@ Requires a local installation of `tensorflow_docs`:
 pip install git+https://github.com/tensorflow/docs
 ```
 """
-
+import distutils
 import pathlib
 import textwrap
 
@@ -181,6 +181,9 @@ def build_docs(output_dir, code_url_prefix, search_hints):
     code_url_prefix: prefix for "Defined in" links.
     search_hints: Bool. Include meta-data search hints at the top of each file.
   """
+  if distutils.version.LooseVersion(tf.__version__) >= "2.9":
+    doc_controls.set_deprecated(tf.keras.preprocessing)
+
   # The custom page will be used for raw_ops.md not the one generated above.
   doc_controls.set_custom_page_builder_cls(tf.raw_ops, RawOpsPageInfo)
 

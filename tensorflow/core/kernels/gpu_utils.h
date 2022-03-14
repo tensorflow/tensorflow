@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/lazy_op_runner.h"
 
@@ -94,26 +93,15 @@ class AutotuneMap {
   bool Find(const Parameters& params, Config* config) const {
     mutex_lock lock(mu_);
     auto iter = params_config_map_.find(params);
-
-    if (iter == params_config_map_.end()) {
+    if (iter == params_config_map_.end() ||
+        (iter->second.score < min_score_threshold_ &&
+         iter->second.count <= max_autotune_count_)) {
       return false;
     }
     *config = iter->second.config;
     return true;
   }
-
   void Insert(const Parameters& params, const Config& config) {
-    mutex_lock lock(mu_);
-    auto iter = params_config_map_.find(params);
-    if (iter == params_config_map_.end()) {
-      // Create a new entry if params is new.
-      VLOG(1) << GetActionSummary("creates", params, config);
-      params_config_map_.insert(
-          std::make_pair(params, ValueType{config, 1, 1}));
-    }
-  }
-
-  void InsertBasedOnScore(const Parameters& params, const Config& config) {
     mutex_lock lock(mu_);
     auto iter = params_config_map_.find(params);
     int new_score = 0;
@@ -411,12 +399,6 @@ StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
     std::vector<
         std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
         runners);
-
-// Get the Dnn workspace limit from the environment variable, which is in MB.
-// Return the workspace memory limit in bytes. If no value is set, return the
-// default value.
-int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
-                             int64_t default_value_in_bytes);
 
 }  // namespace tensorflow
 

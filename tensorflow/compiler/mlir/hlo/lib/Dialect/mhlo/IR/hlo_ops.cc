@@ -3204,13 +3204,12 @@ LogicalResult InfeedOp::verify() {
                            << child_layout;
     }
 
-    for (int64_t i = 0; i < child_layout_arr.size(); i++) {
-      mlir::IntegerAttr attr =
-          child_layout_arr[i].dyn_cast<mlir::IntegerAttr>();
+    for (auto i : child_layout_arr) {
+      mlir::IntegerAttr attr = i.dyn_cast<mlir::IntegerAttr>();
       if (!attr) {
         return emitOpError() << "layout-attribute's leaf elements are "
                                 "expected to be of type integer, but got "
-                             << child_layout_arr[i];
+                             << i;
       }
     }
   }
@@ -4543,9 +4542,9 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
 
   // If any padding is negative then it isn't supported by the folder (yet).
   auto is_negative = [](const APInt& i) { return i.slt(0); };
-  if (llvm::all_of(edge_padding_low().getValues<APInt>(), is_negative) &&
-      llvm::all_of(edge_padding_high().getValues<APInt>(), is_negative) &&
-      llvm::all_of(interior_padding().getValues<APInt>(), is_negative))
+  if (llvm::any_of(edge_padding_low().getValues<APInt>(), is_negative) ||
+      llvm::any_of(edge_padding_high().getValues<APInt>(), is_negative) ||
+      llvm::any_of(interior_padding().getValues<APInt>(), is_negative))
     return {};
 
   DenseElementsAttr input = operands[0].dyn_cast_or_null<DenseElementsAttr>();
@@ -5477,6 +5476,37 @@ LogicalResult SortOp::verify() {
                << arg_type;
     }
   }
+
+  // Mapped computation must return single output.
+  auto comparator_result = block.getTerminator()->getOperands();
+  if (comparator_result.size() != 1)
+    return emitOpError() << "comparator must return single output, but got: "
+                         << comparator_result.size();
+
+  // The output of computation must be 0-ranked tensor with element-type i1.
+  auto comparator_result_type =
+      comparator_result[0].getType().dyn_cast<RankedTensorType>();
+  if (!comparator_result_type || comparator_result_type.getRank() != 0 ||
+      !comparator_result_type.getElementType().isInteger(1))
+    return emitOpError() << "comparator must return tensor<i1>, but got: "
+                         << comparator_result[0].getType();
+
+  // check number of return-values and their element-types.
+  auto result_types = getResultTypes();
+  if (result_types.size() != num_operands)
+    return emitOpError() << "expects the number of results to be same as "
+                            "number of operands. Got number of results = "
+                         << result_types.size()
+                         << " and number of operands = " << num_operands;
+
+  for (auto it : llvm::zip(operands, getResultTypes()))
+    if (std::get<0>(it).getType().cast<TensorType>().getElementType() !=
+        std::get<1>(it).cast<TensorType>().getElementType())
+      return emitOpError()
+             << "expects the operands and results to have pairwize equal "
+                "element-types, but got "
+             << std::get<0>(it).getType().cast<TensorType>().getElementType()
+             << " vs " << std::get<1>(it).cast<TensorType>().getElementType();
 
   return success();
 }
@@ -6431,8 +6461,7 @@ LogicalResult WhileOp::verify() {
     auto operandType =
         condReturnOp->getOperand(0).getType().dyn_cast<RankedTensorType>();
     if (!operandType || operandType.getRank() != 0 ||
-        !operandType.getElementType().isa<IntegerType>() ||
-        operandType.getElementType().cast<IntegerType>().getWidth() != 1)
+        !operandType.getElementType().isInteger(1))
       return condReturnOp.emitOpError()
              << "expects a zero-ranked tensor of i1, got "
              << condReturnOp->getOperand(0).getType();

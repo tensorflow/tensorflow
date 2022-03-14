@@ -377,10 +377,7 @@ message DebugOptions {
   // shared among multiple GPU executables.
   bool xla_gpu_enable_shared_constants = 165;
 
-  // Whether to use cuBLASLt for GEMMs on GPUs.
-  bool xla_gpu_enable_cublaslt = 166;
-
-  // Next id: 167
+  // Next id: 166
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

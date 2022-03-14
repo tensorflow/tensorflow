@@ -182,7 +182,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
 
 LogicalResult BroadcastComplexOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange /*regions*/,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   ShapedType lhs_type = operands[0].getType().dyn_cast<ShapedType>();
   if (!lhs_type) {
@@ -217,7 +217,7 @@ void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
 
 LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange /*regions*/,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   Type element_type = IntegerType::get(context, 1);
   return InferBroadcastBinaryOpReturnTypeComponents(context, location, operands,
@@ -243,8 +243,8 @@ static Type getIsInfLikeReturnType(Value operand) {
 }
 
 LogicalResult IsInfOp::inferReturnTypes(
-    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
-    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
   return success();
 }
@@ -254,8 +254,8 @@ LogicalResult IsInfOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult IsNegInfOp::inferReturnTypes(
-    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
-    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
   return success();
 }
@@ -265,8 +265,8 @@ LogicalResult IsNegInfOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult IsPosInfOp::inferReturnTypes(
-    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
-    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
   return success();
 }
@@ -351,8 +351,9 @@ LogicalResult MinimumBroadcastShapesOp::verify() {
 }
 
 LogicalResult ConstantLikeOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    MLIRContext* /*context*/, Optional<Location> location,
+    ValueShapeRange operands, DictionaryAttr attributes,
+    RegionRange /*regions*/,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   ConstantLikeOp::Adaptor op(operands, attributes);
   if (failed(op.verify(location.getValue()))) return failure();
@@ -374,7 +375,7 @@ LogicalResult ConstantLikeOp::reifyReturnTypeShapes(
       &builder, getOperation(), operands.front(), &reifiedReturnShapes);
 }
 
-OpFoldResult ConstantLikeOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConstantLikeOp::fold(ArrayRef<Attribute> /*operands*/) {
   auto op_type = operand().getType().cast<ShapedType>();
   if (!op_type.hasStaticShape()) return {};
   auto type = RankedTensorType::get(op_type.getShape(), value().getType());
@@ -418,7 +419,7 @@ LogicalResult BroadcastSelectOp::reifyReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 
 void RankSpecializationClusterOp::getSuccessorRegions(
-    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    Optional<unsigned> index, ArrayRef<Attribute> /*operands*/,
     SmallVectorImpl<RegionSuccessor>& regions) {
   // RankSpecializationClusterOp has unconditional control flows into the region
   // and back to the parent, so return the correct RegionSuccessor purely based

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <map>
+#include <numeric>
 #include <queue>
 #include <tuple>
 #include <unordered_map>
@@ -1112,6 +1113,7 @@ Status SegmentGraph(const Graph* tf_graph,
 
   // --------------------------------- Step 3 ---------------------------------
   // Convert the segments into the expected return format
+  std::vector<int> effective_nodes_counts;
   for (const auto& itr : sg_map) {
     const string& segment_root = itr.first;
     // Return format does not require set comparator.
@@ -1141,6 +1143,80 @@ Status SegmentGraph(const Graph* tf_graph,
       continue;
     }
     segments->emplace_back(itr.second.property, segment_nodes);
+    effective_nodes_counts.push_back(num_effective_nodes);
+  }
+
+  // --------------------------------- Step 4 ---------------------------------
+  // If the number of segments exceeds max_engines, prune the smallest ones.
+
+  int64_t max_trt_engine_ops;
+  TF_CHECK_OK(ReadInt64FromEnvVar("TF_TRT_MAX_ALLOWED_ENGINES",
+                                  /*default_value=*/20, &max_trt_engine_ops));
+
+  if (max_trt_engine_ops <= 0) {
+    LOG(WARNING) << "The environment variable TF_TRT_MAX_ALLOWED_ENGINES is "
+                 << "<= 0. TF-TRT did not limit the number of TensorRT engines "
+                 << "created.";
+
+  } else {
+    if (segments->size() > max_trt_engine_ops) {
+      LOG(WARNING) << "A total of " << segments->size() << " segments with at "
+                   << "least minimum_segment_size="
+                   << options.minimum_segment_size << " nodes have been found. "
+                   << "TF-TRT will only convert the " << max_trt_engine_ops
+                   << " largest segments. You can change this behavior by "
+                   << "modifying the environment variable "
+                   << "TF_TRT_MAX_ALLOWED_ENGINES=" << max_trt_engine_ops;
+
+      // Stable sort of the segment indices according to their effective sizes.
+      std::vector<int> indices(segments->size());
+      std::iota(indices.begin(), indices.end(), 0);
+
+      std::stable_sort(indices.begin(), indices.end(),
+                       [&effective_nodes_counts](int i1, int i2) {
+                         return effective_nodes_counts[i1] >
+                                effective_nodes_counts[i2];
+                       });
+
+      // Create a mask of segments to keep.
+      std::vector<bool> mask = std::vector<bool>(segments->size(), false);
+
+      for (int i = 0; i < max_trt_engine_ops; i++) {
+        mask[indices[i]] = true;
+      }
+
+      // Gather the masked elements at the start of the array, in place.
+      int j = 0;
+      VLOG(1) << "The following segments have been accepted by TF-TRT:";
+      for (int i = 0; i < segments->size(); i++) {
+        if (mask[i]) {
+          VLOG(1) << "[*] Segment " << i
+                  << " [node count: " << effective_nodes_counts[i]
+                  << "] accepted. Re-assigned "
+                  << "segment id=" << j;
+          segments->at(j) = segments->at(i);
+          j++;
+        }
+      }
+
+      VLOG(1) << "The following segments have been rejected by TF-TRT:";
+      for (int i = 0; i < segments->size(); i++) {
+        if (!mask[i]) {
+          VLOG(1) << "[*] Segment " << i
+                  << " [node count: " << effective_nodes_counts[i]
+                  << "] rejected.";
+        }
+      }
+
+      // Resize the array.
+      segments->resize(max_trt_engine_ops);
+    } else {
+      LOG(WARNING) << "The environment variable TF_TRT_MAX_ALLOWED_ENGINES="
+                   << max_trt_engine_ops << " has no effect since there are "
+                   << "only " << segments->size() << " TRT Engines with  at "
+                   << "least minimum_segment_size="
+                   << options.minimum_segment_size << " nodes.";
+    }
   }
 
   return Status::OK();

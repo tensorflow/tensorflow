@@ -4139,3 +4139,25 @@ func @const_splat() -> tensor<3xi16> {
   %cst = mhlo.constant dense<1> : tensor<3xi16>
   return %cst : tensor<3xi16>
 }
+
+// -----
+
+// CHECK-LABEL: @real_real
+func @real_real(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %1 = "mhlo.real"(%arg0) : (tensor<?xf32>) -> (tensor<?xf32>)
+  // CHECK: linalg.generic
+  // CHECK: ^bb0(%[[ARG:.+]]: f32,
+  // CHECK: yield %[[ARG]]
+  return %1 : tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @imag_real
+func @imag_real(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  %1 = "mhlo.imag"(%arg0) : (tensor<?xf32>) -> (tensor<?xf32>)
+  // CHECK: linalg.generic
+  // CHECK: %[[CST:.*]] = arith.constant 0
+  // CHECK: yield %[[CST]]
+  return %1 : tensor<?xf32>
+}

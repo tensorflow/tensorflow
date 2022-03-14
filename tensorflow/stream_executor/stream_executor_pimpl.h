@@ -347,10 +347,6 @@ class StreamExecutor {
   // Note: on OpenCL we implicitly select platform zero at the moment.
   int PlatformDeviceCount() const;
 
-  // Returns whether the StreamExecutor supports BLAS plans as implemented
-  // for instance in the cuBLASLt API
-  bool SupportsBlasPlans() const;
-
   // Returns whether the StreamExecutor supports BLAS routines for the platform
   // that underlies this interface.
   bool SupportsBlas() const;

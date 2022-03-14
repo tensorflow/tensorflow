@@ -462,9 +462,8 @@ def tf_features_nomodules_if_mobile():
 # portable_tensorflow_lib_lite does not export the headers needed to
 # use it.  Thus anything that depends on it needs to disable layering
 # check.
-def tf_features_nolayering_check_if_android_or_ios():
+def tf_features_nolayering_check_if_ios():
     return select({
-        clean_dep("//tensorflow:android"): ["-layering_check"],
         clean_dep("//tensorflow:ios"): ["-layering_check"],
         "//conditions:default": [],
     })
