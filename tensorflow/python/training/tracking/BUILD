@@ -186,6 +186,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
+        ":trackable_utils",
         ":tracking",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
