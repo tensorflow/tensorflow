@@ -97,7 +97,7 @@ class ShapeComponentAnalysis {
     Optional<Symbol> singleton() const;
 
     bool operator==(const SymbolicExpr &rhs) const {
-      return expr == expr && symbols == rhs.symbols;
+      return expr == rhs.expr && symbols == rhs.symbols;
     }
     bool operator!=(const SymbolicExpr &rhs) const { return !(*this == rhs); }
 
