@@ -2202,10 +2202,15 @@ struct ReduceWindowOpOnTensorsGenericConversion
         static_lows.push_back(padding[i]);
         static_highs.push_back(padding[i + 1]);
       }
-      for (auto& input : inputs) {
-        Value zero = rewriter.create<arith::ConstantOp>(
-            loc, rewriter.getZeroAttr(
-                     input.getType().cast<ShapedType>().getElementType()));
+      for (auto values : llvm::zip(inputs, init_values)) {
+        auto& input = std::get<0>(values);
+        auto& init_value = std::get<1>(values);
+
+        // Extract the single element from init value. This mimic the lowering
+        // behavior of mhlo.pad.
+        Value padding_value =
+            rewriter.createOrFold<tensor::ExtractOp>(loc, init_value);
+
         auto pad_op = rewriter.create<tensor::PadOp>(
             loc, input, static_lows, static_highs, ValueRange{}, ValueRange{});
 
@@ -2218,7 +2223,7 @@ struct ReduceWindowOpOnTensorsGenericConversion
         rewriter.createBlock(
             &region, region.end(), block_arg_types,
             SmallVector<Location>(block_arg_types.size(), loc));
-        rewriter.create<tensor::YieldOp>(loc, zero);
+        rewriter.create<tensor::YieldOp>(loc, padding_value);
 
         input = pad_op.getResult();
       }

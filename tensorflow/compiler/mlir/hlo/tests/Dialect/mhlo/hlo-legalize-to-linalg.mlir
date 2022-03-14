@@ -3218,10 +3218,10 @@ func @reduce_window_sum_ndhwc(%arg0: tensor<1x17x17x17x64xf32>,
 // CHECK: ^bb0(%arg2: f32, %arg3: f32):
 // CHECK:   linalg.yield %arg2 : f32
 
-// CHECK: %cst = arith.constant 0.000000e+00 : f32
+// CHECK: %[[PADVAL:.+]] = tensor.extract %arg1[] : tensor<f32>
 // CHECK: %[[PAD:.+]] = tensor.pad %arg0 low[0, 1] high[3, 2]
 // CHECK: ^bb0(%arg2: index, %arg3: index):
-// CHECK:   tensor.yield %cst : f32
+// CHECK:   tensor.yield %[[PADVAL]] : f32
 
 // CHECK: %[[WINDOW:.+]] = linalg.init_tensor [2] : tensor<2xf32>
 // CHECK: %[[REDUCE:.+]] = linalg.generic {indexing_maps = [#[[MAP2]], #[[MAP3]], #[[MAP4]]], iterator_types = ["parallel", "parallel", "reduction"]} ins(%[[PAD]], %[[WINDOW]] : tensor<7x9xf32>, tensor<2xf32>) outs(%[[FILL]] : tensor<4x7xf32>) {
