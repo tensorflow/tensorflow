@@ -3048,5 +3048,161 @@ TEST_F(CanShareOperandBufferWithUserTest, MultipleConcatenates) {
                                                                  fusion, {2}));
 }
 
+class GetInPlaceInputOutputPairsTest : public HloDataflowAnalysisTestBase {};
+
+TEST_F(GetInPlaceInputOutputPairsTest, DUS) {
+  const char* kModule = R"(
+    HloModule test
+
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      p1 = f32[5] parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT dus = f32[10] dynamic-update-slice(p0, p1, p2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* dus = module_->entry_computation()->root_instruction();
+
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(dus);
+  std::vector<std::pair<HloUse, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloUse{dus, 0, {}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest, DUSFusion) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      p0 = f32[10] parameter(0)
+      p1 = f32[5] parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT dus = f32[10] dynamic-update-slice(p0, p1, p2)
+    }
+
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      p1 = f32[5] parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT fusion = f32[10] fusion(p0, p1, p2), kind=kLoop, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* fusion = module_->entry_computation()->root_instruction();
+
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloUse, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloUse{fusion, 0, {}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest, NonDUSFusion) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      p0 = f32[10] parameter(0)
+      p1 = f32[10] parameter(1)
+      ROOT add = f32[10] add(p0, p1)
+    }
+
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      p1 = f32[10] parameter(1)
+      ROOT fusion = f32[10] fusion(p0, p1), kind=kLoop, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* fusion = module_->entry_computation()->root_instruction();
+
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloUse, ShapeIndex>> expected_pairs;
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest, NestedDUSFusion) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation1 {
+      p0 = f32[10] parameter(0)
+      p1 = f32[5] parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT dus = f32[10] dynamic-update-slice(p0, p1, p2)
+    }
+
+    fused_computation2 {
+      p0 = f32[10] parameter(0)
+      p1 = f32[5] parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT fusion = f32[10] fusion(p0, p1, p2), kind=kLoop, calls=fused_computation1
+    }
+
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      p1 = f32[5] parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT fusion = f32[10] fusion(p0, p1, p2), kind=kLoop, calls=fused_computation2
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* fusion = module_->entry_computation()->root_instruction();
+
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloUse, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloUse{fusion, 0, {}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest, NestedMultiOutputDUSFusion) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation1 {
+      p0 = s32[] parameter(0)
+      p1 = (f32[5],f32[10]) parameter(1)
+      gte0 = f32[5] get-tuple-element(p1), index=0
+      gte1 = f32[10] get-tuple-element(p1), index=1
+      dus = f32[10] dynamic-update-slice(gte1, gte0, p0)
+      negate = f32[5] negate(gte0)
+      ROOT tuple = (f32[5],f32[10]) tuple(negate, dus)
+    }
+
+    fused_computation2 {
+      p0 = f32[5] parameter(0)
+      p1 = (f32[10],s32[]) parameter(1)
+      gte0 = f32[10] get-tuple-element(p1), index=0
+      gte1 = s32[] get-tuple-element(p1), index=1
+      in_tuple = (f32[5],f32[10]) tuple(p0, gte0)
+      inner_fusion = (f32[5],f32[10]) fusion(gte1, in_tuple), kind=kLoop, calls=fused_computation1
+      fusion_gte0 = f32[5] get-tuple-element(inner_fusion), index=0
+      fusion_gte1 = f32[10] get-tuple-element(inner_fusion), index=1
+      negate = f32[5] negate(p0)
+      ROOT tuple = (f32[5],f32[5],f32[10]) tuple(negate, fusion_gte0, fusion_gte1)
+    }
+
+    ENTRY test {
+      p0 = f32[5] parameter(0)
+      p1 = (f32[10],s32[]) parameter(1)
+      ROOT fusion = (f32[5],f32[5],f32[10]) fusion(p0, p1), kind=kLoop, calls=fused_computation2
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* fusion = module_->entry_computation()->root_instruction();
+  HloInstruction* inner_fusion = FindInstruction(module_.get(), "inner_fusion");
+
+  auto inner_in_place_pairs =
+      HloDataflowAnalysis::GetInPlaceInputOutputPairs(inner_fusion);
+  std::vector<std::pair<HloUse, ShapeIndex>> inner_expected_pairs;
+  inner_expected_pairs.push_back({HloUse{inner_fusion, 1, {1}}, {1}});
+  EXPECT_EQ(inner_in_place_pairs, inner_expected_pairs);
+
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloUse, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloUse{fusion, 1, {0}}, {2}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
 }  // namespace
 }  // namespace xla
