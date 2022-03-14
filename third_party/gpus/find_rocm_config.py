@@ -155,8 +155,8 @@ def _find_rocblas_config(rocm_install_path):
 
   def rocblas_version_numbers(path):
     possible_version_files = [
-        "rocblas/include/rocblas-version.h",  # ROCm 3.7 and prior
         "rocblas/include/internal/rocblas-version.h",  # ROCm 3.8
+        "rocblas/include/rocblas-version.h",  # ROCm 3.7 and prior
     ]
     version_file = None
     for f in possible_version_files:
@@ -187,8 +187,8 @@ def _find_rocrand_config(rocm_install_path):
 
   def rocrand_version_number(path):
     possible_version_files = [
-        "rocrand/include/rocrand_version.h",  # ROCm 5.0 and prior
         "include/rocrand/rocrand_version.h",  # ROCm 5.1
+        "rocrand/include/rocrand_version.h",  # ROCm 5.0 and prior
     ]
     version_file = None
     for f in possible_version_files:
@@ -301,8 +301,8 @@ def _find_hipsolver_config(rocm_install_path):
 
   def hipsolver_version_numbers(path):
     possible_version_files = [
-        "hipsolver/include/hipsolver-version.h",  # ROCm 5.0 and prior
         "hipsolver/include/internal/hipsolver-version.h",  # ROCm 5.1
+        "hipsolver/include/hipsolver-version.h",  # ROCm 5.0 and prior
     ]
     version_file = None
     for f in possible_version_files:
