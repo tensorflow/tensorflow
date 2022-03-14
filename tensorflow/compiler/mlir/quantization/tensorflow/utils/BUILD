@@ -1,3 +1,5 @@
+load("@llvm-project//mlir:tblgen.bzl", "td_library")
+
 package(
     default_visibility = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
@@ -15,6 +17,16 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+td_library(
+    name = "lift_as_function_call_utils_td_files",
+    srcs = [
+        "lift_as_function_call_utils.td",
+    ],
+    deps = [
+        "@llvm-project//mlir:StdOpsTdFiles",
     ],
 )
 

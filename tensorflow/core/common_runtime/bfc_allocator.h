@@ -99,6 +99,8 @@ class BFCAllocator : public Allocator {
 
   void SetSafeFrontier(uint64 count) override;
 
+  AllocatorMemoryType GetMemoryType() const override;
+
   bool ShouldRecordOpName() const { return true; }
 
   MemoryDump RecordMemoryMap();

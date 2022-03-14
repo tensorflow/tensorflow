@@ -515,7 +515,7 @@ class ConverterTest : public ::testing::Test {
         std::move(Converter::Create(TrtPrecisionMode::FP32,
                                     /*use_calibration=*/false, &logger_,
                                     /*use_implicit_batch=*/true,
-                                    /*engine_name=*/"TRTEngineOp_0_0",
+                                    /*engine_name=*/"TRTEngineOp_000_000",
                                     /*use_explicit_precision=*/false)
                       .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
@@ -711,8 +711,9 @@ TEST_F(ConverterTest, TransposeTensor) {
   TF_EXPECT_OK(converter_->TransposeTensor(
       input_tensor, {0, 3, 1, 2}, &output_tensor, dummy_node_def, "sub3"));
   EXPECT_THAT(output_tensor->getDimensions(), DimsAreArray({5, 2, 3}));
-  EXPECT_THAT(converter_->network(),
-              LayerNamesAreArray({"TRTEngineOp_0_0/dummy_op-sub3:SHUFFLE"}));
+  EXPECT_THAT(
+      converter_->network(),
+      LayerNamesAreArray({"TRTEngineOp_000_000/dummy_op-sub3:SHUFFLE"}));
 }
 
 void TestPrepareTensorForShape(
@@ -1046,7 +1047,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
         /*use_calibration=*/false, /*use_implicit_batch=*/true,
         /*convert_successfully=*/nullptr, /*profiles=*/nullptr,
-        "TRTEngineOp_0_0", /*use_explicit_precision=*/false);
+        "TRTEngineOp_000_000", /*use_explicit_precision=*/false);
   }
 
  protected:

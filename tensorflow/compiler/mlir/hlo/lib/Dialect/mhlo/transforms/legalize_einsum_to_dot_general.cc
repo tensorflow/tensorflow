@@ -134,8 +134,8 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     SmallVector<int64_t> result_perms;
     bool is_natural_order = true;
     for (char result_token : result_tokens) {
-      auto found_it = std::find(dot_result_tokens.begin(),
-                                dot_result_tokens.end(), result_token);
+      auto *found_it = std::find(dot_result_tokens.begin(),
+                                 dot_result_tokens.end(), result_token);
       if (found_it == dot_result_tokens.end()) {
         return rewriter.notifyMatchFailure(
             einsum, "result token not found in operands");

@@ -443,7 +443,7 @@ static bool isShapePreserving(LoopOp loopOp, int64_t arg) {
                              ? loopOp.outputs()[opResult.getResultNumber()]
                              : Value();
                 })
-                .Default([&](auto op) { return Value(); });
+                .Default([&](auto /*op*/) { return Value(); });
   }
   return false;
 }

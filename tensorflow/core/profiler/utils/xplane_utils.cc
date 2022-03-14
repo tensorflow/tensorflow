@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
@@ -341,11 +342,8 @@ void AddFlowsToXplane(int32_t host_id, bool is_host_plane, XPlane* xplane) {
         }
       });
       if (correlation_id) {
-        uint64_t flow_id = host_id;
-        flow_id &= 0xffff;  // keep 16 bits host id.
-        flow_id <<= 48;
-        flow_id |= *correlation_id;
-        XFlow flow(flow_id, direction);
+        XFlow flow(XFlow::GetFlowId(host_id, *correlation_id), direction,
+                   ContextType::kGpuLaunch);
         event.AddStatValue(*flow_stats_metadata, flow.ToStatValue());
       }
     });

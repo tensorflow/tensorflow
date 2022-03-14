@@ -6,10 +6,6 @@ package(licenses = ["notice"])
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
-    exclude = [
-        # TODO(b/223274383)
-        "lhlo-legalize-select-and-scatter.mlir",
-    ],
     test_file_exts = ["mlir"],
 )
 

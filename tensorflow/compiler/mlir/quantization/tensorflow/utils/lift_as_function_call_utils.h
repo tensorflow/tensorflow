@@ -17,12 +17,16 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 // This header file defines common utils used by TF-Quant transformation
 // passes to lift op compositions to a function.
 namespace mlir {
 namespace quant {
+
+// Checks if the op is inside a lifted function.
+bool IsInLiftedFunc(Operation *op);
 
 // Creates a function to wrap the section between arguments and results.
 llvm::SmallVector<Value, 4> LiftAsFunctionCall(

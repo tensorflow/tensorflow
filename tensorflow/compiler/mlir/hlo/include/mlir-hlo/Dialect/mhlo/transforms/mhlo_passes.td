@@ -104,13 +104,6 @@ def TestMaterializeBroadcastsPass : Pass<"mhlo-test-materialize-broadcasts", "Fu
   let constructor = "createTestMaterializeBroadcastsPass()";
 }
 
-
-def MhloFusionPass : Pass<"mhlo-fusion", "FuncOp"> {
-  let summary = "Fuse mhlo ops to kLoop/kInput fusion patterns.";
-  let constructor = "createMhloFusionPass()";
-}
-
-
 def OptimizeMhloPass : Pass<"mhlo-test-optimize", "FuncOp"> {
   let summary = "Run optional HLO optimizations.";
   let constructor = "createOptimizeMhloPass()";

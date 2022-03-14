@@ -352,6 +352,46 @@ Status LayoutAssignment::LayoutConstraints::SetResultLayout(
   return Status::OK();
 }
 
+Status LayoutAssignment::SetInstructionLayout(const Layout& layout,
+                                              const HloInstruction* instruction,
+                                              bool mandatory, bool dfs,
+                                              bool allow_alias,
+                                              int64_t priority) {
+  if (priority < 0) {
+    priority = current_priority_;
+  }
+  auto RequiresSameShapeForAllOutput = [](const HloInstruction* op) -> bool {
+    switch (op->opcode()) {
+      case HloOpcode::kSort:
+      case HloOpcode::kReduce:
+      case HloOpcode::kReduceWindow:
+        return true;
+      default:
+        return false;
+    }
+  };
+  CHECK(instruction->shape().IsArray() ||
+        RequiresSameShapeForAllOutput(instruction));
+
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      instruction->shape(),
+      [this, layout, instruction, mandatory, allow_alias, priority](
+          const Shape& subshape, const ShapeIndex& index) -> Status {
+        auto buffers =
+            points_to_analysis_->GetPointsToSet(instruction).element(index);
+        CHECK_EQ(1, buffers.size());
+        if (!allow_alias) {
+          CHECK_EQ(buffers[0]->instruction(), instruction);
+        }
+        if (subshape.IsArray()) {
+          return SetBufferLayout(layout, *buffers[0], mandatory,
+                                 /*dfs=*/true, priority);
+        } else {
+          return Status::OK();
+        }
+      });
+}
+
 Status LayoutAssignment::SetInstructionLayout(const Shape& shape_with_layout,
                                               const HloInstruction* instruction,
                                               bool mandatory, bool dfs,

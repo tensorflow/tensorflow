@@ -19,6 +19,8 @@ limitations under the License.
 #include <functional>
 #include <sstream>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -97,6 +99,18 @@ void InsertOrDie(Collection* const collection, Key&& key, Value&& value) {
 template <class Collection, class Key>
 bool ContainsKey(const Collection& collection, const Key& key) {
   return collection.find(key) != collection.end();
+}
+
+// Returns a function that returns whether the map contains the given key.
+template <class Key, class Value>
+auto IsKeyIn(const absl::flat_hash_map<Key, Value>& map) {
+  return [&](const Key& key) { return map.contains(key); };
+}
+
+// Returns a function that returns whether the set contains the given value.
+template <class T>
+auto IsValueIn(const absl::flat_hash_set<T>& set) {
+  return [&](const T& value) { return set.contains(value); };
 }
 
 // Inserts `value` into `set`. Dies if it was already present.
