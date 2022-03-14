@@ -20,7 +20,6 @@ limitations under the License.
 #include <stdlib.h>
 #include <unistd.h>
 
-#include <filesystem>
 #include <fstream>
 
 #include "absl/strings/str_cat.h"
