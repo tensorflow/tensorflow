@@ -2120,3 +2120,14 @@ cc_library(
         "@llvm-project//mlir:SCFUtils",
     ],
 )
+
+# A light-weight runtime support library, used by MLIR code that results
+# after lowering some ops in the vector and sparse tensor dialects.
+cc_binary(
+    name = "libmlir_c_runner_utils.so",
+    linkshared = True,
+    linkstatic = False,
+    deps = [
+        "@llvm-project//mlir:mlir_c_runner_utils",
+    ],
+)
