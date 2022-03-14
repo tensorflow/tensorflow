@@ -2060,19 +2060,19 @@ Status LayoutAssignment::CalculateComputationLayout(
         conditional_mismatch_.count(callee->computation()) > 0) {
       if (conditional_mismatch_.count(callee->computation()) == 0 &&
           UpdateLayout(result, callee_layout.mutable_result_layout())) {
-        VLOG(5) << "Setting result layout from : " << result->ToString()
+        VLOG(2) << "Setting result layout from : " << result->ToString()
                 << "\n";
       }
       int64_t operand_no = 0;
       for (auto* operand : operands) {
         if (UpdateLayout(operand,
                          callee_layout.mutable_parameter_layout(operand_no))) {
-          VLOG(5) << "Setting callee parameter: " << operand->ToString()
+          VLOG(2) << "Setting callee parameter: " << operand->ToString()
                   << "\n";
         }
         ++operand_no;
       }
-      VLOG(5) << "Set callee layout: " << callee->computation()->name() << ":"
+      VLOG(2) << "Set callee layout: " << callee->computation()->name() << ":"
               << callee_layout.ToString()
               << "; original priority = " << callee_constraint->priority()
               << "\n";
@@ -2135,12 +2135,15 @@ Status LayoutAssignment::CalculateComputationLayout(
     }
   }
   // Reset the layout of the current computation from its body.
-  TF_RETURN_IF_ERROR(
-      SetCalleeLayout(constraints->computation()->root_instruction(),
-                      constraints->computation()->parameter_instructions(),
-                      constraints, current_priority_ + 1));
-  if (constraints->computation()->IsEntryComputation()) {
-    *entry_computation_layout_ = constraints->computation_layout();
+  if (current_priority_ == 0 ||
+      conditional_mismatch_.count(constraints->computation()) > 0) {
+    TF_RETURN_IF_ERROR(SetCalleeLayout(
+        constraints->computation()->root_instruction(),
+        constraints->computation()->parameter_instructions(), constraints,
+        current_priority_ + kNumberOfPropagationRounds));
+    if (constraints->computation()->IsEntryComputation()) {
+      *entry_computation_layout_ = constraints->computation_layout();
+    }
   }
   return Status::OK();
 }
