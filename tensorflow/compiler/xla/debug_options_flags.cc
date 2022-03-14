@@ -86,6 +86,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
 
+  // Set 4GB space limit for redzone scratch allocator.
+  opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   return opts;
 }
 
@@ -718,6 +720,12 @@ static void AllocateFlags() {
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_shared_constants),
       flag_values->xla_gpu_enable_shared_constants(),
       "Enable constant sharing between GPU executables"));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_redzone_scratch_max_megabytes",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_redzone_scratch_max_megabytes),
+      flag_values->xla_gpu_redzone_scratch_max_megabytes(),
+      "Max size (in megabytes) for the GPU redzone scratch allocator."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }  // NOLINT(readability/fn_size)
