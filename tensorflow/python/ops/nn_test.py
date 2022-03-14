@@ -96,6 +96,8 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
   def _softmax(self, x):
     assert len(x.shape) == 2
+    if x.shape[1] == 0:
+      return x
     m = x.max(1)[:, np.newaxis]
     u = np.exp(x - m)
     z = u.sum(1)[:, np.newaxis]
@@ -151,6 +153,15 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     eps = 2e-8
     self.assertLess(err, eps)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testRagged(self):
+    x_list = [[-500, -501, -502], [], [1729, 1729]]
+    y_list = [self._softmax(np.array([row])).tolist() for row in x_list]
+    expected = ragged_factory_ops.constant(y_list, dtype=dtypes.float32)
+    x_tf = ragged_factory_ops.constant(x_list, dtype=dtypes.float32)
+    y_tf = nn_ops.softmax_v2(x_tf)
+    eps = 1e-3
+    self.assertAllClose(y_tf, expected, eps)
 
 class LogPoissonLossTest(test_lib.TestCase):
 
