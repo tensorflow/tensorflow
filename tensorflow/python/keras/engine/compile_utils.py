@@ -457,7 +457,7 @@ class MetricsContainer(Container):
       for metric_obj in metric_objs:
         if metric_obj is None:
           continue
-        metric_obj.update_state(y_t, y_p, sample_weight=mask)
+        metric_obj.update_state(y_t, y_p, sample_weight=sw)
 
       for weighted_metric_obj in weighted_metric_objs:
         if weighted_metric_obj is None:
