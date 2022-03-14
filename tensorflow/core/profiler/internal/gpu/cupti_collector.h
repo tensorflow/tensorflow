@@ -45,6 +45,11 @@ struct MemcpyDetails {
   int8 src_mem_kind;
   // CUpti_ActivityMemoryKind of destination.
   int8 dst_mem_kind;
+
+  // ID of the hardware channel on which this operation ran.
+  uint32_t channel_id = -1;
+  // CUpti_ChannelType of the channel above.
+  int8_t channel_type = 0;  // CUPTI_CHANNEL_TYPE_INVALID
 };
 
 struct MemAllocDetails {
@@ -71,6 +76,11 @@ struct MemsetDetails {
   int8 mem_kind;
   // Whether or not the memset is asynchronous.
   bool async;
+
+  // ID of the hardware channel on which this operation ran.
+  uint32_t channel_id = -1;
+  // CUpti_ChannelType of the channel above.
+  int8_t channel_type = 0;  // CUPTI_CHANNEL_TYPE_INVALID
 };
 
 struct KernelDetails {
@@ -92,6 +102,11 @@ struct KernelDetails {
   uint32 grid_y;
   // Z-dimension of a grid.
   uint32 grid_z;
+
+  // ID of the hardware channel on which this operation ran.
+  uint32_t channel_id = -1;
+  // CUpti_ChannelType of the channel above.
+  int8_t channel_type = 0;  // CUPTI_CHANNEL_TYPE_INVALID
 };
 
 inline std::string ToXStat(const KernelDetails& kernel_info,
