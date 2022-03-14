@@ -142,7 +142,11 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   uint64_t GetServiceIncarnation() override;
   void StartCheckStaleness();  // Checks both heartbeat and barrier timeouts.
   void Stop(bool shut_staleness_thread = true);
-  void PropagateError(const CoordinatedTask& task, Status error,
+  // Report service error to a specified task.
+  void ReportServiceErrorToAgent(const CoordinatedTask& destination_task,
+                                 Status error);
+  // Report error from a task to all other connected tasks.
+  void PropagateError(const CoordinatedTask& source_task, Status error,
                       bool is_reported_by_agent = false)
       TF_LOCKS_EXCLUDED(state_mu_);
   void SetTaskError(absl::string_view task_name, Status error)
@@ -539,14 +543,44 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
   return s;
 }
 
+void CoordinationServiceStandaloneImpl::ReportServiceErrorToAgent(
+    const CoordinatedTask& destination_task, Status error) {
+  assert(!error.ok());
+
+  // Don't report error if there is no service-to-client connection.
+  if (client_cache_ == nullptr) {
+    LOG(ERROR) << error;
+    return;
+  }
+
+  auto request = std::make_shared<ReportErrorToAgentRequest>();
+  auto response = std::make_shared<ReportErrorToAgentResponse>();
+  request->set_error_code(error.code());
+  request->set_error_message(error.error_message());
+  CoordinatedTask* error_source =
+      request->mutable_error_payload()->mutable_source_task();
+  error_source->set_job_name("coordination_service");
+
+  const std::string task_name = GetTaskName(destination_task);
+  CoordinationClient* client = client_cache_->GetClient(task_name);
+  client->ReportErrorToAgentAsync(
+      request.get(), response.get(), [request, response, task_name](Status s) {
+        if (!s.ok()) {
+          LOG(ERROR) << "Encountered another error while reporting to "
+                     << task_name << ": " << s;
+        }
+      });
+}
+
 void CoordinationServiceStandaloneImpl::PropagateError(
-    const CoordinatedTask& task, Status error, bool is_reported_by_agent) {
+    const CoordinatedTask& source_task, Status error,
+    bool is_reported_by_agent) {
   assert(!error.ok());
   ReportErrorToAgentRequest request;
   request.set_error_code(error.code());
   request.set_error_message(error.error_message());
   CoordinationServiceError* payload = request.mutable_error_payload();
-  *payload->mutable_source_task() = task;
+  *payload->mutable_source_task() = source_task;
   payload->set_is_reported_error(is_reported_by_agent);
   std::vector<std::shared_ptr<Notification>> notifications;
 
