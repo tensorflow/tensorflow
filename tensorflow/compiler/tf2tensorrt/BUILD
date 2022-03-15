@@ -616,6 +616,29 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_library(
+    name = "algorithm_selector",
+    srcs = [
+        "convert/algorithm_selector.cc",
+    ],
+    hdrs = [
+        "convert/algorithm_selector.h",
+    ],
+    deps = [":common_utils"] + if_tensorrt([":tensorrt_lib"]),
+)
+
+tf_cuda_cc_test(
+    name = "algorithm_selector_test",
+    srcs = [
+        "convert/algorithm_selector_test.cc",
+    ],
+    deps = [
+        ":algorithm_selector",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + if_tensorrt([":tensorrt_lib"]),
+)
+
 # Library for the node-level conversion portion of TensorRT operation creation
 tf_cuda_library(
     name = "trt_conversion",
@@ -644,6 +667,7 @@ tf_cuda_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":algorithm_selector",
         ":common_utils",
         ":logger_registry",
         ":segment",
