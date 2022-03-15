@@ -149,6 +149,23 @@ class HloModuleConfig {
   }
   bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
 
+  void set_use_auto_spmd_partitioning(bool use_auto_spmd_partitioning) {
+    use_auto_spmd_partitioning_ = use_auto_spmd_partitioning;
+    if (use_auto_spmd_partitioning) {
+      // TODO(yuemmawang) Remove this warning once auto sharding is thoroughly
+      // tested with fleetwide models.
+      LOG(WARNING) << "Warning: Using auto_spmd_partitioning. It is "
+                      "experimental and may "
+                      "contain bugs!";
+      LOG(INFO) << "Overwriting use_spmd_partitioning to true, because "
+                   "use_auto_spmd_partitioning is true.";
+      set_use_spmd_partitioning(true);
+    }
+  }
+  bool use_auto_spmd_partitioning() const {
+    return use_auto_spmd_partitioning_;
+  }
+
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.
   void set_deduplicate_hlo(bool deduplicate_hlo) {
@@ -323,6 +340,9 @@ class HloModuleConfig {
   // Whether to use SPMD (true) or MPMD (false) when num_partitions_ > 0 and XLA
   // needs to partition the module.
   bool use_spmd_partitioning_ = false;
+
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning_ = false;
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.

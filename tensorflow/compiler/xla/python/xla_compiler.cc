@@ -711,6 +711,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("use_spmd_partitioning",
                     &ExecutableBuildOptions::use_spmd_partitioning,
                     &ExecutableBuildOptions::set_use_spmd_partitioning)
+      .def_property("use_auto_spmd_partitioning",
+                    &ExecutableBuildOptions::use_auto_spmd_partitioning,
+                    &ExecutableBuildOptions::set_use_auto_spmd_partitioning)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
           &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,

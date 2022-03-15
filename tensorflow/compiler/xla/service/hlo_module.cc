@@ -493,6 +493,8 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     }
     module_config.set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
+    module_config.set_use_auto_spmd_partitioning(
+        execution_options->use_auto_spmd_partitioning());
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     module_config.set_allow_spmd_sharding_propagation_to_output(
         execution_options->allow_spmd_sharding_propagation_to_output());

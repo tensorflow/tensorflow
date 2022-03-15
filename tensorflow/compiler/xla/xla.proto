@@ -445,6 +445,9 @@ message ExecutionOptions {
   // num_partitions > 1 and XLA is requested to partition the input program.
   bool use_spmd_partitioning = 11;
 
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning = 15;
+
   // If set, deduplicate hlo into function calls to reduce binary size. Only
   // works on TPU.
   bool deduplicate_hlo = 12;
