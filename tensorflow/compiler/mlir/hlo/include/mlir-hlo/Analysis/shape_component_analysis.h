@@ -93,6 +93,9 @@ class ShapeComponentAnalysis {
     // Returns true if this symbolic expression is known to be different from
     // `-1`. This is useful for reshapes.
     bool isKnownNotNegativeOne() const;
+    // Returns true if thus symbolic expression is known to be different from
+    // `1`. This is useful for broadcasts.
+    bool isKnownNotOne() const;
     // If this is a reference to a singular symbol, return it.
     Optional<Symbol> singleton() const;
 
