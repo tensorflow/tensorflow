@@ -44,6 +44,14 @@ class CoordinationClient {
                                     WaitForAllTasksResponse* response,
                                     StatusCallback done) = 0;
 
+  virtual void ShutdownAgentAsync(const ShutdownAgentRequest* request,
+                                  ShutdownAgentResponse* response,
+                                  StatusCallback done) = 0;
+
+  virtual void ResetAgentAsync(const ResetAgentRequest* request,
+                               ResetAgentResponse* response,
+                               StatusCallback done) = 0;
+
   virtual void ReportErrorToAgentAsync(const ReportErrorToAgentRequest* request,
                                        ReportErrorToAgentResponse* response,
                                        StatusCallback done) = 0;

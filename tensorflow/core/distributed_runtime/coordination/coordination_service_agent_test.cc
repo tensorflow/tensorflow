@@ -62,6 +62,8 @@ class TestCoordinationClient : public CoordinationClient {
 
   UNIMPLEMENTED(Heartbeat);
   UNIMPLEMENTED(WaitForAllTasks);
+  UNIMPLEMENTED(ShutdownAgent);
+  UNIMPLEMENTED(ResetAgent);
   UNIMPLEMENTED(ReportErrorToAgent);
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);

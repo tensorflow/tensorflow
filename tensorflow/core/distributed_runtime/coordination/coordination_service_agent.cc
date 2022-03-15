@@ -66,6 +66,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() override;
   StatusOr<TaskState> GetTaskStatus(const CoordinatedTask& task) override;
   Status ReportError(const Status& error) override;
+  Status Shutdown() override;
   Status Reset() override;
 
   StatusOr<std::string> GetKeyValue(const std::string& key) override;
@@ -361,6 +362,11 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
   });
   n.WaitForNotification();
   return Status::OK();
+}
+
+Status CoordinationServiceAgentImpl::Shutdown() {
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgentImpl::Shutdown is not implemented yet."));
 }
 
 Status CoordinationServiceAgentImpl::Reset() {

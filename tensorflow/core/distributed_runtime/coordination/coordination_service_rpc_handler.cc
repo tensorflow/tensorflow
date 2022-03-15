@@ -97,6 +97,36 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
       });
 }
 
+void CoordinationServiceRpcHandler::ShutdownAgentAsync(
+    const ShutdownAgentRequest* request, ShutdownAgentResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  done(MakeCoordinationError(
+      errors::Unimplemented("CoordinationServiceInterface::ShutdownAsync() is"
+                            " not implemented yet.")));
+}
+
+void CoordinationServiceRpcHandler::ResetAgentAsync(
+    const ResetAgentRequest* request, ResetAgentResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  done(MakeCoordinationError(
+      errors::Unimplemented("CoordinationServiceInterface::ResetAsync() is"
+                            " not implemented yet.")));
+}
+
 void CoordinationServiceRpcHandler::ReportErrorToAgentAsync(
     const ReportErrorToAgentRequest* request,
     ReportErrorToAgentResponse* response, StatusCallback done) {

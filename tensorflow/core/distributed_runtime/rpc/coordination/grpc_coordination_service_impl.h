@@ -76,6 +76,8 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   }
   HANDLER(RegisterWorker);
   HANDLER(WaitForAllTasks);
+  HANDLER(ShutdownAgent);
+  HANDLER(ResetAgent);
   HANDLER(Heartbeat);
   HANDLER(ReportErrorToAgent);
   HANDLER(ReportErrorToService);

@@ -38,6 +38,8 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
   } while (0)
   ENQUEUE_REQUEST(RegisterWorker);
   ENQUEUE_REQUEST(WaitForAllTasks);
+  ENQUEUE_REQUEST(ShutdownAgent);
+  ENQUEUE_REQUEST(ResetAgent);
   ENQUEUE_REQUEST(Heartbeat);
   ENQUEUE_REQUEST(ReportErrorToAgent);
   ENQUEUE_REQUEST(ReportErrorToService);

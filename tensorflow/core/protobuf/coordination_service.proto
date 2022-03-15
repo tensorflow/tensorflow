@@ -92,6 +92,20 @@ message WaitForAllTasksResponse {
   CoordinationServiceDeviceInfo cluster_device_info = 3;
 }
 
+// Request and response messages for disconnecting a task from the service.
+message ShutdownAgentRequest {
+  CoordinatedTask source_task = 1;
+}
+
+message ShutdownAgentResponse {}
+
+// Request and response messages for resetting a task state in the service.
+message ResetAgentRequest {
+  CoordinatedTask source_task = 1;
+}
+
+message ResetAgentResponse {}
+
 // Request and response messages for reporting errors to task.
 message ReportErrorToAgentRequest {
   int32 error_code = 1;
@@ -191,6 +205,17 @@ service CoordinationService {
   // Wait for all tasks in the cluster to be up and running. The RPC request
   // only gets responded when all workers are registered, or some error occurs.
   rpc WaitForAllTasks(WaitForAllTasksRequest) returns (WaitForAllTasksResponse);
+
+  // Disconnects task from the service. If `shutdown_barrier_timeout_in_ms` is
+  // specified in the config, blocks until all tasks reach the barrier before
+  // disconnecting together. If the barrier times out, tasks at the barrier will
+  // still disconnect, while an error is reported to tasks that did not reach
+  // the barrier on time.
+  rpc ShutdownAgent(ShutdownAgentRequest) returns (ShutdownAgentResponse);
+
+  // Disconnects task from the service if it is in an ERROR state, thereby
+  // allowing it to reconnect via RegisterWorker() in the future.
+  rpc ResetAgent(ResetAgentRequest) returns (ResetAgentResponse);
 
   // Report error to the task. RPC sets the receiving instance of coordination
   // service agent to error state permanently.

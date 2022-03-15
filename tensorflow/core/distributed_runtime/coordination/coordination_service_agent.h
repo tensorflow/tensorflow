@@ -124,6 +124,14 @@ class CoordinationServiceAgent {
   //   - InvalidArgument: Unexpected worker request
   virtual Status ReportError(const Status& error) = 0;
 
+  // Shuts down by disconnecting from the service. Should only be called if
+  // agent is connected and no further agent calls (except the destructor) are
+  // expected. If `shutdown_barrier_timeout_in_ms` is specified in the config,
+  // blocks until all tasks reach the barrier before shutting down together. If
+  // the barrier times out, this agent will still disconnect, while an error is
+  // reported to other agents that did not reach the barrier on time.
+  virtual Status Shutdown() = 0;
+
   // Disconnect from the service, and clean up the internal error status.
   virtual Status Reset() = 0;
 

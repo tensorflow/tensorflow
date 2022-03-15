@@ -39,6 +39,12 @@ class CoordinationServiceRpcHandler {
                             WaitForAllTasksResponse* response,
                             StatusCallback done);
 
+  void ShutdownAgentAsync(const ShutdownAgentRequest* request,
+                          ShutdownAgentResponse* response, StatusCallback done);
+
+  void ResetAgentAsync(const ResetAgentRequest* request,
+                       ResetAgentResponse* response, StatusCallback done);
+
   void ReportErrorToAgentAsync(const ReportErrorToAgentRequest* request,
                                ReportErrorToAgentResponse* response,
                                StatusCallback done);

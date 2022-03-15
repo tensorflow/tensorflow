@@ -92,6 +92,26 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
+  void ShutdownAgentAsync(const ShutdownAgentRequest* request,
+                          ShutdownAgentResponse* response,
+                          StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/ShutdownAgent", *request,
+        response, std::move(done), /*call_opts=*/nullptr,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
+  void ResetAgentAsync(const ResetAgentRequest* request,
+                       ResetAgentResponse* response,
+                       StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/ResetAgent", *request,
+        response, std::move(done), /*call_opts=*/nullptr,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
   void HeartbeatAsync(const HeartbeatRequest* request,
                       HeartbeatResponse* response,
                       StatusCallback done) override {
