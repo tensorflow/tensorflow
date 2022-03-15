@@ -379,6 +379,10 @@ class LayoutAssignment : public HloModulePass {
                           bool mandatory, bool dfs, int64_t priority);
   bool reverse_computation_order() const { return reverse_computation_order_; }
 
+  ComputationLayout& saved_entry_computation_layout() {
+    return saved_entry_computation_layout_;
+  }
+
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
   // constraint to its neighbors (i.e. operands and users) in order to minimize

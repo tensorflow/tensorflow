@@ -765,7 +765,7 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   Add(x, y);
 
   Shape argument_layout =
-      local_client_->backend().compiler()->DeviceShapeRepresentation(
+      local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
           ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{3}, {0}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,

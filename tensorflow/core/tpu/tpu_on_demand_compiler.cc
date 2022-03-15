@@ -202,6 +202,14 @@ class TpuCompiler : public Compiler {
     };
   }
 
+  Shape DefaultDeviceShapeRepresentation(const Shape& shape) const override {
+    XLA_Shape host_shape, device_shape;
+    ApiConverter::ToC(shape, &host_shape);
+    ExecutorApiFn()->TpuCompiler_DefaultDeviceShapeRepresentationFn(
+        compiler_, &host_shape, &device_shape);
+    return ApiConverter::FromC(&device_shape);
+  }
+
  private:
   Tpu_Compiler* compiler_;
 };

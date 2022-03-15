@@ -233,7 +233,8 @@ bool InputShapeMatches(const xla::Shape& parameter_shape,
           pshape.element_type() != ishape->element_type()) {
         return errors::InvalidArgument("Mismatching shapes");
       }
-      if (pshape.is_static() && pshape.layout() != ishape->layout()) {
+      if (pshape.is_static() && !xla::Layout::Equal().IgnoreTiles()(
+                                    pshape.layout(), ishape->layout())) {
         return errors::InvalidArgument("Mismatching layouts");
       }
       for (int64_t dim = 0; dim < pshape.rank(); ++dim) {
