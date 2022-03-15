@@ -264,6 +264,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/compiler/xla/pjrt:transpose",
+        "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:statusor",
