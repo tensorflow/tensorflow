@@ -46,11 +46,11 @@ class Env;
       }()
 
 // Coordination service is used for controlling and coordinating distributed
-// execution in a cluster of multiple workers.
+// execution in a cluster of multiple tasks.
 //
 // When enabled, the service keeps track of cluster configurations and the state
 // of cluster members. TF runtime and libraries can use it to orchastrate
-// cluster initialization, check the healthiness of workers, and propagate error
+// cluster initialization, check the healthiness of tasks, and propagate error
 // messages to the cluster.
 //
 // Normally, the service should first Start(), then perform the supported
@@ -102,9 +102,9 @@ class CoordinationServiceInterface {
     return *GetCoordinationServiceInstancePtr();
   }
 
-  // Register a worker to the service.
-  virtual void RegisterWorker(const CoordinatedTask& task, uint64_t incarnation,
-                              StatusCallback done) = 0;
+  // Register a task to the service.
+  virtual void RegisterTask(const CoordinatedTask& task, uint64_t incarnation,
+                            StatusCallback done) = 0;
 
   // Wait for all tasks to be up and running, and register local device
   // info. The callback is invoked when all tasks are up and registered, or some

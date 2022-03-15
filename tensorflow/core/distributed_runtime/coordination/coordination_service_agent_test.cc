@@ -46,11 +46,10 @@ class TestCoordinationClient : public CoordinationClient {
   MOCK_METHOD3(GetKeyValueAsync, void(const GetKeyValueRequest*,
                                       GetKeyValueResponse*, StatusCallback));
 
-  void RegisterWorkerAsync(CallOptions* opts,
-                           const RegisterWorkerRequest* request,
-                           RegisterWorkerResponse* response,
-                           StatusCallback done) override {
-    done(errors::Unimplemented("RegisterWorkerAsync"));
+  void RegisterTaskAsync(CallOptions* opts, const RegisterTaskRequest* request,
+                         RegisterTaskResponse* response,
+                         StatusCallback done) override {
+    done(errors::Unimplemented("RegisterTaskAsync"));
   }
 
 #define UNIMPLEMENTED(method)                                         \
@@ -62,9 +61,9 @@ class TestCoordinationClient : public CoordinationClient {
 
   UNIMPLEMENTED(Heartbeat);
   UNIMPLEMENTED(WaitForAllTasks);
-  UNIMPLEMENTED(ShutdownAgent);
-  UNIMPLEMENTED(ResetAgent);
-  UNIMPLEMENTED(ReportErrorToAgent);
+  UNIMPLEMENTED(ShutdownTask);
+  UNIMPLEMENTED(ResetTask);
+  UNIMPLEMENTED(ReportErrorToTask);
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(DeleteKeyValue);

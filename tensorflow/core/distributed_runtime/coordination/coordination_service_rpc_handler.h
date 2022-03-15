@@ -28,9 +28,8 @@ class CoordinationServiceRpcHandler {
 
   void SetAgentInstance(CoordinationServiceAgent* agent);
 
-  void RegisterWorkerAsync(const RegisterWorkerRequest* request,
-                           RegisterWorkerResponse* response,
-                           StatusCallback done);
+  void RegisterTaskAsync(const RegisterTaskRequest* request,
+                         RegisterTaskResponse* response, StatusCallback done);
 
   void HeartbeatAsync(const HeartbeatRequest* request,
                       HeartbeatResponse* response, StatusCallback done);
@@ -39,15 +38,15 @@ class CoordinationServiceRpcHandler {
                             WaitForAllTasksResponse* response,
                             StatusCallback done);
 
-  void ShutdownAgentAsync(const ShutdownAgentRequest* request,
-                          ShutdownAgentResponse* response, StatusCallback done);
+  void ShutdownTaskAsync(const ShutdownTaskRequest* request,
+                         ShutdownTaskResponse* response, StatusCallback done);
 
-  void ResetAgentAsync(const ResetAgentRequest* request,
-                       ResetAgentResponse* response, StatusCallback done);
+  void ResetTaskAsync(const ResetTaskRequest* request,
+                      ResetTaskResponse* response, StatusCallback done);
 
-  void ReportErrorToAgentAsync(const ReportErrorToAgentRequest* request,
-                               ReportErrorToAgentResponse* response,
-                               StatusCallback done);
+  void ReportErrorToTaskAsync(const ReportErrorToTaskRequest* request,
+                              ReportErrorToTaskResponse* response,
+                              StatusCallback done);
 
   void ReportErrorToServiceAsync(const ReportErrorToServiceRequest* request,
                                  ReportErrorToServiceResponse* response,

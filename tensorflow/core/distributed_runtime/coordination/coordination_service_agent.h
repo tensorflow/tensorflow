@@ -80,19 +80,19 @@ class CoordinationServiceAgent {
 
   // Connect to coordination service with the following steps:
   //   - connect to service address specified in the config of `server_def`
-  //   - register itself as a worker to the service
+  //   - register itself as a task to the service
   //   - start a thread to periodically send heartbeat message with the service
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in DISCONNECTED state.
-  //   - InvalidArgument: Unexpected worker registration
-  //   - Aborted: Duplicate worker registration
+  //   - InvalidArgument: Unexpected task registration
+  //   - Aborted: Duplicate task registration
   virtual Status Connect() = 0;
 
   // Wait for all tasks to be up and registered. The call blocks until all tasks
   // in the cluster are up, or some error occurs.
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in RUNNING state.
-  //   - InvalidArgument: Unexpected worker request
+  //   - InvalidArgument: Unexpected task request
   virtual Status WaitForAllTasks(
       const CoordinationServiceDeviceInfo& local_devices) = 0;
 
@@ -121,7 +121,7 @@ class CoordinationServiceAgent {
   // distinguish user-specified errors from internal service or RPC failures.
   // Possible service errors:
   //   - FailedPrecondition: Uninitialized/disconnected/already in error state.
-  //   - InvalidArgument: Unexpected worker request
+  //   - InvalidArgument: Unexpected task request
   virtual Status ReportError(const Status& error) = 0;
 
   // Shuts down by disconnecting from the service. Should only be called if

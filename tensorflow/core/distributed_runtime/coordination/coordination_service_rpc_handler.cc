@@ -33,8 +33,8 @@ void CoordinationServiceRpcHandler::SetAgentInstance(
   agent_ = agent;
 }
 
-void CoordinationServiceRpcHandler::RegisterWorkerAsync(
-    const RegisterWorkerRequest* request, RegisterWorkerResponse* response,
+void CoordinationServiceRpcHandler::RegisterTaskAsync(
+    const RegisterTaskRequest* request, RegisterTaskResponse* response,
     StatusCallback done) {
   CoordinationServiceInterface* service =
       CoordinationServiceInterface::GetCoordinationServiceInstance();
@@ -46,7 +46,7 @@ void CoordinationServiceRpcHandler::RegisterWorkerAsync(
   const CoordinatedTask& task = request->source_task();
   const uint64_t incarnation = request->incarnation();
   const uint64_t leader_incarnation = service->GetServiceIncarnation();
-  service->RegisterWorker(
+  service->RegisterTask(
       task, incarnation,
       [leader_incarnation, response, done = std::move(done)](Status s) {
         response->set_leader_incarnation(leader_incarnation);
@@ -97,8 +97,8 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
       });
 }
 
-void CoordinationServiceRpcHandler::ShutdownAgentAsync(
-    const ShutdownAgentRequest* request, ShutdownAgentResponse* response,
+void CoordinationServiceRpcHandler::ShutdownTaskAsync(
+    const ShutdownTaskRequest* request, ShutdownTaskResponse* response,
     StatusCallback done) {
   CoordinationServiceInterface* service =
       CoordinationServiceInterface::GetCoordinationServiceInstance();
@@ -112,8 +112,8 @@ void CoordinationServiceRpcHandler::ShutdownAgentAsync(
                             " not implemented yet.")));
 }
 
-void CoordinationServiceRpcHandler::ResetAgentAsync(
-    const ResetAgentRequest* request, ResetAgentResponse* response,
+void CoordinationServiceRpcHandler::ResetTaskAsync(
+    const ResetTaskRequest* request, ResetTaskResponse* response,
     StatusCallback done) {
   CoordinationServiceInterface* service =
       CoordinationServiceInterface::GetCoordinationServiceInstance();
@@ -127,9 +127,9 @@ void CoordinationServiceRpcHandler::ResetAgentAsync(
                             " not implemented yet.")));
 }
 
-void CoordinationServiceRpcHandler::ReportErrorToAgentAsync(
-    const ReportErrorToAgentRequest* request,
-    ReportErrorToAgentResponse* response, StatusCallback done) {
+void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
+    const ReportErrorToTaskRequest* request,
+    ReportErrorToTaskResponse* response, StatusCallback done) {
   const CoordinationServiceError& error_payload = request->error_payload();
   Status error(static_cast<error::Code>(request->error_code()),
                strings::StrCat("Error reported from /job:",

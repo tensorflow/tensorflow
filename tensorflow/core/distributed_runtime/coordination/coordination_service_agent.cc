@@ -219,10 +219,10 @@ Status CoordinationServiceAgentImpl::Connect() {
           "Coordination service agent is not in DISCONNECTED state."));
     }
   }
-  RegisterWorkerRequest request;
+  RegisterTaskRequest request;
   *request.mutable_source_task() = task_;
   request.set_incarnation(incarnation_id_);
-  RegisterWorkerResponse response;
+  RegisterTaskResponse response;
   absl::Notification n;
 
   // Block until the remote service is up and the task is registered.
@@ -232,7 +232,7 @@ Status CoordinationServiceAgentImpl::Connect() {
           ? configs_.cluster_register_timeout_in_ms()
           : kDefaultClusterRegisterTimeoutMs;
   call_opts.SetTimeout(register_timeout);
-  leader_client_->RegisterWorkerAsync(
+  leader_client_->RegisterTaskAsync(
       &call_opts, &request, &response, [&](Status s) {
         if (!s.ok()) {
           SetError(s);

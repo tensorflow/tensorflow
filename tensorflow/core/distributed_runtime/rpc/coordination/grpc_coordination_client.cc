@@ -71,12 +71,12 @@ class GrpcCoordinationClient : public CoordinationClient {
   }
   ~GrpcCoordinationClient() override {}
 
-  void RegisterWorkerAsync(CallOptions* call_opts,
-                           const RegisterWorkerRequest* request,
-                           RegisterWorkerResponse* response,
-                           StatusCallback done) override {
+  void RegisterTaskAsync(CallOptions* call_opts,
+                         const RegisterTaskRequest* request,
+                         RegisterTaskResponse* response,
+                         StatusCallback done) override {
     new RPCState<protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/RegisterWorker", *request,
+        &stub_, cq_, "/tensorflow.CoordinationService/RegisterTask", *request,
         response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/false,
         &target_);
@@ -92,21 +92,21 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
-  void ShutdownAgentAsync(const ShutdownAgentRequest* request,
-                          ShutdownAgentResponse* response,
-                          StatusCallback done) override {
+  void ShutdownTaskAsync(const ShutdownTaskRequest* request,
+                         ShutdownTaskResponse* response,
+                         StatusCallback done) override {
     new RPCState<protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/ShutdownAgent", *request,
+        &stub_, cq_, "/tensorflow.CoordinationService/ShutdownTask", *request,
         response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
 
-  void ResetAgentAsync(const ResetAgentRequest* request,
-                       ResetAgentResponse* response,
-                       StatusCallback done) override {
+  void ResetTaskAsync(const ResetTaskRequest* request,
+                      ResetTaskResponse* response,
+                      StatusCallback done) override {
     new RPCState<protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/ResetAgent", *request,
+        &stub_, cq_, "/tensorflow.CoordinationService/ResetTask", *request,
         response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
@@ -124,11 +124,11 @@ class GrpcCoordinationClient : public CoordinationClient {
         /*fail_fast=*/true, &target_);
   }
 
-  void ReportErrorToAgentAsync(const ReportErrorToAgentRequest* request,
-                               ReportErrorToAgentResponse* response,
-                               StatusCallback done) override {
+  void ReportErrorToTaskAsync(const ReportErrorToTaskRequest* request,
+                              ReportErrorToTaskResponse* response,
+                              StatusCallback done) override {
     new RPCState<protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/ReportErrorToAgent",
+        &stub_, cq_, "/tensorflow.CoordinationService/ReportErrorToTask",
         *request, response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);

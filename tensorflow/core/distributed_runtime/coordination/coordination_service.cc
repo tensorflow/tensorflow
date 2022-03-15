@@ -115,8 +115,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       const ServerDef& server_def);
   ~CoordinationServiceStandaloneImpl() override { Stop(); }
 
-  void RegisterWorker(const CoordinatedTask& task, uint64_t incarnation,
-                      StatusCallback done) override;
+  void RegisterTask(const CoordinatedTask& task, uint64_t incarnation,
+                    StatusCallback done) override;
   void WaitForAllTasks(const CoordinatedTask& task,
                        const CoordinationServiceDeviceInfo& devices,
                        StatusCallback done) override;
@@ -143,11 +143,11 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void StartCheckStaleness();  // Checks both heartbeat and barrier timeouts.
   void Stop(bool shut_staleness_thread = true);
   // Report service error to a specified task.
-  void ReportServiceErrorToAgent(const CoordinatedTask& destination_task,
-                                 Status error);
+  void ReportServiceErrorToTask(const CoordinatedTask& destination_task,
+                                Status error);
   // Report error from a task to all other connected tasks.
   void PropagateError(const CoordinatedTask& source_task, Status error,
-                      bool is_reported_by_agent = false)
+                      bool is_reported_by_task = false)
       TF_LOCKS_EXCLUDED(state_mu_);
   void SetTaskError(absl::string_view task_name, Status error)
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
@@ -352,24 +352,24 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
           Status status = Status::OK();
           {
             mutex_lock l(state_mu_);
-            for (const auto& worker_state : cluster_state_) {
-              // Skip workers that are not registered or in error state
-              if (worker_state.second->GetState() !=
+            for (const auto& task_state : cluster_state_) {
+              // Skip tasks that are not registered or in error state
+              if (task_state.second->GetState() !=
                   TaskState::State::CONNECTED) {
                 continue;
               }
               const bool is_stale =
-                  worker_state.second->TimeSinceLastHeartbeatMs() >
+                  task_state.second->TimeSinceLastHeartbeatMs() >
                   heartbeat_timeout_ms_;
-              VLOG(1) << "Checking staleness for " << worker_state.first
+              VLOG(1) << "Checking staleness for " << task_state.first
                       << " stale?=" << is_stale;
               if (is_stale) {
                 status = MakeCoordinationError(errors::Unavailable(
-                    "Task ", worker_state.first,
+                    "Task ", task_state.first,
                     " heartbeat timeout. This indicates that the remote task "
                     "has failed, got preempted, or crashed unexpectedly."));
-                stale_task = GetTaskFromName(worker_state.first);
-                SetTaskError(worker_state.first, status);
+                stale_task = GetTaskFromName(task_state.first);
+                SetTaskError(task_state.first, status);
                 break;
               }
             }
@@ -444,7 +444,7 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   }
 }
 
-void CoordinationServiceStandaloneImpl::RegisterWorker(
+void CoordinationServiceStandaloneImpl::RegisterTask(
     const CoordinatedTask& task, uint64_t incarnation, StatusCallback done) {
   const std::string& task_name = GetTaskName(task);
 
@@ -453,13 +453,13 @@ void CoordinationServiceStandaloneImpl::RegisterWorker(
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
       done(MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected worker registered with task_name=", task_name)));
+          "Unexpected task registered with task_name=", task_name)));
       // Note: unexpected task register should not be propagated to other tasks
       return;
     } else if (cluster_state_[task_name]->GetState() ==
                TaskState::State::CONNECTED) {
       Status s = MakeCoordinationError(
-          errors::Aborted("Duplicate worker registration with with task_name=",
+          errors::Aborted("Duplicate task registration with task_name=",
                           task_name),
           task);
 
@@ -504,8 +504,8 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
-      return MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected worker request with task_name=", task_name));
+      return MakeCoordinationError(
+          errors::InvalidArgument("Unexpected request from task ", task_name));
     } else if (cluster_state_[task_name]->GetState() !=
                TaskState::State::CONNECTED) {
       return MakeCoordinationError(errors::FailedPrecondition(
@@ -514,7 +514,7 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
       SetTaskError(task_name, error);
     }
   }
-  PropagateError(task, error, /*is_reported_by_agent=*/true);
+  PropagateError(task, error, /*is_reported_by_task=*/true);
   return Status::OK();
 }
 
@@ -526,7 +526,7 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
       return MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected worker request with task_name=", task_name));
+          "Unexpected task request with task_name=", task_name));
     } else if (!cluster_state_[task_name]->GetStatus().ok()) {
       return cluster_state_[task_name]->GetStatus();
     } else if (cluster_state_[task_name]->GetState() ==
@@ -543,7 +543,7 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
   return s;
 }
 
-void CoordinationServiceStandaloneImpl::ReportServiceErrorToAgent(
+void CoordinationServiceStandaloneImpl::ReportServiceErrorToTask(
     const CoordinatedTask& destination_task, Status error) {
   assert(!error.ok());
 
@@ -553,8 +553,8 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToAgent(
     return;
   }
 
-  auto request = std::make_shared<ReportErrorToAgentRequest>();
-  auto response = std::make_shared<ReportErrorToAgentResponse>();
+  auto request = std::make_shared<ReportErrorToTaskRequest>();
+  auto response = std::make_shared<ReportErrorToTaskResponse>();
   request->set_error_code(error.code());
   request->set_error_message(error.error_message());
   CoordinatedTask* error_source =
@@ -563,7 +563,7 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToAgent(
 
   const std::string task_name = GetTaskName(destination_task);
   CoordinationClient* client = client_cache_->GetClient(task_name);
-  client->ReportErrorToAgentAsync(
+  client->ReportErrorToTaskAsync(
       request.get(), response.get(), [request, response, task_name](Status s) {
         if (!s.ok()) {
           LOG(ERROR) << "Encountered another error while reporting to "
@@ -574,14 +574,14 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToAgent(
 
 void CoordinationServiceStandaloneImpl::PropagateError(
     const CoordinatedTask& source_task, Status error,
-    bool is_reported_by_agent) {
+    bool is_reported_by_task) {
   assert(!error.ok());
-  ReportErrorToAgentRequest request;
+  ReportErrorToTaskRequest request;
   request.set_error_code(error.code());
   request.set_error_message(error.error_message());
   CoordinationServiceError* payload = request.mutable_error_payload();
   *payload->mutable_source_task() = source_task;
-  payload->set_is_reported_error(is_reported_by_agent);
+  payload->set_is_reported_error(is_reported_by_task);
   std::vector<std::shared_ptr<Notification>> notifications;
 
   std::vector<absl::string_view> task_names;
@@ -595,7 +595,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   for (absl::string_view task : task_names) {
     {
       mutex_lock l(state_mu_);
-      // Propagate error only to workers that are connected
+      // Propagate error only to tasks that are connected
       if (cluster_state_[task]->GetState() != TaskState::State::CONNECTED)
         continue;
     }
@@ -606,9 +606,9 @@ void CoordinationServiceStandaloneImpl::PropagateError(
       return;
     }
     CoordinationClient* client = client_cache_->GetClient(std::string(task));
-    auto response = std::make_shared<ReportErrorToAgentResponse>();
+    auto response = std::make_shared<ReportErrorToTaskResponse>();
     auto n = std::make_shared<Notification>();
-    client->ReportErrorToAgentAsync(
+    client->ReportErrorToTaskAsync(
         &request, response.get(), [response, n, task](Status s) {
           if (!s.ok()) {
             LOG(ERROR) << "Encountered another error while reporting to "
