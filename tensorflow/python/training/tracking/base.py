@@ -30,6 +30,7 @@ from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import registration
 from tensorflow.python.training.saving import saveable_object
+from tensorflow.python.training.tracking import checkpoint_util
 from tensorflow.python.types import core as core_types
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
@@ -296,7 +297,7 @@ class CheckpointPosition(object):
           self._checkpoint.new_restore_ops(restore_ops)
 
   def bind_object(self, trackable):
-    """Set a checkpoint<->object correspondence and process slot variables.
+    """Set a checkpoint<->object correspondence.
 
     Args:
       trackable: The object to record a correspondence for.
@@ -313,34 +314,6 @@ class CheckpointPosition(object):
     checkpoint.matched_proto_ids.add(self._proto_id)
     if current_assignment is None:
       checkpoint.object_by_proto_id[self._proto_id] = trackable
-      for deferred_slot_restoration in (
-          checkpoint.deferred_slot_restorations.pop(self._proto_id, ())):
-        self._queue_slot_variable_for_restoration(
-            trackable, deferred_slot_restoration.original_variable,
-            deferred_slot_restoration.slot_variable_id,
-            deferred_slot_restoration.slot_name)
-      for slot_restoration in checkpoint.slot_restorations.pop(
-          self._proto_id, ()):
-        optimizer_object = checkpoint.object_by_proto_id.get(
-            slot_restoration.optimizer_id, None)
-        if optimizer_object is None:
-          # The optimizer has not yet been created or tracked. Record in the
-          # checkpoint that the slot variables need to be restored when it is.
-          checkpoint.deferred_slot_restorations.setdefault(
-              slot_restoration.optimizer_id, []).append(
-                  _DeferredSlotVariableRestoration(
-                      original_variable=trackable,
-                      slot_variable_id=slot_restoration.slot_variable_id,
-                      slot_name=slot_restoration.slot_name))
-
-        # `optimizer_object` can be a `Checkpoint` when user only needs the
-        # attributes the optimizer holds, such as `iterations`. In those cases,
-        # it would not have the optimizer's `_create_or_restore_slot_variable`
-        # method.
-        elif hasattr(optimizer_object, "_create_or_restore_slot_variable"):
-          self._queue_slot_variable_for_restoration(
-              optimizer_object, trackable, slot_restoration.slot_variable_id,
-              slot_restoration.slot_name)
       return True  # New assignment
     else:
       # The object was already mapped for this checkpoint load, which means
@@ -537,18 +510,23 @@ class CheckpointPosition(object):
       return saver_name
     return None
 
-  def _queue_slot_variable_for_restoration(self, optimizer_object, variable,
-                                           slot_variable_id, slot_name):
-    """Adds a slot variable onto the restoration queue.
-
-    See comment on slot_restoration_tensor_saveables in
-    _CheckpointRestoreCoordinator.__init__ for more information.
+  # TODO(kathywu): remove this method from CheckpointPosition once the class
+  # has been copied into `checkpoint_util.py`.
+  def create_slot_variable_position(self, optimizer_object, variable,
+                                    slot_variable_id, slot_name):
+    """Generates CheckpointPosition for a slot variable.
 
     Args:
       optimizer_object: Optimizer that owns the slot variable.
       variable: Variable associated with the slot variable.
       slot_variable_id: ID of the slot variable.
       slot_name: Name of the slot variable.
+
+    Returns:
+      If there is a slot variable in the `optimizer_object` that has not been
+      bound to the checkpoint, this function returns a tuple of (
+        new `CheckpointPosition` for the slot variable,
+        the slot variable itself).
     """
     slot_variable_position = CheckpointPosition(
         checkpoint=self.checkpoint, proto_id=slot_variable_id)
@@ -558,31 +536,12 @@ class CheckpointPosition(object):
         variable=variable,
         slot_name=slot_name)
     # pylint: enable=protected-access
-    if slot_variable is None:
-      # The optimizer returns None if the restore should not be done (yet).
-      return
-    self.checkpoint.all_python_objects.add(slot_variable)
-    self.checkpoint.matched_proto_ids.add(slot_variable_position.proto_id)
-    self.checkpoint.object_by_proto_id[slot_variable_id] = slot_variable
-    # pylint: disable=protected-access
-    slot_variable._maybe_initialize_trackable()
-    slot_variable._self_update_uid = self.checkpoint.restore_uid
-    # pylint: enable=protected-access
-    # Since this is a slot variable, there will be no new python_saveables, so
-    # ignore that return value.
-    new_restore_ops, new_tensor_saveables, _ = (
-        slot_variable_position.gather_ops_or_named_saveables())
-    self.checkpoint.new_restore_ops(new_restore_ops)
-    self.checkpoint.slot_restoration_tensor_saveables.update(
-        new_tensor_saveables)
+    if (slot_variable is not None and
+        slot_variable_position.bind_object(slot_variable)):
+      return slot_variable_position, slot_variable
+    else:
+      return None, None
 
-
-_DeferredSlotVariableRestoration = collections.namedtuple(
-    "_DeferredSlotVariableRestoration", [
-        "original_variable",
-        "slot_variable_id",
-        "slot_name",
-    ])
 
 _SlotVariableRestoration = collections.namedtuple(
     "_SlotVariableRestoration",
@@ -1056,14 +1015,20 @@ class Trackable(object):
     # control over shorter paths. If we don't have all of the dependencies at
     # this point, the end result is not breadth-first (since other deferred
     # traversals will happen later).
-    visit_queue = collections.deque([checkpoint_position])
+
+    # You may be wondering why elements in the `visit_queue` are tuples that
+    # contains both CheckpointPositions and their Trackable. The reason is that
+    # Optimizers will not keep a strong reference to slot vars for
+    # ShardedVariables. The slot variable must be kept in memory until the
+    # restore saveables have been created.
+    visit_queue = collections.deque([(checkpoint_position,
+                                      checkpoint_position.trackable)])
     restore_ops = []
     tensor_saveables = {}
     python_saveables = []
     registered_savers = collections.defaultdict(dict)
     while visit_queue:
-      current_position = visit_queue.popleft()
-      trackable = current_position.trackable
+      current_position, trackable = visit_queue.popleft()
 
       # Restore using the ops defined in a Saveable or registered function.
       registered_saver = current_position.get_registered_saver_name()
@@ -1081,10 +1046,7 @@ class Trackable(object):
         python_saveables.extend(new_python_saveables)
 
       _queue_children_for_restoration(current_position, visit_queue)
-
-    tensor_saveables.update(
-        current_position.checkpoint.slot_restoration_tensor_saveables)
-    current_position.checkpoint.slot_restoration_tensor_saveables.clear()
+      checkpoint_util.queue_slot_variables(current_position, visit_queue)
 
     restore_ops.extend(
         current_position.checkpoint.restore_saveables(tensor_saveables,
@@ -1613,4 +1575,4 @@ def _queue_children_for_restoration(checkpoint_position, visit_queue):
         # visited. Delay doing it so that we get a breadth-first dependency
         # resolution order (shallowest paths first). The caller is responsible
         # for emptying visit_queue.
-        visit_queue.append(child_position)
+        visit_queue.append((child_position, local_object))
