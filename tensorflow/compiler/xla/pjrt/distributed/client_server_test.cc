@@ -128,7 +128,7 @@ class ClientServerTest : public testing::TestWithParam<ServiceParams> {
     server_def.set_task_index(0);
     auto job_def = server_def.mutable_cluster()->add_job();
     job_def->set_name(job_name);
-    for (size_t i = 0; i < options.num_nodes; ++i) {
+    for (int i = 0; i < options.num_nodes; ++i) {
       job_def->mutable_tasks()->insert({i, "TEST_SERVER_ADDRESS"});
     }
 
