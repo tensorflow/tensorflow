@@ -1363,6 +1363,11 @@ func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   return %1 : tensor<8xi32>
 }
 ```
+
+#### Options
+```
+-tpu-compile-metadata-debug : Whether to serialize TPUCompileMetadataProto metadata in 'tf._TPUCompileMlir' op as a proto debug string
+```
 ### `-tf-tpu-sharding-identification`: Identifies and handles inputs/outputs of TPU computation that is sharded across logical cores.
 Bubbles up sharding configuration from `cluster_func` regions into
 the attributes of `cluster_func`. This is done by parsing the
