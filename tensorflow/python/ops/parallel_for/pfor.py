@@ -21,6 +21,7 @@ import sys
 import traceback
 
 import numpy as np
+from functools import partial
 
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.core.framework import full_type_pb2
@@ -1599,7 +1600,9 @@ class PFor:
                 y_op.inputs)
             if (self._fallback_to_while_loop and not has_variant_outputs
                 and not has_vectorized_variant_inputs):
-              converter = _fallback_converter
+              root_cause="has no variant outputs and \
+                          has no vectorized variant inputs"
+              converter = partial(_fallback_converter, root_cause=root_cause)
             else:
               message = (f"No pfor vectorization defined for {y_op.type}\n"
                          f"{y_op}\n inputs: {converted_inputs}.")
@@ -1613,18 +1616,14 @@ class PFor:
           pfor_inputs = _PforInput(self, y_op, converted_inputs)
           try:
             try:
-              if (converter.__name__ == "_fallback_converter"):
-                new_outputs = converter(pfor_inputs, 
-                                        root_cause="has variant outputs")
-              else: 
-                new_outputs = converter(pfor_inputs)
+              new_outputs = converter(pfor_inputs)
             except ConversionNotImplementedError as e:
               has_vectorized_variant_inputs = any(
                   _is_variant_with_internal_stacking(x) for x in
                   y_op.inputs)
               if (self._fallback_to_while_loop
                   and not has_vectorized_variant_inputs):
-                root_cause = "has not a vectorized variant inputs"
+                root_cause = "has no a vectorized variant inputs"
                 new_outputs = _fallback_converter(pfor_inputs, 
                                                   root_cause=root_cause)
               else:
