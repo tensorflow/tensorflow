@@ -2664,11 +2664,12 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
     arg_literals.push_back(&arg_literal);
   }
 
-  HloEvaluator embedded_evaluator;
-  embedded_evaluator.set_dynamic_dimension_inference(
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  embedded_evaluator->set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
   TF_ASSIGN_OR_RETURN(Literal result,
-                      embedded_evaluator.Evaluate(*computation, arg_literals));
+                      embedded_evaluator->Evaluate(*computation, arg_literals));
 
   evaluated_[call] = std::move(result);
   return Status::OK();
@@ -2699,10 +2700,11 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
     arg_literals.push_back(&arg_literal);
   }
 
-  HloEvaluator embedded_evaluator;
-  embedded_evaluator.set_dynamic_dimension_inference(
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  embedded_evaluator->set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  TF_ASSIGN_OR_RETURN(Literal result, embedded_evaluator.Evaluate(
+  TF_ASSIGN_OR_RETURN(Literal result, embedded_evaluator->Evaluate(
                                           *readded_computation, arg_literals));
 
   evaluated_[fusion] = std::move(result);
@@ -2724,11 +2726,12 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   const auto& branch_computation_arg =
       GetEvaluatedLiteralFor(conditional->operand(1 + branch_index));
 
-  HloEvaluator embedded_evaluator;
-  embedded_evaluator.set_dynamic_dimension_inference(
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  embedded_evaluator->set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
   TF_ASSIGN_OR_RETURN(Literal result,
-                      embedded_evaluator.Evaluate(
+                      embedded_evaluator->Evaluate(
                           *conditional->branch_computation(branch_index),
                           {&branch_computation_arg}));
 
@@ -2871,10 +2874,12 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   }
   bool keep_going = true;
   int64_t iteration_count = 0;
-  HloEvaluator cond_evaluator(max_loop_iterations_);
-  cond_evaluator.set_dynamic_dimension_inference(dynamic_dimension_inference_);
-  HloEvaluator loop_body_evaluator(max_loop_iterations_);
-  loop_body_evaluator.set_dynamic_dimension_inference(
+  std::unique_ptr<HloEvaluator> cond_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  cond_evaluator->set_dynamic_dimension_inference(dynamic_dimension_inference_);
+  std::unique_ptr<HloEvaluator> loop_body_evaluator =
+      CreateEmbedded(max_loop_iterations_);
+  loop_body_evaluator->set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
   while (keep_going) {
     if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
@@ -2889,15 +2894,15 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
       }
     }
     TF_ASSIGN_OR_RETURN(auto cond_val,
-                        cond_evaluator.Evaluate(*cond_comp, {&lcv}));
+                        cond_evaluator->Evaluate(*cond_comp, {&lcv}));
     keep_going = cond_val.GetFirstElement<bool>();
     if (keep_going) {
       TF_ASSIGN_OR_RETURN(auto body_val,
-                          loop_body_evaluator.Evaluate(*body_comp, {&lcv}));
+                          loop_body_evaluator->Evaluate(*body_comp, {&lcv}));
       VLOG(3) << "Loop iteration result: " << body_val.ToString();
       lcv = std::move(body_val);
-      cond_evaluator.ResetVisitStates();
-      loop_body_evaluator.ResetVisitStates();
+      cond_evaluator->ResetVisitStates();
+      loop_body_evaluator->ResetVisitStates();
     }
   }
   evaluated_[while_hlo] = std::move(lcv);
@@ -3026,7 +3031,8 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
       << "Unexpected out-of-bound sort dimension " << sort_dim
       << " accessing increment of size " << increment.size();
   increment[sort_dim] = sort_dim_elements;
-  HloEvaluator embedded_evaluator(max_loop_iterations_);
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
   // Iterate through each dimension except 'sort_dim'.
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
       key_shape, zero_base, key_shape.dimensions(), increment,
@@ -3048,7 +3054,8 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
         std::vector<int64_t> indices_to_sort(sort_dim_elements);
         std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
         Status compare_status = Status::OK();
-        auto comparator = [sort, &compare_status, &embedded_evaluator,
+        auto comparator = [sort, &compare_status,
+                           embedded_evaluator = embedded_evaluator.get(),
                            &literals_to_sort](int64_t a, int64_t b) {
           std::vector<Literal> literals;
           literals.reserve(2 * sort->operand_count());
@@ -3073,10 +3080,10 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
                             [](const Literal& literal) { return &literal; });
 
           auto computed_result =
-              embedded_evaluator.Evaluate(*sort->to_apply(), literal_ptrs);
+              embedded_evaluator->Evaluate(*sort->to_apply(), literal_ptrs);
           // Clear visit states so that we can use the evaluator again
           // on the same computation.
-          embedded_evaluator.ResetVisitStates();
+          embedded_evaluator->ResetVisitStates();
           if (!computed_result.ok()) {
             compare_status = computed_result.status();
             return false;
@@ -3310,7 +3317,8 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     }
   }
 
-  HloEvaluator embedded_evaluator(max_loop_iterations_);
+  std::unique_ptr<HloEvaluator> embedded_evaluator =
+      CreateEmbedded(max_loop_iterations_);
   absl::InlinedVector<Literal, 1> results(num_args);
   for (int64_t i = 0; i < num_args; ++i) {
     results[i] = Literal(is_tuple ? out_shape.tuple_shapes(i) : out_shape);
@@ -3320,7 +3328,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
       output_shape, [&](absl::Span<const int64_t> output_index) {
         return GenerateReduceOutputElement(
             is_tuple, output_index, init_values, input_args,
-            absl::Span<Literal>(results), function, &embedded_evaluator,
+            absl::Span<Literal>(results), function, embedded_evaluator.get(),
             arg_dim_steps, arg_dim_counts, result_to_arg_index);
       }));
 
