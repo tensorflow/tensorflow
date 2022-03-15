@@ -896,11 +896,48 @@ func @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12x
 
 // -----
 
+func @rng_normal_invalid_mu_rank(%mu: tensor<1xf32>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
+  %shape = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+  // expected-error@+1 {{but got 'tensor<1xf32>'}}
+  %0 = "mhlo.rng_normal"(%mu, %sigma, %shape) : (tensor<1xf32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  return %0 : tensor<2x3x5xf32>
+}
 
-func @rng_uniform_invalid_type(%mu: tensor<complex<f32>>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
+// -----
+
+
+func @rng_normal_invalid_sigma_rank(%mu: tensor<f32>, %sigma: tensor<1xf32>) -> tensor<2x3x5xf32> {
+  %shape = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+  // expected-error@+1 {{but got 'tensor<1xf32>'}}
+  %0 = "mhlo.rng_normal"(%mu, %sigma, %shape) : (tensor<f32>, tensor<1xf32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  return %0 : tensor<2x3x5xf32>
+}
+
+// -----
+
+func @rng_uniform_invalid_a_rank(%a: tensor<1xf32>, %b: tensor<f32>) -> tensor<2x3x5xf32> {
+  %shape = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+  // expected-error@+1 {{but got 'tensor<1xf32>'}}
+  %0 = "mhlo.rng_uniform"(%a, %b, %shape) : (tensor<1xf32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  return %0 : tensor<2x3x5xf32>
+}
+
+
+// -----
+
+func @rng_uniform_invalid_b_rank(%a: tensor<f32>, %b: tensor<1xf32>) -> tensor<2x3x5xf32> {
+  %shape = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
+  // expected-error@+1 {{but got 'tensor<1xf32>'}}
+  %0 = "mhlo.rng_uniform"(%a, %b, %shape) : (tensor<f32>, tensor<1xf32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  return %0 : tensor<2x3x5xf32>
+}
+
+// -----
+
+func @rng_uniform_invalid_type(%a: tensor<complex<f32>>, %b: tensor<f32>) -> tensor<2x3x5xf32> {
   %shape = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
   // expected-error@+1 {{but got 'tensor<complex<f32>>'}}
-  %0 = "mhlo.rng_uniform"(%mu, %sigma, %shape) : (tensor<complex<f32>>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  %0 = "mhlo.rng_uniform"(%a, %b, %shape) : (tensor<complex<f32>>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
   return %0 : tensor<2x3x5xf32>
 }
 

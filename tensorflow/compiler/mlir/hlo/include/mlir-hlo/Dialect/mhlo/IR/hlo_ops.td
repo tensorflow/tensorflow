@@ -2203,7 +2203,7 @@ def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
 // MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
 
-def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify]> {
+def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify, AllElementTypesMatch<["a", "b", "result"]>]> {
   let summary = "RNG with uniform distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated
@@ -2214,12 +2214,12 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify]> {
     See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
   }];
   let arguments = (ins
-    HLO_PredIntOrFpTensor:$a,
-    HLO_PredIntOrFpTensor:$b,
+    0DTensorOf<[HLO_Pred, HLO_Int, AnyFloat]>:$a,
+    0DTensorOf<[HLO_Pred, HLO_Int, AnyFloat]>:$b,
     HLO_DimensionTensor:$shape
   );
 
-  let results = (outs HLO_PredIntOrFpTensor);
+  let results = (outs HLO_PredIntOrFpTensor:$result);
 
   let hasCustomHLOConverter = 1;
 
@@ -2231,7 +2231,7 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify]> {
   }];
 }
 
-def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify]> {
+def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify, AllElementTypesMatch<["mu", "sigma", "result"]>]> {
   let summary = "RNG with normal distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated
@@ -2242,12 +2242,12 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify]> {
     See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
   }];
   let arguments = (ins
-    HLO_FpTensor:$mu,
-    HLO_FpTensor:$sigma,
+    0DTensorOf<[AnyFloat]>:$mu,
+    0DTensorOf<[AnyFloat]>:$sigma,
     HLO_DimensionTensor:$shape
   );
 
-  let results = (outs HLO_FpTensor);
+  let results = (outs HLO_FpTensor:$result);
 
   let hasCustomHLOConverter = 1;
 
