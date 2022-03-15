@@ -153,8 +153,6 @@ class BatchMatMulMkl : public OpKernel {
         MklMatMulPrimitiveFactory<float, Tlhs, Trhs, Toutput>::Get(
             *params, false /* value for do_not_cache */);
 
-    UserScratchPad<unsigned char> scratch_pad;
-    scratch_pad.Allocate(matmul_prim, ctx);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
     MklDnnThreadPool eigen_tp(ctx);
@@ -174,11 +172,11 @@ class BatchMatMulMkl : public OpKernel {
       }
       matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(),
                            rhs.flat<Trhs>().data(), out->flat<Toutput>().data(),
-                           scratch_pad.get(), mul_data, add_data);
+                           mul_data, add_data);
     } else {
       matmul_prim->Execute(cpu_stream, lhs.flat<Tlhs>().data(),
-                           rhs.flat<Trhs>().data(), out->flat<Toutput>().data(),
-                           scratch_pad.get());
+                           rhs.flat<Trhs>().data(),
+                           out->flat<Toutput>().data());
     }
   }
 
