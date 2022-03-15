@@ -534,6 +534,7 @@ tf_cc_test(
     ],
     tags = [
         "no_oss",  # This test only runs with GPU.
+        "notap",
         "requires-gpu-nvidia",
     ],
     deps = [
