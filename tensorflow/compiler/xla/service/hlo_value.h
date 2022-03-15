@@ -19,6 +19,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -49,11 +50,10 @@ struct HloPosition {
   }
   bool operator!=(const HloPosition& other) const { return !(*this == other); }
 
-  // Stable less-than operator using instruction id and index.
+  // Sort by instruction ID, then index.
   bool operator<(const HloPosition& other) const {
-    return instruction->unique_id() < other.instruction->unique_id() ||
-           (instruction->unique_id() == other.instruction->unique_id() &&
-            index < other.index);
+    return std::forward_as_tuple(instruction->unique_id(), index) <
+           std::forward_as_tuple(other.instruction->unique_id(), other.index);
   }
 
   template <typename H>
@@ -102,18 +102,12 @@ class HloValue : public BufferValue {
     return a->id() < b->id();
   }
 
-  // Predicate comparing HloValues by equal id, useful for std::unique.
-  static bool IdEqual(const HloValue* a, const HloValue* b) {
-    return a->id() == b->id();
-  }
-
   // Construct an HloValue defined by 'instruction' at shape index 'index'. If
   // is_phi is true, then this value is a phi value, for example, at the
   // parameter of a while body computation. Phi values are only used in the SSA
   // dataflow analysis (HloDataflowAnalysis::ssa_form_ is true).
   HloValue(Id id, HloInstruction* instruction, const ShapeIndex& index,
            bool is_phi = false);
-  ~HloValue() override {}
 
   // Sets the positions in the module at which the HloValue appears. Should be
   // called once and only once. The defining position should not be included in
@@ -159,14 +153,12 @@ class HloValue : public BufferValue {
   // Get whether this HloValue is live out of the module.
   bool live_out_of_module() const { return live_out_of_module_; }
 
-  bool operator==(const HloValue& other) const;
-  bool operator!=(const HloValue& other) const;
+  bool operator==(const HloValue& other) const { return this == &other; }
+  bool operator!=(const HloValue& other) const { return !(*this == other); }
 
   // Return a single-line string representation of the value.
   std::string ToShortString() const;
-
   std::string ToString(int indent) const;
-
   std::string ToString() const override { return ToString(0); }
 
  private:

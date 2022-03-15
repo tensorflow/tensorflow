@@ -60,17 +60,10 @@ class HloDataflowAnalysisTest : public HloTestBase,
   }
 
   // Return a vector of the HloValues at the given program position.
-  std::vector<HloValue> HloValuesAt(const HloInstruction* instruction,
-                                    const ShapeIndex& index = {}) {
+  const std::vector<const HloValue*>& HloValuesAt(
+      const HloInstruction* instruction, const ShapeIndex& index = {}) {
     CHECK(analysis_ != nullptr);
-    std::vector<HloValue> values;
-    const auto& analysis_values =
-        analysis_->GetValueSet(instruction, index).values();
-    values.reserve(analysis_values.size());
-    for (const HloValue* value : analysis_values) {
-      values.push_back(*value);
-    }
-    return values;
+    return analysis_->GetValueSet(instruction, index).values();
   }
 
   // Returns true if the top-level values for instructions 'a' and 'b' may
@@ -718,7 +711,7 @@ TEST_P(HloDataflowAnalysisTest, NestedWhiles) {
   const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
 
   EXPECT_THAT(HloValuesAt(inner_param, /*index=*/{0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(negate)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(negate)));
   if (ssa_form) {
     EXPECT_TRUE(analysis.ValueIsDefinedAt(inner_param, /*index=*/{1}));
     EXPECT_TRUE(
@@ -727,7 +720,7 @@ TEST_P(HloDataflowAnalysisTest, NestedWhiles) {
     // Element 0 of the nested while is %negate.
     EXPECT_FALSE(analysis.ValueIsDefinedAt(nested_while, /*index=*/{0}));
     EXPECT_THAT(HloValuesAt(inner_param, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(negate)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(negate)));
     // Element 1 is a phi value (join of %add and %constant2).
     EXPECT_TRUE(analysis.ValueIsDefinedAt(nested_while, /*index=*/{1}));
     EXPECT_TRUE(
@@ -742,21 +735,21 @@ TEST_P(HloDataflowAnalysisTest, NestedWhiles) {
         analysis.GetValueDefinedAt(entry_while, /*index=*/{1}).is_phi());
   } else {
     EXPECT_THAT(HloValuesAt(inner_param, /*index=*/{1}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(add),
-                                     analysis.GetValueDefinedAt(constant2)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(add),
+                                     &analysis.GetValueDefinedAt(constant2)));
 
     EXPECT_THAT(HloValuesAt(nested_while, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(negate)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(negate)));
     EXPECT_THAT(HloValuesAt(nested_while, /*index=*/{1}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(add),
-                                     analysis.GetValueDefinedAt(constant2)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(add),
+                                     &analysis.GetValueDefinedAt(constant2)));
 
     EXPECT_THAT(HloValuesAt(entry_while, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(negate),
-                                     analysis.GetValueDefinedAt(constant1)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(negate),
+                                     &analysis.GetValueDefinedAt(constant1)));
     EXPECT_THAT(HloValuesAt(entry_while, /*index=*/{1}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(add),
-                                     analysis.GetValueDefinedAt(constant2)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(add),
+                                     &analysis.GetValueDefinedAt(constant2)));
   }
 }
 
@@ -893,11 +886,11 @@ TEST_P(HloDataflowAnalysisTest, SwizzlingWhile) {
   } else {
     // Elements 0 and 1 have both constants as reaching definitions.
     EXPECT_THAT(HloValuesAt(xla_while, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                     analysis.GetValueDefinedAt(constant2)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
+                                     &analysis.GetValueDefinedAt(constant2)));
     EXPECT_THAT(HloValuesAt(xla_while, /*index=*/{1}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                     analysis.GetValueDefinedAt(constant2)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
+                                     &analysis.GetValueDefinedAt(constant2)));
     EXPECT_TRUE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
     EXPECT_TRUE(analysis.GetValueDefinedAt(constant2).live_out_of_module());
   }
@@ -976,18 +969,18 @@ TEST_P(HloDataflowAnalysisTest, TupleSelect) {
   EXPECT_FALSE(analysis.ValueIsDefinedAt(select1234, /*index=*/{0}));
 
   EXPECT_THAT(HloValuesAt(select11, /*index=*/{0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1)));
   EXPECT_THAT(HloValuesAt(select12, /*index=*/{0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                   analysis.GetValueDefinedAt(constant2)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
+                                   &analysis.GetValueDefinedAt(constant2)));
   EXPECT_THAT(HloValuesAt(select34, /*index=*/{0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(constant3),
-                                   analysis.GetValueDefinedAt(constant4)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant3),
+                                   &analysis.GetValueDefinedAt(constant4)));
   EXPECT_THAT(HloValuesAt(select1234, /*index=*/{0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                   analysis.GetValueDefinedAt(constant2),
-                                   analysis.GetValueDefinedAt(constant3),
-                                   analysis.GetValueDefinedAt(constant4)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
+                                   &analysis.GetValueDefinedAt(constant2),
+                                   &analysis.GetValueDefinedAt(constant3),
+                                   &analysis.GetValueDefinedAt(constant4)));
 
   EXPECT_THAT(
       analysis.GetValueDefinedAt(tuple1, /*index=*/{}).GetUses(),
@@ -1039,16 +1032,16 @@ TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select));
 
   EXPECT_THAT(HloValuesAt(select, /*index=*/{0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                   analysis.GetValueDefinedAt(constant4)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
+                                   &analysis.GetValueDefinedAt(constant4)));
   EXPECT_THAT(HloValuesAt(select, /*index=*/{1}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(inner_tuple1),
-                                   analysis.GetValueDefinedAt(inner_tuple2)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(inner_tuple1),
+                                   &analysis.GetValueDefinedAt(inner_tuple2)));
   EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(constant2),
-                                   analysis.GetValueDefinedAt(constant5)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant2),
+                                   &analysis.GetValueDefinedAt(constant5)));
   EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 1}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(constant3)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(constant3)));
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {
@@ -1141,14 +1134,14 @@ TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {
                     .live_out_of_module());
   } else {
     EXPECT_THAT(HloValuesAt(gte),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                     analysis.GetValueDefinedAt(constant2)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
+                                     &analysis.GetValueDefinedAt(constant2)));
     EXPECT_THAT(HloValuesAt(xla_while, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                     analysis.GetValueDefinedAt(constant2)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
+                                     &analysis.GetValueDefinedAt(constant2)));
     EXPECT_THAT(HloValuesAt(xla_while, /*index=*/{1}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(add),
-                                     analysis.GetValueDefinedAt(constant3)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(add),
+                                     &analysis.GetValueDefinedAt(constant3)));
     EXPECT_TRUE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
     EXPECT_TRUE(analysis.GetValueDefinedAt(constant2).live_out_of_module());
     EXPECT_TRUE(analysis.GetValueDefinedAt(constant3).live_out_of_module());
@@ -1218,9 +1211,9 @@ TEST_P(HloDataflowAnalysisTest, TupleCopy) {
   EXPECT_FALSE(analysis.ValueIsDefinedAt(copy, /*index=*/{1}));
 
   EXPECT_THAT(HloValuesAt(copy, /*index=*/{0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(param0)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param0)));
   EXPECT_THAT(HloValuesAt(copy, /*index=*/{1}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(param1)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param1)));
   EXPECT_TRUE(
       analysis.GetValueDefinedAt(copy, /*index=*/{}).live_out_of_module());
 }
@@ -1254,9 +1247,9 @@ TEST_P(HloDataflowAnalysisTest, OptimizationBarrier) {
   EXPECT_FALSE(analysis.ValueIsDefinedAt(barrier, /*index=*/{1}));
 
   EXPECT_THAT(HloValuesAt(barrier, /*index=*/{0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(param0)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param0)));
   EXPECT_THAT(HloValuesAt(barrier, /*index=*/{1}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(param1)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param1)));
 }
 
 TEST_P(HloDataflowAnalysisTest, CopyStartAndCopyDone) {
@@ -1286,7 +1279,7 @@ TEST_P(HloDataflowAnalysisTest, CopyStartAndCopyDone) {
   EXPECT_FALSE(analysis.ValueIsDefinedAt(copy_done, /*index=*/{}));
   EXPECT_THAT(
       HloValuesAt(copy_done, /*index=*/{}),
-      UnorderedElementsAre(analysis.GetValueDefinedAt(copy_start, {0})));
+      UnorderedElementsAre(&analysis.GetValueDefinedAt(copy_start, {0})));
   EXPECT_TRUE(analysis.GetValueDefinedAt(copy_start, /*index=*/{0})
                   .live_out_of_module());
 }
@@ -1315,7 +1308,7 @@ TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{2}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send_done));
   EXPECT_THAT(HloValuesAt(send, /*index=*/{0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(param)));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param)));
 }
 
 TEST_P(HloDataflowAnalysisTest, SetDimensionSizeForwardsValue) {
@@ -1365,7 +1358,7 @@ TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
   EXPECT_FALSE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{0}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{1}));
   EXPECT_THAT(HloValuesAt(recv_done, /*index=*/{0}),
-              UnorderedElementsAre(analysis.GetValueDefinedAt(recv, {0})));
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(recv, {0})));
   EXPECT_TRUE(
       analysis.GetValueDefinedAt(recv, /*index=*/{0}).live_out_of_module());
 }
@@ -1808,8 +1801,8 @@ TEST_P(HloDataflowAnalysisTest, ConditionalWithIdentity) {
     EXPECT_EQ(analysis.values().size(), 3);
     EXPECT_FALSE(analysis.ValueIsDefinedAt(conditional));
     EXPECT_THAT(HloValuesAt(conditional),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                     analysis.GetValueDefinedAt(constant2)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(constant1),
+                                     &analysis.GetValueDefinedAt(constant2)));
   }
 }
 
@@ -1926,8 +1919,8 @@ TEST_P(HloDataflowAnalysisTest, ConditionalTakingTupleOperand) {
     EXPECT_EQ(analysis.values().size(), 6);
     EXPECT_FALSE(analysis.ValueIsDefinedAt(conditional));
     EXPECT_THAT(HloValuesAt(conditional),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(add),
-                                     analysis.GetValueDefinedAt(sub)));
+                UnorderedElementsAre(&analysis.GetValueDefinedAt(add),
+                                     &analysis.GetValueDefinedAt(sub)));
   }
 }
 
@@ -2058,14 +2051,14 @@ TEST_P(HloDataflowAnalysisTest, NestedConditionals) {
     EXPECT_THAT(
         HloValuesAt(inner_conditional),
         UnorderedElementsAre(
-            analysis.GetValueDefinedAt(computation1->root_instruction()),
-            analysis.GetValueDefinedAt(computation2->root_instruction())));
+            &analysis.GetValueDefinedAt(computation1->root_instruction()),
+            &analysis.GetValueDefinedAt(computation2->root_instruction())));
     EXPECT_THAT(
         HloValuesAt(conditional),
         UnorderedElementsAre(
-            analysis.GetValueDefinedAt(computation1->root_instruction()),
-            analysis.GetValueDefinedAt(computation2->root_instruction()),
-            analysis.GetValueDefinedAt(computation3->root_instruction())));
+            &analysis.GetValueDefinedAt(computation1->root_instruction()),
+            &analysis.GetValueDefinedAt(computation2->root_instruction()),
+            &analysis.GetValueDefinedAt(computation3->root_instruction())));
   }
 }
 

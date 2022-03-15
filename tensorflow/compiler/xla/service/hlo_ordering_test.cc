@@ -584,7 +584,7 @@ ENTRY entry {
   auto p_body_2 = FindInstruction(module.get(), "p_body2");
 
   auto tuple_use = HloUse{root, 0};
-  auto value = dataflow->GetUniqueValueAt(p_body_2, {0});
+  const HloValue& value = dataflow->GetUniqueValueAt(p_body_2, {0});
   EXPECT_FALSE(
       ordering.UsesBeforeValueDefinition({&tuple_use}, value, *dataflow));
 }
