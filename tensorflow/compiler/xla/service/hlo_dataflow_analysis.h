@@ -173,6 +173,8 @@ class HloDataflowAnalysis {
   // and output shape index of the in-place operations within this HLO.
   static std::vector<std::pair<HloUse, ShapeIndex>> GetInPlaceInputOutputPairs(
       HloInstruction* instruction);
+  // Whether this HLO contains any in-place operations.
+  static bool HasInPlaceOperations(const HloInstruction& instruction);
 
  private:
   static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);

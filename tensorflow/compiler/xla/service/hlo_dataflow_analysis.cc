@@ -1586,6 +1586,7 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
     return {};
   }
 
+  // Handle fusion instructions.
   std::vector<std::pair<HloUse, ShapeIndex>> input_output_pairs;
   for (auto& indexed_shape : ShapeUtil::GetLeafShapes(instruction->shape())) {
     HloInstruction* hlo_generating_output =
@@ -1639,6 +1640,16 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
     }
   }
   return input_output_pairs;
+}
+
+bool HloDataflowAnalysis::HasInPlaceOperations(
+    const HloInstruction& instruction) {
+  // GetInPlaceInputOutputPairs can return non-const pointers to the
+  // instruction, so cannot be used with a const pointer. However, this is safe
+  // to do if the results are unused (as they are here), hence the const_cast.
+  HloInstruction* unconst_instruction =
+      const_cast<HloInstruction*>(&instruction);
+  return !GetInPlaceInputOutputPairs(unconst_instruction).empty();
 }
 
 bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
