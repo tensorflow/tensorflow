@@ -50,7 +50,7 @@ ShapedBuffer::ShapedBuffer(ShapedBuffer&& s)
   // s.buffers_ has a pointer to s.on_device_shape_. When we move s.buffers_
   // into buffers_, we also need to update this pointer so that buffers_ doesn't
   // point into s.
-  buffers_.replace_shape_ptr(&on_device_shape_);
+  buffers_.replace_shape_ptr(on_device_shape_);
 }
 
 ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
@@ -61,7 +61,7 @@ ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
   // buffers_ has a pointer to its on_device_shape_. When we move s.buffers_
   // into buffers_, we also need to update this pointer so that buffers_ doesn't
   // point into s.
-  buffers_.replace_shape_ptr(&on_device_shape_);
+  buffers_.replace_shape_ptr(on_device_shape_);
   return *this;
 }
 
