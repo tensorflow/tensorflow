@@ -1185,8 +1185,7 @@ cc_test(
     name = "conv_test",
     size = "small",
     srcs = ["conv_test.cc"],
-    # TODO(b/162870360): Re-enable nnapi test after delegating grouped conv is added.
-    # tags = ["tflite_nnapi"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":test_main",
         ":test_util",
