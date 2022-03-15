@@ -802,6 +802,24 @@ inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
                                                  tf_shape, tensor_out));
 }
 
+template<typename T>
+struct UserScratchPad {
+  template <typename MklPrim>
+  inline void Allocate(MklPrim* mkl_prim, OpKernelContext* ctx) {
+    auto spad_md = mkl_prim->GetScratchPadDesc();
+    TensorShape tshape({spad_md.get_size()/sizeof(T) + 1});
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::v(),
+                   tshape, &scratch_pad));
+  }
+
+  inline void* get() {
+    return static_cast<void*>(scratch_pad.flat<T>().data());
+  }
+
+ private:
+  Tensor scratch_pad;
+};
+
 inline void GetStridesFromSizes(MklTensorFormat data_format, size_t* strides,
                                 const size_t* sizes) {
   DCHECK_NE(data_format, MklTensorFormat::FORMAT_INVALID);
@@ -1225,8 +1243,8 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
     delete[] input_strides;
     return Status(error::Code::INTERNAL,
                   tensorflow::strings::StrCat(
-                      "Failed to create blocked memory descriptor.",
-                      "Status: ", e.status, ", message: ", e.message));
+                      "Failed to create blocked memory descriptor.", "Status: ",
+                      e.status, ", message: ", e.message));
   }
   return Status::OK();
 }

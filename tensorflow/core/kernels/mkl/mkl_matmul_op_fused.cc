@@ -94,11 +94,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     const int k = src_tf_shape.dim_size(dim_pair[0]);
     const int channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
 
-    OP_REQUIRES(
-        ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
-        errors::InvalidArgument(
-            "Matrix size-incompatible: In[0]: ", src_tf_shape.DebugString(),
-            ", In[1]: ", weight_tf_shape.DebugString()));
+    OP_REQUIRES(ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
+                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
+                                        src_tf_shape.DebugString(), ", In[1]: ",
+                                        weight_tf_shape.DebugString()));
     OP_REQUIRES(ctx, bias_tensor.shape().dim_size(0) == channel,
                 errors::InvalidArgument(
                     "Must provide as many biases as the channel size: ",
@@ -151,9 +150,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       GetMklShape(ctx, kInputIndex_Add, &add_mkl_shape, native_format);
 
       // For native format, we need not to set metadata.
-      if (native_format && ctx->forward_input_to_output_with_shape(
-                               kInputIndex_Add, kOutputIndex_Dst,
-                               output_tf_shape, &dst_tensor)) {
+      if (native_format &&
+          ctx->forward_input_to_output_with_shape(
+              kInputIndex_Add, kOutputIndex_Dst, output_tf_shape,
+              &dst_tensor)) {
         ;  // Need to do nothing for native format
       } else if (!native_format && ForwardMklTensorInToOutWithMklShape(
                                        ctx, kInputIndex_Add, kOutputIndex_Dst,
@@ -258,13 +258,17 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
       MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
+
+      UserScratchPad<unsigned char> scratch_pad;
+      scratch_pad.Allocate(matmul_prim, ctx);
+
       // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
-                           cpu_stream);
+                           scratch_pad.get(), cpu_stream);
     } catch (dnnl::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           ctx, errors::Aborted("Operation received an exception:", error_msg));
     }
