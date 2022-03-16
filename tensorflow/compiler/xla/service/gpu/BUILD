@@ -808,7 +808,7 @@ cc_library(
 cc_library(
     name = "cuda_runtime_for_xlir",
     tags = ["manual"],  # Build NCCL only if --config=experimental_tfrt_gpu.
-    deps = [
+    deps = if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cublas_lt_stub",
         "//tensorflow/stream_executor/cuda:cublas_stub",
         "//tensorflow/stream_executor/cuda:cuda_stub",
@@ -817,7 +817,9 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cufft_stub",
         "//tensorflow/stream_executor/cuda:cusolver_stub",
         "@local_config_nccl//:nccl",
-    ],
+    ]) + if_rocm_is_configured([
+        "@tf_runtime//backends/gpu:cuda_stubs",
+    ]),
 )
 
 cc_library(
