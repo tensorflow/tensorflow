@@ -528,43 +528,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "xla_compilation_cache_serialize_test",
-    srcs = [
-        "xla_compilation_cache_serialize_test.cc",
-    ],
-    tags = [
-        "no_oss",  # This test only runs with GPU.
-        "notap",
-        "requires-gpu-nvidia",
-    ],
-    deps = [
-        ":compilation_passes",
-        ":flags",
-        ":xla_activity_listener",
-        ":xla_compilation_cache",
-        ":xla_cpu_jit",
-        ":xla_gpu_device",
-        ":xla_gpu_jit",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_options",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/common_runtime:core_cpu",
-        "//tensorflow/core/platform:path",
-    ],
-)
-
 cc_library(
     name = "jit_compilation_passes",
     srcs = ["jit_compilation_pass_registration.cc"],
