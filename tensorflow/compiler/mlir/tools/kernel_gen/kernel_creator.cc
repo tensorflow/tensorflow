@@ -503,7 +503,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
   mlir::registerROCDLDialectTranslation(registry);
   context.appendDialectRegistry(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceString(tf_code, &context);
+      mlir::parseSourceString<mlir::ModuleOp>(tf_code, &context);
   if (!module)
     return tensorflow::Status(tensorflow::error::Code::INVALID_ARGUMENT,
                               "invalid kernel IR");

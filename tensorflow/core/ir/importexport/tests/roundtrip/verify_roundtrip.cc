@@ -70,7 +70,8 @@ int main(int argc, char **argv) {
     llvm::raw_string_ostream os(module_txt);
     module->print(os, mlir::OpPrintingFlags().enableDebugInfo());
 
-    auto new_module = mlir::parseSourceString(os.str(), module->getContext());
+    auto new_module =
+        mlir::parseSourceString<mlir::ModuleOp>(os.str(), module->getContext());
     if (!new_module) {
       llvm::errs() << "Couldn't reparse module: \n" << *module.get() << "\n";
       return 4;

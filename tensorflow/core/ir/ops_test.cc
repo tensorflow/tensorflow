@@ -55,7 +55,8 @@ TEST(TestTFGRegionOps, TestIfLikeRegionOpSuccessorRegions) {
   )mlir";
   MLIRContext context;
   context.getOrLoadDialect<TFGraphDialect>();
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   auto op = findOp<IfRegionOp>(*module);
 
@@ -95,7 +96,8 @@ TEST(TestTFGRegionOps, TestCaseLikeRegionOpSuccessorRegions) {
   )mlir";
   MLIRContext context;
   context.getOrLoadDialect<TFGraphDialect>();
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   auto op = findOp<CaseRegionOp>(*module);
 
@@ -139,7 +141,8 @@ TEST(TestTFGRegionOps, TestWhileLikeRegionOpSuccessorRegions) {
   )mlir";
   MLIRContext context;
   context.getOrLoadDialect<TFGraphDialect>();
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   auto op = findOp<WhileRegionOp>(*module);
 
@@ -177,7 +180,8 @@ TEST(TestTFGRegionOps, TestForLikeRegionOpSuccessorRegions) {
   )mlir";
   MLIRContext context;
   context.getOrLoadDialect<TFGraphDialect>();
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   auto op = findOp<ForRegionOp>(*module);
 

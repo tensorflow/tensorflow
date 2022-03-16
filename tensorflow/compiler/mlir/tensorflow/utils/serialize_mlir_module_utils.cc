@@ -45,7 +45,8 @@ Status DeserializeMlirModule(llvm::StringRef serialized_mlir_module,
   mlir::StatusScopedDiagnosticHandler error_handler(mlir_context);
 
   // Parse the module.
-  *mlir_module = mlir::parseSourceString(serialized_mlir_module, mlir_context);
+  *mlir_module = mlir::parseSourceString<mlir::ModuleOp>(serialized_mlir_module,
+                                                         mlir_context);
   if (!*mlir_module)
     return error_handler.Combine(
         errors::InvalidArgument("could not parse MLIR module"));

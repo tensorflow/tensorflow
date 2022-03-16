@@ -47,7 +47,8 @@ void MaterializePassthroughOpPass::runOnOperation() {
     if (!passthrough_op) return;
     std::string module_string(passthrough_op.mlir_module());
     // Parse the module.
-    auto nested_module = parseSourceString(module_string, op->getContext());
+    auto nested_module =
+        parseSourceString<ModuleOp>(module_string, op->getContext());
     if (!nested_module) {
       op->emitError() << "could not parse attached MLIR module";
       return;
