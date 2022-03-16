@@ -295,13 +295,13 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_fwd->GetEngine()));
 
       UserScratchPad<unsigned char> scratch_pad;
-      scratch_pad.Allocate(matmul_fwd, context);
+      scratch_pad.AllocateSPTensor(matmul_fwd, context);
 
       // Execute inner-product
       Tbias* bias_data = this->GetBiasHandle(
           context, matmul_fwd_pd, bias_tensor, weight_tensor, cpu_stream);
       matmul_fwd->Execute(src_data, weight_data, bias_data, dst_data,
-                          scratch_pad.get(), cpu_stream);
+                          scratch_pad.Get(), cpu_stream);
     } catch (dnnl::error& e) {
       string error_msg = tensorflow::strings::StrCat(
           "Status: ", e.status, ", message: ", string(e.message), ", in file ",
