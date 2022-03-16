@@ -118,14 +118,22 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     super(ResourceVariableSaveable, self).__init__(var, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
+    """Restores tensors. Raises ValueError if incompatible shape found."""
     restored_tensor = restored_tensors[0]
     if restored_shapes is not None:
       restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
     # Copy the restored tensor to the variable's device.
     with ops.device(self._var_device):
       restored_tensor = array_ops.identity(restored_tensor)
-      return resource_variable_ops.shape_safe_assign_variable_handle(
-          self.handle_op, self._var_shape, restored_tensor)
+      try:
+        assigned_variable = resource_variable_ops.shape_safe_assign_variable_handle(
+            self.handle_op, self._var_shape, restored_tensor)
+      except ValueError as e:
+        raise ValueError(
+            f"Received incompatible tensor with shape {restored_tensor.shape} "
+            f"when attempting to restore variable with shape {self._var_shape} "
+            f"and name {self.name}.") from e
+      return assigned_variable
 
 
 def _tensor_comes_from_variable(v):
