@@ -1741,7 +1741,7 @@ StatusOr<PjRtExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     future =
         PjRtFuture<Status>(client_->GetHostContext(), std::move(done_event));
   }
-  return Result({.future = std::move(future), .buffers = std::move(res)});
+  return Result({/*future=*/std::move(future), /*buffers=*/std::move(res)});
 }
 
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>

@@ -2198,7 +2198,7 @@ StatusOr<PjRtExecutable::Result> PjRtStreamExecutorExecutable::ExecuteHelper(
       });
   ReportExecutableEnqueueTime(tensorflow::Env::Default()->NowMicros() -
                               start_time_usecs);
-  return Result({.future = std::move(future), .buffers = std::move(outputs)});
+  return Result({/*future=*/std::move(future), /*buffers=*/std::move(outputs)});
 }
 
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
