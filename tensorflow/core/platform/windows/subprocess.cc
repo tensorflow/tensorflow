@@ -285,7 +285,7 @@ bool SubProcess::Start() {
     return true;
   } else {
     LOG(ERROR) << "Call to CreateProcess failed. Error code: "
-               << GetLastError();
+               << GetLastError() << ", command: '" << command_line << "'";
     ClosePipes();
     return false;
   }
