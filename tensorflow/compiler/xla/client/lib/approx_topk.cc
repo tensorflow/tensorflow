@@ -35,6 +35,36 @@ const uint64_t kTpuChunkTiling = 1024;
 
 namespace xla {
 
+namespace {
+StatusOr<std::vector<PrimitiveType>> GetOperandTypes(
+    XlaBuilder* builder, absl::Span<const XlaOp> operands,
+    absl::Span<const XlaOp> init_values) {
+  std::vector<PrimitiveType> op_types;
+  auto num_operands = operands.size();
+  auto operands_shapes = builder->GetOperandShapes(operands).ValueOrDie();
+  auto init_values_shapes = builder->GetOperandShapes(init_values).ValueOrDie();
+  for (int i = 0; i < num_operands; ++i) {
+    const auto& op_shape = operands_shapes[i];
+    const auto& init_shape = init_values_shapes[i];
+    if (op_shape.rank() == 0) {
+      return InvalidArgument("ApproxTopK operands must have rank 1+.");
+    }
+    if (!ShapeUtil::CompatibleIgnoringElementType(operands_shapes[0],
+                                                  op_shape)) {
+      return InvalidArgument("operands shape mismatch: %s vs %s",
+                             operands_shapes[0].DebugString(),
+                             op_shape.DebugString());
+    }
+    if (op_shape.element_type() != init_shape.element_type()) {
+      return InvalidArgument("operands type mismatch: %s vs %s",
+                             op_shape.DebugString(), init_shape.DebugString());
+    }
+    op_types.push_back(op_shape.element_type());
+  }
+  return op_types;
+}
+}  // namespace
+
 // Converts a comparator to a combiner computation that can be fed to reduce or
 // partial reduce ops.
 XlaComputation BuildReductionComputation(
@@ -76,12 +106,34 @@ XlaComputation BuildReductionComputation(
   return reduction_builder->BuildAndNoteError();
 }
 
-XlaOp SortAndSliceBuilder(XlaBuilder* builder, absl::Span<const XlaOp> operands,
-                          int64_t top_k, int64_t reduction_dim,
-                          const XlaComputation& comparator) {
+XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
+                             absl::Span<const XlaOp> operands,
+                             absl::Span<const XlaOp> init_values, int64_t top_k,
+                             int64_t reduction_dim,
+                             const XlaComputation& comparator) {
   auto operands_shapes = builder->GetOperandShapes(operands).ValueOrDie();
   int64_t rank = operands_shapes[0].rank();
   int64_t num_operands = operands.size();
+
+  if (top_k == 1) {
+    auto status_or_optypes = GetOperandTypes(builder, operands, init_values);
+    if (!status_or_optypes.ok()) {
+      return builder->ReportError(status_or_optypes.status());
+    }
+    auto op_types = status_or_optypes.ConsumeValueOrDie();
+
+    auto reduction_computation =
+        BuildReductionComputation(builder, op_types, comparator);
+    auto val_args = Reduce(builder, operands, init_values,
+                           reduction_computation, {reduction_dim});
+    Shape op_shape = operands_shapes[0];
+    op_shape.mutable_dimensions()[reduction_dim] = 1;
+    auto top1_vals =
+        Reshape(GetTupleElement(val_args, 0), op_shape.dimensions());
+    auto top1_args =
+        Reshape(GetTupleElement(val_args, 1), op_shape.dimensions());
+    return Tuple(builder, {top1_vals, top1_args});
+  }
 
   auto sorted_results = Sort(operands, comparator, reduction_dim);
   std::vector<int64_t> slice_start_indices(rank, 0);
@@ -101,36 +153,6 @@ XlaOp SortAndSliceBuilder(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   }
   return Tuple(builder, sliced_results);
 }
-
-namespace {
-StatusOr<std::vector<PrimitiveType>> GetOperandTypes(
-    XlaBuilder* builder, absl::Span<const XlaOp> operands,
-    absl::Span<const XlaOp> init_values) {
-  std::vector<PrimitiveType> op_types;
-  auto num_operands = operands.size();
-  auto operands_shapes = builder->GetOperandShapes(operands).ValueOrDie();
-  auto init_values_shapes = builder->GetOperandShapes(init_values).ValueOrDie();
-  for (int i = 0; i < num_operands; ++i) {
-    const auto& op_shape = operands_shapes[i];
-    const auto& init_shape = init_values_shapes[i];
-    if (op_shape.rank() == 0) {
-      return InvalidArgument("ApproxTopK operands must have rank 1+.");
-    }
-    if (!ShapeUtil::CompatibleIgnoringElementType(operands_shapes[0],
-                                                  op_shape)) {
-      return InvalidArgument("operands shape mismatch: %s vs %s",
-                             operands_shapes[0].DebugString(),
-                             op_shape.DebugString());
-    }
-    if (op_shape.element_type() != init_shape.element_type()) {
-      return InvalidArgument("operands type mismatch: %s vs %s",
-                             op_shape.DebugString(), init_shape.DebugString());
-    }
-    op_types.push_back(op_shape.element_type());
-  }
-  return op_types;
-}
-}  // namespace
 
 XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                  absl::Span<const XlaOp> init_values, int64_t top_k,
@@ -160,28 +182,13 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   auto reduction_computation =
       BuildReductionComputation(builder, op_types, comparator);
 
-  // Fallback to variadic reduce when top_k == 1.
-  // TODO(fchern): Approx-topk followed by variadic reduce might run faster
-  // than running variadic reduce directly.
-  if (top_k == 1) {
-    auto val_args = Reduce(builder, operands, init_values,
-                           reduction_computation, {reduction_dim});
-    Shape op_shape = operands_shapes[0];
-    op_shape.mutable_dimensions()[reduction_dim] = 1;
-    auto top1_vals =
-        Reshape(GetTupleElement(val_args, 0), op_shape.dimensions());
-    auto top1_args =
-        Reshape(GetTupleElement(val_args, 1), op_shape.dimensions());
-    return Tuple(builder, {top1_vals, top1_args});
-  }
-
   uint64_t tpu_tiling = rank == 1 ? kTpuChunkTiling : kTpuLaneTiling;
   uint64_t n = operands_shapes[0].dimensions(reduction_dim);
   // ApproxTopK can only reduce elements larger than the tiling.
   if (n <= tpu_tiling) {
     if (aggregate_to_topk) {
-      return SortAndSliceBuilder(builder, operands, top_k, reduction_dim,
-                                 comparator);
+      return AggregateToTopKBuilder(builder, operands, init_values, top_k,
+                                    reduction_dim, comparator);
     }
     return Tuple(builder, operands);
   }
@@ -199,8 +206,8 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 
   if (log2_reduction == 0) {
     if (aggregate_to_topk) {
-      return SortAndSliceBuilder(builder, operands, top_k, reduction_dim,
-                                 comparator);
+      return AggregateToTopKBuilder(builder, operands, init_values, top_k,
+                                    reduction_dim, comparator);
     }
     return Tuple(builder, operands);
   }
@@ -236,8 +243,8 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
     for (int i = 0; i < num_operands; ++i) {
       approx_topk_results.push_back(GetTupleElement(approx_topk, i));
     }
-    return SortAndSliceBuilder(builder, approx_topk_results, top_k,
-                               reduction_dim, comparator);
+    return AggregateToTopKBuilder(builder, approx_topk_results, init_values,
+                                  top_k, reduction_dim, comparator);
   }
   return approx_topk;
 }
@@ -251,26 +258,6 @@ XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
   auto operands_shapes = builder->GetOperandShapes(operands).ValueOrDie();
   int64_t rank = operands_shapes[0].rank();
   uint64_t n = operands_shapes[0].dimensions(reduction_dim);
-
-  if (top_k == 1) {
-    auto status_or_optypes = GetOperandTypes(builder, operands, init_values);
-    if (!status_or_optypes.ok()) {
-      return builder->ReportError(status_or_optypes.status());
-    }
-    auto op_types = status_or_optypes.ConsumeValueOrDie();
-
-    auto reduction_computation =
-        BuildReductionComputation(builder, op_types, comparator);
-    auto val_args = Reduce(builder, operands, init_values,
-                           reduction_computation, {reduction_dim});
-    Shape op_shape = operands_shapes[0];
-    op_shape.mutable_dimensions()[reduction_dim] = 1;
-    auto top1_vals =
-        Reshape(GetTupleElement(val_args, 0), op_shape.dimensions());
-    auto top1_args =
-        Reshape(GetTupleElement(val_args, 1), op_shape.dimensions());
-    return Tuple(builder, {top1_vals, top1_args});
-  }
   // Align the output size with ApproxTopK.
   auto status_or_approx_output_size = ApproxTopKReductionOutputSize(
       n, rank, top_k, recall_target, aggregate_to_topk,
@@ -279,8 +266,8 @@ XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
     return builder->ReportError(status_or_approx_output_size.status());
   }
   auto output_size = status_or_approx_output_size.ConsumeValueOrDie().first;
-  return SortAndSliceBuilder(builder, operands, output_size, reduction_dim,
-                             comparator);
+  return AggregateToTopKBuilder(builder, operands, init_values, output_size,
+                                reduction_dim, comparator);
 }
 
 }  // namespace xla

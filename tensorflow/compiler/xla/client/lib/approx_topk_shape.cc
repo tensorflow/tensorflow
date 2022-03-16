@@ -37,29 +37,13 @@ inline uint32_t log2_ceil(uint64_t value) {
 StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
     int64_t input_size, int64_t rank, int64_t top_k, float recall_target,
     bool aggregate_to_topk, int64_t input_size_override) {
-  // Fallback to variadic reduce when top_k == 1.
-  // TODO(fchern): Approx-topk followed by variadic reduce might run faster
-  // than running variadic reduce directly.
-  if (top_k == 1) {
-    return std::pair<int64_t, int64_t>(1, -1);
-  }
-
   if (aggregate_to_topk) {
     return std::pair<int64_t, int64_t>(top_k, -1);
   }
 
   uint64_t tpu_tiling = rank == 1 ? kTpuChunkTiling : kTpuLaneTiling;
+
   if (input_size <= tpu_tiling) {
-    return std::pair<int64_t, int64_t>(input_size, 0);
-  }
-
-  if (recall_target <= 0. || recall_target > 1.0) {
-    return InvalidArgument("recall_target should range in (0,1]");
-  }
-
-  // Need to handle 1.0 explicitly, otherwise we would encounter division by
-  // log(1.0) = 0 issue.
-  if (recall_target == 1.0) {
     return std::pair<int64_t, int64_t>(input_size, 0);
   }
 
@@ -73,6 +57,23 @@ StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
   }
   uint64_t logical_input_size =
       input_size_override >= 0 ? input_size_override : input_size;
+
+  // Reduce to the tiling size when k == 1.
+  if (top_k == 1) {
+    uint32_t log2_reduction =
+        log2_ceil(CeilOfRatio(logical_input_size, tpu_tiling));
+    return std::pair<int64_t, int64_t>(tpu_tiling, log2_reduction);
+  }
+
+  // Need to handle 1.0 explicitly, otherwise we would encounter division by
+  // log(1.0) = 0 issue.
+  if (recall_target == 1.0) {
+    return std::pair<int64_t, int64_t>(input_size, 0);
+  }
+
+  if (recall_target <= 0. || recall_target > 1.0) {
+    return InvalidArgument("recall_target should range in (0,1]");
+  }
 
   // Given number of data points N, K for top-k elements, and W for the size of
   // the reduce window, let M = Ceil(N / W) be the number of windows. The
@@ -99,7 +100,7 @@ StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
     return std::pair<int64_t, int64_t>(input_size, 0);
   }
 
-  // Do not reduce too much when logical_input is too large.
+  // Do not reduce too much when the logical_input is too large.
   log2_reduction =
       std::min<uint32_t>(log2_reduction, log2_ceil(input_size / tpu_tiling));
 
