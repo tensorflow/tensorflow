@@ -374,14 +374,14 @@ def ctc_beam_search_decoder(inputs,
                             top_paths=1,
                             merge_repeated=True):
   """Performs beam search decoding on the logits given in input.
-  
+
   **Note** Although in general greedy search is a special case of beam-search
   with `top_paths=1` and `beam_width=1`, `ctc_beam_search_decoder` differs
-  from `ctc_gready_decoder` in the treatment of blanks when computing the
+  from `ctc_greedy_decoder` in the treatment of blanks when computing the
   probability of a sequence:
     - `ctc_beam_search_decoder` treats blanks as sequence termination
-    - `ctc_gready_decoder` treats blanks as regular elements
-  
+    - `ctc_greedy_decoder` treats blanks as regular elements
+
   If `merge_repeated` is `True`, merge repeated classes in the output beams.
   This means that if consecutive entries in a beam are the same,
   only the first of these is emitted.  That is, when the sequence is
@@ -442,10 +442,10 @@ def ctc_beam_search_decoder_v2(inputs,
 
   **Note** Although in general greedy search is a special case of beam-search
   with `top_paths=1` and `beam_width=1`, `ctc_beam_search_decoder` differs
-  from `ctc_gready_decoder` in the treatment of blanks when computing the
+  from `ctc_greedy_decoder` in the treatment of blanks when computing the
   probability of a sequence:
     - `ctc_beam_search_decoder` treats blanks as sequence termination
-    - `ctc_gready_decoder` treats blanks as regular elements
+    - `ctc_greedy_decoder` treats blanks as regular elements
 
   Args:
     inputs: 3-D `float` `Tensor`, size `[max_time, batch_size, num_classes]`.
