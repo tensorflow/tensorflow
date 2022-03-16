@@ -93,12 +93,6 @@ class TPUTest(test.TestCase):
   # In this case, the entire computation in foo is compiled using JIT
   # compilation.
   def test_single_tpu_jit_compile(self):
-    if FLAGS.tpu_use_tfrt:
-      self.skipTest(
-          "This test triggers _XlaCompile and XlaLaunch which are not "
-          "supported in tfrt yet. We should avoid using these kernels on TPU. "
-          "However, it is a workaround to support b/129842431. We need more "
-          "discussion about how to support it in the long term.")
     with ops.device("/device:TPU:0"):
       a = variables.Variable(1)
 
@@ -119,12 +113,6 @@ class TPUTest(test.TestCase):
   # In this case, the entire computation in foo is compiled using JIT
   # compilation and contains unsupported ops that should be outside compiled.
   def test_single_tpu_jit_compile_with_outside_compilation(self):
-    if FLAGS.tpu_use_tfrt:
-      self.skipTest(
-          "This test triggers _XlaCompile and XlaLaunch which are not "
-          "supported in tfrt yet. We should avoid using these kernels on TPU. "
-          "However, it is a workaround to support b/129842431. We need more "
-          "discussion about how to support it in the long term.")
     config.set_soft_device_placement(True)
     with ops.device("/device:TPU:0"):
       a = variables.Variable(1)

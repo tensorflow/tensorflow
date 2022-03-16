@@ -416,6 +416,7 @@ cc_library(
         ":internal",
         # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
         "//learning/brain/tfrt/tf_tpu:__pkg__",
+        "//learning/brain/tfrt/tpu_common:__pkg__",
     ],
     deps = [
         ":common",
