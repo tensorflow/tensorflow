@@ -140,13 +140,11 @@ class CoordinationBarrierTest : public ::testing::Test {
         std::move(client_cache));
     // Register the tasks.
     for (int i = 0; i < num_tasks; ++i) {
-      absl::Notification register0;
-      coord_service_->RegisterTask(tasks_[i], /*incarnation=*/0,
-                                   [&register0](Status s) {
-                                     TF_ASSERT_OK(s);
-                                     register0.Notify();
-                                   });
-      register0.WaitForNotification();
+      Status s = coord_service_->RegisterTask(tasks_[i], /*incarnation=*/0);
+      if (!s.ok()) {
+        LOG(FATAL) << "RegisterTask() failed in CoordinationBarrierTest(): "
+                   << s;
+      }
     }
   }
 
@@ -203,12 +201,7 @@ TEST(CoordinationServiceTest, TestStandaloneService) {
           kCoordinationServiceType, Env::Default(), server_def,
           std::move(client_cache));
 
-  absl::Notification register0;
-  coord_service->RegisterTask(task_0, w0_incarnation, [&](Status s) {
-    TF_ASSERT_OK(s);
-    register0.Notify();
-  });
-  register0.WaitForNotification();
+  TF_ASSERT_OK(coord_service->RegisterTask(task_0, w0_incarnation));
   absl::Notification wait_for_all;
   coord_service->WaitForAllTasks(task_0, {}, [&](Status s) {
     TF_ASSERT_OK(s);
@@ -216,12 +209,7 @@ TEST(CoordinationServiceTest, TestStandaloneService) {
   });
   // Not all tasks have registered, so must not be notified here.
   ASSERT_FALSE(wait_for_all.HasBeenNotified());
-  absl::Notification register1;
-  coord_service->RegisterTask(task_1, w1_incarnation, [&](Status s) {
-    TF_ASSERT_OK(s);
-    register1.Notify();
-  });
-  register1.WaitForNotification();
+  TF_ASSERT_OK(coord_service->RegisterTask(task_1, w1_incarnation));
   coord_service->WaitForAllTasks(task_1, {},
                                  [&](Status s) { TF_ASSERT_OK(s); });
   // All tasks have registered.
@@ -287,43 +275,32 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
           kCoordinationServiceType, Env::Default(), server_def,
           std::move(client_cache));
 
+  // Each coordinated task registers and waits for other tasks.
   absl::Notification register_chief;
-  coord_service->RegisterTask(chief, 0, [&](Status s) {
+  TF_ASSERT_OK(coord_service->RegisterTask(chief, /*incarnation=*/0));
+  coord_service->WaitForAllTasks(chief, {}, [&](Status s) {
     TF_ASSERT_OK(s);
-    coord_service->WaitForAllTasks(chief, {}, [&](Status s) {
-      TF_ASSERT_OK(s);
-      register_chief.Notify();
-    });
+    register_chief.Notify();
   });
   absl::Notification register_task0;
-  coord_service->RegisterTask(task_0, 0, [&](Status s) {
+  TF_ASSERT_OK(coord_service->RegisterTask(task_0, /*incarnation=*/0));
+  coord_service->WaitForAllTasks(task_0, {}, [&](Status s) {
     TF_ASSERT_OK(s);
-    coord_service->WaitForAllTasks(task_0, {}, [&](Status s) {
-      TF_ASSERT_OK(s);
-      register_task0.Notify();
-    });
+    register_task0.Notify();
   });
   absl::Notification register_task1;
-  coord_service->RegisterTask(task_1, 0, [&](Status s) {
+  TF_ASSERT_OK(coord_service->RegisterTask(task_1, /*incarnation=*/0));
+  coord_service->WaitForAllTasks(task_1, {}, [&](Status s) {
     TF_ASSERT_OK(s);
-    coord_service->WaitForAllTasks(task_1, {}, [&](Status s) {
-      TF_ASSERT_OK(s);
-      register_task1.Notify();
-    });
+    register_task1.Notify();
   });
   // All tasks in the coordinated jobs have registered.
   register_chief.WaitForNotification();
   register_task0.WaitForNotification();
   register_task1.WaitForNotification();
 
-  Status status = Status::OK();
   // Registering the evaluator task is unexpected
-  absl::Notification register_evaluator;
-  coord_service->RegisterTask(evaluator, 0, [&](Status s) {
-    status = s;
-    register_evaluator.Notify();
-  });
-  register_evaluator.WaitForNotification();
+  Status status = coord_service->RegisterTask(evaluator, /*incarnation=*/0);
   EXPECT_TRUE(errors::IsInvalidArgument(status)) << status;
 }
 
@@ -354,18 +331,8 @@ TEST(CoordinationServiceTest, TestTaskHeartbeatTimeout) {
           kCoordinationServiceType, Env::Default(), server_def,
           std::move(client_cache));
 
-  absl::Notification register0;
-  coord_service->RegisterTask(task_0, w0_incarnation, [&](Status s) {
-    TF_ASSERT_OK(s);
-    register0.Notify();
-  });
-  register0.WaitForNotification();
-  absl::Notification register1;
-  coord_service->RegisterTask(task_1, w1_incarnation, [&](Status s) {
-    TF_ASSERT_OK(s);
-    register1.Notify();
-  });
-  register1.WaitForNotification();
+  TF_ASSERT_OK(coord_service->RegisterTask(task_0, w0_incarnation));
+  TF_ASSERT_OK(coord_service->RegisterTask(task_1, w1_incarnation));
 
   // No heartbeat for a while, leader considers the task as stale.
   Env::Default()->SleepForMicroseconds(2 * kHeartbeatTimeoutMs * 1000);
@@ -397,18 +364,8 @@ TEST(CoordinationServiceTest, HeartbeatTimeoutWithoutServerToClientConnection) {
           kCoordinationServiceType, Env::Default(), server_def,
           /*cache=*/nullptr);
 
-  absl::Notification register0;
-  coord_service->RegisterTask(task_0, w0_incarnation, [&](Status s) {
-    TF_ASSERT_OK(s);
-    register0.Notify();
-  });
-  register0.WaitForNotification();
-  absl::Notification register1;
-  coord_service->RegisterTask(task_1, w1_incarnation, [&](Status s) {
-    TF_ASSERT_OK(s);
-    register1.Notify();
-  });
-  register1.WaitForNotification();
+  TF_ASSERT_OK(coord_service->RegisterTask(task_0, w0_incarnation));
+  TF_ASSERT_OK(coord_service->RegisterTask(task_1, w1_incarnation));
 
   // No heartbeat for a while, leader consider the task as stale.
   // Service stops and disconnects both tasks.
@@ -442,26 +399,13 @@ TEST(CoordinationServiceTest, TestTaskRestart) {
           kCoordinationServiceType, Env::Default(), server_def,
           std::move(client_cache));
 
-  absl::Notification register0;
-  coord_service->RegisterTask(task_0, w0_incarnation, [&](Status s) {
-    TF_ASSERT_OK(s);
-    register0.Notify();
-  });
-  register0.WaitForNotification();
-  absl::Notification register1;
-  coord_service->RegisterTask(task_1, w1_incarnation, [&](Status s) {
-    TF_ASSERT_OK(s);
-    register1.Notify();
-  });
-  register1.WaitForNotification();
+  TF_ASSERT_OK(coord_service->RegisterTask(task_0, w0_incarnation));
+  TF_ASSERT_OK(coord_service->RegisterTask(task_1, w1_incarnation));
 
   // Simulate task restart scenario: trying to register to cluster again.
-  absl::Notification n_repeated_register;
-  coord_service->RegisterTask(task_1, random::New64(), [&](Status s) {
-    EXPECT_TRUE(errors::IsAborted(s));
-    n_repeated_register.Notify();
-  });
-  n_repeated_register.WaitForNotification();
+  Status s =
+      coord_service->RegisterTask(task_1, /*incarnation=*/random::New64());
+  EXPECT_TRUE(errors::IsAborted(s)) << s;
   // Aborted error is also propagated to other tasks in cluster.
   EXPECT_TRUE(errors::IsAborted(wi0.GetStatus())) << wi0.GetStatus();
 }

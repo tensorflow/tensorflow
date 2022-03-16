@@ -103,8 +103,8 @@ class CoordinationServiceInterface {
   }
 
   // Register a task to the service.
-  virtual void RegisterTask(const CoordinatedTask& task, uint64_t incarnation,
-                            StatusCallback done) = 0;
+  virtual Status RegisterTask(const CoordinatedTask& task,
+                              uint64_t incarnation) = 0;
 
   // Wait for all tasks to be up and running, and register local device
   // info. The callback is invoked when all tasks are up and registered, or some

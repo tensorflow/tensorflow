@@ -115,8 +115,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       const ServerDef& server_def);
   ~CoordinationServiceStandaloneImpl() override { Stop(); }
 
-  void RegisterTask(const CoordinatedTask& task, uint64_t incarnation,
-                    StatusCallback done) override;
+  Status RegisterTask(const CoordinatedTask& task,
+                      uint64_t incarnation) override;
   void WaitForAllTasks(const CoordinatedTask& task,
                        const CoordinationServiceDeviceInfo& devices,
                        StatusCallback done) override;
@@ -444,18 +444,18 @@ void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   }
 }
 
-void CoordinationServiceStandaloneImpl::RegisterTask(
-    const CoordinatedTask& task, uint64_t incarnation, StatusCallback done) {
+Status CoordinationServiceStandaloneImpl::RegisterTask(
+    const CoordinatedTask& task, uint64_t incarnation) {
   const std::string& task_name = GetTaskName(task);
 
   Status status;
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
-      done(MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected task registered with task_name=", task_name)));
-      // Note: unexpected task register should not be propagated to other tasks
-      return;
+      // Note: return early here as unexpected task register errors should not
+      // be propagated to other tasks.
+      return MakeCoordinationError(errors::InvalidArgument(
+          "Unexpected task registered with task_name=", task_name));
     } else if (cluster_state_[task_name]->GetState() ==
                TaskState::State::CONNECTED) {
       Status s = MakeCoordinationError(
@@ -475,7 +475,7 @@ void CoordinationServiceStandaloneImpl::RegisterTask(
   if (!status.ok()) {
     PropagateError(task, status);
   }
-  done(status);
+  return status;
 }
 
 void CoordinationServiceStandaloneImpl::WaitForAllTasks(

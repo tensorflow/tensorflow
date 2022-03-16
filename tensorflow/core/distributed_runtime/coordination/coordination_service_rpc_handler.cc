@@ -46,12 +46,8 @@ void CoordinationServiceRpcHandler::RegisterTaskAsync(
   const CoordinatedTask& task = request->source_task();
   const uint64_t incarnation = request->incarnation();
   const uint64_t leader_incarnation = service->GetServiceIncarnation();
-  service->RegisterTask(
-      task, incarnation,
-      [leader_incarnation, response, done = std::move(done)](Status s) {
-        response->set_leader_incarnation(leader_incarnation);
-        done(s);
-      });
+  response->set_leader_incarnation(leader_incarnation);
+  done(service->RegisterTask(task, incarnation));
 }
 
 void CoordinationServiceRpcHandler::HeartbeatAsync(
