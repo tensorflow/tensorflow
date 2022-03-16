@@ -378,7 +378,15 @@ class CheckpointPosition(object):
 
   def gather_ops_or_named_saveables(self):
     """Looks up or creates SaveableObjects which don't have cached ops."""
-    saveables = self.trackable._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
+    # pylint:disable=g-import-not-at-top
+    # There are circular dependencies between Trackable and SaveableObject,
+    # so we must import it here.
+    # TODO(b/224069573): Remove this code from Trackable.
+    from tensorflow.python.training.saving import saveable_object_util
+    # pylint:enable=g-import-not-at-top
+
+    saveables = saveable_object_util.saveable_objects_from_trackable(
+        self.trackable)
     # Name saveables based on the name this object had when it was checkpointed.
     named_saveables = {}
     python_saveables = []
@@ -1074,6 +1082,9 @@ class Trackable(object):
   def _gather_saveables_for_checkpoint(self):
     """Returns a dictionary of values to checkpoint with this object.
 
+    NOTE: This method is deprecated, please use `_serialize_to_tensors` and
+    `_restore_from_tensors` instead.
+
     Keys in the returned dictionary are local to this object and in a separate
     namespace from dependencies. Values may either be `SaveableObject` factories
     or variables easily converted to `SaveableObject`s (as in
@@ -1102,7 +1113,37 @@ class Trackable(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    return self._self_saveable_object_factories
+    # TODO(kathywu): In order to remove this circular dependency, remove all
+    # external calls to _gather_saveables_for_checkpoint.
+    # pylint: disable=g-import-not-at-top
+    from tensorflow.python.training.saving import saveable_object_util
+    # pylint: enable=g-import-not-at-top
+    if saveable_object_util.trackable_has_serialize_to_tensor(self):
+      def create_saveable(name=""):
+        return saveable_object_util.TrackableSaveable(self, name)
+      return {"": create_saveable}
+    else:
+      return getattr(self, "_self_saveable_object_factories", {})
+
+  def _serialize_to_tensors(self):
+    """Gathers tensors to save to the checkpoint.
+
+    Returns:
+      A dictionary mapping names to tensors.
+    """
+    raise NotImplementedError
+
+  def _restore_from_tensors(self, restored_tensors):
+    """Restores checkpointed values to this `Trackable`.
+
+    Args:
+      restored_tensors: A dictionary mapping names to tensors. The keys to this
+        dictionary matches the names passed to _serialize_to_tensors.
+
+    Returns:
+      An op that runs the restoration.
+    """
+    raise NotImplementedError
 
   def _list_extra_dependencies_for_serialization(self, serialization_cache):
     """Lists extra dependencies to serialize.

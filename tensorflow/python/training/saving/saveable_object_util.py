@@ -35,6 +35,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
@@ -192,7 +193,7 @@ def saveable_objects_for_op(op, name):
   elif isinstance(op, trackable.Trackable) and not isinstance(
       op, variables.Variable):
     # pylint: disable=protected-access
-    for attr, factory in op._gather_saveables_for_checkpoint().items():
+    for attr, factory in saveable_objects_from_trackable(op).items():
       if attr == trackable.VARIABLE_VALUE_KEY:
         # Keep original name for classes masquerading as variables.
         full_name = name
@@ -279,7 +280,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
     elif isinstance(var, trackable.Trackable) and not resource_or_ref_variable:
       trackable_saveables = [
           (factory() if callable(factory) else factory)
-          for factory in var._gather_saveables_for_checkpoint().values()]
+          for factory in saveable_objects_from_trackable(var).values()]
       names_to_saveables.update(
           op_list_to_dict(trackable_saveables))
     else:
@@ -499,3 +500,43 @@ def create_saveable_object(factory, name, call_with_mapped_captures):
 def is_factory_for_restored_saveable_object(factory):
   return (isinstance(factory, functools.partial) and
           factory.func is RestoredSaveableObject)
+
+
+def saveable_objects_from_trackable(obj):
+  if trackable_has_serialize_to_tensor(obj):
+    def create_saveable(name=""):
+      return TrackableSaveable(obj, name)
+    return {"": create_saveable}
+  else:
+    return obj._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
+
+
+class TrackableSaveable(saveable_object.SaveableObject):
+  """A SaveableObject that defines `Trackable` checkpointing steps."""
+
+  def __init__(self, obj, name):
+    self._trackable = obj
+    tensor_dict = obj._serialize_to_tensors()  # pylint: disable=protected-access
+    specs = []
+    self._local_names = []
+    for tensor_name, tensor in tensor_dict.items():
+      self._local_names.append(tensor_name)
+      spec_name = name + trackable_utils.escape_local_name(tensor_name)
+      specs.append(saveable_object.SaveSpec(tensor, "", spec_name))
+    super(TrackableSaveable, self).__init__(obj, specs, name)
+
+  def restore(self, restored_tensors, restored_shapes):
+    del restored_shapes  # Unused.
+    restored_tensor_dict = {}
+    for n, local_name in enumerate(self._local_names):
+      restored_tensor_dict[local_name] = restored_tensors[n]
+    return self._trackable._restore_from_tensors(restored_tensor_dict)  # pylint: disable=protected-access
+
+
+def trackable_has_serialize_to_tensor(obj):
+  # pylint: disable=protected-access
+  obj_serialize_fn = obj._serialize_to_tensors
+  if hasattr(obj_serialize_fn, "__func__"):
+    obj_serialize_fn = obj_serialize_fn.__func__
+  return trackable.Trackable._serialize_to_tensors != obj_serialize_fn
+  # pylint: enable=protected-access

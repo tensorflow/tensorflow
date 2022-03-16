@@ -125,7 +125,8 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
     else:
       checkpoint_factory_map[trackable] = []
       for name, saveable_factory in (
-          object_to_save._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
+          saveable_object_util.saveable_objects_from_trackable(object_to_save)
+          .items()):  # pylint: disable=protected-access
         checkpoint_key = trackable_utils.checkpoint_key(object_name, name)
         checkpoint_factory_map[trackable].append(_CheckpointFactoryData(
             factory=saveable_factory,
