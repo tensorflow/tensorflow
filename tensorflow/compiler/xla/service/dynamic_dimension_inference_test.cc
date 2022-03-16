@@ -1303,5 +1303,33 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeOpWithMultipleDynamicDimensions) {
   EXPECT_EQ(inference_->GetDynamicSize(dynamic_reshape, {}, 2), one);
 }
 
+TEST_F(DynamicDimensionInferenceTest, HandleMapInDynamicDimensionInference) {
+  const char* module_str = R"(
+HloModule test_module
+
+%scatter-combiner.285 (p0.286: c128[], p1.287: c128[]) -> c128[] {
+  %p0.286 = c128[] parameter(0)
+  %p1.287 = c128[] parameter(1)
+  ROOT %add.288 = c128[] add(c128[] %p0.286, c128[] %p1.287)
+}
+
+ %while_body  {
+  %reshape.8 = s32[] parameter(4)
+  %reshape.7 = c128[1]{0} parameter(3)
+  %reduce = pred[] parameter(2)
+  %concatenate = s32[1]{0} parameter(1)
+  %slice.4 = s32[1]{0} slice(s32[1]{0} %concatenate), slice={[0 : 1]}
+  %broadcast.7 = pred[1]{0} broadcast(pred[] %reduce), dimensions={}
+  %param.1 = (s32[],c128[<=1]{0},s32[1]{0},c128[1]{0}) parameter(0)
+  %get-tuple-element.2 = c128[<=1]{0} get-tuple-element((s32[],c128[<=1]{0},s32[1]{0},c128[1]{0}) %param.1), index=1
+  %dynamic-slice.2 = c128[1]{0} dynamic-slice(c128[<=1]{0} %get-tuple-element.2,s32[] %reshape.8), dynamic_slice_sizes={1}
+  %map = c128[1]{0} map(c128[1]{0} %dynamic-slice.2,c128[1]{0} %reshape.7), dimensions={0}, to_apply=%scatter-combiner.285
+  %select = c128[1]{0} select(pred[1]{0} %broadcast.7,c128[1]{0} %map,c128[1]{0} %dynamic-slice.2)
+  %reshape.9 = s32[] reshape(s32[1]{0} %slice.4)
+  %dynamic-update-slice = c128[<=1]{0} dynamic-update-slice(c128[<=1]{0} %get-tuple-element.2,c128[1]{0} %select,s32[] %reshape.9)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(module_str));
+  TF_ASSERT_OK(RunInference());
+}
 }  // namespace
 }  // namespace xla
