@@ -433,7 +433,7 @@ class CoordinatedCheckpointManager(object):
         logging.info('Checkpoint finished at path %s',
                      self._write_checkpoint_manager.directory)
         logging.info('Checkpoint time: %f', end_time - start_time)
-        self.stop_poll_gce_signal_thread()
+        self._stop_poll_gce_signal_thread()
         self._stop_cluster_wise_termination_watcher_thread()
         sys.exit(self._exit_code)
 
