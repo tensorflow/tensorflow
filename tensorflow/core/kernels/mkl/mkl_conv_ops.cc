@@ -862,7 +862,7 @@ class MklConvOp : public OpKernel {
       }
 
       UserScratchPad<unsigned char> scratch_pad;
-      scratch_pad.Allocate(conv_fwd, context);
+      scratch_pad.AllocateSPTensor(conv_fwd, context);
 
       // Execute convolution
       std::shared_ptr<stream> fwd_cpu_stream;
@@ -873,7 +873,7 @@ class MklConvOp : public OpKernel {
         Tbias* bias_data =
             this->GetBiasHandle(context, conv_fwd_pd, bias_tensor);
         conv_fwd->Execute(src_data, filter_data, bias_data, dst_data,
-                          fwd_cpu_stream, scratch_pad.get());
+                          fwd_cpu_stream, scratch_pad.Get());
       } else if (fuse_bn_) {
         const Tensor& bn_scale_tensor =
             MklGetInput(context, kInputIndex_BN_Scale);
@@ -898,10 +898,10 @@ class MklConvOp : public OpKernel {
                              bn_rsqrt_data);
         conv_fwd->Execute(src_data, filter_data, nullptr, dst_data,
                           bn_scale_data, bn_mean_data, bn_offset_data,
-                          bn_rsqrt_data, fwd_cpu_stream, scratch_pad.get());
+                          bn_rsqrt_data, fwd_cpu_stream, scratch_pad.Get());
       } else {
         conv_fwd->Execute(src_data, filter_data, dst_data, fwd_cpu_stream,
-                          scratch_pad.get());
+                          scratch_pad.Get());
       }
 
       // Delete primitive since it is not cached.
