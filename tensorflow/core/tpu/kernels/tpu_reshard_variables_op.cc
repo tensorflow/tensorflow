@@ -187,8 +187,9 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   xla::ShapedBuffer shaped_buffer(std::move(host_shape), input_buffers.shape(),
                                   device_ordinal);
   shaped_buffer.set_buffers(input_buffers.Map<se::DeviceMemoryBase>(
-      [](const xla::MaybeOwningDeviceMemory& buffer) {
-        return buffer.AsDeviceMemoryBase();
+      [](xla::MaybeOwningDeviceMemory* buffer) {
+        CHECK(buffer);
+        return buffer->AsDeviceMemoryBase();
       }));
 
   // Write input root tuple.

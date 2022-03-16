@@ -800,17 +800,16 @@ tf_cc_test(
 
 cc_library(
     name = "shape_tree",
-    srcs = ["shape_tree.cc"],
     hdrs = ["shape_tree.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":shape_util",
         ":status_macros",
+        ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
