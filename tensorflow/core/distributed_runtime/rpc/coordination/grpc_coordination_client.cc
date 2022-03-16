@@ -269,4 +269,11 @@ CoordinationClientCache* NewGrpcCoordinationClientCache(
   return new GrpcCoordinationClientCache(channel_cache);
 }
 
+CoordinationClient* NewGrpcCoordinationClient(
+    std::shared_ptr<::grpc::Channel> channel) {
+  // TODO(hanyangtay): Pass in the logical task name for better logging.
+  return new GrpcCoordinationClient(
+      channel, /*target=*/"unknown_target_for_coordination_leader");
+}
+
 }  // namespace tensorflow
