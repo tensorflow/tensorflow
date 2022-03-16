@@ -149,6 +149,15 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
                       num_local_participants, *unique_id_callback, rank));
 
   TF_RETURN_IF_ERROR(RunNcclCollective(params, *comm));
+
+  // Block host on the first call to ensure that all devices have allocated the
+  // required buffers for their communicators before allowing any device to
+  // continue enqueuing operations. Otherwise, the allocations can cause
+  // deadlock in the CUDA driver (b/215649390).
+  if (first_call_to_execute_) {
+    TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+    first_call_to_execute_ = false;
+  }
   return Status::OK();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
