@@ -137,8 +137,6 @@ struct ComputeOpAndFuncBufferizePass
   }
 
   void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-
     // Bufferize ops using BufferizableOpInterface. This could be switched to
     // One-Shot Bufferize in the future.
     bufferization::BufferizationOptions options =
@@ -168,13 +166,7 @@ struct ComputeOpAndFuncBufferizePass
           return dialect_state;
         });
 
-    bufferization::AlwaysCopyBufferizationState bufferization_state(options);
-    bufferization::populateBufferizationPattern(bufferization_state, patterns);
-
-    GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                            config))) {
+    if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
       return;
     }
@@ -318,7 +310,6 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   void runOnOperation() override {
     // Bufferize ops using BufferizableOpInterface. This could be switched to
     // One-Shot Bufferize in the future.
-    RewritePatternSet patterns(&getContext());
     bufferization::BufferizationOptions options =
         bufferization::getPartialBufferizationOptions();
     options.bufferAlignment = alignment_;
@@ -327,11 +318,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     options.allowDialectInFilter<
         arith::ArithmeticDialect, linalg::LinalgDialect, func::FuncDialect,
         shape::ShapeDialect, tensor::TensorDialect, vector::VectorDialect>();
-    bufferization::AlwaysCopyBufferizationState bufferization_state(options);
-    bufferization::populateBufferizationPattern(bufferization_state, patterns);
-
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
       return;
     }

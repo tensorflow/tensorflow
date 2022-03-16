@@ -17,6 +17,7 @@ limitations under the License.
 #define HLO_OPS_BASE_ENUMS
 
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/PatternBase.td"
 
 //===----------------------------------------------------------------------===//
 // Precision Config enum definitions.

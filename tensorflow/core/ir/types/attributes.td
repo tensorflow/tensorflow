@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TF_TYPE_ATTRIBUTES
 #define TF_TYPE_ATTRIBUTES
 
+include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/SubElementInterfaces.td"
 include "tensorflow/core/ir/types/dialect.td"
 
@@ -59,6 +60,7 @@ def TFType_FuncAttr : TFType_Attr<"Func", [
       return $_get($_ctxt, SymbolRefAttr::get($_ctxt, name), attr);
     }]>
   ];
+  let hasCustomAssemblyFormat = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -76,6 +78,7 @@ def TFType_PlaceholderAttr : TFType_Attr<"Placeholder"> {
   let parameters = (ins
     StringRefParameter<"value">:$value
   );
+  let hasCustomAssemblyFormat = 1;
 }
 
 def TFGraph_TypeOrPlaceholder
@@ -129,6 +132,7 @@ def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
     // Returns the shape array if ranked, or None if unranked.
     llvm::Optional<ArrayRef<int64_t>> getValue() const;
   }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 // An array of TF shapes.
@@ -149,6 +153,7 @@ def TFType_VersionAttr : TFType_Attr<"Version"> {
     "int32_t":$minConsumer,
     ArrayRefParameter<"int32_t">:$badConsumers
   );
+  let hasCustomAssemblyFormat = 1;
 }
 
 #endif
