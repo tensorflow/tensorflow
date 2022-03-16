@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
@@ -748,12 +749,13 @@ void TPURewritePass::runOnOperation() {
     return WalkResult::advance();
   });
   if (result_init.wasInterrupted()) return signalPassFailure();
-
   llvm::SmallVector<tf_device::ClusterFuncOp> to_be_erased;
   OpBuilder builder(&getContext());
   auto result = getOperation().walk([&](tf_device::ClusterFuncOp op) {
+    if (failed(TF::HasValidCompilationAndReplicationAttributes(*op)))
+      return WalkResult::interrupt();
     // Skip non-tpu device cluster_func.
-    auto cluster_id = op->getAttrOfType<StringAttr>("_tpu_replicate");
+    auto cluster_id = op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
     if (!cluster_id) return WalkResult::advance();
 
     if (failed(Rewrite(op, devices.device_names(),
