@@ -507,7 +507,6 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
 
   for (auto* computation : GetFusionComputations(module)) {
     CHECK(!computation->IsFusionComputation());
-    computation_ = computation;
     std::unique_ptr<HloReachabilityMap> reachability =
         HloReachabilityMap::Build(computation);
 
@@ -516,9 +515,9 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     // want to duplicate based on a global analysis of the graph.
     if (may_duplicate_) {
       do_not_duplicate = ComputeGloballyUnfusible(
-          computation_->MakeInstructionPostOrder(), *reachability);
+          computation->MakeInstructionPostOrder(), *reachability);
     }
-    auto fusion_queue = GetFusionQueue(computation_);
+    auto fusion_queue = GetFusionQueue(computation);
 
     // Instruction fusion effectively fuses edges in the computation graph
     // (producer instruction -> consumer instruction) so we iterate over all
@@ -581,7 +580,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
             }
 
             fusion_queue->PreFusion(operand, instruction);
-            fusion_instruction = Fuse(operand, instruction);
+            fusion_instruction = Fuse(operand, instruction, computation);
           }
         }
 
@@ -608,7 +607,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
               }
 
               fusion_queue->PreFusion(operand, instruction);
-              fusion_instruction = FuseIntoMultiOutput(operand, instruction);
+              fusion_instruction =
+                  FuseIntoMultiOutput(operand, instruction, computation);
             }
           }
           should_fuse = should_fuse.Or(can_fuse_mof);
@@ -650,7 +650,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
           // Operand is now dead. Remove from queue.
           fusion_queue->RemoveInstruction(operand);
           // Remove from computation.
-          TF_RETURN_IF_ERROR(computation_->RemoveInstruction(operand));
+          TF_RETURN_IF_ERROR(computation->RemoveInstruction(operand));
         }
 
         if (dump_fusion) {
@@ -699,7 +699,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
 }
 
 HloInstruction* InstructionFusion::AddFusionInstruction(
-    HloInstruction* producer, HloInstruction* consumer) {
+    HloInstruction* producer, HloInstruction* consumer,
+    HloComputation* computation) {
   HloInstruction* fusion_instruction;
   auto kind = ChooseKind(producer, consumer);
   if (consumer->opcode() == HloOpcode::kFusion) {
@@ -708,9 +709,9 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
       fusion_instruction->set_fusion_kind(kind);
     }
   } else {
-    fusion_instruction = computation_->AddInstruction(
+    fusion_instruction = computation->AddInstruction(
         HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
-    TF_CHECK_OK(computation_->ReplaceInstruction(consumer, fusion_instruction));
+    TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
   return fusion_instruction;
 }
@@ -743,10 +744,12 @@ void InstructionFusion::UpdateReusedOperandsForFusion(
 }
 
 HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
-                                        HloInstruction* consumer) {
+                                        HloInstruction* consumer,
+                                        HloComputation* computation) {
   VLOG(2) << "Fusing " << producer->ToString() << " into "
           << consumer->ToString();
-  HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
+  HloInstruction* fusion_instruction =
+      AddFusionInstruction(producer, consumer, computation);
   UpdateReusedOperandsForFusion(producer, fusion_instruction);
   FuseInstruction(fusion_instruction, producer);
   if (fusion_instruction != producer && fusion_instruction != consumer) {
@@ -756,10 +759,12 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
 }
 
 HloInstruction* InstructionFusion::FuseIntoMultiOutput(
-    HloInstruction* producer, HloInstruction* consumer) {
+    HloInstruction* producer, HloInstruction* consumer,
+    HloComputation* computation) {
   VLOG(2) << "Multi-output fusing " << producer->ToString() << " into "
           << consumer->ToString();
-  HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
+  HloInstruction* fusion_instruction =
+      AddFusionInstruction(producer, consumer, computation);
   UpdateReusedOperandsForFusion(producer, fusion_instruction);
   fusion_instruction->FuseInstructionIntoMultiOutput(producer);
   return fusion_instruction;
