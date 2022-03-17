@@ -228,6 +228,11 @@ std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
           2, std::make_pair(std::initializer_list<int>({0, 1}),
                             quant::GetUniformQuantizedTypeForBias)));
       spec->coeff_op_quant_dim[0] = 3;
+    } else if (function_name.contains("matmul")) {
+      spec->biases_params.emplace(std::make_pair(
+          2, std::make_pair(std::initializer_list<int>({0, 1}),
+                            quant::GetUniformQuantizedTypeForBias)));
+      spec->coeff_op_quant_dim[0] = -1;
     }
   }
   return spec;
