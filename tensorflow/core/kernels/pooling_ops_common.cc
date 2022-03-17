@@ -396,19 +396,15 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  bool status =
-      stream
-          ->ThenPoolForward(pooling_desc, input_desc, input_data, output_desc,
-                            &output_data, &scratch_allocator)
-          .ok();
+  OP_REQUIRES_OK(context, stream->ThenPoolForward(
+                              pooling_desc, input_desc, input_data, output_desc,
+                              &output_data, &scratch_allocator));
 #else
-  bool status = stream
-                    ->ThenPoolForward(pooling_desc, input_desc, input_data,
-                                      output_desc, &output_data)
-                    .ok();
+  OP_REQUIRES_OK(context,
+                 stream->ThenPoolForward(pooling_desc, input_desc, input_data,
+                                         output_desc, &output_data));
 #endif
-  OP_REQUIRES(context, status,
-              errors::Internal("dnn PoolForward launch failed"));
+
 #if CUDNN_VERSION < 7300
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC
@@ -724,23 +720,17 @@ void DnnPoolingGradOp<T>::Compute(
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  bool status = stream
-                    ->ThenPoolBackward(pooling_desc, orig_input_desc,
-                                       orig_input_data, orig_output_desc,
-                                       orig_output_data, output_backprop_data,
-                                       &input_backprop_data, &scratch_allocator)
-                    .ok();
+  OP_REQUIRES_OK(context,
+                 stream->ThenPoolBackward(
+                     pooling_desc, orig_input_desc, orig_input_data,
+                     orig_output_desc, orig_output_data, output_backprop_data,
+                     &input_backprop_data, &scratch_allocator));
 #else
-  bool status =
-      stream
-          ->ThenPoolBackward(pooling_desc, orig_input_desc, orig_input_data,
-                             orig_output_desc, orig_output_data,
-                             output_backprop_data, &input_backprop_data)
-          .ok();
+  OP_REQUIRES_OK(context, stream->ThenPoolBackward(
+                              pooling_desc, orig_input_desc, orig_input_data,
+                              orig_output_desc, orig_output_data,
+                              output_backprop_data, &input_backprop_data));
 #endif
-
-  OP_REQUIRES(context, status,
-              errors::Internal("dnn PoolBackward launch failed"));
 
   if (padding == EXPLICIT && (params.pad_top != params.pad_bottom ||
                               params.pad_left != params.pad_right)) {
