@@ -1027,9 +1027,13 @@ Status HloEvaluator::EvaluateInternal(
 Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
   Literal result(bitcast->shape());
-  TF_RET_CHECK(operand_literal.size_bytes() == result.size_bytes());
+  // Bitcast output is allowed to be smaller than the input if the backend-
+  // specific buffer sizes for the input and output are the same. Since the HLO
+  // evaluator doesn't have access to the backend-specific shape size function,
+  // assume it's OK to bitcast if output <= input.
+  TF_RET_CHECK(operand_literal.size_bytes() >= result.size_bytes());
   memcpy(result.untyped_data(), operand_literal.untyped_data(),
-         operand_literal.size_bytes());
+         result.size_bytes());
   evaluated_[bitcast] = std::move(result);
   return Status::OK();
 }
