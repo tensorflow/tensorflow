@@ -185,9 +185,16 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
     return self._deserialize(serialized_supertype) if has_supertype else None
 
-  # TODO(b/202447704): Reduce internal usages.
+  # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):
-    """Returns true if `spec_or_value` is compatible with this TypeSpec."""
+    """Returns true if `spec_or_value` is compatible with this TypeSpec.
+
+    Prefer using "is_subtype_of" and "most_specific_common_supertype" wherever
+    possible.
+
+    Args:
+      spec_or_value: A TypeSpec or TypeSpec associated value to compare against.
+    """
     # === Subclassing ===
     # If not overridden by subclasses, the default behavior is to convert
     # `spec_or_value` to a `TypeSpec` (if it isn't already); and then to
@@ -457,7 +464,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
   # === Private Helper Methods ===
 
-  # TODO(b/216206374): Currently this usage is used to represent a Tensor
+  # TODO(b/154541175): Currently this usage is used to represent a Tensor
   # argument not a TensorSpec argument as it should be.
   def __tf_tracing_type__(self,
                           context: trace.TracingContext) -> trace.TraceType:
