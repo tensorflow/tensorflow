@@ -1211,6 +1211,19 @@ py_test(
 )
 
 py_library(
+    name = "composite_tensor_gradient",
+    srcs = ["composite_tensor_gradient.py"],
+    deps = [
+        ":composite_tensor",
+        ":for_generated_wrappers",
+        ":indexed_slices",
+        "//tensorflow/python/eager:backprop_util",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
+    ],
+)
+
+py_library(
     name = "extension_type",
     srcs = ["extension_type.py"],
     srcs_version = "PY3",
