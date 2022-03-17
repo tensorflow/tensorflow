@@ -412,16 +412,26 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
         VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveOutfeed(instruction));
         changed = true;
-      } else if (remove_comm_ &&
-                 instruction->opcode() == HloOpcode::kSendDone) {
-        VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemoveSendDone(instruction, &removed));
-        changed = true;
-      } else if (remove_comm_ &&
-                 instruction->opcode() == HloOpcode::kRecvDone) {
-        VLOG(1) << "Remove " << instruction->name();
-        TF_RETURN_IF_ERROR(RemoveRecvDone(instruction, &removed));
-        changed = true;
+      } else if (instruction->opcode() == HloOpcode::kSendDone) {
+        auto send_done_instruction =
+            DynCast<HloSendDoneInstruction>(instruction);
+        CHECK(send_done_instruction);
+        if (remove_comm_ || (remove_host_transfer_ &&
+                             send_done_instruction->is_host_transfer())) {
+          VLOG(1) << "Remove " << instruction->name();
+          TF_RETURN_IF_ERROR(RemoveSendDone(instruction, &removed));
+          changed = true;
+        }
+      } else if (instruction->opcode() == HloOpcode::kRecvDone) {
+        auto recv_done_instruction =
+            DynCast<HloRecvDoneInstruction>(instruction);
+        CHECK(recv_done_instruction);
+        if (remove_comm_ || (remove_host_transfer_ &&
+                             recv_done_instruction->is_host_transfer())) {
+          VLOG(1) << "Remove " << instruction->name();
+          TF_RETURN_IF_ERROR(RemoveRecvDone(instruction, &removed));
+          changed = true;
+        }
       } else if (remove_comm_ && IsCollective(instruction)) {
         VLOG(1) << "Remove " << instruction->name();
         TF_RETURN_IF_ERROR(RemoveCollective(instruction));

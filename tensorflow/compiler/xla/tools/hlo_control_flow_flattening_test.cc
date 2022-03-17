@@ -57,7 +57,8 @@ TEST_F(HloControlFlowFlatteningTest, WhileRoot) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -116,7 +117,8 @@ TEST_F(HloControlFlowFlatteningTest, WhileConditionCallComputation) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   XLA_VLOG_LINES(3, "Loaded HLO module: " + module->ToString());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
@@ -170,7 +172,8 @@ TEST_F(HloControlFlowFlatteningTest, WhileRootScheduled) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -225,7 +228,8 @@ TEST_F(HloControlFlowFlatteningTest, WhileUser) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -248,7 +252,8 @@ TEST_F(HloControlFlowFlatteningTest, Infeed) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -269,7 +274,8 @@ TEST_F(HloControlFlowFlatteningTest, InfeedPreserveLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   Shape root_shape = module->entry_computation()->root_instruction()->shape();
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -291,7 +297,8 @@ TEST_F(HloControlFlowFlatteningTest, Outfeed) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -318,7 +325,8 @@ TEST_F(HloControlFlowFlatteningTest, AllReduce) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -347,7 +355,8 @@ TEST_F(HloControlFlowFlatteningTest, AllReduceStartAndDone) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -369,7 +378,8 @@ TEST_F(HloControlFlowFlatteningTest, AllGather) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -391,7 +401,8 @@ TEST_F(HloControlFlowFlatteningTest, AllToAll) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -413,7 +424,8 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermute) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -441,7 +453,8 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -466,7 +479,8 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermuteStartAndDone) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -492,7 +506,39 @@ TEST_F(HloControlFlowFlatteningTest, Recv) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   ControlDepRemover control_remover;
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
+  TF_ASSERT_OK(control_remover.Run(module.get()).status());
+  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  LOG(INFO) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::CustomCall(), op::AfterAll()));
+}
+
+TEST_F(HloControlFlowFlatteningTest, RecvHostTransfer) {
+  absl::string_view hlo_string = R"(
+  HloModule Recv
+
+  ENTRY %Recv () -> (f32[], token[]) {
+    %token0 = token[] after-all()
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, is_host_transfer=true, sharding={maximal device=1}
+    ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true, sharding={maximal device=1}
+    %constant = f32[] constant(2.1), sharding={maximal device=0}
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
+    %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ControlDepRemover control_remover;
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      /*while_execution_count=*/3, /*max_outer_loop_count=*/3,
+      /*max_loop_count=*/3, /*remove_infeed_outfeed=*/true,
+      /*flatten_while_loop=*/true, /*remove_comm=*/false,
+      /*remove_host_transfer=*/true});
   TF_ASSERT_OK(control_remover.Run(module.get()).status());
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
@@ -520,7 +566,40 @@ TEST_F(HloControlFlowFlatteningTest, Send) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   ControlDepRemover control_remover;
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
+  TF_ASSERT_OK(control_remover.Run(module.get()).status());
+  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  LOG(INFO) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall(op::Constant(), op::AfterAll()));
+}
+
+TEST_F(HloControlFlowFlatteningTest, SendHostTransfer) {
+  absl::string_view hlo_string = R"(
+  HloModule Send
+
+  ENTRY %Send () -> token[] {
+    %token0 = token[] after-all()
+    %recv = (f32[], u32[], token[]) recv(token[] %token0), channel_id=15, sharding={maximal device=1}
+    %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
+    %constant = f32[] constant(2.1), sharding={maximal device=0}
+    %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token0), channel_id=16, is_host_transfer=true, sharding={maximal device=0}, control-predecessors={%recv}
+    ROOT %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true, sharding={maximal device=0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ControlDepRemover control_remover;
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      /*while_execution_count=*/3, /*max_outer_loop_count=*/3,
+      /*max_loop_count=*/3, /*remove_infeed_outfeed=*/true,
+      /*flatten_while_loop=*/true, /*remove_comm=*/false,
+      /*remove_host_transfer=*/true});
   TF_ASSERT_OK(control_remover.Run(module.get()).status());
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
@@ -548,7 +627,8 @@ TEST_F(HloControlFlowFlatteningTest, AllGatherStartAndDone) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloControlFlowFlattening flattening(3);
+  HloControlFlowFlattening flattening(
+      HloControlFlowFlattening::Options{/*while_execution_count=*/3});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
@@ -634,7 +714,9 @@ TEST_F(HloControlFlowFlatteningTest, MaxOuterLoopCount) {
   constexpr int kWhileExecutionCount = 5;
   constexpr int kExistingInnerLoopCount = 100;
   constexpr int kMaxLoopCount = 10;
-  HloControlFlowFlattening flattening(kWhileExecutionCount, kMaxLoopCount);
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      /*while_execution_count=*/kWhileExecutionCount,
+      /*max_outer_loop_count=*/kMaxLoopCount});
   EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
                            /*allow_mixed_precision=*/true)
