@@ -3040,3 +3040,84 @@ builtin.func @xla.rng_get_and_update_state() -> tensor<2xui64> {
   return %result : tensor<2xui64>
 }
 // CHECK: mhlo.xla.rng_get_and_update_state
+
+// -----
+
+// CHECK-LABEL: @rfft
+func @rfft(%arg0: tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>> {
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = "RFFT" } : (tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>>
+  return %0 : tensor<3x9xcomplex<f32>>
+}
+
+// -----
+
+func @fft_invalid_rank(%arg0: tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>> {
+  // expected-error@+1 {{rank must be between 1 and 3, but got 4.}}
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<4xi64>, fft_type = "RFFT" } : (tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>>
+  return %0 : tensor<3x9xcomplex<f32>>
+}
+
+// -----
+
+func @fft_rank_mismatch(%arg0: tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>> {
+  // expected-error@+1 {{operand rank must be greater than fft rank of 3 for operand of type 'tensor<3x9xf32>'}}
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<3xi64>, fft_type = "RFFT" } : (tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>>
+  return %0 : tensor<3x9xcomplex<f32>>
+}
+
+// -----
+
+func @rfft_invalid_dim(%arg0: tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>> {
+  // expected-error@+1 {{RFFT requires innermost dimensions match fft_length. Got: 3, 9 but wanted dense<9> : tensor<2xi64>.}}
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<2xi64>, fft_type = "RFFT" } : (tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>>
+  return %0 : tensor<3x9xcomplex<f32>>
+}
+
+// -----
+
+func @irfft_invalid_dim(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xf32> {
+  // expected-error@+1 {{IRFFT requires non-final dimensions match fft_length. Got: 3, 9 but wanted dense<9> : tensor<2xi64>, and 3 != 9.}}
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<2xi64>, fft_type = "IRFFT" } : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xf32>
+  return %0 : tensor<3x9xf32>
+}
+
+// -----
+
+func @irfft_invalid_dim(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xf32> {
+  // expected-error@+1 {{IRFFT requires innermost dimension match fft_length[-1]/2+1. Got: 3, 9 but fft_length is dense<9> : tensor<1xi64>.}}
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = "IRFFT" } : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xf32>
+  return %0 : tensor<3x9xf32>
+}
+
+// -----
+
+func @irfft_invalid_elt(%arg0: tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>> {
+  // expected-error@+1 {{IRFFT takes a complex tensor as input, but is given 'tensor<3x9xf32>'}}
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<16> : tensor<1xi64>, fft_type = "IRFFT" } : (tensor<3x9xf32>) -> tensor<3x9xcomplex<f32>>
+  return %0 : tensor<3x9xcomplex<f32>>
+}
+
+// -----
+
+func @rfft_invalid_elt(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xf32> {
+  // expected-error@+1 {{RFFT takes a real tensor as input, but is given 'tensor<3x9xcomplex<f32>>'.}}
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = "RFFT" } : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xf32>
+  return %0 : tensor<3x9xf32>
+}
+
+// -----
+
+func @irfft_invalid_ret_elt(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>> {
+  // expected-error@+1 {{IRFFT produces a real tensor as output, but is given 'tensor<3x9xcomplex<f32>>'.}}
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<16> : tensor<1xi64>, fft_type = "IRFFT" } : (tensor<3x9xcomplex<f32>>) -> tensor<3x9xcomplex<f32>>
+  return %0 : tensor<3x9xcomplex<f32>>
+}
+
+// -----
+
+func @rfft_invalid_ret_elt(%arg0: tensor<3x9xf32>) -> tensor<3x9xf32> {
+  // expected-error@+1 {{RFFT produces a complex tensor as output, but is given 'tensor<3x9xf32>'.}}
+  %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = "RFFT" } : (tensor<3x9xf32>) -> tensor<3x9xf32>
+  return %0 : tensor<3x9xf32>
+}
+
