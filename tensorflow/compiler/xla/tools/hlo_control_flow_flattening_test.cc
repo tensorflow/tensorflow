@@ -83,6 +83,66 @@ TEST_F(HloControlFlowFlatteningTest, WhileRoot) {
                                 op::Constant())));
 }
 
+TEST_F(HloControlFlowFlatteningTest, WhileConditionCallComputation) {
+  absl::string_view hlo_string = R"(
+  HloModule While
+  While.body {
+    loop_var.1 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    multiply = s32[3]{0} multiply(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[3]{0}) tuple(add, multiply)
+  }
+  While.condition.called {
+    loop_var.2 = (s32[], s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[] custom-call(), custom_call_target="AllocateBuffer", custom_call_has_side_effect=true
+    less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+    ROOT tuple.2 = (pred[]) tuple(less-than)
+  }
+  While.condition {
+    loop_var.3 = (s32[], s32[3]{0}) parameter(0)
+    call = (pred[]) call(loop_var.3), to_apply=While.condition.called
+    ROOT get-tuple-element.4 = pred[] get-tuple-element(call), index=0
+  }
+  ENTRY While {
+    constant.3 = s32[] constant(42)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[], s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=While.condition, body=While.body
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloControlFlowFlattening flattening(3);
+  EXPECT_TRUE(flattening.Run(module.get()).ValueOrDie());
+  XLA_VLOG_LINES(3, "Loaded HLO module: " + module->ToString());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+
+  auto root = module->entry_computation()->root_instruction();
+  auto while_op = module->entry_computation()->GetInstructionWithName("while");
+  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(while_op, 0),
+                              op::GetTupleElement(while_op, 1)));
+  EXPECT_THAT(while_op,
+              op::While(op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
+                                  op::Constant())));
+  auto condition = while_op->while_condition();
+  EXPECT_THAT(
+      condition->root_instruction(),
+      op::Compare(op::GetTupleElement(op::Parameter(0), 2), op::Constant()));
+
+  auto body = while_op->while_body();
+  EXPECT_THAT(body->root_instruction(),
+              op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
+                        op::Add(op::GetTupleElement(op::Parameter(0), 2),
+                                op::Constant())));
+}
+
 TEST_F(HloControlFlowFlatteningTest, WhileRootScheduled) {
   absl::string_view hlo_string = R"(
   HloModule While, is_scheduled=true
