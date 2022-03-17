@@ -146,7 +146,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void ReportServiceErrorToTask(const CoordinatedTask& destination_task,
                                 Status error);
   // Report error from a task to all other connected tasks.
-  void PropagateError(const CoordinatedTask& source_task, Status error,
+  // Note: SetTaskError() must be called before propagating its error.
+  void PropagateError(const CoordinatedTask& source_task,
                       bool is_reported_by_task = false)
       TF_LOCKS_EXCLUDED(state_mu_);
   void SetTaskError(absl::string_view task_name, Status error)
@@ -337,8 +338,9 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
 void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
   check_staleness_thread_.reset(
       env_.StartThread({}, kHealthCheckThread, [this]() {
-        // Used to store the job and task info if a task becomes stale
-        CoordinatedTask stale_task;
+        const bool has_service_to_client_connection = client_cache_ != nullptr;
+        // Used to store stale tasks and barriers.
+        std::vector<absl::string_view> stale_task_names;
         absl::flat_hash_map<std::string, BarrierState*> expired_barriers;
         while (true) {
           {
@@ -364,23 +366,30 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
               VLOG(1) << "Checking staleness for " << task_state.first
                       << " stale?=" << is_stale;
               if (is_stale) {
+                absl::string_view stale_task_name = task_state.first;
+                stale_task_names.push_back(stale_task_name);
                 status = MakeCoordinationError(errors::Unavailable(
-                    "Task ", task_state.first,
+                    "Task ", stale_task_name,
                     " heartbeat timeout. This indicates that the remote task "
                     "has failed, got preempted, or crashed unexpectedly."));
-                stale_task = GetTaskFromName(task_state.first);
-                SetTaskError(task_state.first, status);
-                break;
+                SetTaskError(stale_task_name, status);
               }
             }
           }
-          if (!status.ok()) {
-            // Error cannot be propagated since there is no service-to-client
-            // connection, so stop heartbeat loop and shut down service instead.
-            if (client_cache_ == nullptr) {
-              break;
+          // Propagate heartbeat timeout errors to other connected tasks.
+          if (!stale_task_names.empty()) {
+            if (!has_service_to_client_connection) {
+              // Error cannot be propagated since there is no service-to-client
+              // connection, so shut down service instead. Note: we cannot
+              // destroy the thread within its own function. However, this
+              // thread will be destroyed once the function returns.
+              Stop(/*shut_staleness_thread=*/false);
+              return;
             }
-            PropagateError(stale_task, status);
+            for (const auto& stale_task_name : stale_task_names) {
+              PropagateError(GetTaskFromName(stale_task_name));
+            }
+            stale_task_names.clear();
           }
 
           // Barrier timeout check.
@@ -408,9 +417,6 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             expired_barriers.clear();
           }
         }
-        // Note: we cannot destroy the thread within its own function.
-        // However, this thread will be destroyed once the function exits.
-        Stop(/*shut_staleness_thread=*/false);
       }));
 }
 
@@ -462,9 +468,8 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
           errors::Aborted("Duplicate task registration with task_name=",
                           task_name),
           task);
-
-      SetTaskError(task_name, status);
       status = s;
+      SetTaskError(task_name, status);
     } else {
       // Hit this path when the task is registering itself for the first time,
       // or it's already in ERROR state and now register again. In both cases,
@@ -473,7 +478,7 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
     }
   }
   if (!status.ok()) {
-    PropagateError(task, status);
+    PropagateError(task);
   }
   return status;
 }
@@ -514,7 +519,7 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
       SetTaskError(task_name, error);
     }
   }
-  PropagateError(task, error, /*is_reported_by_task=*/true);
+  PropagateError(task, /*is_reported_by_task=*/true);
   return Status::OK();
 }
 
@@ -537,9 +542,16 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     }
     s = cluster_state_[task_name]->RecordHeartbeat(incarnation);
   }
+
+  // Set and propagate any heartbeat errors.
   if (!s.ok()) {
-    PropagateError(task, s);
+    {
+      mutex_lock l(state_mu_);
+      SetTaskError(task_name, s);
+    }
+    PropagateError(task);
   }
+
   return s;
 }
 
@@ -573,8 +585,12 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToTask(
 }
 
 void CoordinationServiceStandaloneImpl::PropagateError(
-    const CoordinatedTask& source_task, Status error,
-    bool is_reported_by_task) {
+    const CoordinatedTask& source_task, bool is_reported_by_task) {
+  Status error;
+  {
+    mutex_lock l(state_mu_);
+    error = cluster_state_[GetTaskName(source_task)]->GetStatus();
+  }
   assert(!error.ok());
   ReportErrorToTaskRequest request;
   request.set_error_code(error.code());

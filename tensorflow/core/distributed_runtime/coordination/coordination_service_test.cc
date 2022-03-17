@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
@@ -42,7 +43,7 @@ namespace {
 using ::testing::EqualsProto;
 using ::testing::proto::IgnoringRepeatedFieldOrdering;
 
-constexpr int kHeartbeatTimeoutMs = 5 * 1000;  // 5 seconds
+constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
 constexpr char kCoordinationServiceType[] = "standalone";
 
 class TestCoordinationClient : public CoordinationClient {
@@ -184,7 +185,8 @@ class CoordinateTwoTasksTest : public ::testing::Test {
                             ->mutable_experimental()
                             ->mutable_coordination_config();
     coord_config->set_service_type(kCoordinationServiceType);
-    coord_config->set_heartbeat_timeout_in_ms(kHeartbeatTimeoutMs);
+    coord_config->set_heartbeat_timeout_in_ms(kHeartbeatTimeout /
+                                              absl::Milliseconds(1));
     // Init service.
     coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
         kCoordinationServiceType, Env::Default(), server_def,
@@ -332,7 +334,8 @@ TEST_F(CoordinateTwoTasksTest, TestTaskHeartbeatTimeout) {
   TF_ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
   // No heartbeat for a while, leader considers the task as stale.
-  Env::Default()->SleepForMicroseconds(2 * kHeartbeatTimeoutMs * 1000);
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
   EXPECT_TRUE(errors::IsUnavailable(
       coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
   EXPECT_TRUE(errors::IsUnavailable(
@@ -347,7 +350,8 @@ TEST_F(CoordinateTwoTasksTest,
 
   // No heartbeat for a while, leader consider the task as stale.
   // Service stops and disconnects both tasks.
-  Env::Default()->SleepForMicroseconds(2 * kHeartbeatTimeoutMs * 1000);
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
   // Unexpected heartbeat from unregistered tasks since service state has been
   // reset.
   EXPECT_TRUE(errors::IsInvalidArgument(
