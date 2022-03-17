@@ -426,7 +426,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
     Returns:
       A `TypeSpec` of type `cls`.
     """
-    return cls(*serialization)
+    return cls(*serialization)  # pytype: disable=not-instantiable  # trace-all-classes
 
   # === Operators ===
 
