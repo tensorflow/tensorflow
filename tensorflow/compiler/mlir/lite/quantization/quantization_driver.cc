@@ -1173,32 +1173,9 @@ void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
                                         bool legacy_float_scale) {
-  auto default_quant_scale_spec_getter = [](Operation *op) {
-    // `op` should outlive `spec`.
-    auto spec = std::make_unique<OpQuantScaleSpec>();
-    if (llvm::isa<SameScalesOpInterface>(op)) {
-      spec->has_same_scale_requirement = true;
-      spec->required_same_scale_func = [op](bool sign, int bit_width) {
-        return llvm::cast<SameScalesOpInterface>(op)
-            .RequiredSameOperandsAndResultsScale(sign, bit_width);
-      };
-      spec->required_same_quantized_axes_func = [op]() {
-        return llvm::cast<SameScalesOpInterface>(op)
-            .RequiredSameQuantizedAxes();
-      };
-    }
-    if (llvm::isa<FixedOutputRangeInterface>(op)) {
-      spec->has_fixed_output_range = true;
-      spec->fixed_output_range_func = [op](bool sign, int bit_width) {
-        return llvm::cast<FixedOutputRangeInterface>(op).GetFixedOutputRange(
-            sign, bit_width);
-      };
-    }
-    return spec;
-  };
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel, op_quant_spec_getter,
-      default_quant_scale_spec_getter, infer_tensor_ranges, legacy_float_scale);
+      GetDefaultQuantScaleSpec, infer_tensor_ranges, legacy_float_scale);
 }
 
 void ApplyQuantizationParamsPropagation(

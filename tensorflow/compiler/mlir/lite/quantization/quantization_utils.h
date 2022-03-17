@@ -875,11 +875,18 @@ void ApplyQuantizationParamsPropagation(
     OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
     bool legacy_float_scale = false);
 
+// Gets quantization scale specs (e.g. fixed output range, same result and
+// operand scales) from the default quantization interfaces. The op should
+// outlive returned spec for its interface methods to be properly referenced.
+std::unique_ptr<OpQuantScaleSpec> GetDefaultQuantScaleSpec(Operation* op);
+
 // The function might contain more stats ops than required, and it will
 // introduce requantize if the calibration stats have conflicts. This method
 // tries to remove all the redundant stats ops.
 bool RemoveRedundantStatsOps(mlir::FuncOp func,
-                             OpQuantSpecGetter op_quant_spec_getter);
+                             OpQuantSpecGetter op_quant_spec_getter,
+                             OpQuantScaleSpecGetter op_quant_scale_spec_getter =
+                                 GetDefaultQuantScaleSpec);
 
 // Given quantization parameters for int8, compute the quantization parameters
 // for uint if it is required, and wrap the result in an UniformQuantizedType.

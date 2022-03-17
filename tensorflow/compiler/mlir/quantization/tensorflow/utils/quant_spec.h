@@ -23,6 +23,8 @@ namespace quant {
 // Returns quantization scale specs (fixed output, same scale) for a TF op.
 std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op);
 
+// TODO(b/224691264): Implement same scale verification like `VerifySameScales`
+
 }  // namespace quant
 }  // namespace mlir
 

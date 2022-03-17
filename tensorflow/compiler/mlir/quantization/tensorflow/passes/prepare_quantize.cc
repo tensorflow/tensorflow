@@ -240,7 +240,7 @@ std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
 }
 
 bool PrepareQuantizePass::RemoveRedundantStats(FuncOp func) {
-  return RemoveRedundantStatsOps(func, GetOpQuantSpec);
+  return RemoveRedundantStatsOps(func, GetOpQuantSpec, GetTfQuantScaleSpec);
 }
 
 static Value Quantized(Operation* user) {
