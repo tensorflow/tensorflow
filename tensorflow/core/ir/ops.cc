@@ -118,6 +118,7 @@ void TFGraphDialect::initialize() {
   control_ty_ = ControlType::get(getContext());
   tfg_tpu_replicate_key_ =
       StringAttr::get(getContext(), getTfgTpuReplicateAttrKey());
+  fulltype_key_ = StringAttr::get(getContext(), getFullTypeAttrKey());
 }
 
 // Provides a hook for op interface.

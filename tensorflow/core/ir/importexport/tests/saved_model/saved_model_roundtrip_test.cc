@@ -66,8 +66,10 @@ void RunRoundTrip(const std::string& input_file) {
   // In order to compare graph defs, make sure that both original and
   // final graph defs are normalized, e.g, control input are alphabetically
   // sorted.
-  tensorflow::NormalizeTensorData(*original_metagraph->mutable_graph_def());
-  tensorflow::NormalizeTensorData(*final_metagraph->mutable_graph_def());
+  tensorflow::NormalizeTensorData(*original_metagraph->mutable_graph_def(),
+                                  /*add_fulltype=*/true);
+  tensorflow::NormalizeTensorData(*final_metagraph->mutable_graph_def(),
+                                  /*add_fulltype=*/false);
 
   if (!tensorflow::protobuf::util::MessageDifferencer::Equivalent(
           original_model, final_model)) {
