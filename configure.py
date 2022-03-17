@@ -477,7 +477,7 @@ def check_bazel_version(min_version, max_version):
   """
   bazel_executable = which('bazel')
   if bazel_executable is None:
-        bazel_executable = which('bazelisk')
+    bazel_executable = which('bazelisk')
     if bazel_executable is None:
       print('Cannot find bazel. Please install bazel.')
       sys.exit(1)
