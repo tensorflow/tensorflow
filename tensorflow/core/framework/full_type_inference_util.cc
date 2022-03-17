@@ -248,8 +248,17 @@ FullTypeDef BatchTensor(const FullTypeDef& t) {
   // For now, just return the input type.
   // If the input type has a shape in the future, this function needs to be
   // changed so that the output shape is computed based on the input shape and
-  // the effect the op that changes the batch size (and this function would
+  // the effect of the op that changes the batch size (and this function would
   // require more information to do this computation).
+  return t;
+}
+
+FullTypeDef ShardTensor(const FullTypeDef& t) {
+  // For now, just return the input type.
+  // If the input type has a shape in the future, this function needs to be
+  // changed so that the output shape is computed based on the input shape and
+  // the effect of the op that shards the input into multiple tensors (and this
+  // function would require more information to do this computation).
   return t;
 }
 
