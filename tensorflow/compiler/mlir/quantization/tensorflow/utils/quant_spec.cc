@@ -12,28 +12,30 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
+
+#include <memory>
 
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace quant {
 
-bool HasQuantizedTensors(Operation* op) {
-  if (IsOpNotQuantizable(op)) return false;
-  for (Type operand_type : op->getOperandTypes()) {
-    auto tensor_type = operand_type.dyn_cast<TensorType>();
-    if (tensor_type && tensor_type.getElementType().isa<QuantizedType>()) {
-      return true;
-    }
+std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op) {
+  auto scale_spec = std::make_unique<OpQuantScaleSpec>();
+  if (llvm::isa<
+          // clang-format off
+          // go/keep-sorted start
+          TF::MaxPoolOp,
+          TF::ReshapeOp
+          // go/keep-sorted end
+          // clang-format on
+          >(op)) {
+    scale_spec->has_same_scale_requirement = true;
   }
-  for (Type result_type : op->getResultTypes()) {
-    auto tensor_type = result_type.dyn_cast<TensorType>();
-    if (tensor_type && tensor_type.getElementType().isa<QuantizedType>()) {
-      return true;
-    }
-  }
-  return false;
+  return scale_spec;
 }
+
 }  // namespace quant
 }  // namespace mlir

@@ -12,28 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_QUANT_SPEC_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_QUANT_SPEC_H_
 
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 namespace mlir {
 namespace quant {
 
-bool HasQuantizedTensors(Operation* op) {
-  if (IsOpNotQuantizable(op)) return false;
-  for (Type operand_type : op->getOperandTypes()) {
-    auto tensor_type = operand_type.dyn_cast<TensorType>();
-    if (tensor_type && tensor_type.getElementType().isa<QuantizedType>()) {
-      return true;
-    }
-  }
-  for (Type result_type : op->getResultTypes()) {
-    auto tensor_type = result_type.dyn_cast<TensorType>();
-    if (tensor_type && tensor_type.getElementType().isa<QuantizedType>()) {
-      return true;
-    }
-  }
-  return false;
-}
+// Returns quantization scale specs (fixed output, same scale) for a TF op.
+std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op);
+
 }  // namespace quant
 }  // namespace mlir
+
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_QUANT_SPEC_H_

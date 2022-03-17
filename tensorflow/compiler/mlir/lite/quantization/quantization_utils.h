@@ -80,6 +80,15 @@ using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
     std::function<QuantParams(const std::vector<QuantParams>&, bool)>;
+using BiasParamsMap =
+    std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>;
+// UniformQuantizedType GetFixedOutputRange(bool sign, int bit_width)
+using GetFixedOutputRangeFunc = std::function<UniformQuantizedType(bool, int)>;
+// bool RequiredSameOperandsAndResultsScale(bool sign, int $bit_width)
+using RequiredSameOperandsAndResultsScaleFunc = std::function<bool(bool, int)>;
+// bool RequiredSameQuantizedAxes()
+using RequiredSameQuantizedAxesFunc = std::function<bool()>;
+
 using StringSet = absl::flat_hash_set<std::string>;
 using CustomMap = quant::CustomOpMap;
 
@@ -89,8 +98,7 @@ struct OpQuantSpec {
   // including the non-bias operand indexes and the method retrieving
   // quantization parameters from list of parameters of the non-bias operands.
   // This map is empty if the op doesn't have a bias operand.
-  std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>
-      biases_params;
+  BiasParamsMap biases_params;
 
   // Quantization parameters for value restricted outputs. This is the
   // "hard-coded" parameters and should be used unconditionally for the
@@ -104,6 +112,25 @@ struct OpQuantSpec {
   // from the tensor content and op property. A "-1" value indicates the
   // operand doesn't support per-channel quantization.
   llvm::DenseMap<int, int> coeff_op_quant_dim;
+};
+
+// Quantization scale spec of an op. The information defined in the MLIR
+// interfaces FixedOutputRangeInterface and SameOperandsAndResultsScale should
+// be checked first if present.
+struct OpQuantScaleSpec {
+  // Whether this op has a fixed range requirement (e.g. sigmoid)
+  bool has_fixed_output_range = false;
+  // Whether this op should have same result and operand scales (e.g. concat)
+  bool has_same_scale_requirement = false;
+  // Returns the fixed output range, when has_fixed_output_range is set.
+  GetFixedOutputRangeFunc fixed_output_range_func;
+  // Returns whether same operands and results scales are required.
+  RequiredSameOperandsAndResultsScaleFunc required_same_scale_func =
+      [](bool sign, int bit_width) { return true; };
+  // Returns whether operands and results must have the same quantized axis.
+  RequiredSameQuantizedAxesFunc required_same_quantized_axes_func = []() {
+    return true;
+  };
 };
 
 // Used in TFL Numeric Verify
@@ -134,6 +161,10 @@ struct QuantPassSpec {
 // A function signature for getting the particular OpQuantSpec for the provided
 // op.
 typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
+// A function signature for getting the particular OpQuantScaleSpec for the
+// provided op.
+typedef std::unique_ptr<OpQuantScaleSpec> (*OpQuantScaleSpecGetter)(
+    Operation* op);
 
 // Re-calculates scales again in float instead of simply downcasting existing
 // scales.
@@ -837,6 +868,12 @@ void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
                                         bool legacy_float_scale = false);
+
+void ApplyQuantizationParamsPropagation(
+    mlir::FuncOp func, bool is_signed, bool disable_per_channel,
+    OpQuantSpecGetter op_quant_spec_getter,
+    OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
+    bool legacy_float_scale = false);
 
 // The function might contain more stats ops than required, and it will
 // introduce requantize if the calibration stats have conflicts. This method

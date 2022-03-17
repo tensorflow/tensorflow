@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -377,7 +378,8 @@ void PrepareQuantizePass::runOnOperation() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, infer_tensor_range, quant_specs_.legacy_float_scale);
+      GetOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
+      quant_specs_.legacy_float_scale);
 }
 
 }  // namespace
@@ -386,6 +388,8 @@ void PrepareQuantizePass::runOnOperation() {
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass() {
   return std::make_unique<PrepareQuantizePass>();
 }
+
+static PassRegistration<PrepareQuantizePass> pass;
 
 }  // namespace quant
 }  // namespace mlir
