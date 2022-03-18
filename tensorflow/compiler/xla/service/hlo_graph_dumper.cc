@@ -234,6 +234,9 @@ bool IsFusedBroadcastOfConstantEffectiveScalar(const HloInstruction* instr) {
 //   "return param0 * param1;"      --> "multiply"
 //   "return min(param0, param1);"  --> "min"
 //   "return max(param0, param1);"  --> "max"
+//   "return xor(param0, param1);"  --> "xor"
+//   "return and(param0, param1);"  --> "and"
+//   "return or(param0, param1);"   --> "or"
 //   "return param0 <= param1;"     --> "less-or-equal"
 //   "return param0 >= param1;"     --> "greater-or-equal"
 //   "return param0 >  param1;"     --> "greater-than"
@@ -295,6 +298,12 @@ optional<std::string> MatchTrivialComputation(
       return "min";
     case HloOpcode::kMaximum:
       return "max";
+    case HloOpcode::kXor:
+      return "xor";
+    case HloOpcode::kAnd:
+      return "and";
+    case HloOpcode::kOr:
+      return "or";
     case HloOpcode::kCompare: {
       switch (root->comparison_direction()) {
         case ComparisonDirection::kLe:
