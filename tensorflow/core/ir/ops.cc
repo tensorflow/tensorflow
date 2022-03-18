@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
@@ -100,6 +101,10 @@ void TFGraphDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/core/ir/ops.cc.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "tensorflow/core/ir/attributes.cc.inc"
       >();
 
   // Support unknown operations because not all TensorFlow operations are
@@ -1068,6 +1073,49 @@ LogicalResult ForOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 // Region Ops and Terminators
 //===----------------------------------------------------------------------===//
 
+// If a region op has preserved attributes, verify that they match the number of
+// results and block arguments.
+static LogicalResult VerifyPreservedAttrs(Operation *op,
+                                          ArrayRef<Attribute> preserved_attrs) {
+  assert(op->getNumRegions() == preserved_attrs.size());
+  for (auto it : llvm::zip(preserved_attrs, op->getRegions())) {
+    // Preserved attributes for a particular region may not exist.
+    auto attrs = std::get<0>(it).dyn_cast_or_null<RegionAttr>();
+    if (!attrs) continue;
+    Region &region = std::get<1>(it);
+
+    const auto emit_region_error = [&](StringRef msg) {
+      return op->emitOpError("region #")
+             << region.getRegionNumber() << " " << msg;
+    };
+
+    unsigned num_args = GetLoopRegionDataArgs(region).size();
+    if (num_args != attrs.getArg_attrs().size()) {
+      return emit_region_error("has ")
+             << num_args << " argument(s) but preserved attributes has "
+             << attrs.getArg_attrs().size();
+    }
+
+    // All regions are terminated by either a YieldOp or a ConditionOp. In the
+    // latter case, the function will only have one result.
+    unsigned num_rets;
+    Operation *terminator = region.front().getTerminator();
+    if (isa<ConditionOp>(terminator)) {
+      num_rets = 1;
+    } else {
+      num_rets = cast<RegionBranchTerminatorOpInterface>(terminator)
+                     .getMutableSuccessorOperands(region.getRegionNumber())
+                     .size();
+    }
+    if (num_rets != attrs.getRes_attrs().size()) {
+      return emit_region_error("has ")
+             << num_rets << " result(s) but preserved attributes has "
+             << attrs.getRes_attrs().size();
+    }
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // YieldOp
 
@@ -1092,7 +1140,8 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
     return op.emitOpError("then region must be terminated by a 'tfg.yield'");
   if (!TerminatedByYield(op.else_block()))
     return op.emitOpError("else region must be terminated by a 'tfg.yield'");
-  return success();
+  return VerifyPreservedAttrs(
+      op, {op.then_region_attrsAttr(), op.else_region_attrsAttr()});
 }
 
 // Given an potentially null attribute that would represent a constant value,
@@ -1121,11 +1170,14 @@ void GetIfLikeRegionOpSuccessorRegions(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
   } else if (auto cond = GetStaticallyKnownBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
-    regions.emplace_back(*cond ? &op.then_region() : &op.else_region());
+    Region &region = *cond ? op.then_region() : op.else_region();
+    regions.emplace_back(&region, GetLoopRegionDataArgs(region));
   } else {
     // Unknown successor.
-    regions.emplace_back(&op.then_region());
-    regions.emplace_back(&op.else_region());
+    regions.emplace_back(&op.then_region(),
+                         GetLoopRegionDataArgs(op.then_region()));
+    regions.emplace_back(&op.else_region(),
+                         GetLoopRegionDataArgs(op.else_region()));
   }
 }
 
@@ -1146,6 +1198,15 @@ static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
     return op.emitOpError("has ")
            << op.branches().size() << " regions but "
            << op.branch_attrs()->size() << " branch function attributes";
+  }
+  if (auto region_attrs = op.region_attrsAttr()) {
+    if (region_attrs.size() != op.getNumRegions()) {
+      return op.emitOpError("expected ")
+             << op.getNumRegions() << " region attribute(s) but got "
+             << region_attrs.size();
+    }
+    if (failed(VerifyPreservedAttrs(op, region_attrs.getValue())))
+      return failure();
   }
   return success();
 }
@@ -1174,10 +1235,12 @@ void GetCaseLikeRegionOpSuccessorRegions(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
   } else if (auto branch_index = GetStaticallyKnownCaseBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
-    regions.emplace_back(&op.branches()[*branch_index]);
+    Region &region = op.branches()[*branch_index];
+    regions.emplace_back(&region, GetLoopRegionDataArgs(region));
   } else {
     // Unknown successor. Add all of them.
-    for (Region &branch : op.branches()) regions.emplace_back(&branch);
+    for (Region &branch : op.branches())
+      regions.emplace_back(&branch, GetLoopRegionDataArgs(branch));
   }
 }
 
@@ -1227,6 +1290,9 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
 
   if (failed(VerifyLoopRegionArgs(op, op.cond_region())) ||
       failed(VerifyLoopRegionArgs(op, op.body_region())))
+    return failure();
+  if (failed(VerifyPreservedAttrs(
+          op, {op.cond_region_attrsAttr(), op.body_region_attrsAttr()})))
     return failure();
 
   return success();
@@ -1279,7 +1345,8 @@ LogicalResult ForRegionOp::verify() {
     return emitOpError("expected first body block argument to be tensor<i32>");
   }
 
-  return VerifyLoopRegionArgs(*this, body_region());
+  if (failed(VerifyLoopRegionArgs(*this, body_region()))) return failure();
+  return VerifyPreservedAttrs(*this, {region_attrsAttr()});
 }
 
 OperandRange ForRegionOp::getSuccessorEntryOperands(unsigned index) {
@@ -1311,6 +1378,10 @@ BlockArgument ForRegionOp::getControlToken(Region &region, unsigned idx) {
   return GetLoopRegionControlTokens(region)[idx];
 }
 
+//===----------------------------------------------------------------------===//
+// Function Table
+//===----------------------------------------------------------------------===//
+
 FunctionTable::FunctionTable(ModuleOp module) {
   // Collect function names (to be used for disambiguating legacy call
   // behavior).
@@ -1332,8 +1403,10 @@ bool FunctionTable::MaybeCall(Operation *op) {
 }  // namespace mlir
 
 //===----------------------------------------------------------------------===//
-// ODS Op Definitions
+// ODS Definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/core/ir/ops.cc.inc"
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/core/ir/attributes.cc.inc"

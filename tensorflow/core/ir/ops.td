@@ -403,19 +403,64 @@ def TFGraph_ForOp
 // TFGraph Region Op Definitions
 //===----------------------------------------------------------------------===//
 
-// TODO(jeffniu): Add detailed op descriptions.
+// TODO(jeffniu): Explore dropping all arguments/result attributes.
+def TFGraph_RegionAttrs : AttrDef<TFGraphDialect, "Region"> {
+  let description = [{
+    Region attributes on control-flow operations represent argument, result,
+    and general attributes on a region, analogous to function attributes. These
+    arise when converting control-flow operations from functional form to region
+    form; the control-flow functions' attributes are preserved as region
+    attributes. These may also be added by transformations that create region
+    control-flow operations.
 
-// Base class for TFGraph region ops.
+    The region attributes are required to have as many argument attributes as
+    there are data block arguments and result attributes as data results. If
+    operands or results are added or removed from the owning operation, the
+    region attributes, if present, must be updated.
+  }];
+
+  let mnemonic = "region_attrs";
+  let summary = "Region attributes, argument and result attributes.";
+  let assemblyFormat = "`<` $attrs $arg_attrs $res_attrs `>`";
+  let parameters = (ins
+    "DictionaryAttr":$attrs,
+    "ArrayAttr":$arg_attrs,
+    "ArrayAttr":$res_attrs
+  );
+
+  let builders = [
+    AttrBuilderWithInferredContext<(ins "DictionaryAttr":$attrs,
+                                        "ArrayAttr":$arg_attrs,
+                                        "ArrayAttr":$res_attrs), [{
+      return $_get(attrs.getContext(), attrs, arg_attrs, res_attrs);
+    }]>
+  ];
+}
+
+// Base class for TFGraph region ops. Region ops contain only single-block graph
+// regions.
 class TFGraph_RegionOp<string mnemonic, list<Trait> traits = []> :
     TFGraph_Op<mnemonic, [HasOnlyGraphRegion, SingleBlock,
                           DeclareOpInterfaceMethods<OpAsmOpInterface,
                               ["getDefaultDialect", "getAsmResultNames"]>,
                           TraitList<traits>]>;
 
-// Yield terminator op for control-flow ops with regions.
 def TFGraph_YieldOp : TFGraph_Op<"yield",
     [NoSideEffect, ReturnLike, Terminator, AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
+  let description = [{
+    The `yield` operation is the terminator for control-flow regions. The
+    operation takes data operands and control results. All data operands are
+    inputs for successor regions. Typically, this means that the number of
+    data operands matches the number of results of the parent operation.
+
+    The semantics of function calls in TensorFlow mean that the region "returns"
+    data operands as they become avaiable so that users can start executing
+    immediately. All functional control-flow operations behave as multi-device
+    function calls, which means that the control result of the parent operation
+    depends on the control operands of the `yield`.
+  }];
+
   let summary = "TF graph terminator for control-flow regions.";
 
   let arguments = (ins Variadic<TFGraph_Tensor>:$args,
@@ -425,15 +470,34 @@ def TFGraph_YieldOp : TFGraph_Op<"yield",
 
 // Base class for TFGraph if-like operations with regions.
 class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
-    mnemonic, [DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                         ["getRegionInvocationBounds"]>]> {
+    mnemonic, [PreservedAttributesInterface,
+               DeclareOpInterfaceMethods<RegionBranchOpInterface,
+                                         ["getRegionInvocationBounds"]>,
+               DeclareOpInterfaceMethods<ControlArgumentInterface,
+                                         ["getControlToken"]>]> {
+  let description = [{
+    An `If` operation in region form. `If` takes on data operand, which if true,
+    executes the `then` region, otherwise the `else` region. The execution of
+    either region is blocked on the operation's control operands.
+
+    The regions have no block arguments; everything that escapes the scope is an
+    implicit capture. Both regions return values of the same types which are
+    compatible with the result types of the `If` operation.
+
+    For each region, the operation contains optional "call" attributes and
+    region attributes. There are never region argument attributes, and the
+    number of result attributes must match the number of data results.
+  }];
+
   let arguments = (ins
     // Op operands.
     I1Tensor:$cond,
     Variadic<ControlType>:$ctls,
     // Optional attributes.
     OptionalAttr<DictionaryAttr>:$then_attrs,
-    OptionalAttr<DictionaryAttr>:$else_attrs
+    OptionalAttr<DictionaryAttr>:$else_attrs,
+    OptionalAttr<TFGraph_RegionAttrs>:$then_region_attrs,
+    OptionalAttr<TFGraph_RegionAttrs>:$else_region_attrs
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
   let regions = (region SizedRegion<1>:$then_region,
@@ -447,6 +511,15 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
 
     bool areTypesCompatible(Type lhs, Type rhs) {
       return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+    }
+
+    RegionAttr getPreservedAttrs(unsigned index) {
+      if (index == 0) return then_region_attrsAttr();
+      return else_region_attrsAttr();
+    }
+    void setPreservedAttrs(unsigned index, RegionAttr attrs) {
+      if (index == 0) then_region_attrsAttr(attrs);
+      else else_region_attrsAttr(attrs);
     }
   }];
 
@@ -475,6 +548,19 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     LogicalResult $cppClass::verify() { return VerifyIfLikeRegionOp(*this); }
+
+    BlockArgument $cppClass::getDataValueOf(BlockArgument ctl) {
+      return GetLoopRegionDataOf(ctl);
+    }
+    BlockArgument $cppClass::getControlTokenOf(BlockArgument data) {
+      return GetLoopRegionControlOf(data);
+    }
+    BlockArgument $cppClass::getDataValue(Region &region, unsigned idx) {
+      return GetLoopRegionDataArgs(region)[idx];
+    }
+    BlockArgument $cppClass::getControlToken(Region &region, unsigned idx) {
+      return GetLoopRegionControlTokens(region)[idx];
+    }
   }];
 
   let assemblyFormat = [{
@@ -500,14 +586,35 @@ def TFGraph_StatefulIfRegionOp : TFGraph_IfLikeRegionOp<"StatefulIfRegion"> {
 
 // Base calss for TFGraph case-like operations with regions.
 class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
-    mnemonic, [DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                                         ["getRegionInvocationBounds"]>]> {
+    mnemonic, [PreservedAttributesInterface,
+               DeclareOpInterfaceMethods<RegionBranchOpInterface,
+                                         ["getRegionInvocationBounds"]>,
+               DeclareOpInterfaceMethods<ControlArgumentInterface,
+                                         ["getControlToken"]>]> {
+  let description = [{
+    A `Case` operation in region form. `Case` takes one data operand, an index,
+    and executes the region corresponding to that index. The execution of any
+    of its regions is blocked on the operation's control operands.
+
+    The regions have no block arguments; everything that escapes the scope is an
+    implicit capture. All regions return values of the same types which are
+    compatible with the result types of the `Case` operation.
+
+    For each region, the operation contains optional "call" attributes and
+    region attributes in arrays. There are never region argument attributes, and
+    the number of result attributes must match the number of data results.
+  }];
+
   let arguments = (ins
     // Op operands.
     I32Tensor:$branch_index,
     Variadic<ControlType>:$ctls,
     // Optional attributes.
-    OptionalAttr<TFGraph_DictionaryArrayAttr>:$branch_attrs
+    OptionalAttr<TFGraph_DictionaryArrayAttr>:$branch_attrs,
+    OptionalAttr<
+        TypedArrayAttrBase<TFGraph_RegionAttrs,
+                           "case region preserved attributes">
+    >:$region_attrs
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
@@ -518,6 +625,17 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
 
     bool areTypesCompatible(Type lhs, Type rhs) {
       return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+    }
+
+    RegionAttr getPreservedAttrs(unsigned index) {
+      if (auto attrs = region_attrsAttr())
+        return attrs[index].cast<RegionAttr>();
+      return {};
+    }
+    void setPreservedAttrs(unsigned index, RegionAttr attrs) {
+      SmallVector<Attribute> array = llvm::to_vector(region_attrsAttr());
+      array[index] = attrs;
+      region_attrsAttr(ArrayAttr::get(getContext(), array));
     }
   }];
 
@@ -543,6 +661,19 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     }
 
     LogicalResult $cppClass::verify() { return VerifyCaseLikeRegionOp(*this); }
+
+    BlockArgument $cppClass::getDataValueOf(BlockArgument ctl) {
+      return GetLoopRegionDataOf(ctl);
+    }
+    BlockArgument $cppClass::getControlTokenOf(BlockArgument data) {
+      return GetLoopRegionControlOf(data);
+    }
+    BlockArgument $cppClass::getDataValue(Region &region, unsigned idx) {
+      return GetLoopRegionDataArgs(region)[idx];
+    }
+    BlockArgument $cppClass::getControlToken(Region &region, unsigned idx) {
+      return GetLoopRegionControlTokens(region)[idx];
+    }
   }];
 
   let assemblyFormat = [{
@@ -570,6 +701,20 @@ def TFGraph_StatefulCaseRegionOp :
 def TFGraph_ConditionOp : TFGraph_Op<"condition",
     [NoSideEffect, ReturnLike, Terminator, AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
+  let description = [{
+    The `condition` operation is a special terminator for the condition region
+    of while loops. Its only purpose is to support reasoning about region
+    control-flow by forwarding the arguments to the condition region to the body
+    region or back to the parent operation's results.
+
+    The `condition` operation accepts one `cond` data input, which if true, will
+    cause the execution to branch to the loop body, and if false, will cause the
+    execution to return to the parent operation.
+
+    There must be the same number of arguments `args` as there are operands and
+    results in the parent `While` loop.
+  }];
+
   let summary = "TF graph terminator op for while-loop condition regions.";
 
   let arguments = (ins
@@ -583,11 +728,33 @@ def TFGraph_ConditionOp : TFGraph_Op<"condition",
 
 // TF graph while loop op with regions.
 class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
-    mnemonic, [AttrSizedOperandSegments,
+    mnemonic, [AttrSizedOperandSegments, PreservedAttributesInterface,
                DeclareOpInterfaceMethods<RegionBranchOpInterface,
                                          ["getSuccessorEntryOperands"]>,
                DeclareOpInterfaceMethods<ControlArgumentInterface,
                                          ["getControlToken"]>]> {
+  let description = [{
+    A `While` operation in region form. The operation takes N operands and
+    produces N results of the same types. Each region has N data block arguments
+    and N corresponding control tokens.
+
+    The entry into the condition region is blocked on the operation's control
+    operands. The operation always executes the condition region at least once
+    with the arguments as the operation's data operands. If the condition region
+    returns `true`, the body region is executed with the arguments provided to
+    the condition region. The body region will branch back to the condition
+    region with N results. If `false`, the condition region will branch back to
+    the parent `While` operation with the argument values as results.
+
+    For each region, the operation contains optional "call" attributes and
+    region attributes. The number of argument attributes must match the number
+    of data operands and the number of result attributes must match the number
+    of data results.
+
+    Values can be propagated through the loop bodies as iteration variables,
+    but the regions allow implicitly captured values as well.
+  }];
+
   let arguments = (ins
     // Op operands.
     Variadic<TFGraph_Tensor>:$init,
@@ -595,7 +762,9 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     I64Attr:$parallel_iterations,
     // Optional attributes.
     OptionalAttr<DictionaryAttr>:$cond_attrs,
-    OptionalAttr<DictionaryAttr>:$body_attrs
+    OptionalAttr<DictionaryAttr>:$body_attrs,
+    OptionalAttr<TFGraph_RegionAttrs>:$cond_region_attrs,
+    OptionalAttr<TFGraph_RegionAttrs>:$body_region_attrs
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
   let regions = (region SizedRegion<1>:$cond_region,
@@ -609,6 +778,15 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
 
     bool areTypesCompatible(Type lhs, Type rhs) {
       return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+    }
+
+    RegionAttr getPreservedAttrs(unsigned index) {
+      if (index == 0) return cond_region_attrsAttr();
+      return body_region_attrsAttr();
+    }
+    void setPreservedAttrs(unsigned index, RegionAttr attrs) {
+      if (index == 0) cond_region_attrsAttr(attrs);
+      else body_region_attrsAttr(attrs);
     }
   }];
 
@@ -674,11 +852,32 @@ def TFGraph_StatefulWhileRegionOp : TFGraph_WhileLikeRegionOp<"StatefulWhileRegi
 
 // TF graph for loop op with region.
 def TFGraph_ForRegionOp : TFGraph_RegionOp<
-    "ForRegion", [AttrSizedOperandSegments,
+    "ForRegion", [AttrSizedOperandSegments, PreservedAttributesInterface,
                   DeclareOpInterfaceMethods<RegionBranchOpInterface,
                                             ["getSuccessorEntryOperands"]>,
                   DeclareOpInterfaceMethods<ControlArgumentInterface,
                                             ["getControlToken"]>]> {
+  let description = [{
+    A `For` operation in region form. The operation takes three scalar `i32`
+    operands: a lower bound, an upper bound, and a step. As well, it takes N
+    operands and produces N results of the same types. The loop body region has
+    a scalar `i32` block argument and its corresponding control token and N data
+    block arguments of the same types as the N data operands and N results. The
+    scalar `i32` block argument is the current loop index.
+
+    The operation is blocked on its control operands. The execution enters the
+    loop body, which must return N data results. The values are either fed into
+    the next iteration of the body or taken as the operation's results.
+
+    For the body region, the operation contains optional "call" attributes and
+    region attributes. The number of argument attributes must match the number
+    of data operands and the number of result attributes must match the number
+    of data results.
+
+    Values can be propagated through the loop bodies as iteration variables,
+    but the regions allow implicitly captured values as well.
+  }];
+
   let arguments = (ins
     // Op Operands.
     I32Tensor:$start,
@@ -687,7 +886,8 @@ def TFGraph_ForRegionOp : TFGraph_RegionOp<
     Variadic<TFGraph_Tensor>:$init,
     Variadic<ControlType>:$ctls,
     // Optional attributes.
-    OptionalAttr<DictionaryAttr>:$body_attrs
+    OptionalAttr<DictionaryAttr>:$body_attrs,
+    OptionalAttr<TFGraph_RegionAttrs>:$region_attrs
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
   let regions = (region SizedRegion<1>:$body_region);
@@ -698,6 +898,13 @@ def TFGraph_ForRegionOp : TFGraph_RegionOp<
 
     bool areTypesCompatible(Type lhs, Type rhs) {
       return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+    }
+
+    RegionAttr getPreservedAttrs(unsigned index) {
+      return region_attrsAttr();
+    }
+    void setPreservedAttrs(unsigned index, RegionAttr attrs) {
+      region_attrsAttr(attrs);
     }
   }];
 
