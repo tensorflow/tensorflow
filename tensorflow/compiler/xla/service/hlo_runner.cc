@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
-#include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -41,7 +40,7 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
       intra_op_parallelism_threads);
   backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
   device_shape_representation_fn_ = [this](const Shape& shape) {
-    return backend_->compiler()->DefaultDeviceShapeRepresentation(shape);
+    return backend_->compiler()->DeviceShapeRepresentation(shape);
   };
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
@@ -97,8 +96,7 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
                                      absl::Span<const Literal* const> arguments,
                                      bool run_hlo_passes,
                                      ExecutionProfile* profile) {
-  xla::UpdateEntryComputationLayout(module.get(),
-                                    device_shape_representation_fn_);
+  UpdateEntryComputationLayout(module.get(), device_shape_representation_fn_);
 
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
@@ -167,8 +165,8 @@ StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
 StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
     Executable* executable, absl::Span<ScopedShapedBuffer const> arguments,
     ExecutionProfile* profile) {
-  xla::UpdateEntryComputationLayout(&executable->module(),
-                                    device_shape_representation_fn_);
+  UpdateEntryComputationLayout(&executable->module(),
+                               device_shape_representation_fn_);
 
   // Get service run options.
   se::Stream stream(backend().default_stream_executor());
@@ -453,8 +451,6 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 
 StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
     std::unique_ptr<HloModule> module, bool run_hlo_passes) {
-  xla::UpdateEntryComputationLayout(module.get(),
-                                    device_shape_representation_fn_);
   if (run_hlo_passes) {
     auto module_group = absl::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSIGN_OR_RETURN(

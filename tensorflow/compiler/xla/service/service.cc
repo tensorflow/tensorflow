@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/service.h"
 
-#include <algorithm>
-#include <functional>
 #include <memory>
-#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -282,7 +278,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const AotCompilationOptions* aot_options) {
   std::vector<const Shape*> argument_shapes;
   for (const auto* arg : arguments) {
-    argument_shapes.push_back(&arg->on_device_shape());
+    argument_shapes.push_back(&arg->on_host_shape());
   }
   return CreateModuleConfig(program_shape, argument_shapes, &execution_options,
                             aot_options);
@@ -308,9 +304,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(
         auto module, CreateModuleFromProto(*proto, config, run_backend_only));
-    UpdateEntryComputationLayout(
-        module.get(), std::bind(&Compiler::DefaultDeviceShapeRepresentation,
-                                backend->compiler(), std::placeholders::_1));
     DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
     module_group->push_back(std::move(module));
   }
@@ -637,16 +630,6 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     TF_ASSIGN_OR_RETURN(auto replicated_arguments,
                         GetArguments(execution_options, request.arguments()));
 
-    for (auto& args : replicated_arguments) {
-      for (auto& arg : args) {
-        if (arg->on_device_shape().layout().tiles().empty()) {
-          const_cast<ShapedBuffer*>(arg)->set_shapes(
-              execute_backend_->transfer_manager()->HostShapeToDeviceShape(
-                  arg->on_device_shape()));
-        }
-      }
-    }
-
     // Create an HloModuleConfig object for the computation, given the shape of
     // the program and the argument allocations. Here, we care only about the
     // shapes of the arguments, so, it is sufficient to use the arguments of
@@ -808,9 +791,6 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       CreateModuleFromProto(module_proto, *module_config, run_backend_only));
-  UpdateEntryComputationLayout(
-      module.get(), std::bind(&Compiler::DefaultDeviceShapeRepresentation,
-                              backend->compiler(), std::placeholders::_1));
   DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
 
   if (!run_backend_only) {
@@ -893,7 +873,7 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
     const Shape& shape_module =
         executable->module_config().entry_computation_layout().parameter_shape(
             i);
-    const Shape& shape_arg = replicated_arguments.front()[i]->on_device_shape();
+    const Shape& shape_arg = replicated_arguments.front()[i]->on_host_shape();
     if (!ShapeUtil::Equal(shape_module, shape_arg)) {
       return InvalidArgumentStrCat(
           "The executable expects the ", i, "th argument in shape ",
@@ -963,7 +943,7 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
       return InvalidArgument("shape_with_layout must have layout if present.");
     }
   } else {
-    return_shape = Shape(shaped_buffer->on_device_shape());
+    return_shape = Shape(shaped_buffer->on_host_shape());
   }
 
   TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(
@@ -1002,15 +982,11 @@ Status Service::TransferToServer(const TransferToServerRequest* arg,
   std::vector<ScopedShapedBuffer> replicated_buffers;
   replicated_buffers.reserve(replicas.size());
   for (se::StreamExecutor* executor : replicas) {
-    auto device_shape_representation_fn = [this](const Shape& shape) {
-      return execute_backend_->compiler()->DefaultDeviceShapeRepresentation(
-          shape);
-    };
     TF_ASSIGN_OR_RETURN(
         ScopedShapedBuffer shaped_buffer,
         execute_backend_->transfer_manager()->AllocateScopedShapedBuffer(
             shape, execute_backend_->memory_allocator(),
-            executor->device_ordinal(), device_shape_representation_fn));
+            executor->device_ordinal()));
     TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(executor));
     TF_RETURN_IF_ERROR(
         execute_backend_->transfer_manager()->TransferLiteralToDevice(
@@ -1155,7 +1131,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
 Status Service::GetShape(const GetShapeRequest* arg, GetShapeResponse* result) {
   TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
                       allocation_tracker_.ResolveForReplica(arg->data(), 0));
-  *result->mutable_shape() = buffer->on_device_shape().ToProto();
+  *result->mutable_shape() = buffer->on_host_shape().ToProto();
   return Status::OK();
 }
 
@@ -1172,10 +1148,6 @@ Status Service::GetComputationGraphStats(
   config.set_debug_options(arg->debug_options());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       CreateModuleFromProto(arg->computation(), config));
-  UpdateEntryComputationLayout(
-      module.get(),
-      std::bind(&Compiler::DefaultDeviceShapeRepresentation,
-                execute_backend_->compiler(), std::placeholders::_1));
   DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
 
   // Run HLO analysis to get the computation statistics.
