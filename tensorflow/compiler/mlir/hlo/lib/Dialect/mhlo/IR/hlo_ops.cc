@@ -881,7 +881,7 @@ LogicalResult FftOp::verify() {
                          << ".";
   }
 
-  if (fft_type() == "RFFT") {
+  if (fft_type() == FftType::RFFT) {
     auto shape_back = operand_shape.take_back(fft_rank);
     for (auto it : llvm::zip(shape_back, fft_length().getValues<int64_t>())) {
       if (std::get<0>(it) != std::get<1>(it)) {
@@ -891,7 +891,7 @@ LogicalResult FftOp::verify() {
       }
     }
   }
-  if (fft_type() == "IRFFT") {
+  if (fft_type() == FftType::IRFFT) {
     auto shape_back = operand_shape.take_back(fft_rank).drop_back();
     for (auto it : llvm::zip(shape_back, fft_length().getValues<int64_t>())) {
       if (std::get<0>(it) != std::get<1>(it)) {
@@ -915,27 +915,27 @@ LogicalResult FftOp::verify() {
   // IFF : C -> C
   // RFFT : R -> C
   // IRFFT : C -> R
-  if (fft_type() == "RFFT") {
+  if (fft_type() == FftType::RFFT) {
     if (operand_type.getElementType().isa<ComplexType>()) {
       return emitError() << "RFFT takes a real tensor as input, but is given "
                          << operand_type << ".";
     }
   } else if (!operand_type.getElementType().isa<ComplexType>()) {
-    return emitError() << fft_type()
+    return emitError() << stringifyFftType(fft_type())
                        << " takes a complex tensor as input, but is given "
                        << operand_type << ".";
   }
 
   auto result_type = getResult().getType().dyn_cast<RankedTensorType>();
   if (!result_type) return success();
-  if (fft_type() == "IRFFT") {
+  if (fft_type() == FftType::IRFFT) {
     if (result_type.getElementType().isa<ComplexType>()) {
       return emitError()
              << "IRFFT produces a real tensor as output, but is given "
              << result_type << ".";
     }
   } else if (!result_type.getElementType().isa<ComplexType>()) {
-    return emitError() << fft_type()
+    return emitError() << stringifyFftType(fft_type())
                        << " produces a complex tensor as output, but is given "
                        << result_type << ".";
   }
@@ -5923,9 +5923,20 @@ void UnaryEinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
 //===----------------------------------------------------------------------===//
 
 void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
-                      Value rhs, StringAttr comparison_direction,
-                      StringAttr compare_type) {
-  auto new_type =
+                      Value rhs, ComparisonDirection comparison_direction,
+                      ComparisonType compare_type) {
+  Type new_type =
+      UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
+  build(
+      builder, result, new_type, lhs, rhs,
+      ComparisonDirectionAttr::get(builder.getContext(), comparison_direction),
+      ComparisonTypeAttr::get(builder.getContext(), compare_type));
+}
+
+void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
+                      Value rhs, ComparisonDirectionAttr comparison_direction,
+                      ComparisonTypeAttr compare_type) {
+  Type new_type =
       UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
   build(builder, result, new_type, lhs, rhs, comparison_direction,
         compare_type);
@@ -6018,7 +6029,9 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
   if (lhs() == rhs() && !lhs_ty.isa<FloatType>() &&
       (!lhs_ty.isa<ComplexType>() ||
        !lhs_ty.cast<ComplexType>().getElementType().isa<FloatType>())) {
-    if (direction == "LE" || direction == "EQ" || direction == "GE") {
+    if (direction == ComparisonDirection::LE ||
+        direction == ComparisonDirection::EQ ||
+        direction == ComparisonDirection::GE) {
       return DenseIntElementsAttr::get(result_ty, {true});
     }
     return DenseIntElementsAttr::get(result_ty, {false});
@@ -6026,7 +6039,7 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
 
   auto op_el_type = lhs().getType().cast<ShapedType>().getElementType();
   // Fold tensor<*xi1> != false to just return tensor<*xi1>
-  if (direction == "NE" && op_el_type.isInteger(1)) {
+  if (direction == ComparisonDirection::NE && op_el_type.isInteger(1)) {
     DenseIntElementsAttr cst_attr;
     if (matchPattern(lhs(), m_Constant(&cst_attr))) {
       if (cst_attr.isSplat() && !cst_attr.getSplatValue<bool>()) {
@@ -6042,7 +6055,7 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
   }
 
   // Fold tensor<*xi1> == True to just return tensor<*xi1>
-  if (direction == "EQ" && op_el_type.isInteger(1)) {
+  if (direction == ComparisonDirection::EQ && op_el_type.isInteger(1)) {
     DenseIntElementsAttr cst_attr;
     if (matchPattern(lhs(), m_Constant(&cst_attr))) {
       if (cst_attr.isSplat() && cst_attr.getSplatValue<bool>()) {
@@ -6071,12 +6084,12 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
       return folded;                                                        \
   }
 
-  COMPARE_FOLDER(CompareOp, "EQ", std::equal_to);
-  COMPARE_FOLDER(CompareOp, "NE", std::not_equal_to);
-  COMPARE_FOLDER(CompareOp, "LT", less);
-  COMPARE_FOLDER(CompareOp, "LE", less_equal);
-  COMPARE_FOLDER(CompareOp, "GT", greater);
-  COMPARE_FOLDER(CompareOp, "GE", greater_equal);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::EQ, std::equal_to);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::NE, std::not_equal_to);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::LT, less);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::LE, less_equal);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::GT, greater);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::GE, greater_equal);
 #undef COMPARE_FOLDER
 
   return {};
@@ -6100,7 +6113,7 @@ LogicalResult ValidateScatterDimensionNumbers(
     ShapedType operand_type, ArrayRef<int64_t> scatter_indices_shape,
     ShapedType update_type, bool operand_type_ranked,
     bool scatter_indices_type_ranked, bool updates_type_ranked,
-    mlir::mhlo::ScatterDimensionNumbersAttr dim_numbers, Location loc) {
+    ScatterDimensionNumbersAttr dim_numbers, Location loc) {
   const auto has_duplicates = [](SmallVector<int64_t>& nums) {
     if (!llvm::is_sorted(nums)) std::sort(nums.begin(), nums.end());
     auto last = std::unique(nums.begin(), nums.end());

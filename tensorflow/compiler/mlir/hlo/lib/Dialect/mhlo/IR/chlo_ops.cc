@@ -207,8 +207,21 @@ LogicalResult BroadcastComplexOp::reifyReturnTypeShapes(
 void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
                                Value lhs, Value rhs,
                                DenseIntElementsAttr broadcast_dimensions,
-                               StringAttr comparison_direction,
-                               StringAttr compare_type) {
+                               mhlo::ComparisonDirection comparison_direction,
+                               mhlo::ComparisonType compare_type) {
+  auto new_type = GetBroadcastType(lhs.getType(), rhs.getType(),
+                                   builder.getI1Type(), broadcast_dimensions);
+  build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
+        mhlo::ComparisonDirectionAttr::get(builder.getContext(),
+                                           comparison_direction),
+        mhlo::ComparisonTypeAttr::get(builder.getContext(), compare_type));
+}
+
+void BroadcastCompareOp::build(
+    OpBuilder& builder, OperationState& result, Value lhs, Value rhs,
+    DenseIntElementsAttr broadcast_dimensions,
+    mhlo::ComparisonDirectionAttr comparison_direction,
+    mhlo::ComparisonTypeAttr compare_type) {
   auto new_type = GetBroadcastType(lhs.getType(), rhs.getType(),
                                    builder.getI1Type(), broadcast_dimensions);
   build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
