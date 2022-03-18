@@ -19,6 +19,7 @@ limitations under the License.
 #include <iterator>
 #include <set>
 #include <sstream>
+#include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -234,28 +235,34 @@ void HloModule::ReplaceComputations(
 }
 
 std::string HloModule::ToString(const HloPrintOptions& options) const {
-  std::ostringstream s;
-  s << "HloModule ";
+  return std::string(ToCord(options));
+}
+
+absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
+  absl::Cord result;
+  result.Append("HloModule ");
   if (options.print_ids()) {
     // When print_ids() is false, exclude module's name because it includes and
     // leads to non-deterministic fingerprint.
-    s << name();
+    result.Append(name());
   }
   if (has_schedule()) {
     TF_CHECK_OK(schedule().Verify());
-    s << ", is_scheduled=true";
+    result.Append(", is_scheduled=true");
   }
   std::string serialized_aliasing = input_output_alias_config().ToShortString();
   if (!serialized_aliasing.empty()) {
-    s << absl::StrFormat(", input_output_alias={ %s }", serialized_aliasing);
+    result.Append(", input_output_alias={ ");
+    result.Append(std::move(serialized_aliasing));
+    result.Append(" }");
   }
   if (config_.alias_passthrough_params()) {
-    s << ", alias_passthrough_params=true";
+    result.Append(", alias_passthrough_params=true");
   }
   if (config_.allow_spmd_sharding_propagation_to_output()) {
-    s << ", allow_spmd_sharding_propagation_to_output=true";
+    result.Append(", allow_spmd_sharding_propagation_to_output=true");
   }
-  s << "\n\n";
+  result.Append("\n\n");
   const auto& computations = options.canonicalize_computations()
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
@@ -269,17 +276,17 @@ std::string HloModule::ToString(const HloPrintOptions& options) const {
       continue;
     }
     if (computation == entry_computation()) {
-      s << "ENTRY ";
+      result.Append("ENTRY ");
     }
     if (has_schedule() && schedule().is_computation_scheduled(computation)) {
-      s << computation->ToString(
-               options, schedule().sequence(computation).instructions())
-        << "\n\n";
+      result.Append(computation->ToCord(
+          options, schedule().sequence(computation).instructions()));
     } else {
-      s << computation->ToString(options) << "\n\n";
+      result.Append(computation->ToCord(options));
     }
+    result.Append("\n\n");
   }
-  return s.str();
+  return result;
 }
 
 HloModuleProto HloModule::ToProto() const {
