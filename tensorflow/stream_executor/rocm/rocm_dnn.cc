@@ -4045,10 +4045,9 @@ port::Status MIOpenSupport::DoPoolForward(
     auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
         pooling_desc.handle(), dest_desc.handle(), &workspace_size);
     if (status != miopenStatusSuccess) {
-      LOG(ERROR)
-          << "failed to obtain workspace size for backward pooling on stream: "
-          << ToString(status);
-      return false;
+      return port::InternalError(absl::StrCat(
+          "Failed to obtain workspace size for backward pooling on stream: ",
+          ToString(status)));
     }
     if (workspace_size != 0) {
       PoolingWorkspaceDescriptor* pdesc = 0;
@@ -4203,10 +4202,9 @@ port::Status MIOpenSupport::DoPoolBackward(
   auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
       pooling_desc.handle(), dest_desc.handle(), &workspace_size_in_bytes);
   if (status != miopenStatusSuccess) {
-    LOG(ERROR)
-        << "failed to obtain workspace size for backward pooling on stream: "
-        << ToString(status);
-    return false;
+    return port::InternalError(absl::StrCat(
+        "Failed to obtain workspace size for backward pooling on stream: ",
+        ToString(status)));
   }
 
   // Allocate the workspace.
@@ -4226,8 +4224,8 @@ port::Status MIOpenSupport::DoPoolBackward(
       auto allocated =
           workspace_allocator->AllocateBytes(workspace_size_in_bytes);
       if (!allocated.ok() || (workspace = allocated.ValueOrDie()) == nullptr) {
-        LOG(ERROR) << "Failed to allocate backward pooling workspace";
-        return false;
+        return port::InternalError(
+            "Failed to allocate backward pooling workspace");
       }
       DeviceMemory<uint8> dest2;  // duplicated dest from forward:
       int64_t dest2_size = 0;
@@ -4238,15 +4236,15 @@ port::Status MIOpenSupport::DoPoolBackward(
       // miopen does not use strides and must have 4D tensor.
       // std::vector<int> dims(pooling_dimensions.ndims() + 2);
 
-      dest2_size = sizeof(T);
+      dest2_size == dnn::DataType::kFloat ? sizeof(float) : sizeof(Eigen::half);
       for (auto& x : dims64) dest2_size *= x;
 
       if (dest2_size > 0) {
         assert(workspace_allocator);
         auto allocated = workspace_allocator->AllocateBytes(dest2_size);
         if (!allocated.ok() || (dest2 = allocated.ValueOrDie()) == nullptr) {
-          LOG(ERROR) << "Failed to allocate backward pooling workspace";
-          return false;
+          return port::InternalError(
+              "Failed to allocate backward pooling workspace");
         }
       } else {
         LOG(ERROR) << "Failed to calculate tensor size to chain forward and "
@@ -4259,10 +4257,9 @@ port::Status MIOpenSupport::DoPoolBackward(
           workspace.opaque(), workspace_size_in_bytes);
 
       if (status != miopenStatusSuccess) {
-        LOG(ERROR)
-            << "failed to enqueue forward pooling (before backward) on stream: "
-            << ToString(status);
-        return false;
+        return port::InternalError(absl::StrCat(
+            "Failed to enqueue forward pooling (before backward) on stream: ",
+            ToString(status)));
       }
       workspace_ptr = reinterpret_cast<uint8*>(workspace.opaque());
     }
@@ -4272,7 +4269,7 @@ port::Status MIOpenSupport::DoPoolBackward(
       miopen.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
       output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
       src_desc.handle(), input_data.opaque(), &beta, src_desc.handle(),
-      output_diff_data->opaque(), workspace_ptr);
+      output_diff_data.opaque(), workspace_ptr);
 
   if (status != miopenStatusSuccess) {
     return port::InternalError(absl::StrCat(
