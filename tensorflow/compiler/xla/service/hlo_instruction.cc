@@ -2929,10 +2929,8 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
     if (options.is_in_nested_computation()) {
       // If we are canonicalizing instruction names and this is a top-level
       // HloInstruction::ToString() call, don't print an instruction name.
-      StrAppend(&result,
-                PrintNameInternal(canonical_name_map->LookupOrInsert(name()),
-                                  options),
-                " = ");
+      DCHECK(!options.print_percent());  // no need to call PrintNameInternal
+      StrAppend(&result, canonical_name_map->LookupOrInsert(name()), " = ");
     }
   } else {
     StrAppend(&result, PrintNameInternal(name(), options), " = ");
@@ -3007,13 +3005,13 @@ std::string HloInstruction::OperandsToStringWithCanonicalNameMap(
         str.push_back(ShapeUtil::HumanString(operand->shape()));
       }
     }
-
-    // In a top-level HloInstruction::ToString() call, the operand name is not
-    // part of the canonical string.
-    if (options.canonicalize_instruction_names() &&
-        options.is_in_nested_computation()) {
-      str.push_back(PrintNameInternal(
-          canonical_name_map->LookupOrInsert(operand->name()), options));
+    if (options.canonicalize_instruction_names()) {
+      if (options.is_in_nested_computation()) {
+        // In a top-level HloInstruction::ToString() call, the operand name is
+        // not part of the canonical string.
+        DCHECK(!options.print_percent());  // no need to call PrintNameInternal
+        str.push_back(canonical_name_map->LookupOrInsert(operand->name()));
+      }
     } else if (options.print_operand_names()) {
       str.push_back(PrintNameInternal(operand->name(), options));
     }

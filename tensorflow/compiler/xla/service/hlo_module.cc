@@ -235,10 +235,12 @@ void HloModule::ReplaceComputations(
 
 std::string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  // When print_ids() is false, exclude module's name because it includes and
-  // leads to non-deterministic fingerprint.
-  s << "HloModule "
-    << (options.print_ids() ? PrintName(name(), options.print_ids()) : "");
+  s << "HloModule ";
+  if (options.print_ids()) {
+    // When print_ids() is false, exclude module's name because it includes and
+    // leads to non-deterministic fingerprint.
+    s << name();
+  }
   if (has_schedule()) {
     TF_CHECK_OK(schedule().Verify());
     s << ", is_scheduled=true";
