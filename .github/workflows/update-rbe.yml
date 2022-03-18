@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
+
+# This Workflow updates tensorflow/tools/toolchains/remote_config/configs.bzl
+# to reference the most recent versions of the SIG Build Docker images.
 name: Update RBE Configs
 on:
   workflow_dispatch:
@@ -28,8 +31,12 @@ jobs:
     - name: Update the RBE Configs
       run: |
         function map() {
-          digest=$(curl -s "https://gcr.io/v2/tensorflow-sigs/build/manifests/$2" | jq -r .config.digest)
-          sed -i"" "s/\(\"$1\".*build@\)sha256:.*\(\",\)/\1$digest\2/" tensorflow/tools/toolchains/remote_config/configs.bzl 
+          # The "digest" that allows us to pull an image is not the digest as
+          # returned by the API, but a sha256sum of the entire chunk of image
+          # metadata. gcr.io helpfully includes it in the header of the response.
+          # See https://cloud.google.com/architecture/using-container-images#exploring_image_manifests_digests_and_tags
+          digest=$(curl -s --head "https://gcr.io/v2/tensorflow-sigs/build/manifests/$2" | awk '/docker-content-digest/ {print $2}')
+          sed -i"" "s/\(\"$1\".*build@\)sha256:.*\(\",\)/\1$digest\2/" tensorflow/tools/toolchains/remote_config/configs.bzl
         }
         # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
         # This is a mapping of name_container_map keys under sigbuild_tf_configs
