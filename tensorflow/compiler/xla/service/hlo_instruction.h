@@ -425,26 +425,16 @@ class HloPrintOptions {
 // where <xxx> is an index starting from 0.
 class CanonicalNameMap {
  public:
-  CanonicalNameMap() : index(0) {}
-
-  std::string LookupOrInsert(const std::string& old_name) {
-    auto iter = canonical_name_map.find(old_name);
-    if (iter != canonical_name_map.end()) {
-      return iter->second;
+  const std::string& LookupOrInsert(const std::string& name) {
+    std::string& canonical_name = canonical_name_map_[name];
+    if (canonical_name.empty()) {
+      absl::StrAppend(&canonical_name, "tmp_", canonical_name_map_.size() - 1);
     }
-
-    std::string new_name = absl::StrCat("tmp_", index++);
-    canonical_name_map[old_name] = new_name;
-    return new_name;
-  }
-  void Clear() {
-    canonical_name_map.clear();
-    index = 0;
+    return canonical_name;
   }
 
  private:
-  int64_t index;
-  absl::flat_hash_map<std::string, std::string> canonical_name_map;
+  absl::flat_hash_map<std::string, std::string> canonical_name_map_;
 };
 
 // HLO instructions are the atomic unit of the high-level compiler's IR.
