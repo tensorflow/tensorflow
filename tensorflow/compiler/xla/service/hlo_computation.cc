@@ -22,6 +22,8 @@ limitations under the License.
 #include <queue>
 #include <set>
 #include <sstream>
+#include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -545,34 +547,46 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
 }
 
 std::string HloComputation::ToString(const HloPrintOptions& options) const {
-  return ToString(options, MakeInstructionPostOrder());
+  return std::string(ToCord(options));
 }
 
 std::string HloComputation::ToString(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
+  return std::string(ToCord(options, instruction_order));
+}
+
+absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
+  return ToCord(options, MakeInstructionPostOrder());
+}
+
+absl::Cord HloComputation::ToCord(
+    const HloPrintOptions& options,
+    absl::Span<const HloInstruction* const> instruction_order) const {
   CHECK_EQ(instruction_order.size(), instruction_count());
   const std::string tab(2 * options.indent_amount(), ' ');
 
-  std::ostringstream s;
-  s << tab;
+  absl::Cord result;
+  result.Append(tab);
 
   if (!options.is_in_nested_computation()) {
     if (options.print_percent()) {
-      s << "%";
+      result.Append("%");
     }
     if (options.print_ids()) {
-      // Exclude entry computation's name because it includes and leads to
-      // non-deterministic fingerprint.
-      s << name() << " ";
+      // When print_ids() is false, exclude entry computation's name because it
+      // includes and leads to non-deterministic fingerprint.
+      result.Append(name());
+      result.Append(" ");
     }
   }
 
   if (options.print_program_shape()) {
-    s << ShapeUtil::HumanString(ComputeProgramShape(options.print_ids()))
-      << " ";
+    result.Append(
+        ShapeUtil::HumanString(ComputeProgramShape(options.print_ids())));
+    result.Append(" ");
   }
-  s << "{\n";
+  result.Append("{\n");
 
   // There are instructions which are required to be printed. Additionally, we
   // print some instructions before and after required ones. The resulting
@@ -589,7 +603,7 @@ std::string HloComputation::ToString(
   //    additional_instructions
   //    ...
   //  }
-  std::set<int> instructions_to_print;
+  absl::flat_hash_set<int> instructions_to_print;
   {
     // Find all the instructions that should be printed.
     auto add_instruction = [&instructions_to_print,
@@ -626,27 +640,27 @@ std::string HloComputation::ToString(
     const std::string new_tab(2 * new_options.indent_amount(), ' ');
 
     CanonicalNameMap name_map;
-
     bool print_prev = true;
     for (int index = 0; index < instruction_order.size(); ++index) {
-      const HloInstruction* instruction = instruction_order[index];
-      if (instructions_to_print.find(index) != instructions_to_print.end()) {
-        s << new_options.format_instruction(
-                 instruction,
-                 instruction->ToStringWithCanonicalNameMap(new_options,
-                                                           &name_map),
-                 new_options.indent_amount(), instruction == root_instruction_)
-          << "\n";
+      if (instructions_to_print.contains(index)) {
+        const HloInstruction* instruction = instruction_order[index];
+        result.Append(new_options.format_instruction(
+            instruction,
+            instruction->ToStringWithCanonicalNameMap(new_options, &name_map),
+            new_options.indent_amount(), instruction == root_instruction_));
+        result.Append("\n");
         print_prev = true;
       } else if (print_prev) {
-        s << new_tab << "...\n";
+        result.Append(new_tab);
+        result.Append("...\n");
         print_prev = false;
       }
     }
   }
 
-  s << tab << "}";
-  return s.str();
+  result.Append(tab);
+  result.Append("}");
+  return result;
 }
 
 HloComputationProto HloComputation::ToProto() const {

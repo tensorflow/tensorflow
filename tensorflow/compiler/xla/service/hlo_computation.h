@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/cord.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -233,6 +234,18 @@ class HloComputation {
 
   // Overload which accepts an order to emit the instructions in.
   std::string ToString(
+      const HloPrintOptions& options,
+      absl::Span<const HloInstruction* const> instruction_order) const;
+
+  // Returns a Cord representation of the computation.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  absl::Cord ToCord() const { return ToCord(HloPrintOptions()); }
+  absl::Cord ToCord(const HloPrintOptions& options) const;
+
+  // Overload which accepts an order to emit the instructions in.
+  absl::Cord ToCord(
       const HloPrintOptions& options,
       absl::Span<const HloInstruction* const> instruction_order) const;
 
