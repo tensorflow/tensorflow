@@ -1884,18 +1884,18 @@ class HloInstruction {
   void set_channel_id(const absl::optional<int64_t>& channel_id);
 
   // Returns the dimension sizes or numbers associated with this instruction.
-  virtual const std::vector<int64_t>& dimensions() const {
+  virtual absl::Span<const int64_t> dimensions() const {
     LOG(FATAL) << "Unimplemented method.";
   }
-  virtual int64_t dimensions(int64_t index) const {
-    LOG(FATAL) << "Unimplemented method.";
-  }
+
+  int64_t dimensions(int64_t index) const { return dimensions()[index]; }
+
   virtual std::vector<int64_t>* mutable_dimensions() {
     LOG(FATAL) << "Unimplemented method.";
   }
 
   // Delegates to HloConcatenateInstruction::concatenate_dimension.
-  int64_t concatenate_dimension() const;
+  virtual int64_t concatenate_dimension() const;
 
   // Delegates to HloGetDimensionSizeInstruction::dimension.
   int64_t dimension() const;
