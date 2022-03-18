@@ -1858,8 +1858,8 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     """Converts a `tf.sparse.SparseTensor` to a `RaggedTensor`.
 
     The `output` `RaggedTensor` will contain the explicit values
-    from that values of `st_input`.  `st_input` must be ragged-right in the last
-    dimension. If not it is not ragged-right, then an error will be generated.
+    from that values of `st_input`. `st_input` must be ragged-right in the last
+    dimension. If it is not ragged-right, then an error will be generated.
 
     Example:
 
