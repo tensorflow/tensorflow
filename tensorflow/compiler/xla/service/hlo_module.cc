@@ -263,6 +263,11 @@ std::string HloModule::ToString(const HloPrintOptions& options) const {
     if (!options.print_computation(computation)) {
       continue;
     }
+    // Don't print async computations when the sytax sugar is enabled since that
+    // is redundant information.
+    if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {
+      continue;
+    }
     if (computation == entry_computation()) {
       s << "ENTRY ";
     }

@@ -2558,6 +2558,9 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
       return false;
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:

@@ -74,7 +74,9 @@ HloComputation::HloComputation(
       fusion_instruction_(fusion_instruction),
       is_fusion_computation_(fusion_instruction != nullptr),
       custom_call_instruction_(nullptr),
-      is_custom_call_computation_(false) {
+      is_custom_call_computation_(false),
+      async_instruction_(nullptr),
+      is_async_computation_(false) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -550,7 +552,6 @@ std::string HloComputation::ToString(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
   CHECK_EQ(instruction_order.size(), instruction_count());
-
   const std::string tab(2 * options.indent_amount(), ' ');
 
   std::ostringstream s;

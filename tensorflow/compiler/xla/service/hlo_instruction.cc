@@ -184,6 +184,29 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                               absl::Span<const int64_t>(fft_length));
       break;
     }
+    case HloOpcode::kAsyncStart: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Async start instruction should have 1 called computation but "
+             "sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateAsyncStart(shape, all_operands(), computations(0));
+      break;
+    }
+    case HloOpcode::kAsyncUpdate: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Async update instruction should have 1 called computation but "
+             "sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateAsyncUpdate(shape, operands(0), computations(0));
+      break;
+    }
+    case HloOpcode::kAsyncDone: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Async done instruction should have 1 called computation but sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateAsyncDone(shape, operands(0), computations(0));
+      break;
+    }
     case HloOpcode::kCopyStart: {
       instruction = CreateCopyStart(shape, operands(0),
                                     proto.is_cross_program_prefetch());
@@ -1139,6 +1162,27 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
                                               fft_length);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncStart(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* async_computation) {
+  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncStart, shape,
+                                                operands, async_computation);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
+    const Shape& shape, HloInstruction* operand,
+    HloComputation* async_computation) {
+  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncUpdate, shape,
+                                                operand, async_computation);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncDone(
+    const Shape& shape, HloInstruction* operand,
+    HloComputation* async_computation) {
+  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncDone, shape,
+                                                operand, async_computation);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
     const Shape& shape, HloInstruction* operand,
     bool is_cross_program_prefetch) {
@@ -1904,6 +1948,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kFft:
     case HloOpcode::kCompare:
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
@@ -2444,6 +2491,11 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kWhile:
       return (eq_computations(while_body(), other.while_body()) &&
               eq_computations(while_condition(), other.while_condition()));
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+      return eq_computations(async_wrapped_computation(),
+                             other.async_wrapped_computation());
 
     // Ops migrated to subclasses should never come to this line.
     // TODO(b/80131774): Remove this switch when migration is complete.
@@ -2946,13 +2998,35 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
   }
 
   // Print opcode, operand(s).
-  StrAppend(&result, HloOpcodeString(opcode()), "(",
+  if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode())) {
+    std::string suffix = [&]() {
+      switch (opcode()) {
+        case HloOpcode::kAsyncStart:
+          return "-start";
+        case HloOpcode::kAsyncUpdate:
+          return "-update";
+        default:
+          CHECK(opcode() == HloOpcode::kAsyncDone)
+              << "Unexpected async opcode: " << HloOpcodeString(opcode());
+          return "-done";
+      }
+    }();
+    StrAppend(&result, HloOpcodeString(async_wrapped_opcode()), suffix);
+  } else {
+    StrAppend(&result, HloOpcodeString(opcode()));
+  }
+  StrAppend(&result, "(",
             OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
             ")");
 
   // Print additional attributes. If an instruction contains a subcomputation,
   // the subcomputation is also printed here.
-  for (const std::string& extra : ExtraAttributesToString(options)) {
+  const HloInstruction* extra_attributes_instr = this;
+  if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode())) {
+    extra_attributes_instr = async_wrapped_instruction();
+  }
+  for (const std::string& extra :
+       extra_attributes_instr->ExtraAttributesToString(options)) {
     StrAppend(&result, ", ", extra);
   }
 
@@ -3512,6 +3586,12 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConditional(this);
     case HloOpcode::kCustomCall:
       return visitor->HandleCustomCall(this);
+    case HloOpcode::kAsyncStart:
+      return visitor->HandleAsyncStart(this);
+    case HloOpcode::kAsyncUpdate:
+      return visitor->HandleAsyncUpdate(this);
+    case HloOpcode::kAsyncDone:
+      return visitor->HandleAsyncDone(this);
     case HloOpcode::kCopyStart:
       return visitor->HandleCopyStart(this);
     case HloOpcode::kCopyDone:
@@ -4596,6 +4676,29 @@ const DomainMetadata& HloInstruction::operand_side_metadata() const {
 
 const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
+}
+
+bool HloInstruction::IsAsynchronous() const {
+  return opcode() == HloOpcode::kAsyncStart ||
+         opcode() == HloOpcode::kAsyncUpdate ||
+         opcode() == HloOpcode::kAsyncDone;
+}
+
+HloComputation* HloInstruction::async_wrapped_computation() const {
+  CHECK(IsAsynchronous());
+  return called_computations()[0];
+}
+
+// HloInstruction* HloInstruction::async_chain_start() const {
+//   return Cast<HloAsyncInstruction>(this)->async_chain_start();
+// }
+
+HloInstruction* HloInstruction::async_wrapped_instruction() const {
+  return Cast<HloAsyncInstruction>(this)->async_wrapped_instruction();
+}
+
+HloOpcode HloInstruction::async_wrapped_opcode() const {
+  return Cast<HloAsyncInstruction>(this)->async_wrapped_opcode();
 }
 
 bool HloInstruction::is_cross_program_prefetch() const {

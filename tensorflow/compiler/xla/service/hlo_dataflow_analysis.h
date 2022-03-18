@@ -226,6 +226,9 @@ class HloDataflowAnalysis {
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
+  bool UpdateAsyncStartValueSet(HloInstruction* async_start);
+  bool UpdateAsyncUpdateValueSet(HloInstruction* async_update);
+  bool UpdateAsyncDoneValueSet(HloInstruction* async_done);
   bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
   bool UpdateOptimizationBarrierValueSet(HloInstruction* barrier);

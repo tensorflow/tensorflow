@@ -1214,7 +1214,21 @@ ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[11,17]) {
 }
 
 )"
+},
+// Async ops with syntax sugar.
+{
+"AsyncOpsWithSyntaxSugar",
+R"(HloModule AsyncOpsWithSyntaxSugar
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), custom_call_target="foo"
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), custom_call_target="foo"
 }
+
+)"
+},
   });
   // clang-format on
 }

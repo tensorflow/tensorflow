@@ -603,6 +603,81 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
+    HloInstruction* async_start) {
+  CHECK_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
+  bool changed = false;
+  // AsyncStart forwards the operand values to element {0} of its output.
+  for (int64_t i = 0; i < async_start->operand_count(); ++i) {
+    const HloInstruction* operand = async_start->operand(i);
+    ShapeUtil::ForEachSubshape(
+        operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (!subshape.IsArray()) {
+            return;
+          }
+          const HloValueSet& operand_value_set = GetValueSet(operand, index);
+
+          ShapeIndex output_index = {0, i};
+          output_index.insert(output_index.end(), index.begin(), index.end());
+
+          HloValueSet& value_set = GetValueSet(async_start, output_index);
+          if (value_set != operand_value_set) {
+            value_set = operand_value_set;
+            changed = true;
+          }
+        });
+  }
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
+    HloInstruction* async_update) {
+  CHECK_EQ(async_update->opcode(), HloOpcode::kAsyncUpdate);
+  CHECK_EQ(async_update->shape(), async_update->operand(0)->shape());
+  bool changed = false;
+  // AsyncUpdate forwards all of the operand values to corresponding elements of
+  // its output.
+  ShapeUtil::ForEachSubshape(
+      async_update->operand(0)->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray()) {
+          return;
+        }
+        const HloValueSet& operand_value_set =
+            GetValueSet(async_update->operand(0), index);
+
+        HloValueSet& value_set = GetValueSet(async_update, index);
+        if (value_set != operand_value_set) {
+          value_set = operand_value_set;
+          changed = true;
+        }
+      });
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateAsyncDoneValueSet(HloInstruction* async_done) {
+  CHECK_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
+  bool changed = false;
+  // AsyncDone forwards the operand values at {1} to element {} of its output.
+  ShapeUtil::ForEachSubshape(
+      async_done->operand(0)->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray() || index.front() != 1) {
+          return;
+        }
+        const HloValueSet& operand_value_set =
+            GetValueSet(async_done->operand(0), index);
+
+        ShapeIndex output_index(index.begin() + 1, index.end());
+        HloValueSet& value_set = GetValueSet(async_done, output_index);
+        if (value_set != operand_value_set) {
+          value_set = operand_value_set;
+          changed = true;
+        }
+      });
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateCopyStartValueSet(HloInstruction* copy_start) {
   CHECK_EQ(copy_start->opcode(), HloOpcode::kCopyStart);
   bool changed = false;
@@ -1048,6 +1123,12 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateAllGatherStartValueSet(instruction);
     case HloOpcode::kAllGatherDone:
       return UpdateAllGatherDoneValueSet(instruction);
+    case HloOpcode::kAsyncStart:
+      return UpdateAsyncStartValueSet(instruction);
+    case HloOpcode::kAsyncUpdate:
+      return UpdateAsyncUpdateValueSet(instruction);
+    case HloOpcode::kAsyncDone:
+      return UpdateAsyncDoneValueSet(instruction);
     case HloOpcode::kBitcast:
       return UpdateBitcastValueSet(instruction);
     case HloOpcode::kSetDimensionSize:
@@ -1218,14 +1299,21 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
                                            instruction->shape())});
 
       // For each sub-shape of the instruction shape, add a new HloValue to its
-      // HloValueSet.
-      auto define_all_values = [this, &instruction]() {
-        for (auto& pair : GetInstructionValueSet(instruction)) {
-          const ShapeIndex& index = pair.first;
-          HloValue* value = NewHloValue(instruction, index, /*is_phi=*/false);
-          GetValueSet(instruction, index).AddValue(value);
-        }
-      };
+      // HloValueSet. should_define may be provided to define a subset of
+      // values.
+      auto define_all_values =
+          [this,
+           &instruction](std::function<bool(const ShapeIndex&)> should_define =
+                             [](const ShapeIndex&) { return true; }) {
+            for (auto& pair : GetInstructionValueSet(instruction)) {
+              const ShapeIndex& index = pair.first;
+              if (should_define(index)) {
+                HloValue* value =
+                    NewHloValue(instruction, index, /*is_phi=*/false);
+                GetValueSet(instruction, index).AddValue(value);
+              }
+            }
+          };
 
       // Add a new HloValue to the HloValueSet corresponding to the given index
       // of the instruction shape.
@@ -1278,6 +1366,28 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // These instructions only define their top-level values. Any other
           // values flow from their operands.
           define_value_at(/*index=*/{});
+          break;
+        case HloOpcode::kAsyncStart:
+          // AsyncStart produces a tuple of {{aliased operands}, {destination},
+          // contexts}. It defines all of the tuple-shaped values and any other
+          // value that is not an aliased operand.
+          define_all_values([&](const ShapeIndex& index) {
+            return ShapeUtil::GetSubshape(instruction->shape(), index)
+                       .IsTuple() ||
+                   index.front() != 0;
+          });
+          break;
+        case HloOpcode::kAsyncUpdate:
+          // AsyncUpdate produces a tuple of {{aliased operands}, {destination},
+          // contexts} where all of the array-typed values alias with the
+          // operand. So, only tuple-shaped values are defined by AsyncUpdate.
+          define_all_values([&](const ShapeIndex& index) {
+            return ShapeUtil::GetSubshape(instruction->shape(), index)
+                .IsTuple();
+          });
+          break;
+        case HloOpcode::kAsyncDone:
+          // AsyncDone's output aliases its output.
           break;
         case HloOpcode::kCopyStart:
           // CopyStart produces a tuple of {destination buffer, aliased operand,
@@ -1514,7 +1624,8 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
          opcode == HloOpcode::kCopyStart ||
          opcode == HloOpcode::kAllReduceStart ||
          opcode == HloOpcode::kAllGatherStart ||
-         opcode == HloOpcode::kCollectivePermuteStart;
+         opcode == HloOpcode::kCollectivePermuteStart ||
+         opcode == HloOpcode::kAsyncStart;
 }
 
 /*static*/ bool HloDataflowAnalysis::IsAsynchronousOperationDone(
@@ -1523,7 +1634,8 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
          opcode == HloOpcode::kCopyDone ||
          opcode == HloOpcode::kAllReduceDone ||
          opcode == HloOpcode::kAllGatherDone ||
-         opcode == HloOpcode::kCollectivePermuteDone;
+         opcode == HloOpcode::kCollectivePermuteDone ||
+         opcode == HloOpcode::kAsyncDone;
 }
 
 /*static*/ std::vector<std::pair<HloUse, ShapeIndex>>

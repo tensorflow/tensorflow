@@ -356,6 +356,9 @@ class HloComputation {
   bool operator==(const HloComputation& other) const {
     return Equal(other, true);
   }
+  bool operator!=(const HloComputation& other) const {
+    return !(*this == other);
+  }
 
   // Replaces old instruction with newly created instruction. Removes old
   // instruction from computation. Updates uses and root instruction.
@@ -526,6 +529,17 @@ class HloComputation {
     is_custom_call_computation_ |= (custom_call_instruction != nullptr);
   }
 
+  // Returns if this computation is an async computation.
+  bool IsAsyncComputation() const { return is_async_computation_; }
+
+  // Returns the owning async instruction, or nullptr if this is not an async
+  // computation.
+  HloInstruction* AsyncInstruction() const { return async_instruction_; }
+  void SetAsyncInstruction(HloInstruction* async_instruction) {
+    async_instruction_ = async_instruction;
+    is_async_computation_ |= (async_instruction != nullptr);
+  }
+
   // Returns if this computation is invoked by an Hlo instruction.
   bool IsCalledComputation() const {
     return IsFusionComputation() || IsCustomCallComputation();
@@ -622,8 +636,15 @@ class HloComputation {
   // null.
   HloInstruction* custom_call_instruction_;
 
-  // Determines whether this computation is a custom-call computation. A
+  // Determines whether this computation is a custom-call computation.
   bool is_custom_call_computation_;
+
+  // If this computation is an async computation, this field points to the
+  // corresponding async instruction (if it is live). Otherwise, this is null.
+  HloInstruction* async_instruction_;
+
+  // Determines whether this computation is an async computation.
+  bool is_async_computation_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

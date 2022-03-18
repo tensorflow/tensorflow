@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 
+#include <string>
+
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -1282,6 +1284,57 @@ TEST_P(HloDataflowAnalysisTest, CopyStartAndCopyDone) {
       UnorderedElementsAre(&analysis.GetValueDefinedAt(copy_start, {0})));
   EXPECT_TRUE(analysis.GetValueDefinedAt(copy_start, /*index=*/{0})
                   .live_out_of_module());
+}
+
+TEST_P(HloDataflowAnalysisTest, AsyncOps) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start), custom_call_target="foo"
+    ROOT async-done = f32[2,3] custom-call-done(async-update), custom_call_target="foo"
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* param =
+      module_->entry_computation()->parameter_instruction(0);
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_start, /*index=*/{0, 0}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{1}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{2}));
+  EXPECT_THAT(HloValuesAt(async_start, /*index=*/{0, 0}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param, {})));
+  EXPECT_TRUE(analysis.GetValueDefinedAt(async_start, /*index=*/{1})
+                  .live_out_of_module());
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{0, 0}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{1}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_update, /*index=*/{2}));
+  EXPECT_THAT(HloValuesAt(async_update, /*index=*/{0, 0}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(param, {})));
+  EXPECT_THAT(
+      HloValuesAt(async_update, /*index=*/{1}),
+      UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {1})));
+
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(async_done, /*index=*/{}));
+  EXPECT_THAT(
+      HloValuesAt(async_done, /*index=*/{}),
+      UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {1})));
 }
 
 TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {

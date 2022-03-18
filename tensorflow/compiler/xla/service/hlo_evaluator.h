@@ -297,6 +297,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 
+  Status HandleAsyncStart(HloInstruction* async_start) override;
+
+  Status HandleAsyncUpdate(HloInstruction* async_update) override;
+
+  Status HandleAsyncDone(HloInstruction* async_done) override;
+
   Status HandleCopy(HloInstruction* copy) override;
 
   Status HandleCopyStart(HloInstruction* copy_start) override;

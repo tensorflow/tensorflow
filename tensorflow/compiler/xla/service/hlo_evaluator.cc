@@ -1008,6 +1008,9 @@ Status HloEvaluator::EvaluateInternal(
              instruction->opcode() != HloOpcode::kCopy &&
              instruction->opcode() != HloOpcode::kCopyStart &&
              instruction->opcode() != HloOpcode::kCopyDone &&
+             instruction->opcode() != HloOpcode::kAsyncStart &&
+             instruction->opcode() != HloOpcode::kAsyncUpdate &&
+             instruction->opcode() != HloOpcode::kAsyncDone &&
              instruction->opcode() != HloOpcode::kWhile)) {
           evaluated_[instruction] =
               Literal::CreateFromShapeWithUnknownLeafArrays(
@@ -2617,6 +2620,56 @@ Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 Status HloEvaluator::HandleCopy(HloInstruction* copy) {
   TF_RET_CHECK(ShapeUtil::Compatible(copy->shape(), copy->operand(0)->shape()));
   evaluated_[copy] = GetEvaluatedLiteralFor(copy->operand(0)).Clone();
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleAsyncStart(HloInstruction* async_start) {
+  std::vector<const Literal*> arg_literals;
+  arg_literals.reserve(async_start->operands().size());
+  for (auto operand : async_start->operands()) {
+    const Literal& arg_literal = GetEvaluatedLiteralFor(operand);
+    arg_literals.push_back(&arg_literal);
+  }
+
+  HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
+  TF_ASSIGN_OR_RETURN(
+      Literal result,
+      embedded_evaluator.Evaluate(*async_start->async_wrapped_computation(),
+                                  arg_literals));
+
+  evaluated_[async_start] = Literal(async_start->shape());
+  // Copy the operand values to the index {0, i} of the output.
+  for (int i = 0; i < arg_literals.size(); ++i) {
+    TF_RETURN_IF_ERROR(evaluated_[async_start].CopyFrom(
+        *arg_literals[i], /*dest_shape_index=*/{0, i},
+        /*src_shape_index=*/{}));
+  }
+  // Move the output value to the index {1} of the output.
+  TF_RETURN_IF_ERROR(evaluated_[async_start].MoveFrom(
+      std::move(result), /*dest_shape_index=*/{1}));
+
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleAsyncUpdate(HloInstruction* async_update) {
+  const Literal& operand_tuple_literal =
+      GetEvaluatedLiteralFor(async_update->operand(0));
+  evaluated_[async_update] = Literal(async_update->shape());
+  TF_RETURN_IF_ERROR(evaluated_[async_update].CopyFrom(operand_tuple_literal,
+                                                       /*dest_shape_index=*/{},
+                                                       /*src_shape_index=*/{}));
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleAsyncDone(HloInstruction* async_done) {
+  const Literal& operand_tuple_literal =
+      GetEvaluatedLiteralFor(async_done->operand(0));
+  evaluated_[async_done] = Literal(async_done->shape());
+  TF_RETURN_IF_ERROR(evaluated_[async_done].CopyFrom(operand_tuple_literal,
+                                                     /*dest_shape_index=*/{},
+                                                     /*src_shape_index=*/{1}));
   return Status::OK();
 }
 

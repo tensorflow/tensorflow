@@ -99,7 +99,8 @@ class HloPrintOptions {
         is_in_nested_computation_(false),
         print_ids_(true),
         canonicalize_computations_(false),
-        print_extra_attributes_(true) {}
+        print_extra_attributes_(true),
+        syntax_sugar_async_ops_(true) {}
 
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
@@ -254,6 +255,51 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, uses the async operation syntax sugar to print async-start,
+  // async-update, and async-done HLOs. If the syntax sugar is enabled, the
+  // computations called by these instructions will not be printed and instead
+  // the root of the called computation will be printed instead of these
+  // instructions and -start, -update, and -done suffixes will be appended to
+  // the opcode of the async operation. For example, for an HLO module where the
+  // syntax sugar is off:
+  //
+  // HloModule Module
+  //
+  // %AsyncOp (p0.1: f32[10]) -> f32[20] {
+  //   %p0.1 = f32[10]{0} parameter(0)
+  //   ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1),
+  //                                  custom_call_target="foo"
+  // }
+  //
+  // ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  //   %p0 = f32[10]{0} parameter(0)
+  //   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(%p0),
+  //                                                    calls=%AsyncOp
+  //   %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(
+  //                                                         %async-start),
+  //                                                     calls=%AsyncOp
+  //   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp
+  // }
+  //
+  // will be printed as following if the syntax sugar is enabled:
+  //
+  // HloModule Module
+  //
+  // ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  //   %p0 = f32[10]{0} parameter(0)
+  //   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(%p0),
+  //                                                    custom_call_target="foo"
+  //   %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(
+  //                                                         %async-start),
+  //                                                    custom_call_target="foo"
+  //   ROOT %async-done = f32[20]{0} custom-call-done(%async-update),
+  //                                                    custom_call_target="foo"
+  // }
+  HloPrintOptions& set_syntax_sugar_async_op(bool value) {
+    syntax_sugar_async_ops_ = value;
+    return *this;
+  }
+
   // If true, only a part of operands will be printed out (note that in this
   // case the text will not be parsable).
   HloPrintOptions& set_compact_operands(bool value) {
@@ -360,6 +406,7 @@ class HloPrintOptions {
     return print_control_dependencies_;
   }
   bool print_extra_attributes() const { return print_extra_attributes_; }
+  bool syntax_sugar_async_ops() const { return syntax_sugar_async_ops_; }
   bool canonicalize_instruction_names() const {
     return canonicalize_instruction_names_;
   }
@@ -405,6 +452,7 @@ class HloPrintOptions {
   bool print_ids_;
   bool canonicalize_computations_;
   bool print_extra_attributes_;
+  bool syntax_sugar_async_ops_;
   int leading_and_trailing_instructions_number_ = 3;
   FormatInstructionFunc format_instruction_ = [](const HloInstruction* instr,
                                                  const std::string& instr_name,
@@ -644,6 +692,17 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateFft(
       const Shape& shape, HloInstruction* operand, FftType fft_type,
       absl::Span<const int64_t> fft_length);
+
+  // Creates an asynchronous start, update, and done op.
+  static std::unique_ptr<HloInstruction> CreateAsyncStart(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* async_computation);
+  static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
+      const Shape& shape, HloInstruction* operand,
+      HloComputation* async_computation);
+  static std::unique_ptr<HloInstruction> CreateAsyncDone(
+      const Shape& shape, HloInstruction* operand,
+      HloComputation* async_computation);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -2063,6 +2122,19 @@ class HloInstruction {
 
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
+
+  // Returns true if the instruction is an async-start, async-update, or
+  // async-done.
+  bool IsAsynchronous() const;
+
+  // Returns the computation that will executed asynchronously.
+  HloComputation* async_wrapped_computation() const;
+
+  // Delagates to HloAsyncInstruction::async_wrapped_instruction().
+  HloInstruction* async_wrapped_instruction() const;
+
+  // Delagates to HloAsyncInstruction::async_wrapped_opcode().
+  HloOpcode async_wrapped_opcode() const;
 
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
   bool is_cross_program_prefetch() const;

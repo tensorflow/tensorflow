@@ -213,6 +213,41 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
                                               fft_length_);
 }
 
+HloAsyncInstruction::HloAsyncInstruction(
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
+    HloComputation* async_computation)
+    : HloInstruction(opcode, shape) {
+  CHECK(opcode == HloOpcode::kAsyncStart || operands.size() == 1);
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  AppendComputation(async_computation);
+  CHECK(!async_computation->IsCustomCallComputation());
+  CHECK(!async_computation->IsFusionComputation());
+  async_computation->SetAsyncInstruction(this);
+}
+
+HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                                         HloInstruction* operand,
+                                         HloComputation* async_computation)
+    : HloInstruction(opcode, shape) {
+  AppendOperand(operand);
+  AppendComputation(async_computation);
+  CHECK(!async_computation->IsCustomCallComputation());
+  CHECK(!async_computation->IsFusionComputation());
+  async_computation->SetAsyncInstruction(this);
+}
+
+HloInstruction* HloAsyncInstruction::async_wrapped_instruction() const {
+  CHECK(!called_computations().empty());
+  return called_computations()[0]->root_instruction();
+}
+
+HloOpcode HloAsyncInstruction::async_wrapped_opcode() const {
+  return async_wrapped_instruction()->opcode();
+}
+
 HloCopyStartInstruction::HloCopyStartInstruction(const Shape& shape,
                                                  HloInstruction* operand,
                                                  bool is_cross_program_prefetch)

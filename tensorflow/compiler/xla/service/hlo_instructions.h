@@ -136,6 +136,18 @@ class HloFftInstruction : public HloInstruction {
   std::vector<int64_t> fft_length_;
 };
 
+class HloAsyncInstruction : public HloInstruction {
+ public:
+  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                      absl::Span<HloInstruction* const> operands,
+                      HloComputation* async_computation);
+  HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                      HloInstruction* operand,
+                      HloComputation* async_computation);
+  HloInstruction* async_wrapped_instruction() const;
+  HloOpcode async_wrapped_opcode() const;
+};
+
 class HloCopyStartInstruction : public HloInstruction {
  public:
   explicit HloCopyStartInstruction(const Shape& shape, HloInstruction* operand,
