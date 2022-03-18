@@ -64,7 +64,7 @@ def _update_options(nvcc_options):
   if NVCC_VERSION in ("7.0",):
     return nvcc_options
 
-  update_options = { "relaxed-constexpr" : "expt-relaxed-constexpr" }
+  update_options = { "relaxed-constexpr" : "unet_128_400_thin-relaxed-constexpr" }
   return [ update_options[opt] if opt in update_options else opt
                     for opt in nvcc_options ]
 
