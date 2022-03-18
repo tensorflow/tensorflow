@@ -142,6 +142,10 @@ class HloRunner : public HloRunnerInterface {
 
   absl::string_view Name() const override;
 
+  DeviceShapeRepresentationFn device_shape_representation_fn() {
+    return device_shape_representation_fn_;
+  }
+
  private:
   // Creates a ServiceExecutableRunOptions object to configure a run on device,
   // using the provided stream object. If device_assignment is not nullptr, it

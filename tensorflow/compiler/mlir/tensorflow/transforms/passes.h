@@ -385,11 +385,21 @@ CreateHostLaunchToOutsideCompiledPass();
 }  // namespace TFDevice
 
 namespace TFTPU {
+// Creates a pass that canonicalizes legacy compilation and replication
+// attributes.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateCanonicalizeCompileAndReplicateAttributesPass();
+
+// Creates a pass that converts unified compilation and replication
+// attributes back to legacy attributes.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateConvertToLegacyCompileAndReplicateAttributesPass();
+
 // Creates a pass that forms clusters from operations of the same
-// `_tpu_replicate` attribute.
+// `_replication_info` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
 
-// Creates a pass that cleans up `_tpu_replicate` attribute on operations
+// Creates a pass that cleans up `_replication_info` attribute on operations
 // that are inside a cluster.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUClusterCleanupAttributesPass();

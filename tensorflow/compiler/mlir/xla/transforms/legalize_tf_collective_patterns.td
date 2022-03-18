@@ -16,6 +16,7 @@ limitations under the License.
 // This is a legalization pattern definition file for TF to XLA (Collective Ops).
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def RewriteCollectiveAssignGroupV2CollectiveReduceV2 :

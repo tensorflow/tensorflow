@@ -562,6 +562,8 @@ class CudnnSupport : public dnn::DnnSupport {
                          dnn::DataType output_type, float scale,
                          DeviceMemoryBase* output_data) override;
 
+  void NotifyStreamDestroyed(Stream* stream) override;
+
  private:
   GpuExecutor* parent_;  // Parent executor object. Not owned.
 

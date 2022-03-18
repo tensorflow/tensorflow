@@ -1122,6 +1122,7 @@ cc_library(
         "transforms/annotate_parameter_replication.cc",
         "transforms/batchmatmul_to_einsum.cc",
         "transforms/bridge.cc",
+        "transforms/canonicalize_compile_and_replicate_attributes.cc",
         "transforms/cluster_formation.cc",
         "transforms/cluster_ops_by_policy.cc",
         "transforms/cluster_outlining.cc",
@@ -1131,6 +1132,7 @@ cc_library(
         "transforms/convert_control_to_data_outputs.cc",
         "transforms/convert_launch_func_to_tf_call.cc",
         "transforms/convert_tf_control_flow_to_scf.cc",
+        "transforms/convert_to_legacy_compile_and_replicate_attributes.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/device_attribute_to_launch.cc",
         "transforms/device_index_selector.cc",
@@ -2394,6 +2396,7 @@ cc_library(
 
 cc_library(
     name = "attribute_utils",
+    srcs = ["utils/attribute_utils.cc"],
     hdrs = ["utils/attribute_utils.h"],
     deps = [
         "@llvm-project//mlir:IR",

@@ -22,6 +22,8 @@ from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import indexed_slices
@@ -476,6 +478,26 @@ def _GradientsHelper(ys,
   if context.executing_eagerly():
     raise RuntimeError("tf.gradients is not supported when eager execution "
                        "is enabled. Use tf.GradientTape instead.")
+  ys = _AsList(ys)
+  xs = _AsList(xs)
+  if grad_ys is not None:
+    grad_ys = _AsList(grad_ys)
+
+  # Handle CompositeTensors.
+  if (any(isinstance(x, composite_tensor.CompositeTensor) for x in xs) or
+      any(isinstance(y, composite_tensor.CompositeTensor) for y in ys)):
+    flat_xs = composite_tensor_gradient.get_flat_tensors_for_gradients(xs)
+    flat_ys = composite_tensor_gradient.get_flat_tensors_for_gradients(ys)
+    flat_grad_ys = (
+        None if grad_ys is None else
+        composite_tensor_gradient.get_flat_tensors_for_gradients(grad_ys))
+    flat_grads = _GradientsHelper(flat_ys, flat_xs, flat_grad_ys, name,
+                                  colocate_gradients_with_ops, gate_gradients,
+                                  aggregation_method, stop_gradients,
+                                  unconnected_gradients, src_graph)
+    return composite_tensor_gradient.replace_flat_tensors_for_gradients(
+        xs, flat_grads)
+
   if src_graph is None:
     src_graph = ops.get_default_graph()
   try:
@@ -496,13 +518,9 @@ def _GradientsHelper(ys,
       assert isinstance(curr_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
       curr_graph = curr_graph._outer_graph  # pylint: disable=protected-access
 
-  ys = _AsList(ys)
-  xs = _AsList(xs)
   stop_gradients = [] if stop_gradients is None else _AsList(stop_gradients)
   if grad_ys is None:
     grad_ys = [None] * len(ys)
-  else:
-    grad_ys = _AsList(grad_ys)
 
   with ops.name_scope(
       name, "gradients",

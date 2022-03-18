@@ -90,6 +90,7 @@ class AotCompilationOptions {
   virtual int64_t replica_count() const { return 0; }
   virtual int64_t num_cores() const { return 0; }
   virtual bool use_spmd_partitioning() const { return false; }
+  virtual bool use_auto_spmd_partitioning() const { return false; }
   virtual bool deduplicate_hlo() const { return false; }
 
   // Optional allocator that may be used for allocating temp space on the device
@@ -338,7 +339,7 @@ class Compiler {
     };
   }
 
-  virtual Shape DeviceShapeRepresentation(const Shape& shape) const {
+  virtual Shape DefaultDeviceShapeRepresentation(const Shape& shape) const {
     return shape;
   }
 

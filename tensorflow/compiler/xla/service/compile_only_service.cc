@@ -92,11 +92,23 @@ CompileOnlyService::CompileAheadOfTime(
         execution_options.mutable_device_assignment()));
   }
   execution_options.set_use_spmd_partitioning(options.use_spmd_partitioning());
+  execution_options.set_use_auto_spmd_partitioning(
+      options.use_auto_spmd_partitioning());
   execution_options.set_deduplicate_hlo(options.deduplicate_hlo());
   for (const AotXlaComputationInstance& instance : computations) {
     TF_RET_CHECK(instance.computation.has_host_program_shape());
     *execution_options.mutable_shape_with_output_layout() =
-        instance.result_layout->ToProto();
+        instance.result_layout->layout().tiles().empty()
+            ? compiler_
+                  ->DefaultDeviceShapeRepresentation(*instance.result_layout)
+                  .ToProto()
+            : instance.result_layout->ToProto();
+    for (auto shape : instance.argument_layouts) {
+      if (shape->layout().tiles().empty()) {
+        *(const_cast<Shape*>(shape)) =
+            compiler_->DefaultDeviceShapeRepresentation(*shape);
+      }
+    }
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,

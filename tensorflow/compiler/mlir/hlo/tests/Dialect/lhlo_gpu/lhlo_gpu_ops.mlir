@@ -140,7 +140,7 @@ func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32xf16>,
                        tensor_ops_enabled = false},
      batch_group_count = 1 : i64,
      feature_group_count = 1 : i64,
-     precision_config = ["DEFAULT", "DEFAULT", "DEFAULT"],
+     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
      result_scale = 1.000000e+00 : f64}
   : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<32xui8>) -> ()
   return
@@ -167,7 +167,7 @@ func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x
                        tensor_ops_enabled = false},
      batch_group_count = 1 : i64,
      feature_group_count = 1 : i64,
-     precision_config = ["DEFAULT", "DEFAULT", "DEFAULT"],
+     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
      result_scale = 1.000000e+00 : f64,
      side_input_scale = 1.000000e+00 : f64}
    : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<0xui8>) -> ()

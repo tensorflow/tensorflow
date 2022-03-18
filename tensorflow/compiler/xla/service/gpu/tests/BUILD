@@ -779,6 +779,17 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "in_place_op_test",
+    srcs = ["in_place_op_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 py_test(
     name = "mnist",
     srcs = ["mnist.py"],

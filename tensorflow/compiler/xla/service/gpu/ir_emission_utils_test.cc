@@ -30,13 +30,13 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
   registry.insert<mlir::lmhlo::LmhloDialect>();
   mlir::MLIRContext context(registry);
 
-  auto module = mlir::parseSourceString(R"(
+  auto module = mlir::parseSourceString<mlir::ModuleOp>(R"(
     func @foo(%arg0 : memref<f32>, %arg1 : memref<f32>, %arg2 : memref<f32>) {
       "lmhlo.add" (%arg0, %arg1, %arg2) : (memref<f32>, memref<f32>, memref<f32>) -> ()
       "lmhlo.terminator" () : () -> ()
     }
   )",
-                                        &context);
+                                                        &context);
   mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
   mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
@@ -47,13 +47,13 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
   registry.insert<mlir::lmhlo::LmhloDialect>();
   mlir::MLIRContext context(registry);
 
-  auto module = mlir::parseSourceString(R"(
+  auto module = mlir::parseSourceString<mlir::ModuleOp>(R"(
     func @foo(%arg0 : memref<f32>, %arg1 : memref<f32>, %arg2 : memref<f32>) {
       "lmhlo.add" (%arg0, %arg1, %arg0) : (memref<f32>, memref<f32>, memref<f32>) -> ()
       "lmhlo.terminator" () : () -> ()
     }
   )",
-                                        &context);
+                                                        &context);
   mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
   mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
@@ -64,13 +64,13 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
   registry.insert<mlir::lmhlo::LmhloDialect>();
   mlir::MLIRContext context(registry);
 
-  auto module = mlir::parseSourceString(R"(
+  auto module = mlir::parseSourceString<mlir::ModuleOp>(R"(
     func @foo(%arg0 : memref<f32>, %arg1 : memref<f32>, %arg2 : memref<f32>) {
       "lmhlo.add" (%arg0, %arg1, %arg1) : (memref<f32>, memref<f32>, memref<f32>) -> ()
       "lmhlo.terminator" () : () -> ()
     }
   )",
-                                        &context);
+                                                        &context);
   mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
   mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));

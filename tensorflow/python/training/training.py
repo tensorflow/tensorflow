@@ -90,6 +90,7 @@ from tensorflow.python.training.checkpoint_management import latest_checkpoint
 from tensorflow.python.training.checkpoint_management import update_checkpoint_state
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.saver import import_meta_graph
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.session_run_hook import SessionRunHook
 from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.session_run_hook import SessionRunContext

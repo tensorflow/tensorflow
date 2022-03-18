@@ -191,6 +191,7 @@ class TPUEmbeddingCheckpointTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
     )
 
   def test_checkpoint_restore_before_variable_creation(self):
+    self.skip_if_oss()
 
     class TestModule(module.Module):
 

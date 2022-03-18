@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "HardwareFeature"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TPUSystemMetadata"
     mtype: "<type \'type\'>"
   }

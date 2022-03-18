@@ -1199,3 +1199,50 @@ func @three_if_regions_with_same_predicate_and_correct_return_indices_merged_v2(
   return
 }
 
+// Check that merged IfRegion will not contain unused return variables
+
+// CHECK-LABEL: func @one_use_between_two_IfRegions_groups
+  //CHECK tf_device.cluster
+  //CHECK "tf.IfRegion"
+  //CHECK-NOT "tf.Add"
+  //CHECK "tf.IfRegion"
+  //CHECK "tf.Add"
+  //CHECK-NOT "tf.IfRegion"
+func @one_use_between_two_IfRegions_groups() {
+  "tf_device.cluster"() ({
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+    %2 = "tf.IfRegion"(%0) ({
+      %3 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%3) : (tensor<f32>) -> ()
+      }, {
+      %3 = "tf.Const"() {value = dense<2.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%3) : (tensor<f32>) -> ()
+     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %4 = "tf.IfRegion"(%1) ({
+      %5 = "tf.Const"() {value = dense<3.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%5) : (tensor<f32>) -> ()
+      }, {
+      %5 = "tf.Const"() {value = dense<4.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%5) : (tensor<f32>) -> ()
+     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %6 = "tf.Add"(%2, %4) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %7 = "tf.IfRegion"(%1) ({
+      %8 = "tf.Const"() {value = dense<5.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%8) : (tensor<f32>) -> ()
+      }, {
+      %8 = "tf.Const"() {value = dense<6.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%8) : (tensor<f32>) -> ()
+     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %9 = "tf.IfRegion"(%0) ({
+      %10 = "tf.Const"() {value = dense<7.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%10) : (tensor<f32>) -> ()
+      }, {
+      %10 = "tf.Const"() {value = dense<8.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%10) : (tensor<f32>) -> ()
+     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+

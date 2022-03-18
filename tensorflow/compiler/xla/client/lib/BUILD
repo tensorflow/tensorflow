@@ -364,6 +364,7 @@ cc_library(
     srcs = ["approx_topk.cc"],
     hdrs = ["approx_topk.h"],
     deps = [
+        ":approx_topk_shape",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -371,6 +372,16 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "approx_topk_shape",
+    srcs = ["approx_topk_shape.cc"],
+    hdrs = ["approx_topk_shape.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
     ],
 )
 

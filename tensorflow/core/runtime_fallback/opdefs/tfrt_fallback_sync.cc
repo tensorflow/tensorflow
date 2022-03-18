@@ -57,7 +57,7 @@ LogicalResult ExecuteOp::verify() {
   return fallback_common::VerifyExecuteOpCommon(*this);
 }
 
-static ParseResult parseExecuteOp(OpAsmParser &parser, OperationState &result) {
+ParseResult ExecuteOp::parse(OpAsmParser &parser, OperationState &result) {
   fallback_common::ParseExecuteOpOptions parse_options;
   parse_options.has_chain = false;
   parse_options.has_key = false;
@@ -70,11 +70,11 @@ static ParseResult parseExecuteOp(OpAsmParser &parser, OperationState &result) {
       parser, builder, result, GetTensorType(&builder), parse_options);
 }
 
-static void print(OpAsmPrinter &p, ExecuteOp op) {
-  p << " " << op->getAttr("op_name") << '(' << op.operands() << ')';
+void ExecuteOp::print(OpAsmPrinter &p) {
+  p << " " << (*this)->getAttr("op_name") << '(' << operands() << ')';
 
-  fallback_common::PrintExecuteOpCommon(p, op);
-  if (!op.results().empty()) p << " : " << op.results().size();
+  fallback_common::PrintExecuteOpCommon(p, *this);
+  if (!results().empty()) p << " : " << results().size();
 }
 
 void ExecuteOp::getOpAttrs(

@@ -44,3 +44,13 @@ cc_library(
         "@llvm-project//mlir:Support",
     ],
 )
+
+cc_library(
+    name = "quant_spec",
+    srcs = ["quant_spec.cc"],
+    hdrs = ["quant_spec.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
+    ],
+)

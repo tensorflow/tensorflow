@@ -241,6 +241,7 @@ cc_test(
     copts = tflite_copts(),
     data = [
         "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
     deps = [
         ":c_api",

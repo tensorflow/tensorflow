@@ -208,7 +208,7 @@ class NNAPIExecutionCache {
  public:
   // The cache signature. Uniquely identifies an execution request.
   struct Signature {
-    std::vector<int> tensor_handles;
+    std::vector<uint64_t> tensor_handle_timestamps;
     std::vector<int> dynamic_dimensions;
 
     bool operator==(const Signature& other) const;

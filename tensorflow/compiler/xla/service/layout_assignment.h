@@ -379,6 +379,10 @@ class LayoutAssignment : public HloModulePass {
                           bool mandatory, bool dfs, int64_t priority);
   bool reverse_computation_order() const { return reverse_computation_order_; }
 
+  ComputationLayout& saved_entry_computation_layout() {
+    return saved_entry_computation_layout_;
+  }
+
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
   // constraint to its neighbors (i.e. operands and users) in order to minimize
@@ -547,7 +551,7 @@ class LayoutAssignment : public HloModulePass {
   bool reverse_computation_order_;
 
  protected:
-  static constexpr int64_t kNumberOfPropagationRounds = 3;
+  static constexpr int64_t kNumberOfPropagationRounds = 2;
   // Sets up the copy instruction according to the characteristic (sharding,
   // metadata, ...) of the reference instruction. The index argument is used
   // when the instruction is a tuple, and in such case the index represents

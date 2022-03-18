@@ -74,6 +74,7 @@ class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
 
   @parameterized.parameters(True, False)
   def test_enqueue_with_outside_compilation_in_control_flow(self, use_mlir):
+    self.skip_if_oss()
     if use_mlir:
       config.enable_mlir_bridge()
 

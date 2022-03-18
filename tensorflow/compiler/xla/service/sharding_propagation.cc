@@ -151,6 +151,9 @@ bool IsPassthroughCustomOps(const HloInstruction* hlo) {
   if (hlo->IsCustomCall("Sharding")) {
     return true;
   }
+  if (hlo->IsCustomCall("X64Combine")) {
+    return true;
+  }
   if (hlo->operand_count() != 1 || !hlo->shape().IsArray() ||
       !hlo->operand(0)->shape().IsArray() ||
       hlo->operand(0)->shape().rank() != hlo->shape().rank()) {
@@ -256,6 +259,9 @@ const HloInstruction* PickRepresentativeOperand(
     // There is no suitable operand for the rest of the opcodes.
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceStart:
@@ -2174,6 +2180,19 @@ bool ShardingPropagation::InferShardingFromOperands(
       return MaybeImproveInstructionSharding(std::move(sharding), instruction,
                                              may_combine_partial_sharding);
     }
+    case HloOpcode::kCustomCall: {
+      if (instruction->IsCustomCall("X64Combine")) {
+        return false;
+      }
+      const HloInstruction* operand = PickRepresentativeOperand(instruction);
+      if (!operand || !IsSpatiallyPartitioned(operand)) {
+        return false;
+      }
+      return MaybeImproveInstructionSharding(
+          operand->sharding(), instruction, may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/ComputeNonRootUsers(instruction) ==
+              1);
+    }
     default: {
       if (instruction->IsElementwise() && may_combine_partial_sharding) {
         bool changed = false;
@@ -2209,7 +2228,7 @@ bool ShardingPropagation::InferShardingFromOperands(
     }
   }
   return false;
-}
+}  // NOLINT(readability/fn_size)
 
 StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
   absl::optional<absl::flat_hash_map<const HloInstruction*, HloSharding>>

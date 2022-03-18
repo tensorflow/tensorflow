@@ -42,7 +42,8 @@ struct TriangularSolveRewritePattern
         !has_fortran_layout(op.layout_output()))
       return rewriter.notifyMatchFailure(op, "expected fortran layout");
 
-    auto transpose_or = xla::ConvertTranspose(op.transpose_a());
+    auto transpose_or =
+        xla::ConvertTranspose(mlir::mhlo::stringifyTranspose(op.transpose_a()));
     if (!transpose_or.ok()) {
       return rewriter.notifyMatchFailure(op,
                                          transpose_or.status().error_message());

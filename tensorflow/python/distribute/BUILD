@@ -639,6 +639,7 @@ py_library(
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/tpu:device_assignment",
+        "//tensorflow/python/tpu:tpu_hardware_feature",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/tpu:tpu_py",
         "//tensorflow/python/tpu/ops",

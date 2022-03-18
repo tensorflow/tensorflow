@@ -30,6 +30,7 @@ def ScatterDimensionNumbers : AttrDef<HLO_Dialect, "ScatterDimensionNumbers"> {
       HLODim:$scatterDimsToOperandDims,
       "int64_t":$indexVectorDim
   );
+  let hasCustomAssemblyFormat = 1;
 }
 
 def GatherDimensionNumbers : AttrDef<HLO_Dialect, "GatherDimensionNumbers"> {
@@ -41,6 +42,7 @@ def GatherDimensionNumbers : AttrDef<HLO_Dialect, "GatherDimensionNumbers"> {
       HLODim:$startIndexMap,
       "int64_t":$indexVectorDim
   );
+  let hasCustomAssemblyFormat = 1;
 }
 
 def DotDimensionNumbers : AttrDef<HLO_Dialect, "DotDimensionNumbers"> {
@@ -52,6 +54,7 @@ def DotDimensionNumbers : AttrDef<HLO_Dialect, "DotDimensionNumbers"> {
       HLODim:$lhsContractingDimensions,
       HLODim:$rhsContractingDimensions
   );
+  let hasCustomAssemblyFormat = 1;
 }
 
 def ConvDimensionNumbers : AttrDef<HLO_Dialect, "ConvDimensionNumbers"> {
@@ -69,6 +72,7 @@ def ConvDimensionNumbers : AttrDef<HLO_Dialect, "ConvDimensionNumbers"> {
     "int64_t":$outputFeatureDimension,
     HLODim:$outputSpatialDimensions
   );
+  let hasCustomAssemblyFormat = 1;
 }
 
 def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
@@ -98,6 +102,7 @@ def ArgResultAlias : AttrDef<HLO_Dialect, "ArgResultAlias"> {
     HLODim:$resultTupleIndices,
     "bool":$isMustAlias
   );
+  let hasCustomAssemblyFormat = 1;
 }
 
 #endif // HLO_OPS_BASE_ATTRS

@@ -121,12 +121,13 @@ StatusOr<std::shared_ptr<HloModule>> GetHloModule(
 }
 
 // Converts a computation to textual HLO form.
-StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
+StatusOr<std::string> GetComputationHloText(
+    const XlaComputation& computation, bool print_large_constants = false) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
   HloPrintOptions options;
   options = HloPrintOptions::ShortParsable();
-  options.set_print_large_constants(false);
+  options.set_print_large_constants(print_large_constants);
   return hlo_module->ToString(options);
 }
 
@@ -401,7 +402,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("program_shape", &XlaComputation::GetProgramShape)
       .def("name", &XlaComputation::name)
       .def("as_serialized_hlo_module_proto", &GetComputationSerializedProto)
-      .def("as_hlo_text", &GetComputationHloText)
+      .def("as_hlo_text", &GetComputationHloText,
+           py::arg("print_large_constants") = false)
       .def("as_hlo_dot_graph", &GetComputationHloDotGraph)
       .def("hash", &HashComputation)
       .def("as_hlo_module", &GetHloModule);
@@ -709,6 +711,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("use_spmd_partitioning",
                     &ExecutableBuildOptions::use_spmd_partitioning,
                     &ExecutableBuildOptions::set_use_spmd_partitioning)
+      .def_property("use_auto_spmd_partitioning",
+                    &ExecutableBuildOptions::use_auto_spmd_partitioning,
+                    &ExecutableBuildOptions::set_use_auto_spmd_partitioning)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
           &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,

@@ -42,6 +42,12 @@ def request_compute_metadata(path: str) -> str:
     return info
 
 
+def signal_polling_fn() -> bool:
+  result = request_compute_metadata(
+      'instance/maintenance-event') == 'TERMINATE_ON_HOST_MAINTENANCE'
+  return result
+
+
 def on_gcp():
   """Detect whether the current running environment is on GCP."""
   gce_metadata_endpoint = 'http://' + os.environ.get(

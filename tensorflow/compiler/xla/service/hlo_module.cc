@@ -235,10 +235,12 @@ void HloModule::ReplaceComputations(
 
 std::string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  // When print_ids() is false, exclude module's name because it includes and
-  // leads to non-deterministic fingerprint.
-  s << "HloModule "
-    << (options.print_ids() ? PrintName(name(), options.print_ids()) : "");
+  s << "HloModule ";
+  if (options.print_ids()) {
+    // When print_ids() is false, exclude module's name because it includes and
+    // leads to non-deterministic fingerprint.
+    s << name();
+  }
   if (has_schedule()) {
     TF_CHECK_OK(schedule().Verify());
     s << ", is_scheduled=true";
@@ -259,6 +261,11 @@ std::string HloModule::ToString(const HloPrintOptions& options) const {
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
     if (!options.print_computation(computation)) {
+      continue;
+    }
+    // Don't print async computations when the sytax sugar is enabled since that
+    // is redundant information.
+    if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {
       continue;
     }
     if (computation == entry_computation()) {
@@ -493,6 +500,8 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     }
     module_config.set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
+    module_config.set_use_auto_spmd_partitioning(
+        execution_options->use_auto_spmd_partitioning());
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     module_config.set_allow_spmd_sharding_propagation_to_output(
         execution_options->allow_spmd_sharding_propagation_to_output());

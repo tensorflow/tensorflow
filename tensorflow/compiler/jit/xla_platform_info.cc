@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 
+#include <utility>
+
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 
 namespace tensorflow {
@@ -46,7 +49,8 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
   if (platform_info.xla_device_metadata()) {
     *cache = new XlaCompilationCache(
         platform_info.xla_device_metadata()->client(),
-        platform_info.xla_device_metadata()->jit_device_type());
+        platform_info.xla_device_metadata()->jit_device_type(),
+        GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory);
     return Status::OK();
   }
 
@@ -101,7 +105,8 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                    platform_info.device_type().type());
   }
   *cache = new XlaCompilationCache(
-      client.ValueOrDie(), DeviceType(registration->compilation_device_name));
+      client.ValueOrDie(), DeviceType(registration->compilation_device_name),
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory);
   return Status::OK();
 }
 

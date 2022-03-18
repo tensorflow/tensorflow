@@ -77,6 +77,7 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/importexport/functiondef_import.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stack_frame.h"
@@ -112,7 +113,6 @@ using tensorflow::ResourceHandleProto_DtypeAndShape;
 using tensorflow::StackFrame;
 using tensorflow::Status;
 using tensorflow::TensorProto;
-using tensorflow::TensorShapeProto;
 using tensorflow::VersionDef;
 using tensorflow::errors::AppendToMessage;
 using tensorflow::errors::Internal;
@@ -586,12 +586,18 @@ Status GraphImporter::ConvertNode(const Node& node) {
     result.operands.push_back(GetOperand(*input_edge));
   }
 
-  // Handle attributes, reserve `+2` for `device` and `name`.
-  result.attributes.reserve(node.attrs().size() + 2);
+  // Handle attributes, reserve `+3` for `device`, `name` and `fulltype`.
+  result.attributes.reserve(node.attrs().size() + 3);
   result.addAttribute(dialect_->getDeviceAttrIdentifier(),
                       builder_.getStringAttr(node.requested_device()));
   result.addAttribute(dialect_->getNameAttrIdentifier(),
                       StringAttr::get(context_, node.name()));
+  if (node.def().has_experimental_type()) {
+    TF_ASSIGN_OR_RETURN(
+        tf_type::FullTypeAttr type,
+        ConvertAttribute(node.def().experimental_type(), builder_, dialect_));
+    result.addAttribute(dialect_->getFullTypeAttrIdentifier(), type);
+  }
   for (const auto& namedAttr : node.attrs()) {
     const std::string& name = namedAttr.first;
     if (name.empty()) return InvalidArgument("empty attr name");
@@ -805,6 +811,12 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                             ConvertHandleData(builder, output.handle_data()));
         output_attrs.append("tfg.handle_data", handle_data);
       }
+      if (output.has_experimental_full_type()) {
+        TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr type,
+                            ConvertAttribute(output.experimental_full_type(),
+                                             builder, tfgDialect));
+        output_attrs.append("tfg.experimental_full_type", type);
+      }
       res_attrs.push_back(output_attrs.getDictionary(context));
     }
     attrs.push_back(
@@ -888,6 +900,13 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                             ConvertHandleData(builder, input.handle_data()));
 
         input_attrs.append("tfg.handle_data", handle_data);
+      }
+
+      if (input.has_experimental_full_type()) {
+        TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr type,
+                            ConvertAttribute(input.experimental_full_type(),
+                                             builder, tfgDialect));
+        input_attrs.append("tfg.experimental_full_type", type);
       }
 
       auto it = fbody->fdef.arg_attr().find(arg_id);

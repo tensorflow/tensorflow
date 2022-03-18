@@ -3186,7 +3186,6 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
       resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
-  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]
@@ -3748,7 +3747,6 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
       resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
-  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]

@@ -118,6 +118,7 @@ void TFGraphDialect::initialize() {
   control_ty_ = ControlType::get(getContext());
   tfg_tpu_replicate_key_ =
       StringAttr::get(getContext(), getTfgTpuReplicateAttrKey());
+  fulltype_key_ = StringAttr::get(getContext(), getFullTypeAttrKey());
 }
 
 // Provides a hook for op interface.
@@ -1279,17 +1280,6 @@ LogicalResult ForRegionOp::verify() {
   }
 
   return VerifyLoopRegionArgs(*this, body_region());
-}
-
-LogicalResult ForRegionOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  TypeRange arg_types =
-      ForRegionOp::Adaptor(operands, attributes).init().getTypes();
-  inferredReturnTypes.assign(arg_types.begin(), arg_types.end());
-  inferredReturnTypes.push_back(tf_type::ControlType::get(context));
-  return success();
 }
 
 OperandRange ForRegionOp::getSuccessorEntryOperands(unsigned index) {

@@ -394,7 +394,7 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
   mlir::OwningOpRef<mlir::ModuleOp> module;
   {
     mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-    module = mlir::parseSourceString(mlir_txt, &context);
+    module = mlir::parseSourceString<mlir::ModuleOp>(mlir_txt, &context);
     if (!module) {
       Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
       return "// error";

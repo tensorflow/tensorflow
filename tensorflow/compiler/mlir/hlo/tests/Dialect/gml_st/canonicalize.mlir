@@ -17,7 +17,7 @@ func @memref_cast_into_loop(%arg0: memref<192xf32>)  {
     %14 = affine.min affine_map<(d0) -> (-d0 + 192, 24)>(%arg3)
     %16 = memref.subview %out[%arg3] [%14] [1]
       : memref<192xf32, #map> to memref<?xf32, #map>
-    linalg.fill(%cst, %16) : f32, memref<?xf32, #map>
+    linalg.fill ins(%cst : f32) outs(%16 : memref<?xf32, #map>)
     gml_st.yield
   }
   return
@@ -108,7 +108,7 @@ func @dim_of_loop_input_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x
     %inner_dim = tensor.dim %out1, %c0 : tensor<?x?xf32>
     %cast1 = arith.index_cast %inner_dim : index to i32
     %cast2 = arith.sitofp %cast1 : i32 to f32
-    %fill = linalg.fill(%cast2, %out1) : f32, tensor<?x?xf32> -> tensor<?x?xf32>
+    %fill = linalg.fill ins(%cast2 : f32) outs(%out1 : tensor<?x?xf32>) -> tensor<?x?xf32>
     %slice = tensor.extract_slice %fill[0, 0][%s, %s][1, 1] : tensor<?x?xf32> to tensor<?x?xf32>
     gml_st.yield %slice : tensor<?x?xf32>
   }
@@ -136,7 +136,7 @@ func @dim_of_loop_input(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: t
     %inner_dim = tensor.dim %in1, %c0 : tensor<?x?xf32>
     %cast1 = arith.index_cast %inner_dim : index to i32
     %cast2 = arith.sitofp %cast1 : i32 to f32
-    %fill = linalg.fill(%cast2, %out1) : f32, tensor<?x?xf32> -> tensor<?x?xf32>
+    %fill = linalg.fill ins(%cast2 : f32) outs(%out1 : tensor<?x?xf32>) -> tensor<?x?xf32>
     gml_st.yield %fill : tensor<?x?xf32>
   }
   return %r : tensor<?x?xf32>

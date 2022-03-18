@@ -482,13 +482,11 @@ TEST(TrtNodeValidator, IsTensorRTCandidate) {
     EXPECT_THAT(validator.IsTensorRTCandidate(unsupported_op.operation.node()),
                 StatusIs(error::UNIMPLEMENTED,
                          HasSubstr("Op type Erfc is not supported")));
-    EXPECT_THAT(
-        validator.IsTensorRTCandidate(
-            matmul_with_incompatible_input.operation.node()),
-        StatusIs(
-            error::INTERNAL,
-            HasSubstr(
-                "Failed to convert input feed_1 to a TRT_TensorOrWeights")));
+    EXPECT_THAT(validator.IsTensorRTCandidate(
+                    matmul_with_incompatible_input.operation.node()),
+                StatusIs(error::INTERNAL,
+                         HasSubstr("Failed to convert at least one input to a "
+                                   "TRT_TensorOrWeights:")));
     if (precision_mode == TrtPrecisionMode::INT8) {
       TF_EXPECT_OK(validator.IsTensorRTCandidate(quantize.operation.node()));
     } else {
@@ -2389,8 +2387,8 @@ TEST_P(OpConverter_FP32_Test, ConvertReshape) {
   Status reshape_from_scalar_status =
       trt_mode_ == TrtTestMode::kImplicitBatch
           ? errors::Internal(
-                "Failed to convert input input to a TRT_TensorOrWeights: "
-                "Scalar input tensor is not supported since the first "
+                "Failed to convert at least one input to a TRT_TensorOrWeights:"
+                " Scalar input tensor is not supported since the first "
                 "dimension is treated as batch dimension by TRT")
           : Status::OK();
   Status add_scalar_tensor_status =
@@ -7434,10 +7432,9 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
       if (trt_mode_ == TrtTestMode::kImplicitBatch) {
         RunValidationAndConversion(
             node_def, error::INTERNAL,
-            "Failed to convert input value to a TRT_TensorOrWeights: Scalar "
-            "input tensor is not supported since the first dimension is "
-            "treated "
-            "as batch dimension by TRT");
+            "Failed to convert at least one input to a TRT_TensorOrWeights: "
+            "Scalar input tensor is not supported since the first dimension is "
+            "treated as batch dimension by TRT");
       } else {
         RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                    "Input \"value\" for Unpack must be rank 2 "

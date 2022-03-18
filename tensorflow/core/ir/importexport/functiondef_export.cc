@@ -119,6 +119,11 @@ static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
   if (StringAttr type_list_attr =
           arg_attrs.getAs<StringAttr>("tfg.type_list_attr"))
     arg->set_type_attr(type_list_attr.getValue().str());
+  if (auto full_type = arg_attrs.getAs<tf_type::FullTypeAttr>(
+          "tfg.experimental_full_type")) {
+    TF_ASSIGN_OR_RETURN(*arg->mutable_experimental_full_type(),
+                        ConvertAttribute(full_type));
+  }
   TF_RETURN_IF_ERROR(
       ConvertHandleData(arg_attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
   if (UnitAttr number_attr = arg_attrs.getAs<UnitAttr>("tfg.is_ref"))

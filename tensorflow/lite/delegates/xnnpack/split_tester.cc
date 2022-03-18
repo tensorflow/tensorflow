@@ -167,7 +167,7 @@ std::vector<char> SplitTester::CreateTfLiteModel(TensorType tensor_type) const {
                     builder.CreateVector(
                         reinterpret_cast<const uint8_t *>(split_dim.data()),
                         split_dim.size() * sizeof(int32_t)))}};
-  std::array<int32_t, 1> split_dim_shape = {1};
+  std::array<int32_t, 0> split_dim_shape = {};
 
   flatbuffers::Offset<QuantizationParameters> quantization_params =
       CreateQuantizationParameters(

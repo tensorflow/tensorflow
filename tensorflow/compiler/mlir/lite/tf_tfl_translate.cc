@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
       module = xla::HloToMlirHloTranslateFunction(content, &context, false);
     } else {
       module = mlir::OwningOpRef<mlir::ModuleOp>(
-          mlir::parseSourceString(content, &context));
+          mlir::parseSourceString<mlir::ModuleOp>(content, &context));
     }
   } else {
     // Graphdef import path.

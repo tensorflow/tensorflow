@@ -29,6 +29,7 @@ limitations under the License.
 
 namespace mlir {
 namespace {
+
 // Add logger to bridge passmanager.
 // Enable timing statistics per pass for the bridge passmanager.
 void EnableDetailedLogging(PassManager *pm) {
@@ -70,9 +71,8 @@ tensorflow::Status RunTPUBridge(
     tensorflow::DumpMlirOpToFile("tpu_bridge_after", module);
   return diag_handler.ConsumeStatus();
 }
-}  // namespace
 
-void CreateTPUBridgePipeline(OpPassManager &pm) {
+void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this but this is
   // currently not the case (see b/177478741).
@@ -180,8 +180,16 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(CreateTPUVariableRuntimeReformattingPass());
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 }
+}  // namespace
+
+void CreateTPUBridgePipeline(OpPassManager &pm) {
+  pm.addPass(CreateCanonicalizeCompileAndReplicateAttributesPass());
+  CreateTPUBridgePipelineImpl(pm);
+}
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  // Convert to unified compilation and replication attributes.
+  pm.addPass(CreateCanonicalizeCompileAndReplicateAttributesPass());
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
@@ -194,8 +202,13 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandCoarseningPass());
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandOutliningPass());
   OpPassManager &nested_module = pm.nest<ModuleOp>();
-  CreateTPUBridgePipeline(nested_module);
+  CreateTPUBridgePipelineImpl(nested_module);
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
+  // There are cases where we don't consume all compilation and replication
+  // attributes like we do for the V2 pipeline, so we need to convert them from
+  // unified to legacy attributes before they get exposed to outside of the
+  // bridge.
+  pm.addPass(CreateConvertToLegacyCompileAndReplicateAttributesPass());
 }
 
 tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
