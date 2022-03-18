@@ -1855,11 +1855,11 @@ class RaggedTensor(composite_tensor.CompositeTensor,
   @classmethod
   @dispatch.add_dispatch_support
   def from_sparse(cls, st_input, name=None, row_splits_dtype=dtypes.int64):
-    """Converts a 2D `tf.sparse.SparseTensor` to a `RaggedTensor`.
+    """Converts a `tf.sparse.SparseTensor` to a `RaggedTensor`.
 
-    Each row of the `output` `RaggedTensor` will contain the explicit values
-    from the same row in `st_input`.  `st_input` must be ragged-right.  If not
-    it is not ragged-right, then an error will be generated.
+    The `output` `RaggedTensor` will contain the explicit values
+    from that values of `st_input`.  `st_input` must be ragged-right in the last
+    dimension. If not it is not ragged-right, then an error will be generated.
 
     Example:
 
@@ -1870,10 +1870,8 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     >>> tf.RaggedTensor.from_sparse(st).to_list()
     [[1, 2, 3], [4], [], [5]]
 
-    Currently, only two-dimensional `SparseTensors` are supported.
-
     Args:
-      st_input: The sparse tensor to convert.  Must have rank 2.
+      st_input: The sparse tensor to convert.
       name: A name prefix for the returned tensors (optional).
       row_splits_dtype: `dtype` for the returned `RaggedTensor`'s `row_splits`
         tensor.  One of `tf.int32` or `tf.int64`.
@@ -1894,28 +1892,29 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       st_input = sparse_tensor.convert_to_tensor_or_sparse_tensor(
           st_input, name="st_input")
 
-      if st_input.dense_shape.shape.ndims is None:
-        static_rank_from_dense_shape = None
-      else:
-        static_rank_from_dense_shape = st_input.dense_shape.shape.dims[0].value
-
-      if st_input.indices.shape.ndims is None:
-        static_rank_from_indices = None
-      else:
-        static_rank_from_indices = st_input.indices.shape.dims[1].value
-
-      if static_rank_from_dense_shape != 2 and static_rank_from_indices != 2:
-        raise ValueError("rank(st_input) must be 2.")
-
       with ops.control_dependencies(
           _assert_sparse_indices_are_ragged_right(st_input.indices)):
-        # Treat sparse row indices as segment ids to generate a splits tensor
-        # thta we can pair with the sparse tensor values.  (Ignore sparse column
-        # indices.)
-        segment_ids = math_ops.cast(st_input.indices[:, 0], row_splits_dtype)
-        num_segments = math_ops.cast(st_input.dense_shape[0], row_splits_dtype)
-        return cls.from_value_rowids(
-            st_input.values, segment_ids, num_segments, validate=False)
+        # Initialize: Use the logic of from_nested_value_rowids
+        indices = st_input.indices
+        result = st_input.values
+        ndims = st_input.indices.shape.dims[-1]
+        rowids = 0
+
+        # Creating the ragged tensor layer by layer
+        for ii in range(ndims-1):
+          if ii > 0:
+            indices = indices[:, :ndims-ii]
+            # Deduplicate with segment_max to create the next layer of rowids
+            indices = math_ops.segment_max(indices, rowids)
+          # Here we assume that the sparse indices are reordered
+          # The start of each nested row is index 0
+          rowids = math_ops.cast(math_ops.equal(indices[:, -1], 0), row_splits_dtype)
+          # This cumsum becomes the rowids of the last dimension
+          rowids = math_ops.cumsum(rowids) - 1
+          nrows = math_ops.reduce_max(rowids)+1
+          result = cls.from_value_rowids(result, rowids, nrows, validate=False)
+
+        return result
 
   def to_sparse(self, name=None):
     """Converts this `RaggedTensor` into a `tf.sparse.SparseTensor`.
