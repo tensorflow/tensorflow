@@ -38,7 +38,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-
+from tensorflow.python.util.tf_export import tf_export
 
 # Op names which identify variable reads which should be saved.
 _VARIABLE_OPS = set(["Variable",
@@ -502,6 +502,7 @@ def is_factory_for_restored_saveable_object(factory):
           factory.func is RestoredSaveableObject)
 
 
+@tf_export("__internal__.tracking.saveable_objects_from_trackable", v1=[])
 def saveable_objects_from_trackable(obj):
   if trackable_has_serialize_to_tensor(obj):
     def create_saveable(name=""):
