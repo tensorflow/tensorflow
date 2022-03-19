@@ -155,8 +155,8 @@ def _find_rocblas_config(rocm_install_path):
 
   def rocblas_version_numbers(path):
     possible_version_files = [
-        "rocblas/include/internal/rocblas-version.h",  # ROCm 3.8
-        "rocblas/include/rocblas-version.h",  # ROCm 3.7 and prior
+        "include/rocblas/internal/rocblas-version.h",  # ROCm 5.2
+        "rocblas/include/internal/rocblas-version.h",  # ROCm 5.1 and prior
     ]
     version_file = None
     for f in possible_version_files:
@@ -256,10 +256,20 @@ def _find_hipfft_config(rocm_install_path):
 def _find_roctracer_config(rocm_install_path):
 
   def roctracer_version_numbers(path):
-    version_file = os.path.join(path, "roctracer/include/roctracer.h")
-    if not os.path.exists(version_file):
+    possible_version_files = [
+        "include/roctracer/roctracer.h",  # ROCm 5.2
+        "roctracer/include/roctracer.h",  # ROCm 5.1 and prior
+    ]
+    version_file = None
+    for f in possible_version_files:
+      version_file_path = os.path.join(path, f)
+      if os.path.exists(version_file_path):
+        version_file = version_file_path
+        break
+    if not version_file:
       raise ConfigError(
-          'roctracer version file "{}" not found'.format(version_file))
+          "roctracer version file not found in {}".format(
+              possible_version_files))
     major = _get_header_version(version_file, "ROCTRACER_VERSION_MAJOR")
     minor = _get_header_version(version_file, "ROCTRACER_VERSION_MINOR")
     # roctracer header does not have a patch version number
