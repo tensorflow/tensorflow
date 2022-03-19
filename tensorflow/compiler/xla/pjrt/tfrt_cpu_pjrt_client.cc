@@ -368,23 +368,10 @@ StatusOr<std::unique_ptr<PjRtExecutable>> TfrtCpuClient::Compile(
       FindResultBufferAllocationIndex(cpu_executable_ptr->buffer_assignment(),
                                       cpu_executable->module()));
 
-  // Compute flop count and cache whether this computation is cheap for sync
-  // dispatch.
-  auto hlo_cost_analysis =
-      std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
-  TF_RETURN_IF_ERROR(cpu_executable->module().entry_computation()->Accept(
-      hlo_cost_analysis.get()));
-  // Cache to avoid std::map lookup in flop_count() on critical path.
-  // The magic constant 1000 is determined by correlating computation with
-  // flop estimate. It is a crude heuristic to find computation less than
-  // the thread context switch time (~5us).
-  bool cheap_computation = hlo_cost_analysis->flop_count() < 1000;
-
   auto executable = std::make_unique<TfrtCpuExecutable>(
       num_replicas, num_partitions, std::move(device_assignment),
-      options.parameter_is_tupled_arguments, cheap_computation,
-      std::move(cpu_executable), result_slice.index(),
-      std::move(result_buffer_indices),
+      options.parameter_is_tupled_arguments, std::move(cpu_executable),
+      result_slice.index(), std::move(result_buffer_indices),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this);
   TF_RETURN_IF_ERROR(
@@ -1303,7 +1290,7 @@ PjRtFuture<Status> TfrtCpuBuffer::GetReadyFuture() {
 TfrtCpuExecutable::TfrtCpuExecutable(
     int num_replicas, int num_partitions,
     std::shared_ptr<DeviceAssignment> device_assignment,
-    bool parameter_is_tupled_arguments, bool cheap_computation,
+    bool parameter_is_tupled_arguments,
     std::unique_ptr<Executable> cpu_executable,
     BufferAllocation::Index result_buffer_index,
     absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
@@ -1314,13 +1301,20 @@ TfrtCpuExecutable::TfrtCpuExecutable(
       num_partitions_(num_partitions),
       device_assignment_(std::move(device_assignment)),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
-      cheap_computation_(cheap_computation),
       cpu_executable_(std::move(cpu_executable)),
       result_buffer_index_(result_buffer_index),
       result_buffer_indices_(std::move(result_buffer_indices)),
       addressable_device_logical_ids_(
           std::move(addressable_device_logical_ids)),
       addressable_devices_(std::move(addressable_devices)) {
+  auto hlo_cost_analysis =
+      std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
+  // Cache to avoid std::map lookup in flop_count() on critical path.
+  // The magic constant 1000 is determined by correlating computation with flop
+  // estimate. It is a crude heuristic to find computation less than the thread
+  // context switch time (~5us).
+  cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
+
   const auto& computation_layout =
       cpu_executable_->module().entry_computation_layout();
   if (computation_layout.parameter_count() == 0) {

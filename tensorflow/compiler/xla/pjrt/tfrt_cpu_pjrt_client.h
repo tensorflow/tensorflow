@@ -546,7 +546,7 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   TfrtCpuExecutable(
       int num_replicas, int num_partitions,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      bool parameter_is_tupled_arguments, bool cheap_computation,
+      bool parameter_is_tupled_arguments,
       std::unique_ptr<Executable> cpu_executable,
       BufferAllocation::Index result_buffer_index,
       absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
@@ -639,10 +639,6 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   std::shared_ptr<DeviceAssignment> device_assignment_;
   bool parameter_is_tupled_arguments_;
 
-  // Cached result of comparing HloCostAnalysis FLOP estimate to decide whether
-  // to synchronously dispatch cheap computations.
-  bool cheap_computation_;
-
   std::shared_ptr<Executable> cpu_executable_;
 
   // Caching `result_buffer_index_` and `result_buffer_indices_` to avoid lookup
@@ -673,6 +669,10 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
+
+  // Cached result of comparing HloCostAnalysis FLOP estimate for execute
+  // critical path.
+  bool cheap_computation_;
 };
 
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous);
