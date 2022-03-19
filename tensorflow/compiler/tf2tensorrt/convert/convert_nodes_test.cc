@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/strings/match.h"
@@ -36,8 +37,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
@@ -67,6 +66,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -1008,8 +1009,8 @@ TEST_F(ConverterTest, CreateConstantLayer) {
     ITensorProxyPtr tensor =
         converter_->CreateConstantLayer(weights, CreateDims({3, 10}));
     ASSERT_NE(nullptr, tensor->trt_tensor());
-    EXPECT_EQ(dtype, tensor->getType())
-        << "Expected " << DebugString(dtype) << " vs. actual "
+    EXPECT_EQ(dtype, tensor->getType()) 
+	<< "Expected " << DebugString(dtype) << " vs. actual "
         << DebugString(tensor->getType());
     EXPECT_THAT(tensor->getDimensions(), DimsAreArray({3, 10}));
   }
@@ -1090,19 +1091,23 @@ inline absl::Span<const T> GetSpanForData(const InputOutputData& data) {
 }
 
 std::vector<float> GetDataAsFloat(InputOutputData& data) {
-  if (data.tensor.dtype() == DT_FLOAT) {
+  const auto dType = data.tensor.dtype();
+  if (dType == DT_FLOAT) {
     auto span = GetSpanForData<float>(data);
     return std::vector<float>(span.begin(), span.end());
   }
-  if (data.tensor.dtype() == DT_HALF) {
+  if (dType == DT_HALF) {
     return CastVector<Eigen::half, float>(GetSpanForData<Eigen::half>(data));
   }
-  if (data.tensor.dtype() == DT_INT32) {
+  if (dType == DT_INT32) {
     return CastVector<int32, float>(GetSpanForData<int32>(data));
   }
-  LOG(FATAL) << "DataType not supported for testing "
-             << DataTypeString(data.tensor.dtype());
-
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  if (dType == DT_BOOL) {
+    return CastVector<bool, float>(GetSpanForData<bool>(data));
+  }
+#endif
+  LOG(FATAL) << "DataType not supported for testing " << DataTypeString(dType);
   return {};
 }
 
@@ -1164,24 +1169,37 @@ class OpConverterTest : public ::testing::Test {
     return ret;
   }
 
+  template <typename T, typename S>
+  void transformTensor(const std::vector<T>& vals, Tensor& ret) {
+    std::transform(vals.begin(), vals.end(), ret.flat<S>().data(),
+                   [](const T in_val) -> S { return static_cast<S>(in_val); });
+  }
+
+  template <typename T, typename S>
+  void transformWeights(const std::vector<T>& vals,
+                        TRT_ShapedWeights& weights) {
+    std::transform(vals.begin(), vals.end(), weights.GetPointer<S>(),
+                   [](const T in_val) -> S { return static_cast<S>(in_val); });
+  }
+
   // Constructs a tensor with given values (vals). The tensor type is defined by
   // the tf_type argument, its shape is given by input_dims. The tensor is
   // constructed using the allocator of OpConverterTest in Unified Memory.
   template <typename T>
-  Tensor AsTensor(std::vector<T> vals, const std::vector<int> input_dims,
-                  DataType tf_type) {
+  Tensor AsTensor(const std::vector<T>& vals,
+                  const std::vector<int>& input_dims, DataType tf_type) {
     Tensor ret(tensor_buffer_allocator_.get(), tf_type,
                {static_cast<int64_t>(vals.size())});
     if (tf_type == DT_FLOAT) {
-      auto conv_vals = CastVector<T, float>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<float>().data());
+      transformTensor<T, float>(vals, ret);
     } else if (tf_type == DT_HALF) {
-      auto conv_vals = CastVector<T, Eigen::half>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(),
-                  ret.flat<Eigen::half>().data());
+      transformTensor<T, Eigen::half>(vals, ret);
     } else if (tf_type == DT_INT32) {
-      auto conv_vals = CastVector<T, int32>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<int32>().data());
+      transformTensor<T, int32>(vals, ret);
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    } else if (tf_type == DT_BOOL) {
+      transformTensor<T, bool>(vals, ret);
+#endif
     } else {
       LOG(FATAL) << "Cannot create tensor with type "
                  << DataTypeString(tf_type);
@@ -1190,6 +1208,13 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(TensorShapeUtils::MakeShape(input_dims, &shape));
     CHECK(ret.CopyFrom(ret, shape));
     return ret;
+  }
+
+  template <typename T>
+  Tensor AsTensor(const std::vector<int>& vals,
+                  const std::vector<int>& input_dims, DataType tf_type) {
+    const auto& conv_vals = CastVector<int, T>(vals);
+    return AsTensor(conv_vals, input_dims, tf_type);
   }
 
   // Constructs a flat tensor in Unified Memory.
@@ -1347,42 +1372,15 @@ class OpConverterTest : public ::testing::Test {
     }
   }
 
-  // Add weights for both validation and conversion.
-  template <typename T>
-  void AddTestWeights(const string& name, const std::vector<int>& dims,
-                      const std::vector<T>& values) {
-    // Add weights for validation.
-    TensorShape shape;
-    TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &shape));
-    Tensor t = AsTensor<T>(values, shape);
-    node_inputs_[name] = ops::Const(scope_.WithOpName(name), t);
-
-    // Add weights for conversion.
-    nvinfer1::DataType dtype;
-    TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &dtype));
-    const DimsAdapter dims_adap(dims);
-    const int64_t num_elements = dims_adap.Volume();
-    QCHECK_EQ(num_elements, values.size())
-        << num_elements << " vs " << values.size();
-    TRT_ShapedWeights weights(dtype);
-    if (num_elements) {
-      weights =
-          converter_->weight_store_.GetTempWeights(dtype, dims_adap.AsTrtDims())
-              .ConsumeValueOrDie();
-      QCHECK_EQ(weights.size_bytes(), sizeof(T) * values.size())
-          << weights.size_bytes() << " vs " << sizeof(T) * values.size();
-      memcpy(weights.GetPointer<int8>(), values.data(), weights.size_bytes());
-    }
-    TF_EXPECT_OK(
-        converter_->AddTensorOrWeights(name, TRT_TensorOrWeights{weights}));
-  }
-
+  // Adds weights for both validation and conversion. The type of the weight is
+  // determined by tf_type. The initial value vector (values) can have any
+  // type (T) that can be static casted to tf_type.
   template <typename T = int32>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
                       const std::vector<T>& values_inp, DataType tf_type,
                       bool fix_values = true) {
-    const auto num_elements = std::accumulate(std::begin(dims), std::end(dims),
-                                              1, std::multiplies<int>());
+    const DimsAdapter dims_adap(dims);
+    const int64_t num_elements = dims_adap.Volume();
 
     std::vector<T> values(values_inp);
     if (num_elements != values.size()) {
@@ -1395,17 +1393,46 @@ class OpConverterTest : public ::testing::Test {
                << num_elements << " defined by dims";
       }
     }
+    // Add weights for validation.
+    Tensor t = AsTensor<T>(values, dims, tf_type);
+    node_inputs_[name] = ops::Const(scope_.WithOpName(name), t);
 
-    if (tf_type == DT_FLOAT) {
-      AddTestWeights(name, dims, CastVector<T, float>(values));
-    } else if (tf_type == DT_HALF) {
-      AddTestWeights(name, dims, CastVector<T, Eigen::half>(values));
-    } else if (tf_type == DT_INT32) {
-      AddTestWeights(name, dims, CastVector<T, int32>(values));
-    } else {
-      FAIL() << "Cannot create test weights with type "
-             << DataTypeString(tf_type);
+    // Add weights for conversion.
+    nvinfer1::DataType dtype;
+    TF_ASSERT_OK(TfTypeToTrtType(tf_type, &dtype));
+    QCHECK_EQ(num_elements, values.size())
+        << num_elements << " vs " << values.size();
+    TRT_ShapedWeights weights(dtype);
+    if (num_elements) {
+      weights =
+          converter_->weight_store_.GetTempWeights(dtype, dims_adap.AsTrtDims())
+              .ConsumeValueOrDie();
+
+      if (tf_type == DT_FLOAT) {
+        transformWeights<T, float>(values, weights);
+      } else if (tf_type == DT_HALF) {
+        transformWeights<T, Eigen::half>(values, weights);
+      } else if (tf_type == DT_INT32) {
+        transformWeights<T, int32>(values, weights);
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+      } else if (tf_type == DT_BOOL) {
+        transformWeights<T, bool>(values, weights);
+#endif
+      } else {
+        LOG(FATAL) << "Cannot create tensor with type "
+                   << DataTypeString(tf_type);
+      }
     }
+    TF_EXPECT_OK(
+        converter_->AddTensorOrWeights(name, TRT_TensorOrWeights{weights}));
+  }
+
+  // Adds test weight without specifying tf_type arg. In this case the initial
+  // value type (T) will determine the type of the weights.
+  template <typename T = int32>
+  void AddTestWeights(const string& name, const std::vector<int>& dims,
+                      const std::vector<T>& value, bool fix_values = true) {
+    AddTestWeights(name, dims, value, DataTypeToEnum<T>::value, fix_values);
   }
 
   // Test validation in validation-only mode.
