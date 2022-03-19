@@ -606,27 +606,26 @@ absl::Cord HloComputation::ToCord(
   absl::flat_hash_set<int> instructions_to_print;
   {
     // Find all the instructions that should be printed.
-    auto add_instruction = [&instructions_to_print,
-                            &instruction_order](int index) {
-      if (index < 0 || index >= instruction_order.size()) {
-        return;
-      }
-      instructions_to_print.insert(index);
-    };
-
-    auto add_instructions_arround = [&add_instruction, &options](int index) {
-      for (int i = index - options.leading_and_trailing_instructions_number();
-           i <= index + options.leading_and_trailing_instructions_number();
-           ++i) {
-        add_instruction(i);
-      }
-    };
-
-    for (int i = 0; i < instruction_order.size(); ++i) {
-      const HloInstruction* instruction = instruction_order[i];
-      CHECK_EQ(this, instruction->parent());
+    const int last_instruction = instruction_order.size() - 1;
+    int first_non_printed = 0;
+    for (int i = 0; i <= last_instruction;) {
+      const HloInstruction* const instruction = instruction_order[i];
+      DCHECK_EQ(this, instruction->parent());
       if (options.print_instruction(instruction)) {
-        add_instructions_arround(i);
+        // Add the instruction along with leading and trailing instructions to
+        // instructions_to_print. Avoid adding instructions multiple times.
+        const int first_to_print =
+            std::max(first_non_printed,
+                     i - options.leading_and_trailing_instructions_number());
+        const int last_to_print =
+            std::min(last_instruction,
+                     i + options.leading_and_trailing_instructions_number());
+        for (int j = first_to_print; j <= last_to_print; ++j) {
+          instructions_to_print.insert(j);
+        }
+        i = first_non_printed = last_to_print + 1;
+      } else {
+        ++i;
       }
     }
   }
@@ -643,7 +642,7 @@ absl::Cord HloComputation::ToCord(
     bool print_prev = true;
     for (int index = 0; index < instruction_order.size(); ++index) {
       if (instructions_to_print.contains(index)) {
-        const HloInstruction* instruction = instruction_order[index];
+        const HloInstruction* const instruction = instruction_order[index];
         result.Append(new_options.format_instruction(
             instruction,
             instruction->ToStringWithCanonicalNameMap(new_options, &name_map),

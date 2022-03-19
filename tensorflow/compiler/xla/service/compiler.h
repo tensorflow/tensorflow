@@ -339,7 +339,7 @@ class Compiler {
     };
   }
 
-  virtual Shape DefaultDeviceShapeRepresentation(const Shape& shape) const {
+  virtual Shape DeviceShapeRepresentation(const Shape& shape) const {
     return shape;
   }
 

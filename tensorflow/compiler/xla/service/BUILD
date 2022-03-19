@@ -5205,7 +5205,6 @@ cc_library(
         ":executable",
         ":hlo",
         ":hlo_module_group",
-        ":hlo_module_util",
         ":hlo_parser",
         ":hlo_runner_interface",
         ":transfer_manager",

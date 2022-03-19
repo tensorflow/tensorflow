@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
-# buildifier: disable=same-origin-load
+# buildifier: disable=same-origin-load @unused
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "tf_cc_test")
 
 # buildifier: disable=same-origin-load
@@ -535,10 +535,9 @@ cc_library(
         ":compilation_passes",
         ":xla_activity_logging_listener",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
-        "//tensorflow/core:core_cpu_internal",
-    ] + tf_jit_compilation_passes_extra_deps() + if_mlir([
         "//tensorflow/compiler/tf2xla:mlir_bridge_pass_registration",
-    ]),
+        "//tensorflow/core:core_cpu_internal",
+    ] + tf_jit_compilation_passes_extra_deps(),
     alwayslink = 1,
 )
 

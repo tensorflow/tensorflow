@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/function/testing/test_pass.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -286,6 +287,24 @@ TEST(CallTest, Binary) {
   ASSERT_EQ(rets->size(), 1);
   ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
   EXPECT_EQ(IntValue(*(rets->at(0))), 2);
+}
+
+TEST(TransformTest, TestPassOnBinaryFunction) {
+  EagerContextPtr ctx = TestingEagerCtx();
+  Runtime rt(*ctx);
+  TF_ASSERT_OK(rt.CreateFunction(MakeBinaryFunction()));
+
+  testing::RegisterTestPass();
+  TF_EXPECT_OK(rt.TransformFunction("BinaryFunction", "test-pass"));
+
+  auto x = IntScalarTensor(*ctx, 2);
+  auto y = IntScalarTensor(*ctx, 3);
+  StatusOr<ReturnValues> rets =
+      rt.CallFunction("BinaryFunction", {x.get(), y.get()});
+  TF_ASSERT_OK(rets.status());
+  ASSERT_EQ(rets->size(), 1);
+  ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
+  EXPECT_EQ(IntValue(*(rets->at(0))), 6);
 }
 
 }  // namespace

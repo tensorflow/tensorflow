@@ -98,17 +98,7 @@ CompileOnlyService::CompileAheadOfTime(
   for (const AotXlaComputationInstance& instance : computations) {
     TF_RET_CHECK(instance.computation.has_host_program_shape());
     *execution_options.mutable_shape_with_output_layout() =
-        instance.result_layout->layout().tiles().empty()
-            ? compiler_
-                  ->DefaultDeviceShapeRepresentation(*instance.result_layout)
-                  .ToProto()
-            : instance.result_layout->ToProto();
-    for (auto shape : instance.argument_layouts) {
-      if (shape->layout().tiles().empty()) {
-        *(const_cast<Shape*>(shape)) =
-            compiler_->DefaultDeviceShapeRepresentation(*shape);
-      }
-    }
+        instance.result_layout->ToProto();
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,

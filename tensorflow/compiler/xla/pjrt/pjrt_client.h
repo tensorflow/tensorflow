@@ -311,11 +311,15 @@ class PjRtClient {
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const = 0;
 
-  // Return a device-specific default device assignment for multi-slice system.
+  // Returns a device-specific default device assignment for multi-slice system.
+  // If num_replicas_per_slice is not defined (nullopt) then we assume that
+  // all the partitions live entirely on a single slice and that all cross slice
+  // communication happens across replicas assuming then that
+  // num_replicas_per_slice is going to be "num_replicas / num_slices".
   // TODO(zhangqiaorjc): Convert this to pure virtual and push down.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_replicas_per_slice, int num_partitions,
-      const MultiSliceConfig* multi_slice_config) const {
+      int num_replicas, absl::optional<int> num_replicas_per_slice,
+      int num_partitions, const MultiSliceConfig* multi_slice_config) const {
     return Unimplemented("Multi slice device assignment is not supported.");
   }
 
