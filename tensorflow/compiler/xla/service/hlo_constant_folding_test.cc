@@ -317,5 +317,34 @@ TEST_F(HloConstantFoldingTest,
   EXPECT_FALSE(result);
 }
 
+TEST_F(HloConstantFoldingTest, FoldOpsWhereOneOperandIsBroadcast) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  ENTRY entry {
+    not_folded1 = f32[4] broadcast(f32[] constant(1))
+    not_folded2 = add(f32[4] broadcast(f32[] constant(2)),
+                      f32[4] broadcast(f32[] constant(3)))
+    folded1 = add(f32[4] broadcast(f32[] constant(5)),
+                  f32[4] constant({0,1,2,3}))
+    folded2 = add(f32[4] constant({0,1,2,3}),
+                  f32[4] broadcast(f32[] constant(5)))
+    ROOT root = tuple(not_folded1, not_folded2, folded1, folded2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Broadcast(m::Constant()),
+                                  m::Add(m::Broadcast(m::Constant()),
+                                         m::Broadcast(m::Constant())),
+                                  m::Constant(),
+                                  m::Constant()  //
+                                  )));
+}
+
 }  // namespace
 }  // namespace xla
