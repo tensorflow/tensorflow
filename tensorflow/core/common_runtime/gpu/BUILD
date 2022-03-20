@@ -181,6 +181,7 @@ tf_cuda_library(
     name = "gpu_runtime",
     hdrs = [":gpu_runtime_headers"],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",

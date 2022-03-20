@@ -1236,9 +1236,8 @@ xla::StatusOr<lmhlo::FftOp> LhloDialectEmitter::EmitFftOp(
   TF_ASSIGN_OR_RETURN(auto fft, CreateOpWithoutAttrs<lmhlo::FftOp>(instr));
   TF_ASSIGN_OR_RETURN(mlir::mhlo::FftType fft_type,
                       xla::ConvertFftType(hlo_fft->fft_type()));
-  StringAttr fft_type_attr =
-      builder_.getStringAttr(mlir::mhlo::stringifyFftType(fft_type));
-  fft.fft_typeAttr(fft_type_attr);
+  fft.fft_typeAttr(
+      mlir::mhlo::FftTypeAttr::get(builder_.getContext(), fft_type));
   fft.fft_lengthAttr(GetI64DenseElementsAttr(instr->fft_length()));
   return fft;
 }
@@ -1258,7 +1257,7 @@ LhloDialectEmitter::EmitTriangularSolveOp(const xla::HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(mlir::mhlo::Transpose transpose,
                       xla::ConvertTranspose(options.transpose_a()));
   triangular_solve.transpose_aAttr(
-      builder_.getStringAttr(mlir::mhlo::stringifyTranspose(transpose)));
+      mlir::mhlo::TransposeAttr::get(builder_.getContext(), transpose));
   triangular_solve.layout_aAttr(
       GetLayoutAttribute(instr->operand(0)->shape().layout(), &builder_));
   triangular_solve.layout_bAttr(

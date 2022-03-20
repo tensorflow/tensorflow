@@ -70,7 +70,8 @@ Value GetBias(lmhlo_gpu::GEMM_BiasOpAdaptor op) { return op.bias(); }
 // Match GEMM auto-tuning, see ComputationTypeFromPrimitive()
 Type MlirComputationType(Type element_type,
                          ConversionPatternRewriter& rewriter) {
-  if (element_type.isF16()) return rewriter.getF32Type();
+  if (element_type.isF16() || element_type.isBF16())
+    return rewriter.getF32Type();
 
 #if !TENSORFLOW_USE_ROCM
   if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>())

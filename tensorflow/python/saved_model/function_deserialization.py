@@ -15,6 +15,7 @@
 """Tools for deserializing `Function`s."""
 
 import collections
+import pprint
 import re
 from absl import logging
 
@@ -273,7 +274,8 @@ def recreate_function(saved_function, concrete_functions):
 
     def _pretty_format_positional(positional):
       return "Positional arguments ({} total):\n    * {}".format(
-          len(positional), "\n    * ".join(str(a) for a in positional))
+          len(positional),
+          "\n    * ".join(pprint.pformat(a) for a in positional))
 
     for index, function_name in enumerate(saved_function.concrete_functions):
       concrete_function = concrete_functions[function_name]

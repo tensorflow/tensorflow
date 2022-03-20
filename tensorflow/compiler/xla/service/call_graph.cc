@@ -57,6 +57,9 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
       return CallContext::kControlFlow;
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:

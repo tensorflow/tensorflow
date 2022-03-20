@@ -116,7 +116,8 @@ void PropagateUsage(
     (*arguments_to_erase)[if_op].push_back(argument_index);
     for (auto callee : {if_op.then_function(), if_op.else_function()}) {
       (*arguments_to_erase)[callee].push_back(argument_index - 1);
-      work_list->push_back(std::make_pair(&callee.body(), argument_index - 1));
+      work_list->push_back(
+          std::make_pair(&callee.getBody(), argument_index - 1));
     }
   } else if (auto if_op = dyn_cast<TF::IfRegionOp>(user_op)) {
     (*arguments_to_erase)[if_op].push_back(argument_index);
@@ -127,7 +128,7 @@ void PropagateUsage(
     (*arguments_to_erase)[while_op].push_back(argument_index);
     for (auto callee : {while_op.cond_function(), while_op.body_function()}) {
       (*arguments_to_erase)[callee].push_back(argument_index);
-      work_list->push_back(std::make_pair(&callee.body(), argument_index));
+      work_list->push_back(std::make_pair(&callee.getBody(), argument_index));
     }
   } else if (auto while_op = dyn_cast<TF::WhileRegionOp>(user_op)) {
     (*arguments_to_erase)[while_op].push_back(argument_index);

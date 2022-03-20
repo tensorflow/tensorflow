@@ -136,8 +136,7 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address,
 
   Status s = Heartbeat();
   while (!s.ok()) {
-    if (!errors::IsUnavailable(s) && !errors::IsAborted(s) &&
-        !errors::IsCancelled(s)) {
+    if (!IsPreemptedError(s)) {
       return s;
     }
     LOG(WARNING) << "Failed to register with dispatcher at "

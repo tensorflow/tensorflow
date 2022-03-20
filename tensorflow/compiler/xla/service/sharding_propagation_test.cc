@@ -5701,6 +5701,32 @@ ENTRY %reshape {
           "{devices=[1,1,1,1,2,2]0,2,1,3 last_tile_dims={manual,replicated}}"));
 }
 
+TEST_F(ShardingPropagationTest, X64Combine) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[102,192,192] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3}
+  %param1 = f32[102,192,192] parameter(1),
+    sharding={devices=[1,2,2]0,1,2,3}
+  %custom-call = f64[102,192,192] custom-call(f32[102,192,192] %param0, f32[102,192,192] %param1), custom_call_target="X64Combine"
+  ROOT %copy = f64[102,192,192] copy(%custom-call),
+    sharding={devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(
+      instruction,
+      op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"));
+}
+
 TEST_P(ParameterizedMetadataTest, PropagateThroughSingleUsers) {
   const char* const hlo_string = R"(
 HloModule module

@@ -833,7 +833,8 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        // to run asynchronously to avoid deadlock.
        "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
        "CollectiveBcastRecv", "CollectiveBcastSendV2", "CollectiveBcastRecvV2",
-       "NcclAllReduce", "Send", "Recv", "CollectiveInitializeCommunicator",
+       "NcclAllReduce", "Send", "Recv", "CollectiveAssignGroupsV2",
+       "CollectiveInitializeCommunicator",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.

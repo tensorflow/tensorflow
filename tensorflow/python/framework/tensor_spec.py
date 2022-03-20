@@ -85,14 +85,6 @@ class DenseSpec(type_spec.TypeSpec):
   def __ne__(self, other):
     return not self == other
 
-  def most_specific_compatible_type(self, other):
-    if (type(self) is not type(other)) or (self._dtype != other.dtype):
-      raise ValueError(f"Types are not compatible: {self!r} with type of "
-                       f"{type(self)} vs {other!r} with type of {type(other)}.")
-    shape = self._shape.most_specific_compatible_shape(other.shape)
-    name = self._name if self._name == other.name else None
-    return type(self)(shape, self._dtype, name)
-
   def _serialize(self):
     return (self._shape, self._dtype, self._name)
 

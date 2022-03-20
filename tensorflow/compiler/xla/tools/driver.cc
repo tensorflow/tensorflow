@@ -353,9 +353,9 @@ template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
 void FillIntT(void* buffer, int num_elements) {
   std::mt19937 generator(kSeed);
   T* casted = static_cast<T*>(buffer);
-  std::uniform_int_distribution<T> distr(kLowerBound, kUpperBound);
+  std::uniform_int_distribution<> distr(kLowerBound, kUpperBound);
   for (int i = 0; i < num_elements; i++) {
-    casted[i] = distr(generator);
+    casted[i] = static_cast<T>(distr(generator));
   }
 }
 

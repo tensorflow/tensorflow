@@ -739,6 +739,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/stream_executor/gpu:gpu_activation_header",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor:blas",
@@ -807,7 +808,7 @@ cc_library(
 cc_library(
     name = "cuda_runtime_for_xlir",
     tags = ["manual"],  # Build NCCL only if --config=experimental_tfrt_gpu.
-    deps = [
+    deps = if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cublas_lt_stub",
         "//tensorflow/stream_executor/cuda:cublas_stub",
         "//tensorflow/stream_executor/cuda:cuda_stub",
@@ -816,7 +817,9 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cufft_stub",
         "//tensorflow/stream_executor/cuda:cusolver_stub",
         "@local_config_nccl//:nccl",
-    ],
+    ]) + if_rocm_is_configured([
+        "@tf_runtime//backends/gpu:cuda_stubs",
+    ]),
 )
 
 cc_library(
@@ -1056,7 +1059,9 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cusolver_lib",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/stream_executor/rocm:hipsolver_wrapper",
     ]),
 )
 
@@ -2501,6 +2506,8 @@ cc_library(
     ],
 )
 
+# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_bef_thunk
+# See tap/tensorflow.xla_gpu_tfrt.
 # TODO(b/187959015): Expand test patterns; see cl/377552996.
 test_suite(
     name = "bef_thunk_tests",
@@ -2531,6 +2538,8 @@ test_suite(
     ]),
 )
 
+# These tests are intended to be run with --test_env=XLA_FLAGS=--xla_gpu_bef_executable
+# See tap/tensorflow.xla_gpu_tfrt_executable.
 test_suite(
     name = "bef_executable_tests",
     tests = [
@@ -2569,6 +2578,8 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_unrolling_test",
         "//tensorflow/compiler/xla/service/gpu/tests:kernel_launch_test",
         "//tensorflow/compiler/xla/service/gpu/tests:launch_dimensions.hlo.test",
+        "//tensorflow/compiler/xla/service/gpu/tests:mlir_fft_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:mlir_gemm_test",
         "//tensorflow/compiler/xla/service/gpu/tests:mlir_gpu_compile_test",
         "//tensorflow/compiler/xla/service/gpu/tests:pad_to_static.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:parallel_reduction_test",

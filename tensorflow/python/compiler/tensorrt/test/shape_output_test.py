@@ -60,11 +60,11 @@ class ShapeOutputTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
     if run_params.dynamic_shape:
-      return ["TRTEngineOp_0", "TRTEngineOp_1"]
+      return ["TRTEngineOp_000", "TRTEngineOp_001"]
     else:
       # Second segment not converted in implicit batch mode, because its
       # tensors have only one dimensions
-      return ["TRTEngineOp_0"]
+      return ["TRTEngineOp_000"]
 
 
 class ShapeOutputWithSingleInputProfile(ShapeOutputTest):
@@ -114,7 +114,7 @@ class ShapeOutputWithSingleInputAndReshape(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
-    return ["TRTEngineOp_0", "TRTEngineOp_1"]
+    return ["TRTEngineOp_000", "TRTEngineOp_001"]
 
 
 class PrunedInputTest(trt_test.TfTrtIntegrationTestBase):
@@ -146,7 +146,7 @@ class PrunedInputTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
   def ShouldRunTest(self, run_params):
     # Shape op is only converted in dynamic shape mode.
@@ -180,7 +180,7 @@ class PrunedInputTest2(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
   def ShouldRunTest(self, run_params):
     # Shape op is only converted in dynamic shape mode.
@@ -219,7 +219,7 @@ class ShapeValueMaskTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Returns the expected engines to build."""
     if run_params.dynamic_shape:
-      return ["TRTEngineOp_0"]
+      return ["TRTEngineOp_000"]
     else:
       return []
 

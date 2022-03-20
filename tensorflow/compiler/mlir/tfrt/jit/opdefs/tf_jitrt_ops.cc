@@ -121,7 +121,7 @@ int64_t FallbackExecuteOp::cost() {
   //
   // TODO(ezhulenev): Once we have a proper cost model for MLIR operations,
   // use it to compute a more precise cost estimation.
-  for (mlir::Operation& op : kernel_fn.body().getOps()) {
+  for (mlir::Operation& op : kernel_fn.getBody().getOps()) {
     // Skip return operation.
     if (mlir::isa<mlir::func::ReturnOp>(op)) continue;
 

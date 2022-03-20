@@ -807,9 +807,10 @@ StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
 }
 
 #if XLA_ENABLE_XLIR
-static StatusOr<OwnedBefBuffer> LowerToBef(
-    mlir::ModuleOp mlir_module, absl::string_view entry_function_name,
-    llvm::ArrayRef<int64_t> buffer_sizes, HloModule* hlo_module) {
+static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
+                                           llvm::StringRef entry_function_name,
+                                           llvm::ArrayRef<int64_t> buffer_sizes,
+                                           HloModule* hlo_module) {
   // Forward collective permute attributes for use by the lowering pipeline.
   mlir::OpBuilder builder(mlir_module.getContext());
   mlir::IntegerAttr replica_count_attr =
@@ -970,7 +971,7 @@ static Status CompileModuleToLlvmIrImpl(
   {
     XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
 
-    TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
+    TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
     bool supports_runtime_managed_constants =
         // TODO(b/218527186): Implement this feature for BEF as well.
@@ -1000,7 +1001,7 @@ static Status CompileModuleToLlvmIrImpl(
         results->allocations, std::back_inserter(buffer_sizes),
         [](const BufferAllocation& allocation) { return allocation.size(); });
     TF_ASSIGN_OR_RETURN(results->thunks_or_bef,
-                        LowerToBef(*mlir_module, entry_function.getName().str(),
+                        LowerToBef(*mlir_module, entry_function.getName(),
                                    buffer_sizes, hlo_module));
     return Status::OK();
   }
@@ -1562,7 +1563,7 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
 
   TF_ASSIGN_OR_RETURN(auto ir_emitter, IrEmitterUnnested::Create(
                                            module_config, ir_emitter_context));
-  TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.body()));
+  TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
   bool supports_runtime_managed_constants =
       // TODO(b/218527186): Implement this feature for BEF as well.

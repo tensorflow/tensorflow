@@ -22,13 +22,13 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Constants.h"
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -75,7 +75,7 @@ struct OutlineXLAFunc : public RewritePattern {
                                    SmallVectorImpl<NamedAttribute> &result) {
     for (const auto &attr : attrs) {
       if (attr.getName() == SymbolTable::getSymbolAttrName() ||
-          attr.getName() == FuncOp::getTypeAttrName() ||
+          attr.getName() == FunctionOpInterface::getTypeAttrName() ||
           attr.getName() == "std.varargs" ||
           (argAttrs && attr.getName() == FuncOp::getArgDictAttrName()))
         continue;
@@ -100,7 +100,7 @@ struct OutlineXLAFunc : public RewritePattern {
     func->setAttr("outlined", BoolAttr::get(ctx, true));
 
     // Prepare new func attribute information
-    func.sym_nameAttr(mlir::StringAttr::get(ctx, func.getName()));
+    func.setSymNameAttr(mlir::StringAttr::get(ctx, func.getName()));
     SmallVector<Type> operands(func.getType().getNumInputs(),
                                ::mlir::xla_framework::BufferType::get(ctx));
     SmallVector<Type> result_array(func.getType().getNumResults(),
@@ -114,11 +114,11 @@ struct OutlineXLAFunc : public RewritePattern {
     // The wrapper function will have the same name but with _xla_framework
     // appended and will be annotated with the attribute "xla_entry".
     auto outline_func =
-        rewriter.create<FuncOp>(loc, func.sym_name().str() + "_xla_framework",
+        rewriter.create<FuncOp>(loc, func.getSymName().str() + "_xla_framework",
                                 func_type, attrs, arg_attrs);
     outline_func->setAttr("outlined", BoolAttr::get(ctx, true));
     outline_func->setAttr("xla_entry", BoolAttr::get(ctx, true));
-    auto *b = rewriter.createBlock(&outline_func.body(), {},
+    auto *b = rewriter.createBlock(&outline_func.getBody(), {},
                                    func_type.getInputs(), locs);
 
     // Unwrap arguments
@@ -129,7 +129,7 @@ struct OutlineXLAFunc : public RewritePattern {
     }
 
     auto call = rewriter.create<func::CallOp>(
-        loc, func.sym_name(), func.getType().getResults(), args);
+        loc, func.getSymName(), func.getType().getResults(), args);
     // Wrap results
     SmallVector<Value> results;
     for (auto t : call.getResults()) {

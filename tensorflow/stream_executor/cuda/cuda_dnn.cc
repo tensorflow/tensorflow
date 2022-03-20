@@ -211,14 +211,30 @@ class CudnnAccess {
     mutex_.AssertHeld();
     gpu::ScopedActivateExecutorContext context(executor);
     CUstream cu_stream = stream ? AsGpuStreamValue(stream) : cudaStreamLegacy;
-    const auto status = cudnnSetStream(handle_, cu_stream);
-    CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Failed to set cuDNN stream.";
+    if (!current_stream_ || cu_stream != *current_stream_) {
+      current_stream_ = cu_stream;
+      const auto status = cudnnSetStream(handle_, cu_stream);
+      CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Failed to set cuDNN stream.";
+    }
     return CudnnHandle(std::move(context), std::move(lock), handle_);
   }
 
+  void NotifyStreamDestroyed(Stream* stream) {
+    CUstream cu_stream = AsGpuStreamValue(stream);
+    absl::MutexLock lock(&mutex_);
+    if (current_stream_ && cu_stream == *current_stream_) {
+      current_stream_.reset();
+    }
+  }
+
  private:
-  // Guards the enqueueing of cuDNN operations via the handle_ below.
+  // Guards current_stream_ and the enqueueing of cuDNN operations via the
+  // handle_ below.
   absl::Mutex mutex_;
+
+  // If set, indicates the stream currently active on handle_, to avoid the
+  // overhead of re-setting the same stream unnecessarily.
+  absl::optional<CUstream> current_stream_ TF_GUARDED_BY(mutex_);
 
   // cuDNN library handle.
   cudnnHandle_t handle_ TF_GUARDED_BY(mutex_);  // Owned.
@@ -387,6 +403,10 @@ port::Status CudnnSupport::Init() {
   return port::Status(port::error::INTERNAL,
                       absl::StrCat("cudnn library could not create a handle: ",
                                    CudnnStatusToString(status)));
+}
+
+void CudnnSupport::NotifyStreamDestroyed(Stream* stream) /* override */ {
+  cudnn_->NotifyStreamDestroyed(stream);
 }
 
 port::StatusOr<perftools::gputools::dnn::VersionInfo>

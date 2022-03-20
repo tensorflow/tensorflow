@@ -60,6 +60,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_hardware_feature
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
@@ -1488,6 +1489,12 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
   @property
   def parameter_devices(self):
     return self.worker_devices
+
+  @property
+  def tpu_hardware_feature(self):
+    """Return the `tf.tpu.experimental.HardwareFeature` class."""
+    return tpu_hardware_feature.HardwareFeature(
+        self._tpu_cluster_resolver.tpu_hardware_feature)
 
   def non_slot_devices(self, var_list):
     return self._host_device

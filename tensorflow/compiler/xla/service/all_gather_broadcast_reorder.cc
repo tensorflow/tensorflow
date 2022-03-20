@@ -94,9 +94,7 @@ StatusOr<bool> AllGatherBroadcastReorder::Run(HloModule *module) {
         VLOG(2) << "All-gather along non uniform dimension";
 
         // Find the index of the all_gather dimension in the broadcast dims.
-        auto ag_dim_it = absl::c_find(bcast->dimensions(), ag_dim);
-        TF_RET_CHECK(ag_dim_it != bcast->dimensions().end());
-        size_t ag_dim_index = ag_dim_it - bcast->dimensions().begin();
+        auto ag_dim_index = PositionInContainer(bcast->dimensions(), ag_dim);
 
         // The new all-gather shape is just the shape of x, with the dimension
         // that was gathered multiplied by some factor.

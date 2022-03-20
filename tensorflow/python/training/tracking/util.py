@@ -309,15 +309,6 @@ class _CheckpointRestoreCoordinator(object):
                     optimizer_id=node_index,
                     slot_variable_id=slot_reference.slot_variable_node_id,
                     slot_name=slot_reference.slot_name))
-    # Dictionary of tensor_saveables for slot_restorations that were not shifted
-    # over to deferred_slot_restorations when the variable is created/tracked.
-    #
-    # These saveables are restored, along with other (non-slot) variables, in a
-    # batch after collecting all child CheckpointPositions. Doing slot variable
-    # restorations in a batch results in more efficient (fewer) file operations.
-    # This efficiency is particularly significant when restoring from
-    # network-based file systems.
-    self.slot_restoration_tensor_saveables = {}
 
     self._deleter = _CheckpointRestoreCoordinatorDeleter(
         self.expect_partial_attr,
@@ -2280,6 +2271,7 @@ class Checkpoint(tracking.AutoTrackable):
     return self._save_counter
 
   def save(self, file_prefix, options=None):
+    # pylint:disable=line-too-long
     """Saves a training checkpoint and provides basic checkpoint management.
 
     The saved checkpoint includes variables created by this object and any
@@ -2295,19 +2287,19 @@ class Checkpoint(tracking.AutoTrackable):
 
     ```
     step = tf.Variable(0, name="step")
-    checkpoint = tf.Checkpoint(step=step)
+    checkpoint = tf.train.Checkpoint(step=step)
     checkpoint.save("/tmp/ckpt")
 
     # Later, read the checkpoint with restore()
-    checkpoint.restore("/tmp/ckpt")
+    checkpoint.restore("/tmp/ckpt-1")
 
     # You can also pass options to save() and restore(). For example this
     # runs the IO ops on the localhost:
-    options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
+    options = tf.train.CheckpointOptions(experimental_io_device="/job:localhost")
     checkpoint.save("/tmp/ckpt", options=options)
 
     # Later, read the checkpoint with restore()
-    checkpoint.restore("/tmp/ckpt", options=options)
+    checkpoint.restore("/tmp/ckpt-1", options=options)
     ```
 
     Args:
@@ -2319,6 +2311,7 @@ class Checkpoint(tracking.AutoTrackable):
     Returns:
       The full path to the checkpoint.
     """
+    # pylint:enable=line-too-long
     options = options or checkpoint_options.CheckpointOptions()
     graph_building = not context.executing_eagerly()
     if graph_building:

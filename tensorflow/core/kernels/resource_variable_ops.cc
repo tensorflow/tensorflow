@@ -253,7 +253,8 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
     ResourceMgr* mgr = ctx->resource_manager();
     ResourceHandle handle = ResourceHandle::MakeRefCountingHandle<Var>(
         resource, ctx->device()->name(),
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        ctx->stack_trace());
     // TODO(b/203901837): See if we can abolish all code paths that lookup
     // anonymous variables and then stop publishing them to the manager.
     OP_REQUIRES_OK(ctx, mgr->CreateUnowned<Var>(handle.container(),

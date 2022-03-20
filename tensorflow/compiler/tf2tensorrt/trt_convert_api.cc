@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/cc/tools/freeze_saved_model.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -423,6 +424,82 @@ StatusOr<GraphDef> ConvertAndBuild(
   }
   VLOG(1) << "TF-TRT conversion finished";
   return output;
+}
+
+Status InlineFunctions(const MetaGraphDef& meta_graph_def,
+                       GraphDef* out_graph_def) {
+  ConfigProto config_proto;
+  auto opt_config =
+      config_proto.mutable_graph_options()->mutable_rewrite_options();
+
+  opt_config->set_meta_optimizer_iterations(tensorflow::RewriterConfig::ONE);
+  opt_config->set_min_graph_nodes(-1);  // do not skip small graphs
+  opt_config->add_optimizers("function");
+
+  TF_RETURN_IF_ERROR(RunGrappler(meta_graph_def, {}, {}, config_proto, nullptr,
+                                 out_graph_def));
+
+  VLOG(2) << "Graph is inlined";
+  return Status::OK();
+}
+
+// Freezes the graph. It is assumed that the functions are inlined and the
+// variables are initialized.
+Status FreezeGraph(SavedModelBundle& bundle, MetaGraphDef* frozen_meta_graph) {
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
+  GraphDef frozen_graph_def;
+  TF_RETURN_IF_ERROR(
+      FreezeSavedModel(bundle, &frozen_graph_def, &inputs, &outputs));
+
+  frozen_meta_graph->CopyFrom(bundle.meta_graph_def);
+  GraphDef* gdef = frozen_meta_graph->mutable_graph_def();
+  gdef->CopyFrom(frozen_graph_def);
+
+  VLOG(2) << "Graph frozen";
+  return Status::OK();
+}
+
+// Returns the name of nodes listed in the signature definition.
+std::vector<std::string> GetNodeNames(
+    const google::protobuf::Map<std::string, tensorflow::TensorInfo>& signature) {
+  std::vector<std::string> names;
+  for (auto const& item : signature) {
+    absl::string_view name = item.second.name();
+    // Remove tensor suffix like ":0".
+    size_t last_colon = name.find_last_of(':');
+    if (last_colon != absl::string_view::npos) {
+      name.remove_suffix(name.size() - last_colon);
+    }
+    names.push_back(std::string(name));
+  }
+  return names;
+}
+
+StatusOr<GraphDef> ConvertAndBuild(
+    SavedModelBundle* bundle, const std::string& signature_key,
+    const std::vector<std::vector<tensorflow::Tensor>>& inputs,
+    const TfTrtConversionParams& conversion_params) {
+  // Inline the functions.
+  GraphDef inlined_graph_def;
+  TF_RETURN_IF_ERROR(
+      InlineFunctions(bundle->meta_graph_def, &inlined_graph_def));
+
+  // Replace the graph_def with the inlined graph. Note that bundle->session
+  // still has the original graph.
+  bundle->meta_graph_def.mutable_graph_def()->CopyFrom(inlined_graph_def);
+
+  // Freeze variables.
+  MetaGraphDef frozen_meta_graph;
+  TF_RETURN_IF_ERROR(FreezeGraph(*bundle, &frozen_meta_graph));
+
+  // Convert.
+  auto signature_map = bundle->GetSignatures();
+  const tensorflow::SignatureDef& signature = signature_map[signature_key];
+  std::vector<std::string> input_names = GetNodeNames(signature.inputs());
+  std::vector<std::string> output_names = GetNodeNames(signature.outputs());
+  return ConvertAndBuild(frozen_meta_graph.graph_def(), input_names,
+                         output_names, inputs, conversion_params);
 }
 
 }  // namespace tensorrt

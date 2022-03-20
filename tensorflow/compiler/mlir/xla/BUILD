@@ -29,6 +29,26 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "legalize_tf_collective_patterns_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_legalize_tf_collective.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/legalize_tf_collective_patterns.td",
+    deps = [
+        "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:TensorOpsTdFiles",
+    ],
+)
+
+gentbl_cc_library(
     name = "xla_legalize_tf_passes_inc_gen",
     compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
@@ -260,6 +280,7 @@ cc_library(
     ],
     deps = [
         ":legalize_tf",
+        ":legalize_tf_collective_patterns_inc_gen",
         ":legalize_utils",
         ":type_to_shape",
         ":xla_legalize_tf_passes_inc_gen",

@@ -83,6 +83,14 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // specified.
   explicit HloEvaluator(int64_t max_loop_iterations = -1);
 
+  // Called by the evaluator to create an embedded evaluator to execute a
+  // sub-region of control flow. Subclasses should override this to return an
+  // instance of the subclass instead.
+  virtual std::unique_ptr<HloEvaluator> CreateEmbedded(
+      int64_t max_loop_iterations) {
+    return std::make_unique<HloEvaluator>(max_loop_iterations);
+  }
+
   // Evaluates an HLO module and an array of pointers to literals.  Returns the
   // evaluated result as a literal if successful.
   //
@@ -288,6 +296,12 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleGather(HloInstruction* gather) override;
 
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+
+  Status HandleAsyncStart(HloInstruction* async_start) override;
+
+  Status HandleAsyncUpdate(HloInstruction* async_update) override;
+
+  Status HandleAsyncDone(HloInstruction* async_done) override;
 
   Status HandleCopy(HloInstruction* copy) override;
 

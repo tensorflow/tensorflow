@@ -616,7 +616,6 @@ cc_library(
         "//tensorflow/stream_executor/platform:dso_loader",
     ]) + [
         "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:Support",
     ],
     alwayslink = True,
 )

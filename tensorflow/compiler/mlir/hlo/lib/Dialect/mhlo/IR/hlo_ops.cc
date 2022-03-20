@@ -854,6 +854,96 @@ LogicalResult DotGeneralOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// FftOp
+//===----------------------------------------------------------------------===//
+
+// TODO(atondwal): add shape ineference for FFT that generates a return type
+
+// We intend to verify the following properties
+// P1. 1 <= rank <= 3
+// P2. operand shape dimensions agree with fft_length for the given fft_type
+// P3. Element types agree with fft_type
+LogicalResult FftOp::verify() {
+  // P1.
+  auto fft_rank = fft_length().size();
+  if (!(fft_rank <= 3 && fft_rank >= 1)) {
+    return emitOpError() << "rank must be between 1 and 3, but got " << fft_rank
+                         << ".";
+  }
+
+  // P2.
+  auto operand_type = operand().getType().dyn_cast<RankedTensorType>();
+  if (!operand_type) return success();
+  auto operand_shape = operand_type.getShape();
+  if (operand_shape.size() < fft_rank) {
+    return emitOpError() << "operand rank must be greater than fft rank of "
+                         << fft_rank << " for operand of type " << operand_type
+                         << ".";
+  }
+
+  if (fft_type() == FftType::RFFT) {
+    auto shape_back = operand_shape.take_back(fft_rank);
+    for (auto it : llvm::zip(shape_back, fft_length().getValues<int64_t>())) {
+      if (std::get<0>(it) != std::get<1>(it)) {
+        return emitError()
+               << "RFFT requires innermost dimensions match fft_length. Got: "
+               << operand_shape << " but wanted " << fft_length() << ".";
+      }
+    }
+  }
+  if (fft_type() == FftType::IRFFT) {
+    auto shape_back = operand_shape.take_back(fft_rank).drop_back();
+    for (auto it : llvm::zip(shape_back, fft_length().getValues<int64_t>())) {
+      if (std::get<0>(it) != std::get<1>(it)) {
+        return emitError() << "IRFFT requires non-final dimensions "
+                              "match fft_length. Got: "
+                           << operand_shape << " but wanted " << fft_length()
+                           << ", and " << std::get<0>(it)
+                           << " != " << std::get<1>(it) << ".";
+      }
+    }
+    if (operand_shape[operand_shape.size() - 1] !=
+        fft_length().getValues<int64_t>()[fft_rank - 1] / 2 + 1)
+      return emitError() << "IRFFT requires innermost dimension match "
+                            "fft_length[-1]/2+1. Got: "
+                         << operand_shape << " but fft_length is "
+                         << fft_length() << ".";
+  }
+
+  // P3. Element type agreement
+  // FFT : C -> C
+  // IFF : C -> C
+  // RFFT : R -> C
+  // IRFFT : C -> R
+  if (fft_type() == FftType::RFFT) {
+    if (operand_type.getElementType().isa<ComplexType>()) {
+      return emitError() << "RFFT takes a real tensor as input, but is given "
+                         << operand_type << ".";
+    }
+  } else if (!operand_type.getElementType().isa<ComplexType>()) {
+    return emitError() << stringifyFftType(fft_type())
+                       << " takes a complex tensor as input, but is given "
+                       << operand_type << ".";
+  }
+
+  auto result_type = getResult().getType().dyn_cast<RankedTensorType>();
+  if (!result_type) return success();
+  if (fft_type() == FftType::IRFFT) {
+    if (result_type.getElementType().isa<ComplexType>()) {
+      return emitError()
+             << "IRFFT produces a real tensor as output, but is given "
+             << result_type << ".";
+    }
+  } else if (!result_type.getElementType().isa<ComplexType>()) {
+    return emitError() << stringifyFftType(fft_type())
+                       << " produces a complex tensor as output, but is given "
+                       << result_type << ".";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // GatherOp
 //===----------------------------------------------------------------------===//
 
@@ -3204,13 +3294,12 @@ LogicalResult InfeedOp::verify() {
                            << child_layout;
     }
 
-    for (int64_t i = 0; i < child_layout_arr.size(); i++) {
-      mlir::IntegerAttr attr =
-          child_layout_arr[i].dyn_cast<mlir::IntegerAttr>();
+    for (auto i : child_layout_arr) {
+      mlir::IntegerAttr attr = i.dyn_cast<mlir::IntegerAttr>();
       if (!attr) {
         return emitOpError() << "layout-attribute's leaf elements are "
                                 "expected to be of type integer, but got "
-                             << child_layout_arr[i];
+                             << i;
       }
     }
   }
@@ -4239,6 +4328,21 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
 }
 
 //===----------------------------------------------------------------------===//
+// RngBitGeneratorOp
+//===----------------------------------------------------------------------===//
+
+// Verify that input state has the same shape as output shape
+LogicalResult RngBitGeneratorOp::verify() {
+  auto initial_shape = initial_state().getType().dyn_cast<RankedTensorType>();
+  auto output_shape = output_state().getType().dyn_cast<RankedTensorType>();
+  if (initial_shape.getShape() != output_shape.getShape())
+    return emitOpError()
+           << "output state shape must match initial state shape. Got: "
+           << initial_shape << " and " << output_shape;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // RngNormalOp
 //===----------------------------------------------------------------------===//
 
@@ -4528,9 +4632,9 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
 
   // If any padding is negative then it isn't supported by the folder (yet).
   auto is_negative = [](const APInt& i) { return i.slt(0); };
-  if (llvm::all_of(edge_padding_low().getValues<APInt>(), is_negative) &&
-      llvm::all_of(edge_padding_high().getValues<APInt>(), is_negative) &&
-      llvm::all_of(interior_padding().getValues<APInt>(), is_negative))
+  if (llvm::any_of(edge_padding_low().getValues<APInt>(), is_negative) ||
+      llvm::any_of(edge_padding_high().getValues<APInt>(), is_negative) ||
+      llvm::any_of(interior_padding().getValues<APInt>(), is_negative))
     return {};
 
   DenseElementsAttr input = operands[0].dyn_cast_or_null<DenseElementsAttr>();
@@ -5463,6 +5567,37 @@ LogicalResult SortOp::verify() {
     }
   }
 
+  // Mapped computation must return single output.
+  auto comparator_result = block.getTerminator()->getOperands();
+  if (comparator_result.size() != 1)
+    return emitOpError() << "comparator must return single output, but got: "
+                         << comparator_result.size();
+
+  // The output of computation must be 0-ranked tensor with element-type i1.
+  auto comparator_result_type =
+      comparator_result[0].getType().dyn_cast<RankedTensorType>();
+  if (!comparator_result_type || comparator_result_type.getRank() != 0 ||
+      !comparator_result_type.getElementType().isInteger(1))
+    return emitOpError() << "comparator must return tensor<i1>, but got: "
+                         << comparator_result[0].getType();
+
+  // check number of return-values and their element-types.
+  auto result_types = getResultTypes();
+  if (result_types.size() != num_operands)
+    return emitOpError() << "expects the number of results to be same as "
+                            "number of operands. Got number of results = "
+                         << result_types.size()
+                         << " and number of operands = " << num_operands;
+
+  for (auto it : llvm::zip(operands, getResultTypes()))
+    if (std::get<0>(it).getType().cast<TensorType>().getElementType() !=
+        std::get<1>(it).cast<TensorType>().getElementType())
+      return emitOpError()
+             << "expects the operands and results to have pairwize equal "
+                "element-types, but got "
+             << std::get<0>(it).getType().cast<TensorType>().getElementType()
+             << " vs " << std::get<1>(it).cast<TensorType>().getElementType();
+
   return success();
 }
 
@@ -5788,9 +5923,20 @@ void UnaryEinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
 //===----------------------------------------------------------------------===//
 
 void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
-                      Value rhs, StringAttr comparison_direction,
-                      StringAttr compare_type) {
-  auto new_type =
+                      Value rhs, ComparisonDirection comparison_direction,
+                      ComparisonType compare_type) {
+  Type new_type =
+      UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
+  build(
+      builder, result, new_type, lhs, rhs,
+      ComparisonDirectionAttr::get(builder.getContext(), comparison_direction),
+      ComparisonTypeAttr::get(builder.getContext(), compare_type));
+}
+
+void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
+                      Value rhs, ComparisonDirectionAttr comparison_direction,
+                      ComparisonTypeAttr compare_type) {
+  Type new_type =
       UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
   build(builder, result, new_type, lhs, rhs, comparison_direction,
         compare_type);
@@ -5883,7 +6029,9 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
   if (lhs() == rhs() && !lhs_ty.isa<FloatType>() &&
       (!lhs_ty.isa<ComplexType>() ||
        !lhs_ty.cast<ComplexType>().getElementType().isa<FloatType>())) {
-    if (direction == "LE" || direction == "EQ" || direction == "GE") {
+    if (direction == ComparisonDirection::LE ||
+        direction == ComparisonDirection::EQ ||
+        direction == ComparisonDirection::GE) {
       return DenseIntElementsAttr::get(result_ty, {true});
     }
     return DenseIntElementsAttr::get(result_ty, {false});
@@ -5891,7 +6039,7 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
 
   auto op_el_type = lhs().getType().cast<ShapedType>().getElementType();
   // Fold tensor<*xi1> != false to just return tensor<*xi1>
-  if (direction == "NE" && op_el_type.isInteger(1)) {
+  if (direction == ComparisonDirection::NE && op_el_type.isInteger(1)) {
     DenseIntElementsAttr cst_attr;
     if (matchPattern(lhs(), m_Constant(&cst_attr))) {
       if (cst_attr.isSplat() && !cst_attr.getSplatValue<bool>()) {
@@ -5907,7 +6055,7 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
   }
 
   // Fold tensor<*xi1> == True to just return tensor<*xi1>
-  if (direction == "EQ" && op_el_type.isInteger(1)) {
+  if (direction == ComparisonDirection::EQ && op_el_type.isInteger(1)) {
     DenseIntElementsAttr cst_attr;
     if (matchPattern(lhs(), m_Constant(&cst_attr))) {
       if (cst_attr.isSplat() && cst_attr.getSplatValue<bool>()) {
@@ -5936,12 +6084,12 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
       return folded;                                                        \
   }
 
-  COMPARE_FOLDER(CompareOp, "EQ", std::equal_to);
-  COMPARE_FOLDER(CompareOp, "NE", std::not_equal_to);
-  COMPARE_FOLDER(CompareOp, "LT", less);
-  COMPARE_FOLDER(CompareOp, "LE", less_equal);
-  COMPARE_FOLDER(CompareOp, "GT", greater);
-  COMPARE_FOLDER(CompareOp, "GE", greater_equal);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::EQ, std::equal_to);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::NE, std::not_equal_to);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::LT, less);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::LE, less_equal);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::GT, greater);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::GE, greater_equal);
 #undef COMPARE_FOLDER
 
   return {};
@@ -5965,7 +6113,7 @@ LogicalResult ValidateScatterDimensionNumbers(
     ShapedType operand_type, ArrayRef<int64_t> scatter_indices_shape,
     ShapedType update_type, bool operand_type_ranked,
     bool scatter_indices_type_ranked, bool updates_type_ranked,
-    mlir::mhlo::ScatterDimensionNumbersAttr dim_numbers, Location loc) {
+    ScatterDimensionNumbersAttr dim_numbers, Location loc) {
   const auto has_duplicates = [](SmallVector<int64_t>& nums) {
     if (!llvm::is_sorted(nums)) std::sort(nums.begin(), nums.end());
     auto last = std::unique(nums.begin(), nums.end());
@@ -6416,8 +6564,7 @@ LogicalResult WhileOp::verify() {
     auto operandType =
         condReturnOp->getOperand(0).getType().dyn_cast<RankedTensorType>();
     if (!operandType || operandType.getRank() != 0 ||
-        !operandType.getElementType().isa<IntegerType>() ||
-        operandType.getElementType().cast<IntegerType>().getWidth() != 1)
+        !operandType.getElementType().isInteger(1))
       return condReturnOp.emitOpError()
              << "expects a zero-ranked tensor of i1, got "
              << condReturnOp->getOperand(0).getType();

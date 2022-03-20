@@ -1023,8 +1023,14 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
     // is static.
     // Note: We do not handle this situation as an error, this would be too
     // restrictive due to incompleteness of shape inference at this point.
-    op->emitWarning("has static shape result")
-        << variadic_idx_str << " for unranked operand" << variadic_idx_str;
+    mlir::InFlightDiagnostic diag =
+        mlir::emitWarning(op->getLoc(), "has static shape result");
+    if (op->getContext()->shouldPrintOpOnDiagnostic()) {
+      diag.attachNote(op->getLoc())
+          .append("see current operation: ")
+          .appendOp(*op, OpPrintingFlags().printGenericOpForm());
+    }
+    diag << variadic_idx_str << " for unranked operand" << variadic_idx_str;
   }
 
   Type element_type = result_ranked_type.getElementType();
@@ -1535,6 +1541,8 @@ LogicalResult SplitOp::verify() {
   int64_t input_dim_size =
       op.value().getType().cast<RankedTensorType>().getDimSize(*dim_index);
   if (ShapedType::isDynamic(input_dim_size)) return success();
+
+  if (op.getNumResults() == 0) return failure();
 
   if (input_dim_size % op.getNumResults() != 0)
     return op.emitOpError("dimension #")
@@ -3637,7 +3645,7 @@ LogicalResult XlaVariadicReduceV2Op::verify() {
   auto function = dyn_cast_or_null<mlir::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.reducer()));
   if (!function) return op.emitOpError() << "No reducer";
-  if (!function.body().hasOneBlock())
+  if (!function.getBody().hasOneBlock())
     return op.emitOpError() << "reducer has more than one block";
 
   return success();
@@ -3676,7 +3684,7 @@ LogicalResult XlaVariadicSortOp::verify() {
   auto function = dyn_cast_or_null<mlir::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.comparator()));
   if (!function) return op.emitOpError() << "No comparator";
-  if (!function.body().hasOneBlock())
+  if (!function.getBody().hasOneBlock())
     return op.emitOpError() << "comparator has more than one block";
 
   return success();

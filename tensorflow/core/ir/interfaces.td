@@ -94,4 +94,27 @@ def ControlArgumentInterface : OpInterface<"ControlArgumentInterface"> {
   }];
 }
 
+def PreservedAttributesInterface : OpInterface<"PreservedAttributesInterface"> {
+  let description = [{
+    This interfaces defines a common API over region-based operations that
+    implemented preserved attributes.
+  }];
+  let cppNamespace = "::mlir::tfg";
+
+  let methods = [
+    InterfaceMethod<[{
+      Get the (potentially null) RegionAttr corresponding to the region
+      at the given index.
+    }],
+    "mlir::tfg::RegionAttr", "getPreservedAttrs",
+    (ins "unsigned":$idx)>,
+    InterfaceMethod<[{
+      Set the non-null RegionAttr corresponding to the region at the
+      given index.
+    }],
+    "void", "setPreservedAttrs",
+    (ins "unsigned":$idx, "RegionAttr":$attrs)>,
+  ];
+}
+
 #endif // TFG_INTERFACES

@@ -33,7 +33,6 @@ namespace xla {
 class LogicalBuffer : public BufferValue {
  public:
   LogicalBuffer(HloInstruction* instruction, const ShapeIndex& index, Id id);
-  ~LogicalBuffer() override;
 
   // Return the instruction that defines the buffer.
   HloInstruction* instruction() const override { return instruction_; }
@@ -54,11 +53,6 @@ class LogicalBuffer : public BufferValue {
  private:
   HloInstruction* instruction_;
   ShapeIndex index_;
-
-  // Similar to HLO constructs (HloInstruction, etc), pointers are used for
-  // comparison to equality, so disable all copying.
-  LogicalBuffer(const LogicalBuffer&) = delete;
-  LogicalBuffer& operator=(const LogicalBuffer&) = delete;
 };
 
 }  // namespace xla

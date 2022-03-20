@@ -63,6 +63,8 @@ func private @control() -> !tf_type.control
 // CHECK: func private @tensor() -> !tf_type.tensor
 func private @tensor() -> !tf_type.tensor
 
+// CHECK: func private @fulltype_attr() attributes {t = #tf_type.full_type<array<for_each<product, tensor<var "T">, var "T">>>
+func private @fulltype_attr() attributes {t = #tf_type.full_type<array<for_each<product, tensor<var "T">, var "T">>>}
 // CHECK: func private @func_attr() attributes {f = #tf_type.func<@symbol, {attr = "v"}>}
 func private @func_attr() attributes {f = #tf_type.func<@symbol, {attr = "v"}>}
 // CHECK: func private @placeholder_attr() attributes {p = #tf_type.placeholder<"FOO">}

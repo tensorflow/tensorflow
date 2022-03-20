@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -2235,6 +2236,9 @@ class RaggedTensor(composite_tensor.CompositeTensor,
 
   def consumers(self):
     return self._consumers()
+
+  __composite_gradient__ = (
+      composite_tensor_gradient.WithValuesCompositeTensorGradient())
 
 
 def is_ragged(value):

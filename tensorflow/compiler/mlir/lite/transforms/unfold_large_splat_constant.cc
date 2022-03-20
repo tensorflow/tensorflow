@@ -61,7 +61,7 @@ class UnfoldLargeSplatConstant
   void runOnOperation() override {
     auto module = getOperation();
 
-    mlir::OpBuilder op_builder(&module.body());
+    mlir::OpBuilder op_builder(&module.getBodyRegion());
     module.walk([&](mlir::arith::ConstantOp const_op) {
       MaybeUnfoldLargeSplatConstant(&op_builder, const_op);
     });

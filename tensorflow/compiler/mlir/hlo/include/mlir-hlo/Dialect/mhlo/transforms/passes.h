@@ -72,9 +72,6 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeShapeComputationsPass();
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
 
-// fuse mhlo ops to kLoop/kInput fusion patterns
-std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
-
 /// Lowers trigonometric operations from the standard dialect to approximations
 /// that do not use intrinsics.
 std::unique_ptr<OperationPass<FuncOp>>

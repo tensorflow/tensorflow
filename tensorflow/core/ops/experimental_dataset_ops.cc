@@ -88,6 +88,8 @@ REGISTER_OP("AutoShardDataset")
     .Attr("num_replicas: int = 0")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
+    .SetForwardTypeFn(full_type::ContainerMap(TFT_DATASET, /*input_idx=*/0,
+                                              full_type::ShardTensor))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalAutoShardDataset")
@@ -912,6 +914,8 @@ REGISTER_OP("RebatchDataset")
     .Attr("use_fallback: bool = true")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
+    .SetForwardTypeFn(full_type::ContainerMap(TFT_DATASET, /*input_idx=*/0,
+                                              full_type::BatchTensor))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("RebatchDatasetV2")
@@ -923,6 +927,8 @@ REGISTER_OP("RebatchDatasetV2")
     .Attr("output_shapes: list(shape) >= 1")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
+    .SetForwardTypeFn(full_type::ContainerMap(TFT_DATASET, /*input_idx=*/0,
+                                              full_type::BatchTensor))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SamplingDataset")

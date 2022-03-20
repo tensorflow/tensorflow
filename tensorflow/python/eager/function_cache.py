@@ -62,15 +62,9 @@ class FunctionCacheKey(trace.TraceType):
     if self.call_context != other.call_context:
       return False
 
-    # Functions are contravariant.
-    return other.function_signature.is_subtype_of(self.function_signature)
+    return self.function_signature.is_subtype_of(other.function_signature)
 
   def most_specific_common_supertype(
-      self, others: Sequence[trace.TraceType]) -> Optional["FunctionCacheKey"]:
-    raise NotImplementedError(
-        "Requires TraceType to include most_specific_common_subtype")
-
-  def most_specific_common_subtype(
       self, others: Sequence[trace.TraceType]) -> Optional["FunctionCacheKey"]:
     if not all(
         isinstance(other, FunctionCacheKey) and
@@ -179,6 +173,7 @@ class FunctionCache:
     deletion_observer.add_listener(
         lambda: self.delete(key) if DELETE_WITH_WEAKREF else None)
 
+  # TODO(b/205971333): Remove this function.
   def clear(self):
     """Removes all concrete functions from the cache."""
     self._primary.clear()

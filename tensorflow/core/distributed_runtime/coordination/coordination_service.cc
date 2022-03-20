@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -114,8 +115,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       const ServerDef& server_def);
   ~CoordinationServiceStandaloneImpl() override { Stop(); }
 
-  void RegisterWorker(const CoordinatedTask& task, uint64_t incarnation,
-                      StatusCallback done) override;
+  Status RegisterTask(const CoordinatedTask& task,
+                      uint64_t incarnation) override;
   void WaitForAllTasks(const CoordinatedTask& task,
                        const CoordinationServiceDeviceInfo& devices,
                        StatusCallback done) override;
@@ -140,12 +141,18 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   uint64_t GetServiceIncarnation() override;
   void StartCheckStaleness();  // Checks both heartbeat and barrier timeouts.
-  void Stop();
-  void PropagateError(const CoordinatedTask& task, Status error,
-                      bool is_reported_by_agent = false)
+  void Stop(bool shut_staleness_thread = true);
+  // Report service error to a specified task.
+  void ReportServiceErrorToTask(const CoordinatedTask& destination_task,
+                                Status error);
+  // Report error from a task to all other connected tasks.
+  // Note: SetTaskError() must be called before propagating its error.
+  void PropagateError(const CoordinatedTask& source_task,
+                      bool is_reported_by_task = false)
       TF_LOCKS_EXCLUDED(state_mu_);
   void SetTaskError(absl::string_view task_name, Status error)
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  void SetXlaGlobalDeviceIds() TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   struct BarrierState {
     bool passed = false;
@@ -216,6 +223,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   Env& env_;
   const uint64_t service_incarnation_ = random::New64();
   const uint64_t heartbeat_timeout_ms_;
+
+  const std::string device_propagation_barrier_id_ =
+      absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_));
 
   mutex state_mu_;
   absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
@@ -328,8 +338,9 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
 void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
   check_staleness_thread_.reset(
       env_.StartThread({}, kHealthCheckThread, [this]() {
-        // Used to store the job and task info if a task becomes stale
-        CoordinatedTask stale_task;
+        const bool has_service_to_client_connection = client_cache_ != nullptr;
+        // Used to store stale tasks and barriers.
+        std::vector<absl::string_view> stale_task_names;
         absl::flat_hash_map<std::string, BarrierState*> expired_barriers;
         while (true) {
           {
@@ -343,30 +354,42 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
           Status status = Status::OK();
           {
             mutex_lock l(state_mu_);
-            for (const auto& worker_state : cluster_state_) {
-              // Skip workers that are not registered or in error state
-              if (worker_state.second->GetState() !=
+            for (const auto& task_state : cluster_state_) {
+              // Skip tasks that are not registered or in error state
+              if (task_state.second->GetState() !=
                   TaskState::State::CONNECTED) {
                 continue;
               }
               const bool is_stale =
-                  worker_state.second->TimeSinceLastHeartbeatMs() >
+                  task_state.second->TimeSinceLastHeartbeatMs() >
                   heartbeat_timeout_ms_;
-              VLOG(1) << "Checking staleness for " << worker_state.first
+              VLOG(1) << "Checking staleness for " << task_state.first
                       << " stale?=" << is_stale;
               if (is_stale) {
+                absl::string_view stale_task_name = task_state.first;
+                stale_task_names.push_back(stale_task_name);
                 status = MakeCoordinationError(errors::Unavailable(
-                    "Task ", worker_state.first,
+                    "Task ", stale_task_name,
                     " heartbeat timeout. This indicates that the remote task "
                     "has failed, got preempted, or crashed unexpectedly."));
-                stale_task = GetTaskFromName(worker_state.first);
-                SetTaskError(worker_state.first, status);
-                break;
+                SetTaskError(stale_task_name, status);
               }
             }
           }
-          if (!status.ok()) {
-            PropagateError(stale_task, status);
+          // Propagate heartbeat timeout errors to other connected tasks.
+          if (!stale_task_names.empty()) {
+            if (!has_service_to_client_connection) {
+              // Error cannot be propagated since there is no service-to-client
+              // connection, so shut down service instead. Note: we cannot
+              // destroy the thread within its own function. However, this
+              // thread will be destroyed once the function returns.
+              Stop(/*shut_staleness_thread=*/false);
+              return;
+            }
+            for (const auto& stale_task_name : stale_task_names) {
+              PropagateError(GetTaskFromName(stale_task_name));
+            }
+            stale_task_names.clear();
           }
 
           // Barrier timeout check.
@@ -397,7 +420,7 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
       }));
 }
 
-void CoordinationServiceStandaloneImpl::Stop() {
+void CoordinationServiceStandaloneImpl::Stop(bool shut_staleness_thread) {
   {
     mutex_lock l(kv_mu_);
     get_cb_.clear();
@@ -422,30 +445,31 @@ void CoordinationServiceStandaloneImpl::Stop() {
     shutting_down_ = true;
     check_staleness_thread_cv_.notify_all();
   }
-  check_staleness_thread_.reset();
+  if (shut_staleness_thread) {
+    check_staleness_thread_.reset();
+  }
 }
 
-void CoordinationServiceStandaloneImpl::RegisterWorker(
-    const CoordinatedTask& task, uint64_t incarnation, StatusCallback done) {
+Status CoordinationServiceStandaloneImpl::RegisterTask(
+    const CoordinatedTask& task, uint64_t incarnation) {
   const std::string& task_name = GetTaskName(task);
 
   Status status;
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
-      done(MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected worker registered with task_name=", task_name)));
-      // Note: unexpected task register should not be propagated to other tasks
-      return;
+      // Note: return early here as unexpected task register errors should not
+      // be propagated to other tasks.
+      return MakeCoordinationError(errors::InvalidArgument(
+          "Unexpected task registered with task_name=", task_name));
     } else if (cluster_state_[task_name]->GetState() ==
                TaskState::State::CONNECTED) {
       Status s = MakeCoordinationError(
-          errors::Aborted("Duplicate worker registration with with task_name=",
+          errors::Aborted("Duplicate task registration with task_name=",
                           task_name),
           task);
-
-      SetTaskError(task_name, status);
       status = s;
+      SetTaskError(task_name, status);
     } else {
       // Hit this path when the task is registering itself for the first time,
       // or it's already in ERROR state and now register again. In both cases,
@@ -454,9 +478,9 @@ void CoordinationServiceStandaloneImpl::RegisterWorker(
     }
   }
   if (!status.ok()) {
-    PropagateError(task, status);
+    PropagateError(task);
   }
-  done(status);
+  return status;
 }
 
 void CoordinationServiceStandaloneImpl::WaitForAllTasks(
@@ -466,9 +490,8 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
     mutex_lock l(state_mu_);
     cluster_devices_.MergeFrom(devices);
   }
-  BarrierAsync(
-      absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_)),
-      absl::InfiniteDuration(), task, {}, std::move(done));
+  BarrierAsync(device_propagation_barrier_id_, absl::InfiniteDuration(), task,
+               {}, std::move(done));
 }
 
 const CoordinationServiceDeviceInfo&
@@ -486,8 +509,8 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
   {
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
-      return MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected worker request with task_name=", task_name));
+      return MakeCoordinationError(
+          errors::InvalidArgument("Unexpected request from task ", task_name));
     } else if (cluster_state_[task_name]->GetState() !=
                TaskState::State::CONNECTED) {
       return MakeCoordinationError(errors::FailedPrecondition(
@@ -496,7 +519,7 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
       SetTaskError(task_name, error);
     }
   }
-  PropagateError(task, error, /*is_reported_by_agent=*/true);
+  PropagateError(task, /*is_reported_by_task=*/true);
   return Status::OK();
 }
 
@@ -508,7 +531,7 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
       return MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected worker request with task_name=", task_name));
+          "Unexpected task request with task_name=", task_name));
     } else if (!cluster_state_[task_name]->GetStatus().ok()) {
       return cluster_state_[task_name]->GetStatus();
     } else if (cluster_state_[task_name]->GetState() ==
@@ -519,21 +542,62 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     }
     s = cluster_state_[task_name]->RecordHeartbeat(incarnation);
   }
+
+  // Set and propagate any heartbeat errors.
   if (!s.ok()) {
-    PropagateError(task, s);
+    {
+      mutex_lock l(state_mu_);
+      SetTaskError(task_name, s);
+    }
+    PropagateError(task);
   }
+
   return s;
 }
 
-void CoordinationServiceStandaloneImpl::PropagateError(
-    const CoordinatedTask& task, Status error, bool is_reported_by_agent) {
+void CoordinationServiceStandaloneImpl::ReportServiceErrorToTask(
+    const CoordinatedTask& destination_task, Status error) {
   assert(!error.ok());
-  ReportErrorToAgentRequest request;
+
+  // Don't report error if there is no service-to-client connection.
+  if (client_cache_ == nullptr) {
+    LOG(ERROR) << error;
+    return;
+  }
+
+  auto request = std::make_shared<ReportErrorToTaskRequest>();
+  auto response = std::make_shared<ReportErrorToTaskResponse>();
+  request->set_error_code(error.code());
+  request->set_error_message(error.error_message());
+  CoordinatedTask* error_source =
+      request->mutable_error_payload()->mutable_source_task();
+  error_source->set_job_name("coordination_service");
+
+  const std::string task_name = GetTaskName(destination_task);
+  CoordinationClient* client = client_cache_->GetClient(task_name);
+  client->ReportErrorToTaskAsync(
+      request.get(), response.get(), [request, response, task_name](Status s) {
+        if (!s.ok()) {
+          LOG(ERROR) << "Encountered another error while reporting to "
+                     << task_name << ": " << s;
+        }
+      });
+}
+
+void CoordinationServiceStandaloneImpl::PropagateError(
+    const CoordinatedTask& source_task, bool is_reported_by_task) {
+  Status error;
+  {
+    mutex_lock l(state_mu_);
+    error = cluster_state_[GetTaskName(source_task)]->GetStatus();
+  }
+  assert(!error.ok());
+  ReportErrorToTaskRequest request;
   request.set_error_code(error.code());
   request.set_error_message(error.error_message());
   CoordinationServiceError* payload = request.mutable_error_payload();
-  *payload->mutable_source_task() = task;
-  payload->set_is_reported_error(is_reported_by_agent);
+  *payload->mutable_source_task() = source_task;
+  payload->set_is_reported_error(is_reported_by_task);
   std::vector<std::shared_ptr<Notification>> notifications;
 
   std::vector<absl::string_view> task_names;
@@ -547,15 +611,20 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   for (absl::string_view task : task_names) {
     {
       mutex_lock l(state_mu_);
-      // Propagate error only to workers that are connected
+      // Propagate error only to tasks that are connected
       if (cluster_state_[task]->GetState() != TaskState::State::CONNECTED)
         continue;
     }
 
+    // Don't propagate error if there is no service-to-client connection.
+    if (client_cache_ == nullptr) {
+      LOG(ERROR) << error.error_message();
+      return;
+    }
     CoordinationClient* client = client_cache_->GetClient(std::string(task));
-    auto response = std::make_shared<ReportErrorToAgentResponse>();
+    auto response = std::make_shared<ReportErrorToTaskResponse>();
     auto n = std::make_shared<Notification>();
-    client->ReportErrorToAgentAsync(
+    client->ReportErrorToTaskAsync(
         &request, response.get(), [response, n, task](Status s) {
           if (!s.ok()) {
             LOG(ERROR) << "Encountered another error while reporting to "
@@ -822,6 +891,10 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
     absl::string_view barrier_id, Status result, BarrierState* barrier) {
   barrier->passed = true;
   barrier->result = result;
+  // Special hook for device propagation barrier to set global device ids.
+  if (barrier_id == device_propagation_barrier_id_) {
+    SetXlaGlobalDeviceIds();
+  }
   // Propagate results to participating tasks.
   for (const auto& callback : barrier->done_callbacks) {
     callback(result);
@@ -856,6 +929,19 @@ bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
   return true;
 }
 
+void CoordinationServiceStandaloneImpl::SetXlaGlobalDeviceIds() {
+  // No-op if TF devices are specified.
+  if (cluster_devices_.has_xla()) {
+    int global_id = 0;
+    for (xla::LocalTopologyProto& local_topology :
+         *cluster_devices_.mutable_xla()->mutable_devices()->mutable_nodes()) {
+      for (xla::DeviceProto& device : *local_topology.mutable_devices()) {
+        device.set_global_device_id(global_id);
+        ++global_id;
+      }
+    }
+  }
+}
 }  // namespace
 
 std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService(

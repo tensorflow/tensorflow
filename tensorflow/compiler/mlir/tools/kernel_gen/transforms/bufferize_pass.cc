@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -127,51 +128,45 @@ struct ComputeOpAndFuncBufferizePass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<linalg::LinalgDialect, bufferization::BufferizationDialect,
                     lmhlo::LmhloDialect, linalg::LinalgDialect,
-                    memref::MemRefDialect, shape::ShapeDialect,
-                    vector::VectorDialect>();
+                    memref::MemRefDialect, mhlo::MhloDialect,
+                    shape::ShapeDialect, vector::VectorDialect>();
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
+    mhlo::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
     vector::registerBufferizableOpInterfaceExternalModels(registry);
   }
 
   void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-    // TODO(springerm): Simply allow mhlo in the dialect filter instead of
-    // these patterns once bufferization has been switched to
-    // BufferizableOpInterface.
-    // Configure bufferize pattern for functions and lhlo.
-    mhlo::populateHLOToMemrefConversionPattern(
-        &patterns,
-        /*enforce_identity_map=*/[](Operation* op) {
-          // Force identity maps for several ops which don't support memrefs
-          // with affine_maps.
-          return llvm::any_of(op->getUsers(), [](Operation* user) {
-            return isa<gml_st::LoopOp, func::ReturnOp, mhlo::DynamicReshapeOp,
-                       tensor::CastOp, tensor::CollapseShapeOp,
-                       tensor::ExpandShapeOp>(user);
-          });
-        });
-
     // Bufferize ops using BufferizableOpInterface. This could be switched to
     // One-Shot Bufferize in the future.
     bufferization::BufferizationOptions options =
         bufferization::getPartialBufferizationOptions();
     // TODO(springerm): Add dialects to this filter as more and more dialects
     // will be migrated to BufferizableOpInterface-based bufferization.
-    options
-        .allowDialectInFilter<linalg::LinalgDialect, shape::ShapeDialect,
-                              tensor::TensorDialect, vector::VectorDialect>();
+    options.allowDialectInFilter<linalg::LinalgDialect, mhlo::MhloDialect,
+                                 shape::ShapeDialect, tensor::TensorDialect,
+                                 vector::VectorDialect>();
     // Ops inside TiledLoopOps have special handling.
     options.denyOperationInFilter([](Operation* op) {
       return mlir::isa<gml_st::LoopOp>(op->getParentOp());
     });
-    bufferization::AlwaysCopyBufferizationState bufferization_state(options);
-    bufferization::populateBufferizationPattern(bufferization_state, patterns);
+    // Configure bufferization options for mhlo ops.
+    options.addDialectStateInitializer(
+        mhlo::MhloDialect::getDialectNamespace(), []() {
+          auto dialect_state = std::make_unique<mhlo::MhloBufferizationState>();
+          dialect_state->enforce_identity_map_fn = [](Operation* op) {
+            // Force identity maps for several ops which don't support memrefs
+            // with affine_maps.
+            return llvm::any_of(op->getUsers(), [](Operation* user) {
+              return isa<gml_st::LoopOp, func::ReturnOp, mhlo::DynamicReshapeOp,
+                         tensor::CastOp, tensor::CollapseShapeOp,
+                         tensor::ExpandShapeOp>(user);
+            });
+          };
+          return dialect_state;
+        });
 
-    GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                            config))) {
+    if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
       return;
     }
@@ -315,7 +310,6 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   void runOnOperation() override {
     // Bufferize ops using BufferizableOpInterface. This could be switched to
     // One-Shot Bufferize in the future.
-    RewritePatternSet patterns(&getContext());
     bufferization::BufferizationOptions options =
         bufferization::getPartialBufferizationOptions();
     options.bufferAlignment = alignment_;
@@ -324,11 +318,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     options.allowDialectInFilter<
         arith::ArithmeticDialect, linalg::LinalgDialect, func::FuncDialect,
         shape::ShapeDialect, tensor::TensorDialect, vector::VectorDialect>();
-    bufferization::AlwaysCopyBufferizationState bufferization_state(options);
-    bufferization::populateBufferizationPattern(bufferization_state, patterns);
-
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
       return;
     }

@@ -88,6 +88,10 @@
         slot variables when they are `ShardedVariable`s (used for training with
         `tf.distribute.experimental.ParameterServerStrategy`).
 
+* `tf.random`
+    * Added `tf.random.experimental.index_shuffle`, for shuffling a sequence
+      without materializing the sequence in memory.
+
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *   <NOTES SHOULD BE GROUPED PER AREA>

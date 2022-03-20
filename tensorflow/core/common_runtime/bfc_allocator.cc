@@ -1233,4 +1233,8 @@ BFCAllocator::get_bin_debug_info() {
   return bin_infos;
 }
 
+AllocatorMemoryType BFCAllocator::GetMemoryType() const {
+  return sub_allocator_->GetMemoryType();
+}
+
 }  // namespace tensorflow

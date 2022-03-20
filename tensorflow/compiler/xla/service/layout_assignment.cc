@@ -352,6 +352,46 @@ Status LayoutAssignment::LayoutConstraints::SetResultLayout(
   return Status::OK();
 }
 
+Status LayoutAssignment::SetInstructionLayout(const Layout& layout,
+                                              const HloInstruction* instruction,
+                                              bool mandatory, bool dfs,
+                                              bool allow_alias,
+                                              int64_t priority) {
+  if (priority < 0) {
+    priority = current_priority_;
+  }
+  auto RequiresSameShapeForAllOutput = [](const HloInstruction* op) -> bool {
+    switch (op->opcode()) {
+      case HloOpcode::kSort:
+      case HloOpcode::kReduce:
+      case HloOpcode::kReduceWindow:
+        return true;
+      default:
+        return false;
+    }
+  };
+  CHECK(instruction->shape().IsArray() ||
+        RequiresSameShapeForAllOutput(instruction));
+
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      instruction->shape(),
+      [this, layout, instruction, mandatory, allow_alias, priority](
+          const Shape& subshape, const ShapeIndex& index) -> Status {
+        auto buffers =
+            points_to_analysis_->GetPointsToSet(instruction).element(index);
+        CHECK_EQ(1, buffers.size());
+        if (!allow_alias) {
+          CHECK_EQ(buffers[0]->instruction(), instruction);
+        }
+        if (subshape.IsArray()) {
+          return SetBufferLayout(layout, *buffers[0], mandatory,
+                                 /*dfs=*/true, priority);
+        } else {
+          return Status::OK();
+        }
+      });
+}
+
 Status LayoutAssignment::SetInstructionLayout(const Shape& shape_with_layout,
                                               const HloInstruction* instruction,
                                               bool mandatory, bool dfs,
@@ -2020,19 +2060,19 @@ Status LayoutAssignment::CalculateComputationLayout(
         conditional_mismatch_.count(callee->computation()) > 0) {
       if (conditional_mismatch_.count(callee->computation()) == 0 &&
           UpdateLayout(result, callee_layout.mutable_result_layout())) {
-        VLOG(5) << "Setting result layout from : " << result->ToString()
+        VLOG(2) << "Setting result layout from : " << result->ToString()
                 << "\n";
       }
       int64_t operand_no = 0;
       for (auto* operand : operands) {
         if (UpdateLayout(operand,
                          callee_layout.mutable_parameter_layout(operand_no))) {
-          VLOG(5) << "Setting callee parameter: " << operand->ToString()
+          VLOG(2) << "Setting callee parameter: " << operand->ToString()
                   << "\n";
         }
         ++operand_no;
       }
-      VLOG(5) << "Set callee layout: " << callee->computation()->name() << ":"
+      VLOG(2) << "Set callee layout: " << callee->computation()->name() << ":"
               << callee_layout.ToString()
               << "; original priority = " << callee_constraint->priority()
               << "\n";
@@ -2095,12 +2135,15 @@ Status LayoutAssignment::CalculateComputationLayout(
     }
   }
   // Reset the layout of the current computation from its body.
-  TF_RETURN_IF_ERROR(
-      SetCalleeLayout(constraints->computation()->root_instruction(),
-                      constraints->computation()->parameter_instructions(),
-                      constraints, current_priority_ + 1));
-  if (constraints->computation()->IsEntryComputation()) {
-    *entry_computation_layout_ = constraints->computation_layout();
+  if (current_priority_ == 0 ||
+      conditional_mismatch_.count(constraints->computation()) > 0) {
+    TF_RETURN_IF_ERROR(SetCalleeLayout(
+        constraints->computation()->root_instruction(),
+        constraints->computation()->parameter_instructions(), constraints,
+        current_priority_ + kNumberOfPropagationRounds));
+    if (constraints->computation()->IsEntryComputation()) {
+      *entry_computation_layout_ = constraints->computation_layout();
+    }
   }
   return Status::OK();
 }
@@ -2515,6 +2558,9 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
       return false;
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:

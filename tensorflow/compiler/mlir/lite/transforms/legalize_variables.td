@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // TFLite variables legalization patterns
+include "mlir/IR/PatternBase.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 

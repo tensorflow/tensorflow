@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
@@ -42,6 +42,18 @@ cc_library(
 )
 
 cc_library(
+    name = "Utils",
+    srcs = ["utils/utils.cc"],
+    hdrs = ["utils/utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/ir:Dialect",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "PassRegistration",
     hdrs = ["pass_registration.h"],
     deps = [
@@ -50,6 +62,7 @@ cc_library(
         "//tensorflow/core/transforms/const_dedupe_hoist:Pass",
         "//tensorflow/core/transforms/drop_unregistered_attribute:OutputShapesPass",
         "//tensorflow/core/transforms/graph_to_func:Pass",
+        "//tensorflow/core/transforms/remapper:Pass",
         "//tensorflow/core/transforms/toposort:Pass",
     ],
 )
@@ -89,7 +102,7 @@ tf_cc_test(
 )
 
 # Custom `mlir-opt` replacement that links our dialect and passes
-tf_native_cc_binary(
+tf_cc_binary(
     name = "tfg-transforms-opt",
     srcs = ["tfg-transforms-opt.cc"],
     deps = [

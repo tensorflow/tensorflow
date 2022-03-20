@@ -137,6 +137,7 @@ class GpuKernelToBlobPass
     config.set_debug_options(options);
 
     llvmModule->setDataLayout(xla::gpu::nvptx::DataLayout());
+    llvmModule->setTargetTriple(xla::gpu::nvptx::TargetTriple());
 
     // Compile and collect requested cubin and PTX images.
     std::vector<tensorflow::se::CubinOrPTXImage> images;

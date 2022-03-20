@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -35,23 +36,12 @@ class TestExecutionEnvironment {
   virtual ~TestExecutionEnvironment() = default;
 
   virtual std::vector<CalculationsPrecision> GetSupportedPrecisions() const = 0;
-  virtual std::vector<TensorStorageType> GetSupportedStorages() const = 0;
+  virtual std::vector<TensorStorageType> GetSupportedStorages(
+      DataType data_type) const = 0;
   // returns storage types that support zero clamping when reading OOB in HW
   // (Height/Width) dimensions.
   virtual std::vector<TensorStorageType>
-  GetSupportedStoragesWithHWZeroClampSupport() const = 0;
-
-  // returns storage types that supports int32/uint32
-  virtual std::vector<TensorStorageType> GetStoragesWith32bitIntSupport()
-      const = 0;
-
-  // returns storage types that supports int16/uint16
-  virtual std::vector<TensorStorageType> GetStoragesWith16bitIntSupport()
-      const = 0;
-
-  // returns storage types that supports int8/uint8
-  virtual std::vector<TensorStorageType> GetStoragesWith8bitIntSupport()
-      const = 0;
+  GetSupportedStoragesWithHWZeroClampSupport(DataType data_type) const = 0;
 
   virtual const GpuInfo& GetGpuInfo() const = 0;
 

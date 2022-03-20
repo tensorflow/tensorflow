@@ -353,6 +353,12 @@ class LayoutAssignment : public HloModulePass {
   Status SetInstructionLayout(const Shape& shape_with_layout,
                               const HloInstruction* instruction, bool mandatory,
                               bool dfs, bool allow_alias, int64_t priority);
+  // Set the same given layout across all components of the instruction output.
+  // It works the same as the API above if the output is a single array.
+  Status SetInstructionLayout(const Layout& layout,
+                              const HloInstruction* instruction,
+                              bool mandatory = true, bool dfs = true,
+                              bool allow_alias = false, int64_t priority = -1);
   // Add a constraint on the layout of a LogicalBuffer, the layout of the
   // operand of the instruction, or the layout of the result of the computation,
   // respectively.
@@ -541,7 +547,7 @@ class LayoutAssignment : public HloModulePass {
   bool reverse_computation_order_;
 
  protected:
-  static constexpr int64_t kNumberOfPropagationRounds = 3;
+  static constexpr int64_t kNumberOfPropagationRounds = 2;
   // Sets up the copy instruction according to the characteristic (sharding,
   // metadata, ...) of the reference instruction. The index argument is used
   // when the instruction is a tuple, and in such case the index represents

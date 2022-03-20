@@ -24,6 +24,9 @@ include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
 
+class HLO_ComparisonDirectionValue<string enumStr> :
+  ConstantAttr<HLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
+
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
@@ -40,7 +43,7 @@ def : Pat<(HLOClient_AcosOp NonComplexElementType:$input),
     (HLO_CompareOp
       $input,
       (HLO_ConstantLike<"-1"> $input),
-      HLO_COMPARISON_DIRECTION_NE,
+      HLO_ComparisonDirectionValue<"NE">,
       (HLO_DEFAULT_COMPARISON_TYPE)
     ),
     (HLO_MulOp
@@ -74,7 +77,7 @@ def : Pat<(HLOClient_AcoshOp NonComplexElementType:$input),
     (HLO_CompareOp
       $input,
       (HLO_ConstantLike<"-1"> $input),
-      HLO_COMPARISON_DIRECTION_LT,
+      HLO_ComparisonDirectionValue<"LT">,
       (HLO_DEFAULT_COMPARISON_TYPE)
     ),
     (HLO_ConstantLike<"NAN"> $input),
@@ -84,7 +87,7 @@ def : Pat<(HLOClient_AcoshOp NonComplexElementType:$input),
         (HLO_SqrtOp
           (HLO_ConstantLikeMaxFiniteValue $input)
         ),
-        HLO_COMPARISON_DIRECTION_GE,
+        HLO_ComparisonDirectionValue<"GE">,
         (HLO_DEFAULT_COMPARISON_TYPE)
       ),
       (HLO_AddOp
@@ -161,7 +164,7 @@ def : Pat<(HLOClient_AsinhOp NonComplexElementType:$input),
         (HLO_SqrtOp
           (HLO_ConstantLikeMaxFiniteValue $input)
         ),
-        HLO_COMPARISON_DIRECTION_GE,
+        HLO_ComparisonDirectionValue<"GE">,
         (HLO_DEFAULT_COMPARISON_TYPE)
       ),
       (HLO_AddOp
@@ -176,7 +179,7 @@ def : Pat<(HLOClient_AsinhOp NonComplexElementType:$input),
         (HLO_CompareOp
           (HLO_AbsOp $input),
           (HLO_ConstantLike<"1"> $input),
-          HLO_COMPARISON_DIRECTION_LE,
+          HLO_ComparisonDirectionValue<"LE">,
           (HLO_DEFAULT_COMPARISON_TYPE)
         ),
         (HLO_Log1pOp
@@ -236,7 +239,7 @@ def : Pat<(HLOClient_AtanhOp NonComplexElementType:$input),
     (HLO_CompareOp
       (HLO_AbsOp $input),
       (HLO_ConstantLike<"1"> $input),
-      HLO_COMPARISON_DIRECTION_GT,
+      HLO_ComparisonDirectionValue<"GT">,
       (HLO_DEFAULT_COMPARISON_TYPE)
     ),
     (HLO_ConstantLike<"NAN"> $input),
@@ -269,7 +272,7 @@ def : Pat<(HLOClient_IsPosInfOp NonComplexElementType:$input),
   (HLO_CompareOp
     $input,
     (HLO_ConstantLikePosInfValue $input),
-    HLO_COMPARISON_DIRECTION_EQ,
+    HLO_ComparisonDirectionValue<"EQ">,
     (HLO_DEFAULT_COMPARISON_TYPE)
   )>;
 
@@ -279,7 +282,7 @@ def : Pat<(HLOClient_IsNegInfOp NonComplexElementType:$input),
   (HLO_CompareOp
     $input,
     (HLO_ConstantLikeNegInfValue $input),
-    HLO_COMPARISON_DIRECTION_EQ,
+    HLO_ComparisonDirectionValue<"EQ">,
     (HLO_DEFAULT_COMPARISON_TYPE)
   )>;
 

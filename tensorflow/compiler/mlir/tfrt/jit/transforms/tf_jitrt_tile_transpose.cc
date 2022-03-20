@@ -146,15 +146,18 @@ struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
       unsigned vec_dim1 = indexing_maps[1].getDimPosition(last_dim);
 
       // If the contiguous dimensions of both input and output are not
-      // transposed (i.e, they are the same), we pick the second dimension of
-      // the output as second vector dimension and reduce its vectorization
-      // factor. This case won't require intra-register transposition but just
-      // moving data around with plain vector loads/stores.
-      if (vec_dim0 == vec_dim1)
-        vec_dim1 = indexing_maps[1].getDimPosition(last_dim - 1);
+      // transposed (i.e, they are the same), we vectorize only that dimension.
+      // That transpose case doesn't require intra-register transposition but
+      // just copying a set of contiguous sub-buffers from the input to the
+      // output tensor. Vectorizing a second dimension would increase too much
+      // the memory pressure for no reason.
+      if (vec_dim0 == vec_dim1) {
+        tiles[vec_dim0] = b.create<ConstantIndexOp>(op->getLoc(), vec_factor0);
+      } else {
+        tiles[vec_dim0] = b.create<ConstantIndexOp>(op->getLoc(), vec_factor0);
+        tiles[vec_dim1] = b.create<ConstantIndexOp>(op->getLoc(), vec_factor1);
+      }
 
-      tiles[vec_dim0] = b.create<ConstantIndexOp>(op->getLoc(), vec_factor0);
-      tiles[vec_dim1] = b.create<ConstantIndexOp>(op->getLoc(), vec_factor1);
       return tiles;
     };
 
