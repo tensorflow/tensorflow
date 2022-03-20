@@ -50,3 +50,4 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+echo "hello,world";
