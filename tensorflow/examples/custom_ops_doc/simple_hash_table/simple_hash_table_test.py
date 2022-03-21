@@ -92,9 +92,6 @@ class SimpleHashTableTest(tf.test.TestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testSavedModelSaveRestore(self):
-    # TODO(b/203097231) add SaveModel support
-    self.skipTest('Saved Model not yet implemented for SimpleHashTable')
-
     save_dir = os.path.join(self.get_temp_dir(), 'save_restore')
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), 'hash')
 
@@ -116,10 +113,10 @@ class SimpleHashTableTest(tf.test.TestCase, parameterized.TestCase):
     root.table.insert(3, 300)
     self.assertEqual(root.lookup(2), 200)
     self.assertAllEqual(3, len(self.evaluate(root.table.export()[0])))
-    tf.saved_model.save(root, save_path)  # TODO(b/203097231)
+    tf.saved_model.save(root, save_path)
 
     del root
-    loaded = tf.saved_model.load(save_path)  # TODO(b/203097231)
+    loaded = tf.saved_model.load(save_path)
     self.assertEqual(loaded.lookup(2), 200)
     self.assertEqual(loaded.lookup(10), -1)
 
