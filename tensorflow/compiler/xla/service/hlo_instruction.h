@@ -1751,6 +1751,10 @@ class HloInstruction {
   // if no id has been assigned yet).
   int unique_id() const { return unique_id_; }
 
+  template <typename T>
+  using EnableIfProto = typename std::enable_if_t<
+      std::is_base_of<tensorflow::protobuf::Message, T>::value>;
+
   // Returns the backend-specific configuration for how a backend should compile
   // this HLO. The meaning of the field is backend specific. Not for use before
   // or during general HLO optimization, since HLO optimizations do not preserve
@@ -1759,13 +1763,25 @@ class HloInstruction {
   // general HLO optimization needs to interpret it.
   //
   // ConfigProto should be a protobuf Message type.
-  template <typename ConfigProto>
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
     TF_RETURN_IF_ERROR(GetBackendConfigInternal(&proto));
     return std::move(proto);
   }
-  Status set_backend_config(const tensorflow::protobuf::Message& proto);
+
+  Status set_backend_config(const tensorflow::protobuf::Message& proto) {
+    backend_config_ = proto;
+    return Status::OK();
+  }
+
+  bool has_backend_config() const { return !backend_config_.empty(); }
+
+  void clear_backend_config() { backend_config_.clear(); }
+
+  void CopyBackendConfigFrom(const HloInstruction* other) {
+    backend_config_ = other->backend_config_.Clone();
+  }
 
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
     frontend_attributes_ = std::move(frontend_attributes);
@@ -1783,7 +1799,7 @@ class HloInstruction {
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
-    return backend_config_;
+    return backend_config_.GetRawString();
   }
   void set_raw_backend_config_string(std::string config_str) {
     backend_config_ = std::move(config_str);
@@ -2196,6 +2212,38 @@ class HloInstruction {
 
  private:
   friend class HloComputation;
+  // Wrapper class of string format and protobuf format of BackendConfig.
+  class BackendConfigRep {
+   public:
+    const tensorflow::protobuf::Message* GetProtoPtr() const {
+      return proto_.get();
+    }
+
+    const std::string& GetRawString() const;
+
+    BackendConfigRep Clone() const;
+
+    bool operator==(const BackendConfigRep& other) const;
+    bool operator!=(const BackendConfigRep& other) const {
+      return !(*this == other);
+    }
+
+    bool empty() const { return proto_ == nullptr && raw_string_.empty(); }
+
+    void clear() {
+      proto_.reset();
+      raw_string_.clear();
+    }
+
+    BackendConfigRep& operator=(std::string raw_string);
+    BackendConfigRep& operator=(const tensorflow::protobuf::Message& proto);
+    void SetProto(const tensorflow::protobuf::Message& proto);
+
+   private:
+    std::unique_ptr<tensorflow::protobuf::Message> proto_;
+    // If proto_ is not null, raw_string_ is a lazy cache of its string format.
+    mutable std::string raw_string_;
+  };
 
   bool IdenticalInternal(
       const HloInstruction& other,
@@ -2309,7 +2357,7 @@ class HloInstruction {
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
-  std::string backend_config_;
+  mutable BackendConfigRep backend_config_;
 
   // Attributes passed from the frontend to give hints to the backend about
   // how to compile this HLO.
