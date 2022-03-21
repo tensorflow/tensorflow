@@ -28,7 +28,13 @@ limitations under the License.
 #include "tensorflow/lite/core/shims/cc/interpreter.h"
 #include "tensorflow/lite/core/shims/cc/interpreter_builder.h"
 #include "tensorflow/lite/core/shims/cc/model_builder.h"
+#if TFLITE_DISABLE_SELECT_JAVA_APIS
+#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
+#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#else
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+#endif
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/util.h"
@@ -88,7 +94,8 @@ class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
   bool Verify(const char* data, int length,
               tflite::ErrorReporter* reporter) override {
     if (!VerifyModel(data, length)) {
-      reporter->Report("The model is not a valid Flatbuffer file");
+      TF_LITE_REPORT_ERROR(reporter,
+                           "The model is not a valid Flatbuffer file");
       return false;
     }
     return true;
@@ -331,21 +338,37 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createXNNPACKDelegate(
       convertLongToErrorReporter(env, error_handle);
   if (error_reporter == nullptr) return 0;
 
+  TfLiteOpaqueDelegate* delegate = nullptr;
+  void (*delegate_deleter)(TfLiteOpaqueDelegate*) = nullptr;
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
-  // TODO(b/173022832): Implement support for XNNPack unconditionally.
-  if (state == -1) {
-    // Instead of throwing an exception, we tolerate the fact that XNNPACK is
-    // not implemented yet, because we try to apply XNNPACK delegate by default.
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "WARNING: Not applying XNNPACK delegate by default "
-                         "because it isn't supported in this module.\n");
-    return 0;
-  } else {
-    // In this case, XNNPACK was explicitly requested, so we throw an exception.
-    ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                   "Not supported: XNNPACK delegate");
-    return 0;
+  // Construct a FlatBuffer containing
+  //   TFLiteSettings {
+  //     delegate: Delegate.XNNPack
+  //     XNNPackSettings {
+  //       num_threads: <num_threads>
+  //     }
+  //   }
+  flatbuffers::FlatBufferBuilder flatbuffer_builder;
+  tflite::XNNPackSettingsBuilder xnnpack_settings_builder(flatbuffer_builder);
+  if (num_threads >= 0) {
+    xnnpack_settings_builder.add_num_threads(num_threads);
   }
+  flatbuffers::Offset<tflite::XNNPackSettings> xnnpack_settings =
+      xnnpack_settings_builder.Finish();
+  tflite::TFLiteSettingsBuilder tflite_settings_builder(flatbuffer_builder);
+  tflite_settings_builder.add_xnnpack_settings(xnnpack_settings);
+  tflite_settings_builder.add_delegate(tflite::Delegate_XNNPACK);
+  flatbuffers::Offset<tflite::TFLiteSettings> tflite_settings =
+      tflite_settings_builder.Finish();
+  flatbuffer_builder.Finish(tflite_settings);
+  const tflite::TFLiteSettings* tflite_settings_flatbuffer =
+      flatbuffers::GetRoot<tflite::TFLiteSettings>(
+          flatbuffer_builder.GetBufferPointer());
+  // Create an XNNPack delegate plugin using the settings from the flatbuffer.
+  const TfLiteOpaqueDelegatePlugin* delegate_plugin =
+      TfLiteXnnpackDelegatePluginCApi();
+  delegate = delegate_plugin->create(tflite_settings_flatbuffer);
+  delegate_deleter = delegate_plugin->destroy;
 #else
   // We use dynamic loading to avoid taking a hard dependency on XNNPack.
   // This allows clients that use trimmed builds to save on binary size.
@@ -364,9 +387,13 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createXNNPACKDelegate(
     if (num_threads > 0) {
       options.num_threads = num_threads;
     }
-    TfLiteDelegate* delegate = xnnpack_create(&options);
+    delegate = xnnpack_create(&options);
+    delegate_deleter = xnnpack_delete;
+  }
+#endif
+  if (delegate) {
     jlong delegate_handle = reinterpret_cast<jlong>(delegate);
-    jlong delete_handle = reinterpret_cast<jlong>(xnnpack_delete);
+    jlong delete_handle = reinterpret_cast<jlong>(delegate_deleter);
 
     jclass xnnpack_delegate_class =
         env->FindClass("org/tensorflow/lite/XnnpackDelegate");
@@ -405,7 +432,6 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createXNNPACKDelegate(
                    "Have you added the necessary dependencies?");
     return 0;
   }
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT jlong JNICALL
@@ -546,16 +572,20 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     jobject jdelegate_handle =
         env->CallObjectMethod(delegate_handle_list, list_get_method, i);
     if (jdelegate_handle == nullptr) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: null Delegate handle");
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: null object in Delegate handle list");
+      }
       return 0;
     }
     // Java: long delegate_handle = jdelegate_handle.longValue();
     jlong delegate_handle =
         env->CallLongMethod(jdelegate_handle, long_value_method);
     if (delegate_handle == 0) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: Found invalid handle");
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: Found invalid handle");
+      }
       return 0;
     }
     auto delegate = reinterpret_cast<TfLiteOpaqueDelegate*>(delegate_handle);

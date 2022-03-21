@@ -345,5 +345,6 @@ inline Type GetElementTypeOrSelfResolveRef(Type type) {
 
 #define GET_ATTRDEF_CLASSES
 #include "tensorflow/core/ir/types/attributes.h.inc"
+#include "tensorflow/core/ir/types/attributes_enum.h.inc"
 
 #endif  // TENSORFLOW_CORE_IR_TYPE_DIALECT_H_

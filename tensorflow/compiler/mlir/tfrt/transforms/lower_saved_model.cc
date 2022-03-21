@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -46,7 +46,7 @@ bool IsSessionInitializer(mlir::FuncOp op) {
   if (!session_initializer_op) return false;
 
   for (auto sym_ref : session_initializer_op.initializers()) {
-    if (op.sym_name() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
+    if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
       return true;
   }
 
@@ -342,7 +342,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
 
   mlir::TF::SideEffectAnalysis side_effect_analysis(module);
 
-  mlir::OpBuilder builder(&module.body());
+  mlir::OpBuilder builder(&module.getBodyRegion());
   // "_tfrt_resource_init" is the special function that executes all invariant
   // ops (eg. read-only variables) used in the model. This function should be
   // executed after user-specified initialization.
@@ -359,8 +359,8 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     // Skips hoisting if this function is an init function or any callees,
     // including recursive ones, of an init functions, because otherwise the
     // hoisted values won't be initialized when this function is called.
-    if (IsSessionInitializer(func) || init_callees.contains(func.sym_name()) ||
-        func == init_func_op)
+    if (IsSessionInitializer(func) ||
+        init_callees.contains(func.getSymName()) || func == init_func_op)
       continue;
 
     HoistInvariantOpsInFunction(func, read_only_vars,
@@ -390,7 +390,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
 
   builder.setInsertionPointToEnd(block);
   // Finish building the init function by inserting an return op.
-  builder.create<mlir::ReturnOp>(init_func_op.getLoc());
+  builder.create<mlir::func::ReturnOp>(init_func_op.getLoc());
 
   // Now that we have the index for each value that will be replaced, we can
   // create the tf._TfrtGetResource op in each function using these indices.
@@ -600,7 +600,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteFunctionArgument(
   cleanup_on_failure.release();
 
   // Update the function type accordingly.
-  auto return_op = llvm::cast<mlir::ReturnOp>(block.getTerminator());
+  auto return_op = llvm::cast<mlir::func::ReturnOp>(block.getTerminator());
   auto new_results = return_op.operands();
 
   func.setType(mlir::FunctionType::get(
@@ -624,7 +624,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
   // Next, we handle control flow ops.
   if (!llvm::isa<mlir::TF::IfOp, mlir::TF::CaseOp, mlir::TF::WhileOp,
                  mlir::CallOpInterface, mlir::TF::BatchFunctionOp,
-                 mlir::ReturnOp>(op))
+                 mlir::func::ReturnOp>(op))
     return op->emitOpError("unsupported users of resource variables");
 
   llvm::SmallVector<unsigned, 2> promoted_result_indices;

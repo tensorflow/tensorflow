@@ -371,7 +371,13 @@ def _get_compatible_spec(value_or_spec1, value_or_spec2):
   """
   spec1 = _get_spec_for(value_or_spec1)
   spec2 = _get_spec_for(value_or_spec2)
-  return spec1.most_specific_compatible_type(spec2)
+
+  # pylint: disable=protected-access
+  common = spec1._without_tensor_names().most_specific_common_supertype(
+      [spec2._without_tensor_names()])
+  if common is None:
+    raise TypeError(f"No common supertype of {spec1} and {spec2}.")
+  return common
 
 
 def _get_spec_for(value_or_spec):

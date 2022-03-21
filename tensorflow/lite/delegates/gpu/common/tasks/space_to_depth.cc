@@ -54,9 +54,7 @@ std::string GetSpaceToDepthCode(const OperationDef& op_def) {
   c += "    int src_x = X * args.block_size + block_id % args.block_size;\n";
   c += "    int src_y = Y * args.block_size + block_id / args.block_size;\n";
   c += "    int src_c = dst_c % args.src_tensor.Channels();\n";
-  c += "    int src_z = src_c / 4;\n";
-  c += "    FLT4 t =  args.src_tensor.Read(src_x, src_y, src_z);\n";
-  c += "    tmp[i] = SELECT_BY_INDEX_FROM_FLT4(t, src_c % 4);\n";
+  c += "    args.src_tensor.ReadPerChannel(tmp[i], src_x, src_y, src_c);\n";
   c += "  }\n";
   c += "  FLT4 result;\n";
   c += "  result.x = tmp[0];\n";
@@ -99,9 +97,7 @@ std::string GetDepthToSpaceCode(const OperationDef& op_def) {
   c += "    int src_y = Y / args.block_size;\n";
   c += "    int block_id = block_y * args.block_size + block_x;\n";
   c += "    int src_c = block_id * args.dst_tensor.Channels() + dst_c;\n";
-  c += "    int src_z = src_c / 4;\n";
-  c += "    FLT4 t =  args.src_tensor.Read(src_x, src_y, src_z);\n";
-  c += "    tmp[i] = SELECT_BY_INDEX_FROM_FLT4(t, src_c % 4);\n";
+  c += "    args.src_tensor.ReadPerChannel(tmp[i], src_x, src_y, src_c);\n";
   c += "  }\n";
   c += "  FLT4 result;\n";
   c += "  result.x = tmp[0];\n";

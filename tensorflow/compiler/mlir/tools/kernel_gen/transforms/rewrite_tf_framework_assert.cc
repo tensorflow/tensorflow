@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -51,7 +51,7 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
     for (auto type : func.getType().getResults()) {
       null_memrefs.push_back(rewriter.create<NullMemRefOp>(loc, type));
     }
-    rewriter.create<ReturnOp>(loc, null_memrefs);
+    rewriter.create<func::ReturnOp>(loc, null_memrefs);
 
     rewriter.restoreInsertionPoint(ip);
     rewriter.replaceOpWithNewOp<cf::CondBranchOp>(
@@ -89,7 +89,7 @@ class RewriteTFFrameworkAssertPass
 
     // Set target.
     ConversionTarget target(getContext());
-    target.addLegalDialect<tf_framework::TFFrameworkDialect, StandardOpsDialect,
+    target.addLegalDialect<tf_framework::TFFrameworkDialect, func::FuncDialect,
                            cf::ControlFlowDialect>();
     target.addIllegalOp<TFAssertOp>();
     target.addDynamicallyLegalOp<cf::AssertOp>(IsNotInsideTfEntryFunction);

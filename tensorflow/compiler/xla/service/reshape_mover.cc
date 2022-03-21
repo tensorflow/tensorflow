@@ -268,10 +268,8 @@ bool IsReshapeMoveCandidate(HloInstruction* instruction) {
           << instruction->ToString(print_no_metadata);
 
   // Only perform reshape-move for live elementwise instructions with operands.
-  const bool is_dead = instruction->user_count() == 0 &&
-                       instruction != instruction->parent()->root_instruction();
   if (!instruction->IsElementwise() || instruction->operands().empty() ||
-      is_dead) {
+      instruction->IsDead()) {
     return false;
   }
 

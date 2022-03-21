@@ -329,6 +329,11 @@ message HloComputationProto {
 
   // The id of the root of the computation.
   int64 root_id = 6;
+
+  // Whether this is a fusion computation. Fusion computations should use this
+  // to determine whether they are a fusion in CreateFromProto since the
+  // parent fusion_instruction_ may get removed and be nullptr.
+  bool is_fusion_computation = 7;
 }
 
 // Serialization of an HLO schedule. An HLO schedule contains a total order of
@@ -450,6 +455,8 @@ message HloModuleProto {
   bool is_dynamic = 11;
 
   xla.OpSharding spmd_output_sharding = 12;
+
+  repeated xla.OpSharding spmd_parameters_shardings = 14;
 
   // The type of optimization profile in use for module-level optimizations.
   enum ProfileType {

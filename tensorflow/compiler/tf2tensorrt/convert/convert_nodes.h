@@ -46,6 +46,19 @@ namespace tensorrt {
 namespace convert {
 using ::stream_executor::port::StatusOr;
 
+#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                           \
+  do {                                                               \
+    return errors::Internal("TFTRT::", __FUNCTION__, ":", __LINE__,  \
+                            " failed to add TRT layer, at: ", node); \
+  } while (0)
+
+#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
+  do {                                           \
+    if (ptr == nullptr) {                        \
+      TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
+    }                                            \
+  } while (0)
+
 struct EngineConnection {
   // Constructs a non-control edge.
   EngineConnection(const string& outside, int out_id, int out_port,
@@ -515,6 +528,14 @@ constexpr std::array<std::pair<const char*, nvinfer1::ElementWiseOperation>, 10>
         {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
         {"Pow", nvinfer1::ElementWiseOperation::kPOW},
     }};
+
+template <typename T>
+absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
+  absl::InlinedVector<std::string, 10> result;
+  absl::c_transform(set, std::back_inserter(result),
+                    [](const auto x) { return x.first; });
+  return result;
+}
 
 // Adds a matrix multiplication operation to the TensorRT graph. The "params"
 // pointer is only used to access the TRT network builder. The inputs and

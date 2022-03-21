@@ -35,9 +35,10 @@ using StringSet = absl::flat_hash_set<std::string>;
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 // When the given run_tfl_runtime_verification value is true, it will check each
 // TFL builtin op towards the TFL runtime capability and the incompatible TF ops
-// will be left in the graph without getting legalized.
+// will be left in the graph without getting legalized. If `preserve_assert_op`
+// is true, the TF::AssertOp will not be removed.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
-    bool run_tfl_runtime_verification);
+    bool run_tfl_runtime_verification, bool preserve_assert_op = false);
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(

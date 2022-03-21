@@ -154,7 +154,8 @@ def _variable_handle_from_shape_and_dtype(shape,
   if not graph_mode:
     if shared_name is not None:
       raise errors.InternalError(  # pylint: disable=no-value-for-parameter
-          "Using an explicit shared_name is not supported executing eagerly.")
+          "Using an explicit shared_name is not allowed when executing eagerly."
+      )
     shared_name = context.anonymous_name()
 
   handle = gen_resource_variable_ops.var_handle_op(
@@ -351,7 +352,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       is_initialized_op=None,
       cached_value=None,
       save_slice_info=None,
-      handle_deleter=None,
       caching_device=None,
       in_graph_mode=None,
       **unused_kwargs):
@@ -395,8 +395,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       cached_value: Pre-created operation to read this variable in a specific
         device.
       save_slice_info: Metadata for variable partitioning.
-      handle_deleter: EagerResourceDeleter responsible for cleaning up the
-        handle.
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
@@ -434,16 +432,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint
-    # After the handle has been created, set up a way to clean it up when
-    # executing eagerly. We'll hold the only reference to the deleter, so that
-    # when this object is garbage collected the deleter will be too. This
-    # means ResourceVariables can be part of reference cycles without those
-    # cycles being uncollectable.
-    if not self._in_graph_mode:
-      if handle_deleter is None:
-        handle_deleter = EagerResourceDeleter(
-            handle=self._handle, handle_device=self._handle.device)
-    self._handle_deleter = handle_deleter
     self._cached_shape_as_list = None
 
   def __repr__(self):
@@ -875,7 +863,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
         dtype=self.dtype,
         shape=self._shape,
         in_graph_mode=self._in_graph_mode,
-        deleter=self._handle_deleter if not self._in_graph_mode else None,
         parent_op=op,
         unique_id=self._unique_id)
 
@@ -909,7 +896,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
              f"The variable shape {self._shape}, and the "
              f"assigned value shape {value_tensor.shape} are incompatible."))
       kwargs = {}
-      if forward_compat.forward_compatible(2022, 2, 23):
+      if forward_compat.forward_compatible(2022, 3, 23):
         # If the shape is fully defined, we do a runtime check with the shape of
         # value.
         validate_shape = self._shape.is_fully_defined()
@@ -2080,7 +2067,7 @@ class _UnreadVariable(BaseResourceVariable):
   Pretends to be the tensor if anyone looks.
   """
 
-  def __init__(self, handle, dtype, shape, in_graph_mode, deleter, parent_op,
+  def __init__(self, handle, dtype, shape, in_graph_mode, parent_op,
                unique_id):
     if isinstance(handle, ops.EagerTensor):
       handle_name = ""
@@ -2102,7 +2089,6 @@ class _UnreadVariable(BaseResourceVariable):
         handle_name=handle_name,
         unique_id=unique_id,
         dtype=dtype,
-        handle_deleter=deleter,
         graph_element=graph_element)
     self._parent_op = parent_op
 

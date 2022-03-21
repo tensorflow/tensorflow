@@ -121,12 +121,13 @@ StatusOr<std::shared_ptr<HloModule>> GetHloModule(
 }
 
 // Converts a computation to textual HLO form.
-StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
+StatusOr<std::string> GetComputationHloText(
+    const XlaComputation& computation, bool print_large_constants = false) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
   HloPrintOptions options;
   options = HloPrintOptions::ShortParsable();
-  options.set_print_large_constants(false);
+  options.set_print_large_constants(print_large_constants);
   return hlo_module->ToString(options);
 }
 
@@ -401,7 +402,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("program_shape", &XlaComputation::GetProgramShape)
       .def("name", &XlaComputation::name)
       .def("as_serialized_hlo_module_proto", &GetComputationSerializedProto)
-      .def("as_hlo_text", &GetComputationHloText)
+      .def("as_hlo_text", &GetComputationHloText,
+           py::arg("print_large_constants") = false)
       .def("as_hlo_dot_graph", &GetComputationHloDotGraph)
       .def("hash", &HashComputation)
       .def("as_hlo_module", &GetHloModule);
@@ -476,6 +478,18 @@ void BuildXlaCompilerSubmodule(py::module& m) {
           [](const HloModule& m) -> absl::optional<xla::OpSharding> {
             if (!m.has_spmd_output_sharding()) return absl::nullopt;
             return m.spmd_output_sharding().ToProto();
+          })
+      .def_property_readonly(
+          "spmd_parameters_shardings",
+          [](const HloModule& m)
+              -> absl::optional<std::vector<xla::OpSharding>> {
+            if (!m.has_spmd_parameters_shardings()) return absl::nullopt;
+            std::vector<xla::OpSharding> param_shardings;
+            for (const auto& parameter_sharding :
+                 m.spmd_parameters_shardings()) {
+              param_shardings.push_back(parameter_sharding.ToProto());
+            }
+            return param_shardings;
           });
 
   m.def("hlo_module_to_dot_graph",
@@ -697,6 +711,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("use_spmd_partitioning",
                     &ExecutableBuildOptions::use_spmd_partitioning,
                     &ExecutableBuildOptions::set_use_spmd_partitioning)
+      .def_property("use_auto_spmd_partitioning",
+                    &ExecutableBuildOptions::use_auto_spmd_partitioning,
+                    &ExecutableBuildOptions::set_use_auto_spmd_partitioning)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
           &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,

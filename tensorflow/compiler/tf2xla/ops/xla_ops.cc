@@ -1207,5 +1207,53 @@ scatter_dimension: Dimension to scatter.
 reduce_op: Reduction computation.
 )doc");
 
+Status OptimizationBarrierShape(shape_inference::InferenceContext* c) {
+  for (int i = 0; i < c->num_inputs(); ++i) {
+    c->set_output(i, c->input(i));
+  }
+  return Status::OK();
+}
+
+REGISTER_OP("XlaOptimizationBarrier")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: list(type) >= 0")
+    .SetShapeFn(OptimizationBarrierShape)
+    .Doc(R"doc(
+Wraps the XLA OptimizationBarrier operator.
+
+Documented at https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier.
+
+input: A Tuple of Arrays of any type.
+)doc");
+
+REGISTER_OP("XlaCustomCall")
+    .Input("args: T")
+    .Output("output: dtype")
+    .Attr("target_name: string")
+    .Attr("backend_config: string")
+    .Attr("T: list(type) >= 0")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      TensorShape shape_attr;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_attr));
+      shape_inference::ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Wraps the XLA CustomCall operator
+  documented at https://www.tensorflow.org/xla/operation_semantics#customcall.
+
+args: A list of `Tensor` with possibly different types.
+target_name: Name of the function. A call instruction will be emitted which
+  targets this symbol name.
+backend_config: String, used to encode serialized metadata to the backend.
+dtype: Output tensor data type.
+shape: Output tensor shape.
+)doc");
+
 }  // namespace
 }  // namespace tensorflow

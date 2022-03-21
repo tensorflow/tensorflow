@@ -125,7 +125,7 @@ class XlaComputation:
   def get_hlo_module(self) -> HloModule: ...
   def program_shape(self) -> ProgramShape: ...
   def as_serialized_hlo_module_proto(self) -> bytes: ...
-  def as_hlo_text(self) -> str: ...
+  def as_hlo_text(self, print_large_constants: bool=False) -> str: ...
   def as_hlo_dot_graph(self) -> str: ...
   def hash(self) -> int: ...
   def as_hlo_module(elf) -> HloModule: ...
@@ -158,6 +158,8 @@ class HloPrintOptions:
   leading_and_trailing_instructions_number: int
 
 class HloModule:
+  spmd_output_sharding: Optional[OpSharding]
+  spmd_parameters_shardings: Optional[List[OpSharding]]
   def to_string(self, options: HloPrintOptions = ...) -> str: ...
   def as_serialized_hlo_module_proto(self)-> bytes: ...
   @staticmethod
@@ -232,6 +234,7 @@ class ExecutableBuildOptions:
   debug_options: DebugOptions
   device_assignment: Optional[DeviceAssignment]
   use_spmd_partitioning: bool
+  use_auto_spmd_partitioning: bool
 
 class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int
@@ -249,6 +252,7 @@ class OpSharding:
   Type: typing.Type[OpSharding_Type]
   type: OpSharding_Type
   replicate_on_last_tile_dim: bool
+  last_tile_dims: Sequence[Type]
   tile_assignment_dimensions: Sequence[int]
   tile_assignment_devices: Sequence[int]
   tuple_shardings: Sequence[OpSharding]

@@ -13,6 +13,7 @@ load(
     "tf_custom_op_library",
     "tf_kernel_library",
 )
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -41,7 +42,9 @@ filegroup(
         "tf_tensor.h",
         "tf_tstring.h",
         "//tensorflow/core/platform:ctstring",
-    ],
+    ] + if_tensorrt([
+        "//tensorflow/compiler/tf2tensorrt:headers",
+    ]),
     visibility = ["//tensorflow:__subpackages__"],
 )
 
@@ -185,7 +188,9 @@ tf_cuda_library(
             "//tensorflow/compiler/jit",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_tensorrt([
+        "//tensorflow/compiler/tf2tensorrt:trt_convert_api",
+    ]),
 )
 
 # Check that c_api_no_xla does not depend on xla.

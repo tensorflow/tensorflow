@@ -18,6 +18,27 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
+def TensorFlowRegistryInterface
+    : OpInterface<"TensorFlowRegistryInterface"> {
+  let description = [{
+    This interface is used to query op properties from a model of the TensorFlow
+    op registry. The interface is implemented as an optional fallback model in
+    the TFG dialect. By default, the interface is not registered, in which case
+    the callers should assume conservative values for op properties. This is so
+    that the TFG dialect does not depend on the TensorFlow framework. A concrete
+    implementation `TensorFlowOpRegistryInterface` must be explicitly registered
+    by users.
+  }];
+  let cppNamespace = "::mlir::tfg";
+
+  let methods = [
+    InterfaceMethod<[{
+      Returns true if the current op is stateful, according to TensorFlow.
+    }],
+    "bool", "isStateful", (ins)>,
+  ];
+}
+
 def ControlArgumentInterface : OpInterface<"ControlArgumentInterface"> {
   let description = [{
     Operations with regions may organize their control token arguments and data
@@ -71,6 +92,29 @@ def ControlArgumentInterface : OpInterface<"ControlArgumentInterface"> {
     /// Verify that a region has the same number of data and control arguments.
     static LogicalResult verifyRegion(Operation *op, Region &region);
   }];
+}
+
+def PreservedAttributesInterface : OpInterface<"PreservedAttributesInterface"> {
+  let description = [{
+    This interfaces defines a common API over region-based operations that
+    implemented preserved attributes.
+  }];
+  let cppNamespace = "::mlir::tfg";
+
+  let methods = [
+    InterfaceMethod<[{
+      Get the (potentially null) RegionAttr corresponding to the region
+      at the given index.
+    }],
+    "mlir::tfg::RegionAttr", "getPreservedAttrs",
+    (ins "unsigned":$idx)>,
+    InterfaceMethod<[{
+      Set the non-null RegionAttr corresponding to the region at the
+      given index.
+    }],
+    "void", "setPreservedAttrs",
+    (ins "unsigned":$idx, "RegionAttr":$attrs)>,
+  ];
 }
 
 #endif // TFG_INTERFACES

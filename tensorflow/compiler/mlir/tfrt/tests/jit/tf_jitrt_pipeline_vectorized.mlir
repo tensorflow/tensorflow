@@ -55,9 +55,9 @@ func @reduce_row_mean_2d_dynamic(%input: tensor<?x?xf32>) -> tensor<?xf32> {
 // CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
 // CHECK:     arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
 // CHECK-NOT: arith.addf %{{.*}}, %{{.*}} : vector<4xf32>
-// CHECK:     vector.broadcast %{{.*}} : f32 to vector<8xf32>
 // CHECK: scf.parallel
-// CHECK:     arith.divf %{{.*}}, %{{.*}} : vector<8xf32>
+// CHECK:      vector.broadcast %{{.*}} : f32 to vector<8xf32>
+// CHECK-NEXT: arith.divf %{{.*}}, %{{.*}} : vector<8xf32>
 
 // -----
 

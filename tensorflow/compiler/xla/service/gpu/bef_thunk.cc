@@ -197,6 +197,15 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo::PartitionIdOp>(op)) {
     return Thunk::Kind::kPartitionId;
   }
+  if (mlir::isa<mlir::lmhlo::InfeedOp>(op)) {
+    return Thunk::Kind::kInfeed;
+  }
+  if (mlir::isa<mlir::lmhlo::OutfeedOp>(op)) {
+    return Thunk::Kind::kOutfeed;
+  }
+  if (mlir::isa<mlir::lmhlo::FftOp>(op)) {
+    return Thunk::Kind::kFft;
+  }
   return tensorflow::errors::Unimplemented(
       "Operation is not supported by BefThunk.");
 }
@@ -360,8 +369,15 @@ static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
     const Thunk::ExecuteParams& params, const BufferAllocation::Slice& slice) {
   se::DeviceMemoryBase data =
       params.buffer_allocations->GetDeviceAddress(slice);
-  tfrt::gpu::wrapper::Pointer<void> pointer(data.opaque(),
-                                            tfrt::gpu::wrapper::Platform::CUDA);
+
+  // TODO(hanbinyoon): This should be moved to a function in a central place.
+#if TENSORFLOW_USE_ROCM
+  auto platform = tfrt::gpu::wrapper::Platform::ROCm;
+#else
+  auto platform = tfrt::gpu::wrapper::Platform::CUDA;
+#endif
+
+  tfrt::gpu::wrapper::Pointer<void> pointer(data.opaque(), platform);
   auto allocator =
       tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuOneShotAllocator<void>>(
           pointer);
@@ -380,7 +396,9 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
                       params.GetGlobalDeviceId());
   request_context_builder.context_data().emplace<XlaGpuParams>(XlaGpuParams{
       params.run_id, params.device_assn, params.gpu_global_device_ids,
-      params.nccl_unique_id_callback, global_device_id});
+      params.nccl_unique_id_callback, global_device_id,
+      GetOrCreateInfeedManager(params.stream->parent()),
+      GetOrCreateOutfeedManager(params.stream->parent())});
 
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
@@ -411,8 +429,8 @@ Status BefThunk::Initialize(const GpuExecutable& executable,
       GpuModuleData module_data;
       // The module data should be null-terminated, so the length of the
       // inserted data is incremented by 1 to include '\0'.
-      module_data.blob = llvm::StringRef(executable.text().c_str(),
-                                         executable.text().size() + 1);
+      module_data.blob = llvm::ArrayRef<uint8_t>(
+          executable.binary().data(), executable.binary().size() + 1);
       for (const auto& constant : executable.constants()) {
         module_data.constants.push_back(GpuModuleData::ConstantInfo{
             constant.symbol_name, constant.content});

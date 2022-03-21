@@ -690,9 +690,7 @@ def HLO_InfeedOp : HLO_Op<"infeed", []> {
     DefaultValuedStrAttr<StrAttr, "">:$infeed_config,
     OptionalAttr<ArrayAttr>:$layout
   );
-  // TODO(@sdasgup): The following code need to be adjusted once the
-  // allowance of tuple-return-type for infeed is revoked.
-  let results = (outs Variadic<HLO_TensorOrTokenOrTuple>);
+  let results = (outs Variadic<HLO_TensorOrToken>);
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }
@@ -712,9 +710,7 @@ def HLO_OutfeedOp : HLO_Op<"outfeed", []> {
   }];
 
   let arguments = (ins
-    // TODO(@sdasgup): The following code need to be adjusted once the
-    // allowance of tuple-return-type for infeed is revoked.
-    Variadic<HLO_TensorOrTuple>:$operands,
+    Variadic<HLO_Tensor>:$operands,
     HLO_Token:$token,
     DefaultValuedStrAttr<StrAttr, "">:$outfeed_config
   );
@@ -1102,7 +1098,14 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
 
   let builders = [
     OpBuilder<(ins "Value":$lhs, "Value":$rhs,
-      "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>,
+      "::mlir::mhlo::ComparisonDirection":$comparison_direction,
+      CArg<"::mlir::mhlo::ComparisonType",
+      "::mlir::mhlo::ComparisonType::NOTYPE">:$compare_type)>,
+
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs,
+      "::mlir::mhlo::ComparisonDirectionAttr":$comparison_direction,
+      CArg<"::mlir::mhlo::ComparisonTypeAttr",
+      "::mlir::mhlo::ComparisonTypeAttr()">:$compare_type)>,
   ];
 
   let hasCustomHLOConverter = 1;
@@ -1174,7 +1177,12 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
 // MHLO Other op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]> {
+def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect,
+    AllShapesMatch<["scale", "mean", "variance", "grad_scale",
+        "grad_offset"]>,
+    AllShapesMatch<["operand", "grad_output"]>,
+    AllElementTypesMatch<["operand", "grad_scale", "grad_offset"]>,
+    AllTypesMatch<["operand", "grad_operand"]>]> {
   let summary = "Batch Normalization Gradient";
   let description = [{
     Calculates gradients of batch norm.
@@ -1183,18 +1191,23 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    HLO_Tensor:$operand,
-    HLO_Tensor:$scale,
-    HLO_Tensor:$mean,
-    HLO_Tensor:$variance,
-    HLO_Tensor:$grad_output,
+    RankedTensorOf<[AnyFloat]>:$operand,
+    1DTensorOf<[AnyFloat]>:$scale,
+    1DTensorOf<[AnyFloat]>:$mean,
+    1DTensorOf<[AnyFloat]>:$variance,
+    RankedTensorOf<[AnyFloat]>:$grad_output,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
 
   let results = (outs Variadic<HLO_TensorOrToken>);
+  let results = (outs
+      RankedTensorOf<[AnyFloat]>:$grad_operand,
+      1DTensorOf<[AnyFloat]>:$grad_scale,
+      1DTensorOf<[AnyFloat]>:$grad_offset);
 
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
@@ -1367,8 +1380,8 @@ def HLO_DynamicBroadcastInDimOp : HLO_ShapedInterfaceOp<
   let hasCustomHLOConverter = 1;
 }
 
-// Note: There is no HLO_CallOp because the standard call operation mlir::CallOp
-// is used instead. A mlir::CallOp is exported to a HLO call instruction
+// Note: There is no HLO_CallOp because the standard call operation mlir::func::CallOp
+// is used instead. A mlir::func::CallOp is exported to a HLO call instruction
 // directly.
 
 def HLO_CholeskyOp : HLO_Op<"cholesky",
@@ -1400,6 +1413,7 @@ def HLO_CholeskyOp : HLO_Op<"cholesky",
     DefaultValuedAttr<BoolAttr, "false">:$lower
   );
 
+  let hasVerifier = 1;
   let results = (outs HLO_FpOrComplexTensor);
 }
 
@@ -1702,6 +1716,7 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]> {
     I64ElementsAttr:$fft_length
   );
 
+  let hasVerifier = 1;
   let results = (outs HLO_Tensor);
 }
 
@@ -1831,7 +1846,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
-    HLO_Tensor:$scatter_indices,
+    TensorOf<[AnyInteger, Index]>:$scatter_indices,
     HLO_Tensor:$updates,
     ScatterDimensionNumbers:$scatter_dimension_numbers,
     DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
@@ -1845,6 +1860,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
   let hasCustomHLOConverter = 1;
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
@@ -2195,7 +2211,7 @@ def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
 // MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
 
-def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify]> {
+def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify, AllElementTypesMatch<["a", "b", "result"]>]> {
   let summary = "RNG with uniform distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated
@@ -2206,12 +2222,12 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify]> {
     See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
   }];
   let arguments = (ins
-    HLO_PredIntOrFpTensor:$a,
-    HLO_PredIntOrFpTensor:$b,
+    0DTensorOf<[HLO_Pred, HLO_Int, AnyFloat]>:$a,
+    0DTensorOf<[HLO_Pred, HLO_Int, AnyFloat]>:$b,
     HLO_DimensionTensor:$shape
   );
 
-  let results = (outs HLO_PredIntOrFpTensor);
+  let results = (outs HLO_PredIntOrFpTensor:$result);
 
   let hasCustomHLOConverter = 1;
 
@@ -2223,7 +2239,7 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify]> {
   }];
 }
 
-def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify]> {
+def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify, AllElementTypesMatch<["mu", "sigma", "result"]>]> {
   let summary = "RNG with normal distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated
@@ -2234,12 +2250,12 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify]> {
     See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
   }];
   let arguments = (ins
-    HLO_FpTensor:$mu,
-    HLO_FpTensor:$sigma,
+    0DTensorOf<[AnyFloat]>:$mu,
+    0DTensorOf<[AnyFloat]>:$sigma,
     HLO_DimensionTensor:$shape
   );
 
-  let results = (outs HLO_FpTensor);
+  let results = (outs HLO_FpTensor:$result);
 
   let hasCustomHLOConverter = 1;
 
@@ -2267,9 +2283,34 @@ def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]> {
     HLO_IntOrFpTensor:$initial_state
   );
 
-  let results = (outs Variadic<HLO_TensorOrToken>);
+  let results = (outs
+      HLO_IntOrFpTensor:$output_state,
+      HLO_IntOrFpTensor:$output
+      );
 
+  let hasVerifier = 1;
   // TODO(jpienaar): This should not be needed.
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_XlaRngGetAndUpdateStateOp: HLO_Op<"xla.rng_get_and_update_state", [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let summary = "RNG state change";
+  let description = [{
+    This instruction represents the change of the global random number generator
+    state for rng instructions. The global state is incremented by delta and
+    the old state is returned.
+
+    The output is currently defined for a single output type. If this changes in
+    the future to support multiple types, lowering to use of a global memref
+    must ensure that a single memref is still used and updated appropriately.
+  }];
+  let arguments = (ins I64Attr:$delta);
+  let results = (outs StaticShapeTensorOf<[UI64]>);
+
+  let hasVerifier = 1;
+  let assemblyFormat = "attr-dict";
+
+  // Doesn't have an XLA builder equivalent.
   let hasCustomHLOConverter = 1;
 }
 
@@ -2345,7 +2386,7 @@ def HLO_BitcastOp : HLO_Op<"bitcast", [NoSideEffect]> {
 }
 
 def HLO_ReducePrecisionOp :
-    HLO_Op<"reduce_precision", [SameOperandsAndResultShape]> {
+    HLO_Op<"reduce_precision", [SameOperandsAndResultShape, SameOperandsAndResultElementType]> {
   let summary = "Reduce precision operator";
   let description = [{
     Models the effect of converting floating - point values to a lower -
@@ -2362,6 +2403,7 @@ def HLO_ReducePrecisionOp :
     I32Attr:$exponent_bits,
     I32Attr:$mantissa_bits
   );
+  let hasVerifier = 1;
   let results = (outs HLO_FpTensor:$output);
 }
 

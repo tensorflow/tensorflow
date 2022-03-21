@@ -203,6 +203,7 @@ py_library(
         ":tpu_embedding",
         ":tpu_embedding_v2",
         ":tpu_embedding_v2_utils",
+        ":tpu_hardware_feature",
         ":tpu_lib",
     ],
 )
@@ -477,6 +478,15 @@ pytype_library(
     ],
 )
 
+pytype_library(
+    name = "tpu_hardware_feature",
+    srcs = ["tpu_hardware_feature.py"],
+    deps = [
+        "//tensorflow/core/protobuf/tpu:topology_proto_py",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
 py_library(
     name = "tpu_name_util",
     srcs = ["tpu_name_util.py"],
@@ -589,67 +599,6 @@ pytype_library(
         "//tensorflow/python/tpu/ops",
         "//tensorflow/python/training/saving:saveable_hook",
         "@six_archive//:six",
-    ],
-)
-
-tpu_py_test(
-    name = "tpu_embedding_v2_test",
-    srcs = [
-        "tpu_embedding_v2_test.py",
-    ],
-    disable_experimental = True,
-    disable_mlir_bridge = False,
-    python_version = "PY3",
-    shard_count = 4,
-    srcs_version = "PY3",
-    deps = [
-        ":tpu_embedding",
-        ":tpu_embedding_v2",
-        ":tpu_strategy_util",
-        "//tensorflow/python:init_ops_v2",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:remote",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/saved_model",
-        "//tensorflow/python/training/tracking:util",
-        "//third_party/py/numpy",
-    ],
-)
-
-tpu_py_test(
-    name = "tpu_embedding_v2_correctness_test",
-    srcs = [
-        "tpu_embedding_v2_correctness_test.py",
-    ],
-    disable_experimental = True,
-    disable_mlir_bridge = False,
-    python_version = "PY3",
-    shard_count = 4,
-    srcs_version = "PY3",
-    deps = [
-        ":tpu_embedding",
-        ":tpu_embedding_v2",
-        ":tpu_strategy_util",
-        "//tensorflow/python:init_ops_v2",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:tpu_strategy",
-        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:remote",
-        "//tensorflow/python/training/tracking:util",
-        "//third_party/py/numpy",
     ],
 )
 

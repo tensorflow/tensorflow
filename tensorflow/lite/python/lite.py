@@ -1,5 +1,5 @@
 # Lint as: python2, python3
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -552,6 +552,8 @@ class TFLiteConverterBase(object):
     self._metadata.environment.tensorflowVersion = versions.__version__
     self._metadata.environment.modelType = self._get_original_model_type()
     self._experimental_enable_dynamic_update_slice = False
+    self._experimental_preserve_assert_op = False
+    self._experimental_guarantee_all_funcs_one_use = False
 
     # When the value is true, the MLIR quantantizer triggers dynamic range
     # quantization in MLIR instead of the old quantizer. Used only if
@@ -670,6 +672,10 @@ class TFLiteConverterBase(object):
             self.experimental_enable_resource_variables,
         "enable_dynamic_update_slice":
             self._experimental_enable_dynamic_update_slice,
+        "preserve_assert_op":
+            self._experimental_preserve_assert_op,
+        "guarantee_all_funcs_one_use":
+            self._experimental_guarantee_all_funcs_one_use,
     }
 
     if self.saved_model_dir:

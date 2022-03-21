@@ -53,7 +53,10 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
 
 /// Lowers from HLO dialect to Memref dialect allocating/deallocating temporary
 /// buffers if necessary.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToMemrefPass();
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass();
+
+/// Lowers from HLO dialect to Arithmetic dialect.
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass();
 
 // Lowers shape operations from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>>
@@ -68,9 +71,6 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeShapeComputationsPass();
 // Sinks constants implicitly captured in control flow regions. This is
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
-
-// fuse mhlo ops to kLoop/kInput fusion patterns
-std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
 
 /// Lowers trigonometric operations from the standard dialect to approximations
 /// that do not use intrinsics.

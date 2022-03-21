@@ -73,7 +73,7 @@ class FuseTpuCompileAndExecutePass
       }
     });
 
-    mlir::OpBuilder builder(&func.body());
+    mlir::OpBuilder builder(&func.getBody());
 
     for (auto exec_op : tpu_execute_ops) {
       auto compile_cache_entry = exec_op.key();

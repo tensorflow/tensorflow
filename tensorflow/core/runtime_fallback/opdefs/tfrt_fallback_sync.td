@@ -40,8 +40,7 @@ class FallbackSync_Op<string mnemonic, list<Trait> traits = []> :
   // Each registered op in the fallback namespace needs to provide all of a
   // verifier, a printer and a parser.
   let hasVerifier = 1;
-  let printer = [{ return tfrt::fallback_sync::print(p, *this); }];
-  let parser = [{ return tfrt::fallback_sync::parse$cppClass(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def ExecuteOp : FallbackSync_Op<"executeop",

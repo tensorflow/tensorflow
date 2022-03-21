@@ -175,6 +175,12 @@ static bool IsScalarConstantNegInf(const HloInstruction* hlo) {
                           LiteralUtil::MinValue(hlo->shape().element_type()));
 }
 
+static bool IsScalarConstantInf(const HloInstruction* hlo) {
+  return !primitive_util::IsComplexType(hlo->shape().element_type()) &&
+         IsScalarConstant(hlo,
+                          LiteralUtil::MaxValue(hlo->shape().element_type()));
+}
+
 bool IsNonNegative(const HloInstruction* hlo,
                    const AlgebraicSimplifierOptions& options) {
   // Utility only handles real types.
@@ -1663,7 +1669,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
   // lhs and rhs must apply the same permutation.
   if (lhs->opcode() != HloOpcode::kTranspose ||
       rhs->opcode() != HloOpcode::kTranspose ||
-      absl::MakeSpan(lhs->dimensions()) != absl::MakeSpan(rhs->dimensions())) {
+      lhs->dimensions() != rhs->dimensions()) {
     return false;
   }
   absl::Span<const int64_t> permutation = lhs->dimensions();
@@ -3012,7 +3018,7 @@ bool OutputIsSubsetOfOperandElements(HloInstruction* instruction,
 Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   HloInstruction* operand;
   CHECK(Match(broadcast, m::Broadcast(m::Op(&operand))));
-  auto dims = broadcast->dimensions();
+  auto dims = *broadcast->mutable_dimensions();
   // A degenerate broadcast of a reshape that does not change the number of
   // elements can be replaced by a reshape.
   if (std::is_sorted(dims.begin(), dims.end()) &&
@@ -3076,7 +3082,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   if (ShapeUtil::IsScalar(operand->shape())) {
     for (HloInstruction* user : broadcast->users()) {
       // Skip if the broadcast user has no uses itself.
-      if (user->user_count() == 0 && user != computation_->root_instruction()) {
+      if (user->IsDead()) {
         continue;
       }
       if (OutputIsPermutationOfOperandElements(user, broadcast) ||
@@ -3561,7 +3567,7 @@ AlgebraicSimplifierVisitor::TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
     return is_scalar_broadcast(instruction) || is_equal_broadcast(instruction);
   };
   for (HloInstruction* user : broadcast->users()) {
-    if (user->user_count() == 0 && user != computation_->root_instruction()) {
+    if (user->IsDead()) {
       continue;
     }
     // Do not move reshapes or broadcasts past copies since the shape the copy
@@ -4655,6 +4661,59 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   return Status::OK();
 }
 
+static bool MatchArgMinMax(const HloInstruction* hlo, bool is_max) {
+  // Create matcher for shared sub-expression.
+  auto value_pred = m::OrAnyOrder(
+      m::Compare(m::Parameter(0), m::Parameter(2))
+          .WithComparisonDirection(is_max ? ComparisonDirection::kGt
+                                          : ComparisonDirection::kLt),
+      m::Compare(m::Parameter(0), m::Parameter(0))
+          .WithComparisonDirection(ComparisonDirection::kNe));
+
+  // Match on argmax reduction computation.
+  return Match(
+      hlo,
+      m::Tuple(
+          m::Select(value_pred, m::Parameter(0), m::Parameter(2)),
+          m::Select(
+              m::OrAnyOrder(
+                  value_pred,
+                  m::And(
+                      m::Compare(m::Parameter(0), m::Parameter(2))
+                          .WithComparisonDirection(ComparisonDirection::kEq),
+                      m::Compare(m::Parameter(1), m::Parameter(3))
+                          .WithComparisonDirection(ComparisonDirection::kLt))),
+              m::Parameter(1), m::Parameter(3))));
+}
+
+// Match on variadic reduce which computes and returns (min, arg_min).
+//
+//                   p0   p2    p1    p3
+//                  /|\ \/ |\    |\   /|
+//                 / | \/\ | \   | \ / |
+//                /  | /\ \|  |  |  /\ |
+//               Ne  Lt |  \  |  | |  ||
+//                 \ /  |  |\ |  | /  ||
+//                  Or /  /  Eq  Lt   ||
+//                  | /  /    \  /    //
+//                  | |  |     And   //
+//                  | |  |      |  //
+//                  select     select
+//                      \     /
+//                       tuple
+//
+static bool MatchArgMin(const HloInstruction* hlo) {
+  // Match on variadic Reduce ArgMin
+  if (hlo->opcode() != HloOpcode::kReduce || hlo->operand_count() != 4 ||
+      !hlo->shape().IsTuple() ||
+      hlo->operand(1)->opcode() != HloOpcode::kIota ||
+      !IsScalarConstantInf(hlo->operand(2)) ||
+      !IsScalarConstantZero(hlo->operand(3))) {
+    return false;
+  }
+  return MatchArgMinMax(hlo->to_apply()->root_instruction(), /*is_max=*/false);
+}
+
 // Match on variadic reduce which computes and returns (max, arg_max).
 //
 //                   p0   p2    p1    p3
@@ -4680,28 +4739,7 @@ static bool MatchArgMax(const HloInstruction* hlo) {
       !IsScalarConstantZero(hlo->operand(3))) {
     return false;
   }
-
-  // Create matcher for shared sub-expression.
-  auto value_pred =
-      m::OrAnyOrder(m::Compare(m::Parameter(0), m::Parameter(2))
-                        .WithComparisonDirection(ComparisonDirection::kGt),
-                    m::Compare(m::Parameter(0), m::Parameter(0))
-                        .WithComparisonDirection(ComparisonDirection::kNe));
-
-  // Match on argmax reduction computation.
-  return Match(
-      hlo->to_apply()->root_instruction(),
-      m::Tuple(
-          m::Select(value_pred, m::Parameter(0), m::Parameter(2)),
-          m::Select(
-              m::OrAnyOrder(
-                  value_pred,
-                  m::And(
-                      m::Compare(m::Parameter(0), m::Parameter(2))
-                          .WithComparisonDirection(ComparisonDirection::kEq),
-                      m::Compare(m::Parameter(1), m::Parameter(3))
-                          .WithComparisonDirection(ComparisonDirection::kLt))),
-              m::Parameter(1), m::Parameter(3))));
+  return MatchArgMinMax(hlo->to_apply()->root_instruction(), /*is_max=*/true);
 }
 
 Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
@@ -4847,9 +4885,9 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       *function == *arg->to_apply()) {
     // Create a new reduce with the combined reduction dimensions of both
     // reduces.
-    std::vector<int64_t> arg_dims = arg->dimensions();
+    std::vector<int64_t> arg_dims = *arg->mutable_dimensions();
     absl::c_sort(arg_dims);
-    std::vector<int64_t> reduce_dims = reduce->dimensions();
+    std::vector<int64_t> reduce_dims = *reduce->mutable_dimensions();
     absl::c_sort(reduce_dims);
     // Transform reduce_dims to the same rank as the operand of the operand.
     for (int64_t arg_dim : arg_dims) {
@@ -5009,6 +5047,25 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
+  // Replace Use(ReduceMin(Arg)) with Use(Gte(ReduceArgMin, 0)).
+  // Match on Reduce Min with init value Inf.
+  if (reduce->operand_count() == 2 && IsScalarConstantInf(init_value) &&
+      Match(reduce->to_apply()->root_instruction(),
+            m::MinimumAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    // Match on variadic Reduce ArgMin which is also fed by 'arg'.
+    auto arg_min_candidate =
+        absl::c_find_if(arg->users(), [&](const HloInstruction* user) {
+          return user != reduce && user->operand(0) == arg &&
+                 MatchArgMin(user) &&
+                 reduce->dimensions() == user->dimensions();
+        });
+    if (arg_min_candidate != arg->users().end()) {
+      // Replace 'reduce' uses with GTE(ArgMin, 0).
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateGetTupleElement(*arg_min_candidate,
+                                                        /*index=*/0));
+    }
+  }
   return Status::OK();
 }
 
@@ -5330,9 +5387,11 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(HloInstruction* hlo) {
     const auto& pad_dim = pad_config.dimensions(i);
     auto& window_dim = *new_window.mutable_dimensions(i);
     window_dim.set_padding_low(window_dim.padding_low() +
-                               pad_dim.edge_padding_low());
+                               window_dim.base_dilation() *
+                                   pad_dim.edge_padding_low());
     window_dim.set_padding_high(window_dim.padding_high() +
-                                pad_dim.edge_padding_high());
+                                window_dim.base_dilation() *
+                                    pad_dim.edge_padding_high());
     if (pad_dim.interior_padding() != 0) {
       CHECK_EQ(window_dim.base_dilation(), 1);
       window_dim.set_base_dilation(1 + pad_dim.interior_padding());
@@ -5360,6 +5419,16 @@ Status AlgebraicSimplifierVisitor::HandleSelect(HloInstruction* select) {
   // select(false, x, y) -> y.
   if (IsAll(select->operand(0), false)) {
     return ReplaceInstruction(select, select->mutable_operand(2));
+  }
+  // select(not(pred), a, b) -> select(pred, b, a)
+  if (HloOpcode::kNot == select->operand(0)->opcode()) {
+    auto pred_operand = select->mutable_operand(0)->mutable_operand(0);
+    auto on_true = select->mutable_operand(1);
+    auto on_false = select->mutable_operand(2);
+    return ReplaceWithNewInstruction(
+        select,
+        HloInstruction::CreateTernary(select->shape(), HloOpcode::kSelect,
+                                      pred_operand, on_false, on_true));
   }
   return Status::OK();
 }
@@ -5485,7 +5554,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     absl::InlinedVector<int64_t, 8> expected_perm(rank);
     absl::c_iota(expected_perm, 0);
     std::swap(expected_perm.rbegin()[0], expected_perm.rbegin()[1]);
-    if (absl::MakeSpan(transpose->dimensions()) != expected_perm) {
+    if (transpose->dimensions() != expected_perm) {
       return false;
     }
 

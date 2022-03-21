@@ -20,6 +20,18 @@ from tensorflow.python.platform import test
 
 class DefaultTypesTest(test.TestCase):
 
+  def testGenericSupertypes(self):
+    generic_a = default_types.Generic(1)
+    generic_b = default_types.Generic(2)
+    generic_c = default_types.Generic(1)
+
+    self.assertEqual(generic_a, generic_a.most_specific_common_supertype([]))
+    self.assertEqual(generic_a,
+                     generic_a.most_specific_common_supertype([generic_a]))
+    self.assertEqual(generic_a,
+                     generic_a.most_specific_common_supertype([generic_c]))
+    self.assertIsNone(generic_a.most_specific_common_supertype([generic_b]))
+
   def testOrderedCollectionTypeEquality(self):
     collection = default_types.OrderedCollection
     generic = default_types.Generic
@@ -52,6 +64,9 @@ class DefaultTypesTest(test.TestCase):
     class Supertypable(default_types.Generic):
 
       def most_specific_common_supertype(self, others):
+        if not others:
+          return self
+
         if self._object == 2 and isinstance(others[0]._object, int):
           return Supertypable(3)
         else:
@@ -61,6 +76,8 @@ class DefaultTypesTest(test.TestCase):
     collection_a = collection(Supertypable(1), Supertypable(2), Supertypable(3))
     collection_b = collection(Supertypable(2), Supertypable(2), Supertypable(2))
 
+    self.assertEqual(collection_a,
+                     collection_a.most_specific_common_supertype([]))
     self.assertIsNone(
         collection_a.most_specific_common_supertype([collection_b]))
     self.assertEqual(
@@ -116,6 +133,8 @@ class DefaultTypesTest(test.TestCase):
         'c': MockSupertypes2With3(2)
     })
 
+    self.assertEqual(dict_a,
+                     dict_a.most_specific_common_supertype([]))
     self.assertIsNone(dict_a.most_specific_common_supertype([dict_b]))
     self.assertEqual(
         dict_b.most_specific_common_supertype([dict_a]),
@@ -150,7 +169,7 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(dict_a, dict_c)
     self.assertNotEqual(dict_a, dict_b)
 
-  def testReferenceType(self):
+  def testReferenceSubtype(self):
 
     class MockSubtypeOf2(default_types.Generic):
 
@@ -161,12 +180,34 @@ class DefaultTypesTest(test.TestCase):
     clone = default_types.Reference(MockSubtypeOf2(3), 1)
     different_id = default_types.Reference(MockSubtypeOf2(3), 2)
     supertype = default_types.Reference(MockSubtypeOf2(2), 1)
+    different_type = default_types.Generic(1)
 
     self.assertEqual(original, clone)
     self.assertFalse(original.is_subtype_of(different_id))
     self.assertTrue(original.is_subtype_of(supertype))
     self.assertFalse(supertype.is_subtype_of(original))
+    self.assertFalse(original.is_subtype_of(different_type))
 
+  def testReferenceSupertype(self):
+
+    class Mock2AsTopType(default_types.Generic):
+
+      def most_specific_common_supertype(self, types):
+        if not all(isinstance(other, Mock2AsTopType) for other in types):
+          return None
+        return self if all(self._object == other._object
+                           for other in types) else Mock2AsTopType(2)
+
+    original = default_types.Reference(Mock2AsTopType(3), 1)
+    clone = default_types.Reference(Mock2AsTopType(3), 1)
+    different_id = default_types.Reference(Mock2AsTopType(3), 2)
+    supertype = default_types.Reference(Mock2AsTopType(2), 1)
+    different_type = default_types.Generic(1)
+
+    self.assertEqual(supertype.most_specific_common_supertype([]), supertype)
+    self.assertEqual(original.most_specific_common_supertype([clone]), original)
+    self.assertIsNone(original.most_specific_common_supertype([different_id]))
+    self.assertIsNone(original.most_specific_common_supertype([different_type]))
 
 if __name__ == '__main__':
   test.main()

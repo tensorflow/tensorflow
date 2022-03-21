@@ -17,7 +17,7 @@ func @memref_cast_into_loop(%arg0: memref<192xf32>)  {
     %14 = affine.min affine_map<(d0) -> (-d0 + 192, 24)>(%arg3)
     %16 = memref.subview %out[%arg3] [%14] [1]
       : memref<192xf32, #map> to memref<?xf32, #map>
-    linalg.fill(%cst, %16) : f32, memref<?xf32, #map>
+    linalg.fill ins(%cst : f32) outs(%16 : memref<?xf32, #map>)
     gml_st.yield
   }
   return
@@ -108,7 +108,7 @@ func @dim_of_loop_input_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x
     %inner_dim = tensor.dim %out1, %c0 : tensor<?x?xf32>
     %cast1 = arith.index_cast %inner_dim : index to i32
     %cast2 = arith.sitofp %cast1 : i32 to f32
-    %fill = linalg.fill(%cast2, %out1) : f32, tensor<?x?xf32> -> tensor<?x?xf32>
+    %fill = linalg.fill ins(%cast2 : f32) outs(%out1 : tensor<?x?xf32>) -> tensor<?x?xf32>
     %slice = tensor.extract_slice %fill[0, 0][%s, %s][1, 1] : tensor<?x?xf32> to tensor<?x?xf32>
     gml_st.yield %slice : tensor<?x?xf32>
   }
@@ -136,7 +136,7 @@ func @dim_of_loop_input(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: t
     %inner_dim = tensor.dim %in1, %c0 : tensor<?x?xf32>
     %cast1 = arith.index_cast %inner_dim : index to i32
     %cast2 = arith.sitofp %cast1 : i32 to f32
-    %fill = linalg.fill(%cast2, %out1) : f32, tensor<?x?xf32> -> tensor<?x?xf32>
+    %fill = linalg.fill ins(%cast2 : f32) outs(%out1 : tensor<?x?xf32>) -> tensor<?x?xf32>
     gml_st.yield %fill : tensor<?x?xf32>
   }
   return %r : tensor<?x?xf32>
@@ -188,3 +188,61 @@ func @dim_of_loop_result_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?
   %r2 = tensor.dim %r, %c0 : tensor<?x?xf32>
   return %r2 : index
 }
+
+// -----
+
+func private @do(%A: tensor<?x4xf32>, %B: tensor<?xf32>) -> tensor<?xf32>
+
+func @fold_tensor_cast(%in: tensor<4x600xf32>,
+                       %out: tensor<4xf32>) -> tensor<4xf32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c600 = arith.constant 600 : index
+
+  %in_cast = tensor.cast %in : tensor<4x600xf32> to tensor<?x600xf32>
+  %out_cast = tensor.cast %out : tensor<4xf32> to tensor<?xf32>
+
+  %result = gml_st.loop (%i) = (%c0) to (%c600) step (%c4)
+      ins (%in_ = %in_cast: tensor<?x600xf32>)
+      outs (%out_ = %out_cast: tensor<?xf32>)
+      iterators["reduction"] {
+    %dim_in = tensor.dim %in_, %c0 : tensor<?x600xf32>
+    %dim_out = tensor.dim %out_, %c0 : tensor<?xf32>
+
+    %in_sub = tensor.extract_slice %in_[0, %i] [%dim_in, 4] [1, 1]
+      : tensor<?x600xf32> to tensor<?x4xf32>
+    %out_sub = tensor.extract_slice %out_[0] [%dim_out] [1]
+      : tensor<?xf32> to tensor<?xf32>
+    %result_sub = call @do(%in_sub, %out_sub):
+      (tensor<?x4xf32>, tensor<?xf32>) -> tensor<?xf32>
+    %out_update = tensor.insert_slice %result_sub into %out_[0] [%dim_out] [1]
+      : tensor<?xf32> into tensor<?xf32>
+    gml_st.yield %out_update : tensor<?xf32>
+  }
+  %result_cast = tensor.cast %result : tensor<?xf32> to tensor<4xf32>
+  return %result_cast : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @fold_tensor_cast(
+// CHECK-SAME:    %[[IN:.*]]: tensor<4x600xf32>, %[[OUT:.*]]: tensor<4xf32>)
+
+// CHECK-DAG:  %[[C600:.*]] = arith.constant 600 : index
+// CHECK-DAG:  %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+
+// CHECK:      %[[RESULT:.*]] = gml_st.loop
+// CHECK-SAME:   ins (%[[IN_:.*]] = %[[IN]]: tensor<4x600xf32>)
+// CHECK-SAME:   outs (%[[OUT_:.*]] = %[[OUT]]: tensor<4xf32>) iterators
+
+// CHECK:      %[[IN_SUB:.*]] = tensor.extract_slice
+// CHECK:      %[[IN_SUB_CAST:.*]] = tensor.cast %[[IN_SUB]]
+// CHECK-SAME:   : tensor<4x4xf32> to tensor<?x4xf32>
+
+// CHECK:      %[[OUT_SUB:.*]] = tensor.cast %[[OUT_]]
+// CHECK-SAME:   : tensor<4xf32> to tensor<?xf32>
+
+// CHECK:      %[[RESULT_SUB:.*]] = call @do(%[[IN_SUB_CAST]], %[[OUT_SUB]])
+// CHECK:      %[[RESULT_CAST:.*]] = tensor.cast %[[RESULT_SUB]]
+// CHECK:      gml_st.yield %[[RESULT_CAST]] : tensor<4xf32>
+// CHECK:    }
+// CHECK:    return %[[RESULT]] : tensor<4xf32>

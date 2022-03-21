@@ -66,6 +66,7 @@ def TFGraphDialect : Dialect {
     NodeDef.device <-> "_mlir_device"
     NodeDef.name <-> "_mlir_name"
     NodeDef.attr <-> "_output_shape"
+    NodeDef.experimental_type <-> "_mlir_fulltype"
   }];
 
   let extraClassDeclaration = [{
@@ -82,6 +83,11 @@ def TFGraphDialect : Dialect {
     }
     static constexpr StringLiteral getAssignedDeviceAttrKey() {
       return {"_mlir_assigned_device"};
+    }
+
+    StringAttr getFullTypeAttrIdentifier() const { return fulltype_key_; }
+    static constexpr StringLiteral getFullTypeAttrKey() {
+      return {"_mlir_fulltype"};
     }
 
     StringAttr getTfgNameAttrIdentifier() const { return tfg_name_key_; }
@@ -110,16 +116,15 @@ def TFGraphDialect : Dialect {
     llvm::unique_function<void(Operation *, OpAsmPrinter &)>
     getOperationPrinter(Operation *op) const override;
 
-    // Provides a hook for op interface.
-    void *getRegisteredInterfaceForOp(mlir::TypeID interface,
-                                      mlir::OperationName opName) override;
-
   private:
+    // Fallback implementation of OpAsmOpInterface.
     TFGraphOpAsmInterface *fallbackOpAsmInterface_ = nullptr;
+
     // Cached identifier for efficiency purpose.
     StringAttr name_key_;
     StringAttr device_key_;
     StringAttr assigned_device_key_;
+    StringAttr fulltype_key_;
     StringAttr tfg_name_key_;
     StringAttr tfg_tpu_replicate_key_;
     ControlType control_ty_;
@@ -127,6 +132,7 @@ def TFGraphDialect : Dialect {
 
   let cppNamespace = "::mlir::tfg";
   let hasNonDefaultDestructor = 1;
+  let hasOperationInterfaceFallback = 1;
 }
 
 //===----------------------------------------------------------------------===//

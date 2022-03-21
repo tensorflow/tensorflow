@@ -135,7 +135,7 @@ func @main(%value0: tensor<2x2xf32>, %value1: tensor<2x2xf32>) -> tensor<2x2xi1>
 // CHECK: lmhlo.fusion
 // CHECK: mhlo.compare
 // CHECK: lmhlo.terminator
-  %res = "mhlo.compare"(%value0, %value1) {comparison_direction="GT"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
+  %res = "mhlo.compare"(%value0, %value1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
   return %res : tensor<2x2xi1>
 }
 
@@ -689,7 +689,7 @@ func @main(%value0: tensor<2x2xi32>, %value1: tensor<2x2xi32>) -> tensor<2x2xi32
 func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> (tensor<5x5xi32>, tensor<5x5xf32>) {
   %res:2 = "mhlo.sort"(%key, %value) ({
   ^bb0(%a: tensor<i32>, %b: tensor<i32>, %c: tensor<f32>, %d: tensor<f32>):
-    %ret = "mhlo.compare"(%c, %d) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %ret = "mhlo.compare"(%c, %d) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%ret) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true}: (tensor<5x5xi32>, tensor<5x5xf32>) -> (tensor<5x5xi32>, tensor<5x5xf32>)
 
@@ -716,7 +716,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
       %result = "mhlo.add"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>
       "mhlo.return"(%result) : (tensor<f32>) -> ()
-    }) { fusion_kind = "kLoop" } : (tensor<f32>, tensor<f32>) -> tensor<f32>
+    }) { fusion_kind = #mhlo<"fusion_kind kLoop"> } : (tensor<f32>, tensor<f32>) -> tensor<f32>
 
   return %result : tensor<f32>
 }
@@ -741,7 +741,7 @@ func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tensor<f3
   %result:3 = "mhlo.fusion"(%1, %2, %3) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>, %arg4: tensor<f32>):
       "mhlo.return"(%arg2, %arg3, %arg4) : (tensor<f32>, tensor<f32>, tensor<f32>) -> ()
-    }) { fusion_kind = "kLoop" } : (tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
+    }) { fusion_kind = #mhlo<"fusion_kind kLoop"> } : (tensor<f32>, tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
 
   %4 = "mhlo.tuple"(%result#0, %result#1, %result#2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>, tensor<f32>>
   return %4 : tuple<tensor<f32>, tensor<f32>, tensor<f32>>
@@ -755,8 +755,7 @@ func @main(%arg0: tuple<tuple<tensor<f32>>, tensor<f32>>, %arg1: tuple<tensor<f3
 // CHECK-SAME: (%[[VAL2:.*]]: tensor<i32>, %[[VAL4:.*]]: tensor<i32>)
 // CHECK:     %[[VAL5:.*]] = mhlo.maximum %[[VAL1]], %[[VAL3]] : tensor<f32>
 // CHECK:     %[[VAL6:.*]] = mhlo.maximum %[[VAL2]], %[[VAL4:.*]] : tensor<i32>
-// CHECK:     %[[VAL7:.*]] = "mhlo.tuple"(%[[VAL5]], %[[VAL6:.*]]) {xla_shape = {{.*}}} : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-// CHECK:     "mhlo.return"(%[[VAL7:.*]]) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+// CHECK:     "mhlo.return"(%[[VAL5]], %[[VAL6:.*]]) : (tensor<f32>, tensor<i32>) -> ()
 // CHECK:   })
 func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f32>, %arg3 : tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>) {
   %result0, %result1 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({

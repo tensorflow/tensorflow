@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/determinism.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -373,6 +374,7 @@ class ExecutorState {
   ExecutorImpl::KernelStats* const kernel_stats_;
   CancellationManager* cancellation_manager_;
   CoordinationServiceAgent* coordination_service_agent_;
+  absl::optional<ManagedStackTrace> stack_trace_ = absl::nullopt;
   // If not null, use this device to schedule intra-op operation
   std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;
@@ -422,6 +424,7 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       kernel_stats_(kernel_stats),
       cancellation_manager_(args.cancellation_manager),
       coordination_service_agent_(args.coordination_service_agent),
+      stack_trace_(args.stack_trace),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
       run_all_kernels_inline_(args.run_all_kernels_inline),
@@ -717,6 +720,7 @@ void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
   params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
   params.coordination_service_agent = coordination_service_agent_;
+  params.stack_trace = stack_trace_;
   params.call_frame = call_frame_;
   params.function_library = immutable_state_.params().function_library;
   params.resource_manager = device->resource_manager();

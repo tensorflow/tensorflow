@@ -23,6 +23,7 @@ limitations under the License.
 #include "pybind11/attr.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/lib/approx_topk.h"
+#include "tensorflow/compiler/xla/client/lib/approx_topk_shape.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/lu_decomposition.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
@@ -97,6 +98,11 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("init_values"), py::arg("top_k"), py::arg("reduction_dim"),
           py::arg("comparator"), py::arg("recall_target") = 0.9,
           py::arg("aggregate_to_topk") = true,
+          py::arg("reduction_input_size_override") = -1);
+  ops.def("ApproxTopKFallback", &ApproxTopKFallback, py::arg("builder"),
+          py::arg("operands"), py::arg("init_values"), py::arg("top_k"),
+          py::arg("reduction_dim"), py::arg("comparator"),
+          py::arg("recall_target") = 0.9, py::arg("aggregate_to_topk") = true,
           py::arg("reduction_input_size_override") = -1);
   ops.def("ApproxTopKReductionOutputSize", &ApproxTopKReductionOutputSize,
           py::arg("input_size"), py::arg("rank"), py::arg("top_k"),

@@ -95,6 +95,20 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
         rgb_tf = self.evaluate(rgb)
       self.assertAllClose(rgb_tf, rgb_np)
 
+  def testRGBToHSVDataTypes(self):
+    # Test case for GitHub issue 54855.
+    data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    for dtype in [
+        dtypes.float32, dtypes.float64, dtypes.float16, dtypes.bfloat16
+    ]:
+      with self.cached_session(use_gpu=False):
+        rgb = math_ops.cast(
+            np.array(data, np.float32).reshape([2, 2, 3]) / 255., dtype=dtype)
+        hsv = image_ops.rgb_to_hsv(rgb)
+        val = image_ops.hsv_to_rgb(hsv)
+        out = self.evaluate(val)
+        self.assertAllClose(rgb, out, atol=1e-2)
+
 
 class RGBToYIQTest(test_util.TensorFlowTestCase):
 
@@ -3172,7 +3186,6 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase, parameterized.TestCase):
       resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
-  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]
@@ -3734,7 +3747,6 @@ class ResizeImagesTest(test_util.TensorFlowTestCase,
       resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
-  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]
@@ -5121,53 +5133,49 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
 
   def testInvalidShape(self):
 
-    def nms_func(box, score, iou_thres, score_thres):
-      return image_ops.non_max_suppression(box, score, iou_thres, score_thres)
+    def nms_func(box, score, max_output_size, iou_thres):
+      return image_ops.non_max_suppression(box, score, max_output_size,
+                                           iou_thres)
 
-    iou_thres = 3
-    score_thres = 0.5
+    max_output_size = 3
+    iou_thres = 0.5
 
     # The boxes should be 2D of shape [num_boxes, 4].
-    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                "Shape must be rank 2 but is rank 1"):
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       boxes = constant_op.constant([0.0, 0.0, 1.0, 1.0])
       scores = constant_op.constant([0.9])
-      nms_func(boxes, scores, iou_thres, score_thres)
+      nms_func(boxes, scores, max_output_size, iou_thres)
 
-    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                "Dimension must be 4 but is 3"):
-      boxes = constant_op.constant([[0.0, 0.0, 1.0]])
+    # Dimensions must be 4 (but is 3)
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      boxes = constant_op.constant([[0.0, 0, 1.0]])
       scores = constant_op.constant([0.9])
-      nms_func(boxes, scores, iou_thres, score_thres)
+      nms_func(boxes, scores, max_output_size, iou_thres)
 
     # The boxes is of shape [num_boxes, 4], and the scores is
-    # of shape [num_boxes]. So an error will be thrown.
-    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                "Dimensions must be equal, but are 1 and 2"):
-      boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
-      scores = constant_op.constant([0.9, 0.75])
-      nms_func(boxes, scores, iou_thres, score_thres)
+    # of shape [num_boxes]. So an error will be thrown bc 1 != 2.
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
+      boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 1.0, 1.0]])
+      scores = constant_op.constant([0.9])
+      nms_func(boxes, scores, max_output_size, iou_thres)
 
     # The scores should be 1D of shape [num_boxes].
-    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                "Shape must be rank 1 but is rank 2"):
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([[0.9]])
-      nms_func(boxes, scores, iou_thres, score_thres)
+      nms_func(boxes, scores, max_output_size, iou_thres)
 
-    # The max_output_size should be a scalar (0-D).
-    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                "Shape must be rank 0 but is rank 1"):
+    # The max output size should be a scalar (0-D).
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
-      nms_func(boxes, scores, [iou_thres], score_thres)
+      nms_func(boxes, scores, [[max_output_size]], iou_thres)
 
     # The iou_threshold should be a scalar (0-D).
-    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
-                                "Shape must be rank 0 but is rank 2"):
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
-      nms_func(boxes, scores, iou_thres, [[score_thres]])
+      nms_func(boxes, scores, max_output_size, [[iou_thres]])
 
   @test_util.xla_allow_fallback(
       "non_max_suppression with dynamic output shape unsupported.")

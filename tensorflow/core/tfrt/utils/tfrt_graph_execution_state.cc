@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -90,14 +92,13 @@ absl::flat_hash_set<std::string> FindFunctionsToOptimize(
   return functions_to_optimize;
 }
 
-}  // namespace
-
-StatusOr<std::unique_ptr<TfrtGraphExecutionState>>
-TfrtGraphExecutionState::Create(tensorflow::GraphDef graph_def,
-                                const FallbackState& fallback_state,
-                                bool run_placer_grappler_on_nested_functions) {
+// Preprocesses `graph_def`, returns the functions to optimize if
+// `run_placer_grappler_on_functions` is true.
+StatusOr<absl::flat_hash_set<std::string>> PreprocessGraph(
+    tensorflow::GraphDef& graph_def, bool run_placer_grappler_on_functions) {
   if (VLOG_IS_ON(1)) {
-    DumpGraphDefToFile("create_input_graph_def", graph_def);
+    DumpGraphDefToFile("before_generate_resource_shared_name_graph_def",
+                       graph_def);
   }
 
   TF_RETURN_IF_ERROR(tensorflow::GenerateResourceSharedNameIfEmpty(
@@ -108,10 +109,21 @@ TfrtGraphExecutionState::Create(tensorflow::GraphDef graph_def,
                        graph_def);
   }
 
-  absl::flat_hash_set<std::string> functions_to_optimize;
-  if (run_placer_grappler_on_nested_functions) {
-    functions_to_optimize = FindFunctionsToOptimize(graph_def);
+  if (run_placer_grappler_on_functions) {
+    return FindFunctionsToOptimize(graph_def);
   }
+  return absl::flat_hash_set<std::string>();
+}
+
+}  // namespace
+
+StatusOr<std::unique_ptr<TfrtGraphExecutionState>>
+TfrtGraphExecutionState::Create(tensorflow::GraphDef graph_def,
+                                const FallbackState& fallback_state,
+                                bool run_placer_grappler_on_functions) {
+  TF_ASSIGN_OR_RETURN(
+      auto functions_to_optimize,
+      PreprocessGraph(graph_def, run_placer_grappler_on_functions));
 
   // `CreateGraphExecutionState()` will preprocess the graph (e.g., apply
   // Placer to the top level graph).
@@ -121,8 +133,7 @@ TfrtGraphExecutionState::Create(tensorflow::GraphDef graph_def,
 
   return std::make_unique<TfrtGraphExecutionState>(
       std::move(graph_execution_state), fallback_state,
-      run_placer_grappler_on_nested_functions,
-      std::move(functions_to_optimize));
+      run_placer_grappler_on_functions, std::move(functions_to_optimize));
 }
 
 namespace {
@@ -271,6 +282,21 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
   result.grappler_duration = absl::Now() - grappler_start_time;
 
   return result;
+}
+
+Status TfrtGraphExecutionState::Extend(const GraphDef& graph) {
+  std::unique_ptr<GraphExecutionState> new_state;
+  absl::MutexLock lock(&graph_execution_state_mu_);
+  TF_RETURN_IF_ERROR(graph_execution_state_->Extend(graph, &new_state));
+  graph_execution_state_.swap(new_state);
+
+  auto* graph_def = graph_execution_state_->original_graph_def();
+  DCHECK_NE(graph_def, nullptr);
+  TF_ASSIGN_OR_RETURN(
+      functions_to_optimize_,
+      PreprocessGraph(*graph_def, run_placer_grappler_on_functions_));
+
+  return Status::OK();
 }
 
 namespace {
@@ -610,10 +636,13 @@ TfrtGraphExecutionState::OptimizeGraph(
   std::unique_ptr<tensorflow::Graph> optimized_graph;
   std::unique_ptr<tensorflow::FunctionLibraryDefinition> optimized_flib;
 
-  // Invoke Grappler to optimize the graph.
-  TF_RETURN_IF_ERROR(graph_execution_state_->OptimizeGraph(
-      build_graph_options, graph, &graph.flib_def(), &optimized_graph,
-      &optimized_flib));
+  {
+    absl::MutexLock lock(&graph_execution_state_mu_);
+    // Invoke Grappler to optimize the graph.
+    TF_RETURN_IF_ERROR(graph_execution_state_->OptimizeGraph(
+        build_graph_options, graph, &graph.flib_def(), &optimized_graph,
+        &optimized_flib));
+  }
 
   FunctionDefLibrary optimized_flib_proto = optimized_flib->ToProto();
   if (run_placer_grappler_on_functions_) {

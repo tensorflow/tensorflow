@@ -28,6 +28,9 @@
         optimizers, and the previous generation of optimizers will be moved to
         `tf.keras.optimizers.legacy.Optimizer`/`Adam`/etc.
     *   Added L2 unit normalization layer `tf.keras.layers.UnitNormalization`.
+    *   Added `tf.keras.regularizers.OrthogonalRegularizer`, a new regularizer
+        that encourages orthogonality between the rows (or columns) or a
+        weight matrix.
     *   Added `tf.keras.layers.RandomBrightness` layer for image preprocessing.
     *   Added APIs for switching between interactive logging and absl logging.
         By default, Keras always writes the logs to stdout. However, this is not
@@ -84,6 +87,10 @@
     *   Fixed bug in optimizers that prevented them from properly checkpointing
         slot variables when they are `ShardedVariable`s (used for training with
         `tf.distribute.experimental.ParameterServerStrategy`).
+
+* `tf.random`
+    * Added `tf.random.experimental.index_shuffle`, for shuffling a sequence
+      without materializing the sequence in memory.
 
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>

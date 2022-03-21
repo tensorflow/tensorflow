@@ -169,6 +169,11 @@ Below is the list of currently supported floating-point operators:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+#### `CONCATENATION`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Only concatenation with two, three, or four inputs is supported.
+
 #### `CONV_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -301,6 +306,11 @@ Below is the list of currently supported floating-point operators:
 #### `ROUND`
 
 * Inputs and outputs must be in 32-bit floating-point format.
+
+#### `SPLIT`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Only split into two, three, or four outputs is supported.
 
 #### `SOFTMAX`
 
@@ -492,6 +502,11 @@ Below is the list of currently supported quantized operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `CONCATENATION`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Only concatenation with two, three, or four inputs is supported.
+
 #### `CONV_2D`
 
 * Inputs and outputs must be in 8-bit quantized format (bias must be in 32-bit
@@ -579,6 +594,11 @@ Below is the list of currently supported quantized operators:
 * The first input and the output must be 4D tensors in 8-bit quantized format.
 * The second input (the input with the new shape specification) must be
   static (use `kTfLiteMmapRo` allocation type).
+
+#### `SPLIT`
+
+* Inputs and outputs must be in 8-bit quantized format.
+* Only split into two, three, or four outputs is supported.
 
 #### `SUB`
 

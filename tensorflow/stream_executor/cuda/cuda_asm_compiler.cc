@@ -35,20 +35,15 @@ namespace stream_executor {
 
 port::StatusOr<std::vector<uint8>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
-  const port::Status linking_supported = [] {
-    if (CUDA_VERSION < 11030) {
-      return port::Status::OK();
-    }
+  if (CUDA_VERSION >= 11030) {
     int driver_cuda_version;
     // Get the highest version of CUDA supported by this driver.
     RETURN_IF_CUDA_ERROR(cuDriverGetVersion(&driver_cuda_version));
-    return driver_cuda_version >= CUDA_VERSION
-               ? port::Status::OK()
-               : tensorflow::errors::Unimplemented(
-                     "CUDA version unsupported by NVIDIA driver version.");
-  }();
-
-  TF_RETURN_IF_ERROR(linking_supported);
+    if (driver_cuda_version < CUDA_VERSION) {
+      return tensorflow::errors::Unimplemented(
+          "CUDA version unsupported by NVIDIA driver version.");
+    }
+  }
 
   gpu::ScopedActivateContext activation(context);
 

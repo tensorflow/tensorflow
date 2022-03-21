@@ -322,9 +322,8 @@ def ctc_greedy_decoder(inputs,
 
   Notes:
 
-  - Regardless of the value of `merge_repeated`, if an index of a
-    given time and batch corresponds to the `blank_index`, no new
-    element is emitted.
+  - Unlike `ctc_beam_search_decoder`, `ctc_greedy_decoder` considers blanks
+    as regular elements when computing the probability of a sequence.
   - Default `blank_index` is `(num_classes - 1)`, unless overriden.
 
   If `merge_repeated` is `True`, merge repeated classes in output.
@@ -385,9 +384,12 @@ def ctc_beam_search_decoder(inputs,
                             merge_repeated=True):
   """Performs beam search decoding on the logits given in input.
 
-  **Note** The `ctc_greedy_decoder` is a special case of the
-  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
-  that decoder is faster for this special case).
+  **Note** Although in general greedy search is a special case of beam-search
+  with `top_paths=1` and `beam_width=1`, `ctc_beam_search_decoder` differs
+  from `ctc_greedy_decoder` in the treatment of blanks when computing the
+  probability of a sequence:
+    - `ctc_beam_search_decoder` treats blanks as sequence termination
+    - `ctc_greedy_decoder` treats blanks as regular elements
 
   If `merge_repeated` is `True`, merge repeated classes in the output beams.
   This means that if consecutive entries in a beam are the same,
@@ -447,9 +449,12 @@ def ctc_beam_search_decoder_v2(inputs,
                                top_paths=1):
   """Performs beam search decoding on the logits given in input.
 
-  **Note** The `ctc_greedy_decoder` is a special case of the
-  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
-  that decoder is faster for this special case).
+  **Note** Although in general greedy search is a special case of beam-search
+  with `top_paths=1` and `beam_width=1`, `ctc_beam_search_decoder` differs
+  from `ctc_greedy_decoder` in the treatment of blanks when computing the
+  probability of a sequence:
+    - `ctc_beam_search_decoder` treats blanks as sequence termination
+    - `ctc_greedy_decoder` treats blanks as regular elements
 
   Args:
     inputs: 3-D `float` `Tensor`, size `[max_time, batch_size, num_classes]`.

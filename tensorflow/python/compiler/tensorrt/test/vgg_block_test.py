@@ -56,7 +56,7 @@ class VGGBlockTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
   # TODO(b/159459919): remove this routine to disallow native segment execution.
   def setUp(self):

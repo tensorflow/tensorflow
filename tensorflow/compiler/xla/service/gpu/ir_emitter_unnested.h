@@ -478,7 +478,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
-  StatusOr<bool> CheckAndEmitHloWithTile021(mlir::Operation* op);
+  StatusOr<bool> CheckAndEmitHloWithTile021(mlir::lmhlo::FusionOp fusion);
 
   // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm.
   // This is a helper to support the implementation of
@@ -728,6 +728,14 @@ class IrEmitterUnnested : public IrEmitter {
   // __shared__ memory uses a different address space, so we cast it to
   // global address space before writing or reading.
   llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Twine name = "");
+
+  // Returns the ShapedSlices for the given operands.
+  StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
+      mlir::Operation::operand_range operands);
+
+  // Returns the buffer allocation Slice for the given operands.
+  StatusOr<std::vector<BufferAllocation::Slice>> GetSlices(
+      mlir::Operation::operand_range operands);
 };
 
 }  // namespace gpu

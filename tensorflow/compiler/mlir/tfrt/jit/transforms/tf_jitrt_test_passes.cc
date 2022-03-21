@@ -77,7 +77,7 @@ struct TestClusteringPolicyPass
 
     // Propagate constraints though the function body.
     auto result =
-        PropagateValuesConstraints(func.body(), policies, constraints,
+        PropagateValuesConstraints(func.getBody(), policies, constraints,
                                    /*resolve=*/false, /*emit_remarks=*/true);
     (void)result;
 

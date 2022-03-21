@@ -27,10 +27,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -244,7 +244,7 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
       if (input.getDefiningOp() == nullptr) continue;
 
       // TODO(b/172517537): make this work with non-PTQ case.
-      if (llvm::isa<ConstantOp, arith::ConstantOp, TFL::ConstOp>(
+      if (llvm::isa<func::ConstantOp, arith::ConstantOp, TFL::ConstOp>(
               input.getDefiningOp())) {
         // Tensors with derived scale are biases, and handled in propagation.
         if (tensor_property.use_derived_scale) continue;

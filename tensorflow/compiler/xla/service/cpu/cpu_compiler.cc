@@ -21,7 +21,9 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <stack>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -48,19 +50,22 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
@@ -68,8 +73,6 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Vector/IR/VectorOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -152,6 +155,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/operand_upcaster.h"
+#include "tensorflow/compiler/xla/service/optimization_barrier_expander.h"
 #include "tensorflow/compiler/xla/service/qr_expander.h"
 #include "tensorflow/compiler/xla/service/reduce_scatter_decomposer.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
@@ -159,9 +163,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
+#include "tensorflow/compiler/xla/service/sharding_propagation.h"
+#include "tensorflow/compiler/xla/service/sharding_remover.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
+#include "tensorflow/compiler/xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/topk_rewriter.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tree_reduction_rewriter.h"
@@ -190,7 +197,7 @@ namespace {
 void LoadMLIRDialects(mlir::MLIRContext& context) {
   context.loadDialect<mlir::arith::ArithmeticDialect,
                       mlir::linalg::LinalgDialect, mlir::scf::SCFDialect,
-                      mlir::vector::VectorDialect, mlir::StandardOpsDialect,
+                      mlir::vector::VectorDialect, mlir::func::FuncDialect,
                       mlir::AffineDialect, mlir::tensor::TensorDialect,
                       mlir::xla_framework::XLAFrameworkDialect>();
   mlir::registerLLVMDialectTranslation(context);
@@ -402,6 +409,30 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool /*is_aot_compile*/,
     LLVMTargetMachineFeatures* target_machine_features) {
+  if (module->config().use_spmd_partitioning()) {
+    HloPassPipeline spmd_pipeline("spmd-partitioner");
+    const int64_t num_partitions = module->config().num_partitions();
+    if (num_partitions > 1) {
+      // Run some IR cleanup passes before running the SPMD partitioning
+      // passes.
+      spmd_pipeline.AddInvariantChecker<HloVerifier>(
+          /*layout_sensitive=*/false,
+          /*allow_mixed_precision=*/false);
+      spmd_pipeline.AddPass<CallInliner>();
+      spmd_pipeline.AddPass<ZeroSizedHloElimination>();
+      spmd_pipeline.AddPass<ConditionalCanonicalizer>();
+
+      spmd_pipeline.AddPass<ShardingPropagation>(/*is_spmd=*/true);
+      spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
+          num_partitions, module->config().replica_count());
+    } else {
+      // Remove redundant sharding ops when partition_count == 1.
+      spmd_pipeline.AddPass<ShardingRemover>();
+      spmd_pipeline.AddPass<HloDCE>();
+    }
+    TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
+  }
+
   HloPassPipeline pipeline("HLO passes through layout assignment");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
@@ -531,11 +562,16 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
 
+  pipeline.AddPass<OptimizationBarrierExpander>();
+  pipeline.AddPass<TupleSimplifier>();
+
   // Layout assignment uses alias analysis, which requires the call graph to be
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
+  ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(), target_machine_features);
+      module->mutable_entry_computation_layout(), target_machine_features,
+      &layout_constraints);
 
   return pipeline.Run(module).status();
 }
@@ -824,6 +860,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Transform HLO operations to Linalg.
+  pm.addPass(mlir::mhlo::createLegalizeToMemrefPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
 
@@ -844,6 +881,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgBufferizePass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createConvertLinalgToLoopsPass());
   pm.addPass(mlir::createInlinerPass());
@@ -894,13 +932,14 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
   pm.addNestedPass<mlir::FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::memref::createExpandOpsPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createLowerAffinePass());
   pm.addPass(mlir::mhlo::CreateLegalizeXLAFrameworkToLLVMPass());
   pm.addPass(mlir::createMemRefToLLVMPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createConvertMathToLLVMPass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::arith::createConvertArithmeticToLLVMPass());
-  pm.addPass(mlir::createLowerToLLVMPass());
+  pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   if (pm.run(mlir_module).failed()) {
     mlir_module->dump();
@@ -951,7 +990,7 @@ StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
   auto result_mapping = builder.getI32IntegerAttr(
       static_cast<int32_t>(output_allocation->index()));
   mlir_module->walk([&](mlir::FuncOp f) {
-    if (f.sym_name() == "main") {
+    if (f.getSymName() == "main") {
       for (auto& p : llvm::enumerate(operand_mapping)) {
         f.setArgAttr(p.index(), "xla_framework.input_mapping", p.value());
       }
@@ -964,6 +1003,68 @@ StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
     }
   });
   return mlir_module;
+}
+
+struct ComputationToEmit {
+  HloComputation* computation;
+
+  // Are we emitting this computation with fast-math reassociation enabled?
+  // We enable reassociation for reductions because it has a significant
+  // performance impact.
+  bool allow_reassociation;
+
+  bool operator==(const ComputationToEmit& other) const {
+    return computation == other.computation &&
+           allow_reassociation == other.allow_reassociation;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ComputationToEmit& c) {
+    return H::combine(std::move(h), c.computation, c.allow_reassociation);
+  }
+};
+
+std::vector<ComputationToEmit> SubcomputationEmissionOrder(
+    HloComputation* root) {
+  absl::flat_hash_set<ComputationToEmit> visited;
+  std::vector<ComputationToEmit> postorder;
+
+  // agenda of (node, leave) pairs.
+  std::stack<std::pair<ComputationToEmit, bool>> agenda;
+  agenda.emplace(ComputationToEmit{root, false}, false);
+  while (!agenda.empty()) {
+    ComputationToEmit c;
+    bool leave;
+    std::tie(c, leave) = agenda.top();
+    agenda.pop();
+
+    if (leave) {
+      postorder.push_back(c);
+      continue;
+    }
+
+    if (visited.insert(c).second) {
+      agenda.emplace(c, true);
+      for (auto* instruction : c.computation->instructions()) {
+        bool allow_reassociation =
+            instruction->opcode() == HloOpcode::kAllReduce ||
+            instruction->opcode() == HloOpcode::kReduce ||
+            instruction->opcode() == HloOpcode::kReduceWindow;
+        for (auto it = instruction->called_computations().rbegin();
+             it != instruction->called_computations().rend(); ++it) {
+          HloComputation* called_computation = *it;
+          ComputationToEmit callee{
+              called_computation, c.allow_reassociation || allow_reassociation};
+          if (!visited.contains(callee)) {
+            agenda.emplace(callee, false);
+          }
+        }
+      }
+    }
+  }
+  DCHECK(!postorder.empty() && postorder.back().computation == root);
+  postorder.pop_back();
+  return postorder;
 }
 
 }  // namespace
@@ -1064,17 +1165,18 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
-  for (auto embedded_computation :
-       entry_computation->MakeEmbeddedComputationsList()) {
-    if (embedded_computation->IsFusionComputation()) {
+  for (ComputationToEmit subcomputation :
+       SubcomputationEmissionOrder(entry_computation)) {
+    if (subcomputation.computation->IsFusionComputation()) {
       continue;
     }
     TF_RETURN_IF_ERROR(
         ir_emitter
             .EmitComputation(
-                embedded_computation, embedded_computation->name(),
+                subcomputation.computation, subcomputation.computation->name(),
                 /*is_top_level_computation=*/false,
-                schedule.sequence(embedded_computation).instructions())
+                schedule.sequence(subcomputation.computation).instructions(),
+                subcomputation.allow_reassociation)
             .status());
   }
   std::string function_name_prefix = entry_computation->name().empty()
@@ -1084,7 +1186,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                       ir_emitter.EmitComputation(
                           entry_computation, function_name_prefix,
                           /*is_top_level_computation=*/true,
-                          schedule.sequence(entry_computation).instructions()));
+                          schedule.sequence(entry_computation).instructions(),
+                          /*allow_reassociation=*/false));
 
   std::string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
@@ -1318,17 +1421,19 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
       TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
-      for (auto embedded_computation :
-           computation->MakeEmbeddedComputationsList()) {
-        if (embedded_computation->IsFusionComputation()) {
+      for (ComputationToEmit subcomputation :
+           SubcomputationEmissionOrder(computation)) {
+        if (subcomputation.computation->IsFusionComputation()) {
           continue;
         }
         TF_RETURN_IF_ERROR(
             ir_emitter
-                .EmitComputation(
-                    embedded_computation, embedded_computation->name(),
-                    /*is_top_level_computation=*/false,
-                    schedule.sequence(embedded_computation).instructions())
+                .EmitComputation(subcomputation.computation,
+                                 subcomputation.computation->name(),
+                                 /*is_top_level_computation=*/false,
+                                 schedule.sequence(subcomputation.computation)
+                                     .instructions(),
+                                 subcomputation.allow_reassociation)
                 .status());
       }
       const std::string& entry_point_name = options.entry_point_name();
@@ -1336,7 +1441,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                           ir_emitter.EmitComputation(
                               computation, entry_point_name,
                               /*is_top_level_computation=*/true,
-                              schedule.sequence(computation).instructions()));
+                              schedule.sequence(computation).instructions(),
+                              /*allow_reassociation=*/false));
 
       CHECK(entry_function->getName() == entry_point_name);
     }

@@ -116,6 +116,16 @@ class SignatureRunner {
   TfLiteStatus ResizeInputTensor(const char* input_name,
                                  const std::vector<int>& new_size);
 
+  /// Change the dimensionality of a given tensor. This is only acceptable for
+  /// tensor indices that are inputs or variables. Only unknown dimensions can
+  /// be resized with this function. Unknown dimensions are indicated as `-1` in
+  /// the `dims_signature` attribute of a TfLiteTensor.
+  /// Returns status of failure or success. Note that this doesn't actually
+  /// resize any existing buffers. A call to AllocateTensors() is required to
+  /// change the tensor input buffer.
+  TfLiteStatus ResizeInputTensorStrict(const char* input_name,
+                                       const std::vector<int>& new_size);
+
   /// Updates allocations for all tensors, related to the given signature.
   TfLiteStatus AllocateTensors() { return subgraph_->AllocateTensors(); }
 

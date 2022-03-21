@@ -267,6 +267,7 @@ class Dimension(object):
     """The value of this dimension, or None if it is unknown."""
     return self._value
 
+  # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, other):
     """Returns true if `other` is compatible with this Dimension.
 
@@ -1382,7 +1383,7 @@ class TensorShape(trace.TraceType):
     >>> p_a.__eq__(p_b)
     True
     >>> t_a.__eq__(p_a)
-    True
+    False
     >>> p_a.__eq__(p_c)
     False
 

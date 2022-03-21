@@ -138,12 +138,11 @@ std::string StridedSlice::GetStridedSliceCode(const OperationDef& op_def,
     for (int i = 0; i < 4; ++i) {
       c += "  {\n";
       const std::string channel = "(S * 4 + " + std::to_string(i) + ")";
-      c += "    int s_ch = " + channel + " * args.stride_z + args.offset_z;\n";
-      c += "    int s_z = min(s_ch >> 2, args.src_tensor.Slices() - 1);\n";
-      c += "    int s_z_rem = s_ch & 3;\n";
-      c += "    FLT4 t = args.src_tensor.Read(s_x, s_y, s_z);\n";
-      c += "    result." + postfixes[i] +
-           " = SELECT_BY_INDEX_FROM_FLT4(t, s_z_rem);\n";
+      c += "    int s_ch = min(" + channel +
+           " * args.stride_z + args.offset_z, args.src_tensor.Channels() - "
+           "1);\n";
+      c += "    args.src_tensor.ReadPerChannel(result." + postfixes[i] +
+           ", s_x, s_y, s_ch);\n";
       c += "  }\n";
     }
   }

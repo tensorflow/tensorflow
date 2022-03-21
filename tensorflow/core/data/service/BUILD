@@ -432,6 +432,7 @@ cc_library(
         "grpc_util.h",
     ],
     deps = [
+        ":common",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
     ] + tf_grpc_cc_dependencies(),

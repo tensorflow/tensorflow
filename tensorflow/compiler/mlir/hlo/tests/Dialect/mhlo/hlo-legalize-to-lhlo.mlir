@@ -119,9 +119,9 @@ func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
 // CHECK-LABEL: func @compare
 func @compare(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xi1> {
   %result = "mhlo.compare"(%lhs, %rhs)
-      {comparison_direction = "EQ"}
+      {comparison_direction = #mhlo<"comparison_direction EQ">}
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
-  // CHECK: "lmhlo.compare"(%{{.*}}, %{{.*}}, %{{.*}}) {comparison_direction = "EQ"}
+  // CHECK: "lmhlo.compare"(%{{.*}}, %{{.*}}, %{{.*}}) {comparison_direction = #mhlo<"comparison_direction EQ">}
   return %result : tensor<2x2xi1>
 }
 
@@ -546,8 +546,7 @@ func @reduce_multiple_operand(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi32>, %a
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
     %1 = mhlo.add %arg4, %arg6 : tensor<f32>
     %2 = mhlo.add %arg5, %arg7 : tensor<i32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<i32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} 
     : (tensor<1x8xf32>, tensor<1x8xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
   return %0#0, %0#1 : tensor<1xf32>, tensor<1xi32>
@@ -599,8 +598,7 @@ func @reduce_window_multiple_operand(%arg0: tensor<1x17x17x64xf32>, %arg1: tenso
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>):
     %1 = mhlo.add %arg4, %arg6 : tensor<f32>
     %2 = mhlo.add %arg5, %arg7 : tensor<i32>
-    %3 = "mhlo.tuple"(%1, %2) : (tensor<f32>, tensor<i32>) -> tuple<tensor<f32>, tensor<i32>>
-    "mhlo.return"(%3) : (tuple<tensor<f32>, tensor<i32>>) -> ()
+    "mhlo.return"(%1, %2) : (tensor<f32>, tensor<i32>) -> ()
   }) {window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>, window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>}
     : (tensor<1x17x17x64xf32>, tensor<1x17x17x64xi32>, tensor<f32>, tensor<i32>) -> (tensor<1x8x8x64xf32>, tensor<1x8x8x64xi32>)
   return %0#0, %0#1 : tensor<1x8x8x64xf32>, tensor<1x8x8x64xi32>

@@ -82,8 +82,7 @@ func @parent_is_graph() {
 
 // Check that a tf_executor.fetch is terminating a tf_executor.graph (verifier)
 func @graph_with_invalid_terminator(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-// expected-error@+2 {{'tf_executor.graph' op expects regions to end with 'tf_executor.fetch', found 'tf_executor.yield'}}
-// expected-note@+1 {{in custom textual format, the absence of terminator implies 'tf_executor.fetch'}}
+// expected-error@+2 {{'tf_executor.yield' op invalid tf_executor.graph terminator, fetch expected}}
   "tf_executor.graph" () ({
     tf_executor.yield
   }) : () -> ()
@@ -250,8 +249,7 @@ func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
   tf_executor.graph {
     "tf_executor.island"() ({
-// expected-error@-1 {{'tf_executor.island' op expects regions to end with 'tf_executor.yield', found 'std.return'}}
-// expected-note@-2 {{in custom textual format, the absence of terminator implies 'tf_executor.yield'}}
+// expected-error@+1 {{'func.return' op invalid tf_executor.island terminator, yield expected}}
       return
     }) : () -> (!tf_executor.control)
   }

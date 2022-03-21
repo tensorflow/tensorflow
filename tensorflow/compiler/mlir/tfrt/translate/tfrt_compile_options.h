@@ -43,10 +43,13 @@ struct TfrtCompileOptions {
 
   // If true, native ops will be used if they are implemented in TFRT. If
   // false, all ops are using fallback.
-  bool enable_native_ops = true;
+  //
+  // This option is experimental. Native ops are still under development and
+  // likely to cause performance issue when enabled.
+  bool enable_native_ops = false;
 
   // If true, run grappler passes before compiling.
-  bool enable_grappler = false;
+  bool enable_grappler = true;
 
   // Force data format for all layout sensitive operations, eg. setting it to
   // "NHWC" will changes all data format in the graph to "NHWC" by inserting
@@ -85,6 +88,10 @@ struct TfrtCompileOptions {
   // TODO(tfrt-devs): Set the default value to true after testing as it is
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
+
+  // If true, tf.While's iterations will be parallelized on a best-effort
+  // basis. This is currently experimental.
+  bool enable_while_parallel_iterations = false;
 
   // A set of flags to control auto-fusion: automatic clustering of Tensorflow
   // operations and compiling outlined regions using MLIR based compilation

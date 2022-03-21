@@ -29,6 +29,7 @@
 #include "tfrt/gpu/kernels/gpu_ops.h"  // from @tf_runtime
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/cudnn_wrapper.h"  // from @tf_runtime
+#include "tfrt/gpu/wrapper/dnn_wrapper.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -134,7 +135,7 @@ std::vector<int> CheckedNarrowing(absl::Span<const int64_t> wide_span) {
 template <class ConvolutionOpType>
 FailureOr<Value> CreateLegacyTensorDescriptor(
     ConvolutionOpType op, const se::dnn::BatchDescriptor& batch_descriptor,
-    cudnnDataType_t elem_type, Value chain,
+    tfrt::gpu::wrapper::DnnDataType elem_type, Value chain,
     ConversionPatternRewriter& rewriter) {
   std::vector<int64_t> dims64, strides64;
   switch (batch_descriptor.layout()) {
@@ -170,7 +171,7 @@ FailureOr<Value> CreateLegacyTensorDescriptor(
   return rewriter
       .create<tfrt::gpu::DnnCreateTensorDescriptorOp>(
           op.getLoc(), elem_type, rewriter.getI32ArrayAttr(dims),
-          rewriter.getI32ArrayAttr(strides), chain)
+          rewriter.getI32ArrayAttr(strides))
       .getResult();
 }
 
@@ -183,7 +184,7 @@ FailureOr<Value> CreateLegacyFusedConvOp(
     ConversionPatternRewriter& rewriter) {
   // Create bias descriptor.
   se::dnn::BatchDescriptor bias_descriptor = GetBiasDescriptor(config);
-  cudnnDataType_t bias_type = MlirTypeToCudnnDataType(
+  cudnnDataType_t bias_type = MlirTypeToDnnDataType(
       GetMemRefElementType(op.bias()), bias_descriptor.layout());
   FailureOr<Value> bias_desc_or = CreateLegacyTensorDescriptor(
       op, bias_descriptor, bias_type, chain, rewriter);
@@ -200,9 +201,10 @@ FailureOr<Value> CreateLegacyFusedConvOp(
                                              : CUDNN_ACTIVATION_IDENTITY;
   auto activation_desc =
       rewriter.create<tfrt::gpu::DnnCreateActivationDescriptorOp>(
-          loc, coefficient, activaton_mode, CUDNN_NOT_PROPAGATE_NAN, chain);
+          loc, coefficient, activaton_mode, CUDNN_NOT_PROPAGATE_NAN);
 
-  cudnnDataType_t scale_type = MlirTypeToCudnnDataType(mlir_scale_type);
+  tfrt::gpu::wrapper::DnnDataType scale_type =
+      MlirTypeToDnnDataType(mlir_scale_type);
   auto alpha1 = MakeScalingFactorConstant(
       rewriter, loc, mlir_scale_type, llvm::APFloat(config.conv_result_scale),
       llvm::APFloat(0.0));
@@ -225,9 +227,9 @@ Value CreateBuildUnfusedConvPlanOp(Value input, Value output, Value handle,
                                    const xla::gpu::GpuConvConfig& config,
                                    cudnnBackendDescriptorType_t backend_type,
                                    ConversionPatternRewriter& rewriter) {
-  cudnnDataType_t input_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType input_type = MlirTypeToDnnDataType(
       GetMemRefElementType(input), config.input_descriptor.layout());
-  cudnnDataType_t output_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType output_type = MlirTypeToDnnDataType(
       GetMemRefElementType(output), config.output_descriptor.layout());
 
   int vector_size, vector_dim;
@@ -302,11 +304,11 @@ Value CreateBuildFusedConvPlanOp(Value input, Value output, Value bias,
   // aren't even a thing in cuDNN.
   bias_descriptor.set_layout(config.output_descriptor.layout());
 
-  cudnnDataType_t input_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType input_type = MlirTypeToDnnDataType(
       GetMemRefElementType(input), config.input_descriptor.layout());
-  cudnnDataType_t output_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType output_type = MlirTypeToDnnDataType(
       GetMemRefElementType(output), config.output_descriptor.layout());
-  cudnnDataType_t bias_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType bias_type = MlirTypeToDnnDataType(
       GetMemRefElementType(bias), bias_descriptor.layout());
 
   int vector_size, vector_dim;
@@ -413,15 +415,19 @@ Value CreateRunConvolutionOp(lmhlo_gpu::ConvForwardOpAdaptor adaptor,
 FailureOr<Value> CreateLegacyConvOp(
     lmhlo_gpu::ConvForwardOp op, lmhlo_gpu::ConvForwardOpAdaptor adaptor,
     Type mlir_scale_type, Value handle, Value stream, Value input_desc,
-    Value output_desc, Value filter_desc, Value conv_desc, Value algorithm,
+    Value output_desc, Value filter_desc, Value conv_desc, int64_t algorithm,
     Value chain, const xla::gpu::GpuConvConfig& config,
     ConversionPatternRewriter& rewriter) {
-  cudnnDataType_t scale_type = MlirTypeToCudnnDataType(mlir_scale_type);
+  tfrt::gpu::wrapper::DnnDataType scale_type =
+      MlirTypeToDnnDataType(mlir_scale_type);
+  Value algo = rewriter.create<tfrt::gpu::DnnConvolutionForwardAlgorithmOp>(
+      op.getLoc(), tfrt::gpu::wrapper::DnnConvFwdAlgo(
+                       algorithm, tfrt::gpu::wrapper::Platform::CUDA));
   return rewriter
       .create<tfrt::gpu::DnnConvolutionForwardOp>(
           op.getLoc(), handle, stream, scale_type, input_desc, adaptor.input(),
-          filter_desc, adaptor.filter(), conv_desc, algorithm,
-          adaptor.scratch(), output_desc, adaptor.output(), chain)
+          filter_desc, adaptor.filter(), conv_desc, algo, adaptor.scratch(),
+          output_desc, adaptor.output(), chain)
       .getResult();
 }
 
@@ -455,15 +461,20 @@ FailureOr<Value> CreateLegacyConvOp(
     lmhlo_gpu::ConvBackwardInputOp op,
     lmhlo_gpu::ConvBackwardInputOpAdaptor adaptor, Type mlir_scale_type,
     Value handle, Value stream, Value input_desc, Value output_desc,
-    Value filter_desc, Value conv_desc, Value algorithm, Value chain,
+    Value filter_desc, Value conv_desc, int64_t algorithm, Value chain,
     const xla::gpu::GpuConvConfig& config,
     ConversionPatternRewriter& rewriter) {
-  cudnnDataType_t scale_type = MlirTypeToCudnnDataType(mlir_scale_type);
+  tfrt::gpu::wrapper::DnnDataType scale_type =
+      MlirTypeToDnnDataType(mlir_scale_type);
+  Value algo =
+      rewriter.create<tfrt::gpu::DnnConvolutionBackwardDataAlgorithmOp>(
+          op.getLoc(), tfrt::gpu::wrapper::DnnConvBwdDataAlgo(
+                           algorithm, tfrt::gpu::wrapper::Platform::CUDA));
   return rewriter
       .create<tfrt::gpu::DnnConvolutionBackwardDataOp>(
           op.getLoc(), handle, stream, scale_type, filter_desc,
-          adaptor.filter(), output_desc, adaptor.d_output(), conv_desc,
-          algorithm, adaptor.scratch(), input_desc, adaptor.d_input(), chain)
+          adaptor.filter(), output_desc, adaptor.d_output(), conv_desc, algo,
+          adaptor.scratch(), input_desc, adaptor.d_input(), chain)
       .getResult();
 }
 
@@ -497,15 +508,20 @@ FailureOr<Value> CreateLegacyConvOp(
     lmhlo_gpu::ConvBackwardFilterOp op,
     lmhlo_gpu::ConvBackwardFilterOpAdaptor adaptor, Type mlir_scale_type,
     Value handle, Value stream, Value input_desc, Value output_desc,
-    Value filter_desc, Value conv_desc, Value algorithm, Value chain,
+    Value filter_desc, Value conv_desc, int64_t algorithm, Value chain,
     const xla::gpu::GpuConvConfig& config,
     ConversionPatternRewriter& rewriter) {
-  cudnnDataType_t scale_type = MlirTypeToCudnnDataType(mlir_scale_type);
+  tfrt::gpu::wrapper::DnnDataType scale_type =
+      MlirTypeToDnnDataType(mlir_scale_type);
+  Value algo =
+      rewriter.create<tfrt::gpu::DnnConvolutionBackwardFilterAlgorithmOp>(
+          op.getLoc(), tfrt::gpu::wrapper::DnnConvBwdFilterAlgo(
+                           algorithm, tfrt::gpu::wrapper::Platform::CUDA));
   return rewriter
       .create<tfrt::gpu::DnnConvolutionBackwardFilterOp>(
           op.getLoc(), handle, stream, scale_type, input_desc, adaptor.input(),
-          output_desc, adaptor.d_output(), conv_desc, algorithm,
-          adaptor.scratch(), filter_desc, adaptor.d_filter(), chain)
+          output_desc, adaptor.d_output(), conv_desc, algo, adaptor.scratch(),
+          filter_desc, adaptor.d_filter(), chain)
       .getResult();
 }
 
@@ -548,13 +564,15 @@ FailureOr<Value> CreateLegacyConvOp(
     lmhlo_gpu::ConvForwardFusedOp op,
     lmhlo_gpu::ConvForwardFusedOpAdaptor adaptor, Type mlir_scale_type,
     Value handle, Value stream, Value input_desc, Value output_desc,
-    Value filter_desc, Value conv_desc, Value algorithm, Value chain,
+    Value filter_desc, Value conv_desc, int64_t algorithm, Value chain,
     const xla::gpu::GpuConvConfig& config,
     ConversionPatternRewriter& rewriter) {
-  return CreateLegacyFusedConvOp(op, adaptor, mlir_scale_type, handle, stream,
-                                 input_desc, output_desc, filter_desc,
-                                 conv_desc, algorithm, adaptor.output(), chain,
-                                 config, rewriter);
+  Value algo = rewriter.create<tfrt::gpu::DnnConvolutionForwardAlgorithmOp>(
+      op.getLoc(), tfrt::gpu::wrapper::DnnConvFwdAlgo(
+                       algorithm, tfrt::gpu::wrapper::Platform::CUDA));
+  return CreateLegacyFusedConvOp(
+      op, adaptor, mlir_scale_type, handle, stream, input_desc, output_desc,
+      filter_desc, conv_desc, algo, adaptor.output(), chain, config, rewriter);
 }
 
 // Specialization for convolution forward fused side input
@@ -604,15 +622,18 @@ FailureOr<Value> CreateLegacyConvOp(
     lmhlo_gpu::ConvForwardFusedSideInputOp op,
     lmhlo_gpu::ConvForwardFusedSideInputOpAdaptor adaptor, Type mlir_scale_type,
     Value handle, Value stream, Value input_desc, Value output_desc,
-    Value filter_desc, Value conv_desc, Value algorithm, Value chain,
+    Value filter_desc, Value conv_desc, int64_t algorithm, Value chain,
     const xla::gpu::GpuConvConfig& config,
     ConversionPatternRewriter& rewriter) {
   Value side_input = config.fusion->side_input_scale == 0
                          ? adaptor.output()
                          : adaptor.side_input();
+  Value algo = rewriter.create<tfrt::gpu::DnnConvolutionForwardAlgorithmOp>(
+      op.getLoc(), tfrt::gpu::wrapper::DnnConvFwdAlgo(
+                       algorithm, tfrt::gpu::wrapper::Platform::CUDA));
   return CreateLegacyFusedConvOp(
       op, adaptor, mlir_scale_type, handle, stream, input_desc, output_desc,
-      filter_desc, conv_desc, algorithm, side_input, chain, config, rewriter);
+      filter_desc, conv_desc, algo, side_input, chain, config, rewriter);
 }
 
 template <class ConvolutionOpType, class OpAdaptor>
@@ -620,11 +641,11 @@ FailureOr<Value> LegacyConvolutionRewritePattern(
     ConvolutionOpType op, OpAdaptor adaptor, Value chain, Value stream,
     const xla::gpu::GpuConvConfig& config,
     ConversionPatternRewriter& rewriter) {
-  cudnnDataType_t input_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType input_type = MlirTypeToDnnDataType(
       GetMemRefElementType(GetInput(op)), config.input_descriptor.layout());
-  cudnnDataType_t output_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType output_type = MlirTypeToDnnDataType(
       GetMemRefElementType(GetOutput(op)), config.output_descriptor.layout());
-  cudnnDataType_t filter_type = MlirTypeToCudnnDataType(
+  tfrt::gpu::wrapper::DnnDataType filter_type = MlirTypeToDnnDataType(
       GetMemRefElementType(GetInput(op)), config.filter_descriptor.layout());
 
   // Create input descriptor.
@@ -666,11 +687,12 @@ FailureOr<Value> LegacyConvolutionRewritePattern(
   std::copy(spatial_dims.begin(), spatial_dims.end(), dims.begin() + 2);
   auto loc = op.getLoc();
   Value filter_desc = rewriter.create<tfrt::gpu::DnnCreateFilterDescriptorOp>(
-      loc, filter_type, tensor_format, rewriter.getI32ArrayAttr(dims), chain);
+      loc, filter_type, tensor_format, rewriter.getI32ArrayAttr(dims));
 
   // Create convolution descriptor.
   mlir::Type mlir_compute_type = GetMemRefElementType(GetInput(op));
-  cudnnDataType_t compute_type = MlirTypeToCudnnDataType(mlir_compute_type);
+  tfrt::gpu::wrapper::DnnDataType compute_type =
+      MlirTypeToDnnDataType(mlir_compute_type);
   cudnnConvolutionMode_t conv_mode =
       config.conv_desc.convolution_not_crosscorr() ? CUDNN_CONVOLUTION
                                                    : CUDNN_CROSS_CORRELATION;
@@ -687,19 +709,17 @@ FailureOr<Value> LegacyConvolutionRewritePattern(
       rewriter.create<tfrt::gpu::DnnCreateConvolutionDescriptorOp>(
           loc, compute_type, conv_mode, math_type,
           rewriter.getI32ArrayAttr(padding), rewriter.getI32ArrayAttr(strides),
-          rewriter.getI32ArrayAttr(dilations), chain);
+          rewriter.getI32ArrayAttr(dilations));
 
   // Create convolution op.
   mlir::Type mlir_scale_type =
       mlir_compute_type.isF64() ? rewriter.getF64Type() : rewriter.getF32Type();
   Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
   Value handle = rewriter.create<tfrt::gpu::DnnCreateOp>(loc, context);
-  Value algorithm = rewriter.create<tfrt::compiler::ConstantUI64Op>(
-      loc, config.algorithm.algo_id());
-  auto out_chain_or =
-      CreateLegacyConvOp(op, adaptor, mlir_scale_type, handle, stream,
-                         *input_desc_or, *output_desc_or, filter_desc,
-                         conv_desc, algorithm, chain, config, rewriter);
+  auto out_chain_or = CreateLegacyConvOp(
+      op, adaptor, mlir_scale_type, handle, stream, *input_desc_or,
+      *output_desc_or, filter_desc, conv_desc, config.algorithm.algo_id(),
+      chain, config, rewriter);
   if (succeeded(out_chain_or)) {
     rewriter.eraseOp(op);
   }

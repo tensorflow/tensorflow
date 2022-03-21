@@ -36,10 +36,12 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
             &grpc::CoordinationService::AsyncService::Request##method,         \
             &GrpcCoordinationServiceImpl::method##Handler, false);             \
   } while (0)
-  ENQUEUE_REQUEST(RegisterWorker);
+  ENQUEUE_REQUEST(RegisterTask);
   ENQUEUE_REQUEST(WaitForAllTasks);
+  ENQUEUE_REQUEST(ShutdownTask);
+  ENQUEUE_REQUEST(ResetTask);
   ENQUEUE_REQUEST(Heartbeat);
-  ENQUEUE_REQUEST(ReportErrorToAgent);
+  ENQUEUE_REQUEST(ReportErrorToTask);
   ENQUEUE_REQUEST(ReportErrorToService);
   ENQUEUE_REQUEST(InsertKeyValue);
   ENQUEUE_REQUEST(GetKeyValue);

@@ -81,12 +81,14 @@ py_strict_library(
     deps = [
         ":export_output",
         ":mode_keys",
+        "//tensorflow/python:op_selector",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/saved_model:utils",
         "@six_archive//:six",
     ],
 )
@@ -106,6 +108,7 @@ py_strict_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:signature_def_utils",
     ],

@@ -26,7 +26,7 @@ func @main(%serialized: tensor<32x!tf_type.string>) -> (tensor<?x2xi64>) attribu
   %sparse_keys = "tf.Const"() {device = "/device:CPU:0", dtype = !tf_type.string, value = dense<""> : tensor<2x!tf_type.string>} : () -> tensor<2x!tf_type.string>
 
   // CHECK: [[fallback_serialized:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[serialized]]
-  // CHECK-SAME: device = "/device:CPU:0"
+  // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:CPU:0"
   // CHECK: [[outputs:%.*]]:8 = tfrt_fallback_async.executeop key(0) cost({{.*}}) device("/device:CPU:0") "tf.ParseExampleV2"
   // CHECK-SAME: ([[fallback_serialized]]
   // CHECK-NOT: device
@@ -64,9 +64,9 @@ func @no_native(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<tensor<1
 
 // CHECK-LABEL: func @gpu_device
 func @gpu_device(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<3x3xf32> {
-  // CHECK-NOT: tfrt_fallback_async.executeop
-  // CHECK: corert.executeop.seq({{.*}}, {{.*}}) "tf.ReadVariableOp"
-  // CHECK: corert.executeop({{.*}}) "tf.MatMul"
+  // CHECK-NOT: corert.executeop
+  // CHECK: tfrt_fallback_async.executeop.seq({{.*}}) key({{.*}}) cost({{.*}}) device("/device:GPU:0") "tf.ReadVariableOp"
+  // CHECK: tfrt_fallback_async.executeop key({{.*}}) cost({{.*}}) device("/device:GPU:0") "tf.MatMul"
   %0 = "tf.ReadVariableOp"(%arg1) {device = "/device:GPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
   %1 = "tf.MatMul"(%arg0, %0) {T = f32, device = "/device:GPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
   return %1 : tensor<3x3xf32>

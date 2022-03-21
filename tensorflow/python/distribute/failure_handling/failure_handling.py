@@ -24,6 +24,7 @@ import threading
 import time
 
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute.failure_handling import gce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -39,6 +40,7 @@ _ACKNOWLEDGE_KEY = 'RECEIVED_SIGNAL'
 _ITERATION_VARIABLE = 'checkpointed_runs'
 # TODO(wxinyi): Move the hardcoded 42 to an internal module.
 _RESTARTABLE_EXIT_CODE = 42
+_STOP_WATCHING_CLUSTER_VALUE = 'STOP_WATCHER'
 
 
 def _mwms_write_checkpoint_dir(checkpoint_dir, task_type, task_id,
@@ -174,11 +176,104 @@ class CoordinatedCheckpointManager(object):
     # step number to save a checkpoint has been aligned.
     self._received_sigterm_and_step = threading.Event()
 
-    # TODO(wxinyi): Enforce that only one instance of this class is created
-    # per program.
-    # TODO(wxinyi): make the thread non-daemon.
-    threading.Thread(target=self._wait_for_signal, daemon=True).start()
+    # When training is interrupted, we explicitly call the cleanup methods for
+    # the thread watching for local worker's termination signal and the thread
+    # watching for clusterwise information before we save a checkpoint and exit.
+    # In the final chapter of the training where no interruption is encountered,
+    # we rely on __del__ to clean up. However, there is no guarantee when or
+    # whether __del__ is executed, thus we make the threads daemon to avoid it
+    # preventing program from exit.
+    self._cluster_wise_termination_watcher_thread = threading.Thread(
+        target=self._wait_for_signal,
+        name='PeerTerminationWatcher-%s' % self._id_in_cluster,
+        daemon=True)
+    self._cluster_wise_termination_watcher_thread.start()
+
+    self._poll_gce_signal_thread = None
+    self._platform_device = gce_util.detect_platform()
+    if self._platform_device is gce_util.PlatformDevice.GCE_GPU:
+      self._start_polling_for_gce_signal()
+      self._exit_code = gce_util._RESTARTABLE_EXIT_CODE
+    elif self._platform_device is gce_util.PlatformDevice.INTERNAL:
+      self._start_watching_for_signal()
+      self._exit_code = _RESTARTABLE_EXIT_CODE
+    else:
+      raise NotImplementedError('CoordinatedCheckpointManager is only supported'
+                                ' for MultiWorkerMirroredStrategy with GPU.')
+
+  def _start_watching_for_signal(self):
     signal.signal(signal.SIGTERM, self._sigterm_handler_fn)
+
+  def _start_polling_for_gce_signal(self):
+    self._poll_gce_signal_thread_should_stop = threading.Event()
+    self._poll_gce_signal_thread = threading.Thread(
+        target=self._poll_gce_signal,
+        name='WorkerTerminationSignalWatcher-%s' % self._id_in_cluster,
+        daemon=True)
+    self._poll_gce_signal_thread.start()
+    logging.info('Start polling for termination signal.')
+
+  def _poll_gce_signal(self):
+    """Poll maintenance notice from GCE and notify peers if receiving one."""
+    while True:
+      if self._poll_gce_signal_thread_should_stop.is_set():
+        return
+      if gce_util.signal_polling_fn():
+        # For the countdown.
+        self._signal_receipt_time = time.time()
+        break
+      time.sleep(1)
+    try:
+      context.context().set_config_key_value(_PREEMPTION_KEY,
+                                             self._id_in_cluster)
+      logging.info('Member %s has received termination notice.',
+                   self._id_in_cluster)
+      self._received_own_sigterm.set()
+
+    # This is to handle the case that a worker has received termination
+    # notice but hasn't come to the next step to set the step key. Other
+    # workers might receive a termination notice too, and attempt to set the
+    # config key again, which causes this error. This can be safely ignored
+    # since checkpoint should be saved as early as the earliest call is made.
+    except errors.AlreadyExistsError:
+      logging.info('Member %s has received termination notice. But some other '
+                   'worker has received it as well! Leaving'
+                   ' it to them to decide when to checkpoint. ',
+                   self._id_in_cluster)
+      return
+
+  def _stop_poll_gce_signal_thread(self):
+    if self._poll_gce_signal_thread:
+      self._poll_gce_signal_thread_should_stop.set()
+      self._poll_gce_signal_thread.join()
+      self._poll_gce_signal_thread = None
+      logging.info('Shut down watcher for one\'s own termination signal')
+
+  def _stop_cluster_wise_termination_watcher_thread(self):
+    """Stop the thread that is _wait_for_signal."""
+    if self._cluster_wise_termination_watcher_thread:
+      try:
+        if self._cluster_wise_termination_watcher_thread.is_alive():
+
+          context.context().set_config_key_value(_PREEMPTION_KEY,
+                                                 _STOP_WATCHING_CLUSTER_VALUE)
+      except:  # pylint: disable=bare-except
+        # We'll ignore any error in the process of setting this key. There
+        # certainly will be a AlreadyExistError since all workers are trying to
+        # push this key. Or some worker might have exited already, leading to a
+        # errors.UnavailableError or errors.AbortedError. We'll also ignore
+        # other errors since they are not important to the process.
+        pass
+
+      finally:
+
+        self._cluster_wise_termination_watcher_thread.join()
+        self._cluster_wise_termination_watcher_thread = None
+        logging.info('Shut down watcher for peer\'s termination signal.')
+
+  def __del__(self):
+    self._stop_cluster_wise_termination_watcher_thread()
+    self._stop_poll_gce_signal_thread()
 
   @property
   def total_runs(self):
@@ -338,14 +433,15 @@ class CoordinatedCheckpointManager(object):
         logging.info('Checkpoint finished at path %s',
                      self._write_checkpoint_manager.directory)
         logging.info('Checkpoint time: %f', end_time - start_time)
-
-        sys.exit(_RESTARTABLE_EXIT_CODE)
+        self._stop_poll_gce_signal_thread()
+        self._stop_cluster_wise_termination_watcher_thread()
+        sys.exit(self._exit_code)
 
     elif (self._received_own_sigterm.is_set() and
           (context.context().get_config_key_value(_PREEMPTION_KEY)
            == self._id_in_cluster)):
 
-      logging.info('Sigterm caught in main thread on preempted worker')
+      logging.info('Termination caught in main thread on preempted worker')
 
       step_to_save_at = str(self._run_counter + 1)
       context.context().set_config_key_value(_RUN_COUNT_KEY, step_to_save_at)
@@ -368,14 +464,17 @@ class CoordinatedCheckpointManager(object):
 
   def _wait_for_signal(self):
     """Watch out for peer preemption signal and step-to-save and acknowledge."""
+    preemption_key = context.context().get_config_key_value(_PREEMPTION_KEY)
 
-    context.context().get_config_key_value(_RUN_COUNT_KEY)
+    if preemption_key != _STOP_WATCHING_CLUSTER_VALUE:
+      context.context().get_config_key_value(_RUN_COUNT_KEY)
 
-    # This must be set before we set the ack key below, otherwise its value in
-    # _checkpoint_if_preempted may be outdated.
-    self._received_sigterm_and_step.set()
+      # This must be set before we set the ack key below, otherwise its value in
+      # _checkpoint_if_preempted may be outdated.
+      self._received_sigterm_and_step.set()
 
-    ack_key = f'{_ACKNOWLEDGE_KEY}_{self._id_in_cluster}'
-    context.context().set_config_key_value(ack_key, '1')
-    logging.info('CoordinatedCheckpointManager._wait_for_signal: %s set, '
-                 'preemption awareness acknowledged', ack_key)
+      ack_key = f'{_ACKNOWLEDGE_KEY}_{self._id_in_cluster}'
+      context.context().set_config_key_value(ack_key, '1')
+      logging.info('CoordinatedCheckpointManager._wait_for_signal: %s set, '
+                   'preemption awareness acknowledged', ack_key)
+

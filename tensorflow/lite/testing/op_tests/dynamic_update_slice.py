@@ -44,7 +44,7 @@ def make_dynamic_update_slice_tests(options):
 
   test_parameters = [
       {
-          "element_dtype": [tf.float32, tf.int32],
+          "element_dtype": [tf.float32, tf.int32, tf.bool],
           "num_elements": [4, 5, 6],
           "element_shape": [[], [5], [3, 3]],
           "index": [0, 1, 2, 3],

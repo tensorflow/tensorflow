@@ -9,7 +9,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
   %0 = tensor.dim %lhs, %c0 : tensor<?x?xf32>
 
   %init = linalg.init_tensor [%0] : tensor<?xf32>
-  %fill = linalg.fill(%cst, %init) : f32, tensor<?xf32> -> tensor<?xf32>
+  %fill = linalg.fill ins(%cst : f32) outs(%init : tensor<?xf32>) -> tensor<?xf32>
   %sum_of_prod = linalg.generic {
     indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
                      affine_map<(d0, d1) -> (d0, d1)>,
@@ -35,11 +35,11 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
 
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D:.*]]
 // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[DIM_0]]] : [[TY_1D:.*]]
-// CHECK:      %[[FILL:.*]] = linalg.fill(%[[C0_F32]], %[[INIT]])
+// CHECK:      %[[FILL:.*]] = linalg.fill ins(%[[C0_F32]]{{.*}}outs(%[[INIT]]
 // CHECK:      %[[DIM_0_:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D]]
 // CHECK:      %[[DIM_1:.*]] = tensor.dim %[[LHS]], %[[C1]] : [[TY_2D]]
 
-// CHECK:      linalg.tiled_loop (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
+// CHECK:      gml_st.loop (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-SAME:   to (%[[DIM_0_]], %[[DIM_1]]) step (%[[C4]], %[[C4]])
 // CHECK-SAME:   ins (%[[LHS_:.*]] = %[[LHS]]: [[TY_2D]],
 // CHECK-SAME:        %[[RHS_:.*]] = %[[RHS]]: [[TY_2D]])
@@ -57,7 +57,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
 // CHECK-NEXT:     linalg.yield
 
 // CHECK:      %[[UPDATE:.*]] = tensor.insert_slice %[[SUM_SUB]] into %[[OUT_]]
-// CHECK-NEXT: linalg.yield %[[UPDATE]] : [[TY_1D]]
+// CHECK-NEXT: gml_st.yield %[[UPDATE]] : [[TY_1D]]
 
 // -----
 
@@ -67,7 +67,7 @@ func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
   %0 = tensor.dim %input, %c0 : tensor<8x16xf32>
 
   %init = linalg.init_tensor [8] : tensor<8xf32>
-  %fill = linalg.fill(%cst, %init) : f32, tensor<8xf32> -> tensor<8xf32>
+  %fill = linalg.fill ins(%cst : f32) outs(%init : tensor<8xf32>) -> tensor<8xf32>
   %sum = linalg.generic {
     indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
                      affine_map<(d0, d1) -> (d0)>],
@@ -81,7 +81,7 @@ func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
   return %sum : tensor<8xf32>
 }
 // CHECK-LABEL: func @reduce_row_sum_2d_static
-// CHECK: linalg.tiled_loop
+// CHECK: gml_st.loop
 // CHECK:   tensor.insert_slice
 
 // -----
@@ -92,7 +92,7 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
   %0 = tensor.dim %input, %c0 : tensor<?x?xf32>
 
   %init = linalg.init_tensor [%0] : tensor<?xf32>
-  %fill = linalg.fill(%cst, %init) : f32, tensor<?xf32> -> tensor<?xf32>
+  %fill = linalg.fill ins(%cst : f32) outs(%init : tensor<?xf32>) -> tensor<?xf32>
   %sum = linalg.generic {
     indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
                      affine_map<(d0, d1) -> (d1)>],
@@ -115,11 +115,11 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
 
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[INPUT]], %[[C0]] : [[TY_2D:.*]]
 // CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[DIM_0]]] : [[TY_1D:.*]]
-// CHECK:      %[[FILL:.*]] = linalg.fill(%[[C0_F32]], %[[INIT]])
+// CHECK:      %[[FILL:.*]] = linalg.fill ins(%[[C0_F32]]{{.*}}outs(%[[INIT]]
 // CHECK:      %[[DIM_0_:.*]] = tensor.dim %[[INPUT]], %[[C0]] : [[TY_2D]]
 // CHECK:      %[[DIM_1:.*]] = tensor.dim %[[INPUT]], %[[C1]] : [[TY_2D]]
 
-// CHECK:      linalg.tiled_loop (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
+// CHECK:      gml_st.loop (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-SAME:   to (%[[DIM_0_]], %[[DIM_1]]) step (%[[C4]], %[[C4]])
 // CHECK-SAME:   ins (%[[IN_:.*]] = %[[INPUT]]: [[TY_2D]])
 // CHECK-SAME:   outs (%[[OUT_:.*]] = %[[FILL]]: [[TY_1D]])
@@ -134,7 +134,7 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
 // CHECK-NEXT:     linalg.yield
 
 // CHECK:      %[[UPDATE:.*]] = tensor.insert_slice %[[ACC:.*]] into %[[OUT_]]
-// CHECK:      linalg.yield %[[UPDATE]] : [[TY_1D]]
+// CHECK:      gml_st.yield %[[UPDATE]] : [[TY_1D]]
 
 // -----
 
@@ -159,7 +159,7 @@ func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
   return %sum : tensor<?x?xf32>
 }
 // CHECK-LABEL: func @abs
-// CHECK-NOT: linalg.tiled_loop
+// CHECK-NOT: gml_st.loop
 
 // -----
 
@@ -169,7 +169,7 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
   %0 = tensor.dim %lhs, %c0 : tensor<?xf32>
 
   %init = linalg.init_tensor [] : tensor<f32>
-  %fill = linalg.fill(%cst, %init) : f32, tensor<f32> -> tensor<f32>
+  %fill = linalg.fill ins(%cst : f32) outs(%init : tensor<f32>) -> tensor<f32>
   %sum = linalg.generic {
     indexing_maps = [affine_map<(d0) -> (d0)>,
                      affine_map<(d0) -> (d0)>,
@@ -192,12 +192,12 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
      // CHECK-DAG: %[[C16:.*]] = arith.constant 16 : index
 
      // CHECK: %[[INIT:.*]] = linalg.init_tensor [] : tensor<f32>
-     // CHECK: %[[FILL:.*]] = linalg.fill(%[[C0_F32]], %[[INIT]])
+     // CHECK: %[[FILL:.*]] = linalg.fill ins(%[[C0_F32]]{{.*}}outs(%[[INIT]]
      // CHECK: %[[INPUT_SIZE:.*]] = tensor.dim %[[LHS]], %[[C0]]
 
      // CHECK: %[[TMP_INIT:.*]] = linalg.init_tensor [8] : tensor<8xf32>
-     // CHECK: %[[TMP_FILL:.*]] = linalg.fill(%[[C0_F32]], %[[TMP_INIT]])
-     // CHECK: %[[TMP_SUM:.*]] = linalg.tiled_loop (%[[I:.*]]) = (%[[C0]])
+     // CHECK: %[[TMP_FILL:.*]] = linalg.fill ins(%[[C0_F32]]{{.*}}outs(%[[TMP_INIT]]
+     // CHECK: %[[TMP_SUM:.*]] = gml_st.loop (%[[I:.*]]) = (%[[C0]])
 // CHECK-SAME:   to (%[[INPUT_SIZE]]) step (%[[C16]])
 // CHECK-SAME:   ins (%[[LHS_:.*]] = %[[LHS]]: tensor<?xf32>,
 // CHECK-SAME:        %[[RHS_:.*]] = %[[RHS]]: tensor<?xf32>)
@@ -224,7 +224,7 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
      // CHECK:     %[[ADD:.*]] = arith.addf %[[MUL]], %[[O]] : f32
      // CHECK:       linalg.yield %[[ADD]] : f32
      // CHECK:     } -> tensor<8xf32>
-     // CHECK:   linalg.yield %[[SUM_OF_PROD]] : tensor<8xf32>
+     // CHECK:   gml_st.yield %[[SUM_OF_PROD]] : tensor<8xf32>
      // CHECK: }
      // CHECK: linalg.generic
 // CHECK-SAME: ins(%[[TMP_SUM]] : tensor<8xf32>) outs(%[[FILL]] : tensor<f32>)

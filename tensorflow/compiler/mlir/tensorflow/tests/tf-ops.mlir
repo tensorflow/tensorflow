@@ -1283,8 +1283,7 @@ func @testInvalidIfRegionOp3Regions(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> 
 
 // tf.IfRegion regions should be terminated with a tf.Yield
 func @testIfRegionThenTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // expected-error @+2 {{'tf.IfRegion' op expects regions to end with 'tf.Yield'}}
-  // expected-note @+1 {{in custom textual format, the absence of terminator implies 'tf.Yield'}}
+  // expected-error @+2 {{block with no terminator}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
    }, {
@@ -1298,8 +1297,7 @@ func @testIfRegionThenTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> ten
 // -----
 
 func @testIfRegionElseTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // expected-error @+2 {{'tf.IfRegion' op expects regions to end with 'tf.Yield'}}
-  // expected-note @+1 {{in custom textual format, the absence of terminator implies 'tf.Yield'}}
+  // expected-error @+5 {{block with no terminator}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()

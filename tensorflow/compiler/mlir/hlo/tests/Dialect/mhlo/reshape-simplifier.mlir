@@ -14,6 +14,20 @@ func @reshape_expand_front(%arg0: tensor<?x?xf32>) -> tensor<1x?x?xf32> {
   return %reshape : tensor<1x?x?xf32>
 }
 
+// CHECK-LABEL: func @reshape_expand_front_static
+func @reshape_expand_front_static(%arg0: tensor<2x?xf32>) -> tensor<1x2x?xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %d0 = tensor.dim %arg0, %c0 : tensor<2x?xf32>
+  %d1 = tensor.dim %arg0, %c1 : tensor<2x?xf32>
+  %shape = tensor.from_elements %c1, %d0, %d1 : tensor<3xindex>
+  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
+      : (tensor<2x?xf32>, tensor<3xindex>) -> tensor<1x2x?xf32>
+// CHECK: tensor.expand_shape %arg0 [
+// CHECK-SAME: [0, 1], [2]] : tensor<2x?xf32> into tensor<1x2x?xf32>
+  return %reshape : tensor<1x2x?xf32>
+}
+
 // -----
 
 // CHECK-LABEL: func @reshape_expand_back
@@ -28,6 +42,18 @@ func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
 // CHECK: tensor.expand_shape %arg0 [
 // CHECK-SAME: [0], [1, 2, 3]] : tensor<?x?xf32> into tensor<?x?x1x1xf32>
   return %reshape : tensor<?x?x1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reshape_expand_scalar
+func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
+  %shape = mhlo.constant dense<1> : tensor<2xi32>
+  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
+      : (tensor<f32>, tensor<2xi32>) -> tensor<?x?xf32>
+// CHECK: %[[EXPAND:.*]] = tensor.expand_shape %arg0 [] : tensor<f32> into tensor<1x1xf32>
+// CHECK: tensor.cast %[[EXPAND]] : tensor<1x1xf32> to tensor<?x?xf32>
+  return %reshape : tensor<?x?xf32>
 }
 
 // -----

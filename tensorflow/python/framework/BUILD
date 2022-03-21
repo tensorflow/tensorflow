@@ -27,6 +27,7 @@ load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 
 visibility = [
     # copybara:uncomment "//third_party/auroraml:__subpackages__",
@@ -479,13 +480,47 @@ py_library(
     deps = [
         ":dtypes",
         ":op_callbacks",
+        ":op_def_library_pybind",
         ":op_def_registry",
         ":ops",
         ":tensor_shape",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/config:flags_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/util",
         "@six_archive//:six",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_op_def_library_pybind",
+    srcs = ["op_def_library_pybind.cc"],
+    module_name = "_op_def_library_pybind",
+    deps = [
+        ":op_def_util_headers",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+)
+
+pytype_strict_library(
+    name = "op_def_library_pybind",
+    srcs = ["op_def_library_pybind.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":_op_def_library_pybind",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -546,6 +581,12 @@ tf_py_test(
 )
 
 cc_library(
+    name = "op_def_util_headers",
+    textual_hdrs = ["op_def_util.h"],
+    visibility = ["//tensorflow:internal"],
+)
+
+cc_library(
     name = "op_def_util_cc",
     srcs = ["op_def_util.cc"],
     hdrs = ["op_def_util.h"],
@@ -558,34 +599,17 @@ cc_library(
     ],
 )
 
-# Note: this target is only used for op_def_util_test.  It includes op_def_util.cc
-# directly in its srcs (rather than depending on the `op_def_util_cc` target) because
-# depending on that target adds dependencies that register objects; and since the
-# extension is built as a shared object in some kokoro tests, this causes those objects
-# to get registered multiple times (which fails).
-# TODO(edloper): Simplify this, once cpp_python_util is changed to not depend on
-# safe_ptr (which transitively depends on third_party/tensorflow/c:c_api_no_xla).
 tf_python_pybind_extension(
     name = "_op_def_util",
-    srcs = [
-        "op_def_util.cc",
-        "op_def_util_pybind.cc",
-    ],
-    hdrs = [
-        "op_def_util.h",
-        "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
-        "//tensorflow/python/lib/core:safe_ptr_hdr",
-        "//tensorflow/python/util:util_hdr",
-    ],
+    srcs = ["op_def_util_pybind.cc"],
     module_name = "_op_def_util",
     deps = [
+        ":op_def_util_headers",
+        "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python:pybind11_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )
@@ -1183,6 +1207,19 @@ py_test(
         ":test_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
+    name = "composite_tensor_gradient",
+    srcs = ["composite_tensor_gradient.py"],
+    deps = [
+        ":composite_tensor",
+        ":for_generated_wrappers",
+        ":indexed_slices",
+        "//tensorflow/python/eager:backprop_util",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/util",
     ],
 )
 
@@ -1913,7 +1950,9 @@ tf_py_test(
     srcs = ["tensor_util_test.py"],
     main = "tensor_util_test.py",
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":for_generated_wrappers",
         ":framework",
@@ -2011,6 +2050,7 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":for_generated_wrappers",
+        ":op_def_library_pybind",
         ":test_lib",
         "//tensorflow/python:platform_test",
     ],

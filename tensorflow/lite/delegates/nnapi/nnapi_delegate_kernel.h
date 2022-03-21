@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_KERNEL_H_
 #define TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_KERNEL_H_
 
+#include <list>
 #include <map>
 #include <memory>
+#include <unordered_map>
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
@@ -101,6 +103,9 @@ class NNFreeBurst {
   // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;
 };
+
+using UniqueExecution =
+    std::unique_ptr<ANeuralNetworksExecution, NNFreeExecution>;
 
 // RAII NN API MappingUtil Destructor for use with std::unique_ptr
 class NNFreeMappingUtil {
@@ -198,6 +203,56 @@ struct NNAPIValidationFailure {
       : type(type), message(message) {}
 };
 
+// LRU cache of reusable NNAPI executions.
+class NNAPIExecutionCache {
+ public:
+  // The cache signature. Uniquely identifies an execution request.
+  struct Signature {
+    std::vector<uint64_t> tensor_handle_timestamps;
+    std::vector<int> dynamic_dimensions;
+
+    bool operator==(const Signature& other) const;
+    struct Hasher {
+      std::size_t operator()(const Signature& signature) const;
+    };
+  };
+
+  explicit NNAPIExecutionCache(uint32_t max_cache_size)
+      : max_cache_size_(max_cache_size) {}
+
+  // Gets the cached execution by signature.
+  // On cache hit, the target execution is set to be the most recently used one.
+  // On cache miss, nullptr is returned.
+  ANeuralNetworksExecution* Get(const Signature& signature);
+
+  // Puts the execution in cache and set it to be the most recently used one.
+  // If the cache is full, the least recently used entry will be released.
+  void Put(const Signature& signature, UniqueExecution execution);
+
+  // Clears all cache entries.
+  void Clear();
+
+  // Resets the max cache size.
+  void SetMaxCacheSize(uint32_t max_cache_size);
+
+ private:
+  // Releases the least recently used cache.
+  void ReleaseLRU();
+
+  // The maximum number of reusable executions to cache.
+  uint32_t max_cache_size_;
+
+  // Cache signatures in the order of most recent use. The most recently used
+  // signature is at the front of the list.
+  std::list<Signature> order_;
+
+  // A hash map to lookup a managed execution by its signature.
+  std::unordered_map<Signature,
+                     std::pair<std::list<Signature>::iterator, UniqueExecution>,
+                     Signature::Hasher>
+      lookup_;
+};
+
 // The kernel that represents the node sub set of TF Lite being run on NN API.
 class NNAPIDelegateKernel {
  public:
@@ -208,7 +263,7 @@ class NNAPIDelegateKernel {
         nn_model_(nullptr, NNFreeModel(nnapi_)),
         nn_compilation_(nullptr, NNFreeCompilation(nnapi_)),
         nn_burst_(nullptr, NNFreeBurst(nnapi_)),
-        nn_execution_(nullptr, NNFreeExecution(nnapi_)),
+        nn_execution_cache_(/*max_cache_size=*/4),
         mapping_util_(NnapiMappingUtilCInterfaceCreate(), NNFreeMappingUtil()),
         vendor_plugin_(vendor_plugin) {}
   NNAPIDelegateKernel() : NNAPIDelegateKernel(NnApiImplementation()) {}
@@ -289,7 +344,7 @@ class NNAPIDelegateKernel {
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>
       nn_compilation_;
   std::unique_ptr<ANeuralNetworksBurst, NNFreeBurst> nn_burst_;
-  std::unique_ptr<ANeuralNetworksExecution, NNFreeExecution> nn_execution_;
+  NNAPIExecutionCache nn_execution_cache_;
   // The mappings of tenor id to BufferHandle. Needed to track BufferHandle
   // change and alter nn_reusable_execution_ if necessary.
   std::vector<int> tensor_handle_map_;
@@ -310,6 +365,9 @@ class NNAPIDelegateKernel {
   // model_state_tfl_inputs_ for all tensors where we have to keep the output
   // data available for TFLite model users
   std::vector<std::tuple<int, int>> feedback_loops_;
+  // The mappings of tenor id to max size in bytes. If the hint is not provided
+  // for a tensor, it is set to 0.
+  std::vector<size_t> tensor_max_size_hints_;
 
   std::unique_ptr<NNMemory> nn_input_memory_;
   std::unique_ptr<NNMemory> nn_output_memory_;

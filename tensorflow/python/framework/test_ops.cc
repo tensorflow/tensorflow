@@ -306,7 +306,7 @@ class MakeWeakResourceHandleOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("MakeWeakResourceHandle").Device(DEVICE_CPU),
                         MakeWeakResourceHandleOp);
-REGISTER_KERNEL_BUILDER(Name("MakeWeakResourceHandle").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("MakeWeakResourceHandle").Device(DEVICE_DEFAULT),
                         MakeWeakResourceHandleOp);
 
 class TestAttrOp : public OpKernel {

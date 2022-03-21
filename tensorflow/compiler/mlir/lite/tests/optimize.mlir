@@ -1677,7 +1677,7 @@ func @fuseExpanded1DMulIntoConv2d(%arg0: tensor<1x8x8x207xf32>) -> tensor<1x8x8x
   return %1 : tensor<1x8x8x256xf32>
 
 // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<2.800000e+00> : tensor<256x3x3x207xf32>
-// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<3.000000e+00> : tensor<1x1x1x256xf32>
+// CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<3.000000e+00> : tensor<256xf32>
 // CHECK: "tfl.conv_2d"(%arg0, %[[CST_0]], %[[CST_1]])
 
 }

@@ -22,7 +22,7 @@ message CoordinationServiceConfig {
   // Maximum wait time for all members in the cluster to be registered.
   int64 cluster_register_timeout_in_ms = 4;
 
-  // Heartbeat timeout, if a worker does not record heartbeat in this time
+  // Heartbeat timeout, if a task does not record heartbeat in this time
   // window, it will be considered disconnected.
   int64 heartbeat_timeout_in_ms = 5;
 

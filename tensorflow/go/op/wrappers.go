@@ -1385,6 +1385,40 @@ func AssertNextDataset(scope *Scope, input_dataset tf.Output, transformations tf
 	return op.Output(0)
 }
 
+// A transformation that asserts which transformations happened previously.
+//
+// This transformation checks the names and, optionally, the attribute name-value
+// pairs in the `transformations` argument against those of the transformations
+// that preceded this transformation.  If there is a mismatch, the transformation
+// raises an exception.
+//
+// The check occurs when iterating over the contents of the dataset, which
+// means that the check happens *after* any static optimizations are applied
+// to the dataset graph.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+// `AssertPrevDataset` passes through the outputs of its input dataset.
+//	transformations: A `tf.string` vector `tf.Tensor` identifying the transformations, with optional
+// attribute name-value pairs, that are expected to have happened previously.
+//
+//
+func AssertPrevDataset(scope *Scope, input_dataset tf.Output, transformations tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "AssertPrevDataset",
+		Input: []tf.Input{
+			input_dataset, transformations,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Adds a value to the current value of a variable.
 //
 // Any ReadVariableOp with a control dependency on this op is guaranteed to
@@ -5225,6 +5259,21 @@ func CollectiveAllToAllV3(scope *Scope, input tf.Output, communicator tf.Output,
 			input, communicator, group_assignment,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Assign group keys based on group assignment.
+func CollectiveAssignGroupV2(scope *Scope, group_assignment tf.Output, device_index tf.Output) (group_key tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveAssignGroupV2",
+		Input: []tf.Input{
+			group_assignment, device_index,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -32540,6 +32589,35 @@ func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf
 	return op.Output(0)
 }
 
+// Outputs the position of `value` in a permutation of [0, ..., max_index].
+//
+// Output values are a bijection of the `index` for any combination and `seed` and `max_index`.
+//
+// If multiple inputs are vectors (matrix in case of seed) then the size of the
+// first dimension must match.
+//
+// The outputs are deterministic.
+//
+// Arguments:
+//	index: A scalar tensor or a vector of dtype `dtype`. The index (or indices) to be shuffled. Must be within [0, max_index].
+//	seed: A tensor of dtype `Tseed` and shape [3] or [n, 3]. The random seed.
+//	max_index: A scalar tensor or vector of dtype `dtype`. The upper bound(s) of the interval (inclusive).
+//
+// Returns A scalar tensor of dtype `dtype`, within [0, max_index]. The randomly shuffled index.
+func RandomIndexShuffle(scope *Scope, index tf.Output, seed tf.Output, max_index tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RandomIndexShuffle",
+		Input: []tf.Input{
+			index, seed, max_index,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // RandomPoissonAttr is an optional argument to RandomPoisson.
 type RandomPoissonAttr func(optionalAttr)
 
@@ -48885,22 +48963,26 @@ func TensorMapStackKeys(scope *Scope, input_handle tf.Output, key_dtype tf.DataT
 //
 // This operation creates a new tensor by adding sparse `updates` to the passed
 // in `tensor`.
-// This operation is very similar to `tf.compat.v1.scatter_nd_add`, except that the updates
-// are added onto an existing tensor (as opposed to a variable). If the memory
-// for the existing tensor cannot be re-used, a copy is made and updated.
+// This operation is very similar to `tf.compat.v1.scatter_nd_add`, except that the
+// updates are added onto an existing tensor (as opposed to a variable). If the
+// memory for the existing tensor cannot be re-used, a copy is made and updated.
 //
 // `indices` is an integer tensor containing indices into a new tensor of shape
 // `tensor.shape`.  The last dimension of `indices` can be at most the rank of
 // `tensor.shape`:
 //
-//     indices.shape[-1] <= tensor.shape.rank
+// ```
+// indices.shape[-1] <= tensor.shape.rank
+// ```
 //
 // The last dimension of `indices` corresponds to indices into elements
 // (if `indices.shape[-1] = tensor.shape.rank`) or slices
 // (if `indices.shape[-1] < tensor.shape.rank`) along dimension
 // `indices.shape[-1]` of `tensor.shape`.  `updates` is a tensor with shape
 //
-//     indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
+// ```
+// indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
+// ```
 //
 // The simplest form of `tensor_scatter_nd_add` is to add individual elements to a
 // tensor by index. For example, say we want to add 4 elements in a rank-1
@@ -48912,6 +48994,7 @@ func TensorMapStackKeys(scope *Scope, input_handle tf.Output, key_dtype tf.DataT
 // >>> updates = tf.constant([9, 10, 11, 12])
 // >>> tensor = tf.ones([8], dtype=tf.int32)
 // >>> updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+// >>> updated
 // <tf.Tensor: shape=(8,), dtype=int32,
 // numpy=array([ 1, 12,  1, 11, 10,  1,  1, 13], dtype=int32)>
 //
@@ -48923,11 +49006,12 @@ func TensorMapStackKeys(scope *Scope, input_handle tf.Output, key_dtype tf.DataT
 //
 // >>> indices = tf.constant([[0], [2]])
 // >>> updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
-//                             [7, 7, 7, 7], [8, 8, 8, 8]],
-//                            [[5, 5, 5, 5], [6, 6, 6, 6],
-//                             [7, 7, 7, 7], [8, 8, 8, 8]]])
+// ...                         [7, 7, 7, 7], [8, 8, 8, 8]],
+// ...                        [[5, 5, 5, 5], [6, 6, 6, 6],
+// ...                         [7, 7, 7, 7], [8, 8, 8, 8]]])
 // >>> tensor = tf.ones([4, 4, 4],dtype=tf.int32)
 // >>> updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+// >>> updated
 // <tf.Tensor: shape=(4, 4, 4), dtype=int32,
 // numpy=array([[[6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8], [9, 9, 9, 9]],
 //              [[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
@@ -52361,6 +52445,33 @@ func XlaConvV2(scope *Scope, lhs tf.Output, rhs tf.Output, window_strides tf.Out
 	return op.Output(0)
 }
 
+// Wraps the XLA CustomCall operator
+//
+//   documented at https://www.tensorflow.org/xla/operation_semantics#customcall.
+//
+// Arguments:
+//	args: A list of `Tensor` with possibly different types.
+//	target_name: Name of the function. A call instruction will be emitted which
+// targets this symbol name.
+//	backend_config: String, used to encode serialized metadata to the backend.
+//	dtype: Output tensor data type.
+//	shape: Output tensor shape.
+func XlaCustomCall(scope *Scope, args []tf.Output, target_name string, backend_config string, dtype tf.DataType, shape tf.Shape) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"target_name": target_name, "backend_config": backend_config, "dtype": dtype, "shape": shape}
+	opspec := tf.OpSpec{
+		Type: "XlaCustomCall",
+		Input: []tf.Input{
+			tf.OutputList(args),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Takes the packed uint32 input and unpacks the input to uint8 to do
 //
 // Dequantization on device.
@@ -52582,6 +52693,35 @@ func XlaKeyValueSort(scope *Scope, keys tf.Output, values tf.Output) (sorted_key
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Wraps the XLA OptimizationBarrier operator.
+//
+// Documented at https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier.
+//
+// Arguments:
+//	input: A Tuple of Arrays of any type.
+func XlaOptimizationBarrier(scope *Scope, input []tf.Output) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaOptimizationBarrier",
+		Input: []tf.Input{
+			tf.OutputList(input),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("XlaOptimizationBarrier", err)
+		return
+	}
+	return output
 }
 
 // Wraps the XLA Pad operator, documented at

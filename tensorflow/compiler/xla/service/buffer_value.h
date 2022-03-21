@@ -93,7 +93,14 @@ class BufferValue {
   using SizeFunction = std::function<int64_t(const BufferValue&)>;
   using AlignmentFunction = std::function<int64_t(BufferValue::Color)>;
 
-  virtual ~BufferValue();
+  // Prevent value being copied, allowing comparison by pointer,
+  BufferValue(const BufferValue&) = delete;
+  BufferValue& operator=(const BufferValue&) = delete;
+  // ... but allow moves.
+  BufferValue(BufferValue&&) = default;
+  BufferValue& operator=(BufferValue&&) = default;
+
+  virtual ~BufferValue() {}
 
   Id id() const { return id_; }
 
@@ -138,11 +145,7 @@ class BufferValue {
   // Whether this buffer contains an array.
   bool IsArray() const { return is_array_; }
 
-  // operator< is required for std::set.
   bool operator<(const BufferValue& other) const { return id_ < other.id_; }
-
-  bool operator==(const BufferValue& other) const { return id_ == other.id_; }
-  bool operator!=(const BufferValue& other) const { return id_ != other.id_; }
 
   virtual std::string ToString() const = 0;
 

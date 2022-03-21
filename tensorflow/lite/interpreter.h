@@ -64,11 +64,13 @@ class InterpreterWrapper;  // Class for friend declarations.
 }  // namespace interpreter_wrapper
 
 /// Options class for `Interpreter`.
+/// WARNING: This is an experimental API and subject to change.
 class InterpreterOptions {
  public:
   InterpreterOptions()
       : experimental_preserve_all_tensors_(false),
-        experimental_ensure_dynamic_tensors_are_released_(false) {}
+        experimental_ensure_dynamic_tensors_are_released_(false),
+        experimental_dynamic_allocation_for_large_tensors_(0) {}
 
   /// Preserving all intermediates tensors for debugging.
   /// WARNING: This is an experimental API and subject to change.
@@ -96,9 +98,27 @@ class InterpreterOptions {
     return experimental_ensure_dynamic_tensors_are_released_;
   }
 
+  /// Use dynamic tensor allocation method for large tensors instead of static
+  /// memory planner. It improves peak memory usage but there could be some
+  /// latency impact. The value is used to determine large tensors.
+  /// WARNING: This is an experimental API and subject to change.
+  void SetDynamicAllocationForLargeTensors(int value) {
+    if (value > 0) {
+      experimental_dynamic_allocation_for_large_tensors_ = value;
+    }
+  }
+
+  /// Returns the size threshold for dynamic tensor allocation method.
+  /// It returns zero if the feature is not enabled.
+  /// WARNING: This is an experimental API and subject to change.
+  int GetDynamicAllocationForLargeTensors() {
+    return experimental_dynamic_allocation_for_large_tensors_;
+  }
+
  private:
   bool experimental_preserve_all_tensors_;
   bool experimental_ensure_dynamic_tensors_are_released_;
+  int experimental_dynamic_allocation_for_large_tensors_;
 };
 
 /// An interpreter for a graph of nodes that input and output from tensors.
@@ -792,7 +812,31 @@ class Interpreter {
   // Applies TFLite default delegates.
   TfLiteStatus ApplyLazyDelegateProviders();
 
-  // Overrides execution plan. This bounds checks indices sent in.
+  // Private non-experimental implementation of ModifyGraphWithDelegate.
+  // Unlike ModifyGraphWithDelegate, ModifyGraphWithDelegateImpl is defined in
+  // interpreter.cc rather than in interpreter_experimental.cc, so it can be
+  // used to implement other non-experimental methods.
+  TfLiteStatus ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate);
+
+  // Same as ModifyGraphWithDelegateImpl except that it takes ownership of the
+  // delegate.
+  template <typename Delegate, typename Deleter>
+  inline TfLiteStatus ModifyGraphWithDelegateImpl(
+      std::unique_ptr<Delegate, Deleter>&& delegate) {
+    Deleter deleter = std::move(delegate.get_deleter());
+
+    // Note that we retain ownership of the delegate even if graph modification
+    // fails, as delegate use will be in an indeterminate state at that point.
+    owned_delegates_.emplace_back(
+        delegate.release(), [deleter](TfLiteDelegate* delegate_to_delete) {
+          deleter(
+              static_cast<typename std::unique_ptr<Delegate, Deleter>::pointer>(
+                  delegate_to_delete));
+        });
+    return ModifyGraphWithDelegateImpl(owned_delegates_.back().get());
+  }
+
+  // Overrides execution plan. ImplThis bounds checks indices sent in.
   // Note: Only used during initialization.
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
@@ -827,6 +871,13 @@ class Interpreter {
   /// non-null.
   void AddSubgraphs(int subgraphs_to_add,
                     int* first_new_subgraph_index = nullptr);
+
+  /// Implementation of SetProfiler.
+  /// Unlike SetProfiler, this is defined in interpreter.cc rather than in
+  /// intepreter_experimental.cc, so it can be used by interpreter_builder.cc.
+  void SetProfilerImpl(std::unique_ptr<Profiler> profiler);
+
+  TfLiteStatus ApplyOptionsImpl(InterpreterOptions* options);
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
