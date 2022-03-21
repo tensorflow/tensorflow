@@ -2492,14 +2492,12 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kWhile:
       return (eq_computations(while_body(), other.while_body()) &&
               eq_computations(while_condition(), other.while_condition()));
-    case HloOpcode::kAsyncStart:
-    case HloOpcode::kAsyncUpdate:
-    case HloOpcode::kAsyncDone:
-      return eq_computations(async_wrapped_computation(),
-                             other.async_wrapped_computation());
 
     // Ops migrated to subclasses should never come to this line.
     // TODO(b/80131774): Remove this switch when migration is complete.
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
@@ -3021,12 +3019,7 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
 
   // Print additional attributes. If an instruction contains a subcomputation,
   // the subcomputation is also printed here.
-  const HloInstruction* extra_attributes_instr = this;
-  if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode())) {
-    extra_attributes_instr = async_wrapped_instruction();
-  }
-  for (const std::string& extra :
-       extra_attributes_instr->ExtraAttributesToString(options)) {
+  for (const std::string& extra : ExtraAttributesToString(options)) {
     StrAppend(&result, ", ", extra);
   }
 
@@ -3170,6 +3163,12 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                           out, PrintNameInternal(computation->name(), options));
                     }),
             "}"));
+      }
+    } else if (HloOpcodeIsAsync(opcode())) {
+      if (!options.syntax_sugar_async_ops()) {
+        extra.push_back(StrCat(
+            "calls=",
+            PrintNameInternal(async_wrapped_computation()->name(), options)));
       }
     } else if (!called_computations().empty()) {
       extra.push_back(StrCat(
