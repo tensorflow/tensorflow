@@ -241,10 +241,6 @@ Status TransposeContext::InitializeTransposeContext(bool assume_valid_feeds,
   context->nodes_to_preserve = absl::flat_hash_set<string>(
       nodes_to_preserve.begin(), nodes_to_preserve.end());
   TF_RETURN_IF_ERROR(context->frames.InferFromGraph(context->graph));
-  if (cluster != nullptr) {
-    context->virtual_placer =
-        absl::make_unique<const VirtualPlacer>(cluster->GetDevices());
-  }
   return Status::OK();
 }
 
@@ -266,8 +262,7 @@ void TransposeContext::AssignDeviceAndDataFormats(
 bool Transposer::ShouldProcess(const TransposeContext& context,
                                const utils::MutableNodeView& node) const {
   const auto* node_def = node.node();
-  const string& device_name =
-      GetDeviceName(context.virtual_placer.get(), *node_def);
+  const string& device_name = GetDeviceName(*node_def);
   string device;
   string task;
   const bool is_on_target_device =
@@ -497,7 +492,6 @@ Status Transposer::UpdateEdge(
 
   // TODO(lyandy): Minimize device parsing/fetching.
   const string device = GetDeviceName(
-      context->virtual_placer.get(),
       is_src_format_to_dst_format ? *dst_node_def : *src_node_def);
   DataType data_type =
       is_src_format_to_dst_format
@@ -530,11 +524,10 @@ Status Transposer::UpdateEdge(
         control_node_name, &added_node, &added_node_name));
   } else if (op == kOpDataFormatVecPermute || op == kOpDataFormatDimMap) {
     DeviceNameUtils::ParsedName parsed_name;
-    bool is_fanin_on_host =
-        DeviceNameUtils::ParseFullName(
-            GetDeviceName(context->virtual_placer.get(), *src_node_def),
-            &parsed_name) &&
-        parsed_name.type != "CPU" && IsHostMemory(*src_node_def, src_port);
+    bool is_fanin_on_host = DeviceNameUtils::ParseFullName(
+                                GetDeviceName(*src_node_def), &parsed_name) &&
+                            parsed_name.type != "CPU" &&
+                            IsHostMemory(*src_node_def, src_port);
     const string node_name = absl::Substitute(name_format, op);
     TF_RETURN_IF_ERROR(CreateDataFormatNode(
         context, node_name, op, device, data_type, is_fanin_on_host,
@@ -1953,11 +1946,7 @@ Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
 
 // Utils.
 
-string GetDeviceName(const VirtualPlacer* virtual_placer, const NodeDef& node) {
-  return (node.device().empty() && virtual_placer != nullptr)
-             ? virtual_placer->get_canonical_device_name(node)
-             : node.device();
-}
+string GetDeviceName(const NodeDef& node) { return node.device(); }
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node) {
   static absl::flat_hash_set<string>* default_layout_sensitive_ops =
