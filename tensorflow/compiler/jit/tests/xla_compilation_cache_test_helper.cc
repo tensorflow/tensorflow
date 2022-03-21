@@ -17,6 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/match.h"
+#include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -126,6 +130,34 @@ Status XlaCompilationCacheSerializeTest::ExecuteWithBatch(const GraphDef& graph,
   for (int64 i = 0; i < f32_input.NumElements(); ++i) {
     EXPECT_NEAR(golden_output_tensors[0].flat<float>()(i),
                 output_tensors[0].flat<float>()(i), 1e-3);
+  }
+  return Status::OK();
+}
+
+Status
+XlaCompilationCacheSerializeTest::AlterPersistentCacheEntryHloModuleNames(
+    absl::string_view persistent_cache_dir_path) {
+  Env* env = Env::Default();
+  std::vector<string> file_names;
+  TF_RETURN_IF_ERROR(
+      env->GetChildren(tensorflow::testing::TmpDir(), &file_names));
+
+  bool altered = false;
+  for (const auto& file_name : file_names) {
+    if (absl::EndsWith(file_name, ".pb")) {
+      XlaSerializedCacheEntry entry;
+      auto file_path = io::JoinPath(persistent_cache_dir_path, file_name);
+      TF_RETURN_IF_ERROR(ReadTextOrBinaryProto(env, file_path, &entry));
+      entry.mutable_hlo_module()->set_name(
+          absl::StrCat(entry.hlo_module().name(), "_altered"));
+      TF_RETURN_IF_ERROR(WriteBinaryProto(env, file_path, entry));
+      altered = true;
+    }
+  }
+
+  if (!altered) {
+    return errors::NotFound(
+        "Did not find any persistent XLA compilation cache entries to alter.");
   }
   return Status::OK();
 }

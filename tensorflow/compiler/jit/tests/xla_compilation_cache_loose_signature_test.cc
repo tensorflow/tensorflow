@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-TEST_F(XlaCompilationCacheSerializeTest, PersistentCacheTest) {
+TEST_F(XlaCompilationCacheSerializeTest, PersistentCacheLooseSignatureTest) {
   GraphDef graph = GetTestGraph({-1, 4});
 
   // Warmup the persistent cache(s) with multiple runs. 4 is a magic number to
@@ -37,29 +37,18 @@ TEST_F(XlaCompilationCacheSerializeTest, PersistentCacheTest) {
   // cluster numbering.
   testing::ResetClusterSequenceNumber();
 
-  // Run again but these should all hit in the persistent cache.
+  TF_ASSERT_OK(
+      AlterPersistentCacheEntryHloModuleNames(tensorflow::testing::TmpDir()));
+
+  // Run again and these should all hit in the persistent cache despite having
+  // altered the persistent cache entries' HLO modules (disabled strict
+  // signature checks).
   listener()->ClearListenerHistory();
   for (int b = 1; b < 4; ++b) {
     TF_ASSERT_OK(ExecuteWithBatch(graph, b));
   }
   TF_ASSERT_OK(
       listener()->VerifyListenerHistory(/*expect_persistent_cache_use=*/true));
-
-  // Reset the cluster numbering between sessions so we can get the same
-  // cluster numbering.
-  testing::ResetClusterSequenceNumber();
-
-  TF_ASSERT_OK(
-      AlterPersistentCacheEntryHloModuleNames(tensorflow::testing::TmpDir()));
-
-  // Run again but these should all fail, because the persistent cache entries'
-  // HLO modules have been altered.
-  for (int b = 1; b < 4; ++b) {
-    auto status = ExecuteWithBatch(graph, b);
-    EXPECT_FALSE(status.ok());
-    EXPECT_TRUE(absl::StrContains(status.error_message(),
-                                  "Serialized HLO does not match."));
-  }
 }
 
 }  // namespace
@@ -70,6 +59,8 @@ int main(int argc, char** argv) {
       ->tf_xla_deterministic_cluster_names = true;
   tensorflow::GetMarkForCompilationPassFlags()
       ->tf_xla_persistent_cache_directory = tensorflow::testing::TmpDir();
+  tensorflow::GetMarkForCompilationPassFlags()
+      ->tf_xla_disable_strict_signature_checks = true;
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

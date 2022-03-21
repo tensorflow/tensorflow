@@ -57,9 +57,11 @@ cc_library(
     hdrs = ["xla_compilation_cache_test_helper.h"],
     deps = [
         "//tensorflow/compiler/jit:xla_activity_listener",
+        "//tensorflow/compiler/jit:xla_compilation_cache_proto_cc",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_device",
         "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -70,6 +72,8 @@ cc_library(
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -77,6 +81,28 @@ tf_cc_test(
     name = "xla_compilation_cache_serialize_test",
     srcs = [
         "xla_compilation_cache_serialize_test.cc",
+    ],
+    env = {
+        "XLA_FLAGS": "--xla_gpu_bef_executable",
+    },
+    tags = [
+        "config-cuda-only",
+        "no_oss",  # This test only runs with GPU.
+        "requires-gpu-nvidia",
+        "xla",
+    ],
+    deps = [
+        ":xla_compilation_cache_test_helper",
+        "//tensorflow/compiler/jit:compilation_passes",
+        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/core:test",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_compilation_cache_loose_signature_test",
+    srcs = [
+        "xla_compilation_cache_loose_signature_test.cc",
     ],
     env = {
         "XLA_FLAGS": "--xla_gpu_bef_executable",

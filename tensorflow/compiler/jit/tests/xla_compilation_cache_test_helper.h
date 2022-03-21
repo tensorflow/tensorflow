@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/platform/errors.h"
@@ -79,6 +80,12 @@ class XlaCompilationCacheSerializeTest : public ::testing::Test {
   // Runs the graph using specified batch size both with and without XLA JIT
   // compilation. Returns an error if the results between the two do not match.
   Status ExecuteWithBatch(const GraphDef& graph, int batch);
+
+  // Adds the suffix "_altered" to the HLO module names of all of the persistent
+  // XLA compilation cache entries found at the specified directory. If none are
+  // found, returns NOT_FOUND error.
+  Status AlterPersistentCacheEntryHloModuleNames(
+      absl::string_view persistent_cache_dir_path);
 
  private:
   JitCompilationListener* listener_;

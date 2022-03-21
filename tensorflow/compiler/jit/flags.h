@@ -89,6 +89,11 @@ struct MarkForCompilationPassFlags {
   // If non-empty, JIT-compiled executables are saved to and loaded from the
   // specified file system directory path.
   std::string tf_xla_persistent_cache_directory;
+
+  // If true, entries loaded into the XLA compile cache will not have their
+  // signatures checked strictly. This should generally not be disabled except
+  // for debugging. Defaults to false.
+  bool tf_xla_disable_strict_signature_checks;
 };
 
 // Flags associated with the XLA bridge's xla_device module.
