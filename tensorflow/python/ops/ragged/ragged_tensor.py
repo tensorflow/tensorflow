@@ -1630,8 +1630,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     Returns:
       A `RaggedTensor` with the specified `ragged_rank`.  The shape of the
       returned ragged tensor is compatible with the shape of `tensor`.
+
     Raises:
       ValueError: If both `lengths` and `padding` are specified.
+      ValueError: If the rank of `tensor` is 0 or 1.
     """
     row_splits_dtype = dtypes.as_dtype(row_splits_dtype)
     if lengths is not None and padding is not None:
@@ -1645,6 +1647,11 @@ class RaggedTensor(composite_tensor.CompositeTensor,
 
     with ops.name_scope(name, "RaggedFromTensor", [tensor, lengths, padding]):
       tensor = ops.convert_to_tensor(tensor, name="tensor")
+      if tensor.shape.rank is not None and tensor.shape.rank < 2:
+        raise ValueError(f"The rank of a RaggedTensor must be greater than 1, "
+                         f"i.e., a list of scalars won't have ragged "
+                         f"dimensions. Received argument `tensor` with rank "
+                         f"{tensor.shape.rank}.")
       tensor.shape.with_rank_at_least(ragged_rank + 1)
       input_shape = array_ops.shape(tensor, out_type=row_splits_dtype)
       ncols = input_shape[1]

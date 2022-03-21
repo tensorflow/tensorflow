@@ -659,6 +659,18 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                   '.* must be from the same graph as .*'):
         RaggedTensor.from_row_splits(values, splits)
 
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='Rank0',
+          tensor='a'),
+      dict(
+          testcase_name='Rank1',
+          tensor=['a', 'b']),
+  ])
+  def testFromTensorRankError(self, tensor):
+    with self.assertRaisesRegex(ValueError, 'must be greater than 1'):
+      RaggedTensor.from_tensor(tensor)
+
   #=============================================================================
   # Ragged Value & Row-Partitioning Tensor Accessors
   #=============================================================================
