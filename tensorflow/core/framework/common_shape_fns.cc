@@ -161,7 +161,7 @@ Status EinsumShape(shape_inference::InferenceContext* c) {
   gtl::InlinedVector<string, 2> input_labels;
   string output_labels;
   TF_RETURN_IF_ERROR(
-      ParseEinsumEquation(equation, &input_labels, &output_labels));
+      ValidateEinsumEquation(equation, &input_labels, &output_labels));
 
   if (c->num_inputs() == 0 || c->num_inputs() > 2) {
     return errors::InvalidArgument("Expected either 1 or 2 inputs but got: ",
