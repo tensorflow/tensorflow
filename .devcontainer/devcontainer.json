@@ -54,6 +54,5 @@
 		// Uncomment this to enable Nvidia support
 		//"--runtime=nvidia",
 		"--security-opt",
-		"seccomp=unconfined" ],
-	"remoteUser": "vscode"
+		"seccomp=unconfined" ]
 }
