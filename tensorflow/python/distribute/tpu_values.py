@@ -88,7 +88,8 @@ class TPUVariableMixin(object):
       if is_packed:
         val = [self._packed_var]
 
-      return tpu_context.get_replicated_var_handle(self._handle_id, val,
+      return tpu_context.get_replicated_var_handle(self._common_name,
+                                                   self._handle_id, val,
                                                    self._is_mirrored(),
                                                    is_packed)
 
