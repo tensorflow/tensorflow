@@ -31,20 +31,6 @@ using gpusolverHandle_t = cusolverDnHandle_t;
 #else
 #include "rocm/rocm_config.h"
 // Macros to ease the transition from rocsolver to hipsolver.
-<<<<<<< HEAD
-#define TENSORFLOW_USE_HIPSOLVER (TENSORFLOW_USE_ROCM && (TF_ROCM_VERSION >= 40500))
-#define TENSORFLOW_USE_ROCSOLVER (TENSORFLOW_USE_ROCM && (TF_ROCM_VERSION < 40500))
-#define TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER (GOOGLE_CUDA || TENSORFLOW_USE_HIPSOLVER)
-#if TENSORFLOW_USE_HIPSOLVER
-#include "tensorflow/stream_executor/rocm/hipsolver_wrapper.h"
-using gpusolverHandle_t = hipsolverHandle_t;
-#else // TENSORFLOW_USE_ROCSOLVER
-#include "tensorflow/stream_executor/rocm/rocblas_wrapper.h"
-#include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
-using gpusolverHandle_t = rocblas_handle;
-#endif // TF_ROCM_VERSION >= 40500
-#endif // TENSORFLOW_USE_ROCM
-=======
 #if TENSORFLOW_USE_HIPSOLVER
 #include "tensorflow/stream_executor/rocm/hipsolver_wrapper.h"
 using gpusolverHandle_t = hipsolverHandle_t;
@@ -54,7 +40,6 @@ using gpusolverHandle_t = hipsolverHandle_t;
 using gpusolverHandle_t = rocblas_handle;
 #endif  // TF_ROCM_VERSION >= 40500
 #endif  // TENSORFLOW_USE_ROCM
->>>>>>> google_upstream/master
 
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"

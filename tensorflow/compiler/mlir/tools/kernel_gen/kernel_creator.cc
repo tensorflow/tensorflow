@@ -422,11 +422,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   auto gpu_modules = module.getOps<::mlir::gpu::GPUModuleOp>();
   for (::mlir::gpu::GPUModuleOp gpu_module : gpu_modules) {
     gpu_module.walk([&](mlir::gpu::GPUFuncOp gpu_kernel) {
-<<<<<<< HEAD
-      if (gpu_kernel->getAttr(mlir::gpu::GPUDialect::getKernelFuncAttrName())) {
-=======
       if (gpu_kernel.isKernel()) {
->>>>>>> google_upstream/master
         gpu_kernel->setAttr(
             "rocdl.max_flat_work_group_size",
             mlir::IntegerAttr::get(
