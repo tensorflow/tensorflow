@@ -46,6 +46,8 @@ class ServerDef;
 //
 // Possible service errors:
 //    - errors::Internal: Coordination service is not enabled.
+//                        If it was previously accessible, coordination service
+//                        has been shut down.
 //    - errors::Aborted: Incarnation mismatch during heartbeat (either remote
 //                       task or coordination service has restarted).
 //    - errors::Unavailable: Heartbeat timeout from remote task (failed,
