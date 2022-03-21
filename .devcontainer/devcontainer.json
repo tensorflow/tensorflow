@@ -2,7 +2,10 @@
 	"name": "Tensorflow Dev Container",
 	
 	"dockerFile": "Dockerfile",
-
+	
+	// NOTE: This is currently not supported unitll we
+	//       separate CPU and GPU layers
+	//       https://github.com/tensorflow/build/pull/47
 	// Uncomment this for GPU image
 	// "build": { 
 	// 		"args": { 
