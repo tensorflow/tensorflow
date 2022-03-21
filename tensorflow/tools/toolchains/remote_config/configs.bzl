@@ -110,9 +110,9 @@ def initialize_rbe_configs():
         name = "ubuntu18.04-gcc7_manylinux2010-rocm",
         compiler = "/dt7/usr/bin/gcc",
         compiler_prefix = "/usr/bin",
-        rocm_version = "3.5",  # Any version will do.
+        rocm_version = "5.0",  # Any version will do.
         os = "ubuntu18.04-manylinux2010-multipython",
-        python_versions = ["2.7", "3.5", "3.6", "3.7", "3.8"],
+        python_versions = ["2.7", "3.5", "3.6", "3.7", "3.8", "3.9"],
         python_install_path = "/usr/local",
     )
 
