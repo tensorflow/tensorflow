@@ -122,6 +122,13 @@ TEST_F(ShapeTreeTest, EmptyTupleMustHaveNoLeaves) {
   EXPECT_EQ(0, shape_tree.leaf_count());
 }
 
+TEST_F(ShapeTreeTest, NestedEmptyTuple) {
+  Shape shape(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeTupleShape({}), array_shape_}));
+  ShapeTree<int> shape_tree{shape};
+  EXPECT_EQ(ShapeUtil::GetLeafCount(shape), shape_tree.leaf_count());
+}
+
 TEST_F(ShapeTreeTest, ArrayShape) {
   ShapeTree<int> shape_tree{array_shape_};
   *shape_tree.mutable_element({}) = 42;

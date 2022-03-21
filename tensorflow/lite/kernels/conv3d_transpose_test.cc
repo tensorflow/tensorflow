@@ -154,7 +154,7 @@ TEST_P(Conv3dTransposeOpTest, MismatchBiasSizeTest) {
           {1, 2, 3, 4, 5}, {TensorType_FLOAT32, {1, 3, 2, 2, 2}},
           {TensorType_FLOAT32, {1, 2, 2, 4, 2}}, {TensorType_FLOAT32, {3}},
           {TensorType_FLOAT32, {}}, Conv3dTransposeOpTest::GetParam()),
-      "NumElements.bias. != SizeOfDimension.filter, 4.");
+      "NumElements.bias. != SizeOfDimension.filter, 3.");
 }
 
 TEST_P(Conv3dTransposeOpTest, SimpleFloat32Test) {
