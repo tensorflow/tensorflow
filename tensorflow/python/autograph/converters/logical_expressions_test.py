@@ -16,7 +16,6 @@
 
 from tensorflow.python.autograph.converters import logical_expressions
 from tensorflow.python.autograph.core import converter_testing
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
