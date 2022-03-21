@@ -304,10 +304,6 @@ class PerWorkerValuesTypeSpec(type_spec_lib.TypeSpec):
     raise NotImplementedError(
         "most_specific_common_supertype is not implemented")
 
-  def most_specific_compatible_type(self, other):
-    raise NotImplementedError(
-        "most_specific_compatible_type is not implemented")
-
   @property
   def _component_specs(self):
     return self._value_spec

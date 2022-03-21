@@ -72,17 +72,6 @@ class HloAliasAnalysisTest : public HloTestBase {
     return buffers;
   }
 
-  // Return a vector containing all of the HloValues in the given buffer.
-  std::vector<HloValue> GetValuesInBuffer(const HloBuffer& buffer) {
-    std::vector<HloValue> values;
-    const auto& buffer_values = buffer.values();
-    values.reserve(buffer_values.size());
-    for (const HloValue* value : buffer_values) {
-      values.push_back(*value);
-    }
-    return values;
-  }
-
   // Return the HloValue defined at the given position.
   const HloValue& GetValueDefinedAt(const HloInstruction* instruction,
                                     const ShapeIndex& index = {}) const {
@@ -381,14 +370,13 @@ TEST_F(HloAliasAnalysisTest, InputOutputAliasingWithWhile) {
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
-  EXPECT_THAT(
-      GetValuesInBuffer(analysis.GetUniqueBufferAt(xla_while, /*index=*/{1})),
-      UnorderedElementsAre(GetValueDefinedAt(param, {1}),
-                           GetValueDefinedAt(xla_while, /*index=*/{1}),
-                           GetValueDefinedAt(body_param, {1}),
-                           GetValueDefinedAt(cond_param, {1}),
-                           GetValueDefinedAt(add),
-                           GetValueDefinedAt(negate_2)));
+  EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{1}).values(),
+              UnorderedElementsAre(&GetValueDefinedAt(param, {1}),
+                                   &GetValueDefinedAt(xla_while, /*index=*/{1}),
+                                   &GetValueDefinedAt(body_param, {1}),
+                                   &GetValueDefinedAt(cond_param, {1}),
+                                   &GetValueDefinedAt(add),
+                                   &GetValueDefinedAt(negate_2)));
 
   EXPECT_THAT(
       analysis.GetUniqueBufferAt(xla_while, /*index=*/{1}).ComputePositions(),
@@ -577,16 +565,14 @@ TEST_F(HloAliasAnalysisTest, SingleWhile) {
           HloPosition{body_element_1, {}}, HloPosition{add, {}},
           HloPosition{body_tuple, {1}}, HloPosition{cond_param, {1}}));
 
-  EXPECT_THAT(
-      GetValuesInBuffer(analysis.GetUniqueBufferAt(xla_while, /*index=*/{0})),
-      UnorderedElementsAre(GetValueDefinedAt(constant1)));
-  EXPECT_THAT(
-      GetValuesInBuffer(analysis.GetUniqueBufferAt(xla_while, /*index=*/{1})),
-      UnorderedElementsAre(GetValueDefinedAt(constant2),
-                           GetValueDefinedAt(xla_while, /*index=*/{1}),
-                           GetValueDefinedAt(body_param, {1}),
-                           GetValueDefinedAt(cond_param, {1}),
-                           GetValueDefinedAt(add)));
+  EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{0}).values(),
+              UnorderedElementsAre(&GetValueDefinedAt(constant1)));
+  EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{1}).values(),
+              UnorderedElementsAre(&GetValueDefinedAt(constant2),
+                                   &GetValueDefinedAt(xla_while, /*index=*/{1}),
+                                   &GetValueDefinedAt(body_param, {1}),
+                                   &GetValueDefinedAt(cond_param, {1}),
+                                   &GetValueDefinedAt(add)));
 
   EXPECT_FALSE(AnyValuesInSameBufferInterfere());
 }
@@ -980,13 +966,13 @@ TEST_F(HloAliasAnalysisTest, TupleSelectToWhile) {
   EXPECT_EQ(analysis.GetUniqueBufferAt(constant1),
             analysis.GetUniqueBufferAt(xla_while, /*index=*/{0}));
 
-  EXPECT_THAT(GetValuesInBuffer(analysis.GetUniqueBufferAt(constant1)),
-              UnorderedElementsAre(GetValueDefinedAt(constant1),
-                                   GetValueDefinedAt(constant2),
-                                   GetValueDefinedAt(xla_while, /*index=*/{0}),
-                                   GetValueDefinedAt(body_param, /*index=*/{0}),
-                                   GetValueDefinedAt(cond_param, /*index=*/{0}),
-                                   GetValueDefinedAt(negate)));
+  EXPECT_THAT(analysis.GetUniqueBufferAt(constant1).values(),
+              UnorderedElementsAre(
+                  &GetValueDefinedAt(constant1), &GetValueDefinedAt(constant2),
+                  &GetValueDefinedAt(xla_while, /*index=*/{0}),
+                  &GetValueDefinedAt(body_param, /*index=*/{0}),
+                  &GetValueDefinedAt(cond_param, /*index=*/{0}),
+                  &GetValueDefinedAt(negate)));
   EXPECT_FALSE(analysis.InstructionBuffersAreAmbiguous(select));
   EXPECT_FALSE(analysis.InstructionBuffersAreAmbiguous(xla_while));
 

@@ -59,8 +59,7 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     baseline_abs, test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Abs, DT_INT8, DT_INT8, baseline_abs,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Abs, DT_INT16, DT_INT16, baseline_abs,
@@ -785,8 +784,7 @@ GENERATE_DEFAULT_TEST(OnesLike, DT_INT64, DT_INT64, baseline_ones_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(OnesLike, DT_INT8, DT_INT8, baseline_ones_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(OnesLike, DT_INT16, DT_INT16, baseline_ones_like,
@@ -855,8 +853,7 @@ GENERATE_DEFAULT_TEST_2(Relu, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_relu, test::OpsTestConfig())
 
 // Test the JIT-compiled kernels.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Relu, DT_INT8, DT_INT8, baseline_relu,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Relu, DT_INT16, DT_INT16, baseline_relu,
@@ -882,8 +879,7 @@ T baseline_rint(T x) {
 }
 
 // Test the JIT-compiled kernel.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST_2(Rint, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
                         baseline_rint,
                         test::OpsTestConfig().ExpectStrictlyEqual())
@@ -1037,8 +1033,7 @@ GENERATE_DEFAULT_TEST(Sign, DT_COMPLEX128, DT_COMPLEX128, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Sign, DT_INT8, DT_INT8, baseline_sign,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Sign, DT_INT16, DT_INT16, baseline_sign,
@@ -1176,8 +1171,7 @@ GENERATE_DEFAULT_TEST(Square, DT_INT64, DT_INT64, baseline_square,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(Square, DT_INT8, DT_INT8, baseline_square,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(Square, DT_INT16, DT_INT16, baseline_square,
@@ -1211,8 +1205,7 @@ GENERATE_DEFAULT_TEST(ZerosLike, DT_INT64, DT_INT64, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 
 // These kernels are JIT-compiled.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TEST(ZerosLike, DT_INT8, DT_INT8, baseline_zeros_like,
                       test::OpsTestConfig().ExpectStrictlyEqual())
 GENERATE_DEFAULT_TEST(ZerosLike, DT_INT16, DT_INT16, baseline_zeros_like,

@@ -35,6 +35,7 @@ from tensorflow.python.util import nest
 class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
 
   def test_pass_none_to_apply_gradients(self):
+    self.skip_if_oss()
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     mid_level_api.build([
         TensorShape((self.batch_size, 2)),

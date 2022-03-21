@@ -30,6 +30,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace mlir {
+namespace tf_type {
+class FullTypeAttr;
+}  // namespace tf_type
+
 namespace tfg {
 
 // Convert the list of MLIR Attributes `attrs` to the `tensorflow::AttrValueMap`
@@ -61,6 +65,16 @@ tensorflow::StatusOr<Attribute> ConvertNonFuncAttributeValue(
 // Converts all kinds of AttrValue proto into an MLIR attribute.
 tensorflow::StatusOr<Attribute> ConvertAttributeValue(
     const tensorflow::AttrValue& value, Builder& builder,
+    TFGraphDialect* tfgDialect);
+
+// Convert the MLIR FullTyoe attribute `attr` and return a
+// `tensorflow::FullTypeDef`.
+tensorflow::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
+    tf_type::FullTypeAttr full_type);
+
+// Converts fulltype proto to attribute.
+tensorflow::StatusOr<::mlir::tf_type::FullTypeAttr> ConvertAttribute(
+    const tensorflow::FullTypeDef& full_type, Builder& builder,
     TFGraphDialect* tfgDialect);
 
 // Certain load-bearing TF attributes are promoted to TFG attributes by dropping

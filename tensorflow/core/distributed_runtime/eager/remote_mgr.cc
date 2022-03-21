@@ -47,9 +47,15 @@ Status RemoteMgr::GetTensorHandleImpl(
     tensorflow::TensorHandle** handle) {
   auto iter = remote_tensor_handle_map_.find(remote_handle);
   if (iter == remote_tensor_handle_map_.end()) {
+    // TODO(b/217820532): Fix the tensor deallocation order issue.
     return errors::InvalidArgument(
         "Unable to find the relevant tensor remote_handle: Op ID: ",
-        remote_handle.op_id, ", Output num: ", remote_handle.output_num);
+        remote_handle.op_id, ", Output num: ", remote_handle.output_num,
+        ". One possible cause is that the tensor was accessed after "
+        "deallocation in a distributed worker setup. Try setting "
+        "`os.environ['TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE']='False'` in "
+        "your client to disable async streaming behavior to see if it fixes "
+        "the problem.");
   }
 
   *handle = iter->second;
@@ -70,9 +76,15 @@ Status RemoteMgr::GetMirroredResourceShape(
   tf_shared_lock l(mirrored_resource_shape_mu_);
   auto iter = mirrored_resource_shape_map_.find(remote_handle);
   if (iter == mirrored_resource_shape_map_.end()) {
+    // TODO(b/217820532): Fix the tensor deallocation order issue.
     return errors::InvalidArgument(
-        "Unable to find the relevant mirrored resource shape: Op ID: ",
-        remote_handle.op_id, ", Output num: ", remote_handle.output_num);
+        "Unable to find the relevant tensor remote_handle: Op ID: ",
+        remote_handle.op_id, ", Output num: ", remote_handle.output_num,
+        ". One possible cause is that the tensor was accessed after "
+        "deallocation in a distributed worker setup. Try setting "
+        "`os.environ['TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE']='False'` in "
+        "your client to disable async streaming behavior to see if it fixes "
+        "the problem.");
   }
 
   *handle = iter->second;

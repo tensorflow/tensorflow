@@ -2963,7 +2963,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     ContractionWithBiasAddAndAdd contract_with_bias_and_add;
     ContractionWithBiasAndAddActivation contract_with_bias_and_add_activation;
 
-    if (IsMKLEnabled() && !item.optimization_options().is_eager_mode) {
+    if (IsMKLEnabled()) {
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
       // or Remap Conv3D+BiasAdd+Add+relu into _FusedConv3D
       if (FindContractionWithBiasAndAddActivation(

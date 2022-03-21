@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/utils.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
@@ -50,16 +51,8 @@ constexpr absl::string_view kGroupKeyAttrName =
     "tf2xla.collective_info.group_key";
 
 class LegalizeTFCollective
-    : public PassWrapper<LegalizeTFCollective, OperationPass<ModuleOp>> {
+    : public LegalizeTFCollectiveBase<LegalizeTFCollective> {
  public:
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mhlo::MhloDialect>();
-  }
-  StringRef getArgument() const final { return "xla-legalize-tf-collective"; }
-  StringRef getDescription() const final {
-    return "Legalize TF/XLA collective ops (TensorFlow dialect) to the HLO "
-           "dialect";
-  }
   void runOnOperation() override;
 };
 
@@ -272,8 +265,6 @@ void LegalizeTFCollective::runOnOperation() {
   });
   if (result.wasInterrupted()) signalPassFailure();
 }
-
-static PassRegistration<LegalizeTFCollective> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass() {

@@ -690,6 +690,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu",
         "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu_binary",
         "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_tfrt_gpu",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -697,6 +698,7 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//backends/gpu:gpu_opdefs",
+        "@tf_runtime//backends/gpu:gpu_passes",
     ],
 )
 

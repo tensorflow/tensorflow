@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 

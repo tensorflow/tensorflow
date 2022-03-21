@@ -56,6 +56,9 @@ bool HasTPUDevice(mlir::ModuleOp module) {
 
 bool HasTPUOp(mlir::ModuleOp module) {
   auto walk_result = module.walk([&](mlir::Operation* op) {
+    // TODO(jiancai): we should check "_replication_info" attribute here instead
+    // once the migration to unified compilation and replication markers is
+    // done. See b/220150965 for more details.
     auto replicate_attr =
         op->getAttrOfType<mlir::StringAttr>(kTPUReplicateAttr);
     if (replicate_attr) return mlir::WalkResult::interrupt();

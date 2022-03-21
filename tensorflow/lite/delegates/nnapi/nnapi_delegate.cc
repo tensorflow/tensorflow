@@ -72,6 +72,7 @@ namespace tflite {
 namespace {
 
 static const char kNnapiId[] = "nnapi_";
+constexpr uint64_t kNoMemoryTimestamp = 0;
 
 // Returns a string ID unique to what accelerator is run by NNAPI, based on
 // user params. Assumes that the default accelerator is same across runs.
@@ -2179,11 +2180,18 @@ void AppendDynamicDimensions(const TfLiteContext* context,
 
 NNAPIExecutionCache::Signature CreateExecutionCacheSignature(
     const TfLiteContext* context, const TfLiteNode* node,
-    const StatefulNnApiDelegate::Options& delegate_options) {
-  // Tensor buffer handles.
-  std::vector<int> tensor_handles(context->tensors_size);
-  for (int i = 0; i < tensor_handles.size(); i++) {
-    tensor_handles[i] = context->tensors[i].buffer_handle;
+    const StatefulNnApiDelegate::Options& delegate_options,
+    const std::vector<StatefulNnApiDelegate::MemoryRegistration>&
+        tensor_memory_map) {
+  // Tensor buffer handle timestamps.
+  std::vector<uint64_t> tensor_handle_timestamps(context->tensors_size);
+  for (int i = 0; i < tensor_handle_timestamps.size(); i++) {
+    auto handle = context->tensors[i].buffer_handle;
+    if (handle < 0 || handle >= tensor_memory_map.size()) {
+      tensor_handle_timestamps[i] = kNoMemoryTimestamp;
+    } else {
+      tensor_handle_timestamps[i] = tensor_memory_map[handle].timestamp;
+    }
   }
 
   // Dynamic dimensions.
@@ -2197,13 +2205,14 @@ NNAPIExecutionCache::Signature CreateExecutionCacheSignature(
     }
   }
 
-  return NNAPIExecutionCache::Signature{std::move(tensor_handles),
+  return NNAPIExecutionCache::Signature{std::move(tensor_handle_timestamps),
                                         std::move(dynamic_dimensions)};
 }
 
-std::size_t HashIntVector(const std::vector<int>& vec) {
+template <typename T>
+std::size_t HashVector(const std::vector<T>& vec) {
   std::size_t seed = vec.size();
-  auto hasher = std::hash<int>{};
+  auto hasher = std::hash<T>{};
   for (const auto& i : vec) {
     seed = CombineHashes({seed, hasher(i)});
   }
@@ -2213,14 +2222,14 @@ std::size_t HashIntVector(const std::vector<int>& vec) {
 }  // namespace
 
 bool NNAPIExecutionCache::Signature::operator==(const Signature& other) const {
-  return tensor_handles == other.tensor_handles &&
+  return tensor_handle_timestamps == other.tensor_handle_timestamps &&
          dynamic_dimensions == other.dynamic_dimensions;
 }
 
 std::size_t NNAPIExecutionCache::Signature::Hasher::operator()(
     const Signature& signature) const {
-  return CombineHashes({HashIntVector(signature.tensor_handles),
-                        HashIntVector(signature.dynamic_dimensions)});
+  return CombineHashes({HashVector(signature.tensor_handle_timestamps),
+                        HashVector(signature.dynamic_dimensions)});
 }
 
 ANeuralNetworksExecution* NNAPIExecutionCache::Get(const Signature& signature) {
@@ -4720,7 +4729,8 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
   ANeuralNetworksExecution* execution = nullptr;
   NNAPIExecutionCache::Signature signature;
   if (execution_is_reusable) {
-    signature = CreateExecutionCacheSignature(context, node, delegate_options);
+    signature = CreateExecutionCacheSignature(context, node, delegate_options,
+                                              *tensor_memory_map_);
     execution = nn_execution_cache_.Get(signature);
   }
   bool should_create_new_execution = execution == nullptr;
@@ -6338,16 +6348,17 @@ delegates::Serialization* StatefulNnApiDelegate::GetCache(
 TfLiteBufferHandle StatefulNnApiDelegate::RegisterNnapiMemory(
     ANeuralNetworksMemory* memory, CopyToHostTensorFnPtr callback,
     void* callback_context) {
+  uint64_t timestamp = delegate_data_.next_buffer_handle_timestamp++;
   int map_size = delegate_data_.tensor_memory_map.size();
   for (int i = 0; i < map_size; i++) {
     if (delegate_data_.tensor_memory_map[i].memory == nullptr) {
-      delegate_data_.tensor_memory_map[i] = {memory, callback,
-                                             callback_context};
+      delegate_data_.tensor_memory_map[i] = {memory, callback, callback_context,
+                                             timestamp};
       return i;
     }
   }
   delegate_data_.tensor_memory_map.push_back(
-      {memory, callback, callback_context});
+      {memory, callback, callback_context, timestamp});
   return map_size;
 }
 

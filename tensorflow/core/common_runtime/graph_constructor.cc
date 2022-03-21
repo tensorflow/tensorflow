@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -223,7 +224,8 @@ class GraphConstructor {
   // Performs DFS starting at `cur_node` and prints any cycles found.
   void DFS(int cur_node, std::vector<int>* cur_branch,
            std::vector<bool>* is_on_cur_branch,
-           absl::flat_hash_set<int>* unvisited);
+           absl::flat_hash_set<int>* unvisited,
+           const std::vector<absl::string_view>& node_names);
   Status IsNodeFullyMapped(const NodeDef& node_def, bool* is_node_mapped);
   Status ValidateColocationConstraints(const NodeDef& node_def);
   Status MakeNode(NodeDef&& node_def, Node** node);
@@ -1055,7 +1057,8 @@ Status GraphConstructor::IsNodeFullyMapped(const NodeDef& node_def,
 
 void GraphConstructor::DFS(int cur_node, std::vector<int>* cur_branch,
                            std::vector<bool>* is_on_cur_branch,
-                           absl::flat_hash_set<int>* unvisited) {
+                           absl::flat_hash_set<int>* unvisited,
+                           const std::vector<absl::string_view>& node_names) {
   cur_branch->push_back(cur_node);
   is_on_cur_branch->at(cur_node) = true;
   for (auto next_node : outputs_[cur_node]) {
@@ -1065,12 +1068,14 @@ void GraphConstructor::DFS(int cur_node, std::vector<int>* cur_branch,
             std::find(cur_branch->begin(), cur_branch->end(), next_node);
         LOG(WARNING) << "Cycle detected:";
         while (iter != cur_branch->end()) {
-          LOG(WARNING) << *iter;
+          const absl::string_view name = node_names[*iter];
+          DCHECK(!name.empty());
+          LOG(WARNING) << "node id=" << *iter << ", name=" << name;
           ++iter;
         }
         LOG(WARNING) << "End of cycle";
       } else {
-        DFS(next_node, cur_branch, is_on_cur_branch, unvisited);
+        DFS(next_node, cur_branch, is_on_cur_branch, unvisited, node_names);
       }
     }
   }
@@ -1081,10 +1086,20 @@ void GraphConstructor::DFS(int cur_node, std::vector<int>* cur_branch,
 
 void GraphConstructor::PrintCycles() {
   int num_nodes = outputs_.size();
+
+  std::vector<absl::string_view> node_names;
+  node_names.resize(num_nodes);
+  for (const auto& named_node : gdef_nodes_) {
+    DCHECK_GE(named_node.second.gdef_index, 0);
+    DCHECK_LT(named_node.second.gdef_index, num_nodes);
+    node_names[named_node.second.gdef_index] = named_node.first;
+  }
+
   absl::flat_hash_set<int> unvisited;
   for (int i = 0; i < num_nodes; i++) {
     unvisited.insert(i);
   }
+
   while (!unvisited.empty()) {
     int cur_node = *unvisited.begin();
     // Nodes on the current branch of DFS in traversal order. This is used for
@@ -1095,7 +1110,7 @@ void GraphConstructor::PrintCycles() {
     //   (std::find(cur_branch.start(),
     //              cur_branch.end(), i) != cur_branch.end())
     std::vector<bool> is_on_cur_branch(num_nodes, false);
-    DFS(cur_node, &cur_branch, &is_on_cur_branch, &unvisited);
+    DFS(cur_node, &cur_branch, &is_on_cur_branch, &unvisited, node_names);
   }
 }
 

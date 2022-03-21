@@ -560,9 +560,8 @@ static void CreateWhile32(Location loc, int num_iterations,
     auto loop_iv = block->getArgument(0);
     auto upper_limit = builder->create<mhlo::ConstOp>(
         loc, builder->getI32IntegerAttr(num_iterations));
-    StringAttr compare_direction = StringAttr::get(builder->getContext(), "LT");
     Value compare = builder->create<mhlo::CompareOp>(loc, loop_iv, upper_limit,
-                                                     compare_direction);
+                                                     ComparisonDirection::LT);
 
     builder->create<mhlo::ReturnOp>(loc, compare);
   }
@@ -812,8 +811,8 @@ static DenseElementsAttr GetEpsilonValue(Type ty) {
 
 static void BuildArgMinMaxReductionBody(Type input_element_type,
                                         Type index_element_type,
-                                        StringRef direction, Region *body,
-                                        OpBuilder *builder) {
+                                        ComparisonDirection direction,
+                                        Region *body, OpBuilder *builder) {
   OpBuilder::InsertionGuard insertion_point_gurad(*builder);
 
   Type input_type = RankedTensorType::get(/*shape=*/{}, input_element_type);
@@ -829,13 +828,12 @@ static void BuildArgMinMaxReductionBody(Type input_element_type,
   Value rhs_index = block->getArgument(3);
 
   ImplicitLocOpBuilder b(loc, *builder);
-  StringAttr compare_direction = StringAttr::get(b.getContext(), direction);
-  Value compare_dt = b.create<CompareOp>(lhs_val, rhs_val, compare_direction);
+  Value compare_dt = b.create<CompareOp>(lhs_val, rhs_val, direction);
   Value selected_input =
       b.create<SelectOp>(input_type, compare_dt, lhs_val, rhs_val);
 
-  Value compare_eq = b.create<CompareOp>(lhs_val, rhs_val,
-                                         StringAttr::get(b.getContext(), "EQ"));
+  Value compare_eq =
+      b.create<CompareOp>(lhs_val, rhs_val, ComparisonDirection::EQ);
   Value min_index = b.create<MinOp>(lhs_index, rhs_index);
   Value min_val_index =
       b.create<SelectOp>(index_type, compare_dt, lhs_index, rhs_index);
@@ -936,7 +934,7 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
 // Note that this right now only does comparision on the first pair of block
 // arguments.
 static void BuildSortComparisonBody(llvm::ArrayRef<Type> element_types,
-                                    StringRef direction,
+                                    ComparisonDirection direction,
                                     llvm::Optional<StringRef> compare_type,
                                     Region *body, OpBuilder *builder) {
   OpBuilder::InsertionGuard insertion_point_gurad(*builder);
@@ -950,12 +948,13 @@ static void BuildSortComparisonBody(llvm::ArrayRef<Type> element_types,
                         SmallVector<Location, 2>(2, loc));
   }
 
-  StringAttr compare_direction = builder->getStringAttr(direction);
-  StringAttr type_attr;
-  if (compare_type) type_attr = builder->getStringAttr(*compare_type);
+  ComparisonType type_attr;
+  if (compare_type)
+    type_attr = symbolizeComparisonType(*compare_type).getValue();
+  else
+    type_attr = ComparisonType::NOTYPE;
   Value compare = builder->create<mhlo::CompareOp>(
-      loc, block->getArgument(0), block->getArgument(1), compare_direction,
-      type_attr);
+      loc, block->getArgument(0), block->getArgument(1), direction, type_attr);
 
   builder->create<mhlo::ReturnOp>(loc, compare);
 }
@@ -965,7 +964,7 @@ static mhlo::SortOp CreateSortOp(PatternRewriter *rewriter, const Location &loc,
                                  const llvm::ArrayRef<Value> &operands,
                                  const llvm::ArrayRef<Type> &element_types,
                                  int64_t dimension, bool is_stable,
-                                 const std::string &direction) {
+                                 ComparisonDirection direction) {
   assert(!operands.empty() && "No operands to sort");
   // Create the sort op.
   auto sort_op =
@@ -1779,9 +1778,8 @@ class ConvertLeakyReluOp : public OpRewritePattern<TF::LeakyReluOp> {
     Value leakyActivationVal = rewriter.create<mhlo::MulOp>(
         loc, features.getType(), features, alphaVal);
 
-    StringAttr compare_direction = StringAttr::get(rewriter.getContext(), "GT");
     Value compareGtZero = rewriter.create<mhlo::CompareOp>(
-        loc, features, zeroVal, compare_direction);
+        loc, features, zeroVal, ComparisonDirection::GT);
 
     rewriter.replaceOpWithNewOp<SelectOp>(op, featureType, compareGtZero,
                                           features, leakyActivationVal);
@@ -1810,10 +1808,8 @@ class ConvertLeakyReluGradOp : public OpRewritePattern<TF::LeakyReluGradOp> {
     Value leakyGradientVal = rewriter.create<mhlo::MulOp>(
         loc, features.getType(), gradients, alphaVal);
 
-    StringAttr compare_direction = StringAttr::get(rewriter.getContext(), "GT");
-
     Value compareGtZero = rewriter.create<mhlo::CompareOp>(
-        loc, features, zeroVal, compare_direction);
+        loc, features, zeroVal, ComparisonDirection::GT);
 
     rewriter.replaceOpWithNewOp<SelectOp>(op, featureType, compareGtZero,
                                           gradients, leakyGradientVal);
@@ -1868,9 +1864,8 @@ class ConvertDiagPartOp : public OpRewritePattern<TF::DiagPartOp> {
                                          rewriter.getI64IntegerAttr(0));
     auto iota1 = rewriter.create<IotaOp>(op.getLoc(), iota_type,
                                          rewriter.getI64IntegerAttr(1));
-    Value compare = rewriter.create<CompareOp>(
-        op.getLoc(), iota0, iota1,
-        StringAttr::get(rewriter.getContext(), "EQ"));
+    Value compare = rewriter.create<CompareOp>(op.getLoc(), iota0, iota1,
+                                               ComparisonDirection::EQ);
     Value zero = GetScalarConstOfType(input_type.getElementType(), op.getLoc(),
                                       0, &rewriter);
     Value zero_matrix = rewriter.create<BroadcastOp>(
@@ -2256,8 +2251,11 @@ class ConvertFFTOp : public OpRewritePattern<OpTy> {
           GetI64ElementsAttr(no_padding, &rewriter));
     }
 
-    rewriter.replaceOpWithNewOp<FftOp>(op, op.getType(), reshaped, fft_string,
-                                       rewriter.getI64TensorAttr(fft_length));
+    rewriter.replaceOpWithNewOp<FftOp>(
+        op, op.getType(), reshaped,
+        FftTypeAttr::get(rewriter.getContext(),
+                         symbolizeFftType(fft_string).getValue()),
+        rewriter.getI64TensorAttr(fft_length));
     return success();
   }
 };
@@ -4457,7 +4455,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
     auto reduction = rewriter.create<ReduceOp>(
         loc, llvm::ArrayRef<Value>(operands),
         llvm::ArrayRef<Value>(init_values), reduction_dimensions);
-    StringRef direction = Derived::GetDirection();
+    auto direction = Derived::GetDirection();
     BuildArgMinMaxReductionBody(input_element_type, index_element_type,
                                 direction, &reduction.body(), &rewriter);
 
@@ -4484,7 +4482,7 @@ class ConvertArgMaxOp
                                      hlo::kInfinityLowest, &rewriter);
   }
 
-  static StringRef GetDirection() { return "GE"; }
+  static ComparisonDirection GetDirection() { return ComparisonDirection::GE; }
 };
 
 // Converts tensorflow ArgMin op to mhlo operations. The actual
@@ -4505,7 +4503,7 @@ class ConvertArgMinOp
                                      hlo::kInfinityMax, &rewriter);
   }
 
-  static StringRef GetDirection() { return "LE"; }
+  static ComparisonDirection GetDirection() { return ComparisonDirection::LE; }
 };
 
 // Converts TF TensorScatterUpdate/Min/Max/Add/Sub op into Scatter Op with
@@ -4858,9 +4856,9 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<OpTy> {
       Type type = RankedTensorType::get(/*shape=*/{}, element_type);
       block->addArguments({type, type}, SmallVector<Location, 2>(2, loc));
 
-      auto reducer = rewriter.create<CompareOp>(
-          loc, block->getArgument(0), block->getArgument(1),
-          StringAttr::get(rewriter.getContext(), "GE"));
+      auto reducer = rewriter.create<CompareOp>(loc, block->getArgument(0),
+                                                block->getArgument(1),
+                                                ComparisonDirection::GE);
       rewriter.create<ReturnOp>(loc, reducer.getResult());
     }
 
@@ -5305,8 +5303,7 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
         GetI64ElementsAttr(broadcast_dims, &rewriter));
 
     Value compare = rewriter.create<mhlo::CompareOp>(
-        loc, broadcast_indices, iota,
-        StringAttr::get(rewriter.getContext(), "EQ"));
+        loc, broadcast_indices, iota, ComparisonDirection::EQ);
     Value on_value = rewriter.create<BroadcastOp>(
         loc, op.getType(), op.on_value(),
         GetI64ElementsAttr(output_dims, &rewriter));
@@ -5505,7 +5502,8 @@ class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
     Type element_type = input_type.getElementType();
     auto sort_op = CreateSortOp(&rewriter, op.getLoc(), {op.input(), iota_op},
                                 {element_type, i32_type}, last_dim_index,
-                                /*is_stable=*/true, /*direction=*/"GT");
+                                /*is_stable=*/true,
+                                /*direction=*/ComparisonDirection::GT);
 
     // Get the sorted input and index tuple element.
     auto tuple_first_element = sort_op.getResult(0);
@@ -5933,7 +5931,8 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
         auto sorted = CreateSortOp(
             &rewriter, op.getLoc(), {keys, current},
             {rewriter.getIntegerType(32), input_type.getElementType()},
-            /*dimension=*/-1, /*is_stable=*/false, /*direction=*/"LT");
+            /*dimension=*/-1, /*is_stable=*/false,
+            /*direction=*/ComparisonDirection::LT);
         current = sorted.getResult(1);
       }
       rewriter.replaceOp(op, current);
@@ -6583,9 +6582,8 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
                                          rewriter.getI64IntegerAttr(0));
     auto iota1 = rewriter.create<IotaOp>(op.getLoc(), iota_type,
                                          rewriter.getI64IntegerAttr(1));
-    Value compare = rewriter.create<CompareOp>(
-        op.getLoc(), iota0, iota1,
-        StringAttr::get(rewriter.getContext(), "EQ"));
+    Value compare = rewriter.create<CompareOp>(op.getLoc(), iota0, iota1,
+                                               ComparisonDirection::EQ);
     Value identity_matrix =
         rewriter.create<ConvertOp>(op.getLoc(), compare, type.getElementType());
     auto q_shape = llvm::to_vector<4>(type.getShape());
@@ -6593,7 +6591,9 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
     Value q = rewriter.create<BroadcastOp>(
         op.getLoc(), RankedTensorType::get(q_shape, type.getElementType()),
         identity_matrix, GetI64ElementsAttr(batch_dims, &rewriter));
-    auto precision_config = rewriter.getStrArrayAttr({"HIGHEST", "HIGHEST"});
+    auto precision_config = rewriter.getArrayAttr(
+        {PrecisionAttr::get(rewriter.getContext(), Precision::HIGHEST),
+         PrecisionAttr::get(rewriter.getContext(), Precision::HIGHEST)});
     for (int64_t i = 0; i < p; i += kBlockSize) {
       int64_t k = std::min(kBlockSize, p - i);
       auto a_block =
@@ -6692,8 +6692,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
         loc, RankedTensorType::get({m}, builder->getIntegerType(32)),
         builder->getI64IntegerAttr(0));
     Value gtk = builder->create<chlo::BroadcastCompareOp>(
-        loc, iota, k, GetI64ElementsAttr({}, builder),
-        StringAttr::get(builder->getContext(), "GT"));
+        loc, iota, k, GetI64ElementsAttr({}, builder), ComparisonDirection::GT);
     gtk = builder->create<ConvertOp>(loc, gtk, x_type.getElementType());
     Value x_after_k = builder->create<chlo::BroadcastMulOp>(
         loc, x, gtk, GetI64ElementsAttr({minor_dim}, builder));
@@ -6709,10 +6708,10 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
 
     Value sigma_is_zero = builder->create<chlo::BroadcastCompareOp>(
         loc, sigma.getResult(0), zero, GetI64ElementsAttr({}, builder),
-        StringAttr::get(builder->getContext(), "EQ"));
+        ComparisonDirection::EQ);
     Value alpha_is_negative = builder->create<chlo::BroadcastCompareOp>(
         loc, alpha, zero, GetI64ElementsAttr({}, builder),
-        StringAttr::get(builder->getContext(), "LT"));
+        ComparisonDirection::LT);
     auto batch_size_one = builder->create<BroadcastOp>(
         loc, alpha.getType(), one, GetI64ElementsAttr(batch_dims, builder));
     Value signed_mu = builder->create<chlo::BroadcastMulOp>(
@@ -6734,8 +6733,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
                                         batch_size_one, divisor);
 
     Value eqk = builder->create<chlo::BroadcastCompareOp>(
-        loc, iota, k, GetI64ElementsAttr({}, builder),
-        StringAttr::get(builder->getContext(), "EQ"));
+        loc, iota, k, GetI64ElementsAttr({}, builder), ComparisonDirection::EQ);
     eqk = builder->create<ConvertOp>(loc, eqk, x_type.getElementType());
     llvm::SmallVector<int64_t, 4> e_k_shape(batch_dims.size(), 1);
     e_k_shape.push_back(m);
@@ -6820,7 +6818,9 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
           v);
       // a[:, :] -= tau * np.dot(v[:, np.newaxis],
       //                          np.dot(v[np.newaxis, :], a[:, :]))
-      auto precision = builder->getStrArrayAttr({"HIGHEST", "HIGHEST"});
+      auto precision = builder->getArrayAttr(
+          {PrecisionAttr::get(builder->getContext(), Precision::HIGHEST),
+           PrecisionAttr::get(builder->getContext(), Precision::HIGHEST)});
       auto vva = BatchDot(loc, v_broadcast, false, a, false, num_batch_dims,
                           precision, builder);
       vva = BatchDot(loc, v_broadcast, true, vva, false, num_batch_dims,
@@ -6839,12 +6839,12 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
           builder->getI64IntegerAttr(0));
       Value predecessor_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota, j, GetI64ElementsAttr({}, builder),
-          StringAttr::get(builder->getContext(), "LT"));
+          ComparisonDirection::LT);
       predecessor_mask = builder->create<ConvertOp>(loc, predecessor_mask,
                                                     a_type.getElementType());
       Value mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota, j, GetI64ElementsAttr({}, builder),
-          StringAttr::get(builder->getContext(), "EQ"));
+          ComparisonDirection::EQ);
       mask = builder->create<ConvertOp>(loc, mask, a_type.getElementType());
       llvm::SmallVector<int64_t, 4> broadcast_mask_shape(a_type.getRank(), 1);
       broadcast_mask_shape[a_type.getRank() - 2] = m;
@@ -6874,7 +6874,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
           builder->getI64IntegerAttr(minor_dim + 1));
       Value xa_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_mn, j, GetI64ElementsAttr({}, builder),
-          StringAttr::get(builder->getContext(), "EQ"));
+          ComparisonDirection::EQ);
       a = builder->create<SelectOp>(loc, a_type, xa_mask, new_x, a);
 
       // vs[:, j] = v
@@ -6911,7 +6911,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
                              builder));
       Value taus_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_n, j, GetI64ElementsAttr({}, builder),
-          StringAttr::get(builder->getContext(), "EQ"));
+          ComparisonDirection::EQ);
       auto taus_update = builder->create<SelectOp>(
           loc, taus.getType(), taus_mask,
           StaticBinaryBroadcast<AddOp>(
@@ -6996,11 +6996,13 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
                              builder));
       auto compare = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_mn, j, GetI64ElementsAttr({}, builder),
-          StringAttr::get(builder->getContext(), "GE"));
+          ComparisonDirection::GE);
       auto y = builder->create<SelectOp>(loc, vs.getType(), compare, zero, vs);
 
       // yv has shape [..., n, 1]
-      auto precision = builder->getStrArrayAttr({"HIGHEST", "HIGHEST"});
+      auto precision = builder->getArrayAttr(
+          {PrecisionAttr::get(builder->getContext(), Precision::HIGHEST),
+           PrecisionAttr::get(builder->getContext(), Precision::HIGHEST)});
       auto yv = BatchDot(loc, y, true, v, false, batch_dims.size(), precision,
                          builder);
       // wyv has shape [..., m, 1]
@@ -7113,7 +7115,8 @@ class ConvertXlaSortOp : public OpRewritePattern<TF::XlaSortOp> {
     Type element_type = getElementTypeOrSelf(op.input().getType());
     auto sort_op =
         CreateSortOp(&rewriter, op.getLoc(), {op.input()}, {element_type},
-                     /*dimension=*/-1, /*is_stable=*/false, /*direction=*/"LT");
+                     /*dimension=*/-1, /*is_stable=*/false,
+                     /*direction=*/ComparisonDirection::LT);
     rewriter.replaceOp(op, sort_op.getResult(0));
     return success();
   }

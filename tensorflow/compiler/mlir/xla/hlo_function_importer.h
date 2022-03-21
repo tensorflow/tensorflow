@@ -210,7 +210,7 @@ class HloFunctionImporter {
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(
-      llvm::ArrayRef<int64_t> op_dimensions);
+      absl::Span<const int64_t> op_dimensions);
 
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);

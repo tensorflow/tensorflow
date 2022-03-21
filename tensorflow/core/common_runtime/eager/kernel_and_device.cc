@@ -395,6 +395,7 @@ KernelAndDeviceFunc::PrepareForRun(
   opts->step_container = step_container;
   opts->collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
+  opts->stack_trace = stack_trace;
 
   opts->stats_collector = nullptr;
   opts->runner = get_runner();

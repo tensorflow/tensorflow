@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/forward_type_inference.h"
 
 #include <functional>
+#include <string>
 
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -168,45 +170,42 @@ REGISTER_OP("TestSourceOp").Output("o: variant");
 REGISTER_OP("TestTensorUnaryOp")
     .Input("i: variant")
     .Output("o: variant")
-    .SetForwardTypeFn(
-        [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-               input_types) {
-          FullTypeDef t;
-          t.set_type_id(TFT_PRODUCT);
-          t.add_args()->set_type_id(TFT_TENSOR);
-          return t;
-        });
+    .SetForwardTypeFn([](const TypeRefVector& input_types,
+                         const TypeRefMap& type_vars) {
+      FullTypeDef t;
+      t.set_type_id(TFT_PRODUCT);
+      t.add_args()->set_type_id(TFT_TENSOR);
+      return t;
+    });
 
 REGISTER_OP("TestArrayUnaryOp")
     .Input("i: variant")
     .Output("o: variant")
-    .SetForwardTypeFn(
-        [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-               input_types) {
-          FullTypeDef t;
-          t.set_type_id(TFT_PRODUCT);
-          t.add_args()->set_type_id(TFT_ARRAY);
-          return t;
-        });
+    .SetForwardTypeFn([](const TypeRefVector& input_types,
+                         const TypeRefMap& type_vars) {
+      FullTypeDef t;
+      t.set_type_id(TFT_PRODUCT);
+      t.add_args()->set_type_id(TFT_ARRAY);
+      return t;
+    });
 
 REGISTER_OP("TestMergeOp")
     .Input("i1: variant")
     .Input("i2: variant")
     .Output("o: variant")
-    .SetForwardTypeFn(
-        [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-               input_types) {
-          EXPECT_EQ(input_types.size(), 2);
-          FullTypeDef t;
-          t.set_type_id(TFT_PRODUCT);
-          if ((input_types[0].get().type_id() == TFT_TENSOR) &&
-              (input_types[1].get().type_id() == TFT_ARRAY)) {
-            t.add_args()->set_type_id(TFT_ARRAY);
-          } else {
-            t.add_args()->set_type_id(TFT_TENSOR);
-          }
-          return t;
-        });
+    .SetForwardTypeFn([](const TypeRefVector& input_types,
+                         const TypeRefMap& type_vars) {
+      EXPECT_EQ(input_types.size(), 2);
+      FullTypeDef t;
+      t.set_type_id(TFT_PRODUCT);
+      if ((input_types[0].get().type_id() == TFT_TENSOR) &&
+          (input_types[1].get().type_id() == TFT_ARRAY)) {
+        t.add_args()->set_type_id(TFT_ARRAY);
+      } else {
+        t.add_args()->set_type_id(TFT_TENSOR);
+      }
+      return t;
+    });
 
 TEST(ForwardTypeInferenceTest, TernaryNodeWithIgnoredInputs) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
