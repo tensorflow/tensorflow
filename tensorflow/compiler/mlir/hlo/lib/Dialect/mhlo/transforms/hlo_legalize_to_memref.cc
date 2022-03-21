@@ -69,7 +69,7 @@ struct ReshapeOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationState &state) const {
+                          BufferizationState &state) const {
     auto reshape_op = cast<mhlo::ReshapeOp>(op);
     auto unranked_operand_type =
         reshape_op.operand().getType().dyn_cast<UnrankedTensorType>();
@@ -114,7 +114,7 @@ struct DynamicReshapeOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationState &state) const {
+                          BufferizationState &state) const {
     auto reshape_op = cast<mhlo::DynamicReshapeOp>(op);
 
     // The buffer still has the old (pre-reshape) type.
@@ -285,7 +285,7 @@ struct DynamicBroadcastInDimOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationState &state) const {
+                          BufferizationState &state) const {
     auto broadcast_in_dim_op = cast<mhlo::DynamicBroadcastInDimOp>(op);
     auto result_type =
         broadcast_in_dim_op.getType().dyn_cast<RankedTensorType>();
@@ -301,7 +301,7 @@ struct DynamicBroadcastInDimOpInterface
 
     // Evaluate `enforce_identity_map_fn` and maybe create a copy.
     Optional<const MhloBufferizationState *> dialect_state =
-        state.getDialectState<MhloBufferizationState>(
+        state.getAnalysisState().getDialectState<MhloBufferizationState>(
             mhlo::MhloDialect::getDialectNamespace());
     assert(dialect_state.hasValue() && "mhlo dialect state not initialized");
     if ((*dialect_state)->enforce_identity_map_fn(op)) {

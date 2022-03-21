@@ -203,6 +203,7 @@ py_library(
         ":tpu_embedding",
         ":tpu_embedding_v2",
         ":tpu_embedding_v2_utils",
+        ":tpu_hardware_feature",
         ":tpu_lib",
     ],
 )
@@ -474,6 +475,15 @@ pytype_library(
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+    ],
+)
+
+pytype_library(
+    name = "tpu_hardware_feature",
+    srcs = ["tpu_hardware_feature.py"],
+    deps = [
+        "//tensorflow/core/protobuf/tpu:topology_proto_py",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

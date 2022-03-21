@@ -33,8 +33,10 @@ mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
   llvm::SmallVector<mlir::Attribute, 4> operand_precision_attrs;
 
   for (auto prec : config->operand_precision()) {
-    operand_precision_attrs.push_back(
-        builder->getStringAttr(PrecisionConfig_Precision_Name(prec)));
+    operand_precision_attrs.push_back(mlir::mhlo::PrecisionAttr::get(
+        builder->getContext(),
+        mlir::mhlo::symbolizePrecision(PrecisionConfig_Precision_Name(prec))
+            .getValue()));
   }
   return builder->getArrayAttr(operand_precision_attrs);
 }

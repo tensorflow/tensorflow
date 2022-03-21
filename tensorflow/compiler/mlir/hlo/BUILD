@@ -544,6 +544,8 @@ cc_library(
     srcs = [
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
         "lib/Dialect/mhlo/IR/hlo_ops_base_structs.cc",
     ],
     hdrs = [
@@ -552,6 +554,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":hlo_ops_base_attrs_inc_gen",
+        ":hlo_ops_base_enums_inc_gen",
         ":hlo_ops_base_structs_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -2118,5 +2121,16 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:SCFUtils",
+    ],
+)
+
+# A light-weight runtime support library, used by MLIR code that results
+# after lowering some ops in the vector and sparse tensor dialects.
+cc_binary(
+    name = "libmlir_c_runner_utils.so",
+    linkshared = True,
+    linkstatic = False,
+    deps = [
+        "@llvm-project//mlir:mlir_c_runner_utils",
     ],
 )

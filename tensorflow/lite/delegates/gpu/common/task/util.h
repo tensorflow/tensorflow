@@ -61,6 +61,18 @@ int GetRecommendedBlockSizeForConv(const GpuInfo& gpu_info,
 
 int3 GetWorkGroupsCount(const int3& grid_size, const int3& work_group_size);
 
+std::string GetTypeDeclaration(const GpuInfo& gpu_info, DataType data_type,
+                               int vec_size);
+
+std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type,
+                         int vec_size);
+
+std::string GetOneValue(const GpuInfo& gpu_info, DataType data_type,
+                        int vec_size);
+
+std::string GetTypeConvertion(const GpuInfo& gpu_info, DataType src_type,
+                              DataType dst_type, int vec_size);
+
 }  // namespace gpu
 }  // namespace tflite
 

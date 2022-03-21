@@ -843,6 +843,8 @@ class FunctionLibraryRuntime {
     StepStatsCollectorInterface* stats_collector = nullptr;
     CoordinationServiceAgent* coordination_service_agent = nullptr;
 
+    absl::optional<ManagedStackTrace> stack_trace = absl::nullopt;
+
     std::function<void(std::function<void()>)>* runner = nullptr;
 
     // Parameters for remote function execution.

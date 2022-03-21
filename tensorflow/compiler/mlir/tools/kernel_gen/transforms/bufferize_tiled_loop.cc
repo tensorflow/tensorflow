@@ -65,21 +65,6 @@ struct BufferizeExtractSliceOp : public OpConversionPattern<ExtractSliceOp> {
   }
 };
 
-/// Convert `linalg.fill` on tensors to `linalg.fill` on buffers.
-struct BufferizeFillOp : public OpConversionPattern<FillOp> {
-  using OpConversionPattern<FillOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      FillOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const final {
-    if (!op->getParentOfType<LoopOp>()) return failure();
-
-    rewriter.create<FillOp>(op.getLoc(), adaptor.value(), adaptor.output());
-    rewriter.replaceOp(op, adaptor.output());
-    return success();
-  }
-};
-
 /// Convert `linalg.init_tensor` of `memref.alloc`.
 struct BufferizeInitTensorOp : public OpConversionPattern<InitTensorOp> {
   using OpConversionPattern<InitTensorOp>::OpConversionPattern;
@@ -288,7 +273,6 @@ void populateTiledLoopBufferizePattern(
   // clang-format off
   patterns->add<
     BufferizeExtractSliceOp,
-    BufferizeFillOp,
     BufferizeInitTensorOp,
     BufferizeInsertSliceOp,
     BufferizeLinalgOp,

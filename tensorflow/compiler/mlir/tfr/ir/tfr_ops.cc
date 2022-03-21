@@ -363,10 +363,7 @@ ParseResult TFRFuncOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void TFRFuncOp::print(OpAsmPrinter &p) {
-  FunctionType fn_type = getType();
-  function_interface_impl::printFunctionOp(p, *this, fn_type.getInputs(),
-                                           /*isVariadic=*/false,
-                                           fn_type.getResults());
+  function_interface_impl::printFunctionOp(p, *this, /*isVariadic=*/false);
 }
 
 }  // namespace TFR

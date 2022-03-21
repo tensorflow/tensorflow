@@ -32,6 +32,17 @@ template <typename T>
 struct GpuComplexT {
   typedef T type;
 };
+<<<<<<< HEAD
+
+// For ROCm, use hipsolver if the ROCm version >= 4.5 and
+// rocblas/rocsolver if the ROCm version < 4.5.
+
+#if !TENSORFLOW_USE_ROCM
+
+#define GPU_SOLVER_CONTEXT_PREFIX cusolverDn
+#define GPU_SOLVER_PREFIX cusolverDn
+=======
+>>>>>>> google_upstream/master
 
 // For ROCm, use hipsolver if the ROCm version >= 4.5 and
 // rocblas/rocsolver if the ROCm version < 4.5.
@@ -42,10 +53,6 @@ struct GpuComplexT {
 #define GPU_SOLVER_PREFIX cusolverDn
 
 using gpuStream_t = cudaStream_t;
-
-#define GpuSolverCreate cusolverDnCreate
-#define GpuSolverSetStream cusolverDnSetStream
-#define GpuSolverDestroy cusolverDnDestroy
 
 template <>
 struct GpuComplexT<std::complex<float>> {
@@ -111,9 +118,15 @@ template <>
 struct GpuComplexT<std::complex<double>*> {
   typedef rocblas_double_complex* type;
 };
+<<<<<<< HEAD
 #endif // TF_ROCM_VERSION >= 40500
 
 #endif // !TENSORFLOW_USE_ROCM
+=======
+#endif  // TF_ROCM_VERSION >= 40500
+
+#endif  // !TENSORFLOW_USE_ROCM
+>>>>>>> google_upstream/master
 
 template <typename T>
 inline typename GpuComplexT<T>::type* ToDevicePointer(se::DeviceMemory<T> p) {
@@ -250,6 +263,7 @@ Status ConvertStatus(rocblas_status status) {
       return Unknown("Unknown rocsolver error");
   }
 }
+<<<<<<< HEAD
 #endif // TF_ROCM_VERSION >= 40500
 #endif // TENSORFLOW_USE_ROCM
 
@@ -287,6 +301,50 @@ Status ConvertStatus(rocblas_status status) {
 #define GpuSolverDpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX,dpotrf_batched)
 #define GpuSolverCpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX,cpotrf_batched)
 #define GpuSolverZpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX,zpotrf_batched)
+=======
+#endif  // TF_ROCM_VERSION >= 40500
+#endif  // TENSORFLOW_USE_ROCM
+
+#define GPU_SOLVER_CAT_NX(A, B) A##B
+#define GPU_SOLVER_CAT(A, B) GPU_SOLVER_CAT_NX(A, B)
+
+#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
+#define GpuSolverCreate GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, Create)
+#define GpuSolverSetStream GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, SetStream)
+#define GpuSolverDestroy GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, Destroy)
+#else  // TENSORFLOW_USE_ROCSOLVER
+#define GpuSolverCreate GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, create_handle)
+#define GpuSolverSetStream GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, set_stream)
+#define GpuSolverDestroy \
+  GPU_SOLVER_CAT(GPU_SOLVER_CONTEXT_PREFIX, destroy_handle)
+#endif
+#define GpuSolverSpotrf_bufferSize \
+  GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Spotrf_bufferSize)
+#define GpuSolverDpotrf_bufferSize \
+  GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Dpotrf_bufferSize)
+#define GpuSolverCpotrf_bufferSize \
+  GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Cpotrf_bufferSize)
+#define GpuSolverZpotrf_bufferSize \
+  GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Zpotrf_bufferSize)
+#if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
+#define GpuSolverSpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Spotrf)
+#define GpuSolverDpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Dpotrf)
+#define GpuSolverCpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Cpotrf)
+#define GpuSolverZpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, Zpotrf)
+#define GpuSolverSpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, SpotrfBatched)
+#define GpuSolverDpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, DpotrfBatched)
+#define GpuSolverCpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, CpotrfBatched)
+#define GpuSolverZpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, ZpotrfBatched)
+#else  // TENSORFLOW_USE_ROCSOLVER
+#define GpuSolverSpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, spotrf)
+#define GpuSolverDpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, dpotrf)
+#define GpuSolverCpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, cpotrf)
+#define GpuSolverZpotrf GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, zpotrf)
+#define GpuSolverSpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, spotrf_batched)
+#define GpuSolverDpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, dpotrf_batched)
+#define GpuSolverCpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, cpotrf_batched)
+#define GpuSolverZpotrfBatched GPU_SOLVER_CAT(GPU_SOLVER_PREFIX, zpotrf_batched)
+>>>>>>> google_upstream/master
 #endif
 
 }  // namespace
@@ -373,7 +431,11 @@ StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
       batch_size * sizeof(void*), primitive_util::ByteWidth(type));
 
   return std::max<int64_t>(size, potrf_batched_scratch);
+<<<<<<< HEAD
 #else // not supported in rocsolver
+=======
+#else  // not supported in rocsolver
+>>>>>>> google_upstream/master
   return 0;
 #endif
 }

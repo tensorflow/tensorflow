@@ -728,7 +728,16 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
   let builders = [
     OpBuilder<(ins "Value":$lhs, "Value":$rhs,
       "DenseIntElementsAttr":$broadcast_dimensions,
-      "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>];
+      "::mlir::mhlo::ComparisonDirection":$comparison_direction,
+      CArg<"::mlir::mhlo::ComparisonType",
+      "::mlir::mhlo::ComparisonType::NOTYPE">:$compare_type)>,
+
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs,
+      "DenseIntElementsAttr":$broadcast_dimensions,
+      "::mlir::mhlo::ComparisonDirectionAttr":$comparison_direction,
+      CArg<"::mlir::mhlo::ComparisonTypeAttr",
+      "::mlir::mhlo::ComparisonTypeAttr()">:$compare_type)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

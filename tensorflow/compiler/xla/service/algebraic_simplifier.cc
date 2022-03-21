@@ -1669,7 +1669,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::RemoveTransposesFromDotOperands(
   // lhs and rhs must apply the same permutation.
   if (lhs->opcode() != HloOpcode::kTranspose ||
       rhs->opcode() != HloOpcode::kTranspose ||
-      absl::MakeSpan(lhs->dimensions()) != absl::MakeSpan(rhs->dimensions())) {
+      lhs->dimensions() != rhs->dimensions()) {
     return false;
   }
   absl::Span<const int64_t> permutation = lhs->dimensions();
@@ -3018,7 +3018,7 @@ bool OutputIsSubsetOfOperandElements(HloInstruction* instruction,
 Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
   HloInstruction* operand;
   CHECK(Match(broadcast, m::Broadcast(m::Op(&operand))));
-  auto dims = broadcast->dimensions();
+  auto dims = *broadcast->mutable_dimensions();
   // A degenerate broadcast of a reshape that does not change the number of
   // elements can be replaced by a reshape.
   if (std::is_sorted(dims.begin(), dims.end()) &&
@@ -4885,9 +4885,9 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       *function == *arg->to_apply()) {
     // Create a new reduce with the combined reduction dimensions of both
     // reduces.
-    std::vector<int64_t> arg_dims = arg->dimensions();
+    std::vector<int64_t> arg_dims = *arg->mutable_dimensions();
     absl::c_sort(arg_dims);
-    std::vector<int64_t> reduce_dims = reduce->dimensions();
+    std::vector<int64_t> reduce_dims = *reduce->mutable_dimensions();
     absl::c_sort(reduce_dims);
     // Transform reduce_dims to the same rank as the operand of the operand.
     for (int64_t arg_dim : arg_dims) {
@@ -5554,7 +5554,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     absl::InlinedVector<int64_t, 8> expected_perm(rank);
     absl::c_iota(expected_perm, 0);
     std::swap(expected_perm.rbegin()[0], expected_perm.rbegin()[1]);
-    if (absl::MakeSpan(transpose->dimensions()) != expected_perm) {
+    if (transpose->dimensions() != expected_perm) {
       return false;
     }
 

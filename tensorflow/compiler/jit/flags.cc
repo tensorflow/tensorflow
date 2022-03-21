@@ -137,7 +137,11 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_deterministic_cluster_names",
            &mark_for_compilation_flags->tf_xla_deterministic_cluster_names,
            "Causes the function names assigned by auto clustering to be "
-           "deterministic from run to run.")};
+           "deterministic from run to run."),
+      Flag("tf_xla_persistent_cache_directory",
+           &mark_for_compilation_flags->tf_xla_persistent_cache_directory,
+           "If non-empty, JIT-compiled executables are saved to and loaded "
+           "from the specified file system directory path. Empty by default.")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
@@ -179,6 +183,7 @@ void AllocateAndParseFlags() {
   mark_for_compilation_flags
       ->tf_xla_disable_resource_variable_safety_checks_for_debugging = false;
   mark_for_compilation_flags->tf_xla_deterministic_cluster_names = false;
+  mark_for_compilation_flags->tf_xla_persistent_cache_directory = "";
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;

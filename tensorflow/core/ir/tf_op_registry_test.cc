@@ -49,7 +49,8 @@ TEST(TensorFlowOpRegistryInterface, TestStatelessFuncAndReturn) {
       return(%arg) : tensor<i32>
     }
   )mlir";
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
 
   auto func_op = cast<GraphFuncOp>(&module->front());
@@ -68,7 +69,8 @@ TEST(TensorFlowOpRegistryInterface, TestStatelessTFOps) {
       return(%Add) : tensor<i32>
     }
   )mlir";
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
 
   Operation *add = &cast<GraphFuncOp>(&module->front()).body().front().front();
@@ -93,7 +95,8 @@ TEST(TensorFlowOpRegistryInterface, TestStatelessAndStatefulRegionOps) {
   SmallVector<bool, 2> expected = {true, false};
   for (auto it : llvm::zip(prefixes, expected)) {
     std::string code = llvm::formatv(code_template, std::get<0>(it)).str();
-    OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+    OwningOpRef<ModuleOp> module =
+        mlir::parseSourceString<mlir::ModuleOp>(code, &context);
     ASSERT_TRUE(module);
 
     Operation *case_op =

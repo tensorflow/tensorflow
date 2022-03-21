@@ -32,8 +32,6 @@ BufferValue::BufferValue(HloInstruction* instruction, const ShapeIndex& index,
   is_tuple_ = shape.IsTuple();
 }
 
-BufferValue::~BufferValue() {}
-
 std::ostream& operator<<(std::ostream& out, const BufferValue& buffer) {
   out << buffer.ToString();
   return out;

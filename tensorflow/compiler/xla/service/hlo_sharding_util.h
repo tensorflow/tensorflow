@@ -84,7 +84,7 @@ StatusOr<absl::optional<int64_t>> GetDominantDevice(
 // transposed based on the specified dimension numbers. In case of a tile
 // maximal sharding returns the original sharding.
 HloSharding TransposeSharding(const HloSharding& sharding,
-                              const std::vector<int64_t>& dimensions);
+                              absl::Span<const int64_t> dimensions);
 
 // Returns the HloSharding with the tile shape reshaped based on the source and
 // target shapes and the tile assignment adjusted to correspond to the new tile
@@ -188,7 +188,7 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
 // Given a sharding and a list of devices in the topology, return a
 // list of the devices that `sharding` applies to.
 std::vector<int64_t> DevicesForSharding(
-    const HloSharding& sharding, const std::vector<int64_t>& available_devices);
+    const HloSharding& sharding, absl::Span<const int64_t> available_devices);
 
 // Returns a sharding that replicates data across devices along the given
 // dimensions in the original sharding.
@@ -210,7 +210,7 @@ HloSharding ReplicateAllDataDims(const HloSharding& sharding,
 //
 // Precondition: if not tile maximal, the size of each tile dimension must be 1.
 HloSharding RemoveShapeDimensions(const HloSharding& sharding,
-                                  const std::vector<int64_t>& dims_to_remove);
+                                  absl::Span<const int64_t> dims_to_remove);
 
 // Similar to TransposeSharding(), but allows removing/adding non-partitioned
 // dimensions. In src_to_tgt and tgt_to_src, -1 represents a non-existing

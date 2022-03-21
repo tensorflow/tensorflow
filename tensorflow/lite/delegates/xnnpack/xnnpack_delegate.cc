@@ -2061,8 +2061,6 @@ class Subgraph {
     TF_LITE_ENSURE_STATUS(CheckTensorType(logging_context, split_dim_tensor,
                                           kTfLiteInt32, split_dim_idx,
                                           node_index));
-    TF_LITE_ENSURE_STATUS(CheckAxesTensorShape(
-        logging_context, split_dim_tensor, split_dim_idx, node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
         logging_context, split_dim_tensor, split_dim_idx, node_index));
 

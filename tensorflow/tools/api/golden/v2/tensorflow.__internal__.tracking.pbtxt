@@ -45,6 +45,10 @@ tf_module {
     argspec: "args=[\'session_provider\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "saveable_objects_from_trackable"
+    argspec: "args=[\'obj\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "sticky_attribute_assignment"
     argspec: "args=[\'trackable\', \'name\', \'value\'], varargs=None, keywords=None, defaults=None"
   }

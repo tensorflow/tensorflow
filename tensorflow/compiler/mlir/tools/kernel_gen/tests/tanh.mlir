@@ -12,8 +12,8 @@
 // TODO: Expand this pattern once things have stabilized.
 // CHECK-LABEL: @tanh
 func @tanh(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  // CHECK: scf.for
   // CHECK: alloc
+  // CHECK: scf.for
   // CHECK: memref.reshape
   // CHECK: alloc
   // CHECK: linalg.generic

@@ -81,7 +81,6 @@ _test_size_override = {
     )],
     # copybara:comment_end
     delegate = delegate,
-    shard_count = 30,
     tags = tags + [
         "gen_zip_test",
         "tflite_not_portable_intentional",

@@ -161,11 +161,12 @@ static std::vector<int64_t> Convert_broadcast_dimensions(
 }
 
 // Converts StringRef to xla FftType enum
-static xla::FftType Convert_fft_type(llvm::StringRef fft_type_str) {
+static xla::FftType Convert_fft_type(mlir::mhlo::FftType fft_type) {
   xla::FftType fft_type_enum;
   // Illegal fft_type string would be caught by the verifier, so 'FftType_Parse'
   // call below should never return false.
-  if (!FftType_Parse(std::string(fft_type_str), &fft_type_enum))
+  if (!FftType_Parse(std::string(mlir::mhlo::stringifyFftType(fft_type)),
+                     &fft_type_enum))
     return xla::FftType::FFT;
   return fft_type_enum;
 }
@@ -221,8 +222,9 @@ static xla::Shape GetCustomCallResultShapeWithLayout(mlir::Type type,
 
 // Converts StringRef to xla Transpose enum.
 static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
-    llvm::StringRef transpose_str) {
-  return xla::ConvertTranspose(transpose_str).ValueOrDie();
+    mlir::mhlo::Transpose transpose) {
+  return xla::ConvertTranspose(mlir::mhlo::stringifyTranspose(transpose))
+      .ValueOrDie();
 }
 
 static xla::Layout ExtractLayout(
@@ -290,7 +292,10 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
   auto precision_config = absl::make_unique<xla::PrecisionConfig>();
   for (auto attr : optional_precision_config_attr.getValue()) {
     xla::PrecisionConfig::Precision p;
-    auto operand_precision = attr.cast<mlir::StringAttr>().getValue().str();
+    auto operand_precision =
+        mlir::mhlo::stringifyPrecision(
+            attr.cast<mlir::mhlo::PrecisionAttr>().getValue())
+            .str();
     // TODO(jpienaar): Update this to ensure this is captured by verify.
     if (xla::PrecisionConfig::Precision_Parse(operand_precision, &p)) {
       precision_config->add_operand_precision(p);
@@ -962,13 +967,15 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
   xla::XlaOp lhs, rhs;
   if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
   if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
-  auto dir = Convert_comparison_direction(op.comparison_direction());
+  auto dir = Convert_comparison_direction(
+      mlir::mhlo::stringifyComparisonDirection(op.comparison_direction()));
   auto type_attr = op.compare_typeAttr();
 
   xla::XlaOp xla_result;
-  if (type_attr) {
-    auto type =
-        xla::StringToComparisonType(type_attr.getValue().str()).ValueOrDie();
+  if (type_attr && type_attr.getValue() != mlir::mhlo::ComparisonType::NOTYPE) {
+    auto type = xla::StringToComparisonType(
+                    stringifyComparisonType(type_attr.getValue()).str())
+                    .ValueOrDie();
     xla_result = xla::Compare(lhs, rhs, /*broadcast_dimensions=*/{}, dir, type);
   } else {
     xla_result = xla::Compare(lhs, rhs, dir);
@@ -1090,10 +1097,14 @@ LogicalResult ExportXlaOp(DequantizeOp op, OpLoweringContext ctx) {
   auto casted = xla::ConvertElementType(input, xla::U32);
   if (op.is_16bits()) {
     value_map[op] = xla::Dequantize<uint16>(
-        casted, range, ConvertStringRef(op.mode()), op.transpose_output());
+        casted, range,
+        ConvertStringRef(mlir::mhlo::stringifyDequantizeMode(op.mode())),
+        op.transpose_output());
   } else {
     value_map[op] = xla::Dequantize<uint8>(
-        casted, range, ConvertStringRef(op.mode()), op.transpose_output());
+        casted, range,
+        ConvertStringRef(mlir::mhlo::stringifyDequantizeMode(op.mode())),
+        op.transpose_output());
   }
   return success();
 }
@@ -1602,9 +1613,11 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   llvm::SmallVector<xla::XlaOp, 4> operands;
   for (auto operand : op.operands()) operands.push_back(values[operand]);
 
+  auto fusion_kind_string =
+      mlir::mhlo::stringifyFusionKind(op.fusion_kind().getValue());
   xla::XlaOp fusion = xla::internal::XlaBuilderFriend::BuildFusion(
       ctx.builder, operands,
-      absl::string_view(op.fusion_kind()->data(), op.fusion_kind()->size()),
+      absl::string_view(fusion_kind_string.data(), fusion_kind_string.size()),
       fused_computation);
   if (op.getNumResults() == 1) {
     values[op.getResult(0)] = fusion;

@@ -315,6 +315,7 @@ class SingleThreadedExecutorImpl : public Executor {
     params.resource_manager = device->resource_manager();
     params.step_container = args.step_container;
     params.collective_executor = args.collective_executor;
+    params.stack_trace = args.stack_trace;
     params.slice_reader_cache = nullptr;  // TODO(mrry): Too severe?
     params.inputs = &node_inputs;
     params.input_alloc_attrs = &input_alloc_attrs;

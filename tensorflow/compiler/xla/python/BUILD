@@ -364,6 +364,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:approx_topk",
+        "//tensorflow/compiler/xla/client/lib:approx_topk_shape",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:lu_decomposition",
         "//tensorflow/compiler/xla/client/lib:math",

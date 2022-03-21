@@ -77,6 +77,36 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
   return Status::OK();
 }
 
+Status SetupBindings(nvinfer1::ICudaEngine* cuda_engine, const Tensor& tensor,
+                     std::vector<void*>& buffers, int binding_index) {
+  const auto dtype = cuda_engine->getBindingDataType(binding_index);
+  VLOG(2) << "<<<<<<<<< SetupBindings with dtype = " << (int)dtype;
+  switch (dtype) {
+    case nvinfer1::DataType::kFLOAT:
+      buffers[binding_index] = const_cast<float*>(tensor.flat<float>().data());
+      break;
+    case nvinfer1::DataType::kHALF:
+      buffers[binding_index] =
+          const_cast<Eigen::half*>(tensor.flat<Eigen::half>().data());
+      break;
+    case nvinfer1::DataType::kINT8:
+      return errors::Internal("INT8 inputs are not supported yet!");
+    case nvinfer1::DataType::kINT32:
+      buffers[binding_index] = const_cast<int32*>(tensor.flat<int32>().data());
+      break;
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    case nvinfer1::DataType::kBOOL:
+      buffers[binding_index] = const_cast<bool*>(tensor.flat<bool>().data());
+      break;
+#endif
+    default:
+      return errors::Internal("Unknown TRT data type: ",
+                              static_cast<int>(dtype));
+  }
+  return Status::OK();
+}
+
+// Sets up bindings.
 Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                           nvinfer1::IExecutionContext* execution_context,
                           const int trt_profile_idx,
@@ -135,26 +165,8 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
       }
     }
     // Setup input bindings.
-    auto dtype = cuda_engine->getBindingDataType(binding_index);
-    switch (dtype) {
-      case nvinfer1::DataType::kFLOAT:
-        buffers[binding_index] =
-            const_cast<float*>(input_tensor.flat<float>().data());
-        break;
-      case nvinfer1::DataType::kHALF:
-        buffers[binding_index] =
-            const_cast<Eigen::half*>(input_tensor.flat<Eigen::half>().data());
-        break;
-      case nvinfer1::DataType::kINT8:
-        return errors::Internal("INT8 inputs are not supported yet!");
-      case nvinfer1::DataType::kINT32:
-        buffers[binding_index] =
-            const_cast<int32*>(input_tensor.flat<int32>().data());
-        break;
-      default:
-        return errors::Internal("Unknown TRT data type: ",
-                                static_cast<int>(dtype));
-    }
+    TF_RETURN_IF_ERROR(
+        SetupBindings(cuda_engine, input_tensor, buffers, binding_index));
   }
 
   // Ensure all network dynamic dimensions (if any) are set in execution
@@ -209,27 +221,9 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
       }
     }
 
-    // Setup output bindings.
-    auto dtype = cuda_engine->getBindingDataType(binding_index);
-    switch (dtype) {
-      case nvinfer1::DataType::kFLOAT:
-        buffers[binding_index] =
-            const_cast<float*>(output_tensor->flat<float>().data());
-        break;
-      case nvinfer1::DataType::kHALF:
-        buffers[binding_index] =
-            const_cast<Eigen::half*>(output_tensor->flat<Eigen::half>().data());
-        break;
-      case nvinfer1::DataType::kINT8:
-        return errors::Internal("int8 is not supported yet!");
-      case nvinfer1::DataType::kINT32:
-        buffers[binding_index] =
-            const_cast<int32*>(output_tensor->flat<int32>().data());
-        break;
-      default:
-        return errors::Internal("Unknown TRT data type: ",
-                                static_cast<int>(dtype));
-    }
+    // Set up output bindings.
+    TF_RETURN_IF_ERROR(
+        SetupBindings(cuda_engine, *output_tensor, buffers, binding_index));
   }
   return Status::OK();
 }

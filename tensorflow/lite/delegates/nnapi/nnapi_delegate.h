@@ -249,6 +249,9 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     ANeuralNetworksMemory* memory;
     CopyToHostTensorFnPtr callback;
     void* callback_context;
+    // The registeration timestamp. It is unique for each registered memory in
+    // the lifetime of a StatefulNnApiDelegate.
+    uint64_t timestamp;
   };
 
   // Register the ANeuralNetworksMemory handle with the delegate. A
@@ -303,6 +306,8 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     bool disallow_nnapi_cpu;
     // Tensor to ANeuralNetworksMemory mapping.
     std::vector<MemoryRegistration> tensor_memory_map;
+    // The next timestamp for buffer handle registration.
+    uint64_t next_buffer_handle_timestamp = 1;
     // Contains a non zero value if any NNAPI method call
     // operation returned a non zero result code.
     int nnapi_errno = ANEURALNETWORKS_NO_ERROR;
