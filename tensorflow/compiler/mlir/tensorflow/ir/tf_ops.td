@@ -440,6 +440,29 @@ finalize_extra_args: Additional arguments to pass to 'finalize'. (Passed after
   TF_DerivedOperandTypeListAttr Tfinalize_func_args = TF_DerivedOperandTypeListAttr<2>;
 }
 
+def TF_ImageProjectiveTransformV3
+    : TF_Op<"ImageProjectiveTransformV3", [Pure]> {
+
+  let summary = "projective transformation on images";
+
+  let description = [{
+    Performs projective transforamtions on images represented as 4-d tensors
+    with shape [batch, height, width, channels] (when ranked). See
+    tf.raw_ops.TF_ImageProjectiveTransformV3 for more details.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$images,
+    TF_Float32Tensor:$transforms,
+    TF_Int32Tensor:$output_shape,
+    TF_Tensor:$fill_value,
+    StrAttr:$interpolation,
+    DefaultValuedAttr<StrAttr, "\"CONSTANT\"">:$fill_mode
+  );
+
+  let results = (outs TF_Tensor:$output);
+}
+
 def TF_LegacyCallOp : TF_Op<"LegacyCall",
       [CallOpInterface,
        DeclareOpInterfaceMethods<SymbolUserOpInterface>, Pure]> {
