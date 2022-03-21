@@ -231,7 +231,7 @@ Status ResolveDeviceAssignment(
           device_mgr->LookupDevice(device_attributes.name(), &resolved_device);
       if (lookup_status.ok()) {
         // This is a local device, so include it in the mapping.
-        const DeviceBase::GpuDeviceInfo* gpu_device_info =
+        const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
             resolved_device->tensorflow_gpu_device_info();
         global_device_ids[gpu_device_info->stream->parent()->device_ordinal()] =
             device_attributes.xla_global_id();

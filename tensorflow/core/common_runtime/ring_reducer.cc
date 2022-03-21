@@ -187,7 +187,7 @@ bool RingReducer::RunAsyncParts() {
       ready_queue.Enqueue(&rfv_[rf_index]);
     }
   }
-  const DeviceBase::GpuDeviceInfo* gpu_info =
+  const DeviceBase::AcceleratorDeviceInfo* gpu_info =
       col_ctx_->device->tensorflow_gpu_device_info();
   if (gpu_info) {
     // Wait for all currently queued events on the CPU compute stream to

@@ -484,7 +484,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
         timestamped_allocator_ ? gpu_allocator_ : nullptr, em_));
   }
 
-  gpu_device_info_ = new GpuDeviceInfo;
+  gpu_device_info_ = new DeviceBase::AcceleratorDeviceInfo;
   gpu_device_info_->stream = stream_->compute;
   gpu_device_info_->default_context = device_context_;
   gpu_device_info_->event_mgr = em_;
