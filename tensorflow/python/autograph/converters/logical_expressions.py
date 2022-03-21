@@ -19,6 +19,7 @@ import gast
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
+from tensorflow.python.util import deprecation
 
 # TODO(mdan): Properly extract boolean ops according to lazy eval rules.
 # Note that this isn't completely safe either, because tensors may have control
@@ -50,8 +51,11 @@ class LogicalExpressionTransformer(converter.Base):
     if op_type in LOGICAL_OPERATORS:
       return LOGICAL_OPERATORS[op_type]
     if self.ctx.user.options.uses(converter.Feature.EQUALITY_OPERATORS):
-      if op_type in EQUALITY_OPERATORS:
-        return EQUALITY_OPERATORS[op_type]
+      deprecation.deprecated(None,
+        "tf.autograph.experimental.Feature.EQUALITY_OPERATORS \
+        is deprecated and it is alredy enabled by default")
+    if op_type in EQUALITY_OPERATORS:
+      return EQUALITY_OPERATORS[op_type]
     return None
 
   def _as_lambda(self, expr):
@@ -78,11 +82,6 @@ class LogicalExpressionTransformer(converter.Base):
 
   def visit_Compare(self, node):
     node = self.generic_visit(node)
-
-    if (not self.ctx.user.options.uses(
-        converter.Feature.EQUALITY_OPERATORS)):
-      return node
-
     ops_and_comps = list(zip(node.ops, node.comparators))
     left = node.left
 
