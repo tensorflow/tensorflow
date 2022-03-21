@@ -1119,6 +1119,14 @@ TEST(OpVersionTest, VersioningRsqrtTest) {
       .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  // int16 input is version 3.
+  fake_op_sig = {
+      .op = BuiltinOperator_RSQRT,
+      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 TEST(OpVersionTest, VersioningBroadcastToTest) {
   OpSignature fake_op_sig = {

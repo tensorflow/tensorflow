@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/lut.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -44,6 +45,7 @@ struct OpData {
   int input_offset;
   int output_offset;
   bool needs_rescale;
+  int16_t lut_int16[LUTSize<int16_t>()];
 };
 
 bool IsNumericSupportedType(const TfLiteType type) {
@@ -59,7 +61,7 @@ bool IsAbsSupportedType(const TfLiteType type) {
 }
 
 bool IsRsqrtSupportedType(const TfLiteType type) {
-  return type == kTfLiteFloat32 || type == kTfLiteInt8;
+  return type == kTfLiteFloat32 || type == kTfLiteInt8 || type == kTfLiteInt16;
 }
 
 inline void SetAbsOutputMultiplier(const float input_scale,
@@ -125,8 +127,21 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node,
       SetAbsOutputMultiplier(input_scale, output_scale, &op_data->multiplier,
                              &op_data->shift);
     } else if (op_name == kRsqrtName) {
-      SetRsqrtOutputMultiplier(input_scale, output_scale, &op_data->multiplier,
-                               &op_data->shift);
+      if (input->type == kTfLiteInt16) {
+        LUTPopulate<int16_t>(input_scale, input_params->zero_point->data[0],
+                             output_scale, output_params->zero_point->data[0],
+                             [&](float value) {
+                               if (value <= 0.0) {
+                                 return std::numeric_limits<int16>::max() *
+                                        output->params.scale;
+                               }
+                               return 1.f / std::sqrt(value);
+                             },
+                             op_data->lut_int16);
+      } else {
+        SetRsqrtOutputMultiplier(input_scale, output_scale,
+                                 &op_data->multiplier, &op_data->shift);
+      }
     }
   }
   return context->ResizeTensor(context, output,
@@ -257,8 +272,8 @@ TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalNumeric(context, node, std::sqrt);
 }
 
-TfLiteStatus RsqrtEvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                                TfLiteType type) {
+TfLiteStatus RsqrtEvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
+                                    TfLiteType type) {
   const auto* op_data = static_cast<const OpData*>(node->user_data);
   const int kMin = std::numeric_limits<int8_t>::min();
   const int kMax = std::numeric_limits<int8_t>::max();
@@ -291,14 +306,30 @@ TfLiteStatus RsqrtEvalQuantized(TfLiteContext* context, TfLiteNode* node,
   return EvalImpl<int8_t>(context, node, func, validate_input_func, type);
 }
 
+TfLiteStatus RsqrtEvalQuantizedInt16(TfLiteContext* context, TfLiteNode* node,
+                                     TfLiteType type) {
+  auto op_data = reinterpret_cast<OpData*>(node->user_data);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  reference_integer_ops::LookupTable(
+      GetTensorData<int16_t>(input),
+      MatchingFlatSize(GetTensorShape(input), GetTensorShape(output)),
+      op_data->lut_int16, GetTensorData<int16_t>(output));
+  return kTfLiteOk;
+}
+
 TfLiteStatus RsqrtEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteType type = GetInput(context, node, 0)->type;
   switch (type) {
     case kTfLiteFloat32:
-      return EvalImpl<float>(
-          context, node, [](float f) { return 1.f / std::sqrt(f); }, type);
+      return EvalImpl<float>(context, node,
+                             [](float f) { return 1.f / std::sqrt(f); }, type);
     case kTfLiteInt8:
-      return RsqrtEvalQuantized(context, node, type);
+      return RsqrtEvalQuantizedInt8(context, node, type);
+    case kTfLiteInt16:
+      return RsqrtEvalQuantizedInt16(context, node, type);
     default:
       TF_LITE_KERNEL_LOG(context, "Current data type %s is not supported.",
                          TfLiteTypeGetName(type));

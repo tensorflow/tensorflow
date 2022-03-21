@@ -19,8 +19,8 @@ from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
 
-def _make_elementwise_tests(op, allow_fully_quantize=False, min_value=-100,
-                            max_value=100):
+def _make_elementwise_tests(op, allow_fully_quantize=False,
+                            min_value=-100, max_value=100):
   """Make a set of tests to do element-wise operations."""
 
   def f(options):
@@ -36,6 +36,7 @@ def _make_elementwise_tests(op, allow_fully_quantize=False, min_value=-100,
             "input_dtype": [tf.float32],
             "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
             "fully_quantize": [True],
+            "quant_16x8":  [False, True],
             "input_range": [[min_value, max_value]],
         },
     ]
