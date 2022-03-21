@@ -1410,6 +1410,9 @@ std::unique_ptr<HloInstruction>
 HloConstantInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
+  if (!literal_.has_value()) {
+    return absl::make_unique<HloConstantInstruction>(this->shape());
+  }
   CHECK(literal_.has_value());
   // Literal's shape may have no/different tiling info. Use this instruction's
   // shape instead.
@@ -1475,7 +1478,7 @@ bool HloTraceInstruction::IdenticalSlowPath(
 std::unique_ptr<HloInstruction> HloTraceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode());
+  LOG(FATAL) << "Not yet implemented, clone: " << ToString();
 }
 
 HloFusionInstruction::HloFusionInstruction(const Shape& shape,
