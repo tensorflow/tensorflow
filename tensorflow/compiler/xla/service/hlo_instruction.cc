@@ -2447,6 +2447,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kPartitionId:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
@@ -2538,7 +2539,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kPad:
