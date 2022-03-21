@@ -1612,8 +1612,8 @@ cc_library(
         ":mhlo_flatten_tuple",
         ":mhlo_to_mhlo_lowering_patterns",
         ":rank_specialization",
-        ":reshape_simplifier",
         ":sink_constants_to_control_flow",
+        ":symbolic_shape_optimization",
         ":test_passes",
         ":transforms_pass_details",
         ":transforms_pass_inc_gen",
@@ -1789,8 +1789,8 @@ cc_library(
 )
 
 cc_library(
-    name = "reshape_simplifier",
-    srcs = ["lib/Transforms/reshape_simplifier.cc"],
+    name = "symbolic_shape_optimization",
+    srcs = ["lib/Transforms/symbolic_shape_optimization.cc"],
     hdrs = [
         "include/mlir-hlo/Transforms/PassDetail.h",
         "include/mlir-hlo/Transforms/passes.h",

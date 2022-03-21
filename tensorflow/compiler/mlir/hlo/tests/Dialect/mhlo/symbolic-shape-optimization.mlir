@@ -1,4 +1,5 @@
-// RUN: mlir-hlo-opt %s -split-input-file -reshape-simplifier | FileCheck %s
+// RUN: mlir-hlo-opt %s --split-input-file --symbolic-shape-optimization | \
+// RUN: FileCheck %s
 
 // CHECK-LABEL: func @reshape_expand_front
 func @reshape_expand_front(%arg0: tensor<?x?xf32>) -> tensor<1x?x?xf32> {

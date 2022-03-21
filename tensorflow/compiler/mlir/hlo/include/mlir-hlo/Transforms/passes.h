@@ -29,8 +29,9 @@ namespace mlir {
 /// Creates a pass that reuses buffers which are already allocated.
 std::unique_ptr<OperationPass<FuncOp>> createBufferReusePass();
 
-/// Creates a pass that tries to simplify dynamic reshapes.
-std::unique_ptr<OperationPass<FuncOp>> createReshapeSimplifierPass();
+/// Creates a pass to analyze shapes and to use that information for
+/// shape-related optimizations.
+std::unique_ptr<OperationPass<FuncOp>> createSymbolicShapeOptimizationPass();
 
 /// Creates a pass that merges smaller buffer into bigger buffer to optimize
 /// memory consumption.

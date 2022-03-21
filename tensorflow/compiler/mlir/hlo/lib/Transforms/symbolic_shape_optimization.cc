@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <memory>
+#include <utility>
 
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -339,39 +341,36 @@ struct TurnDynamicReshapeIntoCollapseShape final
   }
 };
 
-class ReshapeSimplifierPass final
-    : public ReshapeSimplifierBase<ReshapeSimplifierPass> {
+class SymbolicShapeOptimizationPass final
+    : public SymbolicShapeOptimizationBase<SymbolicShapeOptimizationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<linalg::LinalgDialect>();
   }
 
-  void runOnOperation() override;
+  void runOnOperation() override {
+    MLIRContext *ctx = &getContext();
+    mlir::RewritePatternSet patterns(ctx);
 
- private:
+    // clang-format off
+    patterns.insert<
+        RemoveComputeReshapeShape,
+        RemoveRedundantCstrReshapable,
+        ReshapeToExpandShape,
+        TurnDynamicReshapeIntoCollapseShape>(ctx);
+    // clang-format on
+    shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
+
+    if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
+                                                  std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
 };
+
 }  // end namespace
 
-void ReshapeSimplifierPass::runOnOperation() {
-  MLIRContext *ctx = &getContext();
-  mlir::RewritePatternSet patterns(ctx);
-
-  // clang-format off
-  patterns.add<
-      ReshapeToExpandShape,
-      RemoveComputeReshapeShape,
-      RemoveRedundantCstrReshapable,
-      TurnDynamicReshapeIntoCollapseShape>(ctx);
-  // clang-format on
-  shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
-
-  if (failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
-                                                std::move(patterns)))) {
-    signalPassFailure();
-  }
-}
-
-std::unique_ptr<OperationPass<FuncOp>> createReshapeSimplifierPass() {
-  return std::make_unique<ReshapeSimplifierPass>();
+std::unique_ptr<OperationPass<FuncOp>> createSymbolicShapeOptimizationPass() {
+  return std::make_unique<SymbolicShapeOptimizationPass>();
 }
 
 }  // end namespace mlir
