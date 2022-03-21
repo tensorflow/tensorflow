@@ -131,9 +131,10 @@ std::string StridedSlice::GetStridedSliceCode(const OperationDef& op_def,
   }
   if (alignedx4) {
     c += "  int s_z = S + args.offset_z;\n";
-    c += "  FLT4 result = args.src_tensor.Read(s_x, s_y, s_z);\n";
+    c += "  args.src_tensor::type result = args.src_tensor.Read(s_x, s_y, "
+         "s_z);\n";
   } else {
-    c += "  FLT4 result;\n";
+    c += "  args.src_tensor::type result;\n";
     const std::string postfixes[] = {"x", "y", "z", "w"};
     for (int i = 0; i < 4; ++i) {
       c += "  {\n";
