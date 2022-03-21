@@ -99,8 +99,8 @@ class Feature(enum.Enum):
     BUILTIN_FUNCTIONS: Convert builtin functions applied to Tensors to
       their TF counterparts.
     EQUALITY_OPERATORS: Whether to convert the comparison operators, like
-      equality. This is soon to be deprecated as support is being added to the
-      Tensor class.
+      equality or repeated comparisons. 
+      NOTE: This is deprecated and the behaviour is enabled by default.
     LISTS: Convert list idioms, like initializers, slices, append, etc.
     NAME_SCOPES: Insert name scopes that name ops according to context, like the
       function they were defined in.
