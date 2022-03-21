@@ -30,6 +30,7 @@ void populateLmhloToTfrtGpuPasses(mlir::OpPassManager &pm) {
   pm.addPass(mlir::createGpuAsyncRegionPass());
   tfrt::gpu::populateGpuToTfrtGpuPasses(pm);
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
 }
 

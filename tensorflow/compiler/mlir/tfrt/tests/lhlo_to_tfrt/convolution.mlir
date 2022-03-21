@@ -235,13 +235,12 @@ func @conv_forward_fused(
 // CHECK-SAME:   %arg0: !tfrt_gpu.dnn.handle
 // CHECK-SAME: ) -> !tfrt_gpu.dnn.convolution.plan
 // CHECK-DAG: [[ALPHA:%[0-9]+]] = tfrt.constant.f64 1.000000e+00
-// CHECK-DAG: [[ALPHA2:%[0-9]+]] = tfrt.constant.f64 1.000000e+00
 // CHECK: [[CONV_PLAN:%[0-9]+]] = tfrt_gpu.dnn.build_fused_convolution %arg0,
 // CHECK-SAME: CUDNN_DATA_HALF, CUDNN_DATA_HALF, CUDNN_DATA_HALF, [1, 17, 9, 9],
 // CHECK-SAME: [1377, 81, 9, 1], [1, 32, 9, 9], [2592, 81, 9, 1],
 // CHECK-SAME: [3, 3, 17, 32], [1632, 544, 32, 1], [1, 32, 1, 1], [32, 1, 1, 1],
 // CHECK-SAME: CUDNN_CROSS_CORRELATION, 2, [1, 1], [0, 0], [1, 1], 10,
-// CHECK-SAME: [[ALPHA]], [[ALPHA2]], 1, 0
+// CHECK-SAME: [[ALPHA]], [[ALPHA]], 1, 0
 // CHECK: tfrt.return [[CONV_PLAN]] : !tfrt_gpu.dnn.convolution.plan
 
 // CHECK:      func @conv_forward_fused_with_side_input(
