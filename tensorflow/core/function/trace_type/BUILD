@@ -15,10 +15,19 @@ pytype_strict_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":default_types",
+        ":util",
         "//tensorflow/python/types",
-        # TODO(b/225045380): Depend on the more specific `leaf` target once the used utils are moved.
-        "//tensorflow/python/util",
     ],
+)
+
+pytype_strict_library(
+    name = "util",
+    srcs = [
+        "util.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [],
 )
 
 py_strict_test(

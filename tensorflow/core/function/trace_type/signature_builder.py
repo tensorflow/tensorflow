@@ -19,8 +19,8 @@ from typing import Any, Callable, Hashable
 import weakref
 
 from tensorflow.core.function.trace_type import default_types
+from tensorflow.core.function.trace_type import util
 from tensorflow.python.types import trace
-from tensorflow.python.util import nest
 
 
 class WeakrefDeletionObserver:
@@ -103,7 +103,7 @@ def create_trace_type(obj: Any,
     return default_types.List(*(create_trace_type(c, context) for c in obj))
 
   if isinstance(obj, tuple):
-    if nest.is_namedtuple(obj):
+    if util.is_namedtuple(obj):
       return default_types.NamedTuple(
           type(obj), tuple(create_trace_type(c, context) for c in obj))
     else:
@@ -113,7 +113,7 @@ def create_trace_type(obj: Any,
     return default_types.Dict(
         {k: create_trace_type(obj[k], context) for k in obj})
 
-  if nest.is_attrs(obj):
+  if util.is_attrs(obj):
     return default_types.Attrs(
         type(obj),
         tuple(
