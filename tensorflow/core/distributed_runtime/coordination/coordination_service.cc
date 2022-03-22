@@ -120,6 +120,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void WaitForAllTasks(const CoordinatedTask& task,
                        const CoordinationServiceDeviceInfo& devices,
                        StatusCallback done) override;
+  void ShutdownTaskAsync(const CoordinatedTask& task,
+                         StatusCallback done) override;
+  Status ResetTask(const CoordinatedTask& task) override;
   Status RecordHeartbeat(const CoordinatedTask& task,
                          uint64_t incarnation) override;
   Status ReportTaskError(const CoordinatedTask& task, Status error) override;
@@ -153,6 +156,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void SetTaskError(absl::string_view task_name, Status error)
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void SetXlaGlobalDeviceIds() TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  Status DisconnectTask(const CoordinatedTask& task)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   struct BarrierState {
     bool passed = false;
@@ -199,8 +204,13 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     State GetState() { return state_; }
     Status GetStatus() { return status_; }
     void SetConnected(uint64_t task_incarnation);
+    void Disconnect(uint64_t grace_period_duration_us);
     Status RecordHeartbeat(uint64_t task_incarnation);
     int64 TimeSinceLastHeartbeatMs();
+    // This denotes the deadline after which we stop accepting heartbeats from a
+    // disconnected task. This grace period accounts for the lag time between
+    // the service recording the state change and the agent stopping heartbeats.
+    uint64_t GetDisconnectedGracePeriodMicros();
     void SetError(Status status);
     absl::flat_hash_set<std::string> GetOngoingBarriers();
     void JoinBarrier(absl::string_view barrier_id);
@@ -213,7 +223,11 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     State state_ = State::DISCONNECTED;
     Status status_;
     mutex last_heartbeat_mu_;
-    int64 last_heartbeat_us_ TF_GUARDED_BY(last_heartbeat_mu_);
+    uint64_t last_heartbeat_us_ TF_GUARDED_BY(last_heartbeat_mu_);
+    // This denotes the deadline after which we stop accepting heartbeats from a
+    // disconnected task. This grace period accounts for the lag time between
+    // the service recording the state change and the agent stopping heartbeats.
+    uint64_t disconnect_grace_period_us_ = 0;
     // For now, we assume there won't be many simultaneous barriers so we simply
     // use a set.
     absl::flat_hash_set<std::string> ongoing_barriers_for_task_;
@@ -223,9 +237,12 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   Env& env_;
   const uint64_t service_incarnation_ = random::New64();
   const uint64_t heartbeat_timeout_ms_;
+  const absl::Duration shutdown_barrier_timeout_;
 
   const std::string device_propagation_barrier_id_ =
       absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_));
+  const std::string shutdown_barrier_id_ =
+      absl::StrCat("Shutdown::", std::to_string(service_incarnation_));
 
   mutex state_mu_;
   absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
@@ -262,6 +279,14 @@ void CoordinationServiceStandaloneImpl::TaskState::SetConnected(
   last_heartbeat_us_ = Env::Default()->NowMicros();
 }
 
+void CoordinationServiceStandaloneImpl::TaskState::Disconnect(
+    uint64_t grace_period_duration_us) {
+  disconnect_grace_period_us_ =
+      Env::Default()->NowMicros() + grace_period_duration_us;
+  state_ = State::DISCONNECTED;
+  status_ = Status::OK();
+}
+
 void CoordinationServiceStandaloneImpl::TaskState::SetError(
     const Status status) {
   if (state_ == State::ERROR) return;
@@ -285,6 +310,11 @@ Status CoordinationServiceStandaloneImpl::TaskState::RecordHeartbeat(
 int64 CoordinationServiceStandaloneImpl::TaskState::TimeSinceLastHeartbeatMs() {
   mutex_lock l(last_heartbeat_mu_);
   return (Env::Default()->NowMicros() - last_heartbeat_us_) / 1000;
+}
+
+uint64_t CoordinationServiceStandaloneImpl::TaskState::
+    GetDisconnectedGracePeriodMicros() {
+  return disconnect_grace_period_us_;
 }
 
 absl::flat_hash_set<std::string>
@@ -313,7 +343,12 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
         return configs.heartbeat_timeout_in_ms() > 0
                    ? configs.heartbeat_timeout_in_ms()
                    : kDefaultHeartbeatTimeoutMs;
-      }()) {
+      }()),
+      shutdown_barrier_timeout_(
+          absl::Milliseconds(server_def.default_session_config()
+                                 .experimental()
+                                 .coordination_config()
+                                 .shutdown_barrier_timeout_in_ms())) {
   const auto& configs =
       server_def.default_session_config().experimental().coordination_config();
   const std::unordered_set<std::string> coordinated_jobs(
@@ -496,6 +531,55 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
                {}, std::move(done));
 }
 
+void CoordinationServiceStandaloneImpl::ShutdownTaskAsync(
+    const CoordinatedTask& task, StatusCallback done) {
+  if (shutdown_barrier_timeout_ > absl::ZeroDuration()) {
+    // Impose shutdown barrier so that all tasks can disconnect together.
+    BarrierAsync(shutdown_barrier_id_, shutdown_barrier_timeout_, task, {},
+                 done);
+  } else {
+    Status status;
+    {
+      mutex_lock l(state_mu_);
+      // Disconnect task from service individually.
+      status = DisconnectTask(task);
+    }
+    done(status);
+  }
+}
+
+Status CoordinationServiceStandaloneImpl::ResetTask(
+    const CoordinatedTask& task) {
+  mutex_lock l(state_mu_);
+  return DisconnectTask(task);
+}
+
+Status CoordinationServiceStandaloneImpl::DisconnectTask(
+    const CoordinatedTask& task) {
+  const std::string task_name = GetTaskName(task);
+  // Check if task is valid and not already disconnected.
+  if (!cluster_state_.contains(task_name)) {
+    return MakeCoordinationError(errors::InvalidArgument(
+        "Unexpected disconnect request with task_name=", task_name));
+  } else if (cluster_state_[task_name]->GetState() ==
+             TaskState::State::DISCONNECTED) {
+    return MakeCoordinationError(errors::FailedPrecondition(
+        "The task is already disconnected: ", task_name));
+  }
+
+  // Disconnect task and fail any ongoing barriers.
+  cluster_state_[task_name]->Disconnect(
+      /*grace_period_duration_us=*/heartbeat_timeout_ms_ * 1000);
+  for (const auto& barrier_id :
+       cluster_state_[task_name]->GetOngoingBarriers()) {
+    Status error = MakeCoordinationError(errors::Internal(absl::StrCat(
+        "Barrier failed from a disconnected task. Barrier Id: ", barrier_id,
+        ", Task: ", task_name)));
+    PassBarrier(barrier_id, error, &barriers_[barrier_id]);
+  }
+  return Status::OK();
+}
+
 const CoordinationServiceDeviceInfo&
 CoordinationServiceStandaloneImpl::ListClusterDevices() {
   return cluster_devices_;
@@ -534,10 +618,17 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     if (!cluster_state_.contains(task_name)) {
       return MakeCoordinationError(errors::InvalidArgument(
           "Unexpected task request with task_name=", task_name));
-    } else if (!cluster_state_[task_name]->GetStatus().ok()) {
+    }
+    if (!cluster_state_[task_name]->GetStatus().ok()) {
       return cluster_state_[task_name]->GetStatus();
     } else if (cluster_state_[task_name]->GetState() ==
-               TaskState::State::DISCONNECTED) {
+                   TaskState::State::DISCONNECTED &&
+               // We accept heartbeats for a short grace period to account for
+               // the lag time between the service recording the state change
+               // and the agent stopping heartbeats.
+               Env::Default()->NowMicros() >
+                   cluster_state_[task_name]
+                       ->GetDisconnectedGracePeriodMicros()) {
       return MakeCoordinationError(errors::InvalidArgument(
           "Task with task_name=", task_name,
           " must be registered before sending heartbeat messages"));
@@ -620,7 +711,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
 
     // Don't propagate error if there is no service-to-client connection.
     if (client_cache_ == nullptr) {
-      LOG(ERROR) << error.error_message();
+      LOG(ERROR) << error;
       return;
     }
     CoordinationClient* client = client_cache_->GetClient(std::string(task));
@@ -750,7 +841,6 @@ void CoordinationServiceStandaloneImpl::SetTaskError(
   }
 }
 
-// TODO(hanyangtay): Implement timeout mechanism.
 void CoordinationServiceStandaloneImpl::BarrierAsync(
     const std::string& barrier_id, absl::Duration timeout,
     const CoordinatedTask& task,
@@ -824,6 +914,17 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
 
   // Barrier has already been passed, return previous result immediately.
   if (barrier->passed) {
+    // Special hook for shutdown barrier to disconnect task.
+    if (barrier_id == shutdown_barrier_id_) {
+      Status s = DisconnectTask(task);
+      // Return any errors from the disconnect attempt, otherwise return the
+      // barrier status outside of this hook.
+      if (!s.ok()) {
+        done(s);
+        return;
+      }
+    }
+
     done(barrier->result);
     return;
   }
@@ -905,6 +1006,31 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
     // Clean up task state (used as error hooks).
     const CoordinatedTask& task = task_at_barrier.first;
     cluster_state_[GetTaskName(task)]->ExitBarrier(barrier_id);
+  }
+
+  // Special hook for shutdown barrier to disconnect tasks at the barrier.
+  if (barrier_id == shutdown_barrier_id_) {
+    Status shutdown_error = MakeCoordinationError(errors::Internal(
+        absl::StrCat("Shutdown barrier has been passed with status: '",
+                     barrier->result.ToString(),
+                     "', but this task is not at the barrier yet.")));
+    for (const std::pair<const CoordinatedTask, bool>& task_at_barrier :
+         barrier->tasks_at_barrier) {
+      const CoordinatedTask& task = task_at_barrier.first;
+      bool at_barrier = task_at_barrier.second;
+      if (at_barrier) {
+        // Disconnect tasks that reached the barrier.
+        Status disconnect_status = DisconnectTask(task);
+        if (!disconnect_status.ok()) {
+          LOG(ERROR) << disconnect_status;
+        }
+      } else {
+        // Propagate errors to straggling tasks that have not reached the
+        // barrier. The barrier must have failed if any task did not reach the
+        // barrier.
+        ReportServiceErrorToTask(task, shutdown_error);
+      }
+    }
   }
   barrier->tasks_at_barrier.clear();
   barrier->done_callbacks.clear();

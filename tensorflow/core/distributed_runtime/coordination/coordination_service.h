@@ -113,6 +113,21 @@ class CoordinationServiceInterface {
                                const CoordinationServiceDeviceInfo& devices,
                                StatusCallback done) = 0;
 
+  // Disconnects task from the service. If `shutdown_barrier_timeout_in_ms` is
+  // specified in the config, blocks until all tasks reach the barrier before
+  // disconnecting together.
+  // Possible service errors:
+  //   - InvalidArgument: Unexpected task request.
+  //   - FailedPrecondition: task has already disconnected.
+  virtual void ShutdownTaskAsync(const CoordinatedTask& task,
+                                 StatusCallback done) = 0;
+
+  // Disconnects task from the service and cleans up its internal error state.
+  // Possible service errors:
+  //   - InvalidArgument: Unexpected task request.
+  //   - FailedPrecondition: task has already disconnected.
+  virtual Status ResetTask(const CoordinatedTask& task) = 0;
+
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
   virtual Status RecordHeartbeat(const CoordinatedTask& task,

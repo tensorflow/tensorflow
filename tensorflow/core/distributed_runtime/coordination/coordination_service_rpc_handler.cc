@@ -103,9 +103,8 @@ void CoordinationServiceRpcHandler::ShutdownTaskAsync(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  done(MakeCoordinationError(
-      errors::Unimplemented("CoordinationServiceInterface::ShutdownAsync() is"
-                            " not implemented yet.")));
+  service->ShutdownTaskAsync(request->source_task(),
+                             [done](Status s) { done(s); });
 }
 
 void CoordinationServiceRpcHandler::ResetTaskAsync(
@@ -118,9 +117,7 @@ void CoordinationServiceRpcHandler::ResetTaskAsync(
         errors::Internal("Coordination service is not enabled.")));
     return;
   }
-  done(MakeCoordinationError(
-      errors::Unimplemented("CoordinationServiceInterface::ResetAsync() is"
-                            " not implemented yet.")));
+  done(service->ResetTask(request->source_task()));
 }
 
 void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
