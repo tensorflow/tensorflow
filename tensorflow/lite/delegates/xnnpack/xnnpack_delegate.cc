@@ -253,8 +253,16 @@ class Subgraph {
                   tensors.end());
     std::sort(tensors.begin(), tensors.end());
 
+    // Initialize the size of xnnpack_tensors. It's important we check the size
+    // of tensors before using tensors.back() since it is undefined in the case
+    // that tensors is empty.
+    int xnnpack_tensors_size = 1;
+    if (tensors.size() > 0) {
+      xnnpack_tensors_size = tensors.back() + 1;
+    }
+
     // XNNPACK Value IDs for TFLite tensors
-    std::vector<uint32_t> xnnpack_tensors(tensors.back() + 1);
+    std::vector<uint32_t> xnnpack_tensors(xnnpack_tensors_size);
     for (int t : tensors) {
       xnn_datatype datatype = xnn_datatype_invalid;
       switch (context->tensors[t].type) {
