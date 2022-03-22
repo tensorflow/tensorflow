@@ -42,7 +42,11 @@ module {
     %6 = "quant.stats"(%5) {
       layerStats = dense<[-2.0, 2.0]> : tensor<2xf32>
     } : (tensor<*xf32>) -> tensor<*xf32>
-    return %6 : tensor<*xf32>
+    %7 = "tf.Identity"(%6) : (tensor<*xf32>) -> tensor<*xf32>
+    %8 = "quant.stats"(%7) {
+      layerStats = dense<[-2.0, 2.0]> : tensor<2xf32>
+    } : (tensor<*xf32>) -> tensor<*xf32>
+    return %8 : tensor<*xf32>
   }
 
   func private @fused_matmul_fn_1(%a: tensor<*xf32>, %b: tensor<*xf32>, %c: tensor<*xf32>) -> tensor<*xf32> {
@@ -67,5 +71,10 @@ module {
 // CHECK-SAME: quant.uniform<i8:f32, 0.010039215461880554:-1>
 // CHECK: %[[call:.*]] = "tf.PartitionedCall"(%[[dq2]]
 // CHECK-SAME: f = @fused_matmul_fn_1
-// CHECK: "quant.qcast"(%[[call]])
+// CHECK: %[[q3:.*]] = "quant.qcast"(%[[call]])
+// CHECK-SAME: quant.uniform<i8:f32, 0.015686274509803921:-1>
+// CHECK: %[[dq3:.*]] = "quant.dcast"(%[[q3]])
+// CHECK-SAME: quant.uniform<i8:f32, 0.015686274509803921:-1>
+// CHECK: %[[identity:.*]] = "tf.Identity"(%[[dq3]])
+// CHECK: "quant.qcast"(%[[identity]])
 // CHECK-SAME: quant.uniform<i8:f32, 0.015686274509803921:-1>

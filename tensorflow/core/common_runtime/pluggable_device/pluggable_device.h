@@ -93,7 +93,7 @@ class PluggableDevice : public LocalDevice {
   StreamGroup* stream_;
   PluggableDeviceContext* device_context_;
   // TODO(penpornk): Investigate renaming `GpuDeviceInfo` to `DeviceInfo`.
-  GpuDeviceInfo* pluggable_device_info_ = nullptr;
+  DeviceBase::AcceleratorDeviceInfo* pluggable_device_info_ = nullptr;
   TfDeviceId tf_device_id_;
   const string platform_name_;
   const bool sync_every_op_ = false;

@@ -331,7 +331,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
                       f"Received {validate}.")
     values, row_partition = cls._convert_values_and_partition(
         values, row_partition, "partition")
-    if row_partition.has_precomputed_value_rowids():
+    if row_partition._has_precomputed_value_rowids():  # pylint: disable=protected-access
       value_rowids_shape = row_partition.value_rowids().shape
       values.shape[:1].assert_is_compatible_with(value_rowids_shape)
     if validate:
@@ -1630,8 +1630,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     Returns:
       A `RaggedTensor` with the specified `ragged_rank`.  The shape of the
       returned ragged tensor is compatible with the shape of `tensor`.
+
     Raises:
       ValueError: If both `lengths` and `padding` are specified.
+      ValueError: If the rank of `tensor` is 0 or 1.
     """
     row_splits_dtype = dtypes.as_dtype(row_splits_dtype)
     if lengths is not None and padding is not None:
@@ -1645,6 +1647,11 @@ class RaggedTensor(composite_tensor.CompositeTensor,
 
     with ops.name_scope(name, "RaggedFromTensor", [tensor, lengths, padding]):
       tensor = ops.convert_to_tensor(tensor, name="tensor")
+      if tensor.shape.rank is not None and tensor.shape.rank < 2:
+        raise ValueError(f"The rank of a RaggedTensor must be greater than 1, "
+                         f"i.e., a list of scalars won't have ragged "
+                         f"dimensions. Received argument `tensor` with rank "
+                         f"{tensor.shape.rank}.")
       tensor.shape.with_rank_at_least(ragged_rank + 1)
       input_shape = array_ops.shape(tensor, out_type=row_splits_dtype)
       ncols = input_shape[1]
@@ -2927,7 +2934,7 @@ def _get_row_partition_type_tensor_pairs_tail(partition):
   Returns:
     A list of (row_partition_type, row_partition_tensor) pairs.
   """
-  if partition.has_precomputed_value_rowids():
+  if partition._has_precomputed_value_rowids():  # pylint: disable=protected-access
     return ("VALUE_ROWIDS", partition.value_rowids())
   else:
     return ("ROW_SPLITS", partition.row_splits())

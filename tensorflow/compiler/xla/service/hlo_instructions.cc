@@ -248,6 +248,40 @@ HloOpcode HloAsyncInstruction::async_wrapped_opcode() const {
   return async_wrapped_instruction()->opcode();
 }
 
+std::vector<std::string> HloAsyncInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (options.syntax_sugar_async_ops()) {
+    return async_wrapped_instruction()->ExtraAttributesToString(options);
+  }
+  return {};
+}
+
+bool HloAsyncInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  return opcode() == other.opcode() &&
+         eq_computations(async_wrapped_computation(),
+                         other.async_wrapped_computation());
+}
+
+std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  HloModule* module = context != nullptr ? context->module() : GetModule();
+  HloComputation* new_wrapped_computation = nullptr;
+  if (context != nullptr) {
+    new_wrapped_computation =
+        context->FindComputation(async_wrapped_computation());
+  }
+  if (new_wrapped_computation == nullptr) {
+    new_wrapped_computation = module->AddEmbeddedComputation(
+        async_wrapped_computation()->Clone("clone", context));
+  }
+  return absl::make_unique<HloAsyncInstruction>(opcode(), shape, new_operands,
+                                                new_wrapped_computation);
+}
+
 HloCopyStartInstruction::HloCopyStartInstruction(const Shape& shape,
                                                  HloInstruction* operand,
                                                  bool is_cross_program_prefetch)
@@ -1376,6 +1410,9 @@ std::unique_ptr<HloInstruction>
 HloConstantInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
+  if (!literal_.has_value()) {
+    return absl::make_unique<HloConstantInstruction>(this->shape());
+  }
   CHECK(literal_.has_value());
   // Literal's shape may have no/different tiling info. Use this instruction's
   // shape instead.
@@ -1441,7 +1478,7 @@ bool HloTraceInstruction::IdenticalSlowPath(
 std::unique_ptr<HloInstruction> HloTraceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode());
+  LOG(FATAL) << "Not yet implemented, clone: " << ToString();
 }
 
 HloFusionInstruction::HloFusionInstruction(const Shape& shape,

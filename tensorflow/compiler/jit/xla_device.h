@@ -265,7 +265,8 @@ class XlaDevice : public LocalDevice {
 
   // Holds extra information for GPU and TPU devices, e.g. the device context.
   bool use_gpu_device_info_ TF_GUARDED_BY(mu_) = false;
-  std::unique_ptr<GpuDeviceInfo> gpu_device_info_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<DeviceBase::AcceleratorDeviceInfo> gpu_device_info_
+      TF_GUARDED_BY(mu_);
 
   // Thread pool used for running closures
   std::unique_ptr<thread::ThreadPool> thread_pool_;

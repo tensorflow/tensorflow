@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_ASYNC_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_ASYNC_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_ASYNC_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_ASYNC_H_
 
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -39,6 +39,6 @@ class FallbackAsyncDialect : public Dialect {
 }  // namespace tfrt
 
 #define GET_OP_CLASSES
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h.inc"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h.inc"
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_ASYNC_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_ASYNC_H_

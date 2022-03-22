@@ -20,8 +20,11 @@ limitations under the License.
 
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -210,10 +213,8 @@ class HloValueSet {
  public:
   HloValueSet() = default;
 
-  explicit HloValueSet(absl::Span<const HloValue* const> values)
-      : values_(values.begin(), values.end()) {
-    SortAndUniquifyValues();
-  }
+  explicit HloValueSet(absl::Span<const HloValue* const> values);
+  explicit HloValueSet(const absl::flat_hash_set<const HloValue*>& values);
 
   // Sets this value set to the union of the given value sets. Returns whether
   // this value set changed.
@@ -229,6 +230,8 @@ class HloValueSet {
 
   // Clear all values from the set.
   void Clear() { values_.clear(); }
+
+  std::vector<const HloValue*> TakeValues() { return std::move(values_); }
 
   // Return the unique HLO value in the set. CHECKs if the set does not contain
   // exactly one value.

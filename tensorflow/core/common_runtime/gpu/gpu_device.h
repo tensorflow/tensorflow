@@ -151,7 +151,7 @@ class BaseGPUDevice : public LocalDevice {
   mutex scratch_init_mutex_;
   char* scratch_ = nullptr;
   GPUDeviceContext* device_context_;
-  GpuDeviceInfo* gpu_device_info_ = nullptr;
+  DeviceBase::AcceleratorDeviceInfo* gpu_device_info_ = nullptr;
   mutex trace_mu_;
   TfDeviceId tf_device_id_;
   const bool sync_every_op_ = false;

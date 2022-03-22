@@ -46,6 +46,8 @@ class ServerDef;
 //
 // Possible service errors:
 //    - errors::Internal: Coordination service is not enabled.
+//                        If it was previously accessible, coordination service
+//                        has been shut down.
 //    - errors::Aborted: Incarnation mismatch during heartbeat (either remote
 //                       task or coordination service has restarted).
 //    - errors::Unavailable: Heartbeat timeout from remote task (failed,
@@ -130,9 +132,16 @@ class CoordinationServiceAgent {
   // blocks until all tasks reach the barrier before shutting down together. If
   // the barrier times out, this agent will still disconnect, while an error is
   // reported to other agents that did not reach the barrier on time.
+  // Possible service errors:
+  //   - InvalidArgument: Unexpected task request.
+  //   - FailedPrecondition: task has already disconnected.
   virtual Status Shutdown() = 0;
 
   // Disconnect from the service, and clean up the internal error status.
+  // Possible service errors:
+  //   - InvalidArgument: Unexpected task request.
+  //   - FailedPrecondition: task is not in error state/has already
+  //       disconnected.
   virtual Status Reset() = 0;
 
   // Get config key-value from the service.

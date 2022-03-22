@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
 
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
@@ -29,7 +29,7 @@ FallbackDialect::FallbackDialect(MLIRContext *context)
 
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.cpp.inc"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.cpp.inc"
       >();
 }
 
@@ -68,4 +68,4 @@ void FallbackDialect::printType(Type type, DialectAsmPrinter &os) const {
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.cpp.inc"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.cpp.inc"

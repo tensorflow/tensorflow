@@ -50,6 +50,33 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "xla_compilation_cache_test_helper",
+    testonly = True,
+    srcs = ["xla_compilation_cache_test_helper.cc"],
+    hdrs = ["xla_compilation_cache_test_helper.h"],
+    deps = [
+        "//tensorflow/compiler/jit:xla_activity_listener",
+        "//tensorflow/compiler/jit:xla_compilation_cache_proto_cc",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/compiler/jit:xla_gpu_device",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_test(
     name = "xla_compilation_cache_serialize_test",
     srcs = [
@@ -65,28 +92,31 @@ tf_cc_test(
         "xla",
     ],
     deps = [
+        ":xla_compilation_cache_test_helper",
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/jit:flags",
-        "//tensorflow/compiler/jit:xla_activity_listener",
-        "//tensorflow/compiler/jit:xla_compilation_cache",
-        "//tensorflow/compiler/jit:xla_cpu_jit",
-        "//tensorflow/compiler/jit:xla_gpu_device",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:ops",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_options",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/common_runtime:core_cpu",
-        "//tensorflow/core/platform:path",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_compilation_cache_loose_signature_test",
+    srcs = [
+        "xla_compilation_cache_loose_signature_test.cc",
+    ],
+    env = {
+        "XLA_FLAGS": "--xla_gpu_bef_executable",
+    },
+    tags = [
+        "config-cuda-only",
+        "no_oss",  # This test only runs with GPU.
+        "requires-gpu-nvidia",
+        "xla",
+    ],
+    deps = [
+        ":xla_compilation_cache_test_helper",
+        "//tensorflow/compiler/jit:compilation_passes",
+        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/core:test",
     ],
 )

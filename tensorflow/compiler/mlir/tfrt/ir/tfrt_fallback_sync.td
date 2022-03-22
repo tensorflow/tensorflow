@@ -20,8 +20,8 @@ limitations under the License.
 include "tfrt/tfrt_op_base.td"
 include "tfrt/core_runtime/opdefs/corert_base.td"
 include "tfrt/core_runtime/opdefs/corert_traits.td"
-include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tfrt_fallback.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def FallbackSync_Dialect : Dialect {
   let name = "tfrt_fallback_sync";

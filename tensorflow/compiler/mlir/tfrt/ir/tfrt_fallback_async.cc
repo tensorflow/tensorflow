@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -28,8 +28,8 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_common.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_common.h"
 #include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
@@ -68,7 +68,7 @@ FallbackAsyncDialect::FallbackAsyncDialect(MLIRContext *context)
 
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.cpp.inc"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.cpp.inc"
       >();
 }
 
@@ -442,4 +442,4 @@ void CoreRTTensorHandleToFallbackTensorOp::getCanonicalizationPatterns(
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.cpp.inc"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.cpp.inc"

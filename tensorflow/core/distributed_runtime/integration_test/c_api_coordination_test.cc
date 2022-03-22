@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -100,7 +102,9 @@ string GetConfigKeyValueFn() {
   return fdef.SerializeAsString();
 }
 
-TEST(CAPI, MultiClientCoordinationService) {
+// TODO(hanyangtay): Figure out how to simulate network failure in a thread.
+// This test no longer works as agents gracefully disconnect upon destruction.
+TEST(CAPI, DISABLED_MultiClientCoordinationService) {
   const int cluster_size = 3;
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);

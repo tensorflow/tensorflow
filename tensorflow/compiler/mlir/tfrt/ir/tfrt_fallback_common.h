@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_COMMON_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_COMMON_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_COMMON_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_COMMON_H_
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -119,4 +119,4 @@ mlir::ParseResult ParseExecuteOpCommon(mlir::OpAsmParser &parser,
 }  // namespace fallback_common
 }  // namespace tfrt
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_OPDEFS_TFRT_FALLBACK_COMMON_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_COMMON_H_

@@ -57,7 +57,8 @@ std::string GetReshapeCode(const OperationDef& op_def) {
     c += "  int src_b = dst_bhwc4 / args.src_tensor.Height();\n";
     c += "  args.src_tensor.SetBatchRef(src_b);\n";
   }
-  c += "  FLT4 result = args.src_tensor.Read(src_x, src_y, src_z);\n";
+  c += "  args.src_tensor::type result = args.src_tensor.Read(src_x, src_y, "
+       "src_z);\n";
   c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
   c += "}\n";
   return c;

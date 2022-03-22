@@ -29,12 +29,9 @@ def BufferReuse : Pass<"buffer-reuse", "FuncOp"> {
   let constructor = "createBufferReusePass()";
 }
 
-def ReshapeSimplifier : Pass<"reshape-simplifier", "FuncOp"> {
-  let summary = "";
-  let description = [{
-    This pass tries to simplify dynamic reshapes.
-  }];
-  let constructor = "createReshapeSimplifierPass()";
+def SymbolicShapeOptimization : Pass<"symbolic-shape-optimization", "FuncOp"> {
+  let summary = "Analyzes shapes and performs shape-related optimizations";
+  let constructor = "createSymbolicShapeOptimizationPass()";
 }
 
 def CopyRemoval : Pass<"copy-removal", "FuncOp"> {

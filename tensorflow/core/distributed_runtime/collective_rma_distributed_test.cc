@@ -365,7 +365,7 @@ class CollRMADistTest
   DeviceLocality device_locality_;
   AllocatorAttributes alloc_attr_;
   FakeAllocator fake_allocator_;
-  DeviceBase::GpuDeviceInfo gpu_device_info_;
+  DeviceBase::AcceleratorDeviceInfo gpu_device_info_;
 };
 
 TEST_P(CollRMADistTest, ProdFirstOK) {
