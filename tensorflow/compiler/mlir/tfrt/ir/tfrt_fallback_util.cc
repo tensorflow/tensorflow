@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_util.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_util.h"
 
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 
 namespace tfrt {
 namespace fallback_async {

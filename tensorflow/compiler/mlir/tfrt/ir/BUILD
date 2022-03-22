@@ -14,14 +14,14 @@ cc_library(
     hdrs = ["tfrt_fallback.h"],
     visibility = [
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
-        "//learning/brain/tfrt/tpu/compiler:__subpackages__",
+        # copybara:uncomment "//learning/brain/tfrt/tpu/compiler:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-        "//tensorflow/core/runtime_fallback:internal",
+        # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
+        # copybara:uncomment "//third_party/tf_runtime_google:__subpackages__",
     ],
     deps = [
         ":tfrt_fallback_opdefs_inc_gen",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SideEffects",
     ],
 )
 
@@ -34,7 +34,8 @@ cc_library(
     visibility = [
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-        "//tensorflow/core/runtime_fallback:internal",
+        # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
+        # copybara:uncomment "//third_party/tf_runtime_google:__subpackages__",
     ],
     deps = [
         ":tfrt_fallback_async_opdefs_inc_gen",
@@ -58,14 +59,16 @@ cc_library(
         "tfrt_fallback_sync.cc",
     ],
     hdrs = ["tfrt_fallback_sync.h"],
-    visibility = ["//tensorflow/core/runtime_fallback:internal"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+        # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
+    ],
     deps = [
         ":tfrt_fallback_common",
         ":tfrt_fallback_opdefs",
         ":tfrt_fallback_sync_opdefs_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SideEffects",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//:tensor_opdefs",
@@ -88,7 +91,8 @@ cc_library(
     srcs = ["tfrt_fallback_util.cc"],
     hdrs = ["tfrt_fallback_util.h"],
     visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+        # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
         "//tensorflow/core/tfrt/graph_executor:__pkg__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
     ],

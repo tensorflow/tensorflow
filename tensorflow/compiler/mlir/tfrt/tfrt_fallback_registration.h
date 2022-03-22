@@ -12,18 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/runtime_fallback/tfrt_fallback_registration.h"
 
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_sync.h"
+// This file implements TFRuntimeFallback tensor conversion function for
+// converting to host tensor.
+
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TFRT_FALLBACK_REGISTRATION_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_TFRT_FALLBACK_REGISTRATION_H_
+
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 
 namespace tensorflow {
 namespace tfd {
-void RegisterTfrtFallbackDialect(mlir::DialectRegistry &registry) {
-  registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
-  registry.insert<tfrt::fallback::FallbackDialect>();
-  registry.insert<tfrt::fallback_sync::FallbackSyncDialect>();
-}
+
+// Register conversion functions for TFRuntimeFallbackTensors.
+void RegisterTfrtFallbackDialect(mlir::DialectRegistry &registry);
+
 }  // namespace tfd
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TFRT_FALLBACK_REGISTRATION_H_

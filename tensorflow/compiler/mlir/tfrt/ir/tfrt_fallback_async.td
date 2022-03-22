@@ -22,8 +22,8 @@ include "tfrt/compiler/opdefs/tfrt_op_interfaces.td"
 include "tfrt/compiler/opdefs/tfrt_traits.td"
 include "tfrt/core_runtime/opdefs/corert_base.td"
 include "tfrt/core_runtime/opdefs/corert_traits.td"
-include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tfrt_fallback.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def FallbackAsync_Dialect : Dialect {
   let name = "tfrt_fallback_async";

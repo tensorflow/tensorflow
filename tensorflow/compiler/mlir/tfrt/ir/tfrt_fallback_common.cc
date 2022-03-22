@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_common.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_common.h"
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 

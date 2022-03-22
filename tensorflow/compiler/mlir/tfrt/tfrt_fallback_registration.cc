@@ -12,18 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/mlir/tfrt/tfrt_fallback_registration.h"
 
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_sync.h"
-#include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_sync.h"
 
-int main(int argc, char **argv) {
-  mlir::DialectRegistry registry;
-  tfrt::RegisterTFRTDialects(registry);
+namespace tensorflow {
+namespace tfd {
+void RegisterTfrtFallbackDialect(mlir::DialectRegistry &registry) {
   registry.insert<tfrt::fallback_async::FallbackAsyncDialect>();
   registry.insert<tfrt::fallback::FallbackDialect>();
   registry.insert<tfrt::fallback_sync::FallbackSyncDialect>();
-  return failed(mlir::MlirOptMain(argc, argv, "TFRT pass driver", registry));
 }
+}  // namespace tfd
+}  // namespace tensorflow
