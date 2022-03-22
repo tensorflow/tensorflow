@@ -36,6 +36,9 @@ class Generic(trace.TraceType):
       self, types: Sequence[trace.TraceType]) -> Optional[trace.TraceType]:
     return self if all(self == other for other in types) else None
 
+  def _placeholder_value(self) -> Any:
+    return self._object
+
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
@@ -55,6 +58,9 @@ class Weakref(Generic):
   When a function argument is a custom class, instead of making a copy of it
   just for the sake of function cache, a weakref is instead kept to save memory.
   """
+
+  def _placeholder_value(self) -> Any:
+    return self._object()
 
   def __eq__(self, other):
     if not isinstance(other, trace.TraceType):
@@ -141,11 +147,19 @@ class OrderedCollection(trace.TraceType):
 
 
 class List(OrderedCollection):
-  pass
+
+  def _placeholder_value(self) -> Any:
+    return [
+        component._placeholder_value()  # pylint: disable=protected-access
+        for component in self.components
+    ]
 
 
 class Tuple(OrderedCollection):
-  pass
+
+  def _placeholder_value(self) -> Any:
+    return tuple(component._placeholder_value()  # pylint: disable=protected-access
+                 for component in self.components)
 
 
 class Attrs(OrderedCollection):
@@ -159,6 +173,11 @@ class Attrs(OrderedCollection):
   def __init__(self, classtype: Type[object],
                attributes: PythonTuple[trace.TraceType]):
     super().__init__(Generic(classtype), *attributes)
+
+  def _placeholder_value(self) -> Any:
+    attrs_class = self.components[0]._placeholder_value()  # pylint: disable=protected-access
+    return attrs_class(*(component._placeholder_value()  # pylint: disable=protected-access
+                         for component in self.components[1:]))
 
 
 class Dict(trace.TraceType):
@@ -206,6 +225,12 @@ class Dict(trace.TraceType):
 
     return Dict(new_mapping)
 
+  def _placeholder_value(self) -> Any:
+    return {
+        key: value._placeholder_value()  # pylint: disable=protected-access
+        for key, value in self.mapping.items()
+    }
+
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
@@ -250,6 +275,9 @@ class Reference(trace.TraceType):
       if base_supertype is not None:
         return Reference(base_supertype, self.identifier)
     return None
+
+  def _placeholder_value(self) -> Any:
+    return self.base._placeholder_value()  # pylint: disable=protected-access
 
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, trace.TraceType):
