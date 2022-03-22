@@ -61,7 +61,7 @@ void CreateRegionWithCall(FuncOp func, Region& region, Location loc) {
   OpBuilder builder(region);
   auto block = builder.createBlock(&region);
   SmallVector<Value, 4> new_operands;
-  for (Type t : func.getType().getInputs())
+  for (Type t : func.getFunctionType().getInputs())
     new_operands.push_back(block->addArgument(t, loc));
   auto call = builder.create<func::CallOp>(loc, func, new_operands);
   builder.create<YieldOp>(loc, call.getResults());

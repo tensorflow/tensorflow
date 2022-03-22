@@ -68,7 +68,7 @@ class EmbedTFFrameworkPass
       if (!op->hasAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName)) {
         return true;
       }
-      FunctionType func_type = op.getType();
+      FunctionType func_type = op.getFunctionType();
       return func_type.getNumInputs() > 0 &&
              func_type.getInput(0).isa<OpKernelContextType>();
     });

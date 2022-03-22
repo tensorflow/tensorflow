@@ -348,7 +348,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         // TODO: this should be within a pass and we should be able to create a
         // nested OpPassManager.
         // Created a nested OpPassManager, populate the strategy and run.
-        // mlir::OpPassManager dynamicPM("builtin.func");
+        // mlir::OpPassManager dynamicPM("func.func");
         // strategy.configurePassPipeline(dynamicPM, function.getContext());
         // Propagate pass failure?
         // (void)mlir::runPipeline(dynamicPM, function);

@@ -1,4 +1,4 @@
-// RUN: tf-opt --pass-pipeline='builtin.func(tosa-legalize-tfl{disable-patterns=TFLConv2D,TFLSoftmax, enable-patterns=TFLFullyConnected,TFLTranspose})'
+// RUN: tf-opt --pass-pipeline='func.func(tosa-legalize-tfl{disable-patterns=TFLConv2D,TFLSoftmax, enable-patterns=TFLFullyConnected,TFLTranspose})'
 
 // -----
 

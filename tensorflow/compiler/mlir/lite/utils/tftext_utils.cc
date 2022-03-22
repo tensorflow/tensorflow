@@ -62,11 +62,11 @@ inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
 }
 
 inline TensorType GetInputType(FuncOp func, int idx) {
-  return func.getType().getInput(idx).dyn_cast_or_null<TensorType>();
+  return func.getFunctionType().getInput(idx).dyn_cast_or_null<TensorType>();
 }
 
 inline TensorType GetResultType(FuncOp func, int idx) {
-  return func.getType().getResult(idx).dyn_cast_or_null<TensorType>();
+  return func.getFunctionType().getResult(idx).dyn_cast_or_null<TensorType>();
 }
 
 inline bool RankEquals(const TensorType& type, int rank) {
@@ -136,8 +136,8 @@ LogicalResult ConvertWhitespaceTokenizer(FuncOp func, llvm::StringRef api,
   OpBuilder builder(func.getBody());
   std::string empty_option_buffer;
   auto op = builder.create<CustomOp>(
-      func.getLoc(), func.getType().getResults(), func.getArguments(), api,
-      CustomOption(&builder, empty_option_buffer));
+      func.getLoc(), func.getFunctionType().getResults(), func.getArguments(),
+      api, CustomOption(&builder, empty_option_buffer));
   builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
   return success();
 }
@@ -149,11 +149,12 @@ LogicalResult VerifyNgrams(FuncOp func) {
   constexpr int kValues = 0;
   constexpr int kRowSplits = 1;
 
-  if (func.getType().getInputs().size() != func.getType().getResults().size()) {
+  if (func.getFunctionType().getInputs().size() !=
+      func.getFunctionType().getResults().size()) {
     return func.emitError() << "Mismatched number of inputs and outputs.";
   }
 
-  int row_splits = func.getType().getInputs().size() - kRowSplits;
+  int row_splits = func.getFunctionType().getInputs().size() - kRowSplits;
   if (row_splits == 0) {
     auto input_values = GetInputType(func, kValues);
     if (!input_values || !input_values.getElementType().isa<StringType>()) {
@@ -263,15 +264,15 @@ LogicalResult ConvertNgrams(FuncOp func, llvm::StringRef api, FuncAttr attr) {
     return failure();
   }
   auto op = builder.create<CustomOp>(
-      func.getLoc(), func.getType().getResults(), func.getArguments(), api,
-      CustomOption(&builder, custom_option_buffer));
+      func.getLoc(), func.getFunctionType().getResults(), func.getArguments(),
+      api, CustomOption(&builder, custom_option_buffer));
   builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
   return success();
 }
 
 LogicalResult VerifySgnnProjection(FuncOp func, FuncAttr attr) {
-  if (func.getType().getNumInputs() != 2 ||
-      func.getType().getNumResults() != 1) {
+  if (func.getFunctionType().getNumInputs() != 2 ||
+      func.getFunctionType().getNumResults() != 1) {
     return func.emitError() << "Mismatched number of inputs and outputs.";
   }
   auto values_type = GetInputType(func, 0);
@@ -343,8 +344,8 @@ LogicalResult ConvertSgnnProjection(FuncOp func, llvm::StringRef api,
     return failure();
   }
   auto op = builder.create<CustomOp>(
-      func.getLoc(), func.getType().getResults(), func.getArguments(), api,
-      CustomOption(&builder, custom_option_buffer));
+      func.getLoc(), func.getFunctionType().getResults(), func.getArguments(),
+      api, CustomOption(&builder, custom_option_buffer));
   builder.create<func::ReturnOp>(func.getLoc(), op.getResults());
   return success();
 }

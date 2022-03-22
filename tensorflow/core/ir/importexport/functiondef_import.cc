@@ -290,8 +290,8 @@ Status ImportGenericFunction(
       if (attr.name().empty())
         return InvalidArgument("Missing name for function attribute");
       if (!attr.type().empty())
-        attr_def.append(
-            builder.getNamedAttr("type", builder.getStringAttr(attr.type())));
+        attr_def.append(builder.getNamedAttr(
+            "function_type", builder.getStringAttr(attr.type())));
       if (attr.has_default_value()) {
         TF_ASSIGN_OR_RETURN(
             Attribute attr,
@@ -497,16 +497,17 @@ Status ImportGenericFunction(
       unknown_loc, operands.slice(0, func.ret_size()),
       operands.slice(func.ret_size()));
 
-  // Now that we have all the types, set the function signature as the "type"
-  // attribute.
+  // Now that we have all the types, set the function signature as the
+  // "function_type" attribute.
   {
     SmallVector<Type> arg_types_with_ctl;
     for (Type type : arg_types) {
       arg_types_with_ctl.push_back(type);
       arg_types_with_ctl.push_back(control_ty);
     }
-    attrs.append("type", TypeAttr::get(builder.getFunctionType(
-                             arg_types_with_ctl, ret_op.getOperandTypes())));
+    attrs.append("function_type",
+                 TypeAttr::get(builder.getFunctionType(
+                     arg_types_with_ctl, ret_op.getOperandTypes())));
   }
   func_op->setAttrs(attrs);
   return Status::OK();

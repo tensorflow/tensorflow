@@ -37,7 +37,7 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
       FuncOp func, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     // Convert function arguments using the provided TypeConverter.
-    auto func_type = func.getType();
+    auto func_type = func.getFunctionType();
     TypeConverter::SignatureConversion conversion(func_type.getNumInputs());
 
     conversion.addInputs(OpKernelContextType::get(rewriter.getContext()));

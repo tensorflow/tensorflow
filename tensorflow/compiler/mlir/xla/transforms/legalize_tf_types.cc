@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -102,7 +103,7 @@ class TfTypeConversionTarget : public ConversionTarget {
       // The FuncOp type can contain types that the op's operand and result
       // types do not contain.
       if (auto func = dyn_cast<FuncOp>(op)) {
-        if (!converter_.isSignatureLegal(func.getType())) return false;
+        if (!converter_.isSignatureLegal(func.getFunctionType())) return false;
       }
       return converter_.isLegal(op);
     });

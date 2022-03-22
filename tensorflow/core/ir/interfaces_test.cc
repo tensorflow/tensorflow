@@ -54,7 +54,9 @@ TEST(TensorFlowRegisterInterface, TestCustomImplementation) {
     }
   };
 
-  registry.addDialectInterface<TFGraphDialect, CustomRegistryInterface>();
+  registry.addExtension(+[](mlir::MLIRContext *ctx, TFGraphDialect *dialect) {
+    dialect->addInterfaces<CustomRegistryInterface>();
+  });
   context.appendDialectRegistry(registry);
 
   auto *dialect = context.getOrLoadDialect<TFGraphDialect>();

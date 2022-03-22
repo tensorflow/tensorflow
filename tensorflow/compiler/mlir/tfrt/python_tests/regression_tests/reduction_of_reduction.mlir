@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?x?x?xi64>
+func.func @test(%V__0: tensor<?x?x?xi64>
     { python_test_attrs.static_type = tensor<9x32x26xi64> })
     -> tensor<?x?xi64> {
   %dims1 = "tf.Const"() {

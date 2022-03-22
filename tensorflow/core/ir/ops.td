@@ -93,7 +93,7 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
     // Attributes required by FunctionOpInterface. These are declared here for
     // ease of access and to cache the attribute names in the op.
     SymbolNameAttr:$sym_name,
-    TypeAttr:$type,
+    TypeAttrOf<FunctionType>:$function_type,
     ArrayAttr:$arg_attrs,
     ArrayAttr:$res_attrs,
     // Optional function attributes.
@@ -118,7 +118,7 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
       build($_builder, $_state);
       $_state.addAttribute(GraphFuncOp::sym_nameAttrName($_state.name),
                            $_builder.getStringAttr(sym_name));
-      $_state.addAttribute(GraphFuncOp::typeAttrName($_state.name),
+      $_state.addAttribute(GraphFuncOp::function_typeAttrName($_state.name),
                            TypeAttr::get(type));
       if (generic) {
         $_state.addAttribute(GraphFuncOp::genericAttrName($_state.name),
@@ -141,8 +141,8 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
 
     /// Returns the type of this function.
     /// FIXME: We should drive this via the ODS `type` param.
-    FunctionType getType() {
-      return getTypeAttr().getValue().cast<FunctionType>();
+    FunctionType getFunctionType() {
+      return getFunctionTypeAttr().getValue().cast<FunctionType>();
     }
 
     // Returns true if this function is marked for JIT compilation.
@@ -179,17 +179,17 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
 
     // Returns the results types that the callable region produces when
     // executed.
-    ArrayRef<Type> getCallableResults() { return getType().getResults(); }
+    ArrayRef<Type> getCallableResults() { return getFunctionType().getResults(); }
 
     //===------------------------------------------------------------------===//
     // FunctionOpInterface Methods
     //===------------------------------------------------------------------===//
 
     /// Returns the argument types of this function.
-    ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
+    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
 
     /// Returns the result types of this function.
-    ArrayRef<Type> getResultTypes() { return getType().getResults(); }
+    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
 
     LogicalResult verifyType();
     LogicalResult verifyBody();

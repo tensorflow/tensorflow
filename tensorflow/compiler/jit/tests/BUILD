@@ -88,6 +88,7 @@ tf_cc_test(
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
+        "notap",  # TODO(b/2261155290: Re-enable when it is fixed.
         "requires-gpu-nvidia",
         "xla",
     ],
@@ -110,6 +111,7 @@ tf_cc_test(
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
+        "notap",  # TODO(b/2261155290: Re-enable when it is fixed.
         "requires-gpu-nvidia",
         "xla",
     ],

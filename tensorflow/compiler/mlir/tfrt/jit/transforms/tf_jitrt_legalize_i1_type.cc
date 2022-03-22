@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 
@@ -204,8 +205,8 @@ struct JitRtLegalizeI1TypesPass
 
       // Check legality of FuncOp.
       if (FuncOp func_op = dyn_cast<FuncOp>(op)) {
-        auto input_types = func_op.getType().getInputs();
-        auto result_types = func_op.getType().getResults();
+        auto input_types = func_op.getFunctionType().getInputs();
+        auto result_types = func_op.getFunctionType().getResults();
         return std::all_of(
                    input_types.begin(), input_types.end(),
                    [&](const Type type) { return isLegalType(type); }) &&

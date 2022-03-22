@@ -64,13 +64,13 @@ YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
 
   auto loc = op->getLoc();
   if (use_region_args) {
-    auto inputs = func.getType().getInputs();
+    auto inputs = func.getFunctionType().getInputs();
     entry->addArguments(inputs, SmallVector<Location>(inputs.size(), loc));
     args = entry->getArguments();
   }
   llvm::SmallVector<Value, 4> casted_args;
   casted_args.reserve(func.getNumArguments());
-  for (const auto& ArgAndType : zip(args, func.getType().getInputs())) {
+  for (const auto& ArgAndType : zip(args, func.getFunctionType().getInputs())) {
     Value arg = std::get<0>(ArgAndType);
     Type expected_type = std::get<1>(ArgAndType);
     if (arg.getType() != expected_type) {

@@ -369,7 +369,7 @@ bool GraphFuncOp::isMarkedForCompilation() {
 // attribute is present and checks if it holds a function type. Ensures
 // getType, getNumFuncArguments, and getNumFuncResults can be called safely
 LogicalResult GraphFuncOp::verifyType() {
-  auto type = getTypeAttr().getValue();
+  auto type = getFunctionTypeAttr().getValue();
   if (!type.isa<FunctionType>())
     return emitOpError("requires '" + getTypeAttrName() +
                        "' attribute of function type");
@@ -379,17 +379,18 @@ LogicalResult GraphFuncOp::verifyType() {
 // Hook for OpTrait::FunctionLike, called after verifying the function
 // type and the presence of the (potentially empty) function body.
 LogicalResult GraphFuncOp::verifyBody() {
+  FunctionType type = getFunctionType();
   // Check that the body is terminated with a tfg.return.
   if (getRegion().empty() || getBody()->empty())
     return emitOpError() << "expects a non empty body";
 
-  if (getBody()->getNumArguments() != getType().getNumInputs())
-    return emitOpError() << "function type indicated "
-                         << getType().getNumInputs() << " args but block has "
+  if (getBody()->getNumArguments() != type.getNumInputs())
+    return emitOpError() << "function type indicated " << type.getNumInputs()
+                         << " args but block has "
                          << getBody()->getNumArguments();
 
   for (auto &arg_types : llvm::enumerate(
-           llvm::zip(getType().getInputs(), getBody()->getArgumentTypes()))) {
+           llvm::zip(type.getInputs(), getBody()->getArgumentTypes()))) {
     Type signature_arg = std::get<0>(arg_types.value());
     Type block_arg = std::get<1>(arg_types.value());
     if (signature_arg != block_arg)
@@ -404,7 +405,6 @@ LogicalResult GraphFuncOp::verifyBody() {
            << getBody()->back().getName().getStringRef();
 
   ReturnOp return_op = cast<ReturnOp>(getBody()->getTerminator());
-  FunctionType type = getType();
 
   if (type.getNumResults() > return_op->getNumOperands())
     return emitOpError() << "expects " << type.getNumResults()
@@ -620,7 +620,7 @@ void GraphFuncOp::print(OpAsmPrinter &p) {
   p.printSymbolName(funcName);
   argIndentSize += funcName.size();
   std::string indent(argIndentSize, ' ');
-  FunctionType fnType = getType();
+  FunctionType fnType = getFunctionType();
   ArrayRef<Type> arg_types = fnType.getInputs();
   ArrayRef<Type> result_types = fnType.getResults();
   assert((arg_types.size() % 2) == 0);
@@ -864,8 +864,8 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
            << "\nsee referenced function";
   };
 
-  ArrayRef<Type> arguments = func.getType().getInputs();
-  ArrayRef<Type> returns = func.getType().getResults();
+  ArrayRef<Type> arguments = func.getFunctionType().getInputs();
+  ArrayRef<Type> returns = func.getFunctionType().getResults();
   if (operands.size() * 2 != arguments.size()) {
     return attach_func(op->emitOpError(func_name)
                        << " function has " << arguments.size() / 2

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {

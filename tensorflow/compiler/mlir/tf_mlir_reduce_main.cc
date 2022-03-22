@@ -67,8 +67,10 @@ int main(int argc, char *argv[]) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::RegisterAllTensorFlowDialects(registry);
-  registry.addDialectInterface<mlir::TF::TensorFlowDialect,
-                               TFReductionPatternInterface>();
+  registry.addExtension(
+      +[](mlir::MLIRContext *ctx, mlir::TF::TensorFlowDialect *dialect) {
+        dialect->addInterfaces<TFReductionPatternInterface>();
+      });
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();

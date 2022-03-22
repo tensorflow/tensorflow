@@ -335,7 +335,7 @@ struct VectorizationPass : public VectorizationPassBase<VectorizationPass> {
                 .enableContractionLowering());
 
     // Created a nested OpPassManager, populate the strategy and run.
-    OpPassManager dynamicPM("builtin.func");
+    OpPassManager dynamicPM("func.func");
     strategy.configurePassPipeline(dynamicPM, f.getContext());
     if (failed(runPipeline(dynamicPM, f))) return signalPassFailure();
 

@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<1x1x1xf32> }, %V__1: tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<1x1x1xf32> }) -> tensor<?x?x?xf32> {
+func.func @test(%V__0: tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<1x1x1xf32> }, %V__1: tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<1x1x1xf32> }) -> tensor<?x?x?xf32> {
   %0 = "tf.Exp"(%V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %1 = "tf.Cosh"(%V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %2 = "tf.Xdivy"(%V__0, %1) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>

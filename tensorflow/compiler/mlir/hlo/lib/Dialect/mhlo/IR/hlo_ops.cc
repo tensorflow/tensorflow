@@ -7475,22 +7475,23 @@ static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
   // Verify that the result index is not out of range. Since the attribute is a
   // function argument attribute, the argument index is always correct when this
   // verifier is called.
-  FunctionOpInterface funcOp = cast<FunctionOpInterface>(op);
-  FunctionType ftype = funcOp.getType().cast<FunctionType>();
-  if (alias_attr.getResultIndex() >= ftype.getNumResults())
-    return op->emitOpError() << "attribute " << attr_name
-                             << " result index is out of range, must be <"
-                             << ftype.getNumResults();
+  FunctionOpInterface func_op = cast<FunctionOpInterface>(op);
+  ArrayRef<Type> arg_types = func_op.getArgumentTypes();
+  ArrayRef<Type> result_types = func_op.getResultTypes();
+  if (alias_attr.getResultIndex() >= result_types.size())
+    return op->emitOpError()
+           << "attribute " << attr_name
+           << " result index is out of range, must be <" << result_types.size();
 
   // Verify that argument and result types pointed to by the indices are valid
   // and compatible.
-  Type arg_type = GetTypeFromTupleIndices(ftype.getInput(arg_index),
+  Type arg_type = GetTypeFromTupleIndices(arg_types[arg_index],
                                           alias_attr.getArgTupleIndices());
   if (!arg_type)
     return op->emitOpError() << "attribute " << attr_name
                              << " argument tuple indices are invalid";
   Type result_type =
-      GetTypeFromTupleIndices(ftype.getResult(alias_attr.getResultIndex()),
+      GetTypeFromTupleIndices(result_types[alias_attr.getResultIndex()],
                               alias_attr.getResultTupleIndices());
   if (!result_type)
     return op->emitOpError()

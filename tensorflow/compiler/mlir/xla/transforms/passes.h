@@ -27,7 +27,9 @@ limitations under the License.
 
 namespace mlir {
 
+namespace func {
 class FuncOp;
+}
 class ModuleOp;
 class Operation;
 template <typename T>
@@ -42,19 +44,19 @@ namespace mhlo {
 /// patterns from TF2XLA fallback for provided device type (see
 /// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
 /// used.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion = false, bool legalize_chlo = true,
     llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None,
     bool prefer_tf2xla = false);
 
 /// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
 /// false, emits an error if there is any operation that can't be legalized.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFNoFallbackPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFNoFallbackPass(
     bool allow_partial_conversion = false);
 
 /// Lowers from TF dialect to HLO dialect using tf2xla op kernels for the
 /// specified device type.
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTfWithTf2XlaPass(
     llvm::StringRef device_type = "", bool prefer_tf2xla = false);
 
 /// Replaces types that do not exist in MHLO with equivalent types that do

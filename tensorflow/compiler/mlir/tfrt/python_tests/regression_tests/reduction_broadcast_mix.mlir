@@ -1,4 +1,4 @@
-builtin.func @test(%V__0 : tensor<1x?xf32> { python_test_attrs.static_type = tensor<1x1xf32> }) -> tensor<?x?x?x?xf32> {
+func.func @test(%V__0 : tensor<1x?xf32> { python_test_attrs.static_type = tensor<1x1xf32> }) -> tensor<?x?x?x?xf32> {
   %dims0 = "tf.Const"() { value = dense<[1]> : tensor<1xi32>, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : () -> tensor<1xi32>
   %0 = "tf.Max"(%V__0, %dims0) { keep_dims = true, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<1x?xf32>, tensor<1xi32>) -> tensor<1x1xf32>
   %1 = "tf.Const"() { value = dense<[81, 98, 1, 18]> : tensor<4xi32>, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : () -> tensor<4xi32>

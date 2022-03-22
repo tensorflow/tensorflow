@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<5xf32> }) -> tensor<?xf32> {
+func.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<5xf32> }) -> tensor<?xf32> {
   %0 = "tf.Square"(%V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.Mul"(%V__0, %V__0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %2 = "tf.Asinh"(%1) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>

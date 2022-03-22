@@ -1320,6 +1320,7 @@ cc_library(
         "@llvm-project//llvm:Linker",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:CFGTransforms",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",

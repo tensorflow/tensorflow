@@ -246,7 +246,7 @@ class TFToTFRTDataRewritePass
     target.addLegalDialect<tfrt::data::DataDialect>();
     target.addLegalDialect<tfrt::compiler::TFRTDialect>();
     target.addDynamicallyLegalOp<mlir::FuncOp>([&data_converter](FuncOp op) {
-      return data_converter.isSignatureLegal(op.getType());
+      return data_converter.isSignatureLegal(op.getFunctionType());
     });
     mlir::RewritePatternSet patterns(&getContext());
     patterns.add<RangeDatasetOpConversion, BatchDatasetV2OpConversion,

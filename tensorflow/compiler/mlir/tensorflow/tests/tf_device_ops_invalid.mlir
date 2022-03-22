@@ -81,7 +81,7 @@ func @verifier_replicate_empty_block() {
 // Check that a replicate with a bad terminator is invalid.
 func @verifier_replicate_terminator() {
   "tf_device.replicate" () ({
-// expected-error@+2 {{'func.return' op expects parent op 'builtin.func'}}
+// expected-error@+2 {{'func.return' op expects parent op 'func.func'}}
   ^entry:
     return
   }) {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()
