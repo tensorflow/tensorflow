@@ -339,7 +339,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         # Use a loop & conditional to test that autograph works correctly.
         result = 0
         for i in range(array_ops.size(self.values)):
-          if self.mask[i]:
+          if self.mask[i] and 0 <= self.values[i] <= 3:
             result += self.values[i]
         return result
 
