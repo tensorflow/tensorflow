@@ -24,6 +24,7 @@ message XlaSerializedCacheKey {
   uint64 signature_fingerprint = 1;
   uint64 cluster_fingerprint = 2;
   string device_type = 3;
+  string prefix = 4;
 }
 
 // Represents an entry in the XLA compile cache.

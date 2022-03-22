@@ -85,7 +85,8 @@ class XlaCompilationCacheSerializeTest : public ::testing::Test {
   // XLA compilation cache entries found at the specified directory. If none are
   // found, returns NOT_FOUND error.
   Status AlterPersistentCacheEntryHloModuleNames(
-      absl::string_view persistent_cache_dir_path);
+      absl::string_view persistent_cache_dir_path,
+      absl::string_view file_prefix = "xla_compile_cache");
 
  private:
   JitCompilationListener* listener_;

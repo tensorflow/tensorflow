@@ -48,7 +48,8 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                 XlaCompilationCache** cache) {
   XlaCompilationCache::Config cache_config(
       GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
-      GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks);
+      GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
 
   if (platform_info.xla_device_metadata()) {
     *cache = new XlaCompilationCache(

@@ -101,9 +101,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "xla_compilation_cache_loose_signature_test",
+    name = "xla_compilation_cache_serialize_options_test",
     srcs = [
-        "xla_compilation_cache_loose_signature_test.cc",
+        "xla_compilation_cache_serialize_options_test.cc",
     ],
     env = {
         "XLA_FLAGS": "--xla_gpu_bef_executable",

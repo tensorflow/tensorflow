@@ -137,9 +137,10 @@ struct SignatureHashCombiner {
 
 std::string XlaSerializedCacheKeyToString(const XlaSerializedCacheKey& key) {
   return absl::StrCat(
-      kXlaSerializedCacheKeySeparator, key.signature_fingerprint(),
-      kXlaSerializedCacheKeySeparator, key.cluster_fingerprint(),
-      kXlaSerializedCacheKeySeparator, key.device_type());
+      key.prefix(), key.prefix().empty() ? "" : kXlaSerializedCacheKeySeparator,
+      key.signature_fingerprint(), kXlaSerializedCacheKeySeparator,
+      key.cluster_fingerprint(), kXlaSerializedCacheKeySeparator,
+      key.device_type());
 }
 
 }  // namespace
@@ -156,6 +157,7 @@ XlaCompilationCache::XlaCompilationCache(Config config,
     : client_(client),
       device_type_(std::move(device_type)),
       disable_strict_signature_checks_(config.disable_strict_signature_checks),
+      persistance_prefix_(config.persistance_prefix),
       persistent_cache_directory_(config.persistent_cache_directory) {}
 
 XlaCompilationCache::~XlaCompilationCache() {
@@ -822,6 +824,7 @@ XlaSerializedCacheKey XlaCompilationCache::BuildSerializedCacheKey(
   serialized_cache_key.set_cluster_fingerprint(
       DeterministicProtoHash64(hlo_module));
   serialized_cache_key.set_device_type(device_type_.type_string());
+  serialized_cache_key.set_prefix(persistance_prefix_);
   return serialized_cache_key;
 }
 

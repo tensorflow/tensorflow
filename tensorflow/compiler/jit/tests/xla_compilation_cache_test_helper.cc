@@ -136,7 +136,8 @@ Status XlaCompilationCacheSerializeTest::ExecuteWithBatch(const GraphDef& graph,
 
 Status
 XlaCompilationCacheSerializeTest::AlterPersistentCacheEntryHloModuleNames(
-    absl::string_view persistent_cache_dir_path) {
+    absl::string_view persistent_cache_dir_path,
+    absl::string_view file_prefix) {
   Env* env = Env::Default();
   std::vector<string> file_names;
   TF_RETURN_IF_ERROR(
@@ -144,7 +145,8 @@ XlaCompilationCacheSerializeTest::AlterPersistentCacheEntryHloModuleNames(
 
   bool altered = false;
   for (const auto& file_name : file_names) {
-    if (absl::EndsWith(file_name, ".pb")) {
+    if (absl::EndsWith(file_name, ".pb") &&
+        absl::StartsWith(file_name, file_prefix)) {
       XlaSerializedCacheEntry entry;
       auto file_path = io::JoinPath(persistent_cache_dir_path, file_name);
       TF_RETURN_IF_ERROR(ReadTextOrBinaryProto(env, file_path, &entry));
