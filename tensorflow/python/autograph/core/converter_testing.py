@@ -119,7 +119,7 @@ class TestCase(test.TestCase):
         autograph_module=api)
 
     tr = TestingTranspiler(converter_module, ag_overrides)
-    transformed, _, _ = tr.transform_function(f, program_ctx)
+    transformed = tr.transform_function(f, program_ctx)[0]
 
     if include_ast:
       return transformed, tr.transformed_ast, tr.transform_ctx
