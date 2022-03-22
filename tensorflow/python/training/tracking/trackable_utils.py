@@ -93,3 +93,57 @@ def order_by_dependency(dependency_map):
     raise CyclicDependencyError(leftover_dependency_map)
 
   return reversed(reversed_dependency_arr)
+
+
+_ESCAPE_CHAR = "."  # For avoiding conflicts with user-specified names.
+
+# Keyword for identifying that the next bit of a checkpoint variable name is a
+# slot name. Checkpoint names for slot variables look like:
+#
+#   <path to variable>/<_OPTIMIZER_SLOTS_NAME>/<path to optimizer>/<slot name>
+#
+# Where <path to variable> is a full path from the checkpoint root to the
+# variable being slotted for.
+_OPTIMIZER_SLOTS_NAME = _ESCAPE_CHAR + "OPTIMIZER_SLOT"
+# Keyword for separating the path to an object from the name of an
+# attribute in checkpoint names. Used like:
+#   <path to variable>/<_OBJECT_ATTRIBUTES_NAME>/<name of attribute>
+_OBJECT_ATTRIBUTES_NAME = _ESCAPE_CHAR + "ATTRIBUTES"
+
+
+def escape_local_name(name):
+  # We need to support slashes in local names for compatibility, since this
+  # naming scheme is being patched in to things like Layer.add_variable where
+  # slashes were previously accepted. We also want to use slashes to indicate
+  # edges traversed to reach the variable, so we escape forward slashes in
+  # names.
+  return (name.replace(_ESCAPE_CHAR, _ESCAPE_CHAR + _ESCAPE_CHAR).replace(
+      r"/", _ESCAPE_CHAR + "S"))
+
+
+def object_path_to_string(node_path_arr):
+  """Converts a list of nodes to a string."""
+  return "/".join(
+      (escape_local_name(trackable.name) for trackable in node_path_arr))
+
+
+def checkpoint_key(object_path, local_name):
+  """Returns the checkpoint key for a local attribute of an object."""
+
+  return (f"{object_path}/{_OBJECT_ATTRIBUTES_NAME}/"
+          f"{escape_local_name(local_name)}")
+
+
+def slot_variable_key(variable_path, optimizer_path, slot_name):
+  """Returns checkpoint key for a slot variable."""
+  # Name slot variables:
+  #
+  #   <variable name>/<_OPTIMIZER_SLOTS_NAME>/<optimizer path>/<slot name>
+  #
+  # where <variable name> is exactly the checkpoint name used for the original
+  # variable, including the path from the checkpoint root and the local name in
+  # the object which owns it. Note that we only save slot variables if the
+  # variable it's slotting for is also being saved.
+
+  return (f"{variable_path}/{_OPTIMIZER_SLOTS_NAME}/{optimizer_path}/"
+          f"{escape_local_name(slot_name)}")

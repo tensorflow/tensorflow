@@ -28,7 +28,7 @@ td_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:ArithmeticOpsTdFiles",
-        "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:FuncTdFiles",
     ],
 )
 

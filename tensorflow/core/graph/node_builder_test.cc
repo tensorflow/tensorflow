@@ -12,11 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/graph/node_builder.h"
+
+#include <string>
 
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -123,18 +125,17 @@ REGISTER_OP("TypeInferenceOpBasicType")
     .Input("i1: T")
     .Output("o1: T")
     .Attr("T: type")
-    .SetForwardTypeFn(
-        [](const std::vector<std::reference_wrapper<const FullTypeDef>>&
-               input_types) {
-          FullTypeDef mock;
-          mock.set_type_id(TFT_PRODUCT);
-          if (input_types[0].get().type_id() == TFT_TENSOR) {
-            mock.add_args()->set_type_id(TFT_TENSOR);
-          } else {
-            mock.add_args()->set_type_id(TFT_ARRAY);
-          }
-          return mock;
-        });
+    .SetForwardTypeFn([](const TypeRefVector& input_types,
+                         const TypeRefMap& type_vars) {
+      FullTypeDef mock;
+      mock.set_type_id(TFT_PRODUCT);
+      if (input_types[0].get().type_id() == TFT_TENSOR) {
+        mock.add_args()->set_type_id(TFT_TENSOR);
+      } else {
+        mock.add_args()->set_type_id(TFT_ARRAY);
+      }
+      return mock;
+    });
 
 TEST(NodeBuilderTest, FwdTypeInferenceBasicType) {
   Graph graph(OpRegistry::Global());
@@ -147,6 +148,8 @@ TEST(NodeBuilderTest, FwdTypeInferenceBasicType) {
                    .Attr("T", DT_FLOAT)
                    .Input(input_node)
                    .Finalize(&graph, &node));
+
+  node->RunForwardTypeInference();
 
   ASSERT_TRUE(node->def().has_experimental_type());
   FullTypeDef ft = node->def().experimental_type();
@@ -161,6 +164,8 @@ TEST(NodeBuilderTest, FwdTypeInferenceBasicType) {
                    .Attr("T", DT_VARIANT)
                    .Input(input_node)
                    .Finalize(&graph, &node));
+
+  node->RunForwardTypeInference();
 
   ASSERT_TRUE(node->def().has_experimental_type());
   ft = node->def().experimental_type();

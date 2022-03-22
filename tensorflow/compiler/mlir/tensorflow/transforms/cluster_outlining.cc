@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -47,8 +47,8 @@ struct LaunchOutliningPass
 
 void ReplaceClusterReturnWithReturn(tf_device::ReturnOp cluster_return_op,
                                     OpBuilder* builder) {
-  builder->create<ReturnOp>(cluster_return_op.getLoc(),
-                            cluster_return_op.getOperands());
+  builder->create<func::ReturnOp>(cluster_return_op.getLoc(),
+                                  cluster_return_op.getOperands());
   cluster_return_op.erase();
 }
 

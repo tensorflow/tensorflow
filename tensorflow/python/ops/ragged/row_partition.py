@@ -951,7 +951,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._uniform_row_length is not None
 
-  def static_check(self):
+  def _static_check(self):
     """Checks if the object is internally consistent.
 
     Raises:
@@ -1018,7 +1018,7 @@ class RowPartition(composite_tensor.CompositeTensor):
   # Precomputed Encodings
   #=============================================================================
 
-  def has_precomputed_row_splits(self):
+  def _has_precomputed_row_splits(self):
     """Returns true if `row_splits` has already been computed.
 
     If true, then `self.row_splits()` will return its value without calling
@@ -1026,7 +1026,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._row_splits is not None
 
-  def has_precomputed_row_lengths(self):
+  def _has_precomputed_row_lengths(self):
     """Returns true if `row_lengths` has already been computed.
 
     If true, then `self.row_lengths()` will return its value without calling
@@ -1034,7 +1034,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._row_lengths is not None
 
-  def has_precomputed_value_rowids(self):
+  def _has_precomputed_value_rowids(self):
     """Returns true if `value_rowids` has already been computed.
 
     If true, then `self.value_rowids()` will return its value without calling
@@ -1042,7 +1042,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._value_rowids is not None
 
-  def has_precomputed_nrows(self):
+  def _has_precomputed_nrows(self):
     """Returns true if `nrows` has already been computed.
 
     If true, then `self.nrows()` will return its value without calling
@@ -1050,7 +1050,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._nrows is not None
 
-  def has_precomputed_nvals(self):
+  def _has_precomputed_nvals(self):
     """Returns true if `nvals` has already been computed.
 
     If true, then `self.nvals()` will return its value without calling
@@ -1058,7 +1058,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._nvals is not None
 
-  def with_precomputed_row_splits(self):
+  def _with_precomputed_row_splits(self):
     """Returns a copy of `self` with `row_splits` precomputed."""
     return RowPartition(
         row_splits=self.row_splits(),
@@ -1069,7 +1069,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         nvals=self._nvals,
         internal=_row_partition_factory_key)
 
-  def with_precomputed_row_lengths(self):
+  def _with_precomputed_row_lengths(self):
     """Returns a copy of `self` with `row_lengths` precomputed."""
     return RowPartition(
         row_splits=self._row_splits,
@@ -1080,7 +1080,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
-  def with_precomputed_value_rowids(self):
+  def _with_precomputed_value_rowids(self):
     """Returns a copy of `self` with `value_rowids` precomputed."""
     return RowPartition(
         row_splits=self._row_splits,
@@ -1091,7 +1091,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
-  def with_precomputed_nrows(self):
+  def _with_precomputed_nrows(self):
     """Returns a copy of `self` with `nrows` precomputed."""
     return RowPartition(
         row_splits=self._row_splits,
@@ -1102,7 +1102,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
-  def with_precomputed_nvals(self):
+  def _with_precomputed_nvals(self):
     """Returns a copy of `self` with `row_splits` precomputed."""
     return RowPartition(
         row_splits=self.row_splits(),
@@ -1113,7 +1113,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
-  def merge_precomputed_encodings(self, other, validate=True):
+  def _merge_precomputed_encodings(self, other, validate=True):
     """Returns a RowPartition that merges encodings from `self` and `other`.
 
     Requires that `self` and `other` describe the same partition.
@@ -1387,7 +1387,7 @@ def _merge_tensors(t1, t2, name, validate):
   elif t1 is t2:
     return t1, True
   else:
-    err_msg = ("RowPartition.merge_precomputed_encodings: partitions "
+    err_msg = ("RowPartition._merge_precomputed_encodings: partitions "
                "have incompatible %s" % name)
     if not t1.shape.is_compatible_with(t2.shape):
       raise ValueError(err_msg)

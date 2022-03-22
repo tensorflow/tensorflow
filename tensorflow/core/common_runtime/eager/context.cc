@@ -150,7 +150,7 @@ EagerContext::EagerContext(
     DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
     DistributedFunctionLibraryRuntime* cluster_flr,
     CollectiveExecutorMgrInterface* collective_executor_mgr,
-    bool run_eager_op_as_function)
+    bool run_eager_op_as_function, bool jit_compile_rewrite)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
       default_device_placement_policy_(default_device_placement_policy),
@@ -171,7 +171,8 @@ EagerContext::EagerContext(
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)),
-      run_eager_op_as_function_(run_eager_op_as_function) {
+      run_eager_op_as_function_(run_eager_op_as_function),
+      jit_compile_rewrite_(jit_compile_rewrite) {
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr);
@@ -721,6 +722,15 @@ bool EagerContext::RunEagerOpAsFunction() const {
 
 void EagerContext::SetRunEagerOpAsFunction(bool enable) {
   run_eager_op_as_function_ = enable;
+}
+
+bool EagerContext::JitCompileRewrite() const {
+  VLOG(3) << "JitCompileRewrite: " << jit_compile_rewrite_;
+  return jit_compile_rewrite_;
+}
+
+void EagerContext::SetJitCompileRewrite(bool enable) {
+  jit_compile_rewrite_ = enable;
 }
 
 void EagerContext::ListDevices(

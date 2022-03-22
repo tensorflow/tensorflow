@@ -99,7 +99,8 @@ class HloPrintOptions {
         is_in_nested_computation_(false),
         print_ids_(true),
         canonicalize_computations_(false),
-        print_extra_attributes_(true) {}
+        print_extra_attributes_(true),
+        syntax_sugar_async_ops_(true) {}
 
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
@@ -132,22 +133,35 @@ class HloPrintOptions {
   }
 
   // Options to produce a fingerprint of an HLO.
+  // This option is primarily based on the Canonical option with some
+  // important changes commented below.
   static HloPrintOptions Fingerprint() {
     return HloPrintOptions()
         .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
+        // Exclude because they do not affect HLO optimizations.
         .set_print_infeed_outfeed_config(false)
+        // Exclude floating point constant literals that are not all zeros, all
+        // ones, or integers because they may be randomly initialized weights,
+        // which may be changed across different runs.
         .set_print_only_essential_constants(true)
+        // For faster ToString().
         .set_compact_operands(true)
         .set_print_operand_names(false)
-        .set_print_operand_shape(true)
+        // For faster ToString(). This information can be inferred from
+        // output shapes and canonicalized names.
+        .set_print_operand_shape(false)
         .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
         .set_print_control_dependencies(false)
         .set_canonicalize_instruction_names(true)
+        // Ignore "id" in "name.id" (afer period) because it can be
+        // non-deterministic. This mainly affects computations' names because
+        // canonicalized instructions' names are in "tmp_id" format.
         .set_print_ids(false)
+        // Sort computations.
         .set_canonicalize_computations(true);
   }
 
@@ -238,6 +252,51 @@ class HloPrintOptions {
   // If true, control dependencies will be printed.
   HloPrintOptions& set_print_control_dependencies(bool value) {
     print_control_dependencies_ = value;
+    return *this;
+  }
+
+  // If true, uses the async operation syntax sugar to print async-start,
+  // async-update, and async-done HLOs. If the syntax sugar is enabled, the
+  // computations called by these instructions will not be printed and instead
+  // the root of the called computation will be printed instead of these
+  // instructions and -start, -update, and -done suffixes will be appended to
+  // the opcode of the async operation. For example, for an HLO module where the
+  // syntax sugar is off:
+  //
+  // HloModule Module
+  //
+  // %AsyncOp (p0.1: f32[10]) -> f32[20] {
+  //   %p0.1 = f32[10]{0} parameter(0)
+  //   ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1),
+  //                                  custom_call_target="foo"
+  // }
+  //
+  // ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  //   %p0 = f32[10]{0} parameter(0)
+  //   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(%p0),
+  //                                                    calls=%AsyncOp
+  //   %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(
+  //                                                         %async-start),
+  //                                                     calls=%AsyncOp
+  //   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp
+  // }
+  //
+  // will be printed as following if the syntax sugar is enabled:
+  //
+  // HloModule Module
+  //
+  // ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  //   %p0 = f32[10]{0} parameter(0)
+  //   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(%p0),
+  //                                                    custom_call_target="foo"
+  //   %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(
+  //                                                         %async-start),
+  //                                                    custom_call_target="foo"
+  //   ROOT %async-done = f32[20]{0} custom-call-done(%async-update),
+  //                                                    custom_call_target="foo"
+  // }
+  HloPrintOptions& set_syntax_sugar_async_op(bool value) {
+    syntax_sugar_async_ops_ = value;
     return *this;
   }
 
@@ -347,6 +406,7 @@ class HloPrintOptions {
     return print_control_dependencies_;
   }
   bool print_extra_attributes() const { return print_extra_attributes_; }
+  bool syntax_sugar_async_ops() const { return syntax_sugar_async_ops_; }
   bool canonicalize_instruction_names() const {
     return canonicalize_instruction_names_;
   }
@@ -392,6 +452,7 @@ class HloPrintOptions {
   bool print_ids_;
   bool canonicalize_computations_;
   bool print_extra_attributes_;
+  bool syntax_sugar_async_ops_;
   int leading_and_trailing_instructions_number_ = 3;
   FormatInstructionFunc format_instruction_ = [](const HloInstruction* instr,
                                                  const std::string& instr_name,
@@ -412,26 +473,16 @@ class HloPrintOptions {
 // where <xxx> is an index starting from 0.
 class CanonicalNameMap {
  public:
-  CanonicalNameMap() : index(0) {}
-
-  std::string LookupOrInsert(const std::string& old_name) {
-    auto iter = canonical_name_map.find(old_name);
-    if (iter != canonical_name_map.end()) {
-      return iter->second;
+  const std::string& LookupOrInsert(const std::string& name) {
+    std::string& canonical_name = canonical_name_map_[name];
+    if (canonical_name.empty()) {
+      absl::StrAppend(&canonical_name, "tmp_", canonical_name_map_.size() - 1);
     }
-
-    std::string new_name = absl::StrCat("tmp_", index++);
-    canonical_name_map[old_name] = new_name;
-    return new_name;
-  }
-  void Clear() {
-    canonical_name_map.clear();
-    index = 0;
+    return canonical_name;
   }
 
  private:
-  int64_t index;
-  absl::flat_hash_map<std::string, std::string> canonical_name_map;
+  absl::flat_hash_map<std::string, std::string> canonical_name_map_;
 };
 
 // HLO instructions are the atomic unit of the high-level compiler's IR.
@@ -641,6 +692,17 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateFft(
       const Shape& shape, HloInstruction* operand, FftType fft_type,
       absl::Span<const int64_t> fft_length);
+
+  // Creates an asynchronous start, update, and done op.
+  static std::unique_ptr<HloInstruction> CreateAsyncStart(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* async_computation);
+  static std::unique_ptr<HloInstruction> CreateAsyncUpdate(
+      const Shape& shape, HloInstruction* operand,
+      HloComputation* async_computation);
+  static std::unique_ptr<HloInstruction> CreateAsyncDone(
+      const Shape& shape, HloInstruction* operand,
+      HloComputation* async_computation);
 
   // Creates a copy-start op, indicating whether this is a cross-program
   // prefetch or not.
@@ -1167,6 +1229,12 @@ class HloInstruction {
   HloOpcode opcode() const { return opcode_; }
   HloOpcode* mutable_opcode() { return &opcode_; }
 
+  // Returns whether this instruction is the root of its parent computation.
+  bool IsRoot() const;
+
+  // Does this instruction have no users.
+  bool IsDead() const { return users_.empty() && !IsRoot(); }
+
   // Returns true if this instruction has a side effect, irrespective of whether
   // any called computations may contain an instruction with side effects.
   bool HasSideEffectNoRecurse() const;
@@ -1683,6 +1751,10 @@ class HloInstruction {
   // if no id has been assigned yet).
   int unique_id() const { return unique_id_; }
 
+  template <typename T>
+  using EnableIfProto = typename std::enable_if_t<
+      std::is_base_of<tensorflow::protobuf::Message, T>::value>;
+
   // Returns the backend-specific configuration for how a backend should compile
   // this HLO. The meaning of the field is backend specific. Not for use before
   // or during general HLO optimization, since HLO optimizations do not preserve
@@ -1691,13 +1763,25 @@ class HloInstruction {
   // general HLO optimization needs to interpret it.
   //
   // ConfigProto should be a protobuf Message type.
-  template <typename ConfigProto>
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
     TF_RETURN_IF_ERROR(GetBackendConfigInternal(&proto));
     return std::move(proto);
   }
-  Status set_backend_config(const tensorflow::protobuf::Message& proto);
+
+  Status set_backend_config(const tensorflow::protobuf::Message& proto) {
+    backend_config_ = proto;
+    return Status::OK();
+  }
+
+  bool has_backend_config() const { return !backend_config_.empty(); }
+
+  void clear_backend_config() { backend_config_.clear(); }
+
+  void CopyBackendConfigFrom(const HloInstruction* other) {
+    backend_config_ = other->backend_config_.Clone();
+  }
 
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
     frontend_attributes_ = std::move(frontend_attributes);
@@ -1715,7 +1799,7 @@ class HloInstruction {
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
-    return backend_config_;
+    return backend_config_.GetRawString();
   }
   void set_raw_backend_config_string(std::string config_str) {
     backend_config_ = std::move(config_str);
@@ -1816,18 +1900,18 @@ class HloInstruction {
   void set_channel_id(const absl::optional<int64_t>& channel_id);
 
   // Returns the dimension sizes or numbers associated with this instruction.
-  virtual const std::vector<int64_t>& dimensions() const {
+  virtual absl::Span<const int64_t> dimensions() const {
     LOG(FATAL) << "Unimplemented method.";
   }
-  virtual int64_t dimensions(int64_t index) const {
-    LOG(FATAL) << "Unimplemented method.";
-  }
+
+  int64_t dimensions(int64_t index) const { return dimensions()[index]; }
+
   virtual std::vector<int64_t>* mutable_dimensions() {
     LOG(FATAL) << "Unimplemented method.";
   }
 
   // Delegates to HloConcatenateInstruction::concatenate_dimension.
-  int64_t concatenate_dimension() const;
+  virtual int64_t concatenate_dimension() const;
 
   // Delegates to HloGetDimensionSizeInstruction::dimension.
   int64_t dimension() const;
@@ -2055,6 +2139,19 @@ class HloInstruction {
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
 
+  // Returns true if the instruction is an async-start, async-update, or
+  // async-done.
+  bool IsAsynchronous() const;
+
+  // Returns the computation that will executed asynchronously.
+  HloComputation* async_wrapped_computation() const;
+
+  // Delagates to HloAsyncInstruction::async_wrapped_instruction().
+  HloInstruction* async_wrapped_instruction() const;
+
+  // Delagates to HloAsyncInstruction::async_wrapped_opcode().
+  HloOpcode async_wrapped_opcode() const;
+
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
   bool is_cross_program_prefetch() const;
 
@@ -2115,6 +2212,38 @@ class HloInstruction {
 
  private:
   friend class HloComputation;
+  // Wrapper class of string format and protobuf format of BackendConfig.
+  class BackendConfigRep {
+   public:
+    const tensorflow::protobuf::Message* GetProtoPtr() const {
+      return proto_.get();
+    }
+
+    const std::string& GetRawString() const;
+
+    BackendConfigRep Clone() const;
+
+    bool operator==(const BackendConfigRep& other) const;
+    bool operator!=(const BackendConfigRep& other) const {
+      return !(*this == other);
+    }
+
+    bool empty() const { return proto_ == nullptr && raw_string_.empty(); }
+
+    void clear() {
+      proto_.reset();
+      raw_string_.clear();
+    }
+
+    BackendConfigRep& operator=(std::string raw_string);
+    BackendConfigRep& operator=(const tensorflow::protobuf::Message& proto);
+    void SetProto(const tensorflow::protobuf::Message& proto);
+
+   private:
+    std::unique_ptr<tensorflow::protobuf::Message> proto_;
+    // If proto_ is not null, raw_string_ is a lazy cache of its string format.
+    mutable std::string raw_string_;
+  };
 
   bool IdenticalInternal(
       const HloInstruction& other,
@@ -2228,7 +2357,7 @@ class HloInstruction {
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
-  std::string backend_config_;
+  mutable BackendConfigRep backend_config_;
 
   // Attributes passed from the frontend to give hints to the backend about
   // how to compile this HLO.

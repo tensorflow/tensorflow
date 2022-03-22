@@ -130,7 +130,7 @@ StatusOr<std::string> GetCompilerIr(
   core::ScopedUnref cache_ref(cache);
 
   se::Stream* stream = nullptr;
-  if (const DeviceBase::GpuDeviceInfo* gpu_device_info =
+  if (const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
           dev->tensorflow_gpu_device_info()) {
     stream = gpu_device_info->stream;
   }

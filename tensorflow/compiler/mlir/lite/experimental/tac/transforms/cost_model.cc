@@ -51,7 +51,8 @@ constexpr float kRequantCost = 2.0;
 // well.
 
 // Get total bytes transferred.
-int64_t GetTransferredTensorBytes(CallOp from_graph, CallOp to_graph) {
+int64_t GetTransferredTensorBytes(func::CallOp from_graph,
+                                  func::CallOp to_graph) {
   int64_t total_size_transferred = 0;
   for (auto input : to_graph.getOperands()) {
     Operation* input_op = input.getDefiningOp();
@@ -70,7 +71,8 @@ int64_t GetTransferredTensorBytes(CallOp from_graph, CallOp to_graph) {
 }
 
 // Get total tensor element size transferred.
-int64_t GetTransferredElementCount(CallOp from_graph, CallOp to_graph) {
+int64_t GetTransferredElementCount(func::CallOp from_graph,
+                                   func::CallOp to_graph) {
   int64_t total_element_count = 0;
   for (auto input : to_graph.getOperands()) {
     Operation* input_op = input.getDefiningOp();
@@ -96,7 +98,7 @@ void GetOpCostPass::runOnOperation() {
   OpBuilder builder(func);
   func.walk([&](Operation* op) {
     if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
-        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op)) {
+        !llvm::isa<func::ReturnOp, FuncOp, CallOpInterface>(op)) {
       auto hardware = GetTargetAnnotation(op);
       if (!hardware) return;
       float cost = GetCostForOp(op, hardware.getValue());
@@ -126,8 +128,8 @@ float GetCostForFunc(FuncOp* func, const std::string& hardware) {
 }
 
 float GetTransferCost(const std::string& from_hardware_str,
-                      const std::string& to_hardware_str, CallOp from_graph,
-                      CallOp to_graph) {
+                      const std::string& to_hardware_str,
+                      func::CallOp from_graph, func::CallOp to_graph) {
   auto from_hardware = GetTargetHardware(from_hardware_str);
   auto to_hardware = GetTargetHardware(to_hardware_str);
   if (from_hardware == nullptr) {
@@ -147,8 +149,8 @@ float GetTransferCost(const std::string& from_hardware_str,
 }
 
 float GetQuantDequantCost(InferenceType from_inference_type,
-                          InferenceType to_inference_type, CallOp from_graph,
-                          CallOp to_graph) {
+                          InferenceType to_inference_type,
+                          func::CallOp from_graph, func::CallOp to_graph) {
   // Same inference type, no dequant/quant happens.
   if (from_inference_type == to_inference_type) return 0;
 

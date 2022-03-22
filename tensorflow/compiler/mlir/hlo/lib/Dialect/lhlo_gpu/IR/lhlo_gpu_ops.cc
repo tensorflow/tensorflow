@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/lhlo_utils.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -47,17 +47,23 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.cc.inc"
+
 namespace mlir {
 namespace lmhlo_gpu {
 
 using mhlo::TokenType;
 
-LmhloGpuDialect::LmhloGpuDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context, TypeID::get<LmhloGpuDialect>()) {
-  context->loadDialect<mhlo::MhloDialect>();
+void LmhloGpuDialect::initialize() {
+  getContext()->loadDialect<mhlo::MhloDialect>();
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.cc.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.cc.inc"
       >();
 }
 

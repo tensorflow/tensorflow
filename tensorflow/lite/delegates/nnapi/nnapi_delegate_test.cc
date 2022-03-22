@@ -428,7 +428,7 @@ TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
   StatefulNnApiDelegate::Options options;
   // Allow NNAPI CPU fallback path.
   options.disallow_nnapi_cpu = false;
-  options.max_execution_cache_size = 1;
+  options.max_execution_cache_size = 2;
   FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);

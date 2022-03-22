@@ -46,7 +46,12 @@ constexpr char kHeartbeatThread[] = "CoordinationServiceHeartbeatLoop";
 class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
  public:
   CoordinationServiceAgentImpl() = default;
-  ~CoordinationServiceAgentImpl() override { Stop(); }
+  ~CoordinationServiceAgentImpl() override {
+    Status s = Shutdown();
+    if (!s.ok()) {
+      LOG(ERROR) << "Agent shutdown failed with status: " << s;
+    }
+  }
   Status Initialize(Env* env, const ServerDef& server_def,
                     std::unique_ptr<CoordinationClientCache> client_cache,
                     StatusCallback error_fn) override;
@@ -66,6 +71,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() override;
   StatusOr<TaskState> GetTaskStatus(const CoordinatedTask& task) override;
   Status ReportError(const Status& error) override;
+  Status Shutdown() override;
   Status Reset() override;
 
   StatusOr<std::string> GetKeyValue(const std::string& key) override;
@@ -95,10 +101,10 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
                        const std::map<std::string, std::string>&) override;
   // Returns an error if agent is not running.
   Status ValidateRunningAgent();
-  void Stop();
+  void StopHeartbeat();
 
  private:
-  Env* env_;                     // Not owned.
+  Env* env_ = nullptr;  // Not owned.
   const uint64_t incarnation_id_ = random::New64();
   CoordinatedTask task_;
   CoordinationServiceConfig configs_;
@@ -110,12 +116,13 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
     DISCONNECTED,
     RUNNING,
     ERROR,
+    SHUTDOWN,
   };
   mutable mutex state_mu_;
   State state_ TF_GUARDED_BY(state_mu_) = State::UNINITIALIZED;
   Status status_ TF_GUARDED_BY(state_mu_) = Status::OK();
 
-  uint64_t leader_incarnation_;
+  uint64_t leader_incarnation_ = 0;
   CoordinationServiceDeviceInfo cluster_devices_;
 
   mutex heartbeat_thread_shutdown_mu_;
@@ -197,11 +204,7 @@ bool CoordinationServiceAgentImpl::IsInitialized() {
   return state_ != State::UNINITIALIZED;
 }
 
-void CoordinationServiceAgentImpl::Stop() {
-  {
-    mutex_lock l(state_mu_);
-    state_ = State::DISCONNECTED;
-  }
+void CoordinationServiceAgentImpl::StopHeartbeat() {
   {
     mutex_lock l(heartbeat_thread_shutdown_mu_);
     shutting_down_ = true;
@@ -218,10 +221,10 @@ Status CoordinationServiceAgentImpl::Connect() {
           "Coordination service agent is not in DISCONNECTED state."));
     }
   }
-  RegisterWorkerRequest request;
+  RegisterTaskRequest request;
   *request.mutable_source_task() = task_;
   request.set_incarnation(incarnation_id_);
-  RegisterWorkerResponse response;
+  RegisterTaskResponse response;
   absl::Notification n;
 
   // Block until the remote service is up and the task is registered.
@@ -231,7 +234,7 @@ Status CoordinationServiceAgentImpl::Connect() {
           ? configs_.cluster_register_timeout_in_ms()
           : kDefaultClusterRegisterTimeoutMs;
   call_opts.SetTimeout(register_timeout);
-  leader_client_->RegisterWorkerAsync(
+  leader_client_->RegisterTaskAsync(
       &call_opts, &request, &response, [&](Status s) {
         if (!s.ok()) {
           SetError(s);
@@ -363,9 +366,80 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
   return Status::OK();
 }
 
+Status CoordinationServiceAgentImpl::Shutdown() {
+  bool may_be_connected = false;
+  {
+    mutex_lock l(state_mu_);
+    may_be_connected = state_ == State::RUNNING || state_ == State::ERROR;
+  }
+
+  Status s = Status::OK();
+
+  // Disconnect agent from service.
+  if (may_be_connected) {
+    ShutdownTaskRequest request;
+    *request.mutable_source_task() = task_;
+    ShutdownTaskResponse response;
+
+    Status status;
+    absl::Notification n;
+    leader_client_->ShutdownTaskAsync(&request, &response,
+                                      [&status, &n](Status s) {
+                                        status = s;
+                                        n.Notify();
+                                      });
+    n.WaitForNotification();
+    if (!s.ok()) {
+      LOG(ERROR)
+          << "Failed to disconnect from coordination service with status: " << s
+          << ". Proceeding with agent shutdown anyway.";
+    }
+  }
+
+  // Tear down agent.
+  StopHeartbeat();
+  {
+    mutex_lock l(state_mu_);
+    state_ = State::SHUTDOWN;
+  }
+  return s;
+}
+
 Status CoordinationServiceAgentImpl::Reset() {
-  return MakeCoordinationError(errors::Unimplemented(
-      "CoordinationServiceAgentImpl::Reset is not implemented."));
+  {
+    mutex_lock l(state_mu_);
+    if (state_ != State::ERROR) {
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Reset() failed: coordination service agent is not in ERROR state."));
+    }
+  }
+
+  ResetTaskRequest request;
+  *request.mutable_source_task() = task_;
+  ResetTaskResponse response;
+
+  Status status;
+  absl::Notification n;
+  leader_client_->ResetTaskAsync(&request, &response, [&status, &n](Status s) {
+    status = s;
+    n.Notify();
+  });
+  n.WaitForNotification();
+  if (!status.ok()) {
+    return status;
+  }
+
+  // Reset agent state.
+  StopHeartbeat();
+  {
+    mutex_lock l(state_mu_);
+    state_ = State::DISCONNECTED;
+  }
+  {
+    mutex_lock l(heartbeat_thread_shutdown_mu_);
+    shutting_down_ = false;
+  }
+  return status;
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
@@ -545,6 +619,10 @@ Status CoordinationServiceAgentImpl::ValidateRunningAgent() {
     case State::ERROR:
       return MakeCoordinationError(errors::FailedPrecondition(
           "Agent must be in RUNNING state. It is currently in ERROR."));
+
+    case State::SHUTDOWN:
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Agent must be in RUNNING state. It is currently in SHUTDOWN."));
 
     default:
       return MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(

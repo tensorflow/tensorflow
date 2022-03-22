@@ -169,7 +169,6 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
   // done_callback is running, which would otherwise become deadlock:
   // the done_callback waits for the Unref() to return, while the destructor
   // wiats for the pending_callback_counter to reach 0.
-  // TODO(chienchunh): Add a unit test to verify the deadlock behavior.
   core::RefCountPtr<const Rendezvous> rc_owner_ref;
   if (rc_owner_) {
     rc_owner_ref.reset(rc_owner_);
@@ -334,7 +333,6 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   // done_callback is running, which would otherwise become deadlock:
   // the done_callback waits for the Unref() to return, while the destructor
   // wiats for the pending_callback_counter to reach 0.
-  // TODO(chienchunh): Add a unit test to verify the deadlock behavior.
   core::RefCountPtr<const Rendezvous> rc_owner_ref;
   if (rc_owner_) {
     rc_owner_ref.reset(rc_owner_);

@@ -2502,6 +2502,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:forward_type_inference",
     ],
 )
 
@@ -4799,7 +4800,8 @@ cc_library(
     srcs = ["random_index_shuffle.cc"],
     hdrs = ["random_index_shuffle.h"],
     deps = [
-        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -4808,7 +4810,8 @@ tf_cc_test(
     srcs = ["random_index_shuffle_test.cc"],
     deps = [
         ":random_index_shuffle",
-        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
 )

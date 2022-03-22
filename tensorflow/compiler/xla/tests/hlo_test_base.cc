@@ -468,10 +468,9 @@ HloTestBase::RunAndCompareTwoModulesInternal(
                                  module_1_or_status.ConsumeValueOrDie(), error);
 }
 
-::testing::AssertionResult HloTestBase::Run(string_view hlo_string,
-                                            bool run_hlo_passes,
-                                            ExecutionProfile* profile,
-                                            std::string backend_config) {
+::testing::AssertionResult HloTestBase::Run(
+    string_view hlo_string, bool run_hlo_passes, ExecutionProfile* profile,
+    const tensorflow::protobuf::Message* backend_config) {
   auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
@@ -500,11 +499,13 @@ HloTestBase::RunAndCompareTwoModulesInternal(
     module->set_config(config);
   }
 
-  if (!backend_config.empty()) {
+  if (backend_config) {
     // Set backend configuration if it is given.
     HloInstruction* instruction =
         module->entry_computation()->root_instruction();
-    instruction->set_raw_backend_config_string(backend_config);
+    Status s = instruction->set_backend_config(*backend_config);
+    return s.ok() ? ::testing::AssertionSuccess()
+                  : ::testing::AssertionFailure() << s.error_message();
   }
 
   auto output = test_runner_.Execute(std::move(module), fake_argument_ptrs,
@@ -518,7 +519,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::RunReplicated(
     string_view hlo_string, bool run_hlo_passes, int64_t num_replicas,
-    std::string backend_config) {
+    const tensorflow::protobuf::Message* backend_config) {
   auto module_or_status =
       ParseAndReturnVerifiedModule(hlo_string, num_replicas);
   if (!module_or_status.ok()) {
@@ -535,11 +536,13 @@ HloTestBase::RunAndCompareTwoModulesInternal(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
-  if (!backend_config.empty()) {
+  if (backend_config) {
     // Set backend configuration if it is given.
     HloInstruction* instruction =
         module->entry_computation()->root_instruction();
-    instruction->set_raw_backend_config_string(backend_config);
+    Status s = instruction->set_backend_config(*backend_config);
+    return s.ok() ? ::testing::AssertionSuccess()
+                  : ::testing::AssertionFailure() << s.error_message();
   }
 
   HloRunner::ReplicatedExecuteOptions options;
@@ -558,7 +561,8 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::RunMultipleTimes(
     string_view hlo_string, bool run_hlo_passes,
-    std::vector<ExecutionProfile>* profiles, std::string backend_config,
+    std::vector<ExecutionProfile>* profiles,
+    const tensorflow::protobuf::Message* backend_config,
     bool assert_determinism) {
   int n = profiles->size();
   std::vector<std::vector<Literal*>> fake_argument_ptrs(n);
@@ -590,11 +594,13 @@ HloTestBase::RunAndCompareTwoModulesInternal(
       module->set_config(config);
     }
 
-    if (!backend_config.empty()) {
+    if (backend_config) {
       // Set backend configuration if it is given.
       HloInstruction* instruction =
           module->entry_computation()->root_instruction();
-      instruction->set_raw_backend_config_string(backend_config);
+      Status s = instruction->set_backend_config(*backend_config);
+      return s.ok() ? ::testing::AssertionSuccess()
+                    : ::testing::AssertionFailure() << s.error_message();
     }
 
     auto executable =

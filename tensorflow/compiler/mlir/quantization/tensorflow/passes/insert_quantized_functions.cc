@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/quantized_function_library.h"
@@ -46,7 +46,7 @@ class InsertQuantizedFunctionsPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TF::TensorFlowDialect, StandardOpsDialect>();
+    registry.insert<TF::TensorFlowDialect, func::FuncDialect>();
   }
 
  private:
@@ -66,7 +66,7 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(mem_buffer), llvm::SMLoc());
   OwningOpRef<mlir::ModuleOp> module_ref =
-      parseSourceFile(source_mgr, module.getContext());
+      parseSourceFile<mlir::ModuleOp>(source_mgr, module.getContext());
 
   // Copy all functions used by this signature to the final MLIR module.
   for (FuncOp func : module_ref->getOps<FuncOp>()) {

@@ -79,7 +79,7 @@ class CalibrationInt32Support(trt_test.TfTrtIntegrationTestBase):
         run_params), 'test calibration and INT8'
 
   def ExpectedEnginesToBuild(self, run_params):
-    return ['TRTEngineOp_0']
+    return ['TRTEngineOp_000']
 
 
 if __name__ == '__main__':

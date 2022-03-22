@@ -29,12 +29,9 @@ def BufferReuse : Pass<"buffer-reuse", "FuncOp"> {
   let constructor = "createBufferReusePass()";
 }
 
-def ReshapeSimplifier : Pass<"reshape-simplifier", "FuncOp"> {
-  let summary = "";
-  let description = [{
-    This pass tries to simplify dynamic reshapes.
-  }];
-  let constructor = "createReshapeSimplifierPass()";
+def SymbolicShapeOptimization : Pass<"symbolic-shape-optimization", "FuncOp"> {
+  let summary = "Analyzes shapes and performs shape-related optimizations";
+  let constructor = "createSymbolicShapeOptimizationPass()";
 }
 
 def CopyRemoval : Pass<"copy-removal", "FuncOp"> {
@@ -51,7 +48,7 @@ def BufferPacking : Pass<"buffer-packing", "FuncOp"> {
   selected window-size.
   After this sorting, the buffers are checked whether subsequent buffers can be
   packed into them.}];
-  let dependentDialects = ["StandardOpsDialect","memref::MemRefDialect",
+  let dependentDialects = ["func::FuncDialect","memref::MemRefDialect",
     "arith::ArithmeticDialect"];
   let constructor = "createBufferPackingPass()";
   let options = [

@@ -383,7 +383,8 @@ StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
   // to those methods; see the bug for details. Our only saving grace at the
   // moment is that this race doesn't seem to occur in practice.
   if (use_gpu_device_info_) {
-    auto gpu_device_info = absl::make_unique<GpuDeviceInfo>();
+    auto gpu_device_info =
+        absl::make_unique<DeviceBase::AcceleratorDeviceInfo>();
     gpu_device_info->stream = stream_.get();
     gpu_device_info->default_context = device_contexts_.at(0);
     set_tensorflow_gpu_device_info(gpu_device_info.get());

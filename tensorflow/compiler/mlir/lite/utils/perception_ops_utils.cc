@@ -102,7 +102,7 @@ LogicalResult ConvertMaxUnpoolingFunc::RewriteFunc() {
   auto op = builder.create<CustomOp>(
       func_.getLoc(), func_.getType().getResults(), func_.getArguments(),
       kMaxUnpooling, CustomOption(&builder, custom_option_buffer));
-  builder.create<ReturnOp>(func_.getLoc(), op.getResults());
+  builder.create<func::ReturnOp>(func_.getLoc(), op.getResults());
 
   return success();
 }
@@ -197,7 +197,7 @@ LogicalResult ConvertDenseImageWarpFunc::RewriteFunc() {
   auto op = builder.create<CustomOp>(
       func_.getLoc(), func_.getType().getResults(), func_.getArguments(),
       kImageWarping, CustomOption(&builder, /*content=*/""));
-  builder.create<ReturnOp>(func_.getLoc(), op.getResults());
+  builder.create<func::ReturnOp>(func_.getLoc(), op.getResults());
 
   return success();
 }

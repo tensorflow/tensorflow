@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_cluster_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -27,7 +28,6 @@ namespace TFTPU {
 
 namespace {
 
-constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kClassAttr[] = "_class";
 
@@ -38,7 +38,8 @@ class TPUCleanupClusterAttributesPass
   void runOnOperation() override {
     auto traverse_op = [&](Operation* op, tf_device::ClusterOp tpu_cluster) {
       if (isa<tf_device::ClusterOp>(op)) return WalkResult::advance();
-      op->removeAttr(kTPUReplicateAttr);
+      op->removeAttr(TF::kReplicationInfoAttr);
+      op->removeAttr(TF::kCompileDeviceTypeAttr);
       // This attribute is used for op colocation. Since all ops are located
       // on a single device cluster, this private attribute is no longer
       // needed.

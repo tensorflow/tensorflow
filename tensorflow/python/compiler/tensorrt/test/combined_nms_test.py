@@ -79,7 +79,7 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     if not run_params.dynamic_shape:
       return {
-          'TRTEngineOp_0': [
+          'TRTEngineOp_000': [
               'combined_nms/CombinedNonMaxSuppression', 'max_total_size',
               'iou_threshold', 'score_threshold'
           ]

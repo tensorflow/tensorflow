@@ -339,6 +339,8 @@ class Loader(object):
 
   def _setup_function_captures(self, concrete_function_name, nodes):
     """Setup captures and variables in a restored function."""
+    if concrete_function_name in self._restored_concrete_functions:
+      return
     self._restored_concrete_functions.add(concrete_function_name)
     concrete_function = self._concrete_functions[concrete_function_name]
     proto = self._proto.concrete_functions[concrete_function_name]

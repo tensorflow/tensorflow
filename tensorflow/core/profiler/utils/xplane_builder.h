@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -96,6 +97,22 @@ class XStatsBuilder {
       for_each_stat(&stat);
     }
   }
+
+  const XStat* GetStat(int64_t metadata_id) const {
+    for (auto& stat : *stats_owner_->mutable_stats()) {
+      if (stat.metadata_id() == metadata_id) {
+        return &stat;
+      }
+    }
+    return nullptr;
+  }
+
+  static uint64 IntOrUintValue(const XStat& stat) {
+    return stat.value_case() == XStat::kUint64Value ? stat.uint64_value()
+                                                    : stat.int64_value();
+  }
+
+  absl::string_view StrOrRefValue(const XStat& stat);
 
  private:
   XStat* AddStat(const XStatMetadata& metadata) {
@@ -350,6 +367,9 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   // Returns stat metadata with the given name. Returns nullptr if not found.
   XStatMetadata* GetStatMetadata(absl::string_view name) const;
 
+  // Returns stat metadata given its id. Returns a default value if not found.
+  const XStatMetadata* GetStatMetadata(int64_t metadata_id) const;
+
   // Returns a new stat metadata with an automatically generated metadata_id.
   // WARNING: If calling this function, don't call GetOrCreateEventMetadata.
   XStatMetadata* CreateStatMetadata();
@@ -388,6 +408,23 @@ const XStatMetadata& XStatsBuilder<T>::GetOrCreateStatMetadata(
   return *stats_metadata_owner_->GetOrCreateStatMetadata(value);
 }
 
+template <typename T>
+absl::string_view XStatsBuilder<T>::StrOrRefValue(const XStat& stat) {
+  switch (stat.value_case()) {
+    case XStat::kStrValue:
+      return stat.str_value();
+    case XStat::kRefValue: {
+      auto* ref_stat = stats_metadata_owner_->GetStatMetadata(stat.ref_value());
+      return ref_stat ? ref_stat->name() : absl::string_view();
+    }
+    case XStat::kInt64Value:
+    case XStat::kUint64Value:
+    case XStat::kDoubleValue:
+    case XStat::kBytesValue:
+    case XStat::VALUE_NOT_SET:
+      return absl::string_view();
+  }
+}
 }  // namespace profiler
 }  // namespace tensorflow
 

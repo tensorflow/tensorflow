@@ -129,7 +129,7 @@ Status RunAndCompare(
 
   if (options.flatten_control_flow) {
     HloControlFlowFlattening control_flow_flattening(
-        /*while_execution_count=*/1);
+        HloControlFlowFlattening::Options{/*while_execution_count=*/1});
     TF_RETURN_IF_ERROR(control_flow_flattening.Run(test_module.get()).status());
   }
 

@@ -60,6 +60,26 @@ func @collective_reduce_v2(%input: tensor<f32>) -> tensor<f32> {
   return %2 : tensor<f32>
 }
 
+// -----
+
+// CHECK: module attributes
+// CHECK-SAME{LITERAL}: tf2xla.collective_info.group_key = 0
+// CHECK-SAME{LITERAL}: tf2xla.collective_info.group_size = 2
+// CHECK-LABEL: func @collective_assign_group_v2
+func @collective_assign_group_v2(%input: tensor<f32>) -> tensor<f32> {
+  %rank = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+  %group_assignment = "tf.Const"() { value = dense<[[0, 1]]> : tensor<1x2xi32> } : () -> tensor<1x2xi32>
+  %instance_key = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+  %group_key = "tf.CollectiveAssignGroupV2"(%group_assignment, %rank) {} : (tensor<1x2xi32>, tensor<i32>) -> tensor<i32>
+  %group_size = "tf.Const"() { value = dense<2> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: "mhlo.all_reduce"
+  // CHECK: mhlo.add
+  // CHECK: channel_handle = {handle = 1 : i64, type = 1 : i64}
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
+  %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key) {merge_op = "Add", final_op = "Id"} : (tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
 
 // -----
 

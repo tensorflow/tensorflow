@@ -50,7 +50,7 @@ class XlirDialect : public mlir::Dialect {
 // GPU module data container to be stored in TFRT's request context and picked
 // up by xlir.module.load.
 struct GpuModuleData {
-  llvm::StringRef blob;
+  llvm::ArrayRef<uint8_t> blob;
 
   struct ConstantInfo {
     llvm::StringRef symbol_name;

@@ -33,7 +33,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -1212,8 +1212,9 @@ bool MatchTopKComparator(Region &comparator) {
   auto compare_op = dyn_cast_or_null<mhlo::CompareOp>(&operations.front());
   auto return_op = dyn_cast_or_null<mhlo::ReturnOp>(&operations.back());
   if (!compare_op || !return_op) return false;
-  // TODO(xuanyuanluo): Support "LT" direction.
-  if (compare_op.comparison_direction() != "GT") return false;
+  // TODO(xuanyuanluo): Support mhlo::ComparisonDirection::LT direction.
+  if (compare_op.comparison_direction() != mhlo::ComparisonDirection::GT)
+    return false;
   if (compare_op.lhs() != comparator_blk.getArgument(0) ||
       compare_op.rhs() != comparator_blk.getArgument(1))
     return false;
@@ -1224,7 +1225,8 @@ bool MatchTopKComparator(Region &comparator) {
 //
 // %result = "mhlo.sort" (%keys, %indices) ({
 //  ^bb0(%key_0, %key_1, %index_0, %index_1):
-//     %1 = "mhlo.compare"(%key_0, %key_1) {"GT"} -> tensor<i1>
+//     %1 = "mhlo.compare"(%key_0, %key_1) {mhlo::ComparisonDirection::GT}
+//     -> tensor<i1>
 //  }),
 //
 // where the indices is obtained by an IotaOp (maybe folded).
@@ -1791,7 +1793,8 @@ class ConvertReduceOpToTfArgMinMax
 
       mhlo::CompareOp value_ne = llvm::dyn_cast_or_null<mhlo::CompareOp>(
           value_or.rhs().getDefiningOp());
-      if (!value_ne || value_ne.comparison_direction() != "NE" ||
+      if (!value_ne ||
+          value_ne.comparison_direction() != mhlo::ComparisonDirection::NE ||
           value_ne.lhs() != body.getArgument(0) ||
           value_ne.rhs() != body.getArgument(0))
         return failure();
@@ -1821,14 +1824,16 @@ class ConvertReduceOpToTfArgMinMax
 
     mhlo::CompareOp value_eq = llvm::dyn_cast_or_null<mhlo::CompareOp>(
         index_and.lhs().getDefiningOp());
-    if (!value_eq || value_eq.comparison_direction() != "EQ" ||
+    if (!value_eq ||
+        value_eq.comparison_direction() != mhlo::ComparisonDirection::EQ ||
         value_eq.lhs() != body.getArgument(0) ||
         value_eq.rhs() != body.getArgument(2))
       return failure();
 
     mhlo::CompareOp index_lt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
         index_and.rhs().getDefiningOp());
-    if (!index_lt || index_lt.comparison_direction() != "LT" ||
+    if (!index_lt ||
+        index_lt.comparison_direction() != mhlo::ComparisonDirection::LT ||
         index_lt.lhs() != body.getArgument(1) ||
         index_lt.rhs() != body.getArgument(3))
       return failure();
@@ -1836,7 +1841,7 @@ class ConvertReduceOpToTfArgMinMax
     return success();
   }
 
-  virtual const char *CompareDirection() const = 0;
+  virtual mhlo::ComparisonDirection CompareDirection() const = 0;
 
   virtual bool IsValueInitValue(const DenseElementsAttr &attr) const = 0;
 };
@@ -1846,7 +1851,9 @@ class ConvertReduceOpToTfArgmax
  public:
   using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
 
-  const char *CompareDirection() const override { return "GT"; }
+  mhlo::ComparisonDirection CompareDirection() const override {
+    return mhlo::ComparisonDirection::GT;
+  }
   bool IsValueInitValue(const DenseElementsAttr &attr) const override {
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat() ||
@@ -1868,7 +1875,9 @@ class ConvertReduceOpToTfArgmin
  public:
   using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
 
-  const char *CompareDirection() const override { return "LT"; }
+  mhlo::ComparisonDirection CompareDirection() const override {
+    return mhlo::ComparisonDirection::LT;
+  }
   bool IsValueInitValue(const DenseElementsAttr &attr) const override {
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat() ||
@@ -2864,7 +2873,7 @@ void LegalizeHloToTf::runOnOperation() {
 
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
-  target.addLegalOp<CallOp, ConstantOp, arith::ConstantOp>();
+  target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addLegalOp<mhlo::TupleOp>();
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {

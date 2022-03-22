@@ -22,9 +22,9 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -204,7 +204,7 @@ Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
       IrEmitterUnnested::Create(hlo_module_config, &ir_emitter_context);
   if (!ir_emitter.ok()) return MakeError(ir_emitter.status());
 
-  auto emit_status = (*ir_emitter)->EmitLmhloRegion(&func_op.body());
+  auto emit_status = (*ir_emitter)->EmitLmhloRegion(&func_op.getBody());
   if (!emit_status.ok()) return MakeError(emit_status);
 
   return std::make_tuple((*ir_emitter)->ConsumeThunkSequence(),

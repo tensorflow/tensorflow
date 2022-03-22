@@ -242,7 +242,7 @@ bool IsQuantizedCall(TF::PartitionedCallOp call_op) {
 LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
   // A map to find an attribute from its identifier.
   llvm::StringMap<Attribute> identifier_to_attr;
-  for (Operation& inner_op : float_func.body().front().getOperations()) {
+  for (Operation& inner_op : float_func.getBody().front().getOperations()) {
     if (!inner_op.hasAttr(kAttrMapAttribute)) continue;
     std::string attr_map_str =
         inner_op.getAttrOfType<StringAttr>(kAttrMapAttribute).str();
@@ -261,7 +261,7 @@ LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
   }
 
   // Set the attributes for ops with the attr_map attribute.
-  for (Operation& inner_op : quantized_func.body().front().getOperations()) {
+  for (Operation& inner_op : quantized_func.getBody().front().getOperations()) {
     if (!inner_op.hasAttr(kAttrMapAttribute)) continue;
 
     std::string attr_map_str =
@@ -275,10 +275,10 @@ LogicalResult TransferAttributes(FuncOp float_func, FuncOp quantized_func) {
       }
       if (identifier_to_attr.count(
               llvm::StringRef(std::string(key_and_value_pair[1]))) == 0) {
-        float_func.emitError(
-            absl::StrCat("Couldn't find the attribute corresponding to ",
-                         key_and_value_pair[1]));
-        return failure();
+        float_func.emitWarning(absl::StrCat("Using the default value for the '",
+                                            key_and_value_pair[0],
+                                            "' attribute"));
+        continue;
       }
       inner_op.setAttr(llvm::StringRef(std::string(key_and_value_pair[0])),
                        identifier_to_attr[llvm::StringRef(

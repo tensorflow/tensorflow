@@ -107,7 +107,8 @@ std::string Split::GetSplitCode() {
     const std::string dst_name = "args.dst_tensor_" + std::to_string(i);
     c += "  for (int i = 0; i < " + dst_name + "." +
          axis_to_selector[attr_.axis] + "(); ++i, src_counter++) {\n";
-    c += "    FLT4 result = args.src_tensor.Read(" + src_coords_str + ");\n";
+    c += "    args.src_tensor::type result = args.src_tensor.Read(" +
+         src_coords_str + ");\n";
     c += "    " + dst_name + ".Write(result, " + dst_coords_str + ");\n";
     c += "  }\n";
   }
@@ -150,16 +151,12 @@ std::string Split::GetSplitChannelsCode() {
   for (int i = 0; i < definition_.dst_tensors.size(); ++i) {
     const std::string dst_name = "args.dst_tensor_" + std::to_string(i);
     c += "  for (int i = 0; i < " + dst_name + ".Slices(); ++i) {\n";
-    c += "    FLT4 result = INIT_FLT4(0.0f);\n";
+    c += "    args.src_tensor::type result = args.src_tensor::zero_value;\n";
     for (int j = 0; j < 4; ++j) {
       c += "    if (i * 4 + " + std::to_string(j) + " < " + dst_name +
            ".Channels()) {\n";
-      c += "      int src_slice = src_channel >> 2;\n";
-      c += "      int src_sub_ch = src_channel & 3;\n";
-      c += "      FLT4 t = args.src_tensor.Read(" + coords + ", src_slice" +
-           batch_coord + ");\n";
-      c += "      result." + postfixes[j] +
-           " = SELECT_BY_INDEX_FROM_FLT4(t, src_sub_ch);\n";
+      c += "      args.src_tensor.ReadPerChannel(result." + postfixes[j] +
+           ", " + coords + ", src_channel" + batch_coord + ");\n";
       c += "      src_channel++;\n";
       c += "    }\n";
     }

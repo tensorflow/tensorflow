@@ -115,6 +115,9 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
     while (!work_list.empty()) {
       mlir::Operation* op = work_list.pop_back_val();
 
+      // Skip operations that are already in the hoisted set.
+      if (hoisted_ops.contains(op)) continue;
+
       // Add operation to hoisted ops set if all operands can be hoisted.
       bool all_operands_hoisted =
           llvm::all_of(op->getOperands(), [&](mlir::Value value) {

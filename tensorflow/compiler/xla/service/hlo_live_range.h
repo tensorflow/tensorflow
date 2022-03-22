@@ -120,6 +120,13 @@ class HloLiveRange {
   // 'flattened_instruction_sequence`.
   void FlattenSchedule(const HloComputation& computation);
 
+  // Returns the last position of a value.
+  TimeBound GetLastPosition(const HloValue& value,
+                            LogicalTime definition_end_time) const;
+
+  // Returns the time of the last use of a value.
+  LogicalTime GetLastUsageTime(const HloValue& value) const;
+
   // Based on the flattened schedule, calculate the start and end of each
   // buffer.
   void CalculateBufferStartEndMap();
@@ -203,7 +210,7 @@ class HloLiveRange {
   // Note there is no overlap of live ranges after normalization.
   void NormalizeAliasedBuffers();
 
-  int64_t ComputePeakMemoryMoment() const;
+  LogicalTime ComputePeakMemoryMoment() const;
 
   const HloSchedule& schedule_;
   const HloAliasAnalysis& alias_analysis_;
@@ -211,7 +218,7 @@ class HloLiveRange {
   bool total_order_scheduled_ = true;
 
   HloInstructionSequence flattened_instruction_sequence_;
-  absl::flat_hash_map<const HloInstruction*, int64_t> instruction_schedule_;
+  absl::flat_hash_map<const HloInstruction*, LogicalTime> instruction_schedule_;
   absl::flat_hash_map<const HloComputation*, TimeBound> computation_span_times_;
   absl::flat_hash_map<const HloValue*, TimeBound> buffer_live_ranges_;
 };

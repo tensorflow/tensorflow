@@ -34,10 +34,7 @@ class Generic(trace.TraceType):
 
   def most_specific_common_supertype(
       self, types: Sequence[trace.TraceType]) -> Optional[trace.TraceType]:
-    if not types:
-      raise ValueError(f"`types` must be a non-empty sequence, got{types}")
-
-    return None
+    return self if all(self == other for other in types) else None
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -113,9 +110,6 @@ class OrderedCollection(trace.TraceType):
 
   def most_specific_common_supertype(self, types: Sequence[trace.TraceType]):
     """See base class."""
-    if not types:
-      raise ValueError(f"`types` must be a non-empty sequence, got{types}")
-
     if not all(self._has_same_structure(other) for other in types):
       return None
 
@@ -198,10 +192,6 @@ class Dict(trace.TraceType):
 
   def most_specific_common_supertype(self, types: Sequence[trace.TraceType]):
     """See base class."""
-
-    if not types:
-      raise ValueError(f"`types` must be a non-empty sequence, got{types}")
-
     if not all(self._has_same_structure(other) for other in types):
       return None
 
@@ -255,9 +245,10 @@ class Reference(trace.TraceType):
     if all(
         isinstance(other, Reference) and self.identifier == other.identifier
         for other in types):
-      return self.base.most_specific_common_supertype(
-          (other.base for other in types))
-
+      base_supertype = self.base.most_specific_common_supertype(
+          [other.base for other in types])
+      if base_supertype is not None:
+        return Reference(base_supertype, self.identifier)
     return None
 
   def __eq__(self, other: Any) -> bool:

@@ -137,7 +137,15 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_deterministic_cluster_names",
            &mark_for_compilation_flags->tf_xla_deterministic_cluster_names,
            "Causes the function names assigned by auto clustering to be "
-           "deterministic from run to run.")};
+           "deterministic from run to run."),
+      Flag("tf_xla_persistent_cache_directory",
+           &mark_for_compilation_flags->tf_xla_persistent_cache_directory,
+           "If non-empty, JIT-compiled executables are saved to and loaded "
+           "from the specified file system directory path. Empty by default."),
+      Flag("tf_xla_disable_strict_signature_checks",
+           &mark_for_compilation_flags->tf_xla_disable_strict_signature_checks,
+           "If true, entires loaded into the XLA compile cache will not have "
+           "their signatures checked strictly. Defaults to false.")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
@@ -179,6 +187,8 @@ void AllocateAndParseFlags() {
   mark_for_compilation_flags
       ->tf_xla_disable_resource_variable_safety_checks_for_debugging = false;
   mark_for_compilation_flags->tf_xla_deterministic_cluster_names = false;
+  mark_for_compilation_flags->tf_xla_persistent_cache_directory = "";
+  mark_for_compilation_flags->tf_xla_disable_strict_signature_checks = false;
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
@@ -202,7 +212,7 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge = false;
   bool enable_mlir_bridge_is_explicit = false;
   bool mlir_bridge_safe_mode = false;
-  bool enable_mlir_merge_control_flow_pass = false;
+  bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
   auto setter_for_jitter_tensor_names = [](string sequence) {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');

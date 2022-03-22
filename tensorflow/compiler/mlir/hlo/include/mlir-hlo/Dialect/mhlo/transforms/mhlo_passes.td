@@ -41,6 +41,11 @@ def HloLegalizeToMemrefPass :Pass<"hlo-legalize-to-memref", "ModuleOp"> {
   let constructor = "createLegalizeToMemrefPass()";
 }
 
+def HloLegalizeToArithmeticPass :Pass<"hlo-legalize-to-arithmetic", "ModuleOp"> {
+  let summary = "Legalize from HLO dialect to arithmetic dialect.";
+  let constructor = "createLegalizeToArithmeticPass()";
+}
+
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "FuncOp"> {
   let summary = "Legalize from MHLO control flow to SCF control flow.";
   let constructor = "createLegalizeControlFlowPass()";
@@ -98,13 +103,6 @@ def TestMaterializeBroadcastsPass : Pass<"mhlo-test-materialize-broadcasts", "Fu
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestMaterializeBroadcastsPass()";
 }
-
-
-def MhloFusionPass : Pass<"mhlo-fusion", "FuncOp"> {
-  let summary = "Fuse mhlo ops to kLoop/kInput fusion patterns.";
-  let constructor = "createMhloFusionPass()";
-}
-
 
 def OptimizeMhloPass : Pass<"mhlo-test-optimize", "FuncOp"> {
   let summary = "Run optional HLO optimizations.";

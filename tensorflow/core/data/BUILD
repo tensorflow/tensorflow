@@ -86,7 +86,9 @@ cc_library(
 tf_cc_test(
     name = "compression_utils_test",
     srcs = ["compression_utils_test.cc"],
-    tags = ["requires-mem:16g"],
+    tags = [
+        "requires-mem:24g",
+    ],
     deps = [
         ":compression_utils",
         ":dataset_test_base",

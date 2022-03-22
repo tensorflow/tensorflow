@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "mlir/Dialect/Arithmetic/Utils/Utils.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -319,7 +320,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
               mlir::Value add = ab.add(mul, args[2]);
               b.create<mlir::linalg::YieldOp>(loc, add);
             });
-        builder->create<mlir::ReturnOp>(function.getLoc());
+        builder->create<mlir::func::ReturnOp>(function.getLoc());
 
         mlir::linalg::LinalgTilingOptions tilingOptions;
         tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());

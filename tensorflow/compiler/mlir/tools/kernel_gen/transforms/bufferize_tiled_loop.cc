@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -61,21 +61,6 @@ struct BufferizeExtractSliceOp : public OpConversionPattern<ExtractSliceOp> {
     rewriter.replaceOpWithNewOp<SubViewOp>(
         op, adaptor.source(), op.getMixedOffsets(), op.getMixedSizes(),
         op.getMixedStrides());
-    return success();
-  }
-};
-
-/// Convert `linalg.fill` on tensors to `linalg.fill` on buffers.
-struct BufferizeFillOp : public OpConversionPattern<FillOp> {
-  using OpConversionPattern<FillOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      FillOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const final {
-    if (!op->getParentOfType<LoopOp>()) return failure();
-
-    rewriter.create<FillOp>(op.getLoc(), adaptor.value(), adaptor.output());
-    rewriter.replaceOp(op, adaptor.output());
     return success();
   }
 };
@@ -152,6 +137,24 @@ struct BufferizeInsertSliceOp : public OpConversionPattern<InsertSliceOp> {
   }
 };
 
+/// Create linalg op on buffers given the original tensor-based operation and
+/// the buffers for the outputs.
+static linalg::LinalgOp createLinalgOpOnBuffers(
+    ConversionPatternRewriter &rewriter, linalg::LinalgOp linalgOp,
+    ValueRange inputs, ValueRange outputs) {
+  SmallVector<Value, 8> newOperands = inputs;
+  newOperands.append(outputs.begin(), outputs.end());
+  auto *newOp = linalgOp.cloneWithoutRegions(rewriter, linalgOp.getLoc(),
+                                             /*resultTypes=*/ArrayRef<Type>{},
+                                             newOperands);
+  for (auto regions : llvm::zip(linalgOp->getRegions(), newOp->getRegions())) {
+    auto &oldRegion = std::get<0>(regions);
+    auto &newRegion = std::get<1>(regions);
+    rewriter.inlineRegionBefore(oldRegion, newRegion, newRegion.begin());
+  }
+  return newOp;
+}
+
 // Bufferize LinalgOps in-place.
 struct BufferizeLinalgOp
     : public OpInterfaceConversionPattern<linalg::LinalgOp> {
@@ -169,8 +172,7 @@ struct BufferizeLinalgOp
     // TODO(b/199046880): Replace this with LinalgOp::Adaptor or equivalent.
     linalg::GenericOpAdaptor adaptor(operands, op->getAttrDictionary());
 
-    mlir::linalg::createLinalgOpOnBuffers(rewriter, op, adaptor.inputs(),
-                                          adaptor.outputs());
+    createLinalgOpOnBuffers(rewriter, op, adaptor.inputs(), adaptor.outputs());
     rewriter.replaceOp(op, adaptor.outputs());
     return success();
   }
@@ -196,57 +198,34 @@ struct BufferizeLinalgYieldOp : public OpConversionPattern<gml_st::YieldOp> {
 // FuncOp-like bufferization pattern for `gml_st.loop` that inserts
 // `memref.tensor_load` ops for every memref block argument.
 struct BufferizeLoopOp : public OpConversionPattern<LoopOp> {
-  using OpConversionPattern<LoopOp>::OpConversionPattern;
+  using OpConversionPattern::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      LoopOp loop, OpAdaptor adaptor,
-      ConversionPatternRewriter &rewriter) const final {
-    if (loop.getNumResults() == 0) return failure();
+      LoopOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    if (op.getNumResults() == 0) return failure();
 
-    auto new_loop = rewriter.create<LoopOp>(
-        loop.getLoc(), adaptor.lowerBound(), adaptor.upperBound(),
-        adaptor.step(), adaptor.inputs(), adaptor.outputs(),
-        adaptor.iterator_types(), adaptor.distribution_types());
-
-    Location loc = loop.getLoc();
-    BlockAndValueMapping bvm;
-    bvm.map(loop.getInductionVars(), new_loop.getInductionVars());
-
-    OpBuilder innerBuilder =
-        OpBuilder::atBlockEnd(new_loop.getBody(), rewriter.getListener());
-
-    // Map input tensors block arguments of the pre-bufferized loop to the
-    // `tensor.tensor_load` results of the bufferized loop.
-    SmallVector<Value, 2> inputs;
-    for (auto en :
-         llvm::zip(new_loop.getRegionInputArgs(), loop.getRegionInputArgs())) {
-      Value newArg = std::get<0>(en);
-      if (!newArg.getType().isa<ShapedType>()) {
-        inputs.push_back(newArg);
-        continue;
-      }
-      inputs.push_back(innerBuilder.create<ToTensorOp>(loc, std::get<0>(en)));
+    SmallVector<NamedAttribute> attr_list;
+    for (auto &item : adaptor.getAttributes()) {
+      attr_list.push_back(item);
     }
-    bvm.map(loop.getRegionInputArgs(), inputs);
+    auto newOp = rewriter.create<LoopOp>(op.getLoc(), mlir::TypeRange{},
+                                         adaptor.getOperands(), attr_list);
+    // Take the region from the old op and put it in the new op.
+    rewriter.inlineRegionBefore(op.getLoopBody(), newOp.getLoopBody(),
+                                newOp.getLoopBody().end());
 
-    // Map output tensors block arguments of the pre-bufferized loop to the
-    // `tensor.tensor_load` results of the bufferized loop.
-    SmallVector<Value, 2> outputs;
-    for (auto en : llvm::zip(new_loop.getRegionOutputArgs(),
-                             loop.getRegionOutputArgs())) {
-      Value newArg = std::get<0>(en);
-      if (!newArg.getType().isa<ShapedType>()) {
-        outputs.push_back(newArg);
-        continue;
-      }
-      outputs.push_back(innerBuilder.create<ToTensorOp>(loc, std::get<0>(en)));
+    // Convert the type of the entry block of the LoopOp's body.
+    if (failed(rewriter.convertRegionTypes(&newOp.getLoopBody(),
+                                           *getTypeConverter()))) {
+      return rewriter.notifyMatchFailure(op, "could not convert body types");
     }
-    bvm.map(loop.getRegionOutputArgs(), outputs);
 
-    // Clone the region.
-    for (auto &op : loop.getBody()->getOperations())
-      innerBuilder.clone(op, bvm);
-    rewriter.replaceOp(loop, new_loop.outputs());
+    // Change the clone to use the updated operands. We could have cloned with
+    // a BlockAndValueMapping, but this seems a bit more direct.
+    newOp->setOperands(adaptor.getOperands());
+
+    rewriter.replaceOp(op, newOp.outputs());
     return success();
   }
 };
@@ -262,9 +241,10 @@ struct BufferizeVectorTransferReadOp
       ConversionPatternRewriter &rewriter) const final {
     if (readOp.getShapedType().isa<MemRefType>()) return failure();
     rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
-        readOp, readOp.getType(), adaptor.source(), adaptor.indices(),
-        adaptor.permutation_mapAttr(), adaptor.padding(), adaptor.mask(),
-        adaptor.in_bounds() ? adaptor.in_boundsAttr() : ArrayAttr());
+        readOp, readOp.getType(), adaptor.getSource(), adaptor.getIndices(),
+        adaptor.getPermutationMapAttr(), adaptor.getPadding(),
+        adaptor.getMask(),
+        adaptor.getInBounds() ? adaptor.getInBoundsAttr() : ArrayAttr());
     return success();
   }
 };
@@ -278,10 +258,10 @@ struct BufferizeVectorTransferWriteOp
       ConversionPatternRewriter &rewriter) const final {
     if (writeOp.getShapedType().isa<MemRefType>()) return failure();
     rewriter.create<vector::TransferWriteOp>(
-        writeOp.getLoc(), adaptor.vector(), adaptor.source(), adaptor.indices(),
-        adaptor.permutation_mapAttr(),
-        adaptor.in_bounds() ? adaptor.in_boundsAttr() : ArrayAttr());
-    rewriter.replaceOp(writeOp, adaptor.source());
+        writeOp.getLoc(), adaptor.getVector(), adaptor.getSource(),
+        adaptor.getIndices(), adaptor.getPermutationMapAttr(),
+        adaptor.getInBounds() ? adaptor.getInBoundsAttr() : ArrayAttr());
+    rewriter.replaceOp(writeOp, adaptor.getSource());
     return success();
   }
 };
@@ -294,7 +274,6 @@ void populateTiledLoopBufferizePattern(
   // clang-format off
   patterns->add<
     BufferizeExtractSliceOp,
-    BufferizeFillOp,
     BufferizeInitTensorOp,
     BufferizeInsertSliceOp,
     BufferizeLinalgOp,

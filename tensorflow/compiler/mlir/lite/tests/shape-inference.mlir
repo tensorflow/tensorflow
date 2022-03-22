@@ -85,3 +85,26 @@ func @testUnidirectionalSequenceLstmShapeInference(%arg0: tensor<600 x 10 x 20 x
 }
 }
 
+// -----
+
+// CHECK-LABEL: testReshapeShapeInference
+module attributes {tf.versions = {producer = 888 : i32}} {
+func @testReshapeShapeInference(%arg0: tensor<3x4xi32>) -> tensor<*xi32> {
+  %cst = arith.constant dense<[1, 6, 2]> : tensor<3xi32>
+  // CHECK: "tfl.reshape"(%arg0, %cst) : (tensor<3x4xi32>, tensor<3xi32>) -> tensor<1x6x2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<3x4xi32>, tensor<3xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+}
+
+// -----
+
+// CHECK-LABEL: testReshapeShapeInferenceUnknownDim
+module attributes {tf.versions = {producer = 888 : i32}} {
+func @testReshapeShapeInferenceUnknownDim(%arg0: tensor<3x4xi32>) -> tensor<*xi32> {
+  %cst = arith.constant dense<[1, 6, -1]> : tensor<3xi32>
+  // CHECK: "tfl.reshape"(%arg0, %cst) : (tensor<3x4xi32>, tensor<3xi32>) -> tensor<1x6x2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<3x4xi32>, tensor<3xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+}

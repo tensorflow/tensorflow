@@ -362,7 +362,7 @@ else_branch: A region that computes the outputs of the op if cond = false.
 
   let regions = (region SizedRegion<1>:$then_branch, SizedRegion<1>:$else_branch);
 
-  let hasVerifier = 1;
+  let hasRegionVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$operands,

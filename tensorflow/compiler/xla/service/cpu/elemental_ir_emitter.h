@@ -44,8 +44,9 @@ class CpuElementalIrEmitter : public ElementalIrEmitter {
 
   StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
       const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
-      absl::string_view name) override {
-    return ir_emitter_->EmitThreadLocalCall(callee, parameters, name);
+      absl::string_view name, bool is_reducer) override {
+    return ir_emitter_->EmitThreadLocalCall(callee, parameters, name,
+                                            is_reducer);
   }
 
   bool fast_min_max() override {

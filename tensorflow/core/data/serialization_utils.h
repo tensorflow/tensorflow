@@ -121,7 +121,7 @@ class VariantTensorDataWriter : public IteratorStateWriter {
 };
 
 // Returns a GraphDef representation of the given dataset.
-Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
+Status AsGraphDef(const DatasetBase* dataset,
                   SerializationContext&& serialization_ctx,
                   GraphDef* graph_def);
 

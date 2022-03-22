@@ -1385,6 +1385,40 @@ func AssertNextDataset(scope *Scope, input_dataset tf.Output, transformations tf
 	return op.Output(0)
 }
 
+// A transformation that asserts which transformations happened previously.
+//
+// This transformation checks the names and, optionally, the attribute name-value
+// pairs in the `transformations` argument against those of the transformations
+// that preceded this transformation.  If there is a mismatch, the transformation
+// raises an exception.
+//
+// The check occurs when iterating over the contents of the dataset, which
+// means that the check happens *after* any static optimizations are applied
+// to the dataset graph.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+// `AssertPrevDataset` passes through the outputs of its input dataset.
+//	transformations: A `tf.string` vector `tf.Tensor` identifying the transformations, with optional
+// attribute name-value pairs, that are expected to have happened previously.
+//
+//
+func AssertPrevDataset(scope *Scope, input_dataset tf.Output, transformations tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "AssertPrevDataset",
+		Input: []tf.Input{
+			input_dataset, transformations,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Adds a value to the current value of a variable.
 //
 // Any ReadVariableOp with a control dependency on this op is guaranteed to
@@ -5225,6 +5259,21 @@ func CollectiveAllToAllV3(scope *Scope, input tf.Output, communicator tf.Output,
 			input, communicator, group_assignment,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Assign group keys based on group assignment.
+func CollectiveAssignGroupV2(scope *Scope, group_assignment tf.Output, device_index tf.Output) (group_key tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveAssignGroupV2",
+		Input: []tf.Input{
+			group_assignment, device_index,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -52396,6 +52445,33 @@ func XlaConvV2(scope *Scope, lhs tf.Output, rhs tf.Output, window_strides tf.Out
 	return op.Output(0)
 }
 
+// Wraps the XLA CustomCall operator
+//
+//   documented at https://www.tensorflow.org/xla/operation_semantics#customcall.
+//
+// Arguments:
+//	args: A list of `Tensor` with possibly different types.
+//	target_name: Name of the function. A call instruction will be emitted which
+// targets this symbol name.
+//	backend_config: String, used to encode serialized metadata to the backend.
+//	dtype: Output tensor data type.
+//	shape: Output tensor shape.
+func XlaCustomCall(scope *Scope, args []tf.Output, target_name string, backend_config string, dtype tf.DataType, shape tf.Shape) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"target_name": target_name, "backend_config": backend_config, "dtype": dtype, "shape": shape}
+	opspec := tf.OpSpec{
+		Type: "XlaCustomCall",
+		Input: []tf.Input{
+			tf.OutputList(args),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Takes the packed uint32 input and unpacks the input to uint8 to do
 //
 // Dequantization on device.
@@ -52617,6 +52693,35 @@ func XlaKeyValueSort(scope *Scope, keys tf.Output, values tf.Output) (sorted_key
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Wraps the XLA OptimizationBarrier operator.
+//
+// Documented at https://www.tensorflow.org/xla/operation_semantics#optimizationbarrier.
+//
+// Arguments:
+//	input: A Tuple of Arrays of any type.
+func XlaOptimizationBarrier(scope *Scope, input []tf.Output) (output []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "XlaOptimizationBarrier",
+		Input: []tf.Input{
+			tf.OutputList(input),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
+		scope.UpdateErr("XlaOptimizationBarrier", err)
+		return
+	}
+	return output
 }
 
 // Wraps the XLA Pad operator, documented at

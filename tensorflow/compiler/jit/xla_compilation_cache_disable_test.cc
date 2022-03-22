@@ -46,13 +46,33 @@ TEST(XlaCompilationCacheTest, TestDisabledXlaCompilation) {
   const XlaCompiler::CompilationResult* compilation_result;
   xla::LocalExecutable* executable;
 
-  auto cache = new XlaCompilationCache(client, device_type);
+  auto cache = new XlaCompilationCache(XlaCompilationCache::Config(), client,
+                                       device_type);
   core::ScopedUnref cache_ref(cache);
 
+  // Check that strict compilation is disallowed.
   Status status = cache->Compile(XlaCompiler::Options{}, fn, args,
                                  XlaCompiler::CompileOptions{},
                                  XlaCompilationCache::CompileMode::kStrict,
                                  &compilation_result, &executable);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(), "XLA compilation disabled"));
+
+  // Check that async compilation is disallowed.
+  status = cache->Compile(XlaCompiler::Options{}, fn, args,
+                          XlaCompiler::CompileOptions{},
+                          XlaCompilationCache::CompileMode::kAsync,
+                          &compilation_result, &executable);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(
+      absl::StrContains(status.error_message(), "XLA compilation disabled"));
+
+  // Check that lazy compilation is disallowed.
+  status = cache->Compile(XlaCompiler::Options{}, fn, args,
+                          XlaCompiler::CompileOptions{},
+                          XlaCompilationCache::CompileMode::kLazy,
+                          &compilation_result, &executable);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(
       absl::StrContains(status.error_message(), "XLA compilation disabled"));

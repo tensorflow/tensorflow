@@ -462,9 +462,8 @@ def tf_features_nomodules_if_mobile():
 # portable_tensorflow_lib_lite does not export the headers needed to
 # use it.  Thus anything that depends on it needs to disable layering
 # check.
-def tf_features_nolayering_check_if_android_or_ios():
+def tf_features_nolayering_check_if_ios():
     return select({
-        clean_dep("//tensorflow:android"): ["-layering_check"],
         clean_dep("//tensorflow:ios"): ["-layering_check"],
         "//conditions:default": [],
     })
@@ -2873,7 +2872,8 @@ def pybind_extension(
         restricted_to = None,
         srcs_version = "PY3",
         testonly = None,
-        visibility = None):
+        visibility = None,
+        win_def_file = None):
     """Builds a generic Python extension module."""
     _ignore = [module_name]
     p = name.rfind("/")
@@ -2942,7 +2942,10 @@ def pybind_extension(
             features = features + ["-use_header_modules"],
             restricted_to = restricted_to,
             testonly = testonly,
+            win_def_file = win_def_file,
         )
+
+        win_linker_inputs = if_windows([win_def_file] if win_def_file else [])
         cc_shared_library_name = name + "_ccsharedlib"
         cc_shared_library(
             name = cc_shared_library_name,
@@ -2952,7 +2955,7 @@ def pybind_extension(
             additional_linker_inputs = [
                 exported_symbols_file,
                 version_script_file,
-            ],
+            ] + win_linker_inputs,
             compatible_with = compatible_with,
             deprecation = deprecation,
             features = features + ["-use_header_modules"],
@@ -2967,7 +2970,10 @@ def pybind_extension(
                     "-Wl,-w",
                     "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
                 ],
-                clean_dep("//tensorflow:windows"): [],
+                clean_dep("//tensorflow:windows"): [
+                    "/DEF:$(location %s)" % win_def_file,
+                    "/ignore:4070",
+                ] if win_def_file else [],
                 "//conditions:default": [
                     "-Wl,--version-script",
                     "$(location %s)" % version_script_file,

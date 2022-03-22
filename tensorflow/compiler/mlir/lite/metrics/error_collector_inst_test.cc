@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -95,7 +95,8 @@ StatusOr<OwningOpRef<mlir::ModuleOp>> LoadModule(MLIRContext* context,
 
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-  return OwningOpRef<mlir::ModuleOp>(parseSourceFile(source_mgr, context));
+  return OwningOpRef<mlir::ModuleOp>(
+      parseSourceFile<mlir::ModuleOp>(source_mgr, context));
 }
 
 TEST(ErrorCollectorTest, TessSuccessPass) {

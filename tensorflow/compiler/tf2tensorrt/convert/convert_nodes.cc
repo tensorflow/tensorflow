@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/algorithm_selector.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/ops/layer_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"
@@ -77,6 +78,12 @@ limitations under the License.
 // Check if the types are equal. Cast to int first so that failure log message
 // would work!
 #define TFTRT_CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
+
+#define TFTRT_CHECK_INPUT_SIZE(size, exp_size, node_def)                 \
+  if ((size) != (exp_size)) {                                            \
+    TFTRT_ERROR(errors::InvalidArgument, node_def.op(), " got ", (size), \
+                " inputs but expected ", (exp_size));                    \
+  }
 
 namespace tensorflow {
 namespace tensorrt {
@@ -916,9 +923,12 @@ Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
     Status status = ConvertToTensorOrWeights(src_def, edge->src_output(),
                                              &tensor_or_weights);
     if (!status.ok()) {
+      VLOG(2) << "Failed to convert input `" << src_def.name() << "` to a "
+              << "TRT_TensorOrWeights: " << status.error_message();
+
       return errors::Internal(
-          "Failed to convert input ", src_def.name(),
-          " to a TRT_TensorOrWeights: ", status.error_message());
+          "Failed to convert at least one input to a TRT_TensorOrWeights: ",
+          status.error_message());
     }
     inputs.push_back(tensor_or_weights);
   }
@@ -1128,163 +1138,6 @@ Status Converter::RenameAndMarkOutputTensors(
   return Status::OK();
 }
 
-#if IS_TRT_VERSION_GE(7, 2, 3, 4)
-enum class Tactic : int64_t { kINVALID_TACTIC = int64_t(0xD15EA5EDD15EA5ED) };
-
-#if IS_TRT_VERSION_GE(8, 0, 0, 0)
-static constexpr int32_t kLAYER_IMPL_BASE = 0x80000000;
-#else
-static constexpr int32_t kLAYER_IMPL_BASE = 0x00000000;
-#endif
-
-enum class LayerImpl : int64_t {
-#if IS_TRT_VERSION_GE(8, 0, 0, 0)
-  kSHUFFLE = kLAYER_IMPL_BASE + 14
-#else
-  kSHUFFLE = kLAYER_IMPL_BASE + 16
-#endif
-};
-
-// An algorithm selector to support debugging and work around known TensorRT
-// issues.
-class TftrtAlgorithmSelector : public nvinfer1::IAlgorithmSelector {
-  // A list of tactics allowed to be selected. An empty list means that all
-  // tactics are allowed. This list is initialized from environment variable
-  // TF_TRT_FIXED_ALGORITHM_ID.
-  std::unordered_set<int64> allowed_algorithm_ids;
-
-  // A list of tactics that we disallow. Used primarily to go around known
-  // TensorRT issues.
-  std::unordered_set<int64> disallowed_tactics;
-
- public:
-  TftrtAlgorithmSelector() {
-    int64_t trt_algorithm_id;
-    int64_t null_tactic = std::numeric_limits<int64_t>::min();
-    TF_CHECK_OK(tensorflow::ReadInt64FromEnvVar("TF_TRT_FIXED_ALGORITHM_ID",
-                                                /*default_val=*/null_tactic,
-                                                &trt_algorithm_id));
-    // Populate allowed tactics. Used to force select tactics for any layer.
-    // TODO: accepting a list from the environment variable
-    if (trt_algorithm_id != null_tactic) {
-      allowed_algorithm_ids.insert(trt_algorithm_id);
-    }
-
-#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
-    disallowed_tactics = {
-        // turing_fp16_s1688cudnn_fp16_128x128_ldg8_relu_f2f_exp_medium_nhwc_gelu_tn_v1
-        -5927686925093575778,
-        // turing_fp16_s1688cudnn_fp16_128x128_ldg8_relu_f2f_exp_interior_nhwc_gelu_tn_v1
-        -3848538574386518527,
-        // turing_fp16_s1688cudnn_fp16_128x128_ldg8_relu_f2f_exp_small_nhwc_gelu_tn_v1
-        -959009792490796596};
-#endif  // !IS_TRT_VERSION_GE(8, 0, 0, 0)
-  }
-
-  // Returns value in [0, nbChoices] for a valid algorithm.
-  int32_t selectAlgorithms(const nvinfer1::IAlgorithmContext& algoContext,
-                           const nvinfer1::IAlgorithm* const* algoChoices,
-                           int32_t nbChoices,
-                           int32_t* selection) noexcept override {
-    int nbSelections = 0;
-
-    // TensorRT always provides more than zero number of algorithms
-    // in selectAlgorithms.
-    assert(nbChoices > 0);
-
-    absl::optional<int64_t> forced_algorithm_id = absl::nullopt;
-
-    if (!allowed_algorithm_ids.empty()) {
-      assert(allowed_algorithm_ids.size() == 1);
-      forced_algorithm_id = *allowed_algorithm_ids.begin(0);
-      // Making sure that the requested TRT algorithm ID doesn't go above
-      // the max value accepted.
-      int64_t allowed_algorithm_id = forced_algorithm_id.value();
-      forced_algorithm_id = std::min(forced_algorithm_id.value(),
-                                     static_cast<int64_t>(nbChoices) - 1);
-
-      if (allowed_algorithm_id != forced_algorithm_id) {
-        VLOG(1) << "User allowed algorithm ID: " << allowed_algorithm_id
-                << " is not available.";
-      }
-      VLOG(1) << "Forcing TRT algorithm selection to: ID = "
-              << forced_algorithm_id.value();
-    }
-
-    // Disable all disallowed tactics
-    for (auto i = 0; i < nbChoices; i++) {
-      if (algoChoices[i] == nullptr) {
-        continue;
-      }
-
-      if (forced_algorithm_id.has_value() && forced_algorithm_id.value() != i) {
-        continue;
-      }
-
-      int64_t tacticId = algoChoices[i]->getAlgorithmVariant().getTactic();
-      assert(tacticId != static_cast<int64_t>(Tactic::kINVALID_TACTIC));
-
-      if (disallowed_tactics.find(tacticId) != disallowed_tactics.end()) {
-        if (!forced_algorithm_id.has_value()) {
-          VLOG(1) << "Rejecting a disallowed tactic: " << tacticId
-                  << " for node " << algoContext.getName();
-          continue;
-        }
-        VLOG(1) << "Impossible to force TensorRT tactic selection. This tactic "
-                << "has been explicitly banned. Please update the value passed "
-                << "to `TF_TRT_FIXED_ALGORITHM_ID`. Received: "
-                << forced_algorithm_id.value();
-        assert(false);
-      }
-
-      int64_t implementation =
-          algoChoices[i]->getAlgorithmVariant().getImplementation();
-      nvinfer1::TensorFormat format =
-          algoChoices[i]->getAlgorithmIOInfo(0).getTensorFormat();
-      nvinfer1::DataType datatype =
-          algoChoices[i]->getAlgorithmIOInfo(0).getDataType();
-
-      bool reject_tactic = false;
-#if IS_TRT_VERSION_GE(8, 0, 0, 0) && !IS_TRT_VERSION_GE(8, 0, 3, 0)
-      // Reject shuffle node when input format is linear row major INT8 format
-      reject_tactic =
-          (implementation == static_cast<int64_t>(LayerImpl::kSHUFFLE) &&
-           (format == nvinfer1::TensorFormat::kLINEAR &&
-            datatype == nvinfer1::DataType::kINT8));
-#elif !IS_TRT_VERSION_GE(8, 0, 0, 0)
-      // Reject shuffle node when input format is 32-wide channel
-      // vectorized row major FP32 format
-      reject_tactic =
-          (implementation == static_cast<int64_t>(LayerImpl::kSHUFFLE) &&
-           (format == nvinfer1::TensorFormat::kCHW32));
-#endif  // !IS_TRT_VERSION_GE(8, 0, 0, 0)
-      if (reject_tactic) {
-        if (!forced_algorithm_id.has_value()) {
-          VLOG(1) << "Rejecting a disallowed tactic: " << tacticId
-                  << " for node " << algoContext.getName()
-                  << " with implementation " << implementation
-                  << " and input format " << static_cast<int32_t>(format);
-          continue;
-        }
-        VLOG(1) << "Impossible to force TensorRT algorithm selection. The "
-                << "forced tactic corresponds to an implementation that has "
-                << "been explicitly banned. Please update the value passed to "
-                << "`TF_TRT_FIXED_ALGORITHM_ID`. Received: "
-                << forced_algorithm_id.value();
-        assert(false);
-      }
-      selection[nbSelections++] = i;
-    }
-    return nbSelections;
-  }
-
-  // Called by TensorRT to report choices it made.
-  void reportAlgorithms(const nvinfer1::IAlgorithmContext* const* algoContexts,
-                        const nvinfer1::IAlgorithm* const* algoChoices,
-                        int32_t nbAlgorithms) noexcept override {}
-};
-#endif  // #if IS_TRT_VERSION_GE(7, 2, 3, 4)
-
 // Returns the value of TF_TRT_ABORT_CUDA_ENGINE_BUILD environment variable.
 // This variable can be used to abort CUDA engine construction, therefore it
 // provides a way to test and debug the native segment fallback of TF-TRT.
@@ -1323,11 +1176,20 @@ Status Converter::BuildCudaEngine(
       trt_builder_->createBuilderConfig());
   builder_config->setMaxWorkspaceSize(max_workspace_size_bytes);
 
-#if IS_TRT_VERSION_GE(7, 2, 3, 4)
-  std::unique_ptr<nvinfer1::IAlgorithmSelector> trt_algorithm_selector(
-      new TftrtAlgorithmSelector());
-  builder_config->setAlgorithmSelector(trt_algorithm_selector.get());
-#endif
+  // Create the algorithm selector. For TensorRT 7.1, the algorithm selector
+  // cannot be used when building with INT8 calibration.
+  std::unique_ptr<nvinfer1::IAlgorithmSelector> trt_algorithm_selector{nullptr};
+  if (!IS_TRT_VERSION_GE(7, 2, 0, 0)) {
+    if (!use_calibration_ || precision_mode_ != TrtPrecisionMode::INT8) {
+      trt_algorithm_selector = MaybeCreateAlgorithmSelector();
+    }
+  } else {
+    trt_algorithm_selector = MaybeCreateAlgorithmSelector();
+  }
+
+  if (trt_algorithm_selector != nullptr) {
+    builder_config->setAlgorithmSelector(trt_algorithm_selector.get());
+  }
 
 #if IS_TRT_VERSION_GE(8, 0, 0, 0)
   builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
@@ -1701,11 +1563,8 @@ Status CheckInputsWeights(
     const std::vector<std::pair<string, TrtInputArg>>& expected_inputs) {
   const auto& inputs = params.inputs;
   const auto& node_def = params.node_def;
-  if (inputs.size() != expected_inputs.size()) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected ",
-                                   expected_inputs.size());
-  }
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), expected_inputs.size(), node_def);
+
   for (int i = 0; i < inputs.size(); i++) {
     if (expected_inputs[i].second == TrtInputArg::kWeight &&
         inputs.at(i).is_tensor()) {
@@ -3416,11 +3275,7 @@ Status ConvertRelu6(OpConverterParams* params) {
 Status ConvertBiasAdd(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(
-        "BiasAdd expects exactly 2 inputs, but received ", inputs.size());
-  }
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
 
   if (inputs[0].is_weights() && inputs[1].is_weights()) {
     return errors::InvalidArgument(
@@ -3649,10 +3504,8 @@ Status ConvertIdentity(OpConverterParams* params) {
 Status ConvertBinary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected 2");
-  }
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
+
   std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
                                    DataType::DT_INT32};
   TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
@@ -3728,74 +3581,6 @@ Status ConvertRsqrt(OpConverterParams* params) {
   TFTRT_RETURN_ERROR_IF_NULLPTR(recip_layer, node_def.name());
   params->converter->SetLayerName(recip_layer, node_def, "recip");
   params->outputs->push_back(TRT_TensorOrWeights(recip_layer->getOutput(0)));
-  return Status::OK();
-}
-
-const std::unordered_map<string, nvinfer1::UnaryOperation>*
-UnaryOperationMap() {
-  static auto* const m =
-      new std::unordered_map<string, nvinfer1::UnaryOperation>({
-        {"Neg", nvinfer1::UnaryOperation::kNEG},
-            {"Exp", nvinfer1::UnaryOperation::kEXP},
-            {"Log", nvinfer1::UnaryOperation::kLOG},
-            {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
-            {"Abs", nvinfer1::UnaryOperation::kABS},
-            {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
-            {"Sin", nvinfer1::UnaryOperation::kSIN},
-            {"Cos", nvinfer1::UnaryOperation::kCOS},
-            {"Tan", nvinfer1::UnaryOperation::kTAN},
-            {"Sinh", nvinfer1::UnaryOperation::kSINH},
-            {"Cosh", nvinfer1::UnaryOperation::kCOSH},
-            {"Asin", nvinfer1::UnaryOperation::kASIN},
-            {"Acos", nvinfer1::UnaryOperation::kACOS},
-            {"Atan", nvinfer1::UnaryOperation::kATAN},
-            {"Asinh", nvinfer1::UnaryOperation::kASINH},
-            {"Acosh", nvinfer1::UnaryOperation::kACOSH},
-            {"Atanh", nvinfer1::UnaryOperation::kATANH},
-            {"Ceil", nvinfer1::UnaryOperation::kCEIL},
-            {"Floor", nvinfer1::UnaryOperation::kFLOOR},
-            {"Erf", nvinfer1::UnaryOperation::kERF},
-#if IS_TRT_VERSION_GE(8, 2, 0, 0)
-            {"Round", nvinfer1::UnaryOperation::kROUND},
-            {"Sign", nvinfer1::UnaryOperation::kSIGN},
-#endif
-      });
-  return m;
-}
-
-Status ConvertUnary(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  auto op_pair = UnaryOperationMap()->find(node_def.op());
-  if (op_pair == UnaryOperationMap()->end()) {
-    return errors::Unimplemented("Unary op: ", node_def.op(), " not supported");
-  }
-
-  // kSIGN  and kROUND are not yet supported in implicit batch mode.
-  // TODO(drivanov): Remove this check when TRT enables these ops in implicit
-  //                 batch mode (nvbugs/3517570).
-  if (params->use_implicit_batch) {
-    const auto& op = params->node_def.op();
-    if (op == "Sign" || op == "Round") {
-      return errors::Unimplemented("Unary op: ", op,
-                                   " not supported in implicit batch mode");
-    }
-  }
-
-  if (params->validation_only) return Status::OK();
-
-  // Start conversion.
-  ITensorProxyPtr tensor = inputs.at(0).tensor();
-  nvinfer1::IUnaryLayer* layer = params->converter->network()->addUnary(
-      *tensor->trt_tensor(), op_pair->second);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->converter->SetLayerName(layer, node_def);
-  ITensorProxyPtr output_tensor = layer->getOutput(0);
-
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
 
@@ -4910,10 +4695,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
 Status ConvertMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected 2");
-  }
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
+
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
@@ -4929,10 +4712,8 @@ Status ConvertMatMul(OpConverterParams* params) {
 Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() != 2) {
-    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
-                                   " inputs but expected 2");
-  }
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
+
   TF_RETURN_IF_ERROR(CheckInputsWeights(
       *params, {{"x", TrtInputArg::kBoth}, {"y", TrtInputArg::kBoth}}));
   // TODO(tfeher): Consider adding INT8 type because FC layer can support it.
@@ -5961,10 +5742,9 @@ Status ConvertAddN(OpConverterParams* params) {
   if (num_inputs < 2) {
     return errors::InvalidArgument("AddN requires at least two inputs");
   }
-  if (inputs.size() != num_inputs) {
-    return errors::InvalidArgument("Got ", inputs.size(),
-                                   " inputs but expected ", num_inputs);
-  }
+
+  TFTRT_CHECK_INPUT_SIZE(inputs.size(), num_inputs, node_def);
+
   for (const auto& input : inputs) {
     if (!input.is_tensor() && input.weights().Shape().dim(0) != 1) {
       return errors::InvalidArgument(
@@ -6048,13 +5828,6 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertStridedSlice, "StridedSlice");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTopK, "TopKV2");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTranspose, "Transpose");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertUnpack, "Unpack");
-template <typename T>
-absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
-  absl::InlinedVector<std::string, 10> result;
-  absl::c_transform(set, std::back_inserter(result),
-                    [](const auto x) { return x.first; });
-  return result;
-}
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBinary,
                                   GetOperationNames(kBinaryOperations));
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertActivation,
@@ -6063,8 +5836,6 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool, {"MaxPool", "AvgPool"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFusedBatchNorm,
                                   {"FusedBatchNorm", "FusedBatchNormV2",
                                    "FusedBatchNormV3"});
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertUnary,
-                                  GetOperationNames(*UnaryOperationMap()));
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertReduce,
                                   {"Sum", "Prod", "Max", "Min", "Mean"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertArgMinMax, {"ArgMin", "ArgMax"});

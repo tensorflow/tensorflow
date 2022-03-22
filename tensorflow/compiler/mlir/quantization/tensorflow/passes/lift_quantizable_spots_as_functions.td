@@ -14,27 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.td"
 
 //===----------------------------------------------------------------------===//
 // Helper functions.
 //===----------------------------------------------------------------------===//
-class LiftAsFunctionCall<string func_name> :
-  NativeCodeCall<"LiftAsFunctionCall($_builder, $_loc, "
-                    "\""# func_name #"\", $0...)">;
 
 class ExtractVariadic<int N> : NativeCodeCall<"*($0.begin() + "# N #")">;
-
-def ArgumentList : NativeCodeCall<"llvm::SmallVector<Value>{$0...}">;
-
-def ResultList : NativeCodeCall<"llvm::SmallVector<Value>{$0...}">;
-
-def AttributeList : NativeCodeCall<"llvm::SmallVector<Attribute>{$0...}">;
-
-def IsNotInFusedFunc :
-      Constraint<CPred<"!IsInFusedFunc($0.getDefiningOp())">>;
 
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
 
@@ -48,13 +37,6 @@ class IsFusedOpEndsWith<string OpName> : AttrConstraint<
 // Pattern rules for lifting as functions
 //===----------------------------------------------------------------------===//
 
-def LiftAdd : Pat<
-  (TF_AddV2Op:$res $x, $y),
-  (LiftAsFunctionCall<"fused_add_fn">
-     (ArgumentList $x, $y),
-     (ResultList $res)),
-  [(IsNotInFusedFunc $res)]>;
-
 def LiftFusedConv2DRelu6 : Pat<
   (TF__FusedConv2DOp:$res
     $input, $filter, $bias, $strides, $padding,
@@ -64,7 +46,7 @@ def LiftFusedConv2DRelu6 : Pat<
      (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
-  [(IsNotInFusedFunc $res)]>;
+  [(IsNotInLiftedFunc $res)]>;
 
 def LiftFusedConv2DRelu : Pat<
   (TF__FusedConv2DOp:$res
@@ -75,7 +57,7 @@ def LiftFusedConv2DRelu : Pat<
      (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
-  [(IsNotInFusedFunc $res)]>;
+  [(IsNotInLiftedFunc $res)]>;
 
 def LiftFusedConv2D : Pat<
   (TF__FusedConv2DOp:$res
@@ -86,4 +68,34 @@ def LiftFusedConv2D : Pat<
      (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
-  [(IsNotInFusedFunc $res)]>;
+  [(IsNotInLiftedFunc $res)]>;
+
+def LiftFusedMatMulRelu6 : Pat<
+  (TF__FusedMatMulOp:$res
+    $input, $weight, $bias, $transpose_a, $transpose_b,
+    IsFusedOpEndsWith<"Relu6">:$fused_ops, $epsilon, $leakyrelu_alpha),
+  (LiftAsFunctionCall<"fused_matmul_relu6_fn">
+     (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
+     (ResultList $res),
+     (AttributeList $transpose_a, $transpose_b)),
+  [(IsNotInLiftedFunc $res)]>;
+
+def LiftFusedMatMulRelu : Pat<
+  (TF__FusedMatMulOp:$res
+    $input, $weight, $bias, $transpose_a, $transpose_b,
+    IsFusedOpEndsWith<"Relu">:$fused_ops, $epsilon, $leakyrelu_alpha),
+  (LiftAsFunctionCall<"fused_matmul_relu_fn">
+     (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
+     (ResultList $res),
+     (AttributeList $transpose_a, $transpose_b)),
+  [(IsNotInLiftedFunc $res)]>;
+
+def LiftFusedMatMul : Pat<
+  (TF__FusedMatMulOp:$res
+    $input, $weight, $bias, $transpose_a, $transpose_b,
+    IsFusedOpEndsWith<"BiasAdd">:$fused_ops, $epsilon, $leakyrelu_alpha),
+  (LiftAsFunctionCall<"fused_matmul_fn">
+     (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
+     (ResultList $res),
+     (AttributeList $transpose_a, $transpose_b)),
+  [(IsNotInLiftedFunc $res)]>;

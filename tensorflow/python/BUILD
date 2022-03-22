@@ -156,6 +156,10 @@ py_library(
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
         ":distributed_framework_test_lib",
+        # copybara:uncomment_begin(google-only)
+        # # FIXME(b/189332820): Link the target when it is available on OSS.
+        # ":dtensor",
+        # copybara:uncomment_end
         ":filesystem_ops",
         ":functional_ops",
         ":gradient_checker",
@@ -192,6 +196,7 @@ py_library(
         ":training",
         ":weights_broadcast_ops",
         ":while_v2",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
@@ -261,7 +266,6 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -288,6 +292,7 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
@@ -3269,7 +3274,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:pybind11_proto",
-        "//tensorflow/python/framework:op_def_util_headers",
+        "//tensorflow/python/framework:op_def_util_cc",
         "//tensorflow/python/framework:python_api_dispatcher",
         "//tensorflow/python/framework:python_api_info",
         "//tensorflow/python/framework:python_api_parameter_converter",
@@ -3352,7 +3357,7 @@ filegroup(
         ":numpy_lib",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
         "//tensorflow/python/lib/core:py_func_lib",
-        "//tensorflow/python/framework:op_def_util_headers",  # op_def_util
+        "//tensorflow/python/framework:op_def_util_cc",  # op_def_util
         "//tensorflow/python/framework:python_api_dispatcher",  # python_api_dispatcher
         "//tensorflow/python/framework:python_tensor_converter",  # python_tensor_converter
         "//tensorflow/python/framework:python_op_gen",  # python_op_gen
@@ -4092,35 +4097,6 @@ tf_python_pybind_extension(
     ],
 )
 
-# TODO(b/220191419): Move this build rule back to tensorflow/core/function/BUILD.
-# TODO(b/221223841): Get rid of if_static, it's nonstandard.
-tf_python_pybind_extension(
-    name = "runtime_client_pybind",
-    srcs = ["//tensorflow/core/function:runtime_client_pybind.cc"],
-    module_name = "runtime_client_pybind",
-    visibility = ["//tensorflow/core/function:__subpackages__"],
-    deps = [
-        "//tensorflow/core/function:runtime_client_headers",
-        "@pybind11",
-        "//tensorflow/python/lib/core:pybind11_status",
-    ] + if_static(
-        extra_deps = [
-            "//tensorflow/core/framework:function_proto_cc",
-            "//tensorflow/core/protobuf:coordination_service_proto_cc",
-            "//tensorflow/core/protobuf:eager_service_proto_cc",
-            "//tensorflow/core/protobuf:master_proto_cc",
-            "//tensorflow/core/protobuf:worker_proto_cc",
-        ],
-        otherwise = [
-            "//tensorflow/core/framework:function_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:coordination_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-        ],
-    ),
-)
-
 py_library(
     name = "tf2",
     srcs = ["tf2.py"],
@@ -4609,6 +4585,18 @@ alias(
     name = "layers",
     actual = "//tensorflow/python/layers:layers",
 )
+
+# copybara:uncomment_begin(google-only)
+# # FIXME(b/189332820): Link the target when it is available on OSS.
+# py_library(
+#     name = "dtensor",
+#     deps = [
+#         "//tensorflow/dtensor/python:core",
+#         "//tensorflow/dtensor/python:mesh_util",
+#         "//tensorflow/dtensor/python:tpu_util",
+#     ],
+# )
+# copybara:uncomment_end
 
 py_library(
     name = "learning_rate_decay",

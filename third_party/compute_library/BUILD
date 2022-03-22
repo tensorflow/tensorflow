@@ -91,6 +91,7 @@ cc_library(
             "src/cpu/utils/*.cpp",
             "src/cpu/kernels/internal/*.cpp",
             "src/cpu/kernels/**/neon/*.cpp",
+            "src/cpu/kernels/**/nchw/*.cpp",
             "src/core/NEON/kernels/arm_gemm/*.cpp",
             "**/*.h",
         ],
@@ -103,7 +104,6 @@ cc_library(
             "src/gpu/**",
         ],
     ) + [
-        "src/cpu/kernels/pool2d/neon/nchw/all.cpp",
         "src/core/CPP/CPPTypes.cpp",
         "src/c/operators/AclActivation.cpp",
         "src/core/NEON/kernels/arm_conv/pooling/kernels/cpp_nhwc_1x1_stride_any_depthfirst/generic.cpp",
@@ -119,7 +119,7 @@ cc_library(
     ]) + [
         "arm_compute_version.embed",
     ],
-    copts = ["-march=armv8.2-a"],
+    copts = ["-march=armv8-a"],
     defines = _COMPUTE_LIBRARY_DEFINES,
     includes = [
         "arm_compute/runtime",

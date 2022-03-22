@@ -18,7 +18,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -203,7 +203,7 @@ bool CreateMainFunction(ModuleOp& module) {
 
     auto call_op = builder.create<TF::PartitionedCallOp>(
         module.getLoc(), new_types, new_args,
-        SymbolRefAttr::get(context, function.sym_name()),
+        SymbolRefAttr::get(context, function.getSymName()),
         /*config=*/builder.getStringAttr(""),
         /*config_proto=*/builder.getStringAttr(""),
         /*executor_type=*/builder.getStringAttr(""));
@@ -211,8 +211,8 @@ bool CreateMainFunction(ModuleOp& module) {
                             call_op.getResults().end());
     SetFunctionPrivate(function);
   }
-  builder.create<mlir::ReturnOp>(main_func.getBody().getLoc(),
-                                 returning_values);
+  builder.create<mlir::func::ReturnOp>(main_func.getBody().getLoc(),
+                                       returning_values);
 
   // Adds the new function to symbol table.
   SymbolTable symbol_table(module);

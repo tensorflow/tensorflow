@@ -34,6 +34,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "assert_prev_test",
+    size = "small",
+    srcs = ["assert_prev_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "auto_shard_dataset_test",
     size = "small",
     srcs = ["auto_shard_dataset_test.py"],

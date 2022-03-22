@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TF_TYPES_TYPES
 #define TF_TYPES_TYPES
 
+include "mlir/IR/AttrTypeBase.td"
 include "tensorflow/core/ir/types/dialect.td"
-
 
 // All of the types will extend this class.
 class TFType_Type<string name> : TypeDef<TFTypeDialect, name> { }

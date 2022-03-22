@@ -286,7 +286,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             {
                 "input1": "Placeholder",
                 "input2": "Placeholder",
-                "TRTEngineOp_0": "TRTEngineOp",
+                "TRTEngineOp_000": "TRTEngineOp",
                 "output": "Identity"
             }, node_name_to_op)
 

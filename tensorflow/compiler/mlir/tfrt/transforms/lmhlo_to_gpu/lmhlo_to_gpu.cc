@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
@@ -44,6 +44,7 @@ void populateCclConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCholeskyConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateConvolutionConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateCustomCallConversionPattern(RewritePatternSet&, TypeConverter&);
+void populateFftConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateGemmConversionPattern(RewritePatternSet&, TypeConverter&);
 void populateInfeedAndOutfeedConversionPattern(RewritePatternSet&,
                                                TypeConverter&);
@@ -87,6 +88,7 @@ void ConvertLmhloToGpuPass::runOnOperation() {
   populateTriangularSolveConversionPattern(patterns, converter);
   populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
   populateReturnOpTypeConversionPattern(patterns, converter);
+  populateFftConversionPattern(patterns, converter);
 
   // Set of ops that need to be wrapped in tfrt_gpu_conversion.async.execute
   // before lowering directly to tfrt_gpu ops (and therefore require some chain
@@ -98,15 +100,16 @@ void ConvertLmhloToGpuPass::runOnOperation() {
       lmhlo::AllGatherOp, lmhlo::AllReduceOp, lmhlo::ReduceScatterOp,
       lmhlo::AllToAllOp, lmhlo::CollectivePermuteOp, lmhlo::CustomCallOp,
       lmhlo::TriangularSolveOp, lmhlo::ReplicaIdOp, lmhlo::PartitionIdOp,
-      lmhlo::InfeedOp, lmhlo::OutfeedOp>();
+      lmhlo::InfeedOp, lmhlo::OutfeedOp, lmhlo::FftOp>();
   tfrt::gpu::populateGpuAsyncConversionPatterns(patterns, converter,
                                                 wrap_target);
 
   ConversionTarget target(*context);
-  target.addIllegalOp<memref::ReinterpretCastOp, memref::ViewOp>();
+  target.addIllegalOp<memref::ReinterpretCastOp, memref::ViewOp,
+                      memref::AllocaOp, memref::AllocOp, memref::DeallocOp>();
   target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
     return converter.isSignatureLegal(op.getType()) &&
-           converter.isLegal(&op.body());
+           converter.isLegal(&op.getBody());
   });
   target.addDynamicallyLegalOp<tfrt::gpu::conversion::AsyncExecuteOp>(
       [&](tfrt::gpu::conversion::AsyncExecuteOp op) {

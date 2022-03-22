@@ -25,7 +25,7 @@
 // CHECK-NEXT:      }) : () -> (tensor<f32>, !tf_executor.control) loc("identity@some_function")
 // CHECK-NEXT:      "tf_executor.fetch"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
 // CHECK-NEXT:    }) : () -> tensor<f32> loc(unknown)
-// CHECK-NEXT:    "std.return"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
+// CHECK-NEXT:    "func.return"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
 // CHECK-NEXT: sym_name = "island_one_op_all_locs_same"
 
 func @island_one_op_all_locs_same(%arg0: tensor<f32>) -> tensor<f32> {
@@ -36,7 +36,7 @@ func @island_one_op_all_locs_same(%arg0: tensor<f32>) -> tensor<f32> {
     }) : () -> (tensor<f32>, !tf_executor.control) loc("identity@some_function")
     "tf_executor.fetch"(%1#0) : (tensor<f32>) -> () loc(unknown)
   }) : () -> tensor<f32> loc(unknown)
-  "std.return"(%0) : (tensor<f32>) -> () loc(unknown)
+  "func.return"(%0) : (tensor<f32>) -> () loc(unknown)
 } loc(unknown)
 
 // This test cases exercises our handling of the "tf_executor.island wraps"
@@ -52,7 +52,7 @@ func @island_one_op_all_locs_same(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-NEXT:      }) : () -> (tensor<f32>, !tf_executor.control) loc("NOT_identity@some_function")
 // CHECK-NEXT:      "tf_executor.fetch"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
 // CHECK-NEXT:    }) : () -> tensor<f32> loc(unknown)
-// CHECK-NEXT:    "std.return"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
+// CHECK-NEXT:    "func.return"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
 // CHECK-NEXT: sym_name = "island_one_op_all_locs_NOT_same"
 
 func @island_one_op_all_locs_NOT_same(%arg0: tensor<f32>) -> tensor<f32> {
@@ -63,5 +63,5 @@ func @island_one_op_all_locs_NOT_same(%arg0: tensor<f32>) -> tensor<f32> {
     }) : () -> (tensor<f32>, !tf_executor.control) loc("NOT_identity@some_function")
     "tf_executor.fetch"(%1#0) : (tensor<f32>) -> () loc(unknown)
   }) : () -> tensor<f32> loc(unknown)
-  "std.return"(%0) : (tensor<f32>) -> () loc(unknown)
+  "func.return"(%0) : (tensor<f32>) -> () loc(unknown)
 } loc(unknown)

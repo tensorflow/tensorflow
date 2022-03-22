@@ -184,6 +184,29 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                               absl::Span<const int64_t>(fft_length));
       break;
     }
+    case HloOpcode::kAsyncStart: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Async start instruction should have 1 called computation but "
+             "sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateAsyncStart(shape, all_operands(), computations(0));
+      break;
+    }
+    case HloOpcode::kAsyncUpdate: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Async update instruction should have 1 called computation but "
+             "sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateAsyncUpdate(shape, operands(0), computations(0));
+      break;
+    }
+    case HloOpcode::kAsyncDone: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Async done instruction should have 1 called computation but sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateAsyncDone(shape, operands(0), computations(0));
+      break;
+    }
     case HloOpcode::kCopyStart: {
       instruction = CreateCopyStart(shape, operands(0),
                                     proto.is_cross_program_prefetch());
@@ -1139,6 +1162,27 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
                                               fft_length);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncStart(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* async_computation) {
+  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncStart, shape,
+                                                operands, async_computation);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
+    const Shape& shape, HloInstruction* operand,
+    HloComputation* async_computation) {
+  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncUpdate, shape,
+                                                operand, async_computation);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncDone(
+    const Shape& shape, HloInstruction* operand,
+    HloComputation* async_computation) {
+  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncDone, shape,
+                                                operand, async_computation);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
     const Shape& shape, HloInstruction* operand,
     bool is_cross_program_prefetch) {
@@ -1746,6 +1790,10 @@ void HloInstruction::SetupDerivedInstruction(
   derived_instruction->set_frontend_attributes(frontend_attributes_);
 }
 
+bool HloInstruction::IsRoot() const {
+  return parent_ != nullptr && this == parent_->root_instruction();
+}
+
 bool HloInstruction::HasSideEffectNoRecurse() const {
   switch (opcode_) {
     case HloOpcode::kSend:
@@ -1900,6 +1948,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kFft:
     case HloOpcode::kCompare:
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
@@ -2068,7 +2119,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
   clone->set_outer_dimension_partitions(outer_dimension_partitions_);
-  clone->set_raw_backend_config_string(backend_config_);
+  clone->backend_config_ = backend_config_.Clone();
   if (context != nullptr) {
     context->MapInstruction(this, clone.get());
     clone->ReplaceCalledComputations([&](HloComputation* callee) {
@@ -2396,6 +2447,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kPartitionId:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
@@ -2443,6 +2495,9 @@ bool HloInstruction::IdenticalSlowPath(
 
     // Ops migrated to subclasses should never come to this line.
     // TODO(b/80131774): Remove this switch when migration is complete.
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
@@ -2482,7 +2537,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kPad:
@@ -2925,10 +2979,8 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
     if (options.is_in_nested_computation()) {
       // If we are canonicalizing instruction names and this is a top-level
       // HloInstruction::ToString() call, don't print an instruction name.
-      StrAppend(&result,
-                PrintNameInternal(canonical_name_map->LookupOrInsert(name()),
-                                  options),
-                " = ");
+      DCHECK(!options.print_percent());  // no need to call PrintNameInternal
+      StrAppend(&result, canonical_name_map->LookupOrInsert(name()), " = ");
     }
   } else {
     StrAppend(&result, PrintNameInternal(name(), options), " = ");
@@ -2944,7 +2996,24 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
   }
 
   // Print opcode, operand(s).
-  StrAppend(&result, HloOpcodeString(opcode()), "(",
+  if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode())) {
+    std::string suffix = [&]() {
+      switch (opcode()) {
+        case HloOpcode::kAsyncStart:
+          return "-start";
+        case HloOpcode::kAsyncUpdate:
+          return "-update";
+        default:
+          CHECK(opcode() == HloOpcode::kAsyncDone)
+              << "Unexpected async opcode: " << HloOpcodeString(opcode());
+          return "-done";
+      }
+    }();
+    StrAppend(&result, HloOpcodeString(async_wrapped_opcode()), suffix);
+  } else {
+    StrAppend(&result, HloOpcodeString(opcode()));
+  }
+  StrAppend(&result, "(",
             OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
             ")");
 
@@ -2960,7 +3029,8 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
     StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
-    StrAppend(&result, ", backend_config=\"", CEscape(backend_config_), "\"");
+    StrAppend(&result, ", backend_config=\"",
+              CEscape(backend_config_.GetRawString()), "\"");
   }
   return result;
 }
@@ -3003,13 +3073,13 @@ std::string HloInstruction::OperandsToStringWithCanonicalNameMap(
         str.push_back(ShapeUtil::HumanString(operand->shape()));
       }
     }
-
-    // In a top-level HloInstruction::ToString() call, the operand name is not
-    // part of the canonical string.
-    if (options.canonicalize_instruction_names() &&
-        options.is_in_nested_computation()) {
-      str.push_back(PrintNameInternal(
-          canonical_name_map->LookupOrInsert(operand->name()), options));
+    if (options.canonicalize_instruction_names()) {
+      if (options.is_in_nested_computation()) {
+        // In a top-level HloInstruction::ToString() call, the operand name is
+        // not part of the canonical string.
+        DCHECK(!options.print_percent());  // no need to call PrintNameInternal
+        str.push_back(canonical_name_map->LookupOrInsert(operand->name()));
+      }
     } else if (options.print_operand_names()) {
       str.push_back(PrintNameInternal(operand->name(), options));
     }
@@ -3094,6 +3164,12 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                           out, PrintNameInternal(computation->name(), options));
                     }),
             "}"));
+      }
+    } else if (HloOpcodeIsAsync(opcode())) {
+      if (!options.syntax_sugar_async_ops()) {
+        extra.push_back(StrCat(
+            "calls=",
+            PrintNameInternal(async_wrapped_computation()->name(), options)));
       }
     } else if (!called_computations().empty()) {
       extra.push_back(StrCat(
@@ -3213,7 +3289,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
 
   *proto.mutable_metadata() = metadata_;
-  proto.set_backend_config(backend_config_);
+  proto.set_backend_config(backend_config_.GetRawString());
   if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations_) {
       proto.add_called_computation_ids(computation->unique_id());
@@ -3510,6 +3586,12 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConditional(this);
     case HloOpcode::kCustomCall:
       return visitor->HandleCustomCall(this);
+    case HloOpcode::kAsyncStart:
+      return visitor->HandleAsyncStart(this);
+    case HloOpcode::kAsyncUpdate:
+      return visitor->HandleAsyncUpdate(this);
+    case HloOpcode::kAsyncDone:
+      return visitor->HandleAsyncDone(this);
     case HloOpcode::kCopyStart:
       return visitor->HandleCopyStart(this);
     case HloOpcode::kCopyDone:
@@ -4151,18 +4233,71 @@ Status HloInstruction::GetBackendConfigInternal(
     tensorflow::protobuf::Message* proto) const {
   proto->Clear();
 
-  // Empty string does not parse as valid JSON, but it's a valid backend config,
-  // corresponding to the empty proto.
-  if (backend_config_.empty()) {
+  if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
+    proto->CopyFrom(*proto_ptr);
     return Status::OK();
   }
-  return tensorflow::HumanReadableJsonToProto(backend_config_, proto);
+
+  auto& raw_string = raw_backend_config_string();
+  // Empty string does not parse as valid JSON, but it's a valid backend config,
+  // corresponding to the empty proto.
+  if (raw_string.empty()) {
+    return Status::OK();
+  }
+  TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(raw_string, proto));
+  backend_config_.SetProto(*proto);
+  return Status::OK();
 }
 
-Status HloInstruction::set_backend_config(
+const std::string& HloInstruction::BackendConfigRep::GetRawString() const {
+  if (proto_ && raw_string_.empty()) {
+    raw_string_ = BackendConfigToRawString(*proto_).ValueOrDie();
+  }
+  return raw_string_;
+}
+
+HloInstruction::BackendConfigRep HloInstruction::BackendConfigRep::Clone()
+    const {
+  // Prefer cloning protobuf, raw_string_ will be lazily generated if accessed.
+  BackendConfigRep cloned;
+  if (auto* proto = GetProtoPtr()) {
+    cloned.SetProto(*proto);
+  } else {
+    cloned.raw_string_ = raw_string_;
+  }
+  return cloned;
+}
+
+HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
+    std::string raw_string) {
+  raw_string_ = std::move(raw_string);
+  proto_.reset();
+  return *this;
+}
+
+HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
     const tensorflow::protobuf::Message& proto) {
-  TF_ASSIGN_OR_RETURN(backend_config_, BackendConfigToRawString(proto));
-  return Status::OK();
+  SetProto(proto);
+  raw_string_.clear();
+  return *this;
+}
+
+void HloInstruction::BackendConfigRep::SetProto(
+    const tensorflow::protobuf::Message& proto) {
+  proto_.reset(proto.New());
+  proto_->CopyFrom(proto);
+}
+
+bool HloInstruction::BackendConfigRep::operator==(
+    const BackendConfigRep& other) const {
+  auto* proto_a = GetProtoPtr();
+  auto* proto_b = other.GetProtoPtr();
+  if (proto_a != nullptr && proto_b != nullptr) {
+    using ::tensorflow::protobuf::util::MessageDifferencer;
+    return MessageDifferencer::Equals(*proto_a, *proto_b);
+  }
+  // TODO(b/225956414): Consider canonicalizing raw string form.
+  return GetRawString() == other.GetRawString();
 }
 
 /* static */ StatusOr<std::string> HloInstruction::BackendConfigToRawString(
@@ -4594,6 +4729,29 @@ const DomainMetadata& HloInstruction::operand_side_metadata() const {
 
 const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
+}
+
+bool HloInstruction::IsAsynchronous() const {
+  return opcode() == HloOpcode::kAsyncStart ||
+         opcode() == HloOpcode::kAsyncUpdate ||
+         opcode() == HloOpcode::kAsyncDone;
+}
+
+HloComputation* HloInstruction::async_wrapped_computation() const {
+  CHECK(IsAsynchronous());
+  return called_computations()[0];
+}
+
+// HloInstruction* HloInstruction::async_chain_start() const {
+//   return Cast<HloAsyncInstruction>(this)->async_chain_start();
+// }
+
+HloInstruction* HloInstruction::async_wrapped_instruction() const {
+  return Cast<HloAsyncInstruction>(this)->async_wrapped_instruction();
+}
+
+HloOpcode HloInstruction::async_wrapped_opcode() const {
+  return Cast<HloAsyncInstruction>(this)->async_wrapped_opcode();
 }
 
 bool HloInstruction::is_cross_program_prefetch() const {

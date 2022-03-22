@@ -115,10 +115,12 @@ bool AllowsForBroadcastPropagation(Operation *op) {
 
 DenseIntElementsAttr ComposeBroadcastDimensionsAttr(DenseIntElementsAttr a,
                                                     DenseIntElementsAttr b) {
-  SmallVector<int64_t> b_vec = llvm::to_vector(llvm::map_range(
-      b, [](APInt it) { return static_cast<int64_t>(it.getLimitedValue()); }));
+  SmallVector<int64_t> b_vec =
+      llvm::to_vector(llvm::map_range(b, [](const APInt &it) {
+        return static_cast<int64_t>(it.getLimitedValue());
+      }));
   SmallVector<int64_t> composed_vec = llvm::to_vector(llvm::map_range(
-      a, [&](APInt it) { return b_vec[it.getLimitedValue()]; }));
+      a, [&](const APInt &it) { return b_vec[it.getLimitedValue()]; }));
   return hlo::GetI64ElementsAttr(composed_vec, a.getContext());
 }
 

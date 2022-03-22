@@ -158,8 +158,8 @@ class ConvertGraphOp : public OpConversionPattern<tfg::GraphOp> {
     rewriter.create<tf_executor::FetchOp>(loc);
 
     // Add terminator of func
-    rewriter.setInsertionPointToEnd(&func.body().front());
-    rewriter.create<ReturnOp>(loc);
+    rewriter.setInsertionPointToEnd(&func.getBody().front());
+    rewriter.create<func::ReturnOp>(loc);
 
     rewriter.replaceOp(graph.getOperation(), func.getOperation()->getResults());
 
@@ -220,14 +220,15 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
     for (auto iter = block.args_begin(), end_iter = block.args_end();
          iter != end_iter; ++iter) {
       if (!iter->getType().isa<tfg::ControlType>())
-        iter->replaceAllUsesWith(func.body().getArgument(idx++));
+        iter->replaceAllUsesWith(func.getBody().getArgument(idx++));
     }
 
     rewriter.inlineRegionBefore(graph_func.body(), executor_graph.body(),
                                 executor_graph.body().end());
 
-    rewriter.setInsertionPointToEnd(&func.body().front());
-    rewriter.create<ReturnOp>(loc, executor_graph.getOperation()->getResults());
+    rewriter.setInsertionPointToEnd(&func.getBody().front());
+    rewriter.create<func::ReturnOp>(
+        loc, executor_graph.getOperation()->getResults());
 
     rewriter.replaceOp(graph_func.getOperation(),
                        func.getOperation()->getResults());
@@ -489,7 +490,7 @@ void LegalizeTFGToTFE::runOnOperation() {
   ModuleOp module = getOperation();
 
   DenseSet<StringRef> func_symbols;
-  for (auto &op : module.body().getOps()) {
+  for (auto &op : module.getBodyRegion().getOps()) {
     if (auto func = llvm::dyn_cast<tfg::GraphFuncOp>(op)) {
       func_symbols.insert(
           func->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
@@ -502,7 +503,7 @@ void LegalizeTFGToTFE::runOnOperation() {
   target.addLegalDialect<tf_executor::TensorFlowExecutorDialect>();
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<FuncOp>();
-  target.addLegalOp<ReturnOp>();
+  target.addLegalOp<func::ReturnOp>();
 
   RewritePatternSet patterns(&context);
   patterns.add<ConvertGraphOp>(&context);
@@ -521,7 +522,7 @@ void LegalizeTFGToTFE::runOnOperation() {
 
   // Turn the graph region into SSACFG region by applying an order to the
   // operations.
-  for (auto &op : module.body().getOps()) {
+  for (auto &op : module.getBodyRegion().getOps()) {
     for (auto &region : op.getRegions()) {
       for (auto &block : region) {
         // Split tfg.NextIteration to break the cycle.
@@ -533,7 +534,7 @@ void LegalizeTFGToTFE::runOnOperation() {
 
   // Version information is embedded in graph operation in TFG. In TFE, it's
   // embedded in the module operation.
-  for (auto &op : module.body().getOps()) {
+  for (auto &op : module.getBodyRegion().getOps()) {
     auto graph = dyn_cast<tfg::GraphOp>(op);
     if (!graph) continue;
     Builder b(&context);

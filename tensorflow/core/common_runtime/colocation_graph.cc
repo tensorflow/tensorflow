@@ -142,25 +142,6 @@ bool IsCompositeDevice(absl::string_view device_type) {
   return device_type == kCompositeDeviceType;
 }
 
-inline bool IsHostMemoryType(const FullTypeDef& t) {
-  switch (t.type_id()) {
-    case TFT_TENSOR:
-      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
-    case TFT_ARRAY:
-      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
-    case TFT_DATASET:
-      return true;
-    case TFT_MUTEX_LOCK:
-      return true;
-    case TFT_RAGGED:
-      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
-    case TFT_STRING:
-      return true;
-    default:
-      return false;
-  }
-}
-
 // TODO(mdan): This is still too coarse.
 // Host-memory constraints are specific to kernel registrations, so in theory
 // they depend on the assigned device.
@@ -173,7 +154,7 @@ bool HasHostMemoryOutType(const Node& node) {
   DCHECK(ft.type_id() == TFT_PRODUCT) << ft.DebugString();
 
   for (const auto& arg : ft.args()) {
-    if (IsHostMemoryType(arg)) {
+    if (full_type::IsHostMemoryType(arg)) {
       return true;
     }
   }

@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/hlo_module_importer.h"
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -37,7 +37,7 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
       module_(module),
       builder_(module.getContext()) {
   module.getContext()->loadDialect<mlir::arith::ArithmeticDialect>();
-  module.getContext()->loadDialect<mlir::StandardOpsDialect>();
+  module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
 }
 

@@ -351,7 +351,7 @@ bool HloOrdering::UsesBeforeValueDefinition(
           // surrounding loop and then back into the conditional parameter.
           if (!dataflow.ValueIsDefinedAt(
                   use.instruction->operand(use.operand_number), {})) {
-            for (auto value_use : value.uses()) {
+            for (auto value_use : value.GetUses()) {
               VLOG(4) << "def have use:" << value_use << "\n";
               if (value_use.instruction ==
                   value_use.instruction->parent()->root_instruction()) {
@@ -417,7 +417,7 @@ bool HloOrdering::LiveRangeStrictlyBefore(
 
   // All uses of 'a' must be before 'b' is defined.
   std::vector<const HloUse*> uses;
-  for (const HloUse& use : a.uses()) {
+  for (const HloUse& use : a.GetUses()) {
     if (dataflow.DoesNotUseOperandBuffer(a.instruction(), a.index(),
                                          use.instruction)) {
       continue;

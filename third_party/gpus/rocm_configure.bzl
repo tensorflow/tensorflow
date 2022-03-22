@@ -215,6 +215,8 @@ def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
         cmd = "%s/bin/rocm_agent_enumerator" % rocm_toolkit_path
         result = execute(repository_ctx, [bash_bin, "-c", cmd])
         targets = [target for target in result.stdout.strip().split("\n") if target != "gfx000"]
+        targets = {x: None for x in targets}
+        targets = list(targets.keys())
         amdgpu_targets_str = ",".join(targets)
     amdgpu_targets = amdgpu_targets_str.split(",")
     for amdgpu_target in amdgpu_targets:
@@ -329,7 +331,7 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
             ("amdhip64", rocm_config.rocm_toolkit_path + "/hip"),
             ("rocblas", rocm_config.rocm_toolkit_path + "/rocblas"),
             (hipfft_or_rocfft, rocm_config.rocm_toolkit_path + "/" + hipfft_or_rocfft),
-            ("hiprand", rocm_config.rocm_toolkit_path + "/hiprand"),
+            ("hiprand", rocm_config.rocm_toolkit_path),
             ("MIOpen", rocm_config.rocm_toolkit_path + "/miopen"),
             ("rccl", rocm_config.rocm_toolkit_path + "/rccl"),
             ("hipsparse", rocm_config.rocm_toolkit_path + "/hipsparse"),
@@ -339,6 +341,7 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
     ]
     if int(rocm_config.rocm_version_number) >= 40500:
         libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path + "/hipsolver")))
+        libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, "hipblas", rocm_config.rocm_toolkit_path + "/hipblas")))
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def _exec_find_rocm_config(repository_ctx, script_path):
@@ -448,6 +451,7 @@ def _create_dummy_repository(repository_ctx):
             "%{rocm_is_configured}": "False",
             "%{rocm_extra_copts}": "[]",
             "%{rocm_gpu_architectures}": "[]",
+            "%{rocm_version_number}": "0",
         },
     )
     _tpl(
@@ -456,6 +460,7 @@ def _create_dummy_repository(repository_ctx):
         {
             "%{hip_lib}": _lib_name("hip"),
             "%{rocblas_lib}": _lib_name("rocblas"),
+            "%{hipblas_lib}": _lib_name("hipblas"),
             "%{miopen_lib}": _lib_name("miopen"),
             "%{rccl_lib}": _lib_name("rccl"),
             "%{hipfft_or_rocfft}": "hipfft",
@@ -610,6 +615,14 @@ def _create_local_rocm_repository(repository_ctx):
                 out_dir = "rocm/include/hipsolver",
             ),
         )
+        copy_rules.append(
+            make_copy_dir_rule(
+                repository_ctx,
+                name = "hipblas-include",
+                src_dir = rocm_toolkit_path + "/hipblas/include",
+                out_dir = "rocm/include/hipblas",
+            ),
+        )
 
     # explicitly copy (into the local_config_rocm repo) the $ROCM_PATH/hiprand/include and
     # $ROCM_PATH/rocrand/include dirs, only once the softlink to them in $ROCM_PATH/include
@@ -680,6 +693,7 @@ def _create_local_rocm_repository(repository_ctx):
                 rocm_config.amdgpu_targets,
             ),
             "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
+            "%{rocm_version_number}": str(rocm_version_number),
         },
     )
 
@@ -708,6 +722,8 @@ def _create_local_rocm_repository(repository_ctx):
     if rocm_version_number >= 40500:
         repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
         repository_dict["%{rocm_headers}"] += ',\n":hipsolver-include"'
+        repository_dict["%{hipblas_lib}"] = rocm_libs["hipblas"].file_name
+        repository_dict["%{rocm_headers}"] += ',\n":hipblas-include"'
 
     repository_ctx.template(
         "rocm/BUILD",

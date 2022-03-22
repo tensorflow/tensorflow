@@ -91,6 +91,22 @@ gentbl_cc_library(
             ],
             "dialect.cc.inc",
         ),
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect",
+                "tfg",
+            ],
+            "attributes.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect",
+                "tfg",
+            ],
+            "attributes.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ops.td",
@@ -125,6 +141,16 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tf_op_registry",
+    srcs = ["tf_op_registry.cc"],
+    hdrs = ["tf_op_registry.h"],
+    deps = [
+        ":Dialect",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -203,6 +229,35 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+    ],
+)
+
+tf_cc_test(
+    name = "interfaces_test",
+    size = "small",
+    srcs = ["interfaces_test.cc"],
+    deps = [
+        ":Dialect",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_op_registry_test",
+    size = "small",
+    srcs = ["tf_op_registry_test.cc"],
+    deps = [
+        ":Dialect",
+        ":tf_op_registry",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
     ],

@@ -19,14 +19,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+
 #include "tensorflow/compiler/tf2tensorrt/convert/trt_parameters.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-
 namespace tensorflow {
+
+struct SavedModelBundle;
+
 namespace tensorrt {
 
 struct TfTrtConversionParams {
@@ -104,6 +107,12 @@ StatusOr<GraphDef> ConvertAndBuild(
     const std::vector<string>& output_names,
     const std::vector<std::vector<tensorflow::Tensor>>& inputs,
     const TfTrtConversionParams& conv_params);
+
+StatusOr<GraphDef> ConvertAndBuild(
+    SavedModelBundle* bundle,
+    const std::string& signature_key = "serving_default",
+    const std::vector<std::vector<tensorflow::Tensor>>& inputs = {},
+    const TfTrtConversionParams& conversion_params = TfTrtConversionParams());
 
 }  // namespace tensorrt
 }  // namespace tensorflow

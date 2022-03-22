@@ -58,11 +58,10 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
 
   Stream stream(stream_exec);
   stream.Init();
-  RedzoneAllocator allocator(
-      &stream, &se_allocator, opts,
-      /*memory_limit=*/RedzoneAllocator::kDefaultMemoryLimit,
-      /*redzone_size=*/kRedzoneSize,
-      /*redzone_pattern=*/kRedzonePattern);
+  RedzoneAllocator allocator(&stream, &se_allocator, opts,
+                             /*memory_limit=*/(1LL << 32),
+                             /*redzone_size=*/kRedzoneSize,
+                             /*redzone_pattern=*/kRedzonePattern);
   TF_ASSERT_OK_AND_ASSIGN(DeviceMemory<uint8> buf,
                           allocator.AllocateBytes(/*byte_size=*/kAllocSize));
   EXPECT_REDZONE_OK(allocator.CheckRedzones());
@@ -132,11 +131,10 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
   Stream stream(stream_exec);
   stream.Init();
-  RedzoneAllocator allocator(
-      &stream, &se_allocator, opts,
-      /*memory_limit=*/RedzoneAllocator::kDefaultMemoryLimit,
-      /*redzone_size=*/kRedzoneSize,
-      /*redzone_pattern=*/-1);
+  RedzoneAllocator allocator(&stream, &se_allocator, opts,
+                             /*memory_limit=*/(1LL << 32),
+                             /*redzone_size=*/kRedzoneSize,
+                             /*redzone_pattern=*/-1);
   (void)allocator.AllocateBytes(/*byte_size=*/1);
   EXPECT_REDZONE_OK(allocator.CheckRedzones());
 }

@@ -188,12 +188,13 @@ def _merge_partition_lists(partition_lists):
   Returns:
     A list of RowPartitions, where `result[i]` is formed by merging
     `partition_lists[j][i]` for all `j`, using
-    `RowPartition.merge_precomputed_encodings`.
+    `RowPartition._merge_precomputed_encodings`.
   """
   dst = list(partition_lists[0])
   for src in partition_lists[1:]:
     if len(src) != len(dst):
       raise ValueError("All ragged inputs must have the same ragged_rank.")
     for i in range(len(dst)):
-      dst[i] = dst[i].merge_precomputed_encodings(src[i])
+      # pylint: disable=protected-access
+      dst[i] = dst[i]._merge_precomputed_encodings(src[i])
   return dst

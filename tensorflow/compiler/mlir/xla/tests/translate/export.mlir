@@ -560,7 +560,7 @@ func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> 
 // CHECK:  HloModule
 func @main(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
 
-  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
+  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = #mhlo<"dequantize_mode MIN_COMBINED">, transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
   return %0 : tensor<16x64xbf16>
 }
 
@@ -579,7 +579,7 @@ func @main(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
 // CHECK:  HloModule
 func @main(%arg: tensor<16x16xi32>) -> tensor<16x32xbf16> {
 
-  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = false, is_16bits = true} : (tensor<16x16xi32>) -> tensor<16x32xbf16>
+  %0 = "mhlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = #mhlo<"dequantize_mode MIN_COMBINED">, transpose_output = false, is_16bits = true} : (tensor<16x16xi32>) -> tensor<16x32xbf16>
   return %0 : tensor<16x32xbf16>
 }
 
@@ -598,7 +598,7 @@ func @main(%arg: tensor<16x16xi32>) -> tensor<16x32xbf16> {
 // Test dot i8xi8 -> i64
 
 func @main(%arg0: tensor<3xi8>, %arg1: tensor<3xi8>) -> tensor<i64> {
-  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<3xi8>, tensor<3xi8>) -> tensor<i64>
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<3xi8>, tensor<3xi8>) -> tensor<i64>
   return %0 : tensor<i64>
 }
 
@@ -650,7 +650,7 @@ func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi32> {
 
 // CHECK:  HloModule
 func @main(%arg0: tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>> {
-  %0 = "mhlo.fft"(%arg0) {fft_length = dense<9> : tensor<1xi64>, fft_type = "RFFT"} : (tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>>
+  %0 = "mhlo.fft"(%arg0) {fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<"fft_type RFFT">} : (tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>>
   return %0 : tensor<3x5xcomplex<f32>>
 }
 
@@ -1078,7 +1078,7 @@ func @main(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<10x12x12x64xf32>) -> te
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):	
-    %2 = "mhlo.compare"(%arg3, %arg4) {compare_type = "TOTALORDER", comparison_direction = "GE"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %2 = "mhlo.compare"(%arg3, %arg4) {compare_type = #mhlo<"comparison_type TOTALORDER">, comparison_direction = #mhlo<"comparison_direction GE">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%2) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):	
@@ -1239,7 +1239,7 @@ func @main(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
 
 // CHECK:  HloModule
 func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<4x3xf32>) -> tensor<4x3xf32> {
-  %0 = "mhlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = "NO_TRANSPOSE", unit_diagonal = true} : (tensor<4x4xf32>, tensor<4x3xf32>) -> tensor<4x3xf32>
+  %0 = "mhlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = #mhlo<"transpose NO_TRANSPOSE">, unit_diagonal = true} : (tensor<4x4xf32>, tensor<4x3xf32>) -> tensor<4x3xf32>
   return %0 : tensor<4x3xf32>
 }
 
@@ -1299,7 +1299,7 @@ func @main(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
 func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
   %0:2 = "mhlo.sort"(%input0, %input1) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
-    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type FLOAT">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   return
@@ -1318,7 +1318,7 @@ func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 func @main(%input0: tensor<16x16xf32>) {
   %0 = "mhlo.sort"(%input0) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
-    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = "FLOAT", comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type FLOAT">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>) -> (tensor<16x16xf32>)
   return
@@ -1529,7 +1529,7 @@ func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> tensor<3x4xf32> {
 // CHECK: %[[ARG0:.*]] = f32[4,4] parameter(0)
 // CHECK: %[[ARG1:.*]] = f32[3,4] parameter(1)
 // CHECK: ROOT %[[RESULT:.*]] = f32[3,4] triangular-solve(f32[4,4] %[[ARG0]], f32[3,4] %[[ARG1]]), lower=true, transpose_a=NO_TRANSPOSE
-  %0 = "mhlo.triangular_solve"(%arg0, %arg1) {left_side = false, lower = true, transpose_a = "NO_TRANSPOSE", unit_diagonal = false} : (tensor<4x4xf32>, tensor<3x4xf32>) -> tensor<3x4xf32>
+  %0 = "mhlo.triangular_solve"(%arg0, %arg1) {left_side = false, lower = true, transpose_a = #mhlo<"transpose NO_TRANSPOSE">, unit_diagonal = false} : (tensor<4x4xf32>, tensor<3x4xf32>) -> tensor<3x4xf32>
   return %0: tensor<3x4xf32>
 }
 

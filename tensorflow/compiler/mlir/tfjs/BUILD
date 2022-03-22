@@ -88,9 +88,9 @@ cc_library(
         ":tfjs_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffects",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -111,7 +111,7 @@ gentbl_cc_library(
     deps = [
         ":tfjs_ops_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
-        "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:FuncTdFiles",
     ],
 )
 
@@ -131,9 +131,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -267,7 +267,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:StandardOps",
     ],
 )
