@@ -59,18 +59,6 @@ class LogicalExpressionTest(converter_testing.TestCase):
     self.assertTrue(self.evaluate(tr(constant_op.constant(1), 2, 2, 1)))
     self.assertFalse(self.evaluate(tr(constant_op.constant(1), 2, 2, 3)))
 
-  def test_comparison_repeated(self):
-
-    def f(a, b, c):
-      if a < b < c:
-        return True
-      else:
-        return False
-
-    tr = self.transform(f, logical_expressions)
-
-    self.assertTrue(self.evaluate(tr(0, constant_op.constant(1), 2)))
-    self.assertFalse(self.evaluate(tr(0, constant_op.constant(1), 1)))
 
   def test_default_ops(self):
 
