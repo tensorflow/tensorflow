@@ -133,7 +133,7 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
     int64_t slice_size = slice_sizes.getValues<IntegerAttr>()[i].getInt();
     slice_limits.push_back(start_index + slice_size);
   }
-  return hlo::GetI64ElementsAttr(slice_limits, builder);
+  return builder->getI64TensorAttr(slice_limits);
 }
 
 /// Replaces the given op with the contents of the given single-block region,
@@ -994,9 +994,9 @@ struct GatherSlice : public OpRewritePattern<GatherOp> {
     auto slice_type = RankedTensorType::get(slice_shape, element_type);
     Value result = rewriter.create<SliceOp>(
         gather.getLoc(), slice_type, gather.getOperand(0),
-        hlo::GetI64ElementsAttr(slice_start, &rewriter),
-        hlo::GetI64ElementsAttr(slice_end, &rewriter),
-        hlo::GetI64ElementsAttr(slice_stride, &rewriter));
+        rewriter.getI64TensorAttr(slice_start),
+        rewriter.getI64TensorAttr(slice_end),
+        rewriter.getI64TensorAttr(slice_stride));
 
     auto collapsed_slice_dims = dnums.getCollapsedSliceDims();
     if (!collapsed_slice_dims.empty()) {
@@ -1504,9 +1504,9 @@ struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
 
     auto sliced_shape = rewriter.create<SliceOp>(
         iota.getLoc(), converted_shape,
-        hlo::GetI64ElementsAttr(iota_dimension_int, &rewriter),
-        hlo::GetI64ElementsAttr(iota_dimension_int + 1, &rewriter),
-        hlo::GetI64ElementsAttr(1, &rewriter));
+        rewriter.getI64TensorAttr(iota_dimension_int),
+        rewriter.getI64TensorAttr(iota_dimension_int + 1),
+        rewriter.getI64TensorAttr(1));
 
     auto converted_sliced_shape = rewriter.create<arith::IndexCastOp>(
         iota.getLoc(),
@@ -3067,12 +3067,11 @@ struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
     // pack them into a single tensor.
     auto loc = dynamic_slice.getLoc();
     int64_t input_rank = input_tensor.getRank();
-    auto slice_start_indices =
-        hlo::GetI64ElementsAttr(temp_start_indices, &rewriter);
+    auto slice_start_indices = rewriter.getI64TensorAttr(temp_start_indices);
     DenseIntElementsAttr slice_limits = BuildSliceLimits(
         slice_start_indices, dynamic_slice.slice_sizes(), &rewriter);
-    DenseIntElementsAttr slice_strides = hlo::GetI64ElementsAttr(
-        SmallVector<int64_t, 4>(input_rank, 1), &rewriter);
+    DenseIntElementsAttr slice_strides =
+        rewriter.getI64TensorAttr(SmallVector<int64_t, 4>(input_rank, 1));
     auto result = rewriter.create<SliceOp>(loc, input, slice_start_indices,
                                            slice_limits, slice_strides);
     rewriter.replaceOp(dynamic_slice, {result});
@@ -3185,11 +3184,10 @@ struct RealDynamicSliceIsStatic : public OpRewritePattern<RealDynamicSliceOp> {
     }
 
     DenseIntElementsAttr slice_start_indices =
-        hlo::GetI64ElementsAttr(temp_start_indices, &rewriter);
+        rewriter.getI64TensorAttr(temp_start_indices);
     DenseIntElementsAttr slice_limit_indices =
-        hlo::GetI64ElementsAttr(temp_limit_indices, &rewriter);
-    DenseIntElementsAttr slice_strides =
-        hlo::GetI64ElementsAttr(temp_stride, &rewriter);
+        rewriter.getI64TensorAttr(temp_limit_indices);
+    DenseIntElementsAttr slice_strides = rewriter.getI64TensorAttr(temp_stride);
     auto result = rewriter.create<SliceOp>(loc, input, slice_start_indices,
                                            slice_limit_indices, slice_strides);
     rewriter.replaceOp(real_dynamic_slice, {result});
@@ -3969,8 +3967,7 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
         parser.parseKeyword("reducer"))
       return failure();
     OpBuilder builder(parser.getBuilder().getContext());
-    result.addAttribute("dimensions",
-                        hlo::GetI64ElementsAttr(dimensions, &builder));
+    result.addAttribute("dimensions", builder.getI64TensorAttr(dimensions));
 
     // Parse the "reducer" region now.
     SmallVector<OpAsmParser::OperandType, 2> reducerOperands;
@@ -4106,8 +4103,7 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
   // dimension attribute.
   result.addTypes(reduceOpFntype.getResults());
   result.location = innerOp->getLoc();
-  result.addAttribute("dimensions",
-                      hlo::GetI64ElementsAttr(dimensions, &builder));
+  result.addAttribute("dimensions", builder.getI64TensorAttr(dimensions));
 
   return success();
 }
