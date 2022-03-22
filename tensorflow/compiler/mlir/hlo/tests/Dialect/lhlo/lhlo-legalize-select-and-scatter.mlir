@@ -31,7 +31,7 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
        memref<f32>, memref<112x112xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }
-// CHECK-LABEL: builtin.func
+// CHECK-LABEL: func.func
 // CHECK: ^bb0(%[[ARG_BUF:.*]]: memref<112x112xf32>, %[[SRC_BUF:.*]]: memref<56x56xf32>, %[[INIT_BUF:.*]]: memref<f32>, %[[RESULT_BUF:.*]]: memref<112x112xf32>):
 
 // Constants.

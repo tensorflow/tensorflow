@@ -31,7 +31,7 @@ using mlir::linalg::CodegenStrategy;
 
 struct LowerTransposePass : public LowerTransposeBase<LowerTransposePass> {
   void runOnOperation() override {
-    mlir::OpPassManager dynamic_pm("builtin.func");
+    mlir::OpPassManager dynamic_pm("func.func");
     auto avx_lowering_options =
         mlir::x86vector::avx2::LoweringOptions().setTransposeOptions(
             mlir::x86vector::avx2::TransposeLoweringOptions()

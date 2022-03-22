@@ -218,7 +218,7 @@ void ModifyIONodesPass::runOnOperation() {
   }
 
   OpBuilder builder(func);
-  FunctionType func_type = func.getType();
+  FunctionType func_type = func.getFunctionType();
   llvm::SmallVector<Type, 4> new_input_types(func_type.getInputs().begin(),
                                              func_type.getInputs().end());
   llvm::SmallVector<Type, 4> new_output_types(func_type.getResults().begin(),

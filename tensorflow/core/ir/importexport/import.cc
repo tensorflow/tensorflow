@@ -929,8 +929,8 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   }
 
   func_op->setAttrs(attrs);
-  func_op->setAttr(
-      "type", TypeAttr::get(builder.getFunctionType(arg_types, ret_types)));
+  func_op->setAttr("function_type", TypeAttr::get(builder.getFunctionType(
+                                        arg_types, ret_types)));
 
   return func_op;
 }

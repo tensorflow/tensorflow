@@ -123,6 +123,7 @@ cc_library(
         ":tf_jitrt_test_passes_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,

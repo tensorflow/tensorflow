@@ -3035,7 +3035,7 @@ func @error_batch_norm_grad(%input: tensor<?x2x2x2xf32>, %scale: tensor<2xf32>, 
 // -----
 // Test rng_get_and_update_state_op
 // CHECK-LABEL: xla.rng_get_and_update_state
-builtin.func @xla.rng_get_and_update_state() -> tensor<2xui64> {
+func.func @xla.rng_get_and_update_state() -> tensor<2xui64> {
   %result = mhlo.xla.rng_get_and_update_state {delta = 1 : i64}
   return %result : tensor<2xui64>
 }

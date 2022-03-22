@@ -859,7 +859,7 @@ LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
   // Now use the filtered original operands, which will be replaced by
   // AddLoadsStoresOutsideControlFlowOp().
   auto new_while = builder.create<TF::WhileOp>(
-      while_op.getLoc(), body.getType().getResults(),
+      while_op.getLoc(), body.getFunctionType().getResults(),
       FilterRange<Value, OperandRange>(while_op.getOperands(),
                                        resource_arg_uses),
       while_op->getAttrs());
@@ -964,9 +964,9 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
       FilterRange<Value, OperandRange>(op.input(), resource_arg_uses);
   new_operands.insert(new_operands.begin(), op.getOperand(0));
   FuncOp first_func = branches.front();
-  auto new_op =
-      builder.create<CaseOrIfOp>(op.getLoc(), first_func.getType().getResults(),
-                                 new_operands, op->getAttrs());
+  auto new_op = builder.create<CaseOrIfOp>(
+      op.getLoc(), first_func.getFunctionType().getResults(), new_operands,
+      op->getAttrs());
   // Prepare for AddLoadsStoresOutsideControlFlowOp()
   llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
       arg_data_type_and_updated_output_index;
@@ -1084,9 +1084,9 @@ LogicalResult HandlePartitionedCallOpCallee(
   auto new_return =
       builder.create<func::ReturnOp>(old_return->getLoc(), old_and_new_retvals);
   old_return->erase();
-  callee.setType(
-      FunctionType::get(callee.getContext(), callee.getType().getInputs(),
-                        llvm::to_vector<4>(new_return.getOperandTypes())));
+  callee.setType(FunctionType::get(
+      callee.getContext(), callee.getFunctionType().getInputs(),
+      llvm::to_vector<4>(new_return.getOperandTypes())));
   return success();
 }
 
@@ -1109,8 +1109,9 @@ void UpdatePartitionedCallOpWithNewCallee(
   auto new_operands =
       FilterRange<Value, OperandRange>(call_op.args(), lifting_info.use_info);
   auto new_call = builder.create<CallOpType>(
-      call_op.getLoc(), lifting_info.lifted_callee.getType().getResults(),
-      new_operands, call_op->getAttrs());
+      call_op.getLoc(),
+      lifting_info.lifted_callee.getFunctionType().getResults(), new_operands,
+      call_op->getAttrs());
   new_call->setAttr("f",
                     SymbolRefAttr::get(builder.getContext(),
                                        lifting_info.lifted_callee.getName()));

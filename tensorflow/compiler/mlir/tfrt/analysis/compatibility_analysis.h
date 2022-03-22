@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_ANALYSIS_COMPATIBILITY_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_ANALYSIS_COMPATIBILITY_ANALYSIS_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/analysis/analysis.pb.h"
 

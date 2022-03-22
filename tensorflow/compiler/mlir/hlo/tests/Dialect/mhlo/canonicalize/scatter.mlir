@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='builtin.func(canonicalize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='func.func(canonicalize)' | FileCheck %s
 
 // Folding this case would explode the IR
 func @scatter_fold_explosion() ->  tensor<512x1x6400x6400xf32> {

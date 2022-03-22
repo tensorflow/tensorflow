@@ -3,7 +3,7 @@
 #map0 = affine_map<(d0)[s0] -> (d0 * s0)>
 #map1 = affine_map<(d0) -> (d0)>
 builtin.module {
-  builtin.func @Copy(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
+  func.func @Copy(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %size = memref.dim %rhs, %c0 : memref<?xi16>
@@ -45,7 +45,7 @@ builtin.module {
 #map0 = affine_map<(d0)[s0] -> (d0 * s0)>
 #map1 = affine_map<(d0) -> (d0)>
 builtin.module {
-  builtin.func @CopyWithWrite(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
+  func.func @CopyWithWrite(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %size = memref.dim %rhs, %c0 : memref<?xi16>
@@ -87,7 +87,7 @@ builtin.module {
 #map0 = affine_map<(d0)[s0] -> (d0 * s0)>
 #map1 = affine_map<(d0) -> (d0)>
 builtin.module {
-  builtin.func @CopyWithMutation(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
+  func.func @CopyWithMutation(%lhs: memref<?xi16>, %rhs: memref<?xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c42 = arith.constant 42 : i16

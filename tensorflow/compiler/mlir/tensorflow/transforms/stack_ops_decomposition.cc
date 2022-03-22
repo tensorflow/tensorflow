@@ -92,7 +92,7 @@ void ModifyFunctionSignature(
     llvm::function_ref<llvm::Optional<Type>(int64_t)> arg_to_stack_type,
     llvm::function_ref<void(ArrayRef<BlockArgument>)> handle_new_size_vars =
         nullptr) {
-  auto new_input_types = llvm::to_vector<8>(func.getType().getInputs());
+  auto new_input_types = llvm::to_vector<8>(func.getFunctionType().getInputs());
   auto size_var_type = GetSizeVarType(OpBuilder(func));
   int64_t original_arg_count = new_input_types.size();
   for (int64_t i = 0; i < original_arg_count; ++i) {
@@ -175,9 +175,9 @@ LogicalResult HandleWhileOp(
     if (it == data_var_to_size_var.end()) continue;
     new_while_operands.push_back(it->getSecond());
   }
-  auto new_while =
-      builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  new_while_operands, while_op->getAttrs());
+  auto new_while = builder.create<TF::WhileOp>(
+      while_op.getLoc(), body.getFunctionType().getInputs(), new_while_operands,
+      while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     if (!getElementTypeOrSelf(while_op.getOperand(i).getType())
              .isa<TF::ResourceType>()) {
@@ -229,7 +229,7 @@ LogicalResult HandleIfOp(
     new_if_operands.push_back(it->getSecond());
   }
   auto new_if = OpBuilder(if_op).create<TF::IfOp>(
-      if_op.getLoc(), then_func.getType().getResults(), new_if_operands,
+      if_op.getLoc(), then_func.getFunctionType().getResults(), new_if_operands,
       if_op->getAttrs());
   for (auto result : if_op.getResults()) {
     if (!getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
@@ -278,7 +278,7 @@ LogicalResult HandlePartitionedCallOp(
     }
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
-        call.getLoc(), info.decomposed_callee.getType().getResults(),
+        call.getLoc(), info.decomposed_callee.getFunctionType().getResults(),
         new_operands, call->getAttrs());
     new_call->setAttr(
         "f", SymbolRefAttr::get(

@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_TFTEXT_UTILS_H_
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project

@@ -571,7 +571,7 @@ LogicalResult ApplyPatternsWithShapeResolution(
     if (parent != func) return;
 
     rewriter.setInsertionPoint(op);
-    FunctionType func_ty = func.getType();
+    FunctionType func_ty = func.getFunctionType();
     auto result_tys = func_ty.getResults();
 
     bool cast_added = false;

@@ -1,4 +1,4 @@
-builtin.func @test(%V__0 : tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<1x1x1xf32> }, %V__1 : tensor<?x?x?x?xf32> { python_test_attrs.static_type = tensor<1x1x1x1xf32> }) -> tensor<?x?x?xf32> {
+func.func @test(%V__0 : tensor<?x?x?xf32> { python_test_attrs.static_type = tensor<1x1x1xf32> }, %V__1 : tensor<?x?x?x?xf32> { python_test_attrs.static_type = tensor<1x1x1x1xf32> }) -> tensor<?x?x?xf32> {
   %0 = "tf.Const"() { value = dense<[1, 1, 1]> : tensor<3xi32>, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : () -> tensor<3xi32>
   %1 = "tf.Reshape"(%V__1, %0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
   %2 = "tf.Polygamma"(%V__0, %1) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>

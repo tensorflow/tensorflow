@@ -529,6 +529,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
+        "@llvm-project//mlir:FuncDialect",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -557,6 +558,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -577,6 +579,7 @@ cc_library(
     hdrs = ["analysis/tensor_array_side_effect_analysis.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -586,6 +589,7 @@ cc_library(
     srcs = ["analysis/test_tensor_array_side_effect_analysis.cc"],
     deps = [
         ":tensor_array_side_effect_analysis",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
@@ -639,6 +643,7 @@ cc_library(
     hdrs = ["transforms/set_shape_invariant_in_while_ops.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],

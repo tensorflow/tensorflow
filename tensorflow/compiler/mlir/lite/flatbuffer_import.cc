@@ -1419,11 +1419,11 @@ void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
   OpBuilder op_builder{region};
   region.push_back(new mlir::Block());
   Location loc = region.getLoc();
-  auto inputs = func.getType().getInputs();
+  auto inputs = func.getFunctionType().getInputs();
   region.addArguments(inputs, mlir::SmallVector<Location>(inputs.size(), loc));
   op_builder.setInsertionPointToStart(&region.front());
   auto call_op = op_builder.create<mlir::func::CallOp>(
-      loc, func.getType().getResults(), func.getSymName(),
+      loc, func.getFunctionType().getResults(), func.getSymName(),
       region.getArguments());
   op_builder.create<mlir::TFL::YieldOp>(loc, call_op.getResults());
 }

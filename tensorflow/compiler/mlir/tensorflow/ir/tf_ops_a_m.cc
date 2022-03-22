@@ -837,7 +837,7 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
              << "expects " << branch_name(branch.index()) << " ("
              << branch.value() << ") to point to a defined function";
 
-    FunctionType branch_type = branch_func.getType();
+    FunctionType branch_type = branch_func.getFunctionType();
     std::string desc = branch_name(branch.index()) + " input";
     TypeRangeWithDesc branch_input{branch_type.getInputs(), desc};
     if (failed(VerifyTypeRangesAreCompatible(op, branch_input, input)))

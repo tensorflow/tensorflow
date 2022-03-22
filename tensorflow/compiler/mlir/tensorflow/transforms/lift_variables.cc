@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
@@ -214,7 +215,7 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
     // Update the function type.
     func.setType(mlir::FunctionType::get(module.getContext(),
                                          func.getBody().getArgumentTypes(),
-                                         func.getType().getResults()));
+                                         func.getFunctionType().getResults()));
   }
   return success();
 }

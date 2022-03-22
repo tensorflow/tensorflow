@@ -835,7 +835,7 @@ struct ConvolutionRewritePattern
     Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
     Value handle = rewriter.create<tfrt::gpu::DnnCreateOp>(loc, context);
     auto once_op = rewriter.create<tfrt::compiler::OnceOp>(
-        loc, conv_plan_func.getType().getResults(), handle,
+        loc, conv_plan_func.getFunctionType().getResults(), handle,
         conv_plan_func.getName());
 
     chain = CreateRunConvolutionOp(adaptor, loc, handle, once_op.getResult(0),

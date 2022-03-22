@@ -315,7 +315,7 @@ struct DynamicBroadcastInDimOpInterface
 
 struct HloLegalizeToMemrefPass
     : public HloLegalizeToMemrefPassBase<HloLegalizeToMemrefPass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
+  void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<bufferization::BufferizationDialect, memref::MemRefDialect,
                     mhlo::MhloDialect, tensor::TensorDialect>();
     registerBufferizableOpInterfaceExternalModels(registry);
@@ -345,9 +345,12 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass() {
 
 void mlir::mhlo::registerBufferizableOpInterfaceExternalModels(
     mlir::DialectRegistry &registry) {
-  registry.addOpInterface<mlir::mhlo::ReshapeOp, ReshapeOpInterface>();
-  registry.addOpInterface<mlir::mhlo::DynamicReshapeOp,
-                          DynamicReshapeOpInterface>();
-  registry.addOpInterface<mlir::mhlo::DynamicBroadcastInDimOp,
-                          DynamicBroadcastInDimOpInterface>();
+  registry.addExtension(+[](MLIRContext *ctx,
+                            mlir::mhlo::MhloDialect *dialect) {
+    mlir::mhlo::ReshapeOp::attachInterface<ReshapeOpInterface>(*ctx);
+    mlir::mhlo::DynamicReshapeOp::attachInterface<DynamicReshapeOpInterface>(
+        *ctx);
+    mlir::mhlo::DynamicBroadcastInDimOp::attachInterface<
+        DynamicBroadcastInDimOpInterface>(*ctx);
+  });
 }

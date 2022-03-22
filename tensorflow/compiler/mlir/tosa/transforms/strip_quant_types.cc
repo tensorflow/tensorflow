@@ -132,10 +132,10 @@ void StripQuantTypes::runOnOperation() {
   // Operations are legal if they don't contain any illegal type.
   target.markUnknownOpDynamicallyLegal([](Operation* op) {
     if (auto funcOp = dyn_cast<FuncOp>(op)) {
-      for (Type type : funcOp.getType().getInputs()) {
+      for (Type type : funcOp.getFunctionType().getInputs()) {
         if (isIllegalType(type)) return false;
       }
-      for (Type type : funcOp.getType().getResults()) {
+      for (Type type : funcOp.getFunctionType().getResults()) {
         if (isIllegalType(type)) return false;
       }
     }
