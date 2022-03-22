@@ -143,6 +143,8 @@ def _sorted(dict_):
     raise TypeError("nest only supports dicts with sortable keys.")
 
 
+# TODO(b/225045380): Move utils like these to a "leaf" library, since they are
+# used in other places like TraceType.
 def is_namedtuple(instance, strict=False):
   """Returns True iff `instance` is a `namedtuple`.
 

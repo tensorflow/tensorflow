@@ -15,8 +15,8 @@
 
 """TraceType implementations for common Python types."""
 
+from typing import Any, Hashable, Optional, Sequence, Type
 from typing import Dict as PythonDict
-from typing import Hashable, Optional, Sequence, Type, Any
 from typing import Tuple as PythonTuple
 
 from tensorflow.python.types import trace
@@ -33,7 +33,7 @@ class Generic(trace.TraceType):
     return self == other
 
   def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional[trace.TraceType]:
+      self, types: Sequence[trace.TraceType]) -> Optional["Generic"]:
     return self if all(self == other for other in types) else None
 
   def _placeholder_value(self) -> Any:
@@ -85,99 +85,142 @@ class OrderedCollection(trace.TraceType):
   """Represents an ordered collection of TraceType objects.
 
   Attributes:
+    collection_type: Python type for the collection (list, tuple etc.)
     components: A corresponding sequence of TraceTypes to the values in the
       collection.
   """
 
-  def __init__(self, *components: trace.TraceType):
+  def __init__(self, collection_type: Type[Any],
+               components: PythonTuple[trace.TraceType]):
+    self.collection_type = collection_type
     self.components = components
 
-  def _has_same_structure(self, other):
-    if not isinstance(other, type(self)):
-      return False
+  def _shallow_equal(self, other):
+    return (isinstance(other, OrderedCollection) and
+            self.collection_type == other.collection_type and
+            len(self.components) == len(other.components))
 
-    if len(self.components) != len(other.components):
-      return False
-
-    return True
-
-  def is_subtype_of(self, other: trace.TraceType) -> bool:
-    """See base class."""
-    if not self._has_same_structure(other):
-      return False
-
-    if not all([
-        component.is_subtype_of(other.components[i])
-        for i, component in enumerate(self.components)
-    ]):
-      return False
-
-    return True
-
-  def most_specific_common_supertype(self, types: Sequence[trace.TraceType]):
-    """See base class."""
-    if not all(self._has_same_structure(other) for other in types):
-      return None
-
+  def _supertype_components(
+      self, others: Sequence["OrderedCollection"]
+  ) -> Optional[Sequence[trace.TraceType]]:
+    """Helper that generates a list of per-component supertypes or None."""
     new_components = []
     for i, component in enumerate(self.components):
       common = component.most_specific_common_supertype(
-          [other.components[i] for other in types])
+          [other.components[i] for other in others])
       if common is None:
         return None
       else:
         new_components.append(common)
+    return new_components
 
-    return type(self)(*new_components)
+  def is_subtype_of(self, other: trace.TraceType) -> bool:
+    """See base class."""
+    if not self._shallow_equal(other):
+      return False
+
+    return all(
+        self_component.is_subtype_of(other_component) for self_component,
+        other_component in zip(self.components, other.components))
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
       return NotImplemented
 
-    if not self._has_same_structure(other):
+    if not self._shallow_equal(other):
       return False
 
     return self.components == other.components
 
   def __hash__(self) -> int:
-    return hash(self.components)
+    return hash((self.collection_type, self.components))
 
   def __repr__(self):
-    return f"{self.__class__.__name__}(components={self.components!r})"
+    return (f"{self.__class__.__name__}(collection_type="
+            f"{self.collection_type!r}, components={self.components!r})")
 
 
 class List(OrderedCollection):
+  """Represents a list of TraceType objects."""
+
+  def __init__(self, *components: trace.TraceType):
+    super().__init__(list, components)
+
+  def most_specific_common_supertype(
+      self, types: Sequence[trace.TraceType]) -> Optional["List"]:
+    """See base class."""
+    if not all(self._shallow_equal(other) for other in types):
+      return None
+
+    new_components = self._supertype_components(types)
+
+    return None if new_components is None else List(*new_components)
 
   def _placeholder_value(self) -> Any:
-    return [
+    components = [
         component._placeholder_value()  # pylint: disable=protected-access
         for component in self.components
     ]
+    return list(components)
 
 
 class Tuple(OrderedCollection):
+  """Represents a tuple of TraceType objects."""
+
+  def __init__(self, *components: trace.TraceType):
+    super().__init__(tuple, components)
+
+  def most_specific_common_supertype(
+      self, types: Sequence[trace.TraceType]) -> Optional["Tuple"]:
+    """See base class."""
+    if not all(self._shallow_equal(other) for other in types):
+      return None
+
+    new_components = self._supertype_components(types)
+
+    return None if new_components is None else Tuple(*new_components)
 
   def _placeholder_value(self) -> Any:
-    return tuple(component._placeholder_value()  # pylint: disable=protected-access
-                 for component in self.components)
+    components = [
+        component._placeholder_value()  # pylint: disable=protected-access
+        for component in self.components
+    ]
+    return tuple(components)
 
 
-class Attrs(OrderedCollection):
+class NamedTuple(OrderedCollection):
+  """Represents a NamedTuple of TraceType objects."""
+
+  def __init__(self, collection_type: Type[object],
+               attributes: PythonTuple[trace.TraceType]):
+    super().__init__(collection_type, attributes)
+
+  def most_specific_common_supertype(
+      self, types: Sequence[trace.TraceType]) -> Optional["NamedTuple"]:
+    """See base class."""
+    if not all(self._shallow_equal(other) for other in types):
+      return None
+
+    new_components = self._supertype_components(types)
+
+    return None if new_components is None else type(self)(self.collection_type,
+                                                          tuple(new_components))
+
+  def _placeholder_value(self) -> Any:
+    components = [
+        component._placeholder_value()  # pylint: disable=protected-access
+        for component in self.components
+    ]
+    return self.collection_type(*components)
+
+
+class Attrs(NamedTuple):
   """Represents a class annotated by attr.s.
 
   Each attr.s class has a fixed, ordered set of attributes. Therefore, we only
   need to consider the class type and the underlying attributes. Extra
   metadata including attribute names can be ignored.
   """
-
-  def __init__(self, classtype: Type[object],
-               attributes: PythonTuple[trace.TraceType]):
-    super().__init__(Generic(classtype), *attributes)
-
-  def _placeholder_value(self) -> Any:
-    attrs_class = self.components[0]._placeholder_value()  # pylint: disable=protected-access
-    return attrs_class(*(component._placeholder_value()  # pylint: disable=protected-access
-                         for component in self.components[1:]))
 
 
 class Dict(trace.TraceType):
@@ -209,7 +252,8 @@ class Dict(trace.TraceType):
     return all(self.mapping[key].is_subtype_of(other.mapping[key])
                for key in self.mapping)
 
-  def most_specific_common_supertype(self, types: Sequence[trace.TraceType]):
+  def most_specific_common_supertype(
+      self, types: Sequence[trace.TraceType]) -> Optional["Dict"]:
     """See base class."""
     if not all(self._has_same_structure(other) for other in types):
       return None
@@ -266,7 +310,7 @@ class Reference(trace.TraceType):
     return False
 
   def most_specific_common_supertype(
-      self, types: Sequence[trace.TraceType]) -> Optional[trace.TraceType]:
+      self, types: Sequence[trace.TraceType]) -> Optional["Reference"]:
     if all(
         isinstance(other, Reference) and self.identifier == other.identifier
         for other in types):

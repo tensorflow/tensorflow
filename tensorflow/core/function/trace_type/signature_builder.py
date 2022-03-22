@@ -20,6 +20,7 @@ import weakref
 
 from tensorflow.core.function.trace_type import default_types
 from tensorflow.python.types import trace
+from tensorflow.python.util import nest
 
 
 class WeakrefDeletionObserver:
@@ -102,16 +103,22 @@ def create_trace_type(obj: Any,
     return default_types.List(*(create_trace_type(c, context) for c in obj))
 
   if isinstance(obj, tuple):
-    return default_types.Tuple(*(create_trace_type(c, context) for c in obj))
+    if nest.is_namedtuple(obj):
+      return default_types.NamedTuple(
+          type(obj), tuple(create_trace_type(c, context) for c in obj))
+    else:
+      return default_types.Tuple(*(create_trace_type(c, context) for c in obj))
 
   if isinstance(obj, collections.abc.Mapping):
     return default_types.Dict(
         {k: create_trace_type(obj[k], context) for k in obj})
 
-  if hasattr(type(obj), "__attrs_attrs__"):
+  if nest.is_attrs(obj):
     return default_types.Attrs(
-        type(obj), (create_trace_type(getattr(obj, a.name), context)
-                    for a in obj.__attrs_attrs__))
+        type(obj),
+        tuple(
+            create_trace_type(getattr(obj, a.name), context)
+            for a in obj.__attrs_attrs__))
 
   if hasattr(obj, "__wrapped__"):
     return create_trace_type(obj.__wrapped__, context)

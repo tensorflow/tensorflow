@@ -16,6 +16,8 @@ pytype_strict_library(
     deps = [
         ":default_types",
         "//tensorflow/python/types",
+        # TODO(b/225045380): Depend on the more specific `leaf` target once the used utils are moved.
+        "//tensorflow/python/util",
     ],
 )
 
@@ -63,5 +65,6 @@ py_strict_test(
     deps = [
         ":default_types",
         "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
