@@ -2318,11 +2318,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(byte_model.operatorCodes[0].builtinCode,
                      schema_fb.BuiltinOperator.QUANTIZE)
     self.assertNotEqual(byte_model.operatorCodes[1].builtinCode,
-                     schema_fb.BuiltinOperator.RESHAPE)
+                        schema_fb.BuiltinOperator.RESHAPE)
     self.assertEqual(byte_model.operatorCodes[1].builtinCode,
                      schema_fb.BuiltinOperator.FULLY_CONNECTED)
     self.assertNotEqual(byte_model.operatorCodes[2].builtinCode,
-                     schema_fb.BuiltinOperator.RESHAPE)
+                        schema_fb.BuiltinOperator.RESHAPE)
     self.assertEqual(byte_model.operatorCodes[2].builtinCode,
                      schema_fb.BuiltinOperator.DEQUANTIZE)
 
