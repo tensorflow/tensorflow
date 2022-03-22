@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
