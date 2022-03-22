@@ -52,8 +52,8 @@ class LogicalExpressionTransformer(converter.Base):
       return LOGICAL_OPERATORS[op_type]
     if self.ctx.user.options.uses(converter.Feature.EQUALITY_OPERATORS):
       deprecation.deprecated(None,
-        "tf.autograph.experimental.Feature.EQUALITY_OPERATORS \
-        is deprecated and it is alredy enabled by default")
+        ("tf.autograph.experimental.Feature.EQUALITY_OPERATORS "
+        "is deprecated and it is alredy enabled by default"))
     if op_type in EQUALITY_OPERATORS:
       return EQUALITY_OPERATORS[op_type]
     return None
