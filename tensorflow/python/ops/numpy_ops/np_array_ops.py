@@ -1027,16 +1027,19 @@ def broadcast_to(array, shape):  # pylint: disable=redefined-outer-name
 
 @np_utils.np_doc('stack')
 def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
-  if isinstance(arrays, (np_arrays.ndarray, ops.Tensor)):
-    arrays = asarray(arrays)
-    if axis == 0:
-      return arrays
-    else:
-      return swapaxes(arrays, 0, axis)
-  arrays = _promote_dtype(*arrays)  # pylint: disable=protected-access
-  unwrapped_arrays = [
+  if -(tf.rank(arrays))<=axis<tf.rank(arrays):
+    if isinstance(arrays, (np_arrays.ndarray, ops.Tensor)):
+      arrays = asarray(arrays)
+      if axis == 0:
+        return arrays
+      else:
+        return swapaxes(arrays, 0, axis)
+    arrays = _promote_dtype(*arrays)  # pylint: disable=protected-access
+    unwrapped_arrays = [
       a if isinstance(a, np_arrays.ndarray) else a for a in arrays
-  ]
+    ]
+  else:
+    raise AxisError('Axis must be in range [-Rank(array),Rank(array))') 
   return asarray(array_ops.stack(unwrapped_arrays, axis))
 
 
