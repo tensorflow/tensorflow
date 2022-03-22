@@ -280,7 +280,6 @@ static LogicalResult VerifySavedModelModule(
       return func.emitError() << "non-exported function @" << func.getName()
                               << " should be private";
     }
-    func.dump();
     if (!is_exported && HasAnyTfSavedModelArgAttr(func)) {
       return func.emitError() << "can only apply 'tf_saved_model' argument "
                                  "attributes to exported functions";

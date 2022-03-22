@@ -248,7 +248,6 @@ py_test(
     shard_count = 18,
     srcs_version = "PY3",
     tags = [
-        "no_oss",  # TODO(b/226181706): Remove after fixing the test
         "no_windows",
     ],
     deps = [
