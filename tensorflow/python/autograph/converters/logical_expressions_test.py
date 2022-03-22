@@ -59,7 +59,6 @@ class LogicalExpressionTest(converter_testing.TestCase):
     self.assertTrue(self.evaluate(tr(constant_op.constant(1), 2, 2, 1)))
     self.assertFalse(self.evaluate(tr(constant_op.constant(1), 2, 2, 3)))
 
-
   def test_default_ops(self):
 
     def f(a, b):
