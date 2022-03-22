@@ -498,17 +498,16 @@ build:rbe_linux_cuda_clang_py310 --config=rbe_linux_cuda_clang_base --repo_env=T
 # ROCm
 build:rbe_linux_rocm_base --config=rocm
 build:rbe_linux_rocm_base --config=rbe_linux
-build:rbe_linux_rocm_base --crosstool_top="@ubuntu18.04-gcc7_manylinux2010-rocm_config_rocm//crosstool:toolchain"
-build:rbe_linux_rocm_base --extra_toolchains="@ubuntu18.04-gcc7_manylinux2010-rocm_config_rocm//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_rocm_base --extra_execution_platforms="@ubuntu18.04-gcc7_manylinux2010-rocm_config_platform//:platform"
-build:rbe_linux_rocm_base --host_platform="@ubuntu18.04-gcc7_manylinux2010-rocm_config_platform//:platform"
-build:rbe_linux_rocm_base --platforms="@ubuntu18.04-gcc7_manylinux2010-rocm_config_platform//:platform"
-build:rbe_linux_rocm_base --action_env=TF_ROCM_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_rocm"
-build:rbe_linux_rocm_py3.6 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.6"
-build:rbe_linux_rocm_py3.7 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.7"
-build:rbe_linux_rocm_py3.8 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.8"
-build:rbe_linux_rocm_py3.9 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.9"
-build:rbe_linux_rocm_py3.10 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu18.04-gcc7_manylinux2010-rocm_config_python3.10"
+build:rbe_linux_rocm_base --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-rocm_config_rocm//crosstool:toolchain"
+build:rbe_linux_rocm_base --extra_toolchains="@ubuntu20.04-gcc9_manylinux2014-rocm_config_rocm//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_rocm_base --extra_execution_platforms="@ubuntu20.04-gcc9_manylinux2014-rocm_config_platform//:platform"
+build:rbe_linux_rocm_base --host_platform="@ubuntu20.04-gcc9_manylinux2014-rocm_config_platform//:platform"
+build:rbe_linux_rocm_base --platforms="@ubuntu20.04-gcc9_manylinux2014-rocm_config_platform//:platform"
+build:rbe_linux_rocm_base --action_env=TF_ROCM_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-rocm_config_rocm"
+build:rbe_linux_rocm_py3.7 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-rocm_config_python3.7"
+build:rbe_linux_rocm_py3.8 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-rocm_config_python3.8"
+build:rbe_linux_rocm_py3.9 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-rocm_config_python3.9"
+build:rbe_linux_rocm_py3.10 --config=rbe_linux_rocm_base --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu20.04-gcc9_manylinux2014-rocm_config_python3.10"
 
 # Linux CPU
 
