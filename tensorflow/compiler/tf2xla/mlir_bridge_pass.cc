@@ -101,7 +101,7 @@ bool HasPsWithResourceVariable(const Graph& graph) {
           auto attr_value = attr.second;
           if (attr_key == attrKey &&
               attr_value.value_case() == AttrValue::kType &&
-              attr_value.type() == DT_RESOURCE_REF) {
+              attr_value.type() == DT_RESOURCE) {
             return true;
             break;
           }
