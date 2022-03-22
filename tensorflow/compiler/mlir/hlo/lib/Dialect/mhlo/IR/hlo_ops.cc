@@ -50,6 +50,7 @@ limitations under the License.
 #include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -7499,6 +7500,18 @@ static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
                              << " aliases do not have compatible types, "
                              << arg_type << " vs. " << result_type;
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Type utilities for ignoring sparsity encoding
+//===----------------------------------------------------------------------===//
+
+Type getTypeWithoutSparseEncoding(Type tp) {
+  if (sparse_tensor::getSparseTensorEncoding(tp)) {
+    auto rtp = tp.dyn_cast<RankedTensorType>();
+    tp = RankedTensorType::get(rtp.getShape(), rtp.getElementType());
+  }
+  return tp;
 }
 
 //===----------------------------------------------------------------------===//

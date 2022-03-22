@@ -142,6 +142,16 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     bool inferInputOutputShapeEquality(int input, int output) {
       return true;
     }
+    // Replace the strict default implementation with one that allows
+    // for different sparsity encodings during the is-same test.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      if (l.size() != r.size()) return false;
+      for (auto it : llvm::zip(l, r))
+        if (getTypeWithoutSparseEncoding(std::get<0>(it)) !=
+            getTypeWithoutSparseEncoding(std::get<1>(it)))
+          return false;
+      return true;
+    }
   }];
 }
 
