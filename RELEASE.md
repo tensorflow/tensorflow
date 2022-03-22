@@ -45,12 +45,16 @@
         and `Model.predict()` to `"auto"`, which defaults to `verbose=1` for
         most cases and defaults to `verbose=2` when used with
         `ParameterServerStrategy` or with interactive logging disabled.
-   *    Argument `jit_compile` in `Model.compile()` now applies
+    *   Argument `jit_compile` in `Model.compile()` now applies
         to `Model.evaluate()` and `Model.predict()`.
         Setting `jit_compile=True` in `compile()` compiles the model's
         training, evaluation, and inference steps to
         [XLA](https://www.tensorflow.org/xla).
         Note that `jit_compile=True` may not necessarily work for all models.
+    *   Added DTensor-related Keras APIs under `tf.keras.dtensor` namespace.
+        The APIs are still classified as experimental. You are welcome to try it
+        out. Please check the tutoral and guide on https://www.tensorflow.org/
+        for more details about DTensor.
 
 *   `tf.lite`:
 
