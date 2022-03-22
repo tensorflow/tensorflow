@@ -511,25 +511,28 @@ class DistributedVarOp(object):
     return hash((self.name, self.graph, tuple(self.traceback), self.type))
 
 
+# TODO(b/209081027): Remove this once Variable is a CompositeTensor.
 class DistributedVariableTraceType(trace.TraceType):
-  """Class outlining the Tracing Protocol for DistributedVariable."""
+  """TraceType of DistributedVariable objects."""
 
-  def __init__(self, shape, dtype):
-    self.components = (tuple(shape.as_list()), dtype)
+  def __init__(self, distributed_variable):
+    self.distributed_variable = distributed_variable
+    self.components = (tuple(distributed_variable.shape.as_list()),
+                       distributed_variable.dtype)
 
   def is_subtype_of(self, other):
     return self == other
 
   def most_specific_common_supertype(self, others):
-    return None
+    return self if all(self == other for other in others) else None
+
+  def _placeholder_value(self):
+    return self.distributed_variable
 
   def __hash__(self) -> int:
     return hash(self.components)
 
   def __eq__(self, other) -> bool:
-    if not isinstance(other, trace.TraceType):
-      return NotImplemented
-
     if not isinstance(other, DistributedVariableTraceType):
       return False
 
@@ -929,7 +932,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
         self, sparse_delta, use_locking=use_locking, name=name)
 
   def __tf_tracing_type__(self, _):
-    return DistributedVariableTraceType(self.shape, self.dtype)
+    return DistributedVariableTraceType(self)
 
   def _gather_saveables_for_checkpoint(self):
     """Overrides Trackable method.
