@@ -801,6 +801,7 @@ tf_cuda_cc_test(
     deps = [
         ":trt_logging",
         ":trt_conversion",
+        ":trt_convert_api",
         ":trt_plugins",
         ":trt_engine_utils",
         ":trt_op_kernels",
