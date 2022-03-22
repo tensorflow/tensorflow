@@ -1569,7 +1569,8 @@ def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
   let results = (outs HLO_Tensor);
 }
 
-def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
+def HLO_CustomCallOp: HLO_Op<"custom_call",
+    [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "CustomCall operator";
   let description = [{
     A custom call invokes code external to XLA. The `args` are passed to the

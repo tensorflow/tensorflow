@@ -727,6 +727,19 @@ LogicalResult CustomCallOp::verify() {
   return verify_types_and_layouts(result_types, result_layouts, "result");
 }
 
+void CustomCallOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
+        effects) {
+  // CustomCall has "all possible effects" unless the has_side_effect is present
+  // and set to false.
+  auto has_side_effect = (*this)->getAttrOfType<BoolAttr>("has_side_effect");
+  if (has_side_effect && !has_side_effect.getValue()) return;
+  effects.emplace_back(MemoryEffects::Allocate::get());
+  effects.emplace_back(MemoryEffects::Free::get());
+  effects.emplace_back(MemoryEffects::Write::get());
+  effects.emplace_back(MemoryEffects::Read::get());
+}
+
 //===----------------------------------------------------------------------===//
 // CholeskyOp
 //===----------------------------------------------------------------------===//
