@@ -119,6 +119,8 @@ class TestCase(test.TestCase):
         autograph_module=api)
 
     tr = TestingTranspiler(converter_module, ag_overrides)
+    # pylint has a false positive E1102: tr is not callable (not-callable)
+    # with unpack syntax (transformed, _, _ =)
     transformed = tr.transform_function(f, program_ctx)[0]
 
     if include_ast:
