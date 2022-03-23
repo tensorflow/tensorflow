@@ -98,6 +98,32 @@ cc_library(
     ],
 )
 
+MATH_DEPS = [
+    "//tensorflow/core:core_cpu",
+    "//tensorflow/core:framework",
+    "//tensorflow/core:lib",
+    "//tensorflow/core:lib_internal",
+    "//tensorflow/core:math_grad",
+    "//tensorflow/core/framework:bounds_check",
+    "//third_party/eigen3",
+]
+
+cc_library(
+    name = "matmul_util",
+    srcs = ["matmul_util.cc"],
+    hdrs = ["matmul_util.h"],
+    deps = [
+        ":stream_header",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core/kernels:gpu_utils",
+        "//tensorflow/core/platform:stream_executor",
+        "//tensorflow/core:protos_all_cc",
+    ] + if_static(
+        ["//tensorflow/core/platform:tensor_float_32_utils"],
+        ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
+    ) + MATH_DEPS,
+)
+
 cc_library(
     name = "kernel",
     srcs = [
