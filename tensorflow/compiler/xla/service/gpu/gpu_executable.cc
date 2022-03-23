@@ -72,6 +72,7 @@ limitations under the License.
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -1070,6 +1071,15 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
   }();
 
   mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  tfrt::RegisterTFRTDialects(registry);
+  tfrt::RegisterTFRTCompiledDialects(registry);
+  registry.insert<tfrt::gpu::GpuDialect>();
+  registry.insert<XlirDialect>();
+  context.appendDialectRegistry(registry);
+  for (const auto& dialect_name : context.getAvailableDialects()) {
+    context.getOrLoadDialect(dialect_name);
+  }
   context.allowUnregisteredDialects();
   mlir::Location location = mlir::UnknownLoc::get(&context);
   llvm::ArrayRef<uint8_t> bef_array(bef_buffer.get(),

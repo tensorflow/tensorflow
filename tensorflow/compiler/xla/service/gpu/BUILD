@@ -790,6 +790,7 @@ cc_library(
             "@tf_runtime//:beftomlir",
             "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
+            "@tf_runtime//:init_tfrt_dialects",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             "@tf_runtime//:tensor_alwayslink",
