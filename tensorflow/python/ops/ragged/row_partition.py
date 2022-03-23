@@ -980,14 +980,16 @@ class RowPartition(composite_tensor.CompositeTensor):
   # Transformation
   #=============================================================================
 
-  def with_row_splits_dtype(self, dtype):
-    """Returns a copy of this RowPartition with the given `row_splits` dtype.
+  def with_dtype(self, dtype):
+    """Returns a copy of this RowPartition with the given encoding dtype.
 
     Args:
-      dtype: The dtype for `row_splits`.  One of `tf.int32` or `tf.int64`.
+      dtype: The dtype for encoding tensors, such as `row_splits` and `nrows`.
+      One of `tf.int32` or `tf.int64`.
 
     Returns:
-      A copy of this RowPartition, with the `row_splits` cast to the given type.
+      A copy of this RowPartition, with the encoding tensors cast to the given
+      type.
     """
     dtype = dtypes.as_dtype(dtype)
     if dtype not in (dtypes.int32, dtypes.int64):

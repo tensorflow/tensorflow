@@ -125,8 +125,7 @@ class DynamicRaggedShape(extension_type.ExtensionType):
       dtype = dtypes.int32
     dtype = _find_dtype(dtypes.int64, dtype)
 
-    row_partitions = tuple(
-        [rp.with_row_splits_dtype(dtype) for rp in row_partitions])
+    row_partitions = tuple([rp.with_dtype(dtype) for rp in row_partitions])
     self._row_partitions = row_partitions
     self._inner_shape = ops.convert_to_tensor(
         inner_shape, dtype_hint=dtype, name="inner_dim_sizes")

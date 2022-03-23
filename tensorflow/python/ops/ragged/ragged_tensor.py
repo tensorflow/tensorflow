@@ -1453,12 +1453,12 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     if isinstance(current_values, RaggedTensor):
       return RaggedTensor(
           values=current_values.with_row_splits_dtype(dtype),
-          row_partition=self._row_partition.with_row_splits_dtype(dtype),
+          row_partition=self._row_partition.with_dtype(dtype),
           internal=True)
     else:
       return RaggedTensor(
           values=current_values,
-          row_partition=self._row_partition.with_row_splits_dtype(dtype),
+          row_partition=self._row_partition.with_dtype(dtype),
           internal=True)
 
   def merge_dims(self, outer_axis, inner_axis):
