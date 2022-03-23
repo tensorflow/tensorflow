@@ -379,6 +379,7 @@ module {
 
   // CHECK: func private @f_callee_callee() -> tensor<0xf32>
   func private @f_callee_callee(%arg0: tensor<*x!tf_type.resource>) -> tensor<0xf32> {
+    // CHECK: "tf.Const"
     %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource>) -> (tensor<0xf32>)
     return %0 : tensor<0xf32>
   }
