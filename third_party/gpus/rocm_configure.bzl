@@ -330,13 +330,13 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
         for name, path in [
             ("amdhip64", rocm_config.rocm_toolkit_path + "/hip"),
             ("rocblas", rocm_config.rocm_toolkit_path),
-            (hipfft_or_rocfft, rocm_config.rocm_toolkit_path + "/" + hipfft_or_rocfft),
+            (hipfft_or_rocfft, rocm_config.rocm_toolkit_path),
             ("hiprand", rocm_config.rocm_toolkit_path),
             ("MIOpen", rocm_config.rocm_toolkit_path + "/miopen"),
             ("rccl", rocm_config.rocm_toolkit_path + "/rccl"),
             ("hipsparse", rocm_config.rocm_toolkit_path + "/hipsparse"),
             ("roctracer64", rocm_config.rocm_toolkit_path + "/roctracer"),
-            ("rocsolver", rocm_config.rocm_toolkit_path + "/rocsolver"),
+            ("rocsolver", rocm_config.rocm_toolkit_path),
         ]
     ]
     if int(rocm_config.rocm_version_number) >= 40500:
@@ -563,12 +563,6 @@ def _create_local_rocm_repository(repository_ctx):
         ),
         make_copy_dir_rule(
             repository_ctx,
-            name = hipfft_or_rocfft + "-include",
-            src_dir = rocm_toolkit_path + "/" + hipfft_or_rocfft + "/include",
-            out_dir = "rocm/include/" + hipfft_or_rocfft,
-        ),
-        make_copy_dir_rule(
-            repository_ctx,
             name = "rocblas-hsaco",
             src_dir = rocm_toolkit_path + "/rocblas/lib/library",
             out_dir = "rocm/lib/rocblas/lib/library",
@@ -590,12 +584,6 @@ def _create_local_rocm_repository(repository_ctx):
             name = "hipsparse-include",
             src_dir = rocm_toolkit_path + "/hipsparse/include",
             out_dir = "rocm/include/hipsparse",
-        ),
-        make_copy_dir_rule(
-            repository_ctx,
-            name = "rocsolver-include",
-            src_dir = rocm_toolkit_path + "/rocsolver/include",
-            out_dir = "rocm/include/rocsolver",
         ),
     ]
 
@@ -705,13 +693,11 @@ def _create_local_rocm_repository(repository_ctx):
         "%{rocsolver_lib}": rocm_libs["rocsolver"].file_name,
         "%{copy_rules}": "\n".join(copy_rules),
         "%{rocm_headers}": ('":rocm-include",\n' +
-                            '":' + hipfft_or_rocfft + '-include",\n' +
                             '":miopen-include",\n' +
                             '":rccl-include",\n' +
                             hiprand_include +
                             rocrand_include +
-                            '":hipsparse-include",\n' +
-                            '":rocsolver-include"'),
+                            '":hipsparse-include"'),
     }
     if rocm_version_number >= 40500:
         repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
