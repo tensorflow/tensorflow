@@ -376,3 +376,153 @@ func @optimize_1dx1d_constraint_with_const_shape(
   %2 = shape.cstr_broadcastable %0, %1 : tensor<1xindex>, tensor<2xindex>
   return %2: !shape.witness
 }
+
+// -----
+
+// CHECK-LABEL: @optimize_1dx1d_bcast
+func @optimize_1dx1d_bcast(
+    %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>})
+    -> tensor<?xf32> {
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
+  %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
+  %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<1xindex>
+      -> tensor<1xindex>
+  // CHECK:      mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = dense<>
+  // CHECK-SAME: known_nonexpanding_dimensions = dense<0>
+  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
+      {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
+      : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  return %3: tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @optimize_1dx2d_bcast_const_shape
+func @optimize_1dx2d_bcast_const_shape(
+    %arg0: tensor<512xf32>,
+    %arg1: tensor<?x512xf32>
+    {jitrt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>})
+    -> tensor<?x512xf32> {
+  %0 = shape.const_shape [512] : tensor<1xindex>
+  %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
+  %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<2xindex>
+      -> tensor<2xindex>
+  // CHECK:      mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = dense<>
+  // CHECK-SAME: known_nonexpanding_dimensions = dense<0>
+  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
+      {broadcast_dimensions = dense<[1]> : tensor<1xi64>}
+      : (tensor<512xf32>, tensor<2xindex>) -> tensor<?x512xf32>
+  return %3: tensor<?x512xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @optimize_1dx1dx1d_bcast
+func @optimize_1dx1dx1d_bcast(
+    %arg0: tensor<?xf32>
+    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    %arg1: tensor<?xf32>
+    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+    %arg2: tensor<?xf32>
+    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>}) -> tensor<?xf32> {
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
+  %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
+  %2 = shape.shape_of %arg2 : tensor<?xf32> -> tensor<1xindex>
+  %3 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<1xindex>
+      -> tensor<1xindex>
+  %4 = shape.broadcast %3, %2 : tensor<1xindex>, tensor<1xindex>
+      -> tensor<1xindex>
+  // CHECK:      mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = dense<>
+  // CHECK-SAME: known_nonexpanding_dimensions = dense<0>
+  %5 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %4)
+      {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
+      : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  return %5: tensor<?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @optimize_2dx1d_bcast
+func @optimize_2dx1d_bcast(
+    %arg0: tensor<10x?xf32>
+    {jitrt.symbolic_shape = dense<[10, -2]> : tensor<2xi64>},
+    %arg1: tensor<?xf32>
+    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>})
+    -> (tensor<10x?xf32>, tensor<10x?xf32>) {
+  %0 = shape.shape_of %arg0 : tensor<10x?xf32> -> tensor<2xindex>
+  %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
+  %2 = shape.broadcast %0, %1 : tensor<2xindex>, tensor<1xindex>
+      -> tensor<2xindex>
+  // CHECK:      mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = dense<>
+  // CHECK-SAME: known_nonexpanding_dimensions = dense<[0, 1]>
+  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
+      {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
+      : (tensor<10x?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
+  // CHECK:      mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = dense<>
+  // CHECK-SAME: known_nonexpanding_dimensions = dense<0>
+  %4 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %2)
+      {broadcast_dimensions = dense<[1]> : tensor<1xi64>}
+      : (tensor<?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
+  return %3, %4: tensor<10x?xf32>, tensor<10x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @optimize_3dx3d_bcast
+func @optimize_3dx3d_bcast(
+    %arg0: tensor<?x1x?xf32>
+    {jitrt.symbolic_shape = dense<[-2, 1, -3]> : tensor<3xi64>},
+    %arg1: tensor<1x?x1xf32>
+    {jitrt.symbolic_shape = dense<[1, -4, 1]> : tensor<3xi64>})
+    -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>) {
+  %0 = shape.shape_of %arg0 : tensor<?x1x?xf32> -> tensor<3xindex>
+  %1 = shape.shape_of %arg1 : tensor<1x?x1xf32> -> tensor<3xindex>
+  %2 = shape.broadcast %0, %1 : tensor<3xindex>, tensor<3xindex>
+      -> tensor<3xindex>
+  // CHECK:      mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = dense<>
+  // CHECK-SAME: known_nonexpanding_dimensions = dense<[0, 2]>
+  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
+      {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
+      : (tensor<?x1x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
+  // CHECK:      mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = dense<>
+  // CHECK-SAME: known_nonexpanding_dimensions = dense<1>
+  %4 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %2)
+      {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
+      : (tensor<1x?x1xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
+  return %3, %4: tensor<?x?x?xf32>, tensor<?x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @optimize_10d_all_cases
+func @optimize_10d_all_cases(
+    %arg0: tensor<1x1x1x8x8x8x?x?x?x?xf32>
+    {jitrt.symbolic_shape = dense<[1, 1,  1, 8, 8,  8, -2, -3, -4, -5]>
+    : tensor<10xi64>},
+    %arg1: tensor<1x8x?x1x8x?x1x8x?x?xf32>
+    {jitrt.symbolic_shape = dense<[1, 8, -6, 1, 8, -7,  1,  8, -8, -5]>
+    : tensor<10xi64>}) -> tensor<?x?x?x?x?x?x?x?x?x?xf32> {
+  %0 = shape.shape_of %arg0 : tensor<1x1x1x8x8x8x?x?x?x?xf32>
+      -> tensor<10xindex>
+  %1 = shape.shape_of %arg1 : tensor<1x8x?x1x8x?x1x8x?x?xf32>
+      -> tensor<10xindex>
+  %2 = shape.broadcast %0, %1 : tensor<10xindex>, tensor<10xindex>
+      -> tensor<10xindex>
+  // CHECK:      mhlo.dynamic_broadcast_in_dim
+  // CHECK-SAME: known_expanding_dimensions = dense<1>
+  // CHECK-SAME: known_nonexpanding_dimensions = dense<[0, 3, 4, 5, 6, 9]>
+  %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
+      {broadcast_dimensions = dense<[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]>
+      : tensor<10xi64>}
+      : (tensor<1x1x1x8x8x8x?x?x?x?xf32>, tensor<10xindex>)
+      -> tensor<?x?x?x?x?x?x?x?x?x?xf32>
+  return %3: tensor<?x?x?x?x?x?x?x?x?x?xf32>
+}

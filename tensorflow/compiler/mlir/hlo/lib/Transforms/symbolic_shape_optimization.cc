@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
@@ -36,6 +39,84 @@ using Symbol = ShapeComponentAnalysis::Symbol;
 using SymbolicExpr = ShapeComponentAnalysis::SymbolicExpr;
 
 namespace {
+
+LogicalResult AnalyzeDynamicBroadcastInDimExpandingBehavior(
+    ShapeComponentAnalysis &analysis, Value value, Value shape,
+    llvm::SmallSetVector<int64_t, 4> *known_expanding_dims,
+    llvm::SmallSetVector<int64_t, 4> *known_nonexpanding_dims) {
+  // Require successful analysis of shapes.
+  auto shape_in = analysis.GetShapeInfo(value);
+  auto shape_out = analysis.GetValueInfo(shape);
+  if (!shape_in || !shape_out) return failure();
+
+  // Analyze per argument dimension.
+  size_t rank_in = shape_in->size();
+  size_t rank_out = shape_out->size();
+  assert(rank_in <= rank_out);
+  size_t dim_out_offset = rank_out - rank_in;
+
+  for (size_t i = 0; i < rank_in; ++i) {
+    SymbolicExpr dim_in = (*shape_in)[i];
+    SymbolicExpr dim_out = (*shape_out)[dim_out_offset + i];
+    if (dim_in.isConstant(1) && dim_out.isKnownNotOne())
+      known_expanding_dims->insert(i);
+    if (dim_in == dim_out || dim_out.isConstant(1))
+      known_nonexpanding_dims->insert(i);
+  }
+  return success();
+}
+
+// Analyze `mhlo.dynamic_broadcast_in_dim` op and populate attributes for
+// statically known expanding and non-expanding dimensions.
+struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
+    : public mlir::OpRewritePattern<mhlo::DynamicBroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicBroadcastInDimOp op,
+      mlir::PatternRewriter &rewriter) const override {
+    // Analyze shapes and identify expanding and non-expanding dims.
+    ShapeComponentAnalysis analysis;
+    llvm::SmallSetVector<int64_t, 4> known_expanding_dims,
+        known_nonexpanding_dims;
+    if (failed(AnalyzeDynamicBroadcastInDimExpandingBehavior(
+            analysis, op.operand(), op.output_dimensions(),
+            &known_expanding_dims, &known_nonexpanding_dims))) {
+      return failure();
+    }
+
+    // Collect possibly already annotated info.
+    auto insert_all = [](llvm::SmallSetVector<int64_t, 4> &dst,
+                         Optional<DenseIntElementsAttr> src) {
+      if (!src) return;
+      for (auto it : *src) dst.insert(it.getLimitedValue());
+    };
+    insert_all(known_expanding_dims, op.known_expanding_dimensions());
+    insert_all(known_nonexpanding_dims, op.known_nonexpanding_dimensions());
+
+    // Fail pattern application if there is nothing new to annotate.
+    auto is_equal = [](llvm::SmallSetVector<int64_t, 4> &set,
+                       DenseIntElementsAttr attr) {
+      return set.size() == attr.size() && llvm::all_of(attr, [&](auto it) {
+               return set.count(it.getLimitedValue());
+             });
+    };
+    if (op.known_expanding_dimensions() && op.known_nonexpanding_dimensions() &&
+        is_equal(known_expanding_dims, *op.known_expanding_dimensions()) &&
+        is_equal(known_nonexpanding_dims,
+                 *op.known_nonexpanding_dimensions())) {
+      return failure();
+    }
+
+    // Annotate op in place.
+    rewriter.startRootUpdate(op);
+    op.known_expanding_dimensionsAttr(
+        rewriter.getI64TensorAttr(known_expanding_dims.takeVector()));
+    op.known_nonexpanding_dimensionsAttr(
+        rewriter.getI64TensorAttr(known_nonexpanding_dims.takeVector()));
+    rewriter.finalizeRootUpdate(op);
+    return success();
+  }
+};
 
 // Returns true if `reshape` only adds `1` dimensions.
 bool IsExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
@@ -400,6 +481,7 @@ class SymbolicShapeOptimizationPass final
 
     // clang-format off
     patterns.insert<
+        AnnotateExpandingDimensionsInDynamicBroadcastInDim,
         CstrBroadcastableOpLowering,
         RemoveComputeReshapeShape,
         RemoveRedundantCstrReshapable,
