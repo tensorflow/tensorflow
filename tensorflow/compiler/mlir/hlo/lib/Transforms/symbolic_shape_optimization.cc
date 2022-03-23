@@ -205,16 +205,13 @@ struct RemoveComputeReshapeShape final
   }
 };
 
-bool IsSimpleProduct(
-    AffineExpr expr,
-    llvm::function_ref<void(AffineConstantExpr)> cbkConstantFactor,
-    llvm::function_ref<void(AffineSymbolExpr)> cbkSymbolicFactor) {
+bool IsProduct(AffineExpr expr,
+               llvm::function_ref<void(AffineConstantExpr)> cbkConstantFactor,
+               llvm::function_ref<void(AffineSymbolExpr)> cbkSymbolicFactor) {
   auto binExpr = expr.dyn_cast<AffineBinaryOpExpr>();
   if (binExpr && binExpr.getKind() == AffineExprKind::Mul) {
-    return IsSimpleProduct(binExpr.getLHS(), cbkConstantFactor,
-                           cbkSymbolicFactor) &&
-           IsSimpleProduct(binExpr.getRHS(), cbkConstantFactor,
-                           cbkSymbolicFactor);
+    return IsProduct(binExpr.getLHS(), cbkConstantFactor, cbkSymbolicFactor) &&
+           IsProduct(binExpr.getRHS(), cbkConstantFactor, cbkSymbolicFactor);
   }
   if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
     cbkSymbolicFactor(symExpr);
@@ -227,10 +224,10 @@ bool IsSimpleProduct(
   return false;
 }
 
-bool IsSimpleProduct(const SymbolicExpr &symbolicExpr,
-                     llvm::function_ref<void(int64_t)> cbkConstantFactor,
-                     llvm::function_ref<void(Symbol)> cbkSymbolicFactor) {
-  return IsSimpleProduct(
+bool IsSymbolicProduct(const SymbolicExpr &symbolicExpr,
+                       llvm::function_ref<void(int64_t)> cbkConstantFactor,
+                       llvm::function_ref<void(Symbol)> cbkSymbolicFactor) {
+  return IsProduct(
       symbolicExpr.expr,
       [&](AffineConstantExpr cexpr) { cbkConstantFactor(cexpr.getValue()); },
       [&](AffineSymbolExpr sexpr) {
@@ -238,11 +235,21 @@ bool IsSimpleProduct(const SymbolicExpr &symbolicExpr,
       });
 }
 
-bool IsSimpleProduct(const SymbolicExpr &symbolicExpr, int64_t *concreteProduct,
-                     SmallVectorImpl<Symbol> *symbolicFactors) {
-  return IsSimpleProduct(
-      symbolicExpr, [&](int64_t c) { *concreteProduct *= c; },
-      [&](Symbol s) { symbolicFactors->push_back(s); });
+// Represents a product of symbolic and concrete factors. This will allow us to
+// prove product equalities symbolically.
+struct SymbolicProduct {
+  // Product of all concrete factors.
+  int64_t concrete = 1;
+  // List all symbolic factors as they can not be aggregated.
+  llvm::SmallVector<Symbol> symbolic;
+  bool empty() { return concrete == 1 && symbolic.empty(); }
+};
+
+bool IsSymbolicProduct(const SymbolicExpr &symbolicExpr,
+                       SymbolicProduct *product) {
+  return IsSymbolicProduct(
+      symbolicExpr, [&](int64_t c) { product->concrete *= c; },
+      [&](Symbol s) { product->symbolic.push_back(s); });
 }
 
 struct RemoveRedundantCstrReshapable final
@@ -278,13 +285,11 @@ struct RemoveRedundantCstrReshapable final
 
     // We can only handle simple products with constants and symbols. Find all
     // the factors based on the number of elements.
-    int64_t concreteProductNumElems = 1;
-    SmallVector<Symbol> remainingSymbolicFactorsNumElems;
-    if (!IsSimpleProduct(numElements, &concreteProductNumElems,
-                         &remainingSymbolicFactorsNumElems)) {
+    SymbolicProduct numElementsRemainingFactors;
+    if (!IsSymbolicProduct(numElements, &numElementsRemainingFactors)) {
       return failure();
     }
-    assert(concreteProductNumElems >= 1 &&
+    assert(numElementsRemainingFactors.concrete >= 1 &&
            "number of elements cannot entail negative or zero factors");
 
     // Find all factors based on the dynamic shape.
@@ -296,7 +301,7 @@ struct RemoveRedundantCstrReshapable final
     int64_t concreteProductDynShape = 1;
     for (const auto &dim : *dynShapeDims) {
       SmallVector<Symbol> partialSymbolicFactorsDynShape;
-      if (!IsSimpleProduct(
+      if (!IsSymbolicProduct(
               dim,
               [&](int64_t c) {
                 if (c != -1) concreteProductDynShape *= c;
@@ -305,9 +310,10 @@ struct RemoveRedundantCstrReshapable final
         return failure();
       }
       for (const Symbol &symDynShape : partialSymbolicFactorsDynShape) {
-        auto *it = llvm::find(remainingSymbolicFactorsNumElems, symDynShape);
-        if (it == remainingSymbolicFactorsNumElems.end()) return failure();
-        remainingSymbolicFactorsNumElems.erase(it);
+        auto *it =
+            llvm::find(numElementsRemainingFactors.symbolic, symDynShape);
+        if (it == numElementsRemainingFactors.symbolic.end()) return failure();
+        numElementsRemainingFactors.symbolic.erase(it);
       }
     }
     assert(concreteProductDynShape >= 1 &&
@@ -316,15 +322,16 @@ struct RemoveRedundantCstrReshapable final
     // A wildcard dimension can subsume the remaining symbolic factors and
     // potentially also a concrete factor.
     if (unique_wildcard_dimension) {
-      if (concreteProductNumElems % concreteProductDynShape != 0)
+      if (numElementsRemainingFactors.concrete % concreteProductDynShape != 0)
         return failure();
       rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
       return success();
     }
 
     // W/o a wildcard, the symbolic and concrete products must be equal.
-    bool isReshapable = remainingSymbolicFactorsNumElems.empty() &&
-                        concreteProductNumElems == concreteProductDynShape;
+    bool isReshapable =
+        numElementsRemainingFactors.symbolic.empty() &&
+        numElementsRemainingFactors.concrete == concreteProductDynShape;
     rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, isReshapable);
     return success();
   }
@@ -359,42 +366,42 @@ struct TurnDynamicReshapeIntoCollapseShape final
 
       // Find the concrete/symbolic factors for the current dimension of the
       // target shape.
-      int64_t remainingConcreteProductShapeDim = 1;
-      SmallVector<Symbol> remainingSymbolicFactorsShapeDim;
-      if (!IsSimpleProduct(shapeDim, &remainingConcreteProductShapeDim,
-                           &remainingSymbolicFactorsShapeDim)) {
+      SymbolicProduct remainingFactorsShapeDim;
+      if (!IsSymbolicProduct(shapeDim, &remainingFactorsShapeDim)) {
         return failure();
       }
 
       // Consume (and collapse) as many of the operand dimensions as needed to
       // match the target dimension. This is monotonic.
-      while (remainingConcreteProductShapeDim != 1 ||
-             !remainingSymbolicFactorsShapeDim.empty()) {
+      while (!remainingFactorsShapeDim.empty()) {
         // Fail if there are no more operand dimensions to consume.
         if (i >= argShapeInfo->size()) return failure();
 
         // Find the concrete/symbolic factors for the next dimension of the
         // operand shape.
-        int64_t concreteProductArgShapeDim = 1;
-        SmallVector<Symbol> symbolicFactorsArgShapeDim;
-        if (!IsSimpleProduct((*argShapeInfo)[i], &concreteProductArgShapeDim,
-                             &symbolicFactorsArgShapeDim)) {
+        SymbolicProduct remainingFactorsArgShapeDim;
+        if (!IsSymbolicProduct((*argShapeInfo)[i],
+                               &remainingFactorsArgShapeDim)) {
           return failure();
         }
 
         // Eliminate the common concrete factors. Fail if we cannot consume a
         // concrete factor of the operand shape.
-        if (remainingConcreteProductShapeDim % concreteProductArgShapeDim != 0)
+        if (remainingFactorsShapeDim.concrete %
+                remainingFactorsArgShapeDim.concrete !=
+            0)
           return failure();
-        remainingConcreteProductShapeDim /= concreteProductArgShapeDim;
+        remainingFactorsShapeDim.concrete /=
+            remainingFactorsArgShapeDim.concrete;
 
         // Eliminate the common symbolic factors. Fail if we cannot consume a
         // symbolic factor of the operand shape.
-        for (const Symbol &symArgShapeDim : symbolicFactorsArgShapeDim) {
+        for (const Symbol &symArgShapeDim :
+             remainingFactorsArgShapeDim.symbolic) {
           auto *it =
-              llvm::find(remainingSymbolicFactorsShapeDim, symArgShapeDim);
-          if (it == remainingSymbolicFactorsShapeDim.end()) return failure();
-          remainingSymbolicFactorsShapeDim.erase(it);
+              llvm::find(remainingFactorsShapeDim.symbolic, symArgShapeDim);
+          if (it == remainingFactorsShapeDim.symbolic.end()) return failure();
+          remainingFactorsShapeDim.symbolic.erase(it);
         }
 
         // If all the concrete/symbolic factors were consumable, collapse this
