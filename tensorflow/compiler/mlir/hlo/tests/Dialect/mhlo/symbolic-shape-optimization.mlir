@@ -330,3 +330,49 @@ func @shape_collapse_and_expansion(%arg : tensor<3x?xi64>)
       : (tensor<3x?xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
   return %16 : tensor<?x1x1xi64>
 }
+
+// -----
+
+// CHECK-LABEL: @optimize_1dx1d_constraint
+func @optimize_1dx1d_constraint(
+  %arg0: tensor<?xf32>
+    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
+  %arg1: tensor<?xf32>
+    {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>}
+) -> !shape.witness {
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
+  %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
+  // CHECK: shape.const_witness true
+  %2 = shape.cstr_broadcastable %0, %1 : tensor<1xindex>, tensor<1xindex>
+  return %2: !shape.witness
+}
+
+// -----
+
+// CHECK-LABEL: @optimize_1dx1d_constraint_with_static_shape
+func @optimize_1dx1d_constraint_with_static_shape(
+  %arg0: tensor<?xf32>
+    {jitrt.symbolic_shape = dense<[10]> : tensor<1xi64>},
+  %arg1: tensor<10xf32>
+) -> !shape.witness {
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
+  %1 = shape.shape_of %arg1 : tensor<10xf32> -> tensor<1xindex>
+  // CHECK: shape.const_witness true
+  %2 = shape.cstr_broadcastable %0, %1 : tensor<1xindex>, tensor<1xindex>
+  return %2: !shape.witness
+}
+
+// -----
+
+// CHECK-LABEL: @optimize_1dx1d_constraint_with_const_shape
+func @optimize_1dx1d_constraint_with_const_shape(
+  %arg0: tensor<512xf32>,
+  %arg1: tensor<?x512xf32>
+    {jitrt.symbolic_shape = dense<[-2,512]> : tensor<2xi64>}
+) -> !shape.witness {
+  %0 = shape.const_shape [512] : tensor<1xindex>
+  %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
+  // CHECK: shape.const_witness true
+  %2 = shape.cstr_broadcastable %0, %1 : tensor<1xindex>, tensor<2xindex>
+  return %2: !shape.witness
+}

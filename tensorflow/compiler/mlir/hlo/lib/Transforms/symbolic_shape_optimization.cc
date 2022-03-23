@@ -38,7 +38,7 @@ using SymbolicExpr = ShapeComponentAnalysis::SymbolicExpr;
 namespace {
 
 // Returns true if `reshape` only adds `1` dimensions.
-bool isExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
+bool IsExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
                    mhlo::DynamicReshapeOp reshape) {
   auto output_shape =
       shapeComponentAnalysis.GetValueInfo(reshape.output_shape());
@@ -66,7 +66,7 @@ struct ReshapeToExpandShape final
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
     ShapeComponentAnalysis shapeComponentAnalysis;
-    if (!isExpandShape(shapeComponentAnalysis, op)) return failure();
+    if (!IsExpandShape(shapeComponentAnalysis, op)) return failure();
     auto output_shape = shapeComponentAnalysis.GetValueInfo(op.output_shape());
     SmallVector<ReassociationExprs> reassociations(output_shape->size());
     auto old_result_type = op.getResult().getType().cast<ShapedType>();
@@ -106,7 +106,7 @@ struct ReshapeToExpandShape final
 // contain a `-1` dimension.
 struct RemoveComputeReshapeShape final
     : public OpRewritePattern<mhlo::ComputeReshapeShapeOp> {
-  RemoveComputeReshapeShape(MLIRContext *ctx) : OpRewritePattern(ctx) {}
+  using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::ComputeReshapeShapeOp op,
                                 PatternRewriter &rewriter) const override {
     ShapeComponentAnalysis shapeComponentAnalysis;
@@ -166,7 +166,7 @@ bool IsSimpleProduct(const SymbolicExpr &symbolicExpr, int64_t *concreteProduct,
 
 struct RemoveRedundantCstrReshapable final
     : public OpRewritePattern<mhlo::CstrReshapableOp> {
-  RemoveRedundantCstrReshapable(MLIRContext *ctx) : OpRewritePattern(ctx) {}
+  using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::CstrReshapableOp op,
                                 PatternRewriter &rewriter) const override {
     // Get shape analysis info for the number of elements.
@@ -251,8 +251,7 @@ struct RemoveRedundantCstrReshapable final
 
 struct TurnDynamicReshapeIntoCollapseShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
-  explicit TurnDynamicReshapeIntoCollapseShape(MLIRContext *ctx)
-      : OpRewritePattern(ctx) {}
+  using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
     auto input_type = op.operand().getType().dyn_cast<RankedTensorType>();
@@ -341,6 +340,54 @@ struct TurnDynamicReshapeIntoCollapseShape final
   }
 };
 
+// Returns true if all of bcasted_shapes can be broadcasted with output_shape.
+bool IsKnownBroadcastable(ShapeComponentAnalysis &analysis,
+                          ValueRange bcasted_shapes, Value output_shape) {
+  auto output_shape_dims = analysis.GetValueInfo(output_shape);
+  if (!output_shape_dims) return false;
+  for (Value shape : bcasted_shapes) {
+    auto shape_dims = analysis.GetValueInfo(shape);
+    if (!shape_dims) return false;
+    // Iterate backwards over the smallest input shape.
+    for (auto zip : llvm::zip(llvm::reverse(*output_shape_dims),
+                              llvm::reverse(*shape_dims))) {
+      const auto &first = std::get<0>(zip);
+      const auto &second = std::get<1>(zip);
+      // TODO(ezhulenev): What to do with dimensions statically known to be
+      // zero?
+      // Numpy can only broadcast [0] with [1], however Tensorflow can broadcast
+      // [0] with any dimension size, and produces dimension of size [0].
+      // Currently we'll conservatively return failure and will not proceed with
+      // a rewrite.
+      if (first.isConstant(0) || second.isConstant(0)) return false;
+      // If either shape has a static one dimension the broadcast will always
+      // succeed.
+      if (first.isConstant(1) || second.isConstant(1)) continue;
+      // Otherwise dims have to be equal.
+      if (first != second) return false;
+    }
+  }
+  return true;
+}
+
+// Rewrite `shape.cstr_broadcastable` with constant witness if can prove that
+// shapes are broadcastable from a symbolic analysis.
+struct CstrBroadcastableOpLowering
+    : public OpRewritePattern<shape::CstrBroadcastableOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(shape::CstrBroadcastableOp op,
+                                PatternRewriter &rewriter) const override {
+    ShapeComponentAnalysis shape_component_analysis;
+    if (!IsKnownBroadcastable(shape_component_analysis, op.getShapes(),
+                              op.getShapes().front())) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
+    return success();
+  }
+};
+
 class SymbolicShapeOptimizationPass final
     : public SymbolicShapeOptimizationBase<SymbolicShapeOptimizationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -353,6 +400,7 @@ class SymbolicShapeOptimizationPass final
 
     // clang-format off
     patterns.insert<
+        CstrBroadcastableOpLowering,
         RemoveComputeReshapeShape,
         RemoveRedundantCstrReshapable,
         ReshapeToExpandShape,
