@@ -313,5 +313,5 @@ func @main(tensor<4x4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>,
     tensor<4x4xf32>, tensor<4xf32>,
     tensor<4x4xf32>, tensor<4x4xf32>,
     tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4x4xf32>
-  return %2 : tensor<4x4x4xf32>
+  func.return %2 : tensor<4x4x4xf32>
 }

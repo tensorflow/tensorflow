@@ -51,5 +51,5 @@ func @main(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> {
 // CHECK-NEXT:  }
 
   %0 = "tf.AddV2"(%arg0, %arg0) : (tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
-  return %0 : tensor<3x2xf32>
+  func.return %0 : tensor<3x2xf32>
 }

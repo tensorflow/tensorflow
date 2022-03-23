@@ -108,5 +108,5 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // tf.MyCustomOp is the result of conversion to a Custom op
   %2 = "tf.MyCustomOp"(%1, %0) {fused_activation_function = "RELU", int_attr = 2 : i32}  : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("MyCustomOp")
   %3 = "tfl.exp"(%2)  : (tensor<4xf32>) -> tensor<4xf32> loc("exp")
-  return %3 : tensor<4xf32>
+  func.return %3 : tensor<4xf32>
 }

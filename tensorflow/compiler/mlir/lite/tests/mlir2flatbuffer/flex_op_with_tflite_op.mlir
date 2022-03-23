@@ -107,5 +107,5 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // tf.div is the result of conversion to a Flex TF op
   %2 = "tf.Div"(%1, %0)  : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("div")
   %3 = "tfl.exp"(%2)  : (tensor<4xf32>) -> tensor<4xf32> loc("exp")
-  return %3 : tensor<4xf32>
+  func.return %3 : tensor<4xf32>
 }

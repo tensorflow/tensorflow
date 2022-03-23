@@ -33,5 +33,5 @@
 // CHECK-NEXT:  signature_defs: [  ]
 // CHECK-NEXT: }
 func @main(%arg0 : tensor<!tf_type.variant<tensor<2xi32>>>) -> tensor<!tf_type.variant<tensor<2xi32>>> {
-  return %arg0 : tensor<!tf_type.variant<tensor<2xi32>>>
+  func.return %arg0 : tensor<!tf_type.variant<tensor<2xi32>>>
 }

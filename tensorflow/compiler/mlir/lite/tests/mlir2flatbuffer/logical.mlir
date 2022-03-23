@@ -95,5 +95,5 @@ func @main(tensor<4xi1>) -> tensor<4xi1> {
   %1 = "tfl.pseudo_const" () {value = dense<false> : tensor<4xi1>} : () -> tensor<4xi1> loc("Const2")
   %2 = "tfl.logical_or"(%arg0, %1) : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1> loc("logical_or")
   %3 = "tfl.logical_and"(%2, %0) : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1> loc("logical_and")
-  return %3 : tensor<4xi1>
+  func.return %3 : tensor<4xi1>
 }

@@ -64,5 +64,5 @@ func @main(tensor<3x2xi32>) -> tensor<6xi32> {
 
   %0 = "tfl.pseudo_const" () {value = dense<[6]> : tensor<1xi32>} : () -> tensor<1xi32> loc("Const")
   %1 = "tfl.reshape" (%arg0, %0) : (tensor<3x2xi32>, tensor<1xi32>) -> tensor<6xi32>
-  return %1 : tensor<6xi32>
+  func.return %1 : tensor<6xi32>
 }

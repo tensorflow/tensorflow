@@ -60,5 +60,5 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // IMPORT: "tfl.fake_quant"(%arg0) {max = 1.400000e+00 : f32, min = 3.000000e-01 : f32, narrow_range = false, num_bits = 6 : i32}
 
   %0 = "tfl.fake_quant"(%arg0) {num_bits = 6 : i32, narrow_range = false, min = 0.3:f32, max = 1.4:f32} : (tensor<4 x f32>) -> tensor<4 x f32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }

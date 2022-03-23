@@ -12,5 +12,5 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // tf.div is the result of conversion to a Flex TF op
   %2 = "tf.Div"(%1, %0) {name = "div"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   %3 = "tfl.exp"(%2) {name = "exp"} : (tensor<4xf32>) -> tensor<4xf32>
-  return %3 : tensor<4xf32>
+  func.return %3 : tensor<4xf32>
 }

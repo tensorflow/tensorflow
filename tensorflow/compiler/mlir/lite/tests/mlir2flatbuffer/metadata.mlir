@@ -8,7 +8,7 @@ module attributes {
   ^bb0(%arg0: tensor<3x2xi32>):
     %0 = "tfl.pseudo_const" () {value = dense<[[1, 2], [3, 4], [5, 6]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
     %1 = "tfl.sub" (%arg0, %0) {fused_activation_function = "NONE"} : (tensor<3x2xi32>, tensor<3x2xi32>) -> tensor<3x2xi32>
-    return %1 : tensor<3x2xi32>
+    func.return %1 : tensor<3x2xi32>
   }
 }
 
