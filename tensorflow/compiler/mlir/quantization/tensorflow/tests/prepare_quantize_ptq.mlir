@@ -17,7 +17,7 @@
 // -----
 
 module {
-  func @same_scale_ptq_test(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  func.func @same_scale_ptq_test(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     %cst = arith.constant dense<[-1, 144]> : tensor<2xi32>
     %cst_1 = arith.constant dense<1.0> : tensor<144x10xf32>
     %cst_2 = arith.constant dense<0.1> : tensor<10xf32>
@@ -49,7 +49,7 @@ module {
     func.return %8 : tensor<*xf32>
   }
 
-  func private @fused_matmul_fn_1(%a: tensor<*xf32>, %b: tensor<*xf32>, %c: tensor<*xf32>) -> tensor<*xf32> {
+  func.func private @fused_matmul_fn_1(%a: tensor<*xf32>, %b: tensor<*xf32>, %c: tensor<*xf32>) -> tensor<*xf32> {
     func.return %a: tensor<*xf32>
   }
 }

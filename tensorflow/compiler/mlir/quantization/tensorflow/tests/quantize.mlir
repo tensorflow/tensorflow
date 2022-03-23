@@ -14,7 +14,7 @@
 
 // RUN: tf-quant-opt %s -split-input-file -quant-lift-quantizable-spots-as-functions -quant-quantize -verify-each=false | FileCheck %s
 
-func private @conv(%input: tensor<1x3x4x3xf32> {tf._user_specified_name = "input_tensor"}) -> tensor<*xf32> attributes {tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<1x3x4x3>]} {
+func.func private @conv(%input: tensor<1x3x4x3xf32> {tf._user_specified_name = "input_tensor"}) -> tensor<*xf32> attributes {tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<1x3x4x3>]} {
   %weight = arith.constant opaque<"elided_large_const", "0xDEADBEEF"> : tensor<2x3x3x2xf32>
   %bias = arith.constant dense<[7.11401462, 7.05456924]> : tensor<2xf32>
 
@@ -45,7 +45,7 @@ func private @conv(%input: tensor<1x3x4x3xf32> {tf._user_specified_name = "input
 // -----
 
 // CHECK-LABEL: same_scale_test
-func @same_scale_test(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @same_scale_test(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[-1, 144]> : tensor<2xi32>
   %0 = "quant.qcast"(%arg0) : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 5.000000e-02:-10>>
   %1 = "quant.dcast"(%0) : (tensor<*x!quant.uniform<i8:f32, 5.000000e-02:-10>>) -> tensor<*xf32>

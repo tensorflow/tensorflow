@@ -14,7 +14,7 @@
 
 // RUN: tf-quant-opt %s -quant-convert-fake-quant-to-qdq -quant-lift-quantizable-spots-as-functions -quant-insert-quantized-functions -quant-quantize-composite-functions -symbol-dce | FileCheck %s
 
-func @fake_quant_conv(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> tensor<*xf32> {
+func.func @fake_quant_conv(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> tensor<*xf32> {
   %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
   %0 = "tf.FakeQuantWithMinMaxArgs"(%arg1) {device = "", max = 2.000000e+00 : f32, min = -1.000000e+00 : f32, narrow_range = false, num_bits = 8 : i64} : (tensor<2x3x3x2xf32>) -> tensor<*xf32>
   %1 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {device = "", max = 2.000000e-01 : f32, min = -1.000000e-01 : f32, narrow_range = false, num_bits = 8 : i64} : (tensor<1x3x4x3xf32>) -> tensor<*xf32>
