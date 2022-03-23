@@ -14,7 +14,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 func @gather(%indices: tensor<?xi32>,
              %resource: tensor<*x!tf_type.resource>) -> tensor<*xi32> {
   %0 = "tf.ResourceGather"(%resource, %indices) {batch_dims = 0 : i64, device = "/device:CPU:0", validate_indices = true}: (tensor<*x!tf_type.resource>, tensor<?xi32>) -> (tensor<*xi32>)
-  return %0 : tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 }

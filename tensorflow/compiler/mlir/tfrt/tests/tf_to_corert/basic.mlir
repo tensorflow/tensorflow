@@ -60,7 +60,7 @@ func @func_basic(
   %6:2 = "tf.IdentityN"(%5, %4) {T = [f32, f32], _output_shapes = ["tfshape$dim { size: 3 } dim { size: 3 }", "tfshape$dim { size: 3 } dim { size: 3 }"], device = "/device:CPU:0"} : (tensor<3x3xf32>, tensor<3x3xf32>) -> (tensor<3x3xf32>, tensor<3x3xf32>)
   // CHECK-NEXT: [[out_ch:%.*]] = tfrt.merge.chains [[ch]], [[in_chain]] : !tfrt.chain, !tfrt.chain
   // CHECK-NEXT: tfrt.return [[out_ch]], [[r2_th]] : !tfrt.chain, !corert.tensorhandle
-  return %6#0 : tensor<3x3xf32>
+  func.return %6#0 : tensor<3x3xf32>
 }
 
 }

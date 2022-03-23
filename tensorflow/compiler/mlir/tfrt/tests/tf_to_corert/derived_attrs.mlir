@@ -17,5 +17,5 @@ func @derived_attrs(
       : (tensor<?x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0x!tf_type.string>, tensor<1x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0xi64>)
       -> tensor<?xi64>
 
-  return %dense_value : tensor<?xi64>
+  func.return %dense_value : tensor<?xi64>
 }

@@ -13,7 +13,7 @@ func @simple_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
     %1 = "tf.Rsqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
     tf_device.return %1 : tensor<?xf32>
   }) { policy = "tfrt.auto-fusion" } : () -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK:      module @kernel attributes {
@@ -41,7 +41,7 @@ func @cluster_with_transpose(%arg0: tensor<?x?xf32>,
          : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
     tf_device.return %1 : tensor<?x?xf32>
   }) { policy = "tfrt.auto-fusion" } : () -> tensor<?x?xf32>
-  return %0 : tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
 }
 
 // CHECK:      module @kernel attributes {

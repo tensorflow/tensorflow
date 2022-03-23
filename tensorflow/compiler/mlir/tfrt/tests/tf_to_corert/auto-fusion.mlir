@@ -14,7 +14,7 @@ func @single_op_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK-SAME:          device = "/job:localhost/replica:0/task:0/device:CPU:0"
   // CHECK: tfrt.return %[[ARG0]], %[[OUT]] : !tfrt.chain, !corert.tensorhandle
   %0 = "tf.Rsqrt"(%arg0) {T = f32, device="/device:CPU:0"} : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK:      module @kernel attributes {
@@ -35,7 +35,7 @@ func @one_compiled_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK-NOT: Tanh
   %0 = "tf.Rsqrt"(%arg0) {T = f32, device="/device:CPU:0"} : (tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.Tanh"(%0) {T = f32, device="/device:CPU:0"} : (tensor<?xf32>) -> tensor<?xf32>
-  return %1 : tensor<?xf32>
+  func.return %1 : tensor<?xf32>
 }
 
 // CHECK:      module @kernel attributes {
@@ -58,7 +58,7 @@ func @two_compiled_clusters(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %1 = "tf.Sqrt"(%0) {T = f32, device="/device:CPU:0"} : (tensor<?xf32>) -> tensor<?xf32>
   // CHECK: tf_jitrt.fallback.execute @kernel_0::@compute
   %2 = "tf.Tanh"(%1) {T = f32, device="/device:CPU:0"} : (tensor<?xf32>) -> tensor<?xf32>
-  return %2 : tensor<?xf32>
+  func.return %2 : tensor<?xf32>
 }
 
 // CHECK: module @kernel
