@@ -18,7 +18,7 @@ func @func0(%arg0 : tensor<i1>) -> tensor<f32> {
     }
     tf_executor.fetch %2#0 : tensor<f32>
   }
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: @func2
@@ -42,7 +42,7 @@ func @func2(%arg0 : tensor<i1>) -> tensor<i1> {
     }
     tf_executor.fetch %2#0 : tensor<i1>
   }
-  return %0 : tensor<i1>
+  func.return %0 : tensor<i1>
 }
 
 // CHECK: module

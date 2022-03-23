@@ -20,7 +20,7 @@ func private @test_fuse_tpu_ops(%arg0: tensor<*xi32>, %arg1: tensor<*x!tf_type.r
   %compilation_status, %program = "tf._TPUCompileMlir"(%1, %2) {device = "/CPU:0", metadata = "metadata", mlir_module = "mlir_module"} : (tensor<?xi64>, tensor<?xi64>) -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
   "tf.TPUCompileSucceededAssert"(%compilation_status) {device = "/CPU:0"} : (tensor<!tf_type.string>) -> ()
   %3 = "tf.TPUExecute"(%arg0, %0, %program) {device = "/TPU:0"} : (tensor<*xi32>, tensor<*xi32>, tensor<3x!tf_type.string>) -> tensor<*xi32>
-  return %3 : tensor<*xi32>
+  func.return %3 : tensor<*xi32>
 }
 
 }
@@ -48,7 +48,7 @@ func private @test_outside_compilation(%arg0: tensor<*xi32>, %arg1: tensor<*x!tf
   "tf.TPUCompileSucceededAssert"(%compilation_status) {device = "/CPU:0"} : (tensor<!tf_type.string>) -> ()
   "tf._XlaSendFromHost"(%arg0, %0, %program) {_xla_has_host_transfer = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", device_ordinal = 0 : i64, key = "host_compute_channel_0_retvals"} : (tensor<*xi32>, tensor<*xi32>, tensor<3x!tf_type.string>) -> ()
   %3 = "tf.TPUExecute"(%arg0, %0, %program) {device = "/TPU:0"} : (tensor<*xi32>, tensor<*xi32>, tensor<3x!tf_type.string>) -> tensor<*xi32>
-  return %3 : tensor<*xi32>
+  func.return %3 : tensor<*xi32>
 }
 
 }
@@ -84,7 +84,7 @@ func private @test_fuse_dynamic_dimension_ops(%arg0: tensor<?x?xi32>, %arg1: ten
   %compilation_status_2, %program_2 = "tf._TPUCompileMlir"(%1, %2) {device = "/CPU:0", metadata = "metadata", mlir_module = "mlir_module"} : (tensor<?xi64>, tensor<?xi64>) -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
   "tf.TPUCompileSucceededAssert"(%compilation_status) {device = "/CPU:0"} : (tensor<!tf_type.string>) -> ()
   %4 = "tf.TPUExecute"(%arg0, %2, %0, %1, %program_2) {device = "/TPU:0"} : (tensor<?x?xi32>, tensor<?xi64>, tensor<*xi32>, tensor<?xi64>, tensor<3x!tf_type.string>) -> tensor<*xi32>
-  return %3 : tensor<*xi32>
+  func.return %3 : tensor<*xi32>
 }
 
 }

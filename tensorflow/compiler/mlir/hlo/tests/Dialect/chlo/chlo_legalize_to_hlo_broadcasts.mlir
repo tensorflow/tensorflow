@@ -6,7 +6,7 @@
 func @addWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.add %arg0, %arg1
   %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -26,7 +26,7 @@ func @dynamicBroadcast(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?
   // CHECK-NEXT: }
   // CHECK-NEXT:      return %[[FINAL_RESULT]] : tensor<?x?xf32>
   %0 = chlo.broadcast_add %arg0, %arg1 : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  return %0 : tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
 }
 
 // -----
@@ -46,7 +46,7 @@ func @dynamicBroadcastComplex(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> t
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[FINAL_RESULT]] : tensor<?x?xcomplex<f32>>
   %0 = chlo.broadcast_complex %arg0, %arg1 : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xcomplex<f32>>
-  return %0 : tensor<?x?xcomplex<f32>>
+  func.return %0 : tensor<?x?xcomplex<f32>>
 }
 
 // -----
@@ -66,7 +66,7 @@ func @dynamicBroadcastCompare(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> t
   // CHECK-NEXT: }
   // CHECK: return %[[FINAL_RESULT]] : tensor<?x?xi1>
   %0 = chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
-  return %0 : tensor<?x?xi1>
+  func.return %0 : tensor<?x?xi1>
 }
 
 // -----
@@ -75,14 +75,14 @@ func @dynamicBroadcastCompare(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> t
 func @selectv2(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK-NEXT: "mhlo.select"(%arg0, %arg1, %arg2)
   %0 = "chlo.broadcast_select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  return %0: tensor<2xi32>
+  func.return %0: tensor<2xi32>
 }
 
 // CHECK-LABEL: func @selectv2_pred_scalar
 func @selectv2_pred_scalar(%arg0: tensor<i1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK-NEXT: "mhlo.select"(%arg0, %arg1, %arg2)
   %0 = "chlo.broadcast_select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  return %0: tensor<2xi32>
+  func.return %0: tensor<2xi32>
 }
 
 // CHECK-LABEL: func @selectv2_broadcast_then
@@ -90,7 +90,7 @@ func @selectv2_broadcast_then(%arg0: tensor<i1>, %arg1: tensor<8x1xi32>, %arg2: 
   // CHECK-NEXT: %[[BROADCAST:.*]] = "mhlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<8x1xi32>) -> tensor<2x8x8xi32>
   // CHECK-NEXT: "mhlo.select"(%arg0, %[[BROADCAST]], %arg2)
   %0 = "chlo.broadcast_select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<8x1xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
-  return %0: tensor<2x8x8xi32>
+  func.return %0: tensor<2x8x8xi32>
 }
 
 // CHECK-LABEL: func @selectv2_broadcast_else
@@ -98,7 +98,7 @@ func @selectv2_broadcast_else(%arg0: tensor<i1>, %arg1: tensor<2x8x8xi32>, %arg2
   // CHECK-NEXT: %[[BROADCAST:.*]] = "mhlo.broadcast_in_dim"(%arg2) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<8x1xi32>) -> tensor<2x8x8xi32>
   // CHECK-NEXT: "mhlo.select"(%arg0, %arg1, %[[BROADCAST]])
   %0 = "chlo.broadcast_select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2x8x8xi32>, tensor<8x1xi32>) -> tensor<2x8x8xi32>
-  return %0: tensor<2x8x8xi32>
+  func.return %0: tensor<2x8x8xi32>
 }
 
 // CHECK-LABEL: func @selectv2_broadcast_pred
@@ -106,7 +106,7 @@ func @selectv2_broadcast_pred(%arg0: tensor<1xi1>, %arg1: tensor<2x8x8xi32>, %ar
   // CHECK-NEXT: %[[BROADCAST:.*]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<1xi1>) -> tensor<2x8x8xi1>
   // CHECK-NEXT: "mhlo.select"(%[[BROADCAST]], %arg1, %arg2)
   %0 = "chlo.broadcast_select"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x8x8xi32>, tensor<2x8x8xi32>) -> tensor<2x8x8xi32>
-  return %0: tensor<2x8x8xi32>
+  func.return %0: tensor<2x8x8xi32>
 }
 
 // CHECK-LABEL: func @selectv2_broadcast_tensor_pred
@@ -114,7 +114,7 @@ func @selectv2_broadcast_tensor_pred(%arg0: tensor<3xi1>, %arg1: tensor<2x3xf16>
   // CHECK-NEXT: %[[BROADCAST:.*]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<3xi1>) -> tensor<2x3xi1>
   // CHECK-NEXT: "mhlo.select"(%[[BROADCAST]], %arg1, %arg2)
   %0 = "chlo.broadcast_select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x3xf16>, tensor<2x3xf16>) -> tensor<2x3xf16>
-  return %0: tensor<2x3xf16>
+  func.return %0: tensor<2x3xf16>
 }
 
 // CHECK-LABEL: func @selectv2_broadcast_all
@@ -124,7 +124,7 @@ func @selectv2_broadcast_all(%arg0: tensor<8x1x1xi1>, %arg1: tensor<1x8x1xi32>, 
   // CHECK-DAG: %[[BROADCAST_2:.*]] = "mhlo.broadcast_in_dim"(%arg2) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<1x1x8xi32>) -> tensor<8x8x8xi32>
   // CHECK: "mhlo.select"(%[[BROADCAST_0]], %[[BROADCAST_1]], %[[BROADCAST_2]])
   %0 = "chlo.broadcast_select"(%arg0, %arg1, %arg2) : (tensor<8x1x1xi1>, tensor<1x8x1xi32>, tensor<1x1x8xi32>) -> tensor<8x8x8xi32>
-  return %0: tensor<8x8x8xi32>
+  func.return %0: tensor<8x8x8xi32>
 }
 
 // CHECK-LABEL: func @selectv2_dynamic_ranked
@@ -143,7 +143,7 @@ func @selectv2_dynamic_ranked(%arg0: tensor<1xi1>, %arg1: tensor<2x?x8xi32>, %ar
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[ASSUME]] : tensor<2x?x8xi32>
   %0 = "chlo.broadcast_select"(%arg0, %arg1, %arg2) : (tensor<1xi1>, tensor<2x?x8xi32>, tensor<2x8x8xi32>) -> tensor<2x?x8xi32>
-  return %0: tensor<2x?x8xi32>
+  func.return %0: tensor<2x?x8xi32>
 }
 
 // -----
@@ -152,7 +152,7 @@ func @selectv2_dynamic_ranked(%arg0: tensor<1xi1>, %arg1: tensor<2x?x8xi32>, %ar
 func @dynamicNonScalarBroadcastDimensions(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
   // CHECK: mhlo.add
   %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
-  return %0 : tensor<1x4xf32>
+  func.return %0 : tensor<1x4xf32>
 }
 
 // -----
@@ -161,7 +161,7 @@ func @dynamicNonScalarBroadcastDimensions(%arg0: tensor<1x4xf32>, %arg1: tensor<
 func @dynamicNonScalarByScalarBroadcastDimensions(%arg0: tensor<1x4xf32>, %arg1: tensor<f32>) -> tensor<1x4xf32> {
   // CHECK: mhlo.add
   %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<1x4xf32>, tensor<f32>) -> tensor<1x4xf32>
-  return %0 : tensor<1x4xf32>
+  func.return %0 : tensor<1x4xf32>
 }
 
 // -----
@@ -170,7 +170,7 @@ func @dynamicNonScalarBroadcastDimensionsSizeMismatch(%arg0: tensor<1x4xf32>, %a
   // expected-warning @+2 {{unsupported non prefix-padded dynamic rank broadcast_dimensions}}
   // expected-error @+1 {{failed to legalize operation}}
   %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
-  return %0 : tensor<1x4xf32>
+  func.return %0 : tensor<1x4xf32>
 }
 
 // -----
@@ -179,7 +179,7 @@ func @dynamicNonScalarBroadcastDimensionsMismatch(%arg0: tensor<1x4xf32>, %arg1:
   // expected-warning @+2 {{unsupported non prefix-padded dynamic rank broadcast_dimensions}}
   // expected-error @+1 {{failed to legalize operation}}
   %0 = chlo.broadcast_add %arg0, %arg1 {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
-  return %0 : tensor<1x4xf32>
+  func.return %0 : tensor<1x4xf32>
 }
 
 // -----
@@ -189,7 +189,7 @@ func @dynamicNonScalarBroadcastDimensionsMismatch(%arg0: tensor<1x4xf32>, %arg1:
 func @andWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
   // CHECK: mhlo.and %arg0, %arg1
   %0 = chlo.broadcast_and %arg0, %arg1 : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
-  return %0 : tensor<4xi1>
+  func.return %0 : tensor<4xi1>
 }
 
 // -----
@@ -197,7 +197,7 @@ func @andWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4x
 func @atan2WithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.atan2 %arg0, %arg1
   %0 = chlo.broadcast_atan2 %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -205,7 +205,7 @@ func @atan2WithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tenso
 func @compareWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xi1> {
   // CHECK: "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
   %0 = chlo.broadcast_compare %arg0, %arg1 {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>
-  return %0 : tensor<4xi1>
+  func.return %0 : tensor<4xi1>
 }
 
 // -----
@@ -213,7 +213,7 @@ func @compareWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> ten
 func @complexWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xcomplex<f32>> {
   // CHECK: mhlo.complex(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xcomplex<f32>>
   %0 = chlo.broadcast_complex %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xcomplex<f32>>
-  return %0 : tensor<4xcomplex<f32>>
+  func.return %0 : tensor<4xcomplex<f32>>
 }
 
 // -----
@@ -221,7 +221,7 @@ func @complexWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> ten
 func @divideWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.divide %arg0, %arg1
   %0 = chlo.broadcast_divide %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -229,7 +229,7 @@ func @divideWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tens
 func @maximumWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.maximum %arg0, %arg1
   %0 = chlo.broadcast_maximum %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -237,7 +237,7 @@ func @maximumWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> ten
 func @minimumWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.minimum %arg0, %arg1
   %0 = chlo.broadcast_minimum %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -245,7 +245,7 @@ func @minimumWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> ten
 func @multiplyWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.multiply %arg0, %arg1
   %0 = chlo.broadcast_multiply %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -253,7 +253,7 @@ func @multiplyWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> te
 func @orWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
   // CHECK: mhlo.or %arg0, %arg1
   %0 = chlo.broadcast_or %arg0, %arg1 : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
-  return %0 : tensor<4xi1>
+  func.return %0 : tensor<4xi1>
 }
 
 // -----
@@ -261,7 +261,7 @@ func @orWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi
 func @powerWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.power %arg0, %arg1
   %0 = chlo.broadcast_power %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -269,7 +269,7 @@ func @powerWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tenso
 func @remainderWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.remainder %arg0, %arg1
   %0 = chlo.broadcast_remainder %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -277,7 +277,7 @@ func @remainderWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> t
 func @shift_leftWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.shift_left %arg0, %arg1
   %0 = chlo.broadcast_shift_left %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -285,7 +285,7 @@ func @shift_leftWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> 
 func @shift_right_arithmeticWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.shift_right_arithmetic %arg0, %arg1
   %0 = chlo.broadcast_shift_right_arithmetic %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -293,7 +293,7 @@ func @shift_right_arithmeticWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor
 func @shift_right_logicalWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.shift_right_logical %arg0, %arg1
   %0 = chlo.broadcast_shift_right_logical %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -301,7 +301,7 @@ func @shift_right_logicalWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4x
 func @subWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: mhlo.subtract %arg0, %arg1
   %0 = chlo.broadcast_subtract %arg0, %arg1 : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -309,7 +309,7 @@ func @subWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<
 func @xorWithoutBroadcast(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
   // CHECK: mhlo.xor %arg0, %arg1
   %0 = chlo.broadcast_xor %arg0, %arg1 : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
-  return %0 : tensor<4xi1>
+  func.return %0 : tensor<4xi1>
 }
 
 // -----
@@ -320,7 +320,7 @@ func @NextAfterWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
   // CHECK: chlo.next_after %[[LHS]], %[[RHS]]
   %0 = chlo.broadcast_next_after %arg0, %arg1
       : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -331,7 +331,7 @@ func @PolygammaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
   // CHECK: chlo.polygamma %[[LHS]], %[[RHS]]
   %0 = chlo.broadcast_polygamma %arg0, %arg1
       : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // -----
@@ -341,5 +341,5 @@ func @ZetaWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>)
   // CHECK: chlo.zeta %arg0, %arg1
   %0 = chlo.broadcast_zeta %arg0, %arg1
       : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }

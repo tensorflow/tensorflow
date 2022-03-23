@@ -7,5 +7,5 @@ func @atan_static(%arg0: tensor<2x3x4xf32>) -> tuple<tensor<2x3x4xf32>> {
   // CHECK: mhlo.atan2 %[[ARG]], %[[CST]] : tensor<2x3x4xf32>
   %0 = chlo.atan %arg0 : tensor<2x3x4xf32> -> tensor<2x3x4xf32>
   %1 = "mhlo.tuple"(%0) : (tensor<2x3x4xf32>) -> tuple<tensor<2x3x4xf32>>
-  return %1 : tuple<tensor<2x3x4xf32>>
+  func.return %1 : tuple<tensor<2x3x4xf32>>
 }

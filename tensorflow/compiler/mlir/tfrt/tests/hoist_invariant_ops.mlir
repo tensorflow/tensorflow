@@ -20,7 +20,7 @@ func @hoist_varhandleop(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]
   %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
   %x = "tf.ReadVariableOp"(%handle) {device = "/CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %r = "tf.AddV2"(%arg, %x) {device = "/CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %r : tensor<i32>
+  func.return %r : tensor<i32>
 }
 
 }
@@ -49,7 +49,7 @@ func @hoist_hash_table(%arg: tensor<?x!tf_type.string> {tf_saved_model.index_pat
   %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "x", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
   %1 = "tf.LookupTableSizeV2"(%0) {device = ""} : (tensor<!tf_type.resource>) -> tensor<i64>
   %2 = "tf.LookupTableFindV2"(%0, %arg, %default) {device = "/CPU:0"} : (tensor<!tf_type.resource>, tensor<?x!tf_type.string>, tensor<i64>) -> tensor<*xi64>
-  return %1, %2 : tensor<i64>, tensor<*xi64>
+  func.return %1, %2 : tensor<i64>, tensor<*xi64>
 }
 
 }
@@ -77,7 +77,7 @@ func @hoist_const(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) -> 
   %const = "tf.Const"() {device = "/CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %x = "tf.AddV2"(%const, %const) {device = "/CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   %r = "tf.AddV2"(%arg, %x) {device = "/CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %r : tensor<i32>
+  func.return %r : tensor<i32>
 }
 
 // CHECK-LABEL: func @test_hoist_const_return
@@ -87,7 +87,7 @@ func @hoist_const_return(%arg: tensor<i32> {tf_saved_model.index_path = ["input"
   // CHECK: [[v:%.*]] = "tf._TfrtGetResource"() {container = [""], device = "/CPU:0", indices = [1], shared_name = [""]} : () -> tensor<i32>
   // CHECK-NEXT: return [[v]]
   %const = "tf.Const"() {device = "/CPU:0", value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  return %const : tensor<i32>
+  func.return %const : tensor<i32>
 }
 
 }
@@ -119,7 +119,7 @@ func @hoist_var_read_write() -> (tensor<i32> {tf_saved_model.index_path = ["x"]}
   %x = "tf.ReadVariableOp"(%handle) {device = "/CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   "tf.AssignVariable"(%handle, %const) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   %r = "tf.ReadVariableOp"(%handle) {device = "/CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
-  return %x, %r : tensor<i32>, tensor<i32>
+  func.return %x, %r : tensor<i32>, tensor<i32>
 }
 
 }
@@ -133,7 +133,7 @@ module attributes {tf_saved_model.semantics} {
 func private @some_func(
     %arg: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
   %0 = "tf.ReadVariableOp"(%arg) {device = "cpu"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK-LABEL: func @test_not_hoist_stateful_call
@@ -143,7 +143,7 @@ func @not_hoist_stateful_call(%arg: tensor<i32> {tf_saved_model.index_path = ["i
   // CHECK: tf.StatefulPartitionedCall
   %x = "tf.StatefulPartitionedCall"(%handle) {device = "/CPU:0", config = "", config_proto = "", executor_type = "", f = @some_func} : (tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<i32>)
   %r = "tf.AddV2"(%arg, %x) {device = "/CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %r : tensor<i32>
+  func.return %r : tensor<i32>
 }
 
 // CHECK-LABEL: func @test_not_hoist_if
@@ -154,7 +154,7 @@ func @not_hoist_if(%arg: tensor<i32> {tf_saved_model.index_path = ["input"]}) ->
   // CHECK: tf.If
   %x = "tf.If"(%cond, %handle) {then_branch = @some_func, else_branch = @some_func, is_stateless = false} : (tensor<i1>, tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %r = "tf.AddV2"(%arg, %x) {device = "/CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %r : tensor<i32>
+  func.return %r : tensor<i32>
 }
 
 }
@@ -187,7 +187,7 @@ func private @some_func(%arg: tensor<i1>) -> tensor<i32> {
   %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
   %0 = "tf.ReadVariableOp"(%handle) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %r = "tf.SelectV2"(%arg, %const, %0) {device = "/CPU:0"} : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %r : tensor<i32>
+  func.return %r : tensor<i32>
 }
 
 }

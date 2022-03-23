@@ -14,5 +14,5 @@ func @main(%value: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: %[[VAL1:.*]] = bufferization.to_tensor %[[INPUT]] : memref<2x2xf32>
   // CHECK: %[[VAL2:.*]] = "mhlo.copy"(%[[VAL1]]) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: memref.tensor_store %[[VAL2]], %[[OUTPUT]] : memref<2x2xf32>
-  return %value : tensor<2x2xf32>
+  func.return %value : tensor<2x2xf32>
 }

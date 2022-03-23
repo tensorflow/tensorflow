@@ -5,7 +5,7 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>)
     -> (tensor<?xindex>, tensor<?xindex>) {
   %0, %1 = chlo.minimum_broadcast_shapes %lhs, %rhs :
       tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
-  return %0, %1 : tensor<?xindex>, tensor<?xindex>
+  func.return %0, %1 : tensor<?xindex>, tensor<?xindex>
 }
 
 // -----
@@ -37,7 +37,7 @@ func @rank_specialization_cluster(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
         : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     "chlo.rank_specialization_cluster_yield"(%2) : (tensor<*xf32>) -> ()
   }) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -50,7 +50,7 @@ func @rank_specialization_cluster(%arg0 : tensor<*xf32>,
     "chlo.rank_specialization_cluster_yield"(%arg0_, %arg1_)
         : (tensor<*xf32>, tensor<*xf32>) -> ()
   }) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -61,7 +61,7 @@ func @rank_specialization_cluster(%arg0 : tensor<*xf32>) -> tensor<*xf32> {
   ^bb0(%arg0_ : tensor<*xf32>, %arg1_ : tensor<*xf32>):
     "chlo.rank_specialization_cluster_yield"(%arg0_) : (tensor<*xf32>) -> ()
   }) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -77,5 +77,5 @@ func @rank_specialization_cluster(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
         : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     "chlo.rank_specialization_cluster_yield"(%2) : (tensor<*xf32>) -> ()
   }) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }

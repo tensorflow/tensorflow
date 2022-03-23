@@ -25,7 +25,7 @@ func @inference() -> tensor<i32> {
   // CHECK: "tf.ReadVariableOp"([[handle]])
   %0 = "tf.VariableV2"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<!tf_type.int32ref>
   %1 = "tf.Identity"(%0) : (tensor<!tf_type.int32ref>) -> tensor<i32>
-  return %1 : tensor<i32>
+  func.return %1 : tensor<i32>
 }
 
 // -----
@@ -56,7 +56,7 @@ func @init() -> tensor<i32> {
   %5 = "tf.Assign"(%1, %4) {T = i32, device = "", use_locking = true, validate_shape = true} : (tensor<!tf_type.int32ref>, tensor<i32>) -> tensor<!tf_type.int32ref>
   %6 = "tf.Identity"(%1) : (tensor<!tf_type.int32ref>) -> tensor<i32>
 
-  return %6 : tensor<i32>
+  func.return %6 : tensor<i32>
 }
 
 // CHECK-LABEL: @inference
@@ -72,7 +72,7 @@ func @inference() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
   %1 = "tf.Identity"(%0) : (tensor<!tf_type.int32ref>) -> tensor<i32>
   %2 = "tf.Identity"(%0) : (tensor<!tf_type.int32ref>) -> tensor<i32>
   %3 = "tf.Identity"(%0) : (tensor<!tf_type.int32ref>) -> tensor<i32>
-  return %1, %2, %3 : tensor<i32>, tensor<i32>, tensor<i32>
+  func.return %1, %2, %3 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
 // -----
@@ -84,7 +84,7 @@ func @inference() -> tensor<i32> {
   // expected-error @+1 {{unable to convert reference variables with empty shared_names.}}
   %0 = "tf.VariableV2"() {container = "", shape = #tf_type.shape<>, shared_name = ""} : () -> tensor<!tf_type.int32ref>
   %1 = "tf.Identity"(%0) : (tensor<!tf_type.int32ref>) -> tensor<i32>
-  return %1 : tensor<i32>
+  func.return %1 : tensor<i32>
 }
 
 // -----
@@ -102,5 +102,5 @@ func @side_effect_free_user() -> tensor<2xi32> {
   %axis = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %0 = "tf.VariableV2"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<!tf_type.int32ref>
   %1 = "tf.ConcatV2"(%0, %0, %axis) : (tensor<!tf_type.int32ref>, tensor<!tf_type.int32ref>, tensor<i32>) -> tensor<2xi32>
-  return %1 : tensor<2xi32>
+  func.return %1 : tensor<2xi32>
 }

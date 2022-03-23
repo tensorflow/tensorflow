@@ -6,7 +6,7 @@ func @asinh_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
   // Check for the bf16-specific max value.
   // CHECK: mhlo.constant dense<3.389{{.*}}e+38>
   %result = "chlo.asinh"(%arg) : (tensor<bf16>) -> tensor<bf16>
-  return %result : tensor<bf16>
+  func.return %result : tensor<bf16>
 }
 
 // ----
@@ -17,7 +17,7 @@ func @asinh_f16(%arg : tensor<f16>) -> tensor<f16> {
   // Check for the f16-specific max value.
   // CHECK: mhlo.constant dense<6.550{{.*}}e+04>
   %result = "chlo.asinh"(%arg) : (tensor<f16>) -> tensor<f16>
-  return %result : tensor<f16>
+  func.return %result : tensor<f16>
 }
 
 // ----
@@ -28,7 +28,7 @@ func @asinh_f32(%arg : tensor<f32>) -> tensor<f32> {
   // Check for the f32-specific max value.
   // CHECK: mhlo.constant dense<3.402{{.*}}E+38>
   %result = "chlo.asinh"(%arg) : (tensor<f32>) -> tensor<f32>
-  return %result : tensor<f32>
+  func.return %result : tensor<f32>
 }
 
 // ----
@@ -78,7 +78,7 @@ func @asinh_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[RES:.*]] = mhlo.multiply %[[TMP_0]], %[[TMP_38]]
   // CHECK: return %[[RES]]
   %result = "chlo.asinh"(%arg) : (tensor<f64>) -> tensor<f64>
-  return %result : tensor<f64>
+  func.return %result : tensor<f64>
 }
 
 // ----
@@ -90,7 +90,7 @@ func @constant_like_static_shape(%arg : tensor<1x2xi64>) -> tensor<1x2xf32> {
   // CHECK: return %[[RESULT]]
   %result = "chlo.constant_like"(%arg) { value = 3.2 : f32 }
       : (tensor<1x2xi64>) -> tensor<1x2xf32>
-  return %result : tensor<1x2xf32>
+  func.return %result : tensor<1x2xf32>
 }
 
 // ----
@@ -105,7 +105,7 @@ func @constant_like_dynamic_shape(%arg : tensor<?x?xi64>) -> tensor<?x?xf32> {
   // CHECK: return %[[BROADCASTED_CONSTANT]] : tensor<?x?xf32>
   %result = "chlo.constant_like"(%arg) { value = 3.2 : f32 }
       : (tensor<?x?xi64>) -> tensor<?x?xf32>
-  return %result : tensor<?x?xf32>
+  func.return %result : tensor<?x?xf32>
 }
 
 // ----
@@ -118,7 +118,7 @@ func @conj(%arg0: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
   // CHECK-NEXT: [[R3:%.*]] = "mhlo.negate"([[R2]])
   // CHECK-NEXT: [[R4:%.*]] = mhlo.complex([[R1]], [[R3]])
   %1 = "chlo.conj"(%arg0) : (tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>>
-  return %1 : tensor<3xcomplex<f32>>
+  func.return %1 : tensor<3xcomplex<f32>>
 }
 
 // ----
@@ -287,7 +287,7 @@ func @erf_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[TMP_159]], %[[TMP_37]], %[[TMP_156]])
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f64>) -> tensor<f64>
-  return %1 : tensor<f64>
+  func.return %1 : tensor<f64>
 }
 
 // ----
@@ -341,7 +341,7 @@ func @erf_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[RESULT:.*]] = mhlo.divide %[[TMP_42]], %[[TMP_41]]
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f32>) -> tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // ----
@@ -353,7 +353,7 @@ func @erf_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK: %[[RESULT:.*]] = "mhlo.convert"(%{{.*}}) : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<f16>) -> tensor<f16>
-  return %1 : tensor<f16>
+  func.return %1 : tensor<f16>
 }
 
 // ----
@@ -383,7 +383,7 @@ func @acosh(%arg: tensor<f16>) -> tensor<f16> {
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[CMP]], %[[NAN]], %[[SEL1]])
   // CHECK: return %[[RESULT]]
   %1 = "chlo.acosh"(%arg) : (tensor<f16>) -> tensor<f16>
-  return %1 : tensor<f16>
+  func.return %1 : tensor<f16>
 }
 
 // ----
@@ -552,7 +552,7 @@ func @erfc_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK-NEXT: %[[RESULT:.*]] = "mhlo.select"(%[[TMP_159]], %[[TMP_156]], %[[TMP_116]])
   // CHECK-NEXT: return %[[RESULT]]
   %1 = "chlo.erfc"(%arg) : (tensor<f64>) -> tensor<f64>
-  return %1 : tensor<f64>
+  func.return %1 : tensor<f64>
 }
 
 // ----
@@ -663,7 +663,7 @@ func @erfc_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[TMP_103]], %[[TMP_100]], %[[TMP_74]])
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erfc"(%arg) : (tensor<f32>) -> tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // ----
@@ -675,7 +675,7 @@ func @erfc_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK: %[[RESULT:.*]] = "mhlo.convert"(%{{.*}}) : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erfc"(%arg) : (tensor<f16>) -> tensor<f16>
-  return %1 : tensor<f16>
+  func.return %1 : tensor<f16>
 }
 
 // ----
@@ -688,7 +688,7 @@ func @is_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
   // CHECK: %[[RESULT:.*]] = "mhlo.compare"(%[[ABS]], %[[POS_INF]]) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: return %[[RESULT]] : tensor<i1>
   %1 = chlo.is_inf %arg : tensor<f32> -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 
 // ----
@@ -700,7 +700,7 @@ func @is_pos_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
   // CHECK: %[[RESULT:.*]] = "mhlo.compare"(%[[ARG]], %[[POS_INF]]) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: return %[[RESULT]] : tensor<i1>
   %1 = chlo.is_pos_inf %arg : tensor<f32> -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 
 // ----
@@ -712,7 +712,7 @@ func @is_neg_inf_f32(%arg : tensor<f32>) -> tensor<i1> {
   // CHECK: %[[RESULT:.*]] = "mhlo.compare"(%[[ARG]], %[[NEG_INF]]) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: return %[[RESULT]] : tensor<i1>
   %1 = chlo.is_neg_inf %arg : tensor<f32> -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 
 // ----
@@ -805,7 +805,7 @@ func @lgamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_82:.*]] = "mhlo.select"(%[[TMP_81]], %[[TMP_0]], %[[TMP_78]])
   // CHECK: return %[[TMP_82]]
   %1 = chlo.lgamma %arg : tensor<f64> -> tensor<f64>
-  return %1 : tensor<f64>
+  func.return %1 : tensor<f64>
 }
 
 // ----
@@ -898,7 +898,7 @@ func @lgamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_82:.*]] = "mhlo.select"(%[[TMP_81]], %[[TMP_0]], %[[TMP_78]])
   // CHECK: return %[[TMP_82]]
   %1 = chlo.lgamma %arg : tensor<f32> -> tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // ----
@@ -910,7 +910,7 @@ func @lgamma_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK: %[[RES:.*]] = "mhlo.convert"(%{{.*}}) : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.lgamma %arg : tensor<f16> -> tensor<f16>
-  return %1 : tensor<f16>
+  func.return %1 : tensor<f16>
 }
 
 // ----
@@ -1022,7 +1022,7 @@ func @digamma_f64(%arg : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[RES:.*]] = "mhlo.select"(%[[TMP_99]], %[[TMP_100]], %[[TMP_95]])
   // CHECK: return %[[RES]]
   %1 = chlo.digamma %arg : tensor<f64> -> tensor<f64>
-  return %1 : tensor<f64>
+  func.return %1 : tensor<f64>
 }
 
 // ----
@@ -1134,7 +1134,7 @@ func @digamma_f32(%arg : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[RES:.*]] = "mhlo.select"(%[[TMP_99]], %[[TMP_100]], %[[TMP_95]])
   // CHECK: return %[[RES]]
   %1 = chlo.digamma %arg : tensor<f32> -> tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // ----
@@ -1146,7 +1146,7 @@ func @digamma_f16(%arg : tensor<f16>) -> tensor<f16> {
   // CHECK: %[[RES:.*]] = "mhlo.convert"(%{{.*}}) : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.digamma %arg : tensor<f16> -> tensor<f16>
-  return %1 : tensor<f16>
+  func.return %1 : tensor<f16>
 }
 
 // ----
@@ -1333,7 +1333,7 @@ func @zeta_f16(%arg0: tensor<f16>, %arg1: tensor<f16>) -> tensor<f16> {
   // CHECK: %[[TMP_176:.*]] = "mhlo.select"(%[[TMP_175]], %[[TMP_163]], %[[TMP_174]])
   // CHECK: %[[TMP_177:.*]] = "mhlo.convert"(%[[TMP_176]]) : (tensor<f32>) -> tensor<f16>
   %0 = chlo.zeta %arg0, %arg1 : tensor<f16>, tensor<f16> -> tensor<f16>
-  return %0 : tensor<f16>
+  func.return %0 : tensor<f16>
 }
 
 // ----
@@ -1720,7 +1720,7 @@ func @polygamma_f32(%lhs : tensor<f32>, %rhs : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[TMP_376:.*]] = mhlo.constant dense<0x7FC00000>
   // CHECK: %[[TMP_377:.*]] = "mhlo.select"(%[[TMP_375]], %[[TMP_376]], %[[TMP_371]])
   %1 = chlo.polygamma %lhs, %rhs : tensor<f32>, tensor<f32> -> tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // ----
@@ -2107,7 +2107,7 @@ func @polygamma_f64(%lhs : tensor<f64>, %rhs : tensor<f64>) -> tensor<f64> {
   // CHECK: %[[TMP_376:.*]] = mhlo.constant dense<0x7FF8000000000000>
   // CHECK: %[[TMP_377:.*]] = "mhlo.select"(%[[TMP_375]], %[[TMP_376]], %[[TMP_371]])
   %1 = chlo.polygamma %lhs, %rhs : tensor<f64>, tensor<f64> -> tensor<f64>
-  return %1 : tensor<f64>
+  func.return %1 : tensor<f64>
 }
 
 // ----
@@ -2120,7 +2120,7 @@ func @polygamma_f16(%lhs : tensor<f16>, %rhs : tensor<f16>) -> tensor<f16> {
   // CHECK: %[[RES:.*]] = "mhlo.convert"(%{{.*}}) : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.polygamma %lhs, %rhs : tensor<f16>, tensor<f16> -> tensor<f16>
-  return %1 : tensor<f16>
+  func.return %1 : tensor<f16>
 }
 
 // ----
@@ -2150,7 +2150,7 @@ func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[ABS_X_LT_ONE]], %[[SMALL_SINH_RESULT]], %[[LARGE_SINH_RESULT]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK: return %[[RESULT]] : tensor<f32>
   %1 = chlo.sinh %x : tensor<f32> -> tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // ----
@@ -2162,7 +2162,7 @@ func @sinh_f16(%x : tensor<f16>) -> tensor<f16> {
   // CHECK: %[[RES:.*]] = "mhlo.convert"(%{{.*}}) : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.sinh %x : tensor<f16> -> tensor<f16>
-  return %1 : tensor<f16>
+  func.return %1 : tensor<f16>
 }
 
 // ----
@@ -2182,7 +2182,7 @@ func @sinh_complex(%x : tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
   // CHECK: %[[RESULT:.*]] = mhlo.subtract %[[EXP_1]], %[[EXP_2]] : tensor<2xcomplex<f32>>
   // CHECK: return %[[RESULT]] : tensor<2xcomplex<f32>>
   %1 = chlo.sinh %x : tensor<2xcomplex<f32>> -> tensor<2xcomplex<f32>>
-  return %1 : tensor<2xcomplex<f32>>
+  func.return %1 : tensor<2xcomplex<f32>>
 }
 
 // ----
@@ -2199,7 +2199,7 @@ func @cosh_f32(%x : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[RESULT:.*]] = mhlo.add %[[EXP_1]], %[[EXP_2]] : tensor<f32>
   // CHECK: return %[[RESULT]] : tensor<f32>
   %1 = chlo.cosh %x : tensor<f32> -> tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // ----
@@ -2211,7 +2211,7 @@ func @cosh_f16(%x : tensor<f16>) -> tensor<f16> {
   // CHECK: %[[RES:.*]] = "mhlo.convert"(%{{.*}}) : (tensor<f32>) -> tensor<f16>
   // CHECK: return %[[RES]]
   %1 = chlo.cosh %x : tensor<f16> -> tensor<f16>
-  return %1 : tensor<f16>
+  func.return %1 : tensor<f16>
 }
 
 // ----
@@ -2251,5 +2251,5 @@ func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: %[[FINAL_RESULT:.*]] = "mhlo.bitcast_convert"(%[[RESULT4]]) : (tensor<2xi32>) -> tensor<2xf32>
   // CHECK: return %[[FINAL_RESULT]]
   %1 = chlo.broadcast_next_after %x, %y : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-  return %1 : tensor<2xf32>
+  func.return %1 : tensor<2xf32>
 }
