@@ -69,7 +69,10 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
   // be revised.
   auto evaluator = absl::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
 
+  XLA_VLOG_LINES(2,
+                 "HloConstantFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
+
   for (auto* computation : module->MakeNonfusionComputations()) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
@@ -142,63 +145,27 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       }
 
       // Don't constant fold unless it's a net positive or the output is small.
-      int64_t elements_in_removed_operands = 0;
-      for (HloInstruction* operand : instruction->operands()) {
-        if (operand->user_count() == 1 && operand->shape().IsArray()) {
-          elements_in_removed_operands +=
-              ShapeUtil::ElementsInRecursive(operand->shape());
-        }
-      }
-      int64_t elements_in_constant =
-          ShapeUtil::ElementsInRecursive(instruction->shape());
-
-      static const int64_t kMaximumConstantSizeElements = 45 * 1000 * 1000;
-      if (elements_in_constant > elements_in_removed_operands &&
-          elements_in_constant > kMaximumConstantSizeElements) {
-        continue;
-      }
-
-      // Don't fold "big and expensive" ops, like dots and convs.  This is a
-      // different threshold from kMaximumConstantSizeElements because e.g. an
-      // f32[1024,1024] add is no big deal, but a f32[1024,1024] dot is probably
-      // too slow.
-      bool is_big_and_expensive = [&] {
-        switch (instruction->opcode()) {
-          case HloOpcode::kDot: {
-            // 128k was chosen as the smallest power of 2 that doesn't cause a
-            // test to fail because it's running dots at runtime that used to be
-            // constant-folded.
-            static constexpr int kMaxSize = 128 * 1024;
-            auto is_too_big = [](const HloInstruction* instr) {
-              return ShapeUtil::ElementsIn(instr->shape()) > kMaxSize;
-            };
-            return is_too_big(instruction) ||
-                   is_too_big(instruction->operand(0)) ||
-                   is_too_big(instruction->operand(1));
+      if (instruction->shape().IsArray()) {
+        int64_t elements_in_removed_operands = 0;
+        for (HloInstruction* operand : instruction->operands()) {
+          if (operand->user_count() == 1 && operand->shape().IsArray()) {
+            elements_in_removed_operands +=
+                ShapeUtil::ElementsIn(operand->shape());
           }
-          case HloOpcode::kConvolution: {
-            // Look at the size of the conv input times the conv filter.  This
-            // is not particularly sound, but hopefully it's good enough.  The
-            // 1M threshold was not chosen carefully.
-            static constexpr int kMaxSize = 1024 * 1024;
-            return ShapeUtil::ElementsIn(instruction->operand(0)->shape()) *
-                       ShapeUtil::ElementsIn(instruction->operand(1)->shape()) <
-                   kMaxSize;
-          }
-          default:
-            return false;
         }
-      }();
-      if (is_big_and_expensive) {
-        VLOG(3) << "Not folding instruction that we deem big and expensive: "
-                << instruction->ToString();
-        continue;
+        int64_t elements_in_constant =
+            ShapeUtil::ElementsIn(instruction->shape());
+
+        static const int64_t kMaximumConstantSizeElements = 45 * 1000 * 1000;
+        if (elements_in_constant > elements_in_removed_operands &&
+            elements_in_constant > kMaximumConstantSizeElements) {
+          continue;
+        }
       }
 
       Literal result;
       // Currently we skip unimplemented operations.
       // TODO(b/35975797): Fold constant computations for more operations.
-      VLOG(5) << "Starting to constant fold " << instruction->ToString();
       if (!evaluator->TryEvaluate(
               instruction, &result,
               /*recursively_evaluate_nonconstant_operands=*/true)) {
@@ -213,6 +180,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       changed = true;
     }
   }
+  XLA_VLOG_LINES(2, "HloConstantFolding::Run(), after:\n" + module->ToString());
   return changed;
 }
 
