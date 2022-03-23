@@ -199,6 +199,7 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 endif()
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   find_library(ANDROID_LOG_LIB log)
+  list(APPEND TFLITE_TARGET_DEPENDENCIES ${ANDROID_LOG_LIB})
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)
@@ -206,6 +207,9 @@ populate_tflite_source_vars("." TFLITE_SRCS)
 # This particular file is excluded because the more explicit approach to enable
 # XNNPACK delegate is preferred to the weak-symbol one.
 list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tflite_with_xnnpack\\.cc$")
+
+# We will be adding back the correct platform specific logging later
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_.*\.cc$")
 
 # Exclude Flex related files.
 list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*with_selected_ops\\.cc$")
@@ -215,15 +219,15 @@ if(_TFLITE_ENABLE_MMAP)
 else()
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation\\.cc$")
 endif()
-if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_android\\.cc$")
-endif()
+
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_default\\.cc$")
+  list(APPEND TFLITE_SRCS "minimal_logging_android.cc")
+elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
+  list(APPEND TFLITE_SRCS "minimal_logging_ios.cc")
+else()
+  list(APPEND TFLITE_SRCS "minimal_logging_default.cc")
 endif()
-if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_ios\\.cc$")
-endif()
+
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
 populate_tflite_source_vars("c" TFLITE_C_SRCS)
@@ -499,12 +503,6 @@ target_include_directories(tensorflow-lite
   PUBLIC
     ${TFLITE_INCLUDE_DIRS}
 )
-
-if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
-  list(APPEND TFLITE_TARGET_DEPENDENCIES
-    log
-  )
-endif()
 
 target_link_libraries(tensorflow-lite
   PUBLIC
