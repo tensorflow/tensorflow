@@ -22,7 +22,7 @@ module {
     // CHECK: ENTRY %main.9 ([[A0:.+]]: s64[]) -> s64[] {
     // CHECK:   %[[A0]] = s64[] parameter(0)
     // CHECK:   ROOT %while.8 = s64[] while(s64[] %[[A0]]), condition=[[R1]], body=[[R0]]
-    return %0 : tensor<i64>
+    func.return %0 : tensor<i64>
   }
 }
 
@@ -77,7 +77,7 @@ func @main(%arg0: tensor<f32>) -> tensor<f32> {
     %4 = mhlo.add %arg3, %arg4 : tensor<f32>
     "mhlo.return"(%arg1, %arg2, %arg3, %4) : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>)
-  return %3#3 : tensor<f32>
+  func.return %3#3 : tensor<f32>
 }
 
 // -----
@@ -147,7 +147,7 @@ func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %5 = mhlo.add %arg4, %4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %5) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
-  return %3#3 : tensor<3xf32>
+  func.return %3#3 : tensor<3xf32>
 }
 
 // -----
@@ -205,7 +205,7 @@ func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %6 = "mhlo.tuple"(%5#2) : (tensor<i32>) -> tuple<tensor<i32>>
     %7 = "mhlo.tuple"(%5#1, %6) : (tensor<i32>, tuple<tensor<i32>>) -> tuple<tensor<i32>, tuple<tensor<i32>>>
     %8 = "mhlo.tuple"(%5#0, %7) {xla_shape = "(s32[], (s32[], (s32[])))"} : (tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>) -> tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
-    return %8 : tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
+    func.return %8 : tuple<tensor<i32>, tuple<tensor<i32>, tuple<tensor<i32>>>>
 }
 
 // -----
@@ -263,7 +263,7 @@ func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
     %5 = mhlo.add %arg1, %4 : tensor<3x3xf32>
     "mhlo.return"(%5) : (tensor<3x3xf32>) -> ()
   }) : (tensor<3x3xf32>) -> tensor<3x3xf32>
-  return %1 : tensor<3x3xf32>
+  func.return %1 : tensor<3x3xf32>
 }
 
 // -----
@@ -310,6 +310,6 @@ func @main(%arg0: tensor<i32>) -> tensor<i32> {
     %5 = "mhlo.get_tuple_element"(%3) {index = 1 : i32} : (tuple<tensor<i32>, tensor<i32>>) -> tensor<i32>
     "mhlo.return"(%4, %5) : (tensor<i32>, tensor<i32>) -> ()
   }) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
-  return %1#0 : tensor<i32>
+  func.return %1#0 : tensor<i32>
 }
 

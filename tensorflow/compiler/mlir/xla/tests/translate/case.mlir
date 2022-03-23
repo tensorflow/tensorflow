@@ -15,7 +15,7 @@ func @main() -> tensor<f32> {
     %1 = "mhlo.floor"(%cst_2) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) : (tensor<i32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK: %[[NEGATE_BRANCH:.*]] ({{.*}}: f32[]) -> f32[] {
@@ -59,7 +59,7 @@ func @main() -> (tensor<f32>, tensor<f32>) {
     %1 = "mhlo.floor"(%cst_2) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1, %1) : (tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i32>) -> (tensor<f32>, tensor<f32>)
-  return %0#0, %0#1 : tensor<f32>, tensor<f32>
+  func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
 }
 
 // CHECK: %[[NEGATE_BRANCH:.*]] ({{.*}}: f32[]) -> (f32[], f32[]) {
@@ -112,7 +112,7 @@ func @main() -> (tensor<f32>, tensor<f32>) {
     %1 = "mhlo.floor"(%cst_3) : (tensor<f32>) -> tensor<f32>
     "mhlo.return"(%1, %1) : (tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i32>) -> (tensor<f32>, tensor<f32>)
-  return %0#0, %0#1 : tensor<f32>, tensor<f32>
+  func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
 }
 
 // CHECK: %[[NEGATE_BRANCH:.*]] ({{.*}}: f32[]) -> (f32[], f32[]) {

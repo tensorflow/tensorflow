@@ -17,7 +17,7 @@ func @main(%arg0: tensor<128x32xf32>) -> tensor<128x?xf32> {
     channel_handle = {handle = 1 : i64, type = 0 : i64},
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
   } : (tensor<128x32xf32>) -> tensor<128x?xf32>
-  return %0 : tensor<128x?xf32>
+  func.return %0 : tensor<128x?xf32>
 }
 
 // -----
@@ -31,5 +31,5 @@ func @main(%arg0: tensor<128x32xf32>) -> tensor<128x?xf32> {
     channel_handle = {handle = 1 : i64, type = 0 : i64},
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
   } : (tensor<128x32xf32>) -> tensor<128x?xf32>
-  return %0 : tensor<128x?xf32>
+  func.return %0 : tensor<128x?xf32>
 }
