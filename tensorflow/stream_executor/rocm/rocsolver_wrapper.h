@@ -20,12 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCSOLVER_WRAPPER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCSOLVER_WRAPPER_H_
 
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rocsolver/rocsolver.h"
-#else
 #include "rocm/include/rocsolver.h"
-#endif
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/port.h"
