@@ -5,7 +5,7 @@ func @main(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   %0 = "tfl.pseudo_const" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")
   %1 = "tfl.squared_difference"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("squared_difference")
   %2 = "tfl.mul"(%0, %1) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("mul")
-  return %2 : tensor<4xf32>
+  func.return %2 : tensor<4xf32>
 
 // CHECK-LABEL: main
 // CHECK-NOT: tfl.squared_difference

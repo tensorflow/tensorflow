@@ -13,6 +13,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     %cst_1 = arith.constant dense<1.0> : tensor<5x384xf32>
     %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<?x384xf32>, tensor<5x384xf32>, tensor<5xf32>) -> tensor<?x5xf32>
     %1 = "tfl.fully_connected"(%arg0, %cst_1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<?x384xf32>, tensor<5x384xf32>, tensor<5xf32>) -> tensor<?x5xf32>
-    return %1, %0 : tensor<?x5xf32>, tensor<?x5xf32>
+    func.return %1, %0 : tensor<?x5xf32>, tensor<?x5xf32>
   }
 }

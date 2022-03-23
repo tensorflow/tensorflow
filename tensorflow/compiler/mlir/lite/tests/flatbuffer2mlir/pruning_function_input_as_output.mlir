@@ -12,5 +12,5 @@ func @main(%arg0: tensor<4xf32>) -> tensor<4xf32> attributes {tf.entry_function 
   // CHECK-NOT: "tfl.neg"
   %4 = "tfl.neg"(%3) : (tensor<4xf32>) -> tensor<4xf32> loc("neg")
   // CHECK: return %[[ARG]], %[[DIV]], %[[EXP]]
-  return %4 : tensor<4xf32>
+  func.return %4 : tensor<4xf32>
 }

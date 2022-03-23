@@ -15,5 +15,5 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   // CHECK-NOT: "tfl.neg"
   %5 = "tfl.neg"(%4) : (tensor<4xf32>) -> tensor<4xf32> loc("neg")
   // CHECK: return %[[MUL]], %[[EXP]], %[[DIV]]
-  return %5 : tensor<4xf32>
+  func.return %5 : tensor<4xf32>
 }

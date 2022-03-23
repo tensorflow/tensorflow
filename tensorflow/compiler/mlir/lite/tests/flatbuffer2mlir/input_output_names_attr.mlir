@@ -8,5 +8,5 @@ func @main(%arg0: tensor<4xi8>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<
 attributes {tf.entry_function = {inputs = "input0,input1", outputs = "output0,output1"}} {
   %0 = "tfl.neg"(%arg0) : (tensor<4xi8>) -> tensor<4xi8> loc("neg")
   %1 = "tfl.neg"(%arg1) : (tensor<4xi32>) -> tensor<4xi32> loc("neg")
-  return %1, %0 : tensor<4xi32>, tensor<4xi8>
+  func.return %1, %0 : tensor<4xi32>, tensor<4xi8>
 }
