@@ -1317,6 +1317,17 @@ func @fold_select_vector(%arg0 : tensor<4xf32>, %arg1 : tensor<4xf32>) -> tensor
   return %1 : tensor<4xf32>
 }
 
+// CHECK-LABEL: func @simplify_not_as_select_pred(
+// CHECK-SAME: [[ARGV0:%[a-zA-Z0-9_]+]]: tensor<4xi1>
+// CHECK-SAME: [[ARGV1:%[a-zA-Z0-9_]+]]: tensor<4xf32>
+// CHECK-SAME: [[ARGV2:%[a-zA-Z0-9_]+]]: tensor<4xf32>
+func @simplify_not_as_select_pred(%arg0 : tensor<4xi1>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>) -> tensor<4xf32> {
+  %0 = "mhlo.not"(%arg0) : (tensor<4xi1>) -> tensor<4xi1>
+  %1 = "mhlo.select"(%0, %arg1, %arg2) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: "mhlo.select"([[ARGV0]], [[ARGV2]], [[ARGV1]])
+  return %1 : tensor<4xf32>
+}
+
 // CHECK-LABEL: gather_to_slice
 func @gather_to_slice(%arg0: tensor<5x6x7xf32>) -> tensor<3x6x5xf32> {
   %0 = arith.constant dense<[1, 2]> : tensor<2xi32>
