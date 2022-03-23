@@ -18,7 +18,7 @@ func @loop_incorrent_num_yield_operands(%A: memref<192x192xf32>,
       ins (%A_ = %A: memref<192x192xf32>, %B_ = %B: memref<192x192xf32>)
       outs (%CT_ = %C_tensor: tensor<192x192xf32>,
             %C_ = %C: memref<192x192xf32>) {
-        call @foo(%A_, %B_, %C_)
+        func.call @foo(%A_, %B_, %C_)
           : (memref<192x192xf32>, memref<192x192xf32>, memref<192x192xf32>)-> ()
     // expected-error @+1 {{expected number of tensor output args = 1 to match the number of yield operands = 0}}
     gml_st.yield
@@ -70,7 +70,7 @@ func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
     ^bb0(%arg4: index, %arg5: index, %A_: memref<192x192xf32>,
          %B_: memref<192x192xf32>, %CT_: tensor<192x192xf32>,
          %C_: memref<192x192xf32>):
-      call @foo(%A_, %B_, %C_)
+      func.call @foo(%A_, %B_, %C_)
           : (memref<192x192xf32>, memref<192x192xf32>, memref<192x192xf32>)-> ()
       gml_st.yield %CT_ : tensor<192x192xf32>
     }) {
@@ -93,7 +93,7 @@ func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
   // expected-error @+1 {{expected output arg 0 with type = 'memref<192xf32>' to match region arg 1 type = 'memref<100xf32>'}}
   "gml_st.loop"(%c0, %c192, %c24, %A) ({
     ^bb0(%arg4: index, %A_: memref<100xf32>):
-      call @foo(%A_) : (memref<100xf32>)-> ()
+      func.call @foo(%A_) : (memref<100xf32>)-> ()
       gml_st.yield
     }) {
       iterator_types = ["parallel"],

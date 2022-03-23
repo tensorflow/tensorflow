@@ -277,7 +277,7 @@ func @main() -> !mhlo.token {
 
 // CHECK:  HloModule
 func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
-  call @empty_callee() : () -> ()
+  func.call @empty_callee() : () -> ()
   func.return %arg0 : tensor<4xi32>
 }
 

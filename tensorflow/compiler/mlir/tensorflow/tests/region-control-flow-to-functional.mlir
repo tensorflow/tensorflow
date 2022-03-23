@@ -270,11 +270,11 @@ func @testNoOutputs(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> () {
   // CHECK: "tf.If"{{.+}}else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then
   "tf.IfRegion"(%arg0) ({
     %1 = "tf.Abs"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
-    call @printer(%1) : (tensor<*xf32>) -> ()
+    func.call @printer(%1) : (tensor<*xf32>) -> ()
     "tf.Yield"() : () -> ()
     }, {
     %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
-    call @printer(%2) : (tensor<*xf32>) -> ()
+    func.call @printer(%2) : (tensor<*xf32>) -> ()
     "tf.Yield"() : () -> ()
     }) { is_stateless = false } :  (tensor<i1>) -> ()
   return

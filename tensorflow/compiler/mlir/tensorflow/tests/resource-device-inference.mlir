@@ -287,7 +287,7 @@ func @propagate_through_calls(
         -> !tf_res
       %read = "tf.ReadVariableOp"(%id2) : (!tf_res) -> tensor<32xf32>
       %id3 = "tf.Identity"(%read) : (tensor<32xf32>) -> tensor<32xf32>
-      call @test_function(%id1) : (!tf_res) -> ()
+      func.call @test_function(%id1) : (!tf_res) -> ()
       tf_executor.yield
     }
     tf_executor.fetch %island : !tf_executor.control
@@ -312,10 +312,10 @@ func @propagate_if_region(
         : () -> !tf_res
       // CHECK-NEXT: "tf.IfRegion"
       "tf.IfRegion"(%arg1) ({
-          call @ifregion_then(%id0, %var_handle) : (!tf_res, !tf_res) -> ()
+          func.call @ifregion_then(%id0, %var_handle) : (!tf_res, !tf_res) -> ()
           "tf.Yield"() : () -> ()
         }, {
-          call @ifregion_else(%id0, %var_handle) : (!tf_res, !tf_res) -> ()
+          func.call @ifregion_else(%id0, %var_handle) : (!tf_res, !tf_res) -> ()
           "tf.Yield"() : () -> ()
         }) {is_stateless = false} : (tensor<i1>) -> ()
       tf_executor.yield

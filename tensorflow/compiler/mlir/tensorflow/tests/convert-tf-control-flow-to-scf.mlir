@@ -37,10 +37,10 @@ func private @test_if_else2(tensor<4xf32>) -> ()
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<i1>, %[[ARG1:.*]]: tensor<4xf32>)
 func @test_supported_lowering_of_tf_if_region2(%arg0: tensor<i1>, %arg1: tensor<4xf32>) -> () {
   "tf.IfRegion"(%arg0) ({
-    call @test_if_then2(%arg1) : (tensor<4xf32>) -> ()
+    func.call @test_if_then2(%arg1) : (tensor<4xf32>) -> ()
     "tf.Yield"() : () -> ()
   },  {
-    call @test_if_else2(%arg1) : (tensor<4xf32>) -> ()
+    func.call @test_if_else2(%arg1) : (tensor<4xf32>) -> ()
     "tf.Yield"() : () -> ()
   }) {is_stateless = false} : (tensor<i1>) -> ()
   return

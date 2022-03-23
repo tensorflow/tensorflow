@@ -2134,7 +2134,7 @@ func @testValidWhileRegionNoInputs() -> () {
     },
     {
       %one = arith.constant dense<1> : tensor<i32>
-      call @printer(%one) : (tensor<i32>) -> ()
+      func.call @printer(%one) : (tensor<i32>) -> ()
       // TODO(b/159753381): tf.IfRegion implicit terminator not working
       "tf.Yield"() : () -> ()
     }

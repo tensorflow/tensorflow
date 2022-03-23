@@ -6,8 +6,8 @@
 func @f() {
   // CHECK: call @g() : () -> ()
   // CHECK: call @[[NEWG:.+]]() : () -> ()
-  call @g() : () -> ()
-  call @g() : () -> ()
+  func.call @g() : () -> ()
+  func.call @g() : () -> ()
   return
 }
 
@@ -29,14 +29,14 @@ func @g() {
 // CHECK-DAG: func private @h{{.*}}
 // CHECK-DAG: func private @h{{.*}}
 func @f() {
-  call @g() : () -> ()
-  call @g() : () -> ()
+  func.call @g() : () -> ()
+  func.call @g() : () -> ()
   return
 }
 
 func @g() {
-  call @h() : () -> ()
-  call @h() : () -> ()
+  func.call @h() : () -> ()
+  func.call @h() : () -> ()
   return
 }
 
@@ -48,7 +48,7 @@ func @h() {
 // Handle error case of infinite recursion.
 // expected-error @+1 {{reached cloning limit}}
 func private @f() {
-  call @f() : () -> ()
-  call @f() : () -> ()
+  func.call @f() : () -> ()
+  func.call @f() : () -> ()
   return
 }

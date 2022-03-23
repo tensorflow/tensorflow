@@ -290,7 +290,7 @@ func @main(%arg0: tensor<i32>) {
 
   // CHECK:      [[CALL_TOKEN:%.*]] = call @callee([[MAIN_SEND0_TOKEN]])
   // CHECK-SAME: (!mhlo.token) -> !mhlo.token
-  call @callee() : () -> ()
+  func.call @callee() : () -> ()
 
   // CHECK:      [[MAIN_SEND2_TOKEN:%.*]] = "mhlo.send"([[MAIN_ARG0]], [[CALL_TOKEN]])
   "tf.XlaSendToHost"(%arg0) {key = "send2"} : (tensor<i32>) -> ()
@@ -320,7 +320,7 @@ func private @callee0() {
   // CHECK:      [[INIT_TOKEN:%.*]] = "mhlo.create_token"
 
   // CHECK:      call @callee1([[INIT_TOKEN]])
-  call @callee1() : () -> ()
+  func.call @callee1() : () -> ()
   return
 }
 
@@ -329,7 +329,7 @@ func private @callee1() {
   // CHECK-NOT:  "mhlo.create_token"
 
   // CHECK:      [[CALL_2:%.*]] = call @callee2([[CALLEE1_ARG0]])
-  call @callee2() : () -> ()
+  func.call @callee2() : () -> ()
 
   // CHECK:      return [[CALL_2]]
   return
@@ -356,7 +356,7 @@ func @callee3() {
   // CHECK:      [[CALLEE3_INIT_TOKEN:%.*]] = "mhlo.create_token"
 
   // CHECK:      call @callee4{{.+}}([[CALLEE3_INIT_TOKEN]])
-  call @callee4() : () -> ()
+  func.call @callee4() : () -> ()
   return
 }
 
@@ -365,7 +365,7 @@ func @callee4() {
   // CHECK:      [[CALLEE4_INIT_TOKEN:%.*]] = "mhlo.create_token"
 
   // CHECK:      [[CALL_5:%.*]] = call @callee5([[CALLEE4_INIT_TOKEN]])
-  call @callee5() : () -> ()
+  func.call @callee5() : () -> ()
 
   // CHECK:      return
   return
@@ -619,7 +619,7 @@ func @if_function_call(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK: "mhlo.if"
   %0 = "mhlo.if"(%arg0) ({
     // CHECK:      [[CALL_TOKEN:%.*]] = call @callee([[ARG1]], [[INIT_TOKEN]])
-    call @callee(%arg1) : (tensor<f32>) -> ()
+    func.call @callee(%arg1) : (tensor<f32>) -> ()
 
     // CHECK:      "mhlo.return"([[ARG1]], [[CALL_TOKEN]])
     "mhlo.return"(%arg1) : (tensor<f32>) -> ()
@@ -858,7 +858,7 @@ func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
     // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'func.func']}}
-    call @callee() : () -> ()
+    func.call @callee() : () -> ()
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
   return
