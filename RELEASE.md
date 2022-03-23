@@ -4,8 +4,56 @@
 
 # Breaking Changes
 
-*   <DOCUMENT BREAKING CHANGES HERE>
-*   <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+*   The `tf.keras.mixed_precision.experimental` API has been removed. The
+    non-experimental symbols under `tf.keras.mixed_precision` have been
+    available since TensorFlow 2.4 and should be used instead.
+    * The non-experimental API has some minor differences from the experimental
+      API. In most cases, you only need to make three minor changes:
+      1. Remove the word "experimental" from `tf.keras.mixed_precision` symbols.
+         E.g., replace `tf.keras.mixed_precision.experimental.global_policy`
+         with `tf.keras.mixed_precision.global_policy`.
+      2. Replace `tf.keras.mixed_precision.experimental.set_policy` with
+         `tf.keras.mixed_precision.set_global_policy`. The experimental symbol
+         `set_policy` was renamed to `set_global_policy` in the non-experimental
+         API.
+      3. Replace `LossScaleOptimizer(opt, "dynamic")` with
+         `LossScaleOptimizer(opt)`. If you pass anything other than `"dynamic"`
+         to the second argument, see (1) of the next section.
+    * In the following rare cases, you need to make more changes when switching
+      to the non-experimental API:
+      1. If you passed anything other than `"dynamic"` to the `loss_scale`
+         argument (the second argument) of `LossScaleOptimizer`:
+          * The LossScaleOptimizer constructor takes in different arguments.
+            See the
+            [TF 2.7 documentation of tf.keras.mixed_precision.experimental.LossScaleOptimizer](https://www.tensorflow.org/versions/r2.7/api_docs/python/tf/keras/mixed_precision/experimental/LossScaleOptimizer)
+            for details on the differences, which has examples on how to convert
+            to the non-experimental LossScaleOptimizer.
+      2. If you passed a value to the `loss_scale` argument (the second
+          argument) of `Policy`:
+          * The experimental version of `Policy` optionally took in a
+            `tf.compat.v1.mixed_precision.LossScale` in the constructor, which
+            defaulted to a dynamic loss scale for the `"mixed_float16"` policy
+            and no loss scale for other policies. In `Model.compile`, if the
+            model's policy had a loss scale, the optimizer would be wrapped with
+            a `LossScaleOptimizer`. With the non-experimental `Policy`, there is
+            no loss scale associated with the `Policy`, and `Model.compile`
+            wraps the optimizer with a `LossScaleOptimizer` if and only if the
+            policy is a `"mixed_float16"` policy. If you previously passed a
+            `LossScale` to the experimental `Policy`, consider just removing it,
+            as the default loss scaling behavior is usually what you want. If
+            you really want to customize the loss scaling behavior, you can wrap
+            your optimizer with a `LossScaleOptimizer` before passing it to
+            `Model.compile`.
+      3. If you use the very rarely-used function
+         `tf.keras.mixed_precision.experimental.get_layer_policy`:
+          * Replace
+            `tf.keras.mixed_precision.experimental.get_layer_policy(layer)` with
+            `layer.dtype_policy`.
+* `tf.mixed_precision.experimental.LossScale` and its subclasses have been
+  removed from the TF2 namespace. This symbols were very rarely used and were
+  only useful in TF2 for use in the now-removed
+  `tf.keras.mixed_precision.experimental` API. The symbols are still available
+  under `tf.compat.v1.mixed_precision`.
 
 # Known Caveats
 
