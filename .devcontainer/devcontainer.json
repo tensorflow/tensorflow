@@ -45,7 +45,7 @@
 	// Use 'postCreateCommand' to run commands after the container is created.
 	// "postCreateCommand": "uname -a",
     "mounts": [
-        "source=tensorflow_cache,target=/home/vscode/.cache/bazel/"
+        "source=tensorflow_cache,target=/root/.cache/bazel/"
       ],
 
 	// Uncomment when using a ptrace-based debugger like C++, Go, and Rust
