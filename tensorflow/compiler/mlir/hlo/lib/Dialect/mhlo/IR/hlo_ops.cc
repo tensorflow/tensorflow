@@ -4474,7 +4474,9 @@ static LogicalResult selectCanonicalization(SelectOp selectOp,
   }
   std::array<Value, 3> newOperands = {notOp.operand(), selectOp.on_false(),
                                       selectOp.on_true()};
-  selectOp.getOperation()->setOperands(newOperands);
+  rewriter.updateRootInPlace(selectOp, [&]() {
+    selectOp.getOperation()->setOperands(newOperands);
+  });
   return success();
 }
 
