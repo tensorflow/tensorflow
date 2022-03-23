@@ -27,7 +27,7 @@ func @assuming(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2 : !shape.wi
   // CHECK-NEXT:     s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]
   // CHECK-NEXT:     s2 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]
   %6 = mhlo.multiply %5, %4 : tensor<2xi32>
-  return %6 : tensor<2xi32>
+  func.return %6 : tensor<2xi32>
 }
 
 // -----
@@ -47,7 +47,7 @@ func @num_elements(%arg0: tensor<?x8x?x64xf32>) -> index {
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[0]
   // CHECK-NEXT:     s1 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[2]
   %1 = shape.num_elements %0 : tensor<4xindex> -> index
-  return %1 : index
+  func.return %1 : index
 }
 
 // -----
@@ -62,7 +62,7 @@ func @dynamic_broadcast_in_dim(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -
   // CHECK-NEXT: s0 with
   // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   %2 = shape.shape_of %1 : tensor<?x?xf32> -> tensor<2xindex>
-  return %2 : tensor<2xindex>
+  func.return %2 : tensor<2xindex>
 }
 
 // -----
@@ -77,7 +77,7 @@ func @dynamic_reshape(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<
   // CHECK-NEXT: s0 with
   // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   %2 = shape.shape_of %1 : tensor<?x?xf32> -> tensor<2xindex>
-  return %2 : tensor<2xindex>
+  func.return %2 : tensor<2xindex>
 }
 
 // -----
@@ -95,7 +95,7 @@ func @reduce(%arg0: tensor<?x?x?xf32>, %arg1: tensor<f32>) -> tensor<2xindex> {
   // CHECK-NEXT: s0 with
   // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?x?xf32>' at index: 0)[2]
   %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
-  return %1 : tensor<2xindex>
+  func.return %1 : tensor<2xindex>
 }
 
 // -----
@@ -109,7 +109,7 @@ func @transpose(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   // CHECK-NEXT: s0 with
   // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
-  return %1 : tensor<2xindex>
+  func.return %1 : tensor<2xindex>
 }
 
 // -----
@@ -123,7 +123,7 @@ func @select(%arg0: tensor<i1>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>) 
   // CHECK-NEXT: s0 with
   // CHECK-NEXT:   s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 1)[1]
   %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
-  return %1 : tensor<2xindex>
+  func.return %1 : tensor<2xindex>
 }
 
 // -----
@@ -138,7 +138,7 @@ func @dim(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
-  return %t : tensor<2xindex>
+  func.return %t : tensor<2xindex>
 }
 
 // -----
@@ -154,7 +154,7 @@ func @extract(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   %t = tensor.from_elements %d0, %d0 : tensor<2xindex>
-  return %t : tensor<2xindex>
+  func.return %t : tensor<2xindex>
 }
 
 // -----
@@ -178,7 +178,7 @@ func @symbolic_constraint(
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   // CHECK-NEXT:     s1 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   %4 = mhlo.add %2, %3 : tensor<2xi32>
-  return %4 : tensor<2xi32>
+  func.return %4 : tensor<2xi32>
 }
 
 // -----
@@ -199,7 +199,7 @@ func @dynamic_reshape(%arg0: tensor<?x8x?x64xf32>, %arg1: tensor<4xi32>)
   // CHECK-NEXT:   64
   %3 = "mhlo.dynamic_reshape"(%arg0, %2)
       : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
-  return %3 : tensor<?x8x?x64xf32>
+  func.return %3 : tensor<?x8x?x64xf32>
 }
 
 // -----
@@ -283,7 +283,7 @@ func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %31 = mhlo.divide %29, %30 : tensor<?x?xf32>
     shape.assuming_yield %31 : tensor<?x?xf32>
   }
-  return %25 : tensor<?x?xf32>
+  func.return %25 : tensor<?x?xf32>
 }
 
 // -----
@@ -325,7 +325,7 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
     %21 = "mhlo.dynamic_reshape"(%6, %15) : (tensor<?x?x64x8xf32>, tensor<2xi32>) -> tensor<?x512xf32>
     shape.assuming_yield %21 : tensor<?x512xf32>
   }
-  return %19 : tensor<?x512xf32>
+  func.return %19 : tensor<?x512xf32>
 }
 
 // -----
@@ -342,7 +342,7 @@ func @broadcast(%arg0 : tensor<?x5x1xf32>, %arg1 : tensor<1x?x7xf32>)
   // CHECK-NEXT:  7
   %0 = shape.broadcast %s0, %s1 : tensor<3xindex>, tensor<3xindex>
       -> tensor<3xindex>
-  return %0 : tensor<3xindex>
+  func.return %0 : tensor<3xindex>
 }
 
 // -----
@@ -361,5 +361,5 @@ func @broadcast(%arg0 : tensor<?xf32>, %arg1 : tensor<1x5x?x?xf32>)
   // CHECK-NEXT:     s0 = %2 = shape.broadcast %{{.*}}, %{{.*}} : tensor<1xindex>, tensor<4xindex> -> tensor<4xindex>[3]
   %0 = shape.broadcast %s0, %s1 : tensor<1xindex>, tensor<4xindex>
       -> tensor<4xindex>
-  return %0 : tensor<4xindex>
+  func.return %0 : tensor<4xindex>
 }

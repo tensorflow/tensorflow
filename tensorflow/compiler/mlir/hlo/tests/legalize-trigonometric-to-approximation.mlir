@@ -4,7 +4,7 @@
 func @tanh_f64(%arg0 : f64) -> f64 {
   // CHECK: tanh
   %res = math.tanh %arg0 : f64
-  return %res : f64
+  func.return %res : f64
 }
 
 // -----
@@ -60,7 +60,7 @@ func @tanh_f32(%arg0 : f32) -> f32 {
   // CHECK-DAG: %[[RESULT:.*]] = arith.select %[[IS_NAN]], %[[ARG]], %[[TMP27]] : f32
   // CHECK: return %[[RESULT]] : f32
   %res = math.tanh %arg0 : f32
-  return %res : f32
+  func.return %res : f32
 }
 
 // -----
@@ -72,7 +72,7 @@ func @tanh_f16(%arg0 : f16) -> f16 {
   // CHECK: %[[RES:.*]] = arith.truncf %{{.*}} : f32 to f16
   // CHECK: return %[[RES]] : f16
   %res = math.tanh %arg0 : f16
-  return %res : f16
+  func.return %res : f16
 }
 
 // -----
@@ -81,7 +81,7 @@ func @tanh_f16(%arg0 : f16) -> f16 {
 func @atan2_f64(%arg0 : f64, %arg1 : f64) -> f64 {
   // CHECK: atan2
   %res = math.atan2 %arg0, %arg1 : f64
-  return %res : f64
+  func.return %res : f64
 }
 
 // -----
@@ -90,5 +90,5 @@ func @atan2_f64(%arg0 : f64, %arg1 : f64) -> f64 {
 func @atan_f64(%arg : f64) -> f64 {
   // CHECK: atan
   %res = math.atan %arg : f64
-  return %res : f64
+  func.return %res : f64
 }

@@ -12,5 +12,5 @@ func @shape_assuming_tensor(%arg0: tensor<?xf16>) -> tensor<?xf16> {
     // CHECK: shape.assuming_yield %{{.*}} : memref<?xf16>
     shape.assuming_yield %7 : tensor<?xf16>
   }
-  return %2 : tensor<?xf16>
+  func.return %2 : tensor<?xf16>
 }

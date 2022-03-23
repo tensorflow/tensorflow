@@ -73,7 +73,7 @@ func @tiled_loop(%lhs: tensor<24x64xi8>, %rhs: tensor<24x64xi8>,
       : tensor<?x?xi8> into tensor<24x64xi8>
     gml_st.yield %sum_sub : tensor<24x64xi8>
   }
-  return %prod : tensor<24x64xi8>
+  func.return %prod : tensor<24x64xi8>
 }
 // CHECK-LABEL: func @tiled_loop
 // CHECK-NOT: iterators[
@@ -132,7 +132,7 @@ func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
       : tensor<4xf32> into tensor<24xf32>
     gml_st.yield %sum_sub : tensor<24xf32>
   }
-  return %result : tensor<24xf32>
+  func.return %result : tensor<24xf32>
 }
 // CHECK-LABEL: func @tiled_loop_reduction
 // CHECK: iterators[

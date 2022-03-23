@@ -9,7 +9,7 @@ func @add(%arg0: tensor<32x32xf32>, %arg1: tensor<32x32xf32>, %arg2: !gml_st.poi
   // CHECK: return %[[RESULT]]
   %0 = mhlo.add %arg0, %arg1 : tensor<32x32xf32>
   %1 = gml_st.materialize %0 at %arg2 : tensor<32x32xf32> at !gml_st.point
-  return %1 : f32
+  func.return %1 : f32
 }
 
 // -----
@@ -23,7 +23,7 @@ func @addi(%arg0: tensor<32x32xi8>, %arg1: tensor<32x32xi8>, %arg2: !gml_st.poin
   // CHECK: return %[[RESULT]]
   %0 = mhlo.add %arg0, %arg1 : tensor<32x32xi8>
   %1 = gml_st.materialize %0 at %arg2 : tensor<32x32xi8> at !gml_st.point
-  return %1 : i8
+  func.return %1 : i8
 }
 
 // -----
@@ -37,5 +37,5 @@ func @sub(%arg0: tensor<32x32xf32>, %arg1: tensor<32x32xf32>, %arg2: !gml_st.poi
   // CHECK: return %[[RESULT]]
   %0 = mhlo.subtract %arg0, %arg1 : tensor<32x32xf32>
   %1 = gml_st.materialize %0 at %arg2 : tensor<32x32xf32> at !gml_st.point
-  return %1 : f32
+  func.return %1 : f32
 }

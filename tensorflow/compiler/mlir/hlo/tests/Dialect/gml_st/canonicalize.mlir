@@ -42,7 +42,7 @@ func @fold_loop_results(%A: memref<48xf32>, %B: tensor<48xf32>,
           : (memref<48xf32>, tensor<48xf32>, memref<48xf32>)-> (tensor<48xf32>)
     gml_st.yield %result, %CT_ : tensor<48xf32>, tensor<48xf32>
   }
-  return %useful : tensor<48xf32>
+  func.return %useful : tensor<48xf32>
 }
 
 // CHECK-LABEL: func @fold_loop_results(
@@ -78,7 +78,7 @@ func @fold_loop_inputs(%A: memref<192xf32>, %A_tensor: tensor<192xf32>,
     %0 = call @foo(%A_, %BT_) : (memref<192xf32>, tensor<192xf32>) -> tensor<192xf32>
     gml_st.yield %0 : tensor<192xf32>
   }
-  return %result : tensor<192xf32>
+  func.return %result : tensor<192xf32>
 }
 
 // CHECK-LABEL: func @fold_loop_inputs
@@ -112,7 +112,7 @@ func @dim_of_loop_input_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x
     %slice = tensor.extract_slice %fill[0, 0][%s, %s][1, 1] : tensor<?x?xf32> to tensor<?x?xf32>
     gml_st.yield %slice : tensor<?x?xf32>
   }
-  return %r : tensor<?x?xf32>
+  func.return %r : tensor<?x?xf32>
 }
 
 // -----
@@ -139,7 +139,7 @@ func @dim_of_loop_input(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: t
     %fill = linalg.fill ins(%cast2 : f32) outs(%out1 : tensor<?x?xf32>) -> tensor<?x?xf32>
     gml_st.yield %fill : tensor<?x?xf32>
   }
-  return %r : tensor<?x?xf32>
+  func.return %r : tensor<?x?xf32>
 }
 
 // -----
@@ -162,7 +162,7 @@ func @dim_of_loop_result(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: 
     gml_st.yield %1 : tensor<?x?xf32>
   }
   %r2 = tensor.dim %r, %c0 : tensor<?x?xf32>
-  return %r2 : index
+  func.return %r2 : index
 }
 
 // -----
@@ -186,7 +186,7 @@ func @dim_of_loop_result_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?
     gml_st.yield %1 : tensor<?x?xf32>
   }
   %r2 = tensor.dim %r, %c0 : tensor<?x?xf32>
-  return %r2 : index
+  func.return %r2 : index
 }
 
 // -----
@@ -220,7 +220,7 @@ func @fold_tensor_cast(%in: tensor<4x600xf32>,
     gml_st.yield %out_update : tensor<?xf32>
   }
   %result_cast = tensor.cast %result : tensor<?xf32> to tensor<4xf32>
-  return %result_cast : tensor<4xf32>
+  func.return %result_cast : tensor<4xf32>
 }
 
 // CHECK-LABEL: func @fold_tensor_cast(

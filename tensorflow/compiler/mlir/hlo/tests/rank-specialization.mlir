@@ -16,7 +16,7 @@ func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
       : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   %1 = chlo.broadcast_add %0, %arg2
       : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %1 : tensor<*xf32>
+  func.return %1 : tensor<*xf32>
 }
 
 // CHECK-SCF-LABEL: @add_mul
@@ -131,7 +131,7 @@ func @compare_const_like(%arg0 : tensor<*xf32>) -> tensor<*xi1> {
   %0 = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
   %1 = chlo.broadcast_compare %arg0, %0 {comparison_direction = #mhlo<"comparison_direction GT">}
       : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
-  return %1 : tensor<*xi1>
+  func.return %1 : tensor<*xi1>
 }
 
 // -----
@@ -150,7 +150,7 @@ func @sqrt(%arg : tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.sqrt"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
   %1 = "mhlo.sqrt"(%0) : (tensor<*xf32>) -> tensor<*xf32>
   %2 = "mhlo.sqrt"(%1) : (tensor<*xf32>) -> tensor<*xf32>
-  return %2 : tensor<*xf32>
+  func.return %2 : tensor<*xf32>
 }
 
 // CHECK-SCF-LABEL: @sqrt
@@ -175,7 +175,7 @@ func @sqrt_ranked(%arg: tensor<3x?xf32>) -> tensor<3x?xf32> {
   %0 = "mhlo.sqrt"(%arg) : (tensor<3x?xf32>) -> tensor<3x?xf32>
   %1 = "mhlo.sqrt"(%0) : (tensor<3x?xf32>) -> tensor<3x?xf32>
   %2 = "mhlo.sqrt"(%1) : (tensor<3x?xf32>) -> tensor<3x?xf32>
-  return %2 : tensor<3x?xf32>
+  func.return %2 : tensor<3x?xf32>
 }
 
 // CHECK-SCF-LABEL: @sqrt_ranked
@@ -196,7 +196,7 @@ func @select_mixed(%pred: tensor<*xi1>, %arg1: tensor<*xf32>,
   // CHECK: return %[[RES]]
   %0 = "chlo.broadcast_select"(%pred, %arg1, %arg2)
       : (tensor<*xi1>, tensor<*xf32>, tensor<2xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-SCF-LABEL: @select_mixed
@@ -219,7 +219,7 @@ func @tan(%arg : tensor<*xf32>) -> tensor<*xf32> {
   %0 = chlo.tan %arg : tensor<*xf32> -> tensor<*xf32>
   %1 = chlo.tan %0 : tensor<*xf32> -> tensor<*xf32>
   %2 = chlo.tan %1 : tensor<*xf32> -> tensor<*xf32>
-  return %2 : tensor<*xf32>
+  func.return %2 : tensor<*xf32>
 }
 
 // CHECK-SCF-LABEL: @tan
@@ -259,7 +259,7 @@ func @mixed(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<*xf32>)
       : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   %4 = "mhlo.sqrt"(%3) : (tensor<*xf32>) -> tensor<*xf32>
   %5 = chlo.tan %4 : tensor<*xf32> -> tensor<*xf32>
-  return %5 : tensor<*xf32>
+  func.return %5 : tensor<*xf32>
 }
 
 // CHECK-SCF-LABEL: @mixed
@@ -285,7 +285,7 @@ func @relu(%arg : tensor<*xf32>) -> tensor<*xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = chlo.broadcast_maximum %0, %arg
       : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
-  return %1 : tensor<*xf32>
+  func.return %1 : tensor<*xf32>
 }
 
 // CHECK-SCF-LABEL: @relu
@@ -315,7 +315,7 @@ func @angle(%arg : tensor<*xcomplex<f32>>) -> tensor<*xf32> {
   %0 = "mhlo.imag"(%arg) : (tensor<*xcomplex<f32>>) -> tensor<*xf32>
   %1 = "mhlo.real"(%arg) : (tensor<*xcomplex<f32>>) -> tensor<*xf32>
   %2 = mhlo.atan2 %0, %1 : tensor<*xf32>
-  return %2 : tensor<*xf32>
+  func.return %2 : tensor<*xf32>
 }
 
 // CHECK-SCF-LABEL: @angle
@@ -354,7 +354,7 @@ func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
       : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   %5 = chlo.broadcast_select %2, %1, %4
       : (tensor<*xi1>, tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
-  return %5 : tensor<*xf32>
+  func.return %5 : tensor<*xf32>
 }
 
 // CHECK-SCF:      @xlogy
@@ -452,7 +452,7 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK:   "chlo.rank_specialization_cluster_yield"(%[[TMP]])
   // CHECK: return %[[RES]]
   %0 = chlo.broadcast_multiply %arg0, %arg1 : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-SCF-LABEL: @mul
@@ -582,7 +582,7 @@ func @merge_clusters(%arg0: tensor<*xf64>, %arg1 : tensor<*xf64>)
         : (tensor<*xf64>, tensor<*xf64>) -> tensor<*xf64>
     "chlo.rank_specialization_cluster_yield"(%7) : (tensor<*xf64>) -> ()
   }) : (tensor<*xf64>, tensor<*xf64>, tensor<*xf64>) -> (tensor<*xf64>)
-  return %2 : tensor<*xf64>
+  func.return %2 : tensor<*xf64>
 }
 
 // -----
@@ -598,7 +598,7 @@ func @all_equal_shapes_inferrable(%arg0: tensor<*xf64>, %arg1 : tensor<*xf64>)
   // CHECK: return %[[RES]]
   %0 = "mhlo.add"(%arg0, %arg1)
       : (tensor<*xf64>, tensor<*xf64>) -> tensor<*xf64>
-  return %0 : tensor<*xf64>
+  func.return %0 : tensor<*xf64>
 }
 
 // CHECK-SCF-LABEL: @all_equal_shapes_inferrable
@@ -630,7 +630,7 @@ func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "chlo.constant_like"(%arg0) {value = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
   %1 = "mhlo.compare"(%arg0, %0) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xi1>
   %2 = "mhlo.select"(%1, %arg1, %0) : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %2 : tensor<*xf32>
+  func.return %2 : tensor<*xf32>
 }
 
 // CHECK-SCF-LABEL: @relu_grad
@@ -678,7 +678,7 @@ func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
         : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     shape.assuming_yield %6 : tensor<*xf32>
   }
-  return %3 : tensor<*xf32>
+  func.return %3 : tensor<*xf32>
 }
 
 // CHECK-SCF-LABEL: @relu_grad

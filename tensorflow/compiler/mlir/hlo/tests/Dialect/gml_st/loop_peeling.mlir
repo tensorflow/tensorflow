@@ -103,7 +103,7 @@ func @loop_3d_tensor(%arg0: tensor<?x?x?xf32>, %s0: index, %s1: index,
     %updated_slice = tensor.insert_slice %comp into %arg5[%arg1, %arg2, %arg3] [%min0, %min1, %min2] [1, 1, 1] : tensor<?x?x?xf32> into tensor<?x?x?xf32>
     gml_st.yield %updated_slice : tensor<?x?x?xf32>
   }
-  return %result : tensor<?x?x?xf32>
+  func.return %result : tensor<?x?x?xf32>
 }
 
 // -----
@@ -194,7 +194,7 @@ func @step_1_do_not_peel(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
     %updated_slice = tensor.insert_slice %comp into %arg5[%arg1, %arg2, %arg3] [%c1, %c1, %c1] [1, 1, 1] : tensor<?x?x?xf32> into tensor<?x?x?xf32>
     gml_st.yield %updated_slice : tensor<?x?x?xf32>
   }
-  return %result : tensor<?x?x?xf32>
+  func.return %result : tensor<?x?x?xf32>
 }
 
 // -----
@@ -227,5 +227,5 @@ func @divides_evenly_do_not_peel(%arg0: tensor<?x?x?xf32>, %s: index)
     %updated_slice = tensor.insert_slice %comp into %arg5[%arg1, %arg2, %arg3] [%c1, %c1, %c1] [1, 1, 1] : tensor<?x?x?xf32> into tensor<?x?x?xf32>
     gml_st.yield %updated_slice : tensor<?x?x?xf32>
   }
-  return %result : tensor<?x?x?xf32>
+  func.return %result : tensor<?x?x?xf32>
 }

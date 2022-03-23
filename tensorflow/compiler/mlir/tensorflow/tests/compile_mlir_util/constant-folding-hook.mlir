@@ -6,7 +6,7 @@ module attributes {tf.versions = {producer = 179 : i32}} {
   func @main() -> (tensor<0xi32>, tensor<0xi32>) {
     %0 = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
     %r0, %r1 = "tf.BroadcastGradientArgs"(%0, %0) {T = i32} : (tensor<0xi32>, tensor<0xi32>) -> (tensor<0xi32>, tensor<0xi32>)
-    return %r0, %r1 : tensor<0xi32>, tensor<0xi32>
+    func.return %r0, %r1 : tensor<0xi32>, tensor<0xi32>
   }
 }
 

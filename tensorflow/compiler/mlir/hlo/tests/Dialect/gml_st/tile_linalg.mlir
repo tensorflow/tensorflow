@@ -8,7 +8,7 @@ func @matmul_tensors(
   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<?x?xf32>, tensor<?x?xf32>)
                      outs(%arg2: tensor<?x?xf32>)
     -> tensor<?x?xf32>
-  return %0 : tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: func @matmul_tensors
@@ -66,7 +66,7 @@ func @generic_op_tensors(
       %5 = arith.addf %arg2, %arg3 : f32
       linalg.yield %5 : f32
     } -> tensor<?x?x?xf32>
-  return %4 : tensor<?x?x?xf32>
+  func.return %4 : tensor<?x?x?xf32>
 }
 // CHECK-LABEL: func @generic_op_tensors(
 // CHECK-SAME:    %[[ARG_0:.*]]: [[TY:.*]],

@@ -318,7 +318,7 @@ func @nestedRegionControlFlow(%arg0 : index, %arg1 : index) -> memref<2xf32> {
     "lmhlo.negate"(%1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
     scf.yield %2 : memref<2xf32>
   }
-  return %3 : memref<2xf32>
+  func.return %3 : memref<2xf32>
 }
 
 //      CHECK: %[[ALLOC1:.*]] = memref.alloc()
@@ -351,7 +351,7 @@ func @nestedRegionControlFlowNoReuse(%arg0 : index,
     "lmhlo.negate"(%1, %2) : (memref<2xf32>, memref<2xf32>) -> ()
     scf.yield %2 : memref<2xf32>
   }
-  return %3 : memref<2xf32>
+  func.return %3 : memref<2xf32>
 }
 
 //      CHECK: %[[ALLOC1:.*]] = memref.alloc()
@@ -391,7 +391,7 @@ func @noReuseInNestedRegionLoop(
     "lmhlo.negate"(%arg0, %1) : (memref<2xf32>, memref<2xf32>) -> ()
     scf.yield %arg0 : memref<2xf32>
   }
-  return %2 : memref<2xf32>
+  func.return %2 : memref<2xf32>
 }
 
 //      CHECK: %[[ALLOC0:.*]] = memref.alloc()
