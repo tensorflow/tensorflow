@@ -15,5 +15,5 @@ func.func @test(%V__0 : tensor<?x?x?x?xi1> { python_test_attrs.static_type = ten
   %dims9 = "tf.Const"() { value = dense<[3]> : tensor<1xi32>, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : () -> tensor<1xi32>
   %9 = "tf.Mean"(%8, %dims9) { keep_dims = false, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xf32>, tensor<1xi32>) -> tensor<?x?x?xf32>
   %10 = "tf.Sign"(%9) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return %10 : tensor<?x?x?xf32>
+  func.return %10 : tensor<?x?x?xf32>
 }

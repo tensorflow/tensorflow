@@ -4,5 +4,5 @@ func.func @test(%V__0 : tensor<?x?x?xi1> { python_test_attrs.static_type = tenso
   %1 = "tf.Invert"(%0) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xi64>) -> tensor<?x?x?x?xi64>
   %2 = "tf.Squeeze"(%1) { squeeze_dims = [ 1 : i64 ], device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xi64>) -> tensor<?x?x?xi64>
   %3 = "tf.Select"(%V__0, %V__1, %2) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xi1>, tensor<?x?x?xi64>, tensor<?x?x?xi64>) -> tensor<?x?x?xi64>
-  return %3 : tensor<?x?x?xi64>
+  func.return %3 : tensor<?x?x?xi64>
 }
