@@ -31,20 +31,23 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
 
   // The following configs are constant.
 
-  // Avoid grappler logic that lowers to v1 control flow.
+  // Setting use_tfrt to true avoids grappler logic that lowers to v1 control
+  // flow. Note that other function inlining (e.g. on StatefulPartitionedCall)
+  // is still enabled.
   config.mutable_experimental()->set_use_tfrt(true);
-  config.mutable_graph_options()
-      ->mutable_optimizer_options()
-      ->set_do_function_inlining(false);
+  if (options.enable_grappler_function_optimizer) {
+    config.mutable_graph_options()
+        ->mutable_rewrite_options()
+        ->set_function_optimization(tensorflow::RewriterConfig::ON);
+  } else {
+    config.mutable_graph_options()
+        ->mutable_rewrite_options()
+        ->set_function_optimization(tensorflow::RewriterConfig::OFF);
+  }
   // Do not skip grappler optimization even for small graphs.
   config.mutable_graph_options()
       ->mutable_rewrite_options()
       ->set_min_graph_nodes(-1);
-  // Disable function inlining because it may cause restore graphs to be removed
-  // as we optimize all graphs together.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_function_optimization(tensorflow::RewriterConfig::OFF);
 
   return session_options;
 }
