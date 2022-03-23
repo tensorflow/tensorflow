@@ -51,7 +51,6 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
-from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
@@ -155,7 +154,8 @@ def _variable_handle_from_shape_and_dtype(shape,
   if not graph_mode:
     if shared_name is not None:
       raise errors.InternalError(  # pylint: disable=no-value-for-parameter
-          "Using an explicit shared_name is not supported executing eagerly.")
+          "Using an explicit shared_name is not allowed when executing eagerly."
+      )
     shared_name = context.anonymous_name()
 
   handle = gen_resource_variable_ops.var_handle_op(
@@ -329,29 +329,6 @@ def variable_accessed(variable):
     tape.variable_accessed(variable)
 
 
-# TODO(b/202447704): Merge into VariableSpec.
-class VariableType(trace.TraceType):
-  """Represents Variables (and specs) for function tracing purposes."""
-
-  def __init__(self, dtype, shape, local_id):
-    self._components = (dtype, tuple(shape.as_list()), local_id)
-
-  def is_subtype_of(self, other):
-    # TODO(b/202429845): Implement for subtyping.
-    return self == other
-
-  def most_specific_common_supertype(self, others):
-    # TODO(b/202430155) Implement for shape relaxation.
-    return None
-
-  def __hash__(self) -> int:
-    return hash(self._components)
-
-  def __eq__(self, other) -> bool:
-    return isinstance(
-        other, VariableType) and self._components == other._components
-
-
 class BaseResourceVariable(variables.VariableV1, core.Tensor):
   """A python variable from an existing handle."""
 
@@ -375,7 +352,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       is_initialized_op=None,
       cached_value=None,
       save_slice_info=None,
-      handle_deleter=None,
       caching_device=None,
       in_graph_mode=None,
       **unused_kwargs):
@@ -419,8 +395,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       cached_value: Pre-created operation to read this variable in a specific
         device.
       save_slice_info: Metadata for variable partitioning.
-      handle_deleter: EagerResourceDeleter responsible for cleaning up the
-        handle.
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
@@ -458,16 +432,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint
-    # After the handle has been created, set up a way to clean it up when
-    # executing eagerly. We'll hold the only reference to the deleter, so that
-    # when this object is garbage collected the deleter will be too. This
-    # means ResourceVariables can be part of reference cycles without those
-    # cycles being uncollectable.
-    if not self._in_graph_mode:
-      if handle_deleter is None:
-        handle_deleter = EagerResourceDeleter(
-            handle=self._handle, handle_device=self._handle.device)
-    self._handle_deleter = handle_deleter
     self._cached_shape_as_list = None
 
   def __repr__(self):
@@ -489,9 +453,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
 
-  def __tf_tracing_type__(self, tracing_context):
-    return VariableType(self.dtype, self.shape,
-                        tracing_context.get_local_id(self._handle._id))  # pylint:disable=protected-access
+  def __tf_tracing_type__(self, signature_context):
+    return signature_context.make_reference_type(
+        VariableSpec(self.shape, self.dtype), self._handle._id)  # pylint:disable=protected-access
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -899,7 +863,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
         dtype=self.dtype,
         shape=self._shape,
         in_graph_mode=self._in_graph_mode,
-        deleter=self._handle_deleter if not self._in_graph_mode else None,
         parent_op=op,
         unique_id=self._unique_id)
 
@@ -933,7 +896,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
              f"The variable shape {self._shape}, and the "
              f"assigned value shape {value_tensor.shape} are incompatible."))
       kwargs = {}
-      if forward_compat.forward_compatible(2022, 2, 23):
+      if forward_compat.forward_compatible(2022, 3, 23):
         # If the shape is fully defined, we do a runtime check with the shape of
         # value.
         validate_shape = self._shape.is_fully_defined()
@@ -1821,6 +1784,7 @@ class ResourceVariable(BaseResourceVariable):
               shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
+          handle._parent_trackable = weakref.ref(self)
         # pylint: disable=protected-access
         if (self._in_graph_mode and initial_value is not None and
             initial_value.op._get_control_flow_context() is not None):
@@ -2051,6 +2015,8 @@ class UninitializedVariable(BaseResourceVariable):
             name=name,
             graph_mode=self._in_graph_mode,
             initial_value=extra_handle_data)
+        handle._parent_trackable = weakref.ref(self)
+
         if self._in_graph_mode:
           # We only need to add the read_variable_op in TF1.
           with ops.name_scope("Read"):
@@ -2101,7 +2067,7 @@ class _UnreadVariable(BaseResourceVariable):
   Pretends to be the tensor if anyone looks.
   """
 
-  def __init__(self, handle, dtype, shape, in_graph_mode, deleter, parent_op,
+  def __init__(self, handle, dtype, shape, in_graph_mode, parent_op,
                unique_id):
     if isinstance(handle, ops.EagerTensor):
       handle_name = ""
@@ -2123,7 +2089,6 @@ class _UnreadVariable(BaseResourceVariable):
         handle_name=handle_name,
         unique_id=unique_id,
         dtype=dtype,
-        handle_deleter=deleter,
         graph_element=graph_element)
     self._parent_op = parent_op
 
@@ -2361,9 +2326,8 @@ class VariableSpec(tensor_spec.DenseSpec):
     assert len(tensor_list) == 1
     return tensor_list[0]
 
-  def __tf_tracing_type__(self, tracing_context):
-    return VariableType(self.dtype, self.shape,
-                        tracing_context.get_local_id(id(self)))
+  def __tf_tracing_type__(self, signature_context):
+    return signature_context.make_reference_type(self, id(self))
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 

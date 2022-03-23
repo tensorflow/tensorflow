@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -29,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -96,6 +97,22 @@ class XStatsBuilder {
       for_each_stat(&stat);
     }
   }
+
+  const XStat* GetStat(int64_t metadata_id) const {
+    for (auto& stat : *stats_owner_->mutable_stats()) {
+      if (stat.metadata_id() == metadata_id) {
+        return &stat;
+      }
+    }
+    return nullptr;
+  }
+
+  static uint64 IntOrUintValue(const XStat& stat) {
+    return stat.value_case() == XStat::kUint64Value ? stat.uint64_value()
+                                                    : stat.int64_value();
+  }
+
+  absl::string_view StrOrRefValue(const XStat& stat);
 
  private:
   XStat* AddStat(const XStatMetadata& metadata) {
@@ -201,10 +218,10 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
 
   void SetOffsetPs(int64_t offset_ps) { event_->set_offset_ps(offset_ps); }
 
-  void SetOffsetNs(int64_t offset_ns) { SetOffsetPs(NanosToPicos(offset_ns)); }
+  void SetOffsetNs(int64_t offset_ns) { SetOffsetPs(NanoToPico(offset_ns)); }
 
   void SetTimestampNs(int64_t timestamp_ns) {
-    SetOffsetPs(NanosToPicos(timestamp_ns - line_->timestamp_ns()));
+    SetOffsetPs(NanoToPico(timestamp_ns - line_->timestamp_ns()));
   }
 
   void SetNumOccurrences(int64_t num_occurrences) {
@@ -215,20 +232,20 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
     event_->set_duration_ps(duration_ps);
   }
   void SetDurationNs(int64_t duration_ns) {
-    SetDurationPs(NanosToPicos(duration_ns));
+    SetDurationPs(NanoToPico(duration_ns));
   }
 
   void SetEndTimestampPs(int64_t end_timestamp_ps) {
-    SetDurationPs(end_timestamp_ps - PicosToNanos(line_->timestamp_ns()) -
+    SetDurationPs(end_timestamp_ps - PicoToNano(line_->timestamp_ns()) -
                   event_->offset_ps());
   }
   void SetEndTimestampNs(int64_t end_timestamp_ns) {
-    SetDurationPs(NanosToPicos(end_timestamp_ns - line_->timestamp_ns()) -
+    SetDurationPs(NanoToPico(end_timestamp_ns - line_->timestamp_ns()) -
                   event_->offset_ps());
   }
 
   Timespan GetTimespan() const {
-    return Timespan(NanosToPicos(line_->timestamp_ns()) + event_->offset_ps(),
+    return Timespan(NanoToPico(line_->timestamp_ns()) + event_->offset_ps(),
                     event_->duration_ps());
   }
 
@@ -350,6 +367,9 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   // Returns stat metadata with the given name. Returns nullptr if not found.
   XStatMetadata* GetStatMetadata(absl::string_view name) const;
 
+  // Returns stat metadata given its id. Returns a default value if not found.
+  const XStatMetadata* GetStatMetadata(int64_t metadata_id) const;
+
   // Returns a new stat metadata with an automatically generated metadata_id.
   // WARNING: If calling this function, don't call GetOrCreateEventMetadata.
   XStatMetadata* CreateStatMetadata();
@@ -388,6 +408,23 @@ const XStatMetadata& XStatsBuilder<T>::GetOrCreateStatMetadata(
   return *stats_metadata_owner_->GetOrCreateStatMetadata(value);
 }
 
+template <typename T>
+absl::string_view XStatsBuilder<T>::StrOrRefValue(const XStat& stat) {
+  switch (stat.value_case()) {
+    case XStat::kStrValue:
+      return stat.str_value();
+    case XStat::kRefValue: {
+      auto* ref_stat = stats_metadata_owner_->GetStatMetadata(stat.ref_value());
+      return ref_stat ? ref_stat->name() : absl::string_view();
+    }
+    case XStat::kInt64Value:
+    case XStat::kUint64Value:
+    case XStat::kDoubleValue:
+    case XStat::kBytesValue:
+    case XStat::VALUE_NOT_SET:
+      return absl::string_view();
+  }
+}
 }  // namespace profiler
 }  // namespace tensorflow
 

@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -137,15 +137,16 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> MlirGpuTestBase::ParseMlirModule(
     absl::string_view module_text, mlir::MLIRContext& context) {
   context
       .loadDialect<mlir::arith::ArithmeticDialect, mlir::lmhlo::LmhloDialect,
-                   mlir::mhlo::MhloDialect, mlir::StandardOpsDialect,
+                   mlir::mhlo::MhloDialect, mlir::func::FuncDialect,
                    mlir::gpu::GPUDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
   llvm::SourceMgr source_mgr;
   std::string diagnostic_str;
   llvm::raw_string_ostream os(diagnostic_str);
   mlir::SourceMgrDiagnosticHandler handler(source_mgr, &context, os);
 
-  mlir::OwningOpRef<mlir::ModuleOp> module = parseSourceString(
-      llvm::StringRef(module_text.data(), module_text.size()), &context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(
+          llvm::StringRef(module_text.data(), module_text.size()), &context);
   if (!module) {
     return InvalidArgument("Failed to parse MLIR module: %s", diagnostic_str);
   }

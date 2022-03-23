@@ -1564,7 +1564,8 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       hlo->opcode() != HloOpcode::kTuple &&
       hlo->opcode() != HloOpcode::kGetTupleElement &&
       hlo->opcode() != HloOpcode::kParameter &&
-      hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng) {
+      hlo->opcode() != HloOpcode::kWhile && hlo->opcode() != HloOpcode::kRng &&
+      hlo->opcode() != HloOpcode::kAllReduce) {
     const bool has_manual_sharding =
         hlo->sharding().IsManual() ||
         (hlo->sharding().IsTuple() &&
@@ -1686,8 +1687,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
-  logger_->RegisterLogEntry(GetPartitionedHlo(hlo).hlo(),
-                            b_.derived_instructions(hlo));
+  logger_->RegisterLogEntry(hlo, b_.derived_instructions(hlo));
   visiting_hlo_ = nullptr;
   b_.set_visiting_hlo(nullptr);
   // Revert fake one-device shardings for manually partitioned ops.
@@ -2342,6 +2342,48 @@ Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
   if (hlo->IsCrossReplicaAllReduce() && hlo->operand_count() == 1) {
     return HandleElementwise(hlo);
   }
+  if (hlo->channel_id()) {
+    TF_RET_CHECK(hlo->operand_count() == 1)
+        << "SPMD partitioner supports only single-operand allreduce in manual "
+           "partitioning mode.";
+    if (hlo->sharding().IsManual()) {
+      return HandleElementwise(hlo);
+    }
+    TF_RET_CHECK(hlo->sharding().IsManualSubgroup())
+        << "Cross-partition allreduce must be in (partial) manual partitioning "
+           "mode.";
+    auto* ar = Cast<HloAllReduceInstruction>(hlo);
+    TF_RET_CHECK(ar->use_global_device_ids())
+        << "Cross-partition allreduce in partial manual partitioning mode must "
+           "use global device IDs.";
+    absl::flat_hash_map<int64_t, int64_t> partition_to_group_id;
+    hlo->sharding().tile_assignment().Each(
+        [&](absl::Span<const int64_t> indices, int64_t partition) {
+          int64_t group_id = 0;
+          for (int64_t i = 0; i < indices.size(); ++i) {
+            if (i == hlo->sharding().SubgroupManualDim()) {
+              continue;
+            }
+            group_id *= hlo->sharding().tile_assignment().dim(i);
+            group_id += indices[i];
+          }
+          partition_to_group_id[partition] = group_id;
+        });
+    for (const auto& group : ar->replica_groups()) {
+      int64_t first_partition = group.replica_ids(0) % num_partitions_;
+      for (int64_t device : group.replica_ids()) {
+        int64_t partition = device % num_partitions_;
+        if (partition_to_group_id[partition] !=
+            partition_to_group_id[first_partition]) {
+          return InvalidArgumentStrCat(
+              "Manual all-reduce across devices that belong to different "
+              "manual subgroups: ",
+              ar->ToString());
+        }
+      }
+    }
+    return HandleElementwise(hlo);
+  }
   return DefaultAction(hlo);
 }
 
@@ -2718,8 +2760,8 @@ Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
           return branch_b.AddInstruction(
               HloInstruction::CreateTuple(padded_elements));
         }
-        const Shape& pad_shape =
-            ShapeUtil::GetSubshape(shard_shape, ShapeIndexView(index, 1));
+        const Shape& pad_shape = ShapeUtil::GetSubshape(
+            shard_shape, ShapeIndexView(index).subspan(1));
         if (ShapeUtil::Compatible(element_shape, pad_shape)) {
           return infeed_element;
         }
@@ -3902,9 +3944,11 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
       TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
           old_entry_layout.parameter_shape(i),
           new_program_shape.mutable_parameters(i)));
+      UpdateLayout(new_program_shape.mutable_parameters(i));
     }
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         old_entry_layout.result_shape(), new_program_shape.mutable_result()));
+    UpdateLayout(new_program_shape.mutable_result());
 
     HloModuleConfig config = module->config();
     *config.mutable_entry_computation_layout() =

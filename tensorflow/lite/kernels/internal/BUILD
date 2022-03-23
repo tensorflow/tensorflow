@@ -548,6 +548,7 @@ cc_library(
         "reference/leaky_relu.h",
         "reference/logistic.h",
         "reference/log_softmax.h",
+        "reference/lstm_cell.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
@@ -650,6 +651,7 @@ cc_library(
         "reference/legacy_reference_ops.h",
         "reference/log_softmax.h",
         "reference/logistic.h",
+        "reference/lstm_cell.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
         "reference/neg.h",
@@ -865,7 +867,6 @@ cc_library(
     hdrs = [
         "portable_tensor_utils.h",
         "tensor_utils.h",
-        "tensor_utils_common.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,

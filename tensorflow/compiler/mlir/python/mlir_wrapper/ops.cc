@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
@@ -72,15 +71,15 @@ void init_ops(py::module& m) {
       .def("getArguments",
            [](mlir::FuncOp& f) { return f.getArguments().vec(); })
       .def("getName", [](mlir::FuncOp& f) { return f.getName().str(); })
-      .def("getType", &mlir::FuncOp::getType);
+      .def("getType", &mlir::FuncOp::getFunctionType);
 
-  py::class_<mlir::ReturnOp>(m, "ReturnOp")
+  py::class_<mlir::func::ReturnOp>(m, "ReturnOp")
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc,
               std::vector<mlir::Value> values) -> mlir::Operation* {
              return opb
-                 .create<mlir::ReturnOp>(loc,
-                                         mlir::ArrayRef<mlir::Value>(values))
+                 .create<mlir::func::ReturnOp>(
+                     loc, mlir::ArrayRef<mlir::Value>(values))
                  .getOperation();
            });
 

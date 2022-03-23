@@ -1047,8 +1047,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     with self.assertRaises(ValueError) as error:
       quantized_converter.convert()
     self.assertEqual(
-        'representative_dataset is required when specifying '
-        'TFLITE_BUILTINS_INT8 or INT8 supported types.', str(error.exception))
+        'For full integer quantization, a `representative_dataset` '
+        'must be specified.', str(error.exception))
 
   def testQuantizeUInt8(self):
     with ops.Graph().as_default():
@@ -1163,10 +1163,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertEqual(interpreter.get_tensor_details()[bias_idx]['dtype'],
                      dtypes.float32)
 
-    # MLIR quantizer has different bias index.
-    if enable_mlir_quantizer:
-      bias_idx = 2
-
     # Convert model to quantized version
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
@@ -1189,17 +1185,20 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                           metadata.options.modelOptimizationModes)
       interpreter = Interpreter(model_content=quantized_tflite_model)
       interpreter.allocate_tensors()
-      self.assertEqual(interpreter.get_tensor_details()[bias_idx]['name'],
-                       bias_name)
+
+      # MLIR quantizer has different bias index.
+      bias_tensor = [
+          tensor for tensor in interpreter.get_tensor_details()
+          if tensor['name'] == bias_name
+      ]
+      self.assertLen(bias_tensor, 1)
 
       if is_float16_quantized:
         # Verify that bias constant is float16 type.
-        self.assertEqual(interpreter.get_tensor_details()[bias_idx]['dtype'],
-                         dtypes.float16)
+        self.assertEqual(bias_tensor[0]['dtype'], dtypes.float16)
       elif is_post_training_quantized:
         # Verify that bias constants is int32 type.
-        self.assertEqual(interpreter.get_tensor_details()[bias_idx]['dtype'],
-                         dtypes.int32)
+        self.assertEqual(bias_tensor[0]['dtype'], dtypes.int32)
       else:
         raise ValueError('Invalid test options.')
 
@@ -1220,8 +1219,10 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     with self.assertRaises(ValueError) as error:
       quantized_converter.convert()
     self.assertEqual(
-        'TFLITE_BUILTINS_INT8 requires smallest supported type to be INT8.',
-        str(error.exception))
+        'As full integer quantization has been enabled by setting '
+        '`target_spec.supported_ops`={tf.lite.OpsSet.TFLITE_BUILTINS_INT8}, '
+        'thus `target_spec.supported_types` should be left uninitizalized '
+        'or set to {tf.int8}.', str(error.exception))
 
   @parameterized.named_parameters(('InferenceType_INT8', dtypes.int8),
                                   ('InferenceType_UINT8', dtypes.uint8))

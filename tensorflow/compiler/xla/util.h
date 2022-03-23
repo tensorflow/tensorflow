@@ -464,8 +464,7 @@ template <typename T>
 constexpr inline int Log2Ceiling(T x) {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
-  int bit_width = absl::bit_width(x);
-  return absl::popcount(x) <= 1 ? bit_width - 1 : bit_width;
+  return x == 0 ? -1 : absl::bit_width(x - 1);
 }
 
 // Returns the value with every bit except the lower 'width' bits set to zero.

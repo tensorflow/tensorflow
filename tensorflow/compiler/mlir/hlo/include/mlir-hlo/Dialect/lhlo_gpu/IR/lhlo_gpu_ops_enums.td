@@ -17,21 +17,27 @@ limitations under the License.
 #define LHLO_GPU_OPS_ENUMS
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/EnumAttr.td"
 
-def ActivationModeNone : StrEnumAttrCase<"None">;
-def ActivationModeSigmoid : StrEnumAttrCase<"Sigmoid">;
-def ActivationModeTanh : StrEnumAttrCase<"Tanh">;
-def ActivationModeRelu : StrEnumAttrCase<"Relu">;
-def ActivationModeRelu6 : StrEnumAttrCase<"Relu6">;
-def ActivationModeReluX : StrEnumAttrCase<"ReluX">;
-def ActivationModeBandPass : StrEnumAttrCase<"BandPass">;
+include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_base.td"
 
-def ActivationAttr : StrEnumAttr<"Activation",
+def ActivationModeNone : I32EnumAttrCase<"None", 0>;
+def ActivationModeSigmoid : I32EnumAttrCase<"Sigmoid", 1>;
+def ActivationModeTanh : I32EnumAttrCase<"Tanh", 2>;
+def ActivationModeRelu : I32EnumAttrCase<"Relu", 3>;
+def ActivationModeRelu6 : I32EnumAttrCase<"Relu6", 4>;
+def ActivationModeReluX : I32EnumAttrCase<"ReluX", 5>;
+def ActivationModeBandPass : I32EnumAttrCase<"BandPass", 6>;
+
+def Activation: I32EnumAttr<"Activation",
     "Activation applied with fused convolution",
     [ActivationModeNone,  ActivationModeSigmoid, ActivationModeTanh,
      ActivationModeRelu, ActivationModeRelu6, ActivationModeReluX,
      ActivationModeBandPass]> {
+  let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::lmhlo_gpu";
 }
+
+def ActivationAttr : EnumAttr<LmhloGpuDialect, Activation, "activation">;
 
 #endif // LHLO_GPU_OPS_ENUMS

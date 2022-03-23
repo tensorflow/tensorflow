@@ -125,12 +125,6 @@ struct LaunchBatchMatrixTriangularSolve<CPUDevice, Scalar> {
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
     using ConstMatrixMap = Eigen::Map<const Matrix>;
     using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
-    // Check diagonal before doing any solves.
-    auto matrix = ConstMatrixMap(in_x.flat<Scalar>().data(), in_x.dim_size(1),
-                                 in_x.dim_size(2));
-    const RealScalar min_abs_pivot = matrix.diagonal().cwiseAbs().minCoeff();
-    OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
-                errors::InvalidArgument("Input matrix is not invertible."));
 
     Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
           cost_per_unit,

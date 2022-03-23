@@ -18,7 +18,7 @@ func private @print(%chain : !tfrt.chain, %tensor_handle : !corert.tensorhandle)
 // CHECK-LABEL: func @remote_execute
 func @remote_execute(%arg0 : !corert.tensorhandle) -> (!tfrt.chain, !tfrt.chain, !corert.tensorhandle) {
   %c0 = tfrt.new.chain
-  // CHECK: %[[CONFIGS:.*]]:2 = "tfrt_dist.test_create_configurations"()
+  // CHECK: %[[CONFIGS:.*]]:2 = tfrt_dist.test_create_configurations : 2
   %configs:2 = tfrt_dist.test_create_configurations : 2
   // CHECK-NEXT: %[[CLIENT_CTX:.*]] = tfrt_dist.test_create_distributed_context %[[CONFIGS]]#0
   %client_context = tfrt_dist.test_create_distributed_context %configs#0 : (!tfrt_dist.dist_context_configuration) -> !tfrt_dist.dist_context

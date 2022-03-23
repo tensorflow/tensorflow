@@ -127,5 +127,12 @@ StatusOr<Comparison::Type> StringToComparisonType(
 
 using ComparisonDirection = Comparison::Direction;
 
+// Returns a comparison function using the provided key function on each value,
+// i.e. `key_fn(a) < key_fn(b)`.
+template <typename KeyFn>
+auto LessThanByKey(KeyFn&& key_fn) {
+  return [=](const auto& a, const auto& b) { return key_fn(a) < key_fn(b); };
+}
+
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_

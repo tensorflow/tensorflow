@@ -106,7 +106,7 @@ ENTRY main {
 
   MatchOptimizedHloWithShapes(hlo_text,
                               R"(
-// CHECK: %reduce = (f32[4,12,12,16,5]{2,1,3,4,0}, u32[4,12,12,16,5]{2,1,3,4,0}) reduce(f32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} %bitcast, u32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} %bitcast.1, f32[] %constant0, u32[] %constant1), dimensions={0,1,2}, to_apply=%argmax
+// CHECK: %reduce.1 = (f32[4,12,12,16,5]{2,1,3,4,0}, u32[4,12,12,16,5]{2,1,3,4,0}) reduce(f32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} %bitcast.5, u32[5,3,3,4,12,12,16,5]{7,6,5,4,3,2,1,0} %bitcast.4, f32[] %constant0_1, u32[] %constant1_1), dimensions={0,1,2}, to_apply=%argmax
 //
       )");
 }

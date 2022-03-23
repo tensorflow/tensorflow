@@ -327,3 +327,39 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
   }
   return %19 : tensor<?x512xf32>
 }
+
+// -----
+
+// CHECK-LABEL: Testing : broadcast
+func @broadcast(%arg0 : tensor<?x5x1xf32>, %arg1 : tensor<1x?x7xf32>)
+    -> tensor<3xindex> {
+  %s0 = shape.shape_of %arg0 : tensor<?x5x1xf32> -> tensor<3xindex>
+  %s1 = shape.shape_of %arg1 : tensor<1x?x7xf32> -> tensor<3xindex>
+  // CHECK:       Value info for %2 = shape.broadcast %0, %1 : tensor<3xindex>, tensor<3xindex> -> tensor<3xindex>:
+  // CHECK-NEXT:  s0 with
+  // CHECK-NEXT:    s0 = shapeof(<block argument> of type 'tensor<?x5x1xf32>' at index: 0)[0]
+  // CHECK-NEXT:  5
+  // CHECK-NEXT:  7
+  %0 = shape.broadcast %s0, %s1 : tensor<3xindex>, tensor<3xindex>
+      -> tensor<3xindex>
+  return %0 : tensor<3xindex>
+}
+
+// -----
+
+// CHECK-LABEL: Testing : broadcast
+func @broadcast(%arg0 : tensor<?xf32>, %arg1 : tensor<1x5x?x?xf32>)
+    -> tensor<4xindex> {
+  %s0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
+  %s1 = shape.shape_of %arg1 : tensor<1x5x?x?xf32> -> tensor<4xindex>
+  // CHECK:      Value info for %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<4xindex> -> tensor<4xindex>:
+  // CHECK-NEXT:   1
+  // CHECK-NEXT:   5
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<1x5x?x?xf32>' at index: 1)[2]
+  // CHECK-NEXT:   s0 with
+  // CHECK-NEXT:     s0 = %2 = shape.broadcast %{{.*}}, %{{.*}} : tensor<1xindex>, tensor<4xindex> -> tensor<4xindex>[3]
+  %0 = shape.broadcast %s0, %s1 : tensor<1xindex>, tensor<4xindex>
+      -> tensor<4xindex>
+  return %0 : tensor<4xindex>
+}

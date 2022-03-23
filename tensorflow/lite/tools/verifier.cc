@@ -436,6 +436,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_INT16:
       bytes_required *= sizeof(uint16_t);
       break;
+    case TensorType_UINT16:
+      bytes_required *= sizeof(uint16_t);
+      break;
     case TensorType_COMPLEX64:
       bytes_required *= sizeof(std::complex<float>);
       break;

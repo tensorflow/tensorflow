@@ -169,6 +169,7 @@ TfLiteRegistration* Register_BUCKETIZE();
 TfLiteRegistration* Register_RANDOM_UNIFORM();
 TfLiteRegistration* Register_MULTINOMIAL();
 TfLiteRegistration* Register_GELU();
+TfLiteRegistration* Register_DYNAMIC_UPDATE_SLICE();
 
 namespace {
 
@@ -224,7 +225,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_L2_POOL_2D, Register_L2_POOL_REF());
   AddBuiltin(BuiltinOperator_CONV_2D, Register_CONVOLUTION_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
              Register_DEPTHWISE_CONVOLUTION_REF(),
              /* min_version = */ 1,
@@ -494,6 +495,8 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_GELU, Register_GELU(),
              /* min_version = */ 1,
              /* max_version = */ 2);
+  AddBuiltin(BuiltinOperator_DYNAMIC_UPDATE_SLICE,
+             Register_DYNAMIC_UPDATE_SLICE());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that

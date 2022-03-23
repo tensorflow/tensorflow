@@ -22,8 +22,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -191,7 +191,7 @@ struct PackJITCompileOpPattern
                           tmp_module_builder.getUnitAttr());
     jit_function.getBody().takeBody(op.getBodyRegion());
     tmp_module_builder.setInsertionPointToEnd(&jit_function.getBody().front());
-    tmp_module_builder.create<ReturnOp>(loc, yield_op.result());
+    tmp_module_builder.create<func::ReturnOp>(loc, yield_op.result());
     rewriter.eraseOp(yield_op);
 
     // Serialize JIT module.
@@ -333,14 +333,14 @@ void PopulateTFToJITInvocationPatterns(
     int64_t max_supported_rank, bool enable_ftz, bool index_64bit,
     bool cpu_codegen, bool jit_i64_indexed_for_large_tensors) {
   if (jit_i64_indexed_for_large_tensors) {
-    patterns->insert<TFToI64JITInvocationForLargeTensorsPattern>(ctx);
+    patterns->add<TFToI64JITInvocationForLargeTensorsPattern>(ctx);
   } else {
-    patterns->insert<TFToJITInvocationsPattern>(ctx);
+    patterns->add<TFToJITInvocationsPattern>(ctx);
   }
 
   bool index_64bit_if_jit_compiling =
       jit_i64_indexed_for_large_tensors ? true : index_64bit;
-  patterns->insert<PackJITCompileOpPattern>(
+  patterns->add<PackJITCompileOpPattern>(
       ctx, tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
       index_64bit_if_jit_compiling, cpu_codegen);
 }

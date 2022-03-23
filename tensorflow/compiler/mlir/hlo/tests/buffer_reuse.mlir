@@ -7,14 +7,14 @@
 func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
-  cond_br %arg0, ^bb1, ^bb2
+  cf.cond_br %arg0, ^bb1, ^bb2
 ^bb1:
   "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3(%0 : memref<2xf32>)
+  cf.br ^bb3(%0 : memref<2xf32>)
 ^bb2:
   %1 = memref.alloc() : memref<2xf32>
   "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3(%1 : memref<2xf32>)
+  cf.br ^bb3(%1 : memref<2xf32>)
 ^bb3(%2 : memref<2xf32>):
   %3 = memref.alloc() : memref<2xf32>
   "lmhlo.copy"(%2, %arg2) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -26,13 +26,13 @@ func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 
 // CHECK-SAME: %[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}, %[[ARG2:.*]]: {{.*}}
 // CHECK-NEXT: %[[ALLOC0:.*]] = memref.alloc()
-// CHECK-NEXT: cond_br %[[ARG0]], ^[[BB1:.*]], ^[[BB2:.*]]
+// CHECK-NEXT: cf.cond_br %[[ARG0]], ^[[BB1:.*]], ^[[BB2:.*]]
 //      CHECK: ^[[BB1]]:
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC0]]
-// CHECK-NEXT: br ^[[BB3:.*]](%[[ALLOC0]]{{.*}}
+// CHECK-NEXT: cf.br ^[[BB3:.*]](%[[ALLOC0]]{{.*}}
 //      CHECK: ^[[BB2]]:
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC0]]
-// CHECK-NEXT: br ^[[BB3]](%[[ALLOC0]]{{.*}}
+// CHECK-NEXT: cf.br ^[[BB3]](%[[ALLOC0]]{{.*}}
 //      CHECK: ^[[BB3]](%[[BLOCKARG0:.*]]: {{.*}}):
 // CHECK-NEXT: "lmhlo.copy"(%[[BLOCKARG0]], %[[ARG2]])
 // CHECK-NEXT: "lmhlo.copy"(%[[ALLOC0]], %[[ARG2]])
@@ -69,11 +69,11 @@ func @allReuseSimple(%arg0: memref<2xf32>) {
 // first use of %1.
 // CHECK-LABEL: func @allocDominance
 func @allocDominance(%arg0: i1, %arg1: memref<2xf32>) {
-  cond_br %arg0, ^bb1, ^bb2
+  cf.cond_br %arg0, ^bb1, ^bb2
  ^bb1:
   %0 = memref.alloc() : memref<2xf32>
   "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb2
+  cf.br ^bb2
  ^bb2:
   %1 = memref.alloc() : memref<2xf32>
   "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -81,11 +81,11 @@ func @allocDominance(%arg0: i1, %arg1: memref<2xf32>) {
 }
 
 // CHECK-SAME: %[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}
-// CHECK-NEXT: cond_br %[[ARG0]], ^[[BB1:.*]], ^[[BB2:.*]]
+// CHECK-NEXT: cf.cond_br %[[ARG0]], ^[[BB1:.*]], ^[[BB2:.*]]
 //      CHECK: ^[[BB1]]:
 // CHECK-NEXT: %[[ALLOC0:.*]] = memref.alloc()
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC0]]
-// CHECK-NEXT: br ^[[BB2]]
+// CHECK-NEXT: cf.br ^[[BB2]]
 //      CHECK: ^[[BB2]]:
 // CHECK-NEXT: %[[ALLOC1:.*]] = memref.alloc()
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC1]]
@@ -99,7 +99,7 @@ func @aliasInterference(%arg0: i1, %arg1: memref<2xf32>) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb1(%0 : memref<2xf32>)
+  cf.br ^bb1(%0 : memref<2xf32>)
 ^bb1(%2 : memref<2xf32>):
   "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg1, %2) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -110,7 +110,7 @@ func @aliasInterference(%arg0: i1, %arg1: memref<2xf32>) {
 // CHECK-NEXT: %[[ALLOC0:.*]] = memref.alloc()
 // CHECK-NEXT: %[[ALLOC1:.*]] = memref.alloc()
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC0]]
-// CHECK-NEXT: br ^[[BB1:.*]](%[[ALLOC0]]{{.*}}
+// CHECK-NEXT: cf.br ^[[BB1:.*]](%[[ALLOC0]]{{.*}}
 //      CHECK: ^[[BB1]](%[[BLOCKARG0:.*]]: {{.*}}):
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC1]]
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[BLOCKARG0]]
@@ -125,7 +125,7 @@ func @aliasReuse(%arg0: memref<2xf32>) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   "lmhlo.negate"(%arg0, %0) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb1(%0 : memref<2xf32>)
+  cf.br ^bb1(%0 : memref<2xf32>)
 ^bb1(%2 : memref<2xf32>):
   "lmhlo.negate"(%arg0, %2) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg0, %1) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -134,7 +134,7 @@ func @aliasReuse(%arg0: memref<2xf32>) {
 // CHECK-SAME: %[[ARG0:.*]]: {{.*}}
 // CHECK-NEXT: %[[ALLOC0:.*]] = memref.alloc()
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG0]], %[[ALLOC0]]
-// CHECK-NEXT: br ^[[BB1:.*]](%[[ALLOC0]]{{.*}}
+// CHECK-NEXT: cf.br ^[[BB1:.*]](%[[ALLOC0]]{{.*}}
 //      CHECK: ^[[BB1]](%[[BLOCKARG0:.*]]: {{.*}}):
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG0]], %[[BLOCKARG0]]
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG0]], %[[ALLOC0]]
@@ -166,28 +166,28 @@ func @branchReuse(%arg0: i1, %arg1: memref<2xf32>) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
-  cond_br %arg0, ^bb1, ^bb2
+  cf.cond_br %arg0, ^bb1, ^bb2
 ^bb1:
   "lmhlo.negate"(%0, %arg1) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg1, %2) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3
+  cf.br ^bb3
 ^bb2:
   "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3
+  cf.br ^bb3
 ^bb3:
   return
 }
 
 // CHECK-SAME: %[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}
 // CHECK-NEXT: %[[ALLOC0:.*]] = memref.alloc()
-// CHECK-NEXT: cond_br %[[ARG0]], ^[[BB1:.*]], ^[[BB2:.*]]
+// CHECK-NEXT: cf.cond_br %[[ARG0]], ^[[BB1:.*]], ^[[BB2:.*]]
 //      CHECK: ^[[BB1]]:
 // CHECK-NEXT: "lmhlo.negate"(%[[ALLOC0]], %[[ARG1]]
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC0]]
-// CHECK-NEXT: br ^[[BB3:.*]]
+// CHECK-NEXT: cf.br ^[[BB3:.*]]
 //      CHECK: ^[[BB2]]:
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC0]]
-// CHECK-NEXT: br ^[[BB3]]
+// CHECK-NEXT: cf.br ^[[BB3]]
 //      CHECK: ^[[BB3]]:
 // CHECK-NEXT: return
 
@@ -223,17 +223,17 @@ func @complexTypeMatching(%arg0: i1, %arg1: index, %arg2: index, %arg3 : index) 
   %4 = memref.alloc(%arg1, %arg3) : memref<?x?xf32>
   %5 = memref.alloc(%arg2) : memref<?xf32>
   "lmhlo.negate"(%0, %0) : (memref<2xf32>, memref<2xf32>) -> ()
-  cond_br %arg0, ^bb1, ^bb4
+  cf.cond_br %arg0, ^bb1, ^bb4
 ^bb1:
   "lmhlo.negate"(%1, %1) : (memref<?xf32>, memref<?xf32>) -> ()
-  cond_br %arg0, ^bb2, ^bb3
+  cf.cond_br %arg0, ^bb2, ^bb3
 ^bb2:
   "lmhlo.negate"(%3, %3) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   "lmhlo.negate"(%4, %4) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
-  br ^bb4
+  cf.br ^bb4
 ^bb3:
   "lmhlo.negate"(%5, %5) : (memref<?xf32>, memref<?xf32>) -> ()
-  br ^bb2
+  cf.br ^bb2
 ^bb4:
   "lmhlo.negate"(%2, %2) : (memref<?xf32>, memref<?xf32>) -> ()
   return
@@ -247,10 +247,10 @@ func @complexTypeMatching(%arg0: i1, %arg1: index, %arg2: index, %arg3 : index) 
 // CHECK-NEXT: %[[ALLOC3:.*]] = memref.alloc(%[[ARG1]], %[[ARG2]])
 // CHECK-NEXT: %[[ALLOC4:.*]] = memref.alloc(%[[ARG1]], %[[ARG3]])
 // CHECK-NEXT: "lmhlo.negate"(%[[ALLOC0]], %[[ALLOC0]]
-// CHECK-NEXT: cond_br %[[ARG0]], ^[[BB1:.*]], ^[[BB4:.*]]
+// CHECK-NEXT: cf.cond_br %[[ARG0]], ^[[BB1:.*]], ^[[BB4:.*]]
 //      CHECK: ^[[BB1]]:
 // CHECK-NEXT: "lmhlo.negate"(%[[ALLOC1]], %[[ALLOC1]]
-// CHECK-NEXT: cond_br %[[ARG0]], ^[[BB2:.*]], ^[[BB3:.*]]
+// CHECK-NEXT: cf.cond_br %[[ARG0]], ^[[BB2:.*]], ^[[BB3:.*]]
 //      CHECK: ^[[BB2]]:
 // CHECK-NEXT: "lmhlo.negate"(%[[ALLOC3]], %[[ALLOC3]]
 // CHECK-NEXT: "lmhlo.negate"(%[[ALLOC4]], %[[ALLOC4]]
@@ -270,15 +270,15 @@ func @nonTransitive(%arg0: i1, %arg1: memref<2xf32>) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
-  cond_br %arg0, ^bb1, ^bb2
+  cf.cond_br %arg0, ^bb1, ^bb2
  ^bb1:
   "lmhlo.negate"(%arg1, %2) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg1, %2) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3
+  cf.br ^bb3
  ^bb2:
   "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3
+  cf.br ^bb3
  ^bb3:
   return
 }
@@ -286,15 +286,15 @@ func @nonTransitive(%arg0: i1, %arg1: memref<2xf32>) {
 // CHECK-SAME: %[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}
 // CHECK-NEXT: %[[ALLOC0:.*]] = memref.alloc()
 // CHECK-NEXT: %[[ALLOC1:.*]] = memref.alloc()
-// CHECK-NEXT: cond_br %[[ARG0]], ^[[BB1:.*]], ^[[BB2:.*]]
+// CHECK-NEXT: cf.cond_br %[[ARG0]], ^[[BB1:.*]], ^[[BB2:.*]]
 //      CHECK: ^[[BB1]]:
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC0]]
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC1]]
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC0]]
-// CHECK-NEXT: br ^[[BB3:.*]]
+// CHECK-NEXT: cf.br ^[[BB3:.*]]
 //      CHECK: ^[[BB2]]:
 // CHECK-NEXT: "lmhlo.negate"(%[[ARG1]], %[[ALLOC0]]
-// CHECK-NEXT: br ^[[BB3]]
+// CHECK-NEXT: cf.br ^[[BB3]]
 //      CHECK: ^[[BB3]]:
 // CHECK-NEXT: return
 
@@ -407,19 +407,19 @@ func @replaceAfterLoop(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
-  br ^bb1
+  cf.br ^bb1
 ^bb1:
-  cond_br %arg0, ^bb2, ^bb3
+  cf.cond_br %arg0, ^bb2, ^bb3
 ^bb2:
   "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb4
+  cf.br ^bb4
 ^bb3:
   "lmhlo.negate"(%arg2, %0) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg2, %1) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb4
+  cf.br ^bb4
 ^bb4:
-  cond_br %arg0, ^bb1, ^bb5
+  cf.cond_br %arg0, ^bb1, ^bb5
 ^bb5:
   "lmhlo.negate"(%arg1, %2) : (memref<2xf32>, memref<2xf32>) -> ()
   return
@@ -442,15 +442,15 @@ func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
-  cond_br %arg0, ^bb1, ^bb2
+  cf.cond_br %arg0, ^bb1, ^bb2
 ^bb1:
   "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3
+  cf.br ^bb3
 ^bb2:
   "lmhlo.negate"(%arg2, %0) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg2, %1) : (memref<2xf32>, memref<2xf32>) -> ()
-  br ^bb3
+  cf.br ^bb3
 ^bb3:
   return
 }
@@ -475,7 +475,7 @@ func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
   %3 = memref.alloc() : memref<2xf32>
-  br ^bb1
+  cf.br ^bb1
 ^bb1:
   %4 = scf.if %arg0 -> (memref<2xf32>) {
     "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -484,9 +484,9 @@ func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>
     "lmhlo.negate"(%arg1, %1) : (memref<2xf32>, memref<2xf32>) -> ()
     scf.yield %2 : memref<2xf32>
   }
-  br ^bb2
+  cf.br ^bb2
 ^bb2:
-  cond_br %arg0, ^bb1, ^bb3
+  cf.cond_br %arg0, ^bb1, ^bb3
 ^bb3:
   "lmhlo.negate"(%arg1, %2) : (memref<2xf32>, memref<2xf32>) -> ()
   "lmhlo.negate"(%arg1, %3) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -497,7 +497,7 @@ func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>
 //      CHECK: %[[ALLOC0:.*]] = memref.alloc()
 // CHECK-NEXT: %[[ALLOC1:.*]] = memref.alloc()
 // CHECK-NEXT: %[[ALLOC2:.*]] = memref.alloc()
-// CHECK-NEXT: br ^[[BB1:.*]]
+// CHECK-NEXT: cf.br ^[[BB1:.*]]
 //      CHECK: "lmhlo.negate"(%[[ARG1]], %[[ALLOC0]]
 //      CHECK: "lmhlo.negate"(%[[ARG1]], %[[ALLOC1]]
 //      CHECK: "lmhlo.negate"(%[[ARG1]], %[[ALLOC2]]

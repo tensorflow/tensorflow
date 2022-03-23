@@ -713,7 +713,7 @@ func @while_cond_body(%arg0: tensor<f32>) -> tensor<f32> {
     %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_cond", send_key = "send_while_cond", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      [[COND_COMPARE:%.*]] = "mhlo.compare"([[COND_RECV_TUPLE]]#0, [[COND_RECV_TUPLE]]#0)
-    %2 = "mhlo.compare"(%1, %1) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %2 = "mhlo.compare"(%1, %1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
     // CHECK:      "mhlo.return"([[COND_COMPARE]])
     "mhlo.return"(%2) : (tensor<i1>) -> ()
@@ -759,7 +759,7 @@ func @while_cond(%arg0: tensor<f32>) -> tensor<f32> {
     %1 = "tf._XlaHostComputeMlir"(%arg1) {recv_key = "recv_while_cond", send_key = "send_while_cond", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<f32>) -> tensor<f32>
 
     // CHECK:      [[COND_COMPARE:%.*]] = "mhlo.compare"([[COND_RECV_TUPLE]]#0, [[COND_RECV_TUPLE]]#0)
-    %2 = "mhlo.compare"(%1, %1) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %2 = "mhlo.compare"(%1, %1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
     // CHECK:      "mhlo.return"([[COND_COMPARE]])
     "mhlo.return"(%2) : (tensor<i1>) -> ()
@@ -787,7 +787,7 @@ func @while_body(%arg0: tensor<f32>) -> tensor<f32> {
   ^bb0(%arg1: tensor<f32>):
 
     // CHECK:      [[COND_COMPARE:%.*]] = "mhlo.compare"([[ITER_ARG_VALUE]], [[ITER_ARG_VALUE]])
-    %2 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %2 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
     // CHECK:      "mhlo.return"([[COND_COMPARE]])
     "mhlo.return"(%2) : (tensor<i1>) -> ()
@@ -822,7 +822,7 @@ func @while_followed_by_communication_op(%arg0: tensor<f32>) {
   %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<f32>):
     "tf.XlaSendToHost"(%arg1) {key = "send_key0"} : (tensor<f32>) -> ()
-    %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<f32>):
@@ -842,7 +842,7 @@ func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
-    // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'builtin.func']}}
+    // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'func.func']}}
     "tf._XlaHostComputeMlir"() {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : () -> ()
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
@@ -857,7 +857,7 @@ func @unsupported_ancestor(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<f32>
-    // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'builtin.func']}}
+    // expected-error@+1 {{expects ancestor(s) to be of ['mhlo.if', 'func.func']}}
     call @callee() : () -> ()
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
@@ -874,9 +874,9 @@ func private @callee() {
 // Tests function with more than one block that is to be rewritten emits an
 // error instead.
 
-// expected-error@+1 {{'builtin.func' ops with more than one block are not supported}}
+// expected-error@+1 {{'func.func' ops with more than one block are not supported}}
 func @multi_block_func() {
-  br ^bb1
+  cf.br ^bb1
 ^bb1:
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
   return

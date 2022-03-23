@@ -32,9 +32,9 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -171,7 +171,7 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
     tensorflow::IncreaseOpExpansionExecuteCounterByOne(
         op->getName().getStringRef().str());
 
-    auto compose_func_type = compose_func.getType();
+    auto compose_func_type = compose_func.getFunctionType();
     builder.setInsertionPoint(op);
     TFRTensorType unconstrainted_tensor_type = builder.getType<TFRTensorType>();
 

@@ -8,12 +8,13 @@ func @while(%arg0: tensor<1xi64>) -> tensor<1xi64> {
   %0 = "mhlo.while"(%arg0) ({
   ^bb0(%arg1: tensor<1xi64>):
 
-    // CHECK: %[[VAL_3:.*]] = "mhlo.compare"(%[[VAL_2]], %[[VAL_2]]) {comparison_direction = "LT", name = "compare.2"} : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi1>
-    // CHECK: %[[COLLAPSED:.*]] = tensor.collapse_shape %[[VAL_3]] [] : tensor<1xi1> into tensor<i1>
-    // CHECK: %[[VAL_4:.*]] = tensor.extract %[[COLLAPSED]][] : tensor<i1>
+    // CHECK: %[[VAL_3:.*]] = "mhlo.compare"(%[[VAL_2]], %[[VAL_2]]) {comparison_direction = #mhlo<"comparison_direction LT">, name = "compare.2"} : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi1>
+    // CHECK: %[[RESHAPE:.*]] = "mhlo.reshape"(%[[VAL_3]]) : (tensor<1xi1>) -> tensor<i1>
+    // CHECK: %[[VAL_4:.*]] = tensor.extract %[[RESHAPE]][] : tensor<i1>
     // CHECK: scf.condition(%[[VAL_4]]) %[[VAL_2]] : tensor<1xi64>
-    %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = "LT", name = "compare.2"} : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi1>
-    "mhlo.return"(%1) : (tensor<1xi1>) -> ()
+    %1 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<"comparison_direction LT">, name = "compare.2"} : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi1>
+    %2 = "mhlo.reshape"(%1) : (tensor<1xi1>) -> tensor<i1>
+    "mhlo.return"(%2) : (tensor<i1>) -> ()
 
   // CHECK: } do {
   // CHECK: ^bb0(%[[VAL_5:.*]]: tensor<1xi64>):
@@ -46,12 +47,12 @@ func @while_multi_operands(%arg0: tensor<3xi32>) -> tuple<tensor<i32>, tensor<3x
 
     // CHECK-NEXT: %[[VAL_6:.*]] = mhlo.constant dense<false> : tensor<i1>
     // CHECK-NEXT: %[[VAL_7:.*]] = mhlo.constant dense<8> : tensor<i32>
-    // CHECK: %[[VAL_8:.*]] = "mhlo.compare"(%[[VAL_4]], %[[VAL_7]]) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    // CHECK: %[[VAL_8:.*]] = "mhlo.compare"(%[[VAL_4]], %[[VAL_7]]) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     // CHECK: %[[VAL_9:.*]] = tensor.extract %[[VAL_8]][] : tensor<i1>
     // CHECK: scf.condition(%[[VAL_9]]) %[[VAL_4]], %[[VAL_5]] : tensor<i32>, tensor<3xi32>
     %4 = mhlo.constant dense<false> : tensor<i1>
     %5 = mhlo.constant dense<8> : tensor<i32>
-    %6 = "mhlo.compare"(%arg1, %5) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %6 = "mhlo.compare"(%arg1, %5) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%6) : (tensor<i1>) -> ()
   },  {
 
@@ -88,9 +89,9 @@ func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: %[[VAL_1:.*]] = arith.constant dense<1.000000e+01> : tensor<f32>
   %cst = arith.constant dense<1.000000e+01> : tensor<f32>
 
-  // CHECK: %[[VAL_2:.*]] = "mhlo.compare"(%[[VAL_0]], %[[VAL_1]]) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  // CHECK: %[[VAL_2:.*]] = "mhlo.compare"(%[[VAL_0]], %[[VAL_1]]) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: %[[VAL_3:.*]] = tensor.extract %[[VAL_2]][] : tensor<i1>
-  %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+  %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
   // CHECK: %[[VAL_4:.*]] = scf.if %[[VAL_3]] -> (tensor<f32>) {
   %1 = "mhlo.if"(%0) ({
@@ -113,6 +114,33 @@ func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
+// Check that we recursively lower nested ifs.
+// CHECK-LABEL: func @conditional_nested(
+func @conditional_nested(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %cst = arith.constant dense<1.000000e+01> : tensor<f32>
+
+  %cmp1 = "mhlo.compare"(%arg0, %cst) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+
+  // CHECK: scf.if
+  %if1 = "mhlo.if"(%cmp1) ({
+    %cmp2 = "mhlo.compare"(%arg1, %cst) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %log = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
+
+    // CHECK: scf.if
+    %if2 = "mhlo.if"(%cmp2) ({
+      "mhlo.return"(%arg1) : (tensor<f32>) -> ()
+    },  {
+      "mhlo.return"(%log) : (tensor<f32>) -> ()
+    }) : (tensor<i1>) -> tensor<f32>
+    "mhlo.return"(%if2) : (tensor<f32>) -> ()
+  },  {
+    %exp = "mhlo.exponential"(%arg0) : (tensor<f32>) -> tensor<f32>
+    "mhlo.return"(%exp) : (tensor<f32>) -> ()
+  }) : (tensor<i1>) -> tensor<f32>
+
+  return %if1 : tensor<f32>
+}
+
 // Test the two branches case as the common. Following tests verify degenerate
 // behavior.
 // CHECK-LABEL: func @case2(
@@ -122,7 +150,7 @@ func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
 func @case2(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>) -> tensor<4xf32> {
 
   // CHECK-NEXT: %[[VAL_3:.*]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK: %[[VAL_4:.*]] = "mhlo.compare"(%[[VAL_0]], %[[VAL_3]]) {comparison_direction = "EQ"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK: %[[VAL_4:.*]] = "mhlo.compare"(%[[VAL_0]], %[[VAL_3]]) {compare_type = #mhlo<"comparison_type NOTYPE">, comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK: %[[VAL_5:.*]] = tensor.extract %[[VAL_4]][] : tensor<i1>
   // CHECK: %[[VAL_6:.*]] = scf.if %[[VAL_5]] -> (tensor<4xf32>) {
   %1 = "mhlo.case"(%arg0) ({
@@ -152,7 +180,7 @@ func @case2(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>) -
 func @case3(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>, %arg3 : tensor<4xf32>) -> tensor<4xf32> {
 
   // CHECK-NEXT: %[[VAL_4:.*]] = mhlo.constant dense<0> : tensor<i32>
-  // CHECK: %[[VAL_5:.*]] = "mhlo.compare"(%[[VAL_0]], %[[VAL_4]]) {comparison_direction = "EQ"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK: %[[VAL_5:.*]] = "mhlo.compare"(%[[VAL_0]], %[[VAL_4]]) {compare_type = #mhlo<"comparison_type NOTYPE">, comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK: %[[VAL_6:.*]] = tensor.extract %[[VAL_5]][] : tensor<i1>
   // CHECK: %[[VAL_7:.*]] = scf.if %[[VAL_6]] -> (tensor<4xf32>) {
   %1 = "mhlo.case"(%arg0) ({
@@ -163,7 +191,7 @@ func @case3(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>, %
 
   // CHECK: } else {
   // CHECK-NEXT:   %[[VAL_9:.*]] = mhlo.constant dense<1> : tensor<i32>
-  // CHECK:   %[[VAL_10:.*]] = "mhlo.compare"(%[[VAL_0]], %[[VAL_9]]) {comparison_direction = "EQ"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK:   %[[VAL_10:.*]] = "mhlo.compare"(%[[VAL_0]], %[[VAL_9]]) {compare_type = #mhlo<"comparison_type NOTYPE">, comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK:   %[[VAL_11:.*]] = tensor.extract %[[VAL_10]][] : tensor<i1>
   // CHECK:   %[[VAL_12:.*]] = scf.if %[[VAL_11]] -> (tensor<4xf32>) {
   }, {
@@ -195,6 +223,23 @@ func @case0(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>) -> tensor<4xf32> {
       // CHECK: %[[VAL_2:.*]] = "mhlo.log"(%[[VAL_1]]) : (tensor<4xf32>) -> tensor<4xf32>
       %2 = "mhlo.log"(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
       "mhlo.return"(%2) : (tensor<4xf32>) -> ()
+  }) : (tensor<i32>) -> tensor<4xf32>
+  // CHECK: return %[[VAL_2]] : tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// Case with only one branch is inlined. Check that we recursively lower.
+// CHECK-LABEL: func @case0_nested(
+// CHECK-SAME:    %[[VAL_0:.*]]: tensor<i32>,
+// CHECK-SAME:    %[[VAL_1:.*]]: tensor<4xf32>) -> tensor<4xf32> {
+func @case0_nested(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>) -> tensor<4xf32> {
+  %1 = "mhlo.case"(%arg0) ({
+    %2 = "mhlo.case"(%arg0) ({
+      // CHECK: %[[VAL_2:.*]] = "mhlo.log"(%[[VAL_1]]) : (tensor<4xf32>) -> tensor<4xf32>
+      %3 = "mhlo.log"(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
+      "mhlo.return"(%3) : (tensor<4xf32>) -> ()
+    }) : (tensor<i32>) -> tensor<4xf32>
+    "mhlo.return"(%2) : (tensor<4xf32>) -> ()
   }) : (tensor<i32>) -> tensor<4xf32>
   // CHECK: return %[[VAL_2]] : tensor<4xf32>
   return %1 : tensor<4xf32>

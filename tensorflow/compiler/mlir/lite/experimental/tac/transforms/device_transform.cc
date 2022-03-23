@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -207,8 +207,9 @@ struct RemoveUnusedQuant : public OpRewritePattern<TFL::QuantizeOp> {
 
 void OptimizeQuantizedOpToFloat(FuncOp func, MLIRContext* context) {
   RewritePatternSet patterns(func.getContext());
-  patterns.insert<FoldQuantizedI32ToFloat, FoldQuantizeDequantize,
-                  RemoveUnusedQuant>(context);
+  patterns
+      .add<FoldQuantizedI32ToFloat, FoldQuantizeDequantize, RemoveUnusedQuant>(
+          context);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

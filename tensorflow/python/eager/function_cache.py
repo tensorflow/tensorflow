@@ -15,7 +15,7 @@
 """Cache to manage concrete functions and their signatures."""
 
 import collections
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple, Any
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import type_dispatch
@@ -62,15 +62,9 @@ class FunctionCacheKey(trace.TraceType):
     if self.call_context != other.call_context:
       return False
 
-    # Functions are contravariant.
-    return other.function_signature.is_subtype_of(self.function_signature)
+    return self.function_signature.is_subtype_of(other.function_signature)
 
   def most_specific_common_supertype(
-      self, others: Sequence[trace.TraceType]) -> Optional["FunctionCacheKey"]:
-    raise NotImplementedError(
-        "Requires TraceType to include most_specific_common_subtype")
-
-  def most_specific_common_subtype(
       self, others: Sequence[trace.TraceType]) -> Optional["FunctionCacheKey"]:
     if not all(
         isinstance(other, FunctionCacheKey) and
@@ -84,6 +78,10 @@ class FunctionCacheKey(trace.TraceType):
       return None
 
     return FunctionCacheKey(common, self.call_context)
+
+  def _placeholder_value(self) -> Any:
+    """Value used for tracing a function signature with this TraceType."""
+    return self.function_signature._placeholder_value()  # pylint: disable=protected-access
 
   def __hash__(self) -> int:
     return hash((self.call_context, self.function_signature))
@@ -108,13 +106,10 @@ class FunctionCache:
   """A container for managing concrete functions."""
 
   __slots__ = [
-      "_missed", "_primary", "_dispatch_table", "arg_relaxed_specs",
-      "arg_relaxed", "_garbage_collectors"
+      "_primary", "_dispatch_table", "_garbage_collectors"
   ]
 
   def __init__(self):
-    # The set of functions that have been missed; entries are ExecutionContext.
-    self._missed = set()
     # The primary cache, mapping FunctionCacheKey to a concrete function.
     self._primary = collections.OrderedDict()
 
@@ -123,21 +118,8 @@ class FunctionCache:
     # Used to lookup posible concrete functions when K is not in _primary.
     self._dispatch_table = type_dispatch.TypeDispatchTable()
 
-    # TODO(b/202430155): Incorporate relaxation logic inside FunctionCache.
-    # A cache key lookup, mapping a cache key generated without shape info to a
-    # flat list of `TypeSpec`s with relaxed shapes (one for each flattened
-    # argument). Arguments that are not Tensors or `CompositeTensor`s contain a
-    # `None` for the corresponding relaxed spec.
-    self.arg_relaxed_specs = collections.OrderedDict()
-    # The secondary cache, mapping a cache key generated without shape info to a
-    # function.
-    self.arg_relaxed = collections.OrderedDict()
-    # All OrderedDicts require manual garbage collection.
-
     self._garbage_collectors = [
         _FunctionGarbageCollector(self._primary),
-        _FunctionGarbageCollector(self.arg_relaxed),
-        _FunctionGarbageCollector(self.arg_relaxed_specs)
     ]
 
   # Note: Instead of returning any viable function, we can return the most
@@ -179,34 +161,18 @@ class FunctionCache:
     deletion_observer.add_listener(
         lambda: self.delete(key) if DELETE_WITH_WEAKREF else None)
 
+  def generalize(self, key: FunctionCacheKey) -> FunctionCacheKey:
+    return self._dispatch_table.try_generalizing_trace_type(key)  # pylint: disable=protected-access
+
+  # TODO(b/205971333): Remove this function.
   def clear(self):
     """Removes all concrete functions from the cache."""
     self._primary.clear()
     self._dispatch_table.clear()
-    self.arg_relaxed_specs.clear()
-    self.arg_relaxed.clear()
 
   def values(self):
     """Returns a list of all `ConcreteFunction` instances held by this cache."""
-    # We need to simultaneously make sure our returned concrete functions are
-    # unique *and* make sure they are returned in a deterministic order for
-    # serialization.
-    #
-    # TODO(b/174215821): It's likely that we ultimately would just prefer to
-    # choose the most specific concrete function shape given a set of
-    # arguments. If and when that is implemented, this logic can be revisited.
-    primary_functions = set(self._primary.values())
-    return list(self._primary.values()) + [
-        v for v in self.arg_relaxed.values() if v not in primary_functions
-    ]
-
-  def has_call_context(self, call_context: ExecutionContext) -> bool:
-    """Checks if an ExcutionContext was observed."""
-    return call_context in self._missed
-
-  def add_call_context(self, call_context: ExecutionContext) -> None:
-    """Adds a new ExcutionContext observation."""
-    self._missed.add(call_context)
+    return list(self._primary.values())
 
 
 class _FunctionGarbageCollector(object):

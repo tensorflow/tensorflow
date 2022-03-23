@@ -93,8 +93,8 @@ struct TestInferShapedTypeMethodsPass
   }
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.insert<ReifyReturnTypeShapesPattern>(&getContext());
-    patterns.insert<InferReturnTypeComponentsPattern>(&getContext());
+    patterns.add<ReifyReturnTypeShapesPattern>(&getContext());
+    patterns.add<InferReturnTypeComponentsPattern>(&getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
       return signalPassFailure();

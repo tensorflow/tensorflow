@@ -19,10 +19,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -64,9 +67,19 @@ CreateVectorizeTiledOpsPass();
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 createRewriteVectorMultiReductionPass();
 
-// Pass to tile elementwise ops on tensors.
+// Code generation passes targeting transpose operations.
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileTransposePass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateLowerVectorTransposePass();
+
+// Pass to tile elementwise linalg.generic on tensors.
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass();
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass(
+    int64_t cwise_tile_size);
+
+// Pass to tile linalg.fill on tensors.
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileFillPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileFillPass(
     int64_t cwise_tile_size);
 
 // Pass to split _Fused Tensorflow kernels into primitives.

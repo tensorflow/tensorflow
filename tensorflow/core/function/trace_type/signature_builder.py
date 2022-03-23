@@ -15,10 +15,11 @@
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
 import collections.abc
-from typing import Any, Callable
+from typing import Any, Callable, Hashable
 import weakref
 
 from tensorflow.core.function.trace_type import default_types
+from tensorflow.core.function.trace_type import util
 from tensorflow.python.types import trace
 
 
@@ -57,19 +58,20 @@ class WeakrefDeletionObserver:
 class SignatureContext(trace.TracingContext):
   """Container for variables and flags shared across signature tracing."""
 
-  def __init__(self, include_tensor_ranks_only=False):
+  def __init__(self, include_tensor_ranks_only: bool = False):
     self._deletion_observer = WeakrefDeletionObserver()
     self._include_tensor_ranks_only = include_tensor_ranks_only
     self._global_to_local_id = {}
 
   # TODO(b/202772221): Consider dropping after alias pattern matching is
   # supported.
-  def get_local_id(self, local_id):
-
+  def make_reference_type(self, base_type: trace.TraceType,
+                          local_id: Hashable) -> trace.TraceType:
     if local_id not in self._global_to_local_id:
       self._global_to_local_id[local_id] = len(self._global_to_local_id)
 
-    return self._global_to_local_id[local_id]
+    return default_types.Reference(base_type,
+                                   self._global_to_local_id[local_id])
 
   # TODO(b/202430155): Remove this flag after TraceType shape relaxation.
   @property
@@ -101,16 +103,22 @@ def create_trace_type(obj: Any,
     return default_types.List(*(create_trace_type(c, context) for c in obj))
 
   if isinstance(obj, tuple):
-    return default_types.Tuple(*(create_trace_type(c, context) for c in obj))
+    if util.is_namedtuple(obj):
+      return default_types.NamedTuple(
+          type(obj), tuple(create_trace_type(c, context) for c in obj))
+    else:
+      return default_types.Tuple(*(create_trace_type(c, context) for c in obj))
 
   if isinstance(obj, collections.abc.Mapping):
     return default_types.Dict(
         {k: create_trace_type(obj[k], context) for k in obj})
 
-  if hasattr(type(obj), "__attrs_attrs__"):
+  if util.is_attrs(obj):
     return default_types.Attrs(
-        type(obj), (create_trace_type(getattr(obj, a.name), context)
-                    for a in obj.__attrs_attrs__))
+        type(obj),
+        tuple(
+            create_trace_type(getattr(obj, a.name), context)
+            for a in obj.__attrs_attrs__))
 
   if hasattr(obj, "__wrapped__"):
     return create_trace_type(obj.__wrapped__, context)

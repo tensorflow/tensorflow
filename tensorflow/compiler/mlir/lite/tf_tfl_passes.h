@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_PASSES_H_
 
 #include "llvm/ADT/Optional.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
@@ -56,13 +57,13 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
 
 // Add the Quantization passes, specified in the quant_specs, into a pass
 // manager.
-void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
+void AddQuantizationPasses(const mlir::quant::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager& pass_manager);
 
 // Add the DynamicRangeQuantization passes, specified in the quant_specs, into a
 // pass manager.
 void AddDynamicRangeQuantizationPasses(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const mlir::quant::QuantizationSpecs& quant_specs,
     mlir::OpPassManager& pass_manager);
 }  // namespace tensorflow
 

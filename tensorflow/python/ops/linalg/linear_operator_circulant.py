@@ -126,8 +126,6 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-      # TODO(b/143910018) Remove graph_parents in V3.
-      self._set_graph_parents([self.spectrum])
 
   def _check_spectrum_and_return_tensor(self, spectrum):
     """Static check of spectrum.  Then return `Tensor` version."""

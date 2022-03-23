@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/data/root_dataset.h"
 
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/rewrite_utils.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
@@ -45,35 +51,80 @@ inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
   return x == y ? z : x;
 }
 
+void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
+  if (ShouldConfigureMaxIntraOpParallelism(options)) {
+    params->max_intra_op_parallelism =
+        options.threading_options().max_intra_op_parallelism();
+  }
+  if (ShouldUsePrivateThreadPool(options)) {
+    params->private_threadpool_size =
+        options.threading_options().private_threadpool_size();
+  }
+  params->autotune = ShouldUseAutotuning(options);
+  if (params->autotune) {
+    params->autotune_algorithm =
+        options.autotune_options().optional_autotune_algorithm_case() ==
+                AutotuneOptions::kAutotuneAlgorithm
+            ? options.autotune_options().autotune_algorithm()
+            : model::AutotuneAlgorithm::DEFAULT;
+    params->autotune_cpu_budget = value_or_default(
+        options.autotune_options().cpu_budget(), 0, GetCpuBudget());
+    params->autotune_ram_budget =
+        value_or_default(options.autotune_options().ram_budget(), 0,
+                         model::kRamBudgetShare * port::AvailableRam());
+  }
+}
+
+void AddTraceMetadata(const RootDataset::Params& params,
+                      TraceMeMetadata* trace_metadata) {
+  if (params.autotune) {
+    trace_metadata->push_back(std::make_pair(
+        kAlgorithm, model::AutotuneAlgorithm_Name(params.autotune_algorithm)));
+    trace_metadata->push_back(std::make_pair(
+        kCpuBudget, strings::Printf("%lld", static_cast<long long>(
+                                                params.autotune_cpu_budget))));
+    trace_metadata->push_back(std::make_pair(
+        kRamBudget,
+        strings::Printf("%lld", static_cast<long long>(
+                                    params.autotune_ram_budget / 1.0e6))));
+  }
+  if (params.max_intra_op_parallelism >= 0) {
+    trace_metadata->push_back(std::make_pair(
+        kIntraOpParallelism,
+        strings::Printf("%lld", static_cast<long long>(value_or_default(
+                                    params.max_intra_op_parallelism, 0,
+                                    port::MaxParallelism())))));
+  }
+  if (params.private_threadpool_size >= 0) {
+    trace_metadata->push_back(std::make_pair(
+        kPrivateThreadpoolSize,
+        strings::Printf("%lld", static_cast<long long>(value_or_default(
+                                    params.private_threadpool_size, 0,
+                                    port::MaxParallelism())))));
+  }
+  auto experiments = GetExperiments();
+  if (!experiments.empty()) {
+    trace_metadata->push_back(
+        std::make_pair(kExperiments, absl::StrJoin(experiments, " ")));
+  }
+}
 }  // namespace
 
 // static
 Status RootDataset::FromOptions(const DatasetBase* input,
                                 DatasetBase** output) {
-  const Options& options = input->options();
   Params params;
-  if (ShouldConfigureMaxIntraOpParallelism(options)) {
-    params.max_intra_op_parallelism =
-        options.threading_options().max_intra_op_parallelism();
-  }
-  if (ShouldUsePrivateThreadPool(options)) {
-    params.private_threadpool_size =
-        options.threading_options().private_threadpool_size();
-  }
-  params.autotune = ShouldUseAutotuning(options);
-  if (params.autotune) {
-    params.autotune_algorithm =
-        options.autotune_options().optional_autotune_algorithm_case() ==
-                AutotuneOptions::kAutotuneAlgorithm
-            ? options.autotune_options().autotune_algorithm()
-            : model::AutotuneAlgorithm::DEFAULT;
-    params.autotune_cpu_budget = value_or_default(
-        options.autotune_options().cpu_budget(), 0, GetCpuBudget());
-    params.autotune_ram_budget =
-        value_or_default(options.autotune_options().ram_budget(), 0,
-                         model::kRamBudgetShare * port::AvailableRam());
-  }
+  SetRootDatasetParams(input->options(), &params);
   *output = new RootDataset(input, params);
+  (*output)->Initialize(/*metadata=*/{});
+  return Status::OK();
+}
+
+Status RootDataset::FromOptions(core::RefCountPtr<DatasetBase> input,
+                                DatasetBase** output) {
+  Params params;
+  SetRootDatasetParams(input->options(), &params);
+  *output = new RootDataset(std::move(input), params);
   (*output)->Initialize(/*metadata=*/{});
   return Status::OK();
 }
@@ -83,7 +134,9 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   explicit Iterator(const Params& params)
       : DatasetIterator<RootDataset>(params) {
     if (dataset()->params_.autotune) {
-      model_ = std::make_shared<model::Model>();
+      model_ = std::make_shared<model::Model>(
+          model::Model::BudgetParams({dataset()->params_.autotune_cpu_budget,
+                                      dataset()->params_.autotune_ram_budget}));
     }
     if (dataset()->params_.max_intra_op_parallelism >= 0) {
       max_intra_op_parallelism_ =
@@ -188,11 +241,8 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     mutex_lock l(mu_);
     if (!model_thread_) {
       model_thread_ = ctx->StartThread("tf_data_model", [this]() {
-        Status status =
-            model_->OptimizeLoop(dataset()->params_.autotune_algorithm,
-                                 dataset()->params_.autotune_cpu_budget,
-                                 dataset()->params_.autotune_ram_budget,
-                                 cancellation_manager_.get());
+        Status status = model_->OptimizeLoop(
+            dataset()->params_.autotune_algorithm, cancellation_manager_.get());
         if (!status.ok()) {
           LOG(WARNING) << "Optimization loop failed: " << status.ToString();
         }
@@ -215,45 +265,25 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   std::unique_ptr<IteratorBase> input_impl_;
 };
 
-RootDataset::RootDataset(const DatasetBase* input, Params params)
+RootDataset::RootDataset(const DatasetBase* input, const Params& params)
     : DatasetBase(DatasetContext({name_utils::OpName(kDatasetType),
                                   name_utils::OpName(kDatasetType)})),
       input_(input),
       params_(std::move(params)) {
-  if (params_.autotune) {
-    traceme_metadata_.push_back(std::make_pair(
-        kAlgorithm, model::AutotuneAlgorithm_Name(params_.autotune_algorithm)));
-    traceme_metadata_.push_back(std::make_pair(
-        kCpuBudget, strings::Printf("%lld", static_cast<long long>(
-                                                params_.autotune_cpu_budget))));
-    traceme_metadata_.push_back(std::make_pair(
-        kRamBudget,
-        strings::Printf("%lld", static_cast<long long>(
-                                    params_.autotune_ram_budget / 1.0e6))));
-  }
-  if (params_.max_intra_op_parallelism >= 0) {
-    traceme_metadata_.push_back(std::make_pair(
-        kIntraOpParallelism,
-        strings::Printf("%lld", static_cast<long long>(value_or_default(
-                                    params_.max_intra_op_parallelism, 0,
-                                    port::MaxParallelism())))));
-  }
-  if (params_.private_threadpool_size >= 0) {
-    traceme_metadata_.push_back(std::make_pair(
-        kPrivateThreadpoolSize,
-        strings::Printf("%lld", static_cast<long long>(value_or_default(
-                                    params_.private_threadpool_size, 0,
-                                    port::MaxParallelism())))));
-  }
-  auto experiments = GetExperiments();
-  if (!experiments.empty()) {
-    traceme_metadata_.push_back(
-        std::make_pair(kExperiments, absl::StrJoin(experiments, " ")));
-  }
-  input_->Ref();
+  AddTraceMetadata(params_, &traceme_metadata_);
 }
 
-RootDataset::~RootDataset() { input_->Unref(); }
+RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
+                         const Params& params)
+    : DatasetBase(DatasetContext({name_utils::OpName(kDatasetType),
+                                  name_utils::OpName(kDatasetType)})),
+      params_(std::move(params)) {
+  owned_input_ = std::move(input);
+  input_ = owned_input_.get();
+  AddTraceMetadata(params_, &traceme_metadata_);
+}
+
+RootDataset::~RootDataset() {}
 
 std::unique_ptr<IteratorBase> RootDataset::MakeIteratorInternal(
     const string& prefix) const {
@@ -335,22 +365,27 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   auto config_factory = [&optimizations, &optimization_configs]() {
     return CreateRewriterConfig(optimizations, optimization_configs);
   };
+  core::RefCountPtr<DatasetBase> rewritten_output;
   Status s = RewriteDataset(ctx, input, std::move(config_factory),
-                            /*record_fingerprint=*/true, output);
+                            /*record_fingerprint=*/true, &rewritten_output);
+
+  *output = rewritten_output.get();
+  bool rewritten = (*output != input);
   if (errors::IsDeadlineExceeded(s)) {
     // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
     // long which should not prevent further computation.
     LOG(WARNING) << s.ToString();
-    return RootDataset::FromOptions(input, output);
-  }
-  if (!s.ok()) {
+  } else if (!s.ok()) {
     return s;
   }
-  input = *output;
-  TF_RETURN_IF_ERROR(RootDataset::FromOptions(input, output));
-  input->Unref();
+  if (!rewritten) {
+    return RootDataset::FromOptions(input, output);
+  } else {
+    return RootDataset::FromOptions(std::move(rewritten_output), output);
+  }
   return Status::OK();
 }
+
 #else   // !IS_MOBILE_PLATFORM
 Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
                        DatasetBase** output) {

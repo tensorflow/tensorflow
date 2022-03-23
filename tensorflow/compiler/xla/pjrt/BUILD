@@ -138,6 +138,7 @@ cc_library(
     hdrs = ["pjrt_client.h"],
     visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
+        ":pjrt_future",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -150,6 +151,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -394,10 +396,24 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "pjrt_future",
+    hdrs = ["pjrt_future.h"],
+    visibility = [":friends"],
+    deps = [
+        ":utils",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
     ],
 )
 
@@ -421,9 +437,11 @@ cc_library(
     srcs = ["tfrt_cpu_pjrt_client.cc"],
     hdrs = ["tfrt_cpu_pjrt_client.h"],
     compatible_with = [],
+    visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
         ":mlir_to_hlo",
         ":pjrt_client",
+        ":pjrt_future",
         ":semaphore",
         ":tracked_tfrt_cpu_device_buffer",
         ":transpose",
@@ -432,6 +450,7 @@ cc_library(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_computation",

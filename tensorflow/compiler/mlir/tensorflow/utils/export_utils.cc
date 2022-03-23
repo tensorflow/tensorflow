@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -236,6 +236,22 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, bool remove_ref_type,
       AttrValue attr_val;
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attr_val));
       *list->add_shape() = attr_val.shape();
+    } else if (auto attr = a.dyn_cast<mlir::ArrayAttr>()) {
+      std::vector<int64_t> vals;
+      for (mlir::Attribute a : attr.getValue()) {
+        auto i = a.dyn_cast<mlir::IntegerAttr>();
+        if (!i)
+          return errors::Unimplemented(
+              "Expected 64-bit integer array attributes!");
+        vals.push_back(i.getInt());
+      }
+      mlir::OpBuilder builder(attr.getContext());
+      mlir::TensorType ty =
+          mlir::RankedTensorType::get(vals.size(), builder.getIntegerType(64));
+      TensorProto tensor;
+      TF_RETURN_IF_ERROR(ConvertToTensorProto(
+          mlir::DenseIntElementsAttr::get(ty, vals), &tensor));
+      *list->add_tensor() = tensor;
     } else {
       return errors::Unimplemented("Unhandled attribute!");
     }

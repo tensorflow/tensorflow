@@ -209,7 +209,7 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
   c += "  } \n";
   c += "  FLT4 maximum = INIT_FLT4(-10000.0f);\n";
   if (output_indices) {
-    c += "  FLT4 indexes = INIT_FLT4(0.0f);\n";
+    c += "  int4 indexes = INIT_INT4v4(0, 0, 0, 0);\n";
   }
   if (stride_correction) {
     c += "  int xs = " +
@@ -244,12 +244,10 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
   c += "      FLT4 src = args.src_tensor.Read(" + src_coord + ");\n";
   if (output_indices) {
     if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
-      c +=
-          "      FLT index_counter = INIT_FLT((ky * args.kernel_size_x + kx) * "
-          "args.kernel_size_z + kz) + INIT_FLT(0.1f);\n";
+      c += "      int index_counter = (ky * args.kernel_size_x + kx) * "
+           "args.kernel_size_z + kz;\n";
     } else {
-      c += "      FLT index_counter = INIT_FLT(ky * args.kernel_size_x + kx) + "
-           "INIT_FLT(0.1f);\n";
+      c += "      int index_counter = ky * args.kernel_size_x + kx;\n";
     }
     c += "      if (src.x > maximum.x) {\n";
     c += "        indexes.x = index_counter;\n";
@@ -277,7 +275,7 @@ std::string GetMaxPoolingKernelCode(const OperationDef& op_def,
   c += "  }\n";
   c += "  args.dst_tensor.Write(maximum, " + dst_coord + ");\n";
   if (output_indices) {
-    c += "  args.dst_indices.Write(indexes, " + dst_coord + ");\n";
+    c += "  args.dst_indices.Write<int>(indexes, " + dst_coord + ");\n";
   }
   c += "}\n";
 

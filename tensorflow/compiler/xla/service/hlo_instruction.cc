@@ -64,6 +64,19 @@ using absl::StrAppend;
 using absl::StrCat;
 using absl::StrJoin;
 
+HloInstruction* HloInstruction::AddInstruction(
+    std::unique_ptr<HloInstruction> derived_instruction) {
+  HloInstruction* derived =
+      parent()->AddInstruction(std::move(derived_instruction));
+  const bool has_prior_sharding = derived->has_sharding();
+  SetupDerivedInstruction(derived);
+  if (!has_prior_sharding && (derived->opcode() == HloOpcode::kReshape ||
+                              derived->opcode() == HloOpcode::kTranspose)) {
+    derived->clear_sharding();
+  }
+  return derived;
+}
+
 /* static */
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const HloInstructionProto& proto,
@@ -169,6 +182,29 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                       proto.fft_length().end());
       instruction = CreateFft(shape, operands(0), proto.fft_type(),
                               absl::Span<const int64_t>(fft_length));
+      break;
+    }
+    case HloOpcode::kAsyncStart: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Async start instruction should have 1 called computation but "
+             "sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateAsyncStart(shape, all_operands(), computations(0));
+      break;
+    }
+    case HloOpcode::kAsyncUpdate: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Async update instruction should have 1 called computation but "
+             "sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateAsyncUpdate(shape, operands(0), computations(0));
+      break;
+    }
+    case HloOpcode::kAsyncDone: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Async done instruction should have 1 called computation but sees "
+          << proto.called_computation_ids_size();
+      instruction = CreateAsyncDone(shape, operands(0), computations(0));
       break;
     }
     case HloOpcode::kCopyStart: {
@@ -1126,6 +1162,27 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
                                               fft_length);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncStart(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* async_computation) {
+  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncStart, shape,
+                                                operands, async_computation);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncUpdate(
+    const Shape& shape, HloInstruction* operand,
+    HloComputation* async_computation) {
+  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncUpdate, shape,
+                                                operand, async_computation);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAsyncDone(
+    const Shape& shape, HloInstruction* operand,
+    HloComputation* async_computation) {
+  return absl::make_unique<HloAsyncInstruction>(HloOpcode::kAsyncDone, shape,
+                                                operand, async_computation);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
     const Shape& shape, HloInstruction* operand,
     bool is_cross_program_prefetch) {
@@ -1733,6 +1790,10 @@ void HloInstruction::SetupDerivedInstruction(
   derived_instruction->set_frontend_attributes(frontend_attributes_);
 }
 
+bool HloInstruction::IsRoot() const {
+  return parent_ != nullptr && this == parent_->root_instruction();
+}
+
 bool HloInstruction::HasSideEffectNoRecurse() const {
   switch (opcode_) {
     case HloOpcode::kSend:
@@ -1887,6 +1948,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kFft:
     case HloOpcode::kCompare:
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
@@ -2055,7 +2119,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
   clone->set_outer_dimension_partitions(outer_dimension_partitions_);
-  clone->set_raw_backend_config_string(backend_config_);
+  clone->backend_config_ = backend_config_.Clone();
   if (context != nullptr) {
     context->MapInstruction(this, clone.get());
     clone->ReplaceCalledComputations([&](HloComputation* callee) {
@@ -2383,6 +2447,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kPartitionId:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
@@ -2430,6 +2495,9 @@ bool HloInstruction::IdenticalSlowPath(
 
     // Ops migrated to subclasses should never come to this line.
     // TODO(b/80131774): Remove this switch when migration is complete.
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
@@ -2469,7 +2537,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kPad:
@@ -2912,10 +2979,8 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
     if (options.is_in_nested_computation()) {
       // If we are canonicalizing instruction names and this is a top-level
       // HloInstruction::ToString() call, don't print an instruction name.
-      StrAppend(&result,
-                PrintNameInternal(canonical_name_map->LookupOrInsert(name()),
-                                  options),
-                " = ");
+      DCHECK(!options.print_percent());  // no need to call PrintNameInternal
+      StrAppend(&result, canonical_name_map->LookupOrInsert(name()), " = ");
     }
   } else {
     StrAppend(&result, PrintNameInternal(name(), options), " = ");
@@ -2931,7 +2996,24 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
   }
 
   // Print opcode, operand(s).
-  StrAppend(&result, HloOpcodeString(opcode()), "(",
+  if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode())) {
+    std::string suffix = [&]() {
+      switch (opcode()) {
+        case HloOpcode::kAsyncStart:
+          return "-start";
+        case HloOpcode::kAsyncUpdate:
+          return "-update";
+        default:
+          CHECK(opcode() == HloOpcode::kAsyncDone)
+              << "Unexpected async opcode: " << HloOpcodeString(opcode());
+          return "-done";
+      }
+    }();
+    StrAppend(&result, HloOpcodeString(async_wrapped_opcode()), suffix);
+  } else {
+    StrAppend(&result, HloOpcodeString(opcode()));
+  }
+  StrAppend(&result, "(",
             OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
             ")");
 
@@ -2947,7 +3029,8 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
     StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
-    StrAppend(&result, ", backend_config=\"", CEscape(backend_config_), "\"");
+    StrAppend(&result, ", backend_config=\"",
+              CEscape(backend_config_.GetRawString()), "\"");
   }
   return result;
 }
@@ -2990,13 +3073,13 @@ std::string HloInstruction::OperandsToStringWithCanonicalNameMap(
         str.push_back(ShapeUtil::HumanString(operand->shape()));
       }
     }
-
-    // In a top-level HloInstruction::ToString() call, the operand name is not
-    // part of the canonical string.
-    if (options.canonicalize_instruction_names() &&
-        options.is_in_nested_computation()) {
-      str.push_back(PrintNameInternal(
-          canonical_name_map->LookupOrInsert(operand->name()), options));
+    if (options.canonicalize_instruction_names()) {
+      if (options.is_in_nested_computation()) {
+        // In a top-level HloInstruction::ToString() call, the operand name is
+        // not part of the canonical string.
+        DCHECK(!options.print_percent());  // no need to call PrintNameInternal
+        str.push_back(canonical_name_map->LookupOrInsert(operand->name()));
+      }
     } else if (options.print_operand_names()) {
       str.push_back(PrintNameInternal(operand->name(), options));
     }
@@ -3081,6 +3164,12 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                           out, PrintNameInternal(computation->name(), options));
                     }),
             "}"));
+      }
+    } else if (HloOpcodeIsAsync(opcode())) {
+      if (!options.syntax_sugar_async_ops()) {
+        extra.push_back(StrCat(
+            "calls=",
+            PrintNameInternal(async_wrapped_computation()->name(), options)));
       }
     } else if (!called_computations().empty()) {
       extra.push_back(StrCat(
@@ -3200,7 +3289,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
 
   *proto.mutable_metadata() = metadata_;
-  proto.set_backend_config(backend_config_);
+  proto.set_backend_config(backend_config_.GetRawString());
   if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations_) {
       proto.add_called_computation_ids(computation->unique_id());
@@ -3497,6 +3586,12 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConditional(this);
     case HloOpcode::kCustomCall:
       return visitor->HandleCustomCall(this);
+    case HloOpcode::kAsyncStart:
+      return visitor->HandleAsyncStart(this);
+    case HloOpcode::kAsyncUpdate:
+      return visitor->HandleAsyncUpdate(this);
+    case HloOpcode::kAsyncDone:
+      return visitor->HandleAsyncDone(this);
     case HloOpcode::kCopyStart:
       return visitor->HandleCopyStart(this);
     case HloOpcode::kCopyDone:
@@ -3713,16 +3808,17 @@ bool HloInstruction::IsElementwiseOnOperand(int64_t operand_idx) const {
   return IsElementwiseImpl(operand_idx);
 }
 
+namespace {
+
+// Indicates how an instruction uses a value (such as an operand).
+//
+// Does it (a) not use it, (b) use it, or (c) use it multiple times?
+enum class UseKind { kReuse = 0, kUse = 1, kNoUse = 2 };
+
 // A helper class for memoized, recursive computation of HloOpcode::kFusion
 // in HloInstruction::OperandElementUse below.
-class HloInstruction::FusionReusesParamElements {
+class FusionReusesParamElements {
  public:
-  using UseKind = HloInstruction::UseKind;
-
-  // We could rather iterate backwards through fused_instructions_ here, as it
-  // is in reverse postorder, and compute whether each fused instruction reuses
-  // the value of this parameter, which would save stack space but not allow us
-  // to finish early if we find a reuse.
   static UseKind Compute(int64_t i, const HloInstruction& hlo) {
     absl::flat_hash_map<const HloInstruction*, UseKind> memoization_cache;
     return ComputeInternal(i, hlo, &memoization_cache);
@@ -3730,135 +3826,41 @@ class HloInstruction::FusionReusesParamElements {
 
  private:
   static UseKind ComputeInternal(
-      int64_t i, const HloInstruction& hlo,
-      absl::flat_hash_map<const HloInstruction*, UseKind>* cache) {
-    if (auto hlo_param = DynCast<HloParameterInstruction>(&hlo)) {
-      if (hlo_param->parameter_number() == i) {
-        return UseKind::kUse;
-      }
-    }
-
-    auto p = cache->emplace(&hlo, UseKind::kNoUse);
-    auto value_it = p.first;
-    const bool key_is_new = p.second;
-
-    if (key_is_new) {
-      for (int64_t j = 0; j < hlo.operands_.size(); ++j) {
-        UseKind old_val = value_it->second;
-
-        // The next operation invalidates iterators.
-        UseKind new_val =
-            Fold(old_val,
-                 FoldUseMandatory(hlo.OperandElementUse(j),
-                                  ComputeInternal(i, *hlo.operand(j), cache)));
-
-        // Re-acquire the iterator. We could work harder to do this only if
-        // absolutely necessary, but this code is not hot enough to warrant
-        // that.
-        value_it = cache->find(&hlo);
-        value_it->second = new_val;
-        // Fold() minimizes the UseKind value. If it is already minimum, we can
-        // break the loop early.
-        if (new_val == UseKind::kReuse) {
-          break;
-        }
-      }
-    }
-    return value_it->second;
-  }
-
-  // Combines two UseKinds.
-  //
-  // This is the min operation on the lattice
-  //
-  //   kReuse < kUse < kNoUse.
-  //
-  // Two kUses uses which have different permutations count as kReuse.
-  static UseKind Fold(UseKind a, UseKind b) {
-    // Without loss of generality, let `b` be the operation with the larger use
-    // kind.
-    if (b.kind < a.kind) {
-      std::swap(a, b);
-    }
-    // If the kinds are different, return the smaller one, namely `a`.
-    if (a.kind != b.kind) {
-      return a;
-    }
-    // If the kinds are both kUse, check that they're the same permutation.
-    if (a.kind == UseKind::kUse && b.kind == UseKind::kUse &&
-        a.permutation_instr != b.permutation_instr) {
-      return UseKind::kReuse;
-    }
-    return a;  // They're the same.
-  }
-
-  // Combines two UseKinds differently than Fold().
-  //
-  // This is the min operation on the lattice
-  //
-  //   kNoUse < kReuse < kUse.
-  //
-  // If `a` and `b` are both kUse and one has a non-null permutation
-  // instruction, returns kUse with that permutation.  OTOH if both have
-  // different, non-null permutation instructions, returns kReuse.
-  //
-  // You can think of this sort of as a conjunction, whereas Fold is sort of a
-  // disjunction.  FoldUseMandatory() says "no use" if either input isn't used,
-  // whereas Fold() would say "use".
-  static UseKind FoldUseMandatory(UseKind a, UseKind b) {
-    if (a.kind == UseKind::kNoUse || b.kind == UseKind::kNoUse) {
-      return UseKind::kNoUse;
-    }
-    if (a.kind == UseKind::kReuse || b.kind == UseKind::kReuse) {
-      return UseKind::kReuse;
-    }
-    if (a.permutation_instr == b.permutation_instr) {
-      return a;  // They're the same.
-    }
-    if (b.permutation_instr == nullptr) {
-      return a;
-    }
-    if (a.permutation_instr == nullptr) {
-      return b;
-    }
-    return UseKind::kReuse;
-  }
+      int64_t outer_param_num, const HloInstruction& hlo,
+      absl::flat_hash_map<const HloInstruction*, UseKind>* cache);
 };
 
-HloInstruction::UseKind HloInstruction::OperandElementUse(
-    int64_t operand_num) const {
-  switch (opcode_) {
+}  // namespace
+
+// Returns how this instruction uses elements of its operand at operand_num.
+static UseKind OperandElementUse(const HloInstruction& instr,
+                                 int64_t operand_num) {
+  switch (instr.opcode()) {
     case HloOpcode::kBitcast:
-      // A bitcast that only adds or removes degenerate (i.e. size 1) dimensions
-      // doesn't permute its elements, so it counts as a plain, non-permuting
-      // use.
-      return ShapeUtil::DropDegenerateDimensions(shape()) ==
-                     ShapeUtil::DropDegenerateDimensions(operand(0)->shape())
-                 ? UseKind::kUse
-                 : UseKind::Permuting(this);
     case HloOpcode::kConcatenate:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:
     case HloOpcode::kTranspose:
-      return UseKind::Permuting(this);
+    case HloOpcode::kGather:
+      return UseKind::kUse;
     case HloOpcode::kPad:
       // Pad reuses the padding value but not the padded array elements.
-      return operand_num > 0 ? UseKind::kReuse : UseKind::Permuting(this);
+      return operand_num > 0 ? UseKind::kReuse : UseKind::kUse;
     case HloOpcode::kReduce:
       // Reduce reuses the init values but not the operand array elements.
-      return operand_num >= Cast<HloReduceInstruction>(this)->input_count()
+      return operand_num >= Cast<HloReduceInstruction>(&instr)->input_count()
                  ? UseKind::kReuse
-                 : UseKind::Permuting(this);
+                 : UseKind::kUse;
     case HloOpcode::kFusion:
       // Uses the memoizing, recursive computation defined above.
       return FusionReusesParamElements::Compute(operand_num,
-                                                *fused_expression_root());
+                                                *instr.fused_expression_root());
     case HloOpcode::kDot:
       // Matrix-vector dots do not reuse the matrix operand.
-      if (shape().dimensions_size() <= 1) {
-        if ((operand_num == 0 && operand(1)->shape().rank() <= 1) ||
-            (operand_num == 1 && operand(0)->shape().rank() <= 1)) {
+      if (instr.shape().dimensions_size() <= 1) {
+        if ((operand_num == 0 && instr.operand(1)->shape().rank() <= 1) ||
+            (operand_num == 1 && instr.operand(0)->shape().rank() <= 1)) {
           return UseKind::kUse;
         }
       }
@@ -3869,13 +3871,72 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(
         return UseKind::kUse;
       }
       return UseKind::kReuse;
-    case HloOpcode::kGather:
-      // Gather reads its indices in a linear fashion, and it permutes the
-      // vector it's gathering from.
-      return operand_num == 0 ? UseKind::kUse : UseKind::Permuting(this);
     default:
-      return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
+      return instr.IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }
+}
+
+UseKind FusionReusesParamElements::ComputeInternal(
+    int64_t outer_param_num, const HloInstruction& hlo,
+    absl::flat_hash_map<const HloInstruction*, UseKind>* cache) {
+  if (auto hlo_param = DynCast<HloParameterInstruction>(&hlo)) {
+    if (hlo_param->parameter_number() == outer_param_num) {
+      return UseKind::kUse;
+    }
+  }
+
+  auto p = cache->emplace(&hlo, UseKind::kNoUse);
+  auto value_it = p.first;
+  const bool key_is_new = p.second;
+
+  if (!key_is_new) {
+    return value_it->second;
+  }
+
+  // Our dataflow graph has no loops, so we don't need the fixed point
+  // computation.
+  for (int64_t operand_num = 0; operand_num < hlo.operands().size();
+       ++operand_num) {
+    UseKind old_val = value_it->second;
+
+    // Compute updated value.
+    UseKind new_val = [&] {
+      // How does the HLO use this operand.
+      UseKind hlo_use = OperandElementUse(hlo, operand_num);
+
+      // If the HLO does not use the outer operand, return previous value.
+      if (hlo_use == UseKind::kNoUse) {
+        return old_val;
+      }
+
+      UseKind operand_use =
+          ComputeInternal(outer_param_num, *hlo.operand(operand_num), cache);
+
+      // If the operand does not use the outer operand, return the previous
+      // value.
+      if (operand_use == UseKind::kNoUse) {
+        return old_val;
+      }
+
+      // Meet operator on a lattice:
+      //
+      //   kReuse < kUse < kNoUse.
+      return std::min({old_val, hlo_use, operand_use});
+    }();
+
+    value_it = cache->find(&hlo);
+    value_it->second = new_val;
+    // Fold() minimizes the UseKind value. If it is already minimum, we do not
+    // have to check all the remaining operands.
+    if (new_val == UseKind::kReuse) {
+      break;
+    }
+  }
+  return value_it->second;
+}
+
+bool HloInstruction::ReusesOperandElements(int64_t i) const {
+  return OperandElementUse(*this, i) == UseKind::kReuse;
 }
 
 std::tuple<bool, std::vector<int64_t>, std::vector<int64_t>>
@@ -4172,18 +4233,71 @@ Status HloInstruction::GetBackendConfigInternal(
     tensorflow::protobuf::Message* proto) const {
   proto->Clear();
 
-  // Empty string does not parse as valid JSON, but it's a valid backend config,
-  // corresponding to the empty proto.
-  if (backend_config_.empty()) {
+  if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
+    proto->CopyFrom(*proto_ptr);
     return Status::OK();
   }
-  return tensorflow::HumanReadableJsonToProto(backend_config_, proto);
+
+  auto& raw_string = raw_backend_config_string();
+  // Empty string does not parse as valid JSON, but it's a valid backend config,
+  // corresponding to the empty proto.
+  if (raw_string.empty()) {
+    return Status::OK();
+  }
+  TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(raw_string, proto));
+  backend_config_.SetProto(*proto);
+  return Status::OK();
 }
 
-Status HloInstruction::set_backend_config(
+const std::string& HloInstruction::BackendConfigRep::GetRawString() const {
+  if (proto_ && raw_string_.empty()) {
+    raw_string_ = BackendConfigToRawString(*proto_).ValueOrDie();
+  }
+  return raw_string_;
+}
+
+HloInstruction::BackendConfigRep HloInstruction::BackendConfigRep::Clone()
+    const {
+  // Prefer cloning protobuf, raw_string_ will be lazily generated if accessed.
+  BackendConfigRep cloned;
+  if (auto* proto = GetProtoPtr()) {
+    cloned.SetProto(*proto);
+  } else {
+    cloned.raw_string_ = raw_string_;
+  }
+  return cloned;
+}
+
+HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
+    std::string raw_string) {
+  raw_string_ = std::move(raw_string);
+  proto_.reset();
+  return *this;
+}
+
+HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
     const tensorflow::protobuf::Message& proto) {
-  TF_ASSIGN_OR_RETURN(backend_config_, BackendConfigToRawString(proto));
-  return Status::OK();
+  SetProto(proto);
+  raw_string_.clear();
+  return *this;
+}
+
+void HloInstruction::BackendConfigRep::SetProto(
+    const tensorflow::protobuf::Message& proto) {
+  proto_.reset(proto.New());
+  proto_->CopyFrom(proto);
+}
+
+bool HloInstruction::BackendConfigRep::operator==(
+    const BackendConfigRep& other) const {
+  auto* proto_a = GetProtoPtr();
+  auto* proto_b = other.GetProtoPtr();
+  if (proto_a != nullptr && proto_b != nullptr) {
+    using ::tensorflow::protobuf::util::MessageDifferencer;
+    return MessageDifferencer::Equals(*proto_a, *proto_b);
+  }
+  // TODO(b/225956414): Consider canonicalizing raw string form.
+  return GetRawString() == other.GetRawString();
 }
 
 /* static */ StatusOr<std::string> HloInstruction::BackendConfigToRawString(
@@ -4615,6 +4729,29 @@ const DomainMetadata& HloInstruction::operand_side_metadata() const {
 
 const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
+}
+
+bool HloInstruction::IsAsynchronous() const {
+  return opcode() == HloOpcode::kAsyncStart ||
+         opcode() == HloOpcode::kAsyncUpdate ||
+         opcode() == HloOpcode::kAsyncDone;
+}
+
+HloComputation* HloInstruction::async_wrapped_computation() const {
+  CHECK(IsAsynchronous());
+  return called_computations()[0];
+}
+
+// HloInstruction* HloInstruction::async_chain_start() const {
+//   return Cast<HloAsyncInstruction>(this)->async_chain_start();
+// }
+
+HloInstruction* HloInstruction::async_wrapped_instruction() const {
+  return Cast<HloAsyncInstruction>(this)->async_wrapped_instruction();
+}
+
+HloOpcode HloInstruction::async_wrapped_opcode() const {
+  return Cast<HloAsyncInstruction>(this)->async_wrapped_opcode();
 }
 
 bool HloInstruction::is_cross_program_prefetch() const {

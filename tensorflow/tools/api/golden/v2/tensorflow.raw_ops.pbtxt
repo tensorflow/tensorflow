@@ -241,6 +241,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'transformations\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "AssertPrevDataset"
+    argspec: "args=[\'input_dataset\', \'transformations\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Assign"
     argspec: "args=[\'ref\', \'value\', \'validate_shape\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\'], "
   }
@@ -783,6 +787,10 @@ tf_module {
   member_method {
     name: "CollectiveAllToAllV3"
     argspec: "args=[\'input\', \'communicator\', \'group_assignment\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
+  member_method {
+    name: "CollectiveAssignGroupV2"
+    argspec: "args=[\'group_assignment\', \'device_index\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "CollectiveBcastRecv"
@@ -2853,6 +2861,10 @@ tf_module {
     argspec: "args=[\'indices\', \'data\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ParallelFilterDataset"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'predicate\', \'output_types\', \'output_shapes\', \'deterministic\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'\', \'None\'], "
+  }
+  member_method {
     name: "ParallelInterleaveDataset"
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'sloppy\', \'buffer_output_elements\', \'prefetch_input_elements\', \'f\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
@@ -3299,6 +3311,10 @@ tf_module {
   member_method {
     name: "RandomGammaGrad"
     argspec: "args=[\'alpha\', \'sample\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "RandomIndexShuffle"
+    argspec: "args=[\'index\', \'seed\', \'max_index\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "RandomPoisson"

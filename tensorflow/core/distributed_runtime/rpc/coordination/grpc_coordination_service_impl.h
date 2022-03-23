@@ -74,14 +74,18 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
             &GrpcCoordinationServiceImpl::method##Handler,                     \
             /*supports_cancel=*/false);                                        \
   }
-  HANDLER(RegisterWorker);
+  HANDLER(RegisterTask);
   HANDLER(WaitForAllTasks);
+  HANDLER(ShutdownTask);
+  HANDLER(ResetTask);
   HANDLER(Heartbeat);
-  HANDLER(ReportErrorToAgent);
+  HANDLER(ReportErrorToTask);
   HANDLER(ReportErrorToService);
   HANDLER(InsertKeyValue);
   HANDLER(GetKeyValue);
   HANDLER(DeleteKeyValue);
+  HANDLER(Barrier);
+  HANDLER(CancelBarrier);
 #undef HANDLER
 
   thread::ThreadPool& compute_pool_;

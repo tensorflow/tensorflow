@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
@@ -43,16 +44,6 @@ struct BufferSlice {
   bool written = false;
 
   Shape shape;
-};
-
-// Convenience struct that contains useful data structures in MLIR emitter.
-// Not all fields may be filled. It's entiredly dependent on the uses.
-struct MlirEmitterContext {
-  void SetOperation(mlir::Operation* op);
-
-  std::string name;
-  std::vector<Shape> operand_shapes;
-  std::vector<Shape> output_shapes;
 };
 
 // Emits LLVM IR for an "unnested computation".
@@ -198,7 +189,9 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitRngGetAndUpdateState(mlir::Operation* op);
   Status EmitScatter(mlir::Operation* op);
   Status EmitSort(mlir::Operation* op);
-  Status EmitTriangularSolve(mlir::Operation* op);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  Status EmitTriangularSolveCustomCall(mlir::Operation* op);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   template <typename NcclThunkType, typename OpTy>
   Status EmitNcclThunk(mlir::Operation* op);
@@ -485,13 +478,12 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
-  StatusOr<bool> CheckAndEmitHloWithTile021(mlir::Operation* op);
+  StatusOr<bool> CheckAndEmitHloWithTile021(mlir::lmhlo::FusionOp fusion);
 
   // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm.
   // This is a helper to support the implementation of
   // CheckAndEmitHloWithTile021.
-  void EmitHlo021Tile(mlir::Operation* op, Thunk* kernel_thunk,
-                      const MlirEmitterContext& context,
+  void EmitHlo021Tile(mlir::lmhlo::FusionOp fusion, Thunk* kernel_thunk,
                       absl::Span<const llvm_ir::IrArray> operand_arrays,
                       absl::Span<const llvm_ir::IrArray> output_arrays,
                       absl::Span<const int64_t> reduced_output_dims,
@@ -736,6 +728,14 @@ class IrEmitterUnnested : public IrEmitter {
   // __shared__ memory uses a different address space, so we cast it to
   // global address space before writing or reading.
   llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Twine name = "");
+
+  // Returns the ShapedSlices for the given operands.
+  StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
+      mlir::Operation::operand_range operands);
+
+  // Returns the buffer allocation Slice for the given operands.
+  StatusOr<std::vector<BufferAllocation::Slice>> GetSlices(
+      mlir::Operation::operand_range operands);
 };
 
 }  // namespace gpu

@@ -20,6 +20,7 @@ import tempfile
 from absl.testing import parameterized
 
 from google.protobuf import wrappers_pb2
+from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -30,6 +31,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save
 from tensorflow.python.training.tracking import tracking
@@ -45,6 +47,12 @@ class Part(resource_variable_ops.ResourceVariable):
   @classmethod
   def _deserialize_from_proto(cls, **kwargs):
     return cls([0, 0])
+
+  def _export_to_saved_model_graph(self, object_map, tensor_map, **kwargs):
+    p = Part(array_ops.zeros(self.shape, self.dtype))
+    object_map[self] = p
+    tensor_map[self.handle] = p.handle
+    return [self.handle]
 
 
 @registration.register_serializable()
@@ -185,7 +193,8 @@ class SavedModelTest(test.TestCase, parameterized.TestCase):
       def __init__(self, v=None):
         self.v = v if v is not None else variables.Variable(1.)
 
-      def _deserialization_dependencies(self):
+      def _deserialization_dependencies(self, children):
+        del children  # Unused.
         return {"v": self.v}
 
       @classmethod
@@ -245,6 +254,25 @@ class SingleCycleTest(test.TestCase):
     self.assertAllEqual(expected_value_s, restore_s.value())
     util.Checkpoint(s2=restore_s).read(ckpt_path).expect_partial()
     self.assertAllEqual(expected_value_s2, restore_s.value())
+
+  def test_compatible_with_v1_savedmodel(self):
+    p1 = Part([1, 4])
+    p2 = Part([2, 5])
+    p3 = Part([3, 6])
+    s = Stack([p1, p2, p3])
+    save_path = os.path.join(self.get_temp_dir(), "savedmodel")
+
+    @def_function.function(input_signature=[])
+    def serve():
+      return {"value": s.value()}
+
+    exported_value = serve()["value"]
+
+    save.save(s, save_path, signatures=serve)
+    with ops.Graph().as_default(), session.Session() as sess:
+      metagraph = loader.load(sess, ["serve"], save_path)
+      value_output = metagraph.signature_def["serving_default"].outputs["value"]
+      self.assertAllEqual(exported_value, sess.run(value_output.name))
 
 
 if __name__ == "__main__":

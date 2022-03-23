@@ -24,9 +24,9 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -95,7 +95,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   mlir::DialectRegistry registry;
   // clang-format off
   registry.insert<mlir::arith::ArithmeticDialect,
-                  mlir::StandardOpsDialect,
+                  mlir::func::FuncDialect,
                   mlir::scf::SCFDialect,
                   mlir::shape::ShapeDialect,
                   mlir::TF::TensorFlowDialect,
@@ -112,7 +112,7 @@ std::unique_ptr<TFRDecomposeContext> TFRDecomposeContext::GetFromText(
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(memory_buffer), llvm::SMLoc());
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceFile(source_mgr, mlir_ctx);
+      mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, mlir_ctx);
   // The MLIRContext owns the module
   auto module_op = module.release();
 
@@ -167,7 +167,7 @@ StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
   op_state.addTypes(output_tys);
   op_state.addAttributes(attrs);
   mlir::Operation* tf_op = op_builder.createOperation(op_state);
-  op_builder.create<mlir::ReturnOp>(loc, tf_op->getResults());
+  op_builder.create<mlir::func::ReturnOp>(loc, tf_op->getResults());
 
   // Run the decompose passes on the module
   TF_RETURN_IF_ERROR(DecomposeGraph(module));

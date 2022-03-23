@@ -1284,8 +1284,20 @@ def _is_ps_failure(error):
           _RPC_ERROR_FROM_PS in str(error))
 
 
+def _handle_graph_execution_error_as_worker_failure():
+  return int(os.environ.get("TF_PS_HANDLE_UNKNOWN_ERROR", "0")) > 0
+
+
 def _is_worker_failure(error):
   """Whether the error is considered a worker failure."""
+
+  # TODO(b/216666282): Understand why worker failure can manifest as a
+  # "Graph execution error" `UnknownError`.
+  if (_handle_graph_execution_error_as_worker_failure() and
+      isinstance(error, errors.UnknownError) and
+      "Graph execution error" in str(error)):
+    logging.info(f"Handling {type(error)}: {str(error)} as worker failure.")
+    return True
 
   # For an `InputError`, extract the original error and assess it accordingly.
   if isinstance(error, InputError):
@@ -1306,7 +1318,7 @@ def _is_worker_failure(error):
   # failure. In that case, gRPC allows channel (which is different from a
   # connection) to be reused for a replaced server listening to same address.
   if isinstance(error, errors.InvalidArgumentError):
-    if ("unknown device" in str(error) or
+    if ("unknown device" in str(error).lower() or
         "Unable to find the relevant tensor remote_handle" in str(error)):
       # TODO(b/159961667): Fix "Unable to find the relevant tensor
       # remote_handle" part.

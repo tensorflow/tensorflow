@@ -403,38 +403,6 @@ TEST_F(HloCostAnalysisTest, ConvolutionWithFeatureGroup) {
             sizeof(float) * 120 * 8 * 18);
 }
 
-TEST_F(HloCostAnalysisHloTest, ConvCustomCall) {
-  absl::string_view hlo_string = R"(
-HloModule module, is_scheduled=true
-
-ENTRY entry {
-  p0 = s8[128,12,24,24,4]{4,3,2,1,0} parameter(0)
-  p1 = s8[16,12,5,5,4]{4,3,2,1,0} parameter(1)
-  p2 = f32[16]{0} parameter(2)
-  conv1 = (s8[128,4,24,24,4]{4,3,2,1,0}, u8[0]{0}) custom-call(p0, p1, p2),
-              window={size=5x5 pad=2_2x2_2},
-              dim_labels=bf01_oi01->bf01,
-              custom_call_target="__cudnn$convBiasActivationForward"
-  ROOT tuple = tuple(conv1)
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  HloCostAnalysis analysis(ShapeSize);
-  ASSERT_IS_OK(
-      module->entry_computation()->root_instruction()->Accept(&analysis));
-
-  HloComputation* comp = module->entry_computation();
-  const HloInstruction* conv1 = comp->GetInstructionWithName("conv1");
-  EXPECT_EQ(analysis.operand_bytes_accessed(*conv1, 0),
-            sizeof(int8_t) * 128 * 12 * 24 * 24 * 4);
-  EXPECT_EQ(analysis.operand_bytes_accessed(*conv1, 1),
-            sizeof(int8_t) * 16 * 12 * 5 * 5 * 4);
-  EXPECT_EQ(analysis.output_bytes_accessed(*conv1),
-            sizeof(int8_t) * 128 * 4 * 24 * 24 * 4);
-  EXPECT_EQ(analysis.flop_count(*conv1), 159694848);
-}
-
 TEST_F(HloCostAnalysisTest, Reduce) {
   XlaBuilder builder("reduce");
   auto input =
@@ -662,11 +630,11 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
     // The time given these rates at i == 0 is exactly even among the properties
     // at 1.0 seconds. For other values, one of the rates is slower so that it
     // becomes the bottleneck.
-    HloCostAnalysis fusion_analysis(ShapeSize);
-    fusion_analysis.set_flops_per_second(16 * (i == 1 ? 1 / 2.0 : 1.0));
-    fusion_analysis.set_transcendentals_per_second(4 *
-                                                   (i == 2 ? 1 / 4.0 : 1.0));
-    fusion_analysis.set_bytes_per_second(64 * (i == 3 ? 1 / 8.0 : 1.0));
+    HloCostAnalysis::Options options{ShapeSize};
+    options.set_flops_per_second(16 * (i == 1 ? 1 / 2.0 : 1.0));
+    options.set_transcendentals_per_second(4 * (i == 2 ? 1 / 4.0 : 1.0));
+    options.set_bytes_per_second(64 * (i == 3 ? 1 / 8.0 : 1.0));
+    HloCostAnalysis fusion_analysis(options);
     ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
 
     EXPECT_EQ(fusion_analysis.flop_count(), 16);

@@ -34,6 +34,8 @@ class GetElementAtIndexOp : public HybridAsyncOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
+  ~GetElementAtIndexOp() override {}
+
  protected:
   Status DoCompute(OpKernelContext* ctx) override;
 

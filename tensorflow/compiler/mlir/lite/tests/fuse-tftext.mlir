@@ -3235,10 +3235,10 @@ func private @ngrams_ragged_rank_2(%arg0: tensor<?x!tf_type.string> {tf._user_sp
   %18 = "tf.Equal"(%17, %4) {device = "", incompatible_shape_error = true} : (tensor<i64>, tensor<i64>) -> tensor<i1>
   %19 = "tf.All"(%18, %5) {device = "", keep_dims = false} : (tensor<i1>, tensor<0xi32>) -> tensor<i1>
   %20 = "tf.IfRegion"(%19) ({
-    %72 = "std.call"(%19, %17, %4) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_27770} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
+    %72 = "func.call"(%19, %17, %4) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_27770} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   },  {
-    %72 = "std.call"(%19, %17, %4) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_27780} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
+    %72 = "func.call"(%19, %17, %4) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_27780} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<i1>
   %21 = "tf.Identity"(%20) {device = ""} : (tensor<i1>) -> tensor<i1>
@@ -3248,10 +3248,10 @@ func private @ngrams_ragged_rank_2(%arg0: tensor<?x!tf_type.string> {tf._user_sp
   %25 = "tf.LessEqual"(%4, %24) {device = ""} : (tensor<i64>, tensor<?xi64>) -> tensor<?xi1>
   %26 = "tf.All"(%25, %7) {device = "", keep_dims = false} : (tensor<?xi1>, tensor<1xi32>) -> tensor<i1>
   %27 = "tf.IfRegion"(%26) ({
-    %72 = "std.call"(%26, %24) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_28130} : (tensor<i1>, tensor<?xi64>) -> tensor<i1>
+    %72 = "func.call"(%26, %24) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_28130} : (tensor<i1>, tensor<?xi64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   },  {
-    %72 = "std.call"(%26, %24) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_28140} : (tensor<i1>, tensor<?xi64>) -> tensor<i1>
+    %72 = "func.call"(%26, %24) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_28140} : (tensor<i1>, tensor<?xi64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<i1>
   %28 = "tf.Identity"(%27) {device = ""} : (tensor<i1>) -> tensor<i1>
@@ -3262,10 +3262,10 @@ func private @ngrams_ragged_rank_2(%arg0: tensor<?x!tf_type.string> {tf._user_sp
   %33 = "tf.Equal"(%30, %32) {device = "", incompatible_shape_error = true} : (tensor<i64>, tensor<i64>) -> tensor<i1>
   %34 = "tf.All"(%33, %5) {device = "", keep_dims = false} : (tensor<i1>, tensor<0xi32>) -> tensor<i1>
   %35 = "tf.IfRegion"(%34) ({
-    %72 = "std.call"(%34, %30, %32) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_28500} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
+    %72 = "func.call"(%34, %30, %32) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_28500} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   },  {
-    %72 = "std.call"(%34, %30, %32) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_28510} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
+    %72 = "func.call"(%34, %30, %32) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_28510} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<i1>
   %36 = "tf.Identity"(%35) {device = ""} : (tensor<i1>) -> tensor<i1>
@@ -3287,18 +3287,18 @@ func private @ngrams_ragged_rank_2(%arg0: tensor<?x!tf_type.string> {tf._user_sp
   %52 = "tf.StridedSlice"(%51, %7, %8, %8) {begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<1xi64>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i64>
   %53 = "tf.Sub"(%52, %3) {device = ""} : (tensor<i64>, tensor<i64>) -> tensor<i64>
   %54 = "tf.IfRegion"(%11) ({
-    %72 = "std.call"(%11, %9, %4) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_28900} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
+    %72 = "func.call"(%11, %9, %4) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_28900} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   },  {
-    %72 = "std.call"(%11, %9, %4) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_28910} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
+    %72 = "func.call"(%11, %9, %4) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_28910} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<i1>
   %55 = "tf.Identity"(%54) {device = ""} : (tensor<i1>) -> tensor<i1>
   %56 = "tf.IfRegion"(%16) ({
-    %72 = "std.call"(%16, %14) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_29260} : (tensor<i1>, tensor<2xi64>) -> tensor<i1>
+    %72 = "func.call"(%16, %14) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_29260} : (tensor<i1>, tensor<2xi64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   },  {
-    %72 = "std.call"(%16, %14) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_29270} : (tensor<i1>, tensor<2xi64>) -> tensor<i1>
+    %72 = "func.call"(%16, %14) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_29270} : (tensor<i1>, tensor<2xi64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<i1>
   %57 = "tf.Identity"(%56) {device = ""} : (tensor<i1>) -> tensor<i1>
@@ -3307,17 +3307,17 @@ func private @ngrams_ragged_rank_2(%arg0: tensor<?x!tf_type.string> {tf._user_sp
   %60 = "tf.Equal"(%59, %53) {device = "", incompatible_shape_error = true} : (tensor<i64>, tensor<i64>) -> tensor<i1>
   %61 = "tf.All"(%60, %5) {device = "", keep_dims = false} : (tensor<i1>, tensor<0xi32>) -> tensor<i1>
   %62 = "tf.IfRegion"(%61) ({
-    %72 = "std.call"(%61, %59, %53) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_true_29650} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
+    %72 = "func.call"(%61, %59, %53) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_true_29650} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   },  {
-    %72 = "std.call"(%61, %59, %53) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_false_29660} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
+    %72 = "func.call"(%61, %59, %53) {callee = @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_false_29660} : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<i1>
   %63 = "tf.IfRegion"(%49) ({
-    %72 = "std.call"(%49, %43#0, %47#0) {callee = @NGrams_SlidingWindow_RaggedConcat_assert_equal_2_Assert_AssertGuard_true_30330} : (tensor<i1>, tensor<?xi64>, tensor<?xi64>) -> tensor<i1>
+    %72 = "func.call"(%49, %43#0, %47#0) {callee = @NGrams_SlidingWindow_RaggedConcat_assert_equal_2_Assert_AssertGuard_true_30330} : (tensor<i1>, tensor<?xi64>, tensor<?xi64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   },  {
-    %72 = "std.call"(%49, %43#0, %47#0) {callee = @NGrams_SlidingWindow_RaggedConcat_assert_equal_2_Assert_AssertGuard_false_30340} : (tensor<i1>, tensor<?xi64>, tensor<?xi64>) -> tensor<i1>
+    %72 = "func.call"(%49, %43#0, %47#0) {callee = @NGrams_SlidingWindow_RaggedConcat_assert_equal_2_Assert_AssertGuard_false_30340} : (tensor<i1>, tensor<?xi64>, tensor<?xi64>) -> tensor<i1>
     "tf.Yield"(%72) : (tensor<i1>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<i1>
   %64 = "tf.Identity"(%43#0) {device = ""} : (tensor<?xi64>) -> tensor<?xi64>

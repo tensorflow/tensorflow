@@ -28,7 +28,7 @@ from tensorflow.python.util.tf_export import tf_export
 class DenseSpec(type_spec.TypeSpec):
   """Describes a dense object with shape, dtype, and name."""
 
-  __slots__ = ["_shape", "_shape_tuple", "_dtype", "_name"]
+  __slots__ = ["_shape", "_dtype", "_name"]
 
   _component_specs = property(lambda self: self)
 
@@ -45,10 +45,6 @@ class DenseSpec(type_spec.TypeSpec):
         not convertible to a `tf.DType`.
     """
     self._shape = tensor_shape.TensorShape(shape)
-    try:
-      self._shape_tuple = tuple(self.shape.as_list())
-    except ValueError:
-      self._shape_tuple = None
     self._dtype = dtypes.as_dtype(dtype)
     self._name = name
 
@@ -77,25 +73,17 @@ class DenseSpec(type_spec.TypeSpec):
         type(self).__name__, self.shape, repr(self.dtype), repr(self.name))
 
   def __hash__(self):
-    return hash((self._shape_tuple, self.dtype))
+    return hash((self._shape, self.dtype))
 
   def __eq__(self, other):
     # pylint: disable=protected-access
     return (type(self) is type(other) and
-            self._shape_tuple == other._shape_tuple
+            self._shape == other._shape
             and self._dtype == other._dtype
             and self._name == other._name)
 
   def __ne__(self, other):
     return not self == other
-
-  def most_specific_compatible_type(self, other):
-    if (type(self) is not type(other)) or (self._dtype != other.dtype):
-      raise ValueError(f"Types are not compatible: {self!r} with type of "
-                       f"{type(self)} vs {other!r} with type of {type(other)}.")
-    shape = self._shape.most_specific_compatible_shape(other.shape)
-    name = self._name if self._name == other.name else None
-    return type(self)(shape, self._dtype, name)
 
   def _serialize(self):
     return (self._shape, self._dtype, self._name)
@@ -226,8 +214,15 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
   def _to_batched_tensor_list(self, value):
     return self._to_tensor_list(value)
 
-  def __tf_tracing_type__(self, signature_context):
-    return ops.TensorType(signature_context, self.shape, self.dtype, self.name)
+  # TODO(b/206014848): Helper function to support logic that does not consider
+  # Tensor name. Will be removed once load-bearing usages of Tensor name are
+  # fixed.
+  def _without_tensor_names(self) -> "TensorSpec":
+    """Returns a version of `TensorSpec` with the name removed."""
+    if self.name is None:
+      return self
+    else:
+      return TensorSpec(self.shape, self.dtype)
 
 
 # TODO(b/133606651): Should is_compatible_with should check min/max bounds?
@@ -343,7 +338,7 @@ class BoundedTensorSpec(TensorSpec):
             np.allclose(self.maximum, other.maximum))
 
   def __hash__(self):
-    return hash((self._shape_tuple, self.dtype))
+    return hash((self._shape, self.dtype))
 
   def __reduce__(self):
     return BoundedTensorSpec, (self._shape, self._dtype, self._minimum,

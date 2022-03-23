@@ -1210,8 +1210,8 @@ class CopyRemover {
 
       // Copy the HLO values's uses into the ValueNode for the value. These
       // uses in ValueNode are updated as copies are removed.
-      new_node->uses.reserve(value->uses().size());
-      for (const HloUse& use : value->uses()) {
+      new_node->uses.reserve(value->GetUses().size());
+      for (const HloUse& use : value->GetUses()) {
         new_node->uses.push_back(&use);
       }
 
@@ -1880,7 +1880,7 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
         continue;
       }
       HloPosition position = value2->defining_position();
-      for (const HloUse& use : value->uses()) {
+      for (const HloUse& use : value->GetUses()) {
         if (use.instruction == position.instruction) {
           VLOG(3) << "Same instruction: " << position.instruction->ToString();
           if (!alias_analysis->dataflow_analysis()

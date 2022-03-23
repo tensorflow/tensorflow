@@ -171,6 +171,12 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
       this.useXNNPACK = useXNNPACK;
       return this;
     }
+
+    @Override
+    public Options setRuntime(InterpreterApi.Options.TfLiteRuntime runtime) {
+      super.setRuntime(runtime);
+      return this;
+    }
   }
 
   /**

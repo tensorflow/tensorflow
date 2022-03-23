@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OperationSupport.h"
@@ -219,7 +219,7 @@ mlir::Value CoreRTConverter::GetLocalSideEffectChain(
   auto func_op = op->getParentOfType<mlir::FuncOp>();
 
   llvm::SmallVector<mlir::Operation *, 4> predecessors;
-  if (llvm::isa<mlir::ReturnOp>(op)) {
+  if (llvm::isa<mlir::func::ReturnOp>(op)) {
     auto sinks = side_effect_analysis_.ControlSinks();
     predecessors.assign(sinks.begin(), sinks.end());
   } else {

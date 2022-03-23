@@ -37,7 +37,7 @@ func @parser_replicate_operand_type(%arg0: tensor<*xi32>) {
 func @parser_replicate_region() {
   tf_device.replicate() {n = 2 : i32} {
 // expected-error@-1 {{custom op 'tf_device.replicate' expects a single block region}}
-    br ^bb
+    cf.br ^bb
   ^bb:
     tf_device.return
   }
@@ -80,9 +80,8 @@ func @verifier_replicate_empty_block() {
 
 // Check that a replicate with a bad terminator is invalid.
 func @verifier_replicate_terminator() {
-// expected-note@+1 {{in custom textual format, the absence of terminator implies 'tf_device.return'}}
   "tf_device.replicate" () ({
-// expected-error@-1 {{'tf_device.replicate' op expects regions to end with 'tf_device.return', found 'std.return'}}
+// expected-error@+2 {{'func.return' op expects parent op 'func.func'}}
   ^entry:
     return
   }) {n = 2 : i32, operand_segment_sizes = dense<[0, 0]> : vector<2xi32>} : () -> ()

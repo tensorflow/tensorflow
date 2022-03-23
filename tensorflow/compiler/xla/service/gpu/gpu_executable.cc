@@ -48,15 +48,15 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/stream_executor/platform.h"
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
-#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tfrt/gpu/gpu_executor.h"  // from @tf_runtime
@@ -67,14 +67,34 @@ limitations under the License.
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
-#endif  // BEF_EXECUTABLE
+#endif  // XLA_ENABLE_XLIR
 
 namespace xla {
 namespace gpu {
+
+bool IsBefExecutableEnabled(const HloModuleConfig& config) {
+#if XLA_ENABLE_XLIR
+  return config.debug_options().xla_gpu_bef_executable();
+#else   // XLA_ENABLE_XLIR
+  (void)config;
+  return false;
+#endif  // XLA_ENABLE_XLIR
+}
+
+bool IsBefThunkEnabled(const HloModuleConfig& config) {
+#if XLA_ENABLE_XLIR
+  return config.debug_options().xla_gpu_bef_thunk();
+#else   // XLA_ENABLE_XLIR
+  (void)config;
+  return false;
+#endif  // XLA_ENABLE_XLIR
+}
+
 namespace {
 
 using ::tensorflow::profiler::ScopedAnnotation;
@@ -101,14 +121,14 @@ static std::string ModuleUniqueName(absl::string_view module_name,
 }  // namespace
 
 void GpuExecutable::BefBufferDeleter::operator()(uint8_t* ptr) const {
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   tfrt::AlignedFree(ptr);
 #else
-  LOG(FATAL) << "OwnedBefBuffer only supported with BEF_EXECUTABLE";
+  LOG(FATAL) << "OwnedBefBuffer only supported with XLA_ENABLE_XLIR";
 #endif
 }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
 struct GpuExecutable::BefExecutable {
  private:
   explicit BefExecutable(OwnedBefBuffer buffer)
@@ -168,7 +188,7 @@ struct GpuExecutable::BefExecutable {
   absl::Mutex mutex;
   tfrt::gpu::GpuContextCache gpu_ctx_cache TF_GUARDED_BY(mutex);
 };
-#endif
+#endif  // XLA_ENABLE_XLIR
 
 StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
   auto thunks_or_bef = std::move(params.thunks_or_bef);
@@ -179,14 +199,14 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
     return result;
   }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   if (absl::holds_alternative<OwnedBefBuffer>(thunks_or_bef)) {
     auto& bef_buffer = absl::get<OwnedBefBuffer>(thunks_or_bef);
     TF_ASSIGN_OR_RETURN(result->bef_executable_,
                         BefExecutable::Create(std::move(bef_buffer)));
     return result;
   }
-#endif
+#endif  // XLA_ENABLE_XLIR
 
   return InternalError("No thunk or bef provided");
 }
@@ -250,7 +270,7 @@ GpuExecutable::~GpuExecutable() {
     }
   }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   delete bef_executable_;
 #endif
 }
@@ -410,28 +430,49 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   module_spec.AddCudaPtxInMemory(text().c_str());
 
   absl::flat_hash_map<int64_t, se::DeviceMemoryBase> globals;
-  if (executor->platform_kind() == se::PlatformKind::kCuda &&
-      module_spec.cuda_ptx_in_memory() == nullptr) {
-    // No custom PTX means no globals. And the CUDA driver can't load an empty
-    // PTX anyway.
-    return &module_globals_.emplace(executor, std::move(globals)).first->second;
+  se::ModuleHandle module_handle;
+  // The CUDA driver isn't able to load empty PTX. It's okay if we skip loading
+  // in this case; if the module isn't loaded, all symbol lookups will fail,
+  // just as they should for an empty module.
+  if (!(executor->platform_kind() == se::PlatformKind::kCuda &&
+        module_spec.cuda_ptx_in_memory() == nullptr)) {
+    TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
   }
 
-  se::ModuleHandle module_handle;
-  TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
+  for (const ConstantInfo& info : constants_) {
+    StatusOr<stream_executor::DeviceMemoryBase> global_status;
+    if (static_cast<bool>(module_handle)) {
+      global_status =
+          executor->GetUntypedSymbol(info.symbol_name, module_handle);
+    }
 
-  for (const auto& info : constants_) {
-    TF_ASSIGN_OR_RETURN(auto global, executor->GetUntypedSymbol(
-                                         info.symbol_name, module_handle));
-    VLOG(3) << "Resolved global " << info.symbol_name << " to "
-            << global.opaque();
+    se::DeviceMemoryBase global;
+    if (static_cast<bool>(module_handle) && global_status.ok()) {
+      // The constant was defined in the PTX and has been allocated by the CUDA
+      // driver.
+      global = *global_status;
+      VLOG(3) << "Resolved global " << info.symbol_name << " to "
+              << global.opaque();
 
-    // Some globals that are declared in the PTX will have initializers and
-    // some won't. The globals without initializers must be initialized by XLA
-    // here. The initialization value is stored in 'content'; for constants
-    // that don't need to be initialized here, 'content' will be empty.
-    if (!info.content.empty()) {
-      stream->ThenMemcpy(&global, info.content.data(), info.content.size());
+      if (!info.content.empty()) {
+        // This means the constant did not have an initializer in the PTX and
+        // therefore must be initialized by XLA here.
+        stream->ThenMemcpy(&global, info.content.data(), info.content.size());
+      }
+    } else {
+      // The constant was not defined in the PTX and therefore must be both
+      // allocated and initialized by XLA here.
+      CHECK(!info.content.empty());
+
+      TF_ASSIGN_OR_RETURN(
+          auto shared, executor->CreateOrShareConstant(stream, info.content));
+      global = *shared;
+      VLOG(3) << "Allocated (or shared) global " << info.symbol_name << " at "
+              << global.opaque();
+      // XLA will continue to own this global at least until this executable is
+      // destroyed (longer if another, longer-lived executable shares the same
+      // constant).
+      shared_constants_.push_back(std::move(shared));
     }
 
     if (info.allocation_index != -1) {
@@ -558,12 +599,17 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
   return out.ConsumeResult();
 }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
 // TODO(hanbinyoon): Deduplicate with that in bef_thunk.cc.
 static tfrt::RCReference<tfrt::AsyncValue> CreateGpuBuffer(
     stream_executor::DeviceMemoryBase* data) {
-  tfrt::gpu::wrapper::Pointer<void> pointer(data->opaque(),
-                                            tfrt::gpu::wrapper::Platform::CUDA);
+#if TENSORFLOW_USE_ROCM
+  auto platform = tfrt::gpu::wrapper::Platform::ROCm;
+#else
+  auto platform = tfrt::gpu::wrapper::Platform::CUDA;
+#endif
+
+  tfrt::gpu::wrapper::Pointer<void> pointer(data->opaque(), platform);
   auto allocator =
       tfrt::MakeAvailableAsyncValueRef<tfrt::gpu::GpuOneShotAllocator<void>>(
           pointer);
@@ -583,7 +629,9 @@ static StatusOr<std::unique_ptr<tfrt::ExecutionContext>> CreateExecutionContext(
                       params.GetGlobalDeviceId());
   request_context_builder.context_data().emplace<XlaGpuParams>(XlaGpuParams{
       params.run_id, params.device_assn, params.gpu_global_device_ids,
-      params.nccl_unique_id_callback, global_device_id});
+      params.nccl_unique_id_callback, global_device_id,
+      GetOrCreateInfeedManager(params.stream->parent()),
+      GetOrCreateOutfeedManager(params.stream->parent())});
 
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
@@ -672,7 +720,7 @@ static Status ExecuteBef(const std::string& module_name,
       run_options, start_micros,
       block_host_until_done ? run_options->stream() : nullptr);
 }
-#endif  // BEF_EXECUTABLE
+#endif  // XLA_ENABLE_XLIR
 
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
@@ -685,6 +733,14 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       !memory_allocator->AllowsAsynchronousDeallocation();
 
   se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // Activate the GPU context. Technically speaking this is redundant, but if we
+  // don't do this, then every call into the StreamExecutor APIs will assume
+  // the correct context is not set and will reactivate the GPU context. This
+  // appears to cost ~1us each time. By activating it ahead of each time,
+  // StreamExecutor's context caching logic will apply and it will know not to
+  // reactivate it on each call.
+  se::gpu::ScopedActivateExecutorContext activate_context(executor);
 
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
@@ -850,13 +906,13 @@ Status GpuExecutable::ExecuteThunksOrBef(
                          buffer_allocations, block_host_until_done);
   }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   if (bef_executable_) {
     return ExecuteBef(module_name_, bef_executable_, run_options,
                       buffer_allocations, allocations_.size(),
                       block_host_until_done);
   }
-#endif  // BEF_EXECUTABLE
+#endif  // XLA_ENABLE_XLIR
 
   return FailedPrecondition("Expected thunk or bef is not supplied.");
 }
@@ -956,7 +1012,7 @@ Status GpuExecutable::SetUpMlirAllocation(
   return Status::OK();
 }
 
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
 static void ApplyEntryFunctionAttributes(
     mlir::MLIRContext& context, mlir::FuncOp& func,
     xla::EntryFunctionAttributes entry_func_attrs, int buffer_param_offset) {
@@ -975,10 +1031,11 @@ static void ApplyEntryFunctionAttributes(
                         builder.getIndexAttr(buffer.lmhlo_params()));
     }
     if (buffer.has_lmhlo_param_shape_index()) {
-      arg_attr_list.set("lmhlo.param_shape_index",
-                        builder.getI64TensorAttr(llvm::makeArrayRef(
-                            buffer.lmhlo_param_shape_index().indices().begin(),
-                            buffer.lmhlo_param_shape_index().indices().end())));
+      arg_attr_list.set(
+          "lmhlo.param_shape_index",
+          builder.getI64TensorAttr(llvm::makeArrayRef(
+              buffer.lmhlo_param_shape_index().indices().data(),
+              buffer.lmhlo_param_shape_index().indices().size())));
     }
     if (!buffer.lmhlo_constant_name().empty()) {
       arg_attr_list.set("lmhlo.constant_name",
@@ -990,8 +1047,8 @@ static void ApplyEntryFunctionAttributes(
     if (buffer.has_lmhlo_output_index()) {
       arg_attr_list.set("lmhlo.output_index",
                         builder.getI64TensorAttr(llvm::makeArrayRef(
-                            buffer.lmhlo_output_index().indices().begin(),
-                            buffer.lmhlo_output_index().indices().end())));
+                            buffer.lmhlo_output_index().indices().data(),
+                            buffer.lmhlo_output_index().indices().size())));
     }
     args_attrs.push_back(arg_attr_list.getDictionary(&context));
   }
@@ -999,12 +1056,12 @@ static void ApplyEntryFunctionAttributes(
   func->setAttr("result_xla_shape",
                 builder.getStringAttr(entry_func_attrs.result_xla_shape()));
 }
-#endif  // BEF_EXECUTABLE
+#endif  // XLA_ENABLE_XLIR
 
 StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
     std::shared_ptr<HloModule> hlo_module, absl::string_view bef,
     xla::EntryFunctionAttributes entry_func_attrs, GpuVersion gpu_version) {
-#if BEF_EXECUTABLE
+#if XLA_ENABLE_XLIR
   OwnedBefBuffer bef_buffer = [bef]() {
     auto ptr = static_cast<uint8_t*>(
         tfrt::AlignedAlloc(tfrt::GetRequiredBefAlignment(), bef.size()));
@@ -1043,9 +1100,9 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
                         module_name, result_xla_shape, std::move(allocations),
                         std::move(output_info), bef_executable));
   return executable;
-#else   // BEF_EXECUTABLE
-  return FailedPrecondition("LoadFromBef only supported with BEF_EXECUTABLE");
-#endif  // BEF_EXECUTABLE
+#else   // XLA_ENABLE_XLIR
+  return FailedPrecondition("Not built with XLA_ENABLE_XLIR");
+#endif  // XLA_ENABLE_XLIR
 }
 
 StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

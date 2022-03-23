@@ -238,6 +238,7 @@ def main():
     gpu_linker_flags.append('-Wl,-rpath=' + HIP_RUNTIME_PATH)
     gpu_linker_flags.append('-l' + HIP_RUNTIME_LIBRARY)
     gpu_linker_flags.append("-lrt")
+    gpu_linker_flags.append("-lstdc++")
 
     if VERBOSE: print(' '.join([CPU_COMPILER] + gpu_linker_flags))
     return subprocess.call([CPU_COMPILER] + gpu_linker_flags)

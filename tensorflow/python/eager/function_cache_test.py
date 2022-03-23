@@ -154,22 +154,6 @@ class FunctionCacheTest(test.TestCase):
     self.assertIsNone(cache.lookup(key_2, False))
     self.assertIsNone(cache.lookup(key_3, True))
 
-  def testExecutionContextSetRetainsInsertedElements(self):
-    cache = function_cache.FunctionCache()
-
-    ctx_1 = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
-    self.assertFalse(cache.has_call_context(ctx_1))
-    cache.add_call_context(ctx_1)
-    self.assertTrue(cache.has_call_context(ctx_1))
-
-    ctx_2 = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
-    self.assertTrue(cache.has_call_context(ctx_2))
-
-    ctx_3 = function_cache.ExecutionContext(1, 1, 1, 1, 1, None)
-    self.assertFalse(cache.has_call_context(ctx_3))
-    cache.add_call_context(ctx_3)
-    self.assertTrue(cache.has_call_context(ctx_3))
-
   def testFunctionCacheKeyRespectsEquality(self):
     ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
     generic = MockGenericType
@@ -187,9 +171,9 @@ class FunctionCacheTest(test.TestCase):
     key_b = function_cache.FunctionCacheKey(MockSubtypeOf2(2), ctx)
     key_c = function_cache.FunctionCacheKey(MockSubtypeOf2(1), ctx)
 
-    self.assertTrue(key_b.is_subtype_of(key_a))
-    self.assertFalse(key_a.is_subtype_of(key_b))
-    self.assertFalse(key_c.is_subtype_of(key_a))
+    self.assertTrue(key_a.is_subtype_of(key_b))
+    self.assertFalse(key_b.is_subtype_of(key_a))
+    self.assertFalse(key_a.is_subtype_of(key_c))
 
   def testFunctionCacheKeyRespectsSupertype(self):
     ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
@@ -197,9 +181,9 @@ class FunctionCacheTest(test.TestCase):
     key_b = function_cache.FunctionCacheKey(MockSupertypes2With3(2), ctx)
 
     self.assertEqual(
-        key_b.most_specific_common_subtype([key_a]),
+        key_b.most_specific_common_supertype([key_a]),
         function_cache.FunctionCacheKey(MockSupertypes2With3(3), ctx))
-    self.assertIsNone(key_a.most_specific_common_subtype([key_b]))
+    self.assertIsNone(key_a.most_specific_common_supertype([key_b]))
 
   def testMostSpecificFunctionCacheKeyIsLookedUp(self):
     ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
@@ -339,9 +323,9 @@ class FunctionCacheBenchmark(test.Benchmark):
 
     iterations = 10000
     subtyping_time = timeit.timeit(
-        lambda: cache.lookup(keys[-1], True), number=iterations)
+        lambda: cache.lookup(keys[-1][0], True), number=iterations)
     equality_time = timeit.timeit(
-        lambda: cache.lookup(keys[-1], False), number=iterations)
+        lambda: cache.lookup(keys[-1][0], False), number=iterations)
 
     self.report_benchmark(
         name="cache_hit_50th_key_miss",
@@ -378,9 +362,9 @@ class FunctionCacheBenchmark(test.Benchmark):
 
     iterations = 10000
     subtyping_time = timeit.timeit(
-        lambda: cache.lookup(keys[-1], True), number=iterations)
+        lambda: cache.lookup(keys[-1][0], True), number=iterations)
     equality_time = timeit.timeit(
-        lambda: cache.lookup(keys[-1], False), number=iterations)
+        lambda: cache.lookup(keys[-1][0], False), number=iterations)
 
     self.report_benchmark(
         name="cache_hit_50th_key_equal",

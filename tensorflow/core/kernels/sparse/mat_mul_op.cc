@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
@@ -93,10 +94,15 @@ class CSRMatMulOp : public OpKernel {
                     "Only one of adjoint_b and transpose_b may be true."));
     OP_REQUIRES_OK(c, c->GetAttr("transpose_output", &transpose_output_));
     OP_REQUIRES_OK(c, c->GetAttr("conjugate_output", &conjugate_output_));
-    conjugate_a_ = adjoint_a;
-    conjugate_b_ = adjoint_b;
     transpose_a_ |= adjoint_a;
     transpose_b_ |= adjoint_b;
+    if (is_complex<T>::value) {
+      conjugate_a_ = adjoint_a;
+      conjugate_b_ = adjoint_b;
+    } else {
+      conjugate_a_ = false;
+      conjugate_b_ = false;
+    }
   }
 
   ~CSRMatMulOp() override {}

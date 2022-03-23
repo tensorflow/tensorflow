@@ -1560,9 +1560,9 @@ StatusOr<int64_t> RematerializeInstructions(
 
     HloInstruction* remat =
         computation->AddInstruction(best->Clone(/*suffix=*/"remat"));
-    // Increment channel_id on channel instructions.
-    if (HloChannelInstruction* channel_instr =
-            DynCast<HloChannelInstruction>(remat)) {
+    // Increment channel_id on channel instructions with a channel id.
+    if (DynCast<HloChannelInstruction>(best) &&
+        DynCast<HloChannelInstruction>(best)->channel_id()) {
       remat->set_channel_id(rematerialization->NextChannelId());
     }
 

@@ -70,7 +70,7 @@ struct GpuConvConfig {
 
 // Implementation struct exposed for debugging and log analysis.
 struct GpuConvParams {
-  GpuConvConfig config;
+  const GpuConvConfig* config;  // Not owned
   struct FusionParams {
     se::DeviceMemoryBase bias_buf;
     se::DeviceMemoryBase side_input_buf;  // nullable

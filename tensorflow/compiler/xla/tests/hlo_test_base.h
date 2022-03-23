@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TESTS_HLO_TEST_BASE_H_
 #define TENSORFLOW_COMPILER_XLA_TESTS_HLO_TEST_BASE_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -111,10 +112,10 @@ class HloTestBase : public ManifestCheckingTest {
   // automatically finds another supported backend as the test backend. If the
   // interpreter is the only supported backend, it will be both the test backend
   // and the reference backend.
-  HloTestBase(bool verifier_layout_sensitive = false,
-              bool allow_mixed_precision_in_hlo_verifier = true,
-              std::function<bool(const HloInstruction*)>
-                  instruction_can_change_layout_func = {});
+  explicit HloTestBase(bool verifier_layout_sensitive = false,
+                       bool allow_mixed_precision_in_hlo_verifier = true,
+                       std::function<bool(const HloInstruction*)>
+                           instruction_can_change_layout_func = {});
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
@@ -235,7 +236,8 @@ class HloTestBase : public ManifestCheckingTest {
   ::testing::AssertionResult Run(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
-      std::string backend_config = "") ABSL_MUST_USE_RESULT;
+      const tensorflow::protobuf::Message* backend_config = nullptr)
+      ABSL_MUST_USE_RESULT;
 
   // Same as below, except requires passing fake arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(
@@ -259,13 +261,15 @@ class HloTestBase : public ManifestCheckingTest {
   ::testing::AssertionResult RunReplicated(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
       int64_t num_replicas = 1,
-      std::string backend_config = "") ABSL_MUST_USE_RESULT;
+      const tensorflow::protobuf::Message* backend_config = nullptr)
+      ABSL_MUST_USE_RESULT;
 
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   ::testing::AssertionResult RunMultipleTimes(
       const absl::string_view hlo_string, bool run_hlo_passes,
-      std::vector<ExecutionProfile>* profiles, std::string backend_config = "",
+      std::vector<ExecutionProfile>* profiles,
+      const tensorflow::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false) ABSL_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const std::string& filename, const absl::optional<ErrorSpec>& error,

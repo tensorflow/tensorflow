@@ -96,7 +96,9 @@ StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
     case PRED:
       return DLDataType{kDLUInt, 8, 1};
     case C64:
+      return DLDataType{kDLComplex, 64, 1};
     case C128:
+      return DLDataType{kDLComplex, 128, 1};
     default:
       return Unimplemented("XLA type %s has no DLPack equivalent",
                            PrimitiveType_Name(type));
@@ -159,6 +161,17 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
           return Unimplemented(
               "Invalid or unsupported DLPack Bfloat width: %d bits", type.bits);
       }
+    case kDLComplex:
+      switch (type.bits) {
+        case 64:
+          return C64;
+        case 128:
+          return C128;
+        default:
+          return Unimplemented(
+              "Invalid or unsupported DLPack complex width: %d bits",
+              type.bits);
+      }
     default:
       return Unimplemented("Unknown or invalid DLPack type code %d", type.code);
   }
@@ -212,22 +225,22 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
   if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
   } else if (device.client()->platform_id() == GpuId()) {
-    return kDLGPU;
+    return kDLCUDA;
   }
   return InvalidArgument("Device %s cannot be used as a DLPack device.",
                          device.DebugString());
 }
 
-StatusOr<DLContext> DLContextForDevice(const PjRtDevice& device) {
-  DLContext context;
+StatusOr<DLDevice> DLDeviceForDevice(const PjRtDevice& device) {
+  DLDevice context;
   TF_ASSIGN_OR_RETURN(context.device_type, DLDeviceTypeForDevice(device));
   context.device_id = device.local_hardware_id();
   return context;
 }
 
-StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient* cpu_client,
-                                         const PjRtClient* gpu_client,
-                                         const DLContext& context) {
+StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
+                                        const PjRtClient* gpu_client,
+                                        const DLDevice& context) {
   switch (context.device_type) {
     case kDLCPU:
       if (cpu_client == nullptr) {
@@ -236,7 +249,7 @@ StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient* cpu_client,
       }
       TF_RET_CHECK(cpu_client->platform_id() == CpuId());
       return cpu_client->LookupAddressableDevice(context.device_id);
-    case kDLGPU:
+    case kDLCUDA:
       if (gpu_client == nullptr) {
         return InvalidArgument(
             "DLPack tensor is on GPU, but no GPU backend was provided.");
@@ -292,8 +305,9 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   dt.data = pack->external_reference->OpaqueDeviceMemoryDataPointer();
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
-  TF_ASSIGN_OR_RETURN(dt.ctx, DLContextForDevice(*buffer->buffer()->device()));
-  dt.ctx.device_id = buffer->buffer()->device()->local_hardware_id();
+  TF_ASSIGN_OR_RETURN(dt.device,
+                      DLDeviceForDevice(*buffer->buffer()->device()));
+  dt.device.device_id = buffer->buffer()->device()->local_hardware_id();
   dt.ndim = buffer->buffer()->on_device_shape().dimensions_size();
   TF_ASSIGN_OR_RETURN(dt.dtype,
                       PrimitiveTypeToDLDataType(
@@ -350,9 +364,9 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
   }
   TF_ASSIGN_OR_RETURN(
       PjRtDevice * device,
-      DeviceForDLContext(cpu_client ? cpu_client->pjrt_client() : nullptr,
-                         gpu_client ? gpu_client->pjrt_client() : nullptr,
-                         dlmt->dl_tensor.ctx));
+      DeviceForDLDevice(cpu_client ? cpu_client->pjrt_client() : nullptr,
+                        gpu_client ? gpu_client->pjrt_client() : nullptr,
+                        dlmt->dl_tensor.device));
   absl::Span<int64_t const> dimensions(
       reinterpret_cast<int64_t*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type,

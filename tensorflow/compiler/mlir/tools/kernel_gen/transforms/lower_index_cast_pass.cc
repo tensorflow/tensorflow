@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -48,7 +48,7 @@ struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
           Value dim = args.front();
           Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), dim);
           Value casted = b.create<arith::IndexCastOp>(
-              loc, extent, result_ty.getElementType());
+              loc, result_ty.getElementType(), extent);
           b.create<tensor::YieldOp>(loc, casted);
         });
     return success();

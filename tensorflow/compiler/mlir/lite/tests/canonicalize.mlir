@@ -1,4 +1,4 @@
-// RUN: tf-opt -pass-pipeline='builtin.func(canonicalize)' -split-input-file -verify-diagnostics %s | FileCheck %s
+// RUN: tf-opt -pass-pipeline='func.func(canonicalize)' -split-input-file -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @squeeze_folder
 func @squeeze_folder(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {

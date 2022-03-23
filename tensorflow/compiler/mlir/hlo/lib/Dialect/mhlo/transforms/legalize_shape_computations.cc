@@ -30,8 +30,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -191,7 +191,7 @@ struct HloLegalizeShapeComputationsPass
           HloLegalizeShapeComputationsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<arith::ArithmeticDialect, math::MathDialect,
-                    StandardOpsDialect, tensor::TensorDialect>();
+                    func::FuncDialect, tensor::TensorDialect>();
   }
 
   void runOnOperation() override {
@@ -212,22 +212,22 @@ namespace mhlo {
 
 void populateShapeComputationPatterns(MLIRContext *context,
                                       RewritePatternSet *patterns) {
-  patterns->insert<MhloElementwiseConverter<mhlo::AbsOp>,
-                   MhloElementwiseConverter<mhlo::AddOp>,
-                   MhloElementwiseConverter<mhlo::AndOp>,
-                   MhloElementwiseConverter<mhlo::CeilOp>,
-                   MhloElementwiseConverter<mhlo::ConvertOp>,
-                   MhloElementwiseConverter<mhlo::DivOp>,
-                   MhloElementwiseConverter<mhlo::FloorOp>,
-                   MhloElementwiseConverter<mhlo::MaxOp>,
-                   MhloElementwiseConverter<mhlo::MinOp>,
-                   MhloElementwiseConverter<mhlo::MulOp>,
-                   MhloElementwiseConverter<mhlo::NegOp>,
-                   MhloElementwiseConverter<mhlo::RoundOp>,
-                   MhloElementwiseConverter<mhlo::RsqrtOp>,
-                   MhloElementwiseConverter<mhlo::SqrtOp>,
-                   MhloElementwiseConverter<mhlo::SubOp>, ConcatenateConverter,
-                   GetDimSizeConverter, ReshapeConverter>(context);
+  patterns->add<MhloElementwiseConverter<mhlo::AbsOp>,
+                MhloElementwiseConverter<mhlo::AddOp>,
+                MhloElementwiseConverter<mhlo::AndOp>,
+                MhloElementwiseConverter<mhlo::CeilOp>,
+                MhloElementwiseConverter<mhlo::ConvertOp>,
+                MhloElementwiseConverter<mhlo::DivOp>,
+                MhloElementwiseConverter<mhlo::FloorOp>,
+                MhloElementwiseConverter<mhlo::MaxOp>,
+                MhloElementwiseConverter<mhlo::MinOp>,
+                MhloElementwiseConverter<mhlo::MulOp>,
+                MhloElementwiseConverter<mhlo::NegOp>,
+                MhloElementwiseConverter<mhlo::RoundOp>,
+                MhloElementwiseConverter<mhlo::RsqrtOp>,
+                MhloElementwiseConverter<mhlo::SqrtOp>,
+                MhloElementwiseConverter<mhlo::SubOp>, ConcatenateConverter,
+                GetDimSizeConverter, ReshapeConverter>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeShapeComputationsPass() {

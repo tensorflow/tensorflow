@@ -253,7 +253,7 @@ TEST_P(MultinomialOpTestSuite, NonDeterministicOutputWithSeedsEqualToZero) {
   const std::initializer_list<float> kLogits = {log(0.3f), log(0.7f)};
   const int kNumBatches = 1;
   const int kNumClasses = 2;
-  const int kNumSamples = 10;
+  const int kNumSamples = 30;
   MultinomialOpModel m1(GetParam(), kLogits, kNumBatches, kNumClasses,
                         kNumSamples, /*seed=*/0, /*seed2=*/0);
   m1.Invoke();

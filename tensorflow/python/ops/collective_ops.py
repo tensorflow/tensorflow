@@ -68,6 +68,25 @@ def all_reduce(t,
       timeout_seconds=timeout)
 
 
+def assign_group_v2(group_assignment, device_index):
+  """Assign group key based on group_assignment.
+
+  Args:
+    group_assignment: a 2 dimensional integer Tensor that encodes which devices
+      belong to the same group. The values are indices of the devices within 0
+      to number of devices.
+    device_index: integer for the index of the current device
+  Notes: The device_index argument must be consistent with the index of the
+    device of this Op in the device assignment list. The behavior of this Op is
+    undefined if they are inconsistent.
+
+  Returns:
+    The group key for the current device.
+  """
+  return gen_collective_ops.collective_assign_group_v2(
+      group_assignment=group_assignment, device_index=device_index)
+
+
 def all_reduce_v2(t,
                   group_size,
                   group_key,

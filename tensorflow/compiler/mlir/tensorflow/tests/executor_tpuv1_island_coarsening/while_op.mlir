@@ -6,7 +6,7 @@
 // CHECK-LABEL: func @control_input
 func @control_input(%arg0 : tensor<i1>) -> tensor<i32> {
   %0:6 = tf_executor.graph {
-    %1:2 = tf_executor.island wraps "tf.opA"(%arg0) {_tpu_replicate = "cluster"} : (tensor<i1>) -> tensor<i32>
+    %1:2 = tf_executor.island wraps "tf.opA"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i1>) -> tensor<i32>
     %2:2 = tf_executor.island wraps "tf.While"(%1#0) {name = "A", body = @while_body_with_cluster_attr, cond = @while_cond_with_cluster_attr, is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>) -> tensor<i32>
     %3:2 = tf_executor.island wraps "tf.While"(%1#0) {name = "B", body = @while_body_with_wrong_cluster_attr, cond = @while_cond_with_wrong_cluster_attr, is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>) -> tensor<i32>
     %4:2 = tf_executor.island wraps "tf.While"(%1#0) {name = "C", body = @while_body_without_cluster_attr, cond = @while_cond_with_cluster_attr, is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>) -> tensor<i32>
@@ -29,20 +29,20 @@ func @control_input(%arg0 : tensor<i1>) -> tensor<i32> {
 }
 
 func @while_body_with_cluster_attr(%arg0: tensor<i32>) -> tensor<i32> {
-  %0 = "tf.some_op"(%arg0) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i32>
+  %0 = "tf.some_op"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i32>) -> tensor<i32>
   return %0 : tensor<i32>
 }
 func @while_cond_with_cluster_attr(%arg0: tensor<i32>) -> tensor<i1> {
-  %0 = "tf.some_op"(%arg0) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i1>
+  %0 = "tf.some_op"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
 
 func @while_body_with_wrong_cluster_attr(%arg0: tensor<i32>) -> tensor<i32> {
-  %0 = "tf.some_op"(%arg0) {_tpu_replicate = "wrong_cluster"} : (tensor<i32>) -> tensor<i32>
+  %0 = "tf.some_op"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "wrong_cluster"} : (tensor<i32>) -> tensor<i32>
   return %0 : tensor<i32>
 }
 func @while_cond_with_wrong_cluster_attr(%arg0: tensor<i32>) -> tensor<i1> {
-  %0 = "tf.some_op"(%arg0) {_tpu_replicate = "wrong_cluster"} : (tensor<i32>) -> tensor<i1>
+  %0 = "tf.some_op"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "wrong_cluster"} : (tensor<i32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
 

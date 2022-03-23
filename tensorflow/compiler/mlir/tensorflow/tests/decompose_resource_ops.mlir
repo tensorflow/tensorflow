@@ -777,3 +777,26 @@ func @decompose_rng_read_and_skip_op(%resource: tensor<!tf_type.resource<tensor<
   }) : () -> tensor<3xi64>
   return %0 : tensor<3xi64>
 }
+
+// Test that ordering token resource of tf.CollectiveReduceV2 op is removed.
+// CHECK-LABEL: func @decompose_collective_reduce_v2_op
+// CHECK-SAME: [[TOKEN:%.+]]: tensor<!tf_type.resource
+func @decompose_collective_reduce_v2_op(%input: tensor<3xi64>,
+  %group_size: tensor<i32>,
+  %group_key: tensor<i32>,
+  %instance_key: tensor<i32>,
+  %token: tensor<!tf_type.resource<tensor<f32>>>
+) -> tensor<3xi64> {
+  %0 = "tf_device.cluster"() ({
+    // arg4 shall have been removed.
+    // CHECK: tf.CollectiveReduceV2
+    // CHECK-NOT: [[TOKEN]]
+    // CHECK-SAME: merge_op
+    %0 = "tf.CollectiveReduceV2"(%input, %group_size, %group_key, %instance_key, %token) {
+                merge_op = "Add", final_op = "Id" } : (
+            tensor<3xi64>, tensor<i32>, tensor<i32>, tensor<i32>,
+            tensor<!tf_type.resource<tensor<f32>>>) -> tensor<3xi64>
+    tf_device.return %0 : tensor<3xi64>
+  }) : () -> tensor<3xi64>
+  return %0 : tensor<3xi64>
+}

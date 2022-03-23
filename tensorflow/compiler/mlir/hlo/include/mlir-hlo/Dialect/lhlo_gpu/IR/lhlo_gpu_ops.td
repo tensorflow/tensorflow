@@ -28,9 +28,9 @@ include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.td"
 include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_structs.td"
 
 class LHLOGPU_Op<string mnemonic, list<Trait> traits = []> :
-  Op<LHLO_GPU_Dialect, mnemonic,
+  Op<LmhloGpuDialect, mnemonic,
     !listconcat([MemoryEffects<[MemRead, MemWrite]>], traits)>;
-
+ 
 // Type for scratch buffers used by GPU library calls (memref<?xi8>)
 def UntypedBuffer : MemRefRankOf<[I8], [1]>;
 
@@ -184,7 +184,7 @@ def LHLOGPU_AllReduceStartOp :
   );
   let results = (outs HLO_Token:$token);
   let regions = (region SizedRegion<1>:$computation);
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def LHLOGPU_AllReduceDoneOp:

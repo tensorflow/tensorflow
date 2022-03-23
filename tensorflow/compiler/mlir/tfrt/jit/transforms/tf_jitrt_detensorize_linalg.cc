@@ -107,7 +107,7 @@ struct DetensorizeLinalgPass
 
     // Detensorize.
     mlir::RewritePatternSet patterns(context);
-    patterns.insert<DetensorizeLinalgOp>(context);
+    patterns.add<DetensorizeLinalgOp>(context);
     if (failed(applyFullConversion(func, target, std::move(patterns))))
       signalPassFailure();
 

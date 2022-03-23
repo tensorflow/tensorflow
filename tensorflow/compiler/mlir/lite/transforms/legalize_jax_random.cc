@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -88,7 +88,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
   auto func = getOperation();
   if (!IsJaxRandomUniform(func) && !IsJaxRandomNormal(func)) return;
   auto result_tuple_ty =
-      func.getType().getResult(0).dyn_cast_or_null<TupleType>();
+      func.getFunctionType().getResult(0).dyn_cast_or_null<TupleType>();
   if (!result_tuple_ty) return;
   if (result_tuple_ty.size() != 1) return;
   auto result_ty = result_tuple_ty.getType(0).dyn_cast<ShapedType>();
@@ -116,7 +116,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
                                  custom_code, attr)
           .getResult(0);
   Value tulple_result = builder.create<mhlo::TupleOp>(random_result);
-  builder.create<mlir::ReturnOp>(tulple_result);
+  builder.create<mlir::func::ReturnOp>(tulple_result);
 }
 
 static PassRegistration<LegalizeJaxRandomPass> pass;

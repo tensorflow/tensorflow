@@ -7,7 +7,7 @@
 func @tanh_lower_and_fuse(%arg0: tensor<?x32xf32>) -> tensor<?x32xf32> {
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: %[[DIM:.*]] = memref.dim %[[ARG]], %[[C0]]
-  // CHECK: %[[MEMREF:.*]] = memref.alloc(%[[DIM]]) : memref<?x32xf32>
+  // CHECK: %[[MEMREF:.*]] = memref.alloc(%[[DIM]]) {{.*}} : memref<?x32xf32>
 
   // CHECK: linalg.generic
   // CHECK-SAME: indexing_maps = [#map, #map]
@@ -188,7 +188,7 @@ func @tf_binary_with_bcast(%arg0: tensor<?x1xf32>,
   // CHECK-NOT: shape.
   // CHECK: %[[LHS:.*]] = memref.reinterpret_cast
   // CHECK: %[[RHS:.*]] = memref.reinterpret_cast
-  // CHECK: linalg.generic {{.*}} ins(%[[RHS]], %[[LHS]] :
+  // CHECK: linalg.generic {{.*}} ins(%[[LHS]], %[[RHS]] :
   // CHECK:   mulf
   %0 = "tf.Mul"(%arg0, %arg1)
        : (tensor<?x1xf32>, tensor<?x4xf32>) -> tensor<?x4xf32>
@@ -276,7 +276,7 @@ func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
 
 // CHECK-LABEL: @tf_transpose_const_perm
 func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
-  // CHECK: %[[OUT:.*]] = memref.alloc() : memref<3x2xf32>
+  // CHECK: %[[OUT:.*]] = memref.alloc() {{.*}} : memref<3x2xf32>
   // CHECK: linalg.generic {indexing_maps = [#map0, #map1]
   // CHECK-SAME: ins(%arg0 : memref<2x3xf32>)
   // CHECK-SAME: outs(%[[OUT]] : memref<3x2xf32>)
@@ -352,11 +352,9 @@ func @sub_sub(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>, %arg2: tensor<?x
 func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
   %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   %cst_1 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK:      %[[ALLOC:.*]] = memref.alloc() : memref<1xi32>
   // CHECK:      %[[SUBVIEW:.*]] = memref.subview %arg0[0] [1] [1]
   // CHECK-SAME:                 : memref<3xi32> to memref<1xi32>
-  // CHECK:      memref.copy %[[SUBVIEW]], %[[ALLOC]]
-  // CHECK:      %[[RET:.*]] = memref.collapse_shape %[[ALLOC]]
+  // CHECK:      %[[RET:.*]] = memref.collapse_shape %[[SUBVIEW]]
   // CHECK:      return %[[RET]]
   %0 = "tf.StridedSlice"(%arg0, %cst_1, %cst_0, %cst_0)
        {
@@ -403,7 +401,7 @@ func @add_floormod_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // -----
 
 // CHECK-LABEL: @min_clip_by_value
-builtin.func @min_clip_by_value(%V__0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+func.func @min_clip_by_value(%V__0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %dims0 = "tf.Const"() { value = dense<[1, 2]> : tensor<2xi32> }: () -> tensor<2xi32>
   %0 = "tf.Min"(%V__0, %dims0) {keep_dims = true} : (tensor<?x?x?xf32>, tensor<2xi32>) -> tensor<?x?x?xf32>
   %1 = "tf.ClipByValue"(%V__0, %0, %V__0) : (tensor<?x?x?xf32>, tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>

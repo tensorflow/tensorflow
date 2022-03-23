@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
@@ -50,7 +51,6 @@ namespace TFTPU {
 
 namespace {
 
-constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kNameAttr[] = "name";
 constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
@@ -58,17 +58,17 @@ constexpr char kNumReplicasAttr[] = "num_replicas";
 constexpr char kReplicatedInputIndicesAttr[] = "_replicated_input_indices";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
-constexpr char kBadTPUReplicateAttrMsg[] =
-    "requires '_tpu_replicate' string attribute";
+constexpr char kBadReplicateInfoAttrMsg[] =
+    "requires '_replication_info' string attribute";
 
-// Mapping for `_tpu_replicate` attribute to TPUReplicateMetadata attributes.
+// Mapping for `_replication_info` attribute to TPUReplicateMetadata attributes.
 using MetadataMap = llvm::SmallDenseMap<llvm::StringRef, NamedAttrList, 8>;
 
 // A set of operations. We use a `SmallSetVector` in order to have deterministic
 // traversal order (= insertion order), independent of the pointer keys.
 using OpSetVector = llvm::SmallSetVector<Operation*, 8>;
 
-// Mapping for `_tpu_replicate` attribute to ops of a cluster.
+// Mapping for `_replication_info` attribute to ops of a cluster.
 using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
 
 struct TPUClusterFormationPass
@@ -80,10 +80,10 @@ struct TPUClusterFormationPass
   void runOnOperation() override;
 };
 
-// Creates a mapping from the TPUReplicateMetadata ops `_tpu_replicate`
+// Creates a mapping from the TPUReplicateMetadata ops `_replication_info`
 // attribute to its attributes and removes the ops. If multiple
-// TPUReplicateMetadata ops have the same `_tpu_replicate` attribute, an error
-// will be returned.
+// TPUReplicateMetadata ops have the same `_replication_info` attribute, an
+// error will be returned.
 LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
   // Just look at top-level operations in the block (not nested ones)
   for (Operation& op : llvm::make_early_inc_range(*block)) {
@@ -92,14 +92,14 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
 
     NamedAttrList attrs(metadata_op->getAttrDictionary());
 
-    // Missing or bad `_tpu_replicate` attribute.
-    auto tpu_replicate_attr = attrs.get(kTPUReplicateAttr);
+    // Missing or bad `_replication_info` attribute.
+    auto tpu_replicate_attr = attrs.get(TF::kReplicationInfoAttr);
     if (!tpu_replicate_attr)
-      return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
+      return metadata_op.emitError() << kBadReplicateInfoAttrMsg;
 
     auto tpu_replicate_attr_str = tpu_replicate_attr.dyn_cast<StringAttr>();
     if (!tpu_replicate_attr_str || tpu_replicate_attr_str.getValue().empty())
-      return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
+      return metadata_op.emitError() << kBadReplicateInfoAttrMsg;
 
     // Remove `name` attribute.
     attrs.erase(StringAttr::get(metadata_op.getContext(), kNameAttr));
@@ -108,11 +108,11 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
                                         std::move(attrs));
 
     // There are multiple TPUReplicateMetadata ops with the same
-    // `_tpu_replicate` attribute.
+    // `_replication_info` attribute.
     if (!it.second) {
       return metadata_op.emitError()
              << "multiple TPUReplicateMetadata ops with the same '"
-             << kTPUReplicateAttr << "' attribute '"
+             << TF::kReplicationInfoAttr << "' attribute '"
              << tpu_replicate_attr_str.getValue() << "' found";
     }
     metadata_op.erase();
@@ -120,15 +120,15 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
   return success();
 }
 
-// Collects and clusters ops with the same `_tpu_replicate` attribute. This will
-// return an error if a `_tpu_replicate` attribute of an op is empty.
+// Collects and clusters ops with the same `_replication_info` attribute. This
+// will return an error if a `_replication_info` attribute of an op is empty.
 LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters) {
   for (Operation& op : *block) {
-    if (auto attr = op.getAttrOfType<StringAttr>(kTPUReplicateAttr)) {
-      if (attr.getValue().empty())
-        return op.emitError()
-               << "attribute '" << kTPUReplicateAttr << "' is empty";
-
+    if (op.hasAttr(TF::kReplicationInfoAttr) ||
+        op.hasAttr(TF::kCompileDeviceTypeAttr)) {
+      auto result = TF::HasValidCompilationAndReplicationAttributes(op);
+      if (failed(result)) return result;
+      auto attr = op.getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
       auto it = clusters->try_emplace(attr.getValue());
       it.first->getSecond().insert(&op);
     }
@@ -282,14 +282,15 @@ tf_device::ClusterOp CreateClusterOp(
   Block* body = new Block;
   cluster.body().push_back(body);
 
-  // Move cluster ops to the cluster body. Also remove `_tpu_replicate` and
+  // Move cluster ops to the cluster body. Also remove `_replication_info` and
   // `device` attribute from ops in the cluster when that information is
   // redundant will the `tf_device.cluster`. Do this for all ops including
   // nested ops.
   for (Operation* cluster_op : cluster_ops) {
     cluster_op->moveBefore(body, body->end());
     cluster_op->walk([&](Operation* inner_op) {
-      inner_op->removeAttr(kTPUReplicateAttr);
+      inner_op->removeAttr(TF::kReplicationInfoAttr);
+      inner_op->removeAttr(TF::kCompileDeviceTypeAttr);
 
       if (auto attr = inner_op->getAttrOfType<StringAttr>(kDeviceAttr)) {
         // Preserve device attribute if the op is placed on a replicated core
@@ -526,13 +527,13 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   return success();
 }
 
-// Forms clusters with ops of the same `_tpu_replicate` attribute under a block.
+// Forms clusters with ops of the same `_replication_info` attribute under a
+// block.
 //
-// For a given block, clusters are formed via grouping ops by `_tpu_replicate`
-// attributes.
-// For every cluster formed:
+// For a given block, clusters are formed via grouping ops by
+// `_replication_info` attributes. For every cluster formed:
 //   1. Find associated TPUReplicateMetadata attributes with the same
-//      `_tpu_replicate` attribute.
+//      `_replication_info` attribute.
 //   2. Find users not in cluster that are interleaved between cluster ops.
 //   3. Find external uses of cluster ops.
 //   4. Create `tf_device.cluster` with results consisting of the external uses
@@ -574,10 +575,10 @@ LogicalResult FormClustersInBlock(
     auto cluster_metadata =
         metadata_map.find(cluster_metadata_and_ops.getFirst());
 
-    // No TPUReplicateMetadata for a `_tpu_replicate` attribute.
+    // No TPUReplicateMetadata for a `_replication_info` attribute.
     if (cluster_metadata == metadata_map.end()) {
       cluster_ops.front()->emitWarning()
-          << "TPUReplicateMetadata for associated '" << kTPUReplicateAttr
+          << "TPUReplicateMetadata for associated '" << TF::kReplicationInfoAttr
           << "' attribute '" << cluster_metadata_and_ops.getFirst()
           << "' is missing";
       continue;

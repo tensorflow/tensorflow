@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='builtin.func(canonicalize)' | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='func.func(canonicalize)' | FileCheck %s
 
 // CHECK-LABEL: func @tfAssertTrue
 func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
@@ -146,10 +146,10 @@ func @testCompatibleCastType(%arg0: tensor<?xf32>) -> (tensor<10xf32>, tensor<10
 func @testSameCastTypeAcrossBasicBlocks(tensor<8x16x32x64xf32>) -> tensor<8x16x32x64xf32> {
 ^bb0(%arg0: tensor<8x16x32x64xf32>):
   %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<8x16x32x64xf32>) -> tensor<8x16x32x64xf32>
-  br ^bb1
+  cf.br ^bb1
 ^bb1:
   %1 = "tf.Cast"(%0) {Truncate = true} : (tensor<8x16x32x64xf32>) -> tensor<8x16x32x64xf32>
-  br ^exit
+  cf.br ^exit
 ^exit:
   return %1: tensor<8x16x32x64xf32>
 
@@ -184,11 +184,10 @@ func @testConcatCwiseBinaryOnInnerDim(%arg0: tensor<?x1xf32>,
   %arg1: tensor<?x1xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x2xf32> {
 
   // CHECK-DAG: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
-  // CHECK-DAG: %[[RHS_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
 
-  // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
+  // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64}
   // CHECK: %[[MUL_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]])
-  // CHECK: %[[MUL_RHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
+  // CHECK: %[[MUL_RHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64}
 
   // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[MUL_LHS_CONCAT]], %[[MUL_RHS_CONCAT]])
   // CHECK-SAME: (tensor<?x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
@@ -213,11 +212,10 @@ func @testConcatCwiseBinaryPreserveAxisType(%arg0: tensor<?x1xf32>,
   %arg1: tensor<?x1xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x2xf32> {
 
   // CHECK-DAG: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>}
-  // CHECK-DAG: %[[RHS_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>}
 
-  // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
+  // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64}
   // CHECK: %[[MUL_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]])
-  // CHECK: %[[MUL_RHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
+  // CHECK: %[[MUL_RHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64}
 
   // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[MUL_LHS_CONCAT]], %[[MUL_RHS_CONCAT]])
   // CHECK-SAME: (tensor<?x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>

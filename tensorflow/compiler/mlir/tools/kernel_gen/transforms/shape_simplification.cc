@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "llvm/ADT/Optional.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -225,7 +225,7 @@ struct ShapeSimplification
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::arith::ArithmeticDialect>();
     registry.insert<mhlo::MhloDialect>();
-    registry.insert<mlir::StandardOpsDialect>();
+    registry.insert<mlir::func::FuncDialect>();
     registry.insert<shape::ShapeDialect>();
     registry.insert<tensor::TensorDialect>();
   }
@@ -239,9 +239,8 @@ struct ShapeSimplification
         op.getCanonicalizationPatterns(patterns, context);
     }
 
-    patterns.insert<BroadcastRemoveSubsumedOperandsPattern,
-                    ExtractFromBroadcastedTensorCanonicalizationPattern>(
-        context);
+    patterns.add<BroadcastRemoveSubsumedOperandsPattern,
+                 ExtractFromBroadcastedTensorCanonicalizationPattern>(context);
 
     auto func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))

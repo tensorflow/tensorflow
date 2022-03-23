@@ -39,8 +39,8 @@ void IdentifyDilatedConvPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
 
-  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
-                  ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(
+  patterns.add<ConvertTFDilatedConvOp<TF::Conv2DOp>,
+               ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(
       &getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

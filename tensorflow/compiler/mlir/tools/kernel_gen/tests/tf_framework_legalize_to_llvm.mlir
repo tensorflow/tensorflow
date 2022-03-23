@@ -10,7 +10,7 @@
 func @alloc(%ctx: !tf_framework.op_kernel_context,
                 %size_0 : index , %size_2 : index) -> memref<?x10x?xf32> {
   %buf = tf_framework.alloc(%ctx, %size_0, %size_2) : memref<?x10x?xf32>
-  std.return %buf : memref<?x10x?xf32>
+  func.return %buf : memref<?x10x?xf32>
 }
 // Compute number of elements.
 // CHECK: [[SIZE_1:%.*]] = llvm.mlir.constant(10 : index) : i64
@@ -136,7 +136,7 @@ func @ranked_null_memref() {
 // CHECK-LABEL: llvm.func @is_valid_memref
 func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
   %pred = tf_framework.is_valid_memref(%buf) : memref<?xf32> -> i1
-  return %pred : i1
+  func.return %pred : i1
 }
 // CHECK: %[[MEMREF:.*]] = llvm.insertvalue %{{.*}}, %{{.*}}[4, 0]
 
@@ -202,7 +202,7 @@ func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   %0 = tf_framework.jit_compile_from_str %ctx, "placeholder" {
       tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
       enableFtz = false, index64Bit = false, cpuCodegen = false }
-  return %0 : !tf_framework.jit_callable
+  func.return %0 : !tf_framework.jit_callable
 }
 
 // -----
@@ -258,5 +258,5 @@ func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // CHECK: llvm.return %[[RESULT]]
   %0 = tf_framework.jit_execute ctx(%ctx) %callable(%arg)
       : memref<*xf32> -> memref<*xf32>
-  return %0 : memref<*xf32>
+  func.return %0 : memref<*xf32>
 }

@@ -250,6 +250,116 @@ absl::Status GPUBenchmark(GraphFloat32* graph, int num_tests, int iterations,
   return absl::OkStatus();
 }
 
+absl::Status GPUBenchmarkSerialized(GraphFloat32* graph, bool use_fp16 = true) {
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  std::string device_name = std::string([[device name] UTF8String]);
+  GpuInfo gpu_info;
+  GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
+  CalculationsPrecision precision;
+  if (use_fp16) {
+    if (gpu_info.IsRoundToNearestSupported()) {
+      precision = CalculationsPrecision::F16;
+    } else {
+      precision = CalculationsPrecision::F32_F16;
+    }
+  } else {
+    precision = CalculationsPrecision::F32;
+  }
+
+  CreateGpuModelInfo create_info;
+  create_info.precision = precision;
+  create_info.storage_type = GetFastestStorageType(gpu_info);
+  create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+
+  InferenceContext inference_context;
+  std::vector<uint8_t> serialized_model;
+  RETURN_IF_ERROR(
+      inference_context.InitFromGraphWithTransforms(create_info, graph, device, &serialized_model));
+
+  {  // calculating time without building serialized model
+    InferenceContext test_context;
+    const auto start = std::chrono::high_resolution_clock::now();
+    RETURN_IF_ERROR(test_context.InitFromGraphWithTransforms(create_info, graph, device));
+    const auto end = std::chrono::high_resolution_clock::now();
+    const double total_time_ms = (end - start).count() * 1e-6f;
+    std::cout << "Inference context initialization total time - " << total_time_ms << "ms"
+              << std::endl;
+  }
+
+  std::vector<TensorFloat32> src_tensors(graph->inputs().size());
+  for (int i = 0; i < graph->inputs().size(); ++i) {
+    src_tensors[i].id = graph->inputs()[i]->id;
+    src_tensors[i].shape = graph->inputs()[i]->tensor.shape;
+    src_tensors[i].data.resize(src_tensors[i].shape.DimensionsProduct());
+    for (int j = 0; j < src_tensors[i].data.size(); ++j) {
+      src_tensors[i].data[j] = std::sin(j);
+    }
+  }
+  for (int i = 0; i < graph->inputs().size(); ++i) {
+    RETURN_IF_ERROR(inference_context.SetInputTensor(graph->inputs()[i]->id, src_tensors[i]));
+  }
+  @autoreleasepool {
+    id<MTLCommandQueue> command_queue = [device newCommandQueue];
+    id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+    inference_context.EncodeWithEncoder(encoder);
+    [encoder endEncoding];
+    [command_buffer commit];
+    [command_buffer waitUntilCompleted];
+  }
+
+  std::vector<TensorFloat32> dst_tensors(graph->outputs().size());
+  for (int i = 0; i < graph->outputs().size(); ++i) {
+    RETURN_IF_ERROR(inference_context.GetOutputTensor(graph->outputs()[i]->id, &dst_tensors[i]));
+  }
+
+  InferenceContext serialized_context;
+  {
+    const auto start = std::chrono::high_resolution_clock::now();
+    RETURN_IF_ERROR(serialized_context.RestoreDeserialized(serialized_model, device));
+    const auto end = std::chrono::high_resolution_clock::now();
+    const double total_time_ms = (end - start).count() * 1e-6f;
+    std::cout << "Serialized inference context initialization total time - " << total_time_ms
+              << "ms" << std::endl;
+  }
+  for (int i = 0; i < graph->inputs().size(); ++i) {
+    RETURN_IF_ERROR(serialized_context.SetInputTensor(graph->inputs()[i]->id, src_tensors[i]));
+  }
+
+  @autoreleasepool {
+    id<MTLCommandQueue> command_queue = [device newCommandQueue];
+    id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+    serialized_context.EncodeWithEncoder(encoder);
+    [encoder endEncoding];
+    [command_buffer commit];
+    [command_buffer waitUntilCompleted];
+  }
+
+  std::vector<TensorFloat32> dst_tensors_v2(graph->outputs().size());
+  for (int i = 0; i < graph->outputs().size(); ++i) {
+    RETURN_IF_ERROR(
+        serialized_context.GetOutputTensor(graph->outputs()[i]->id, &dst_tensors_v2[i]));
+  }
+
+  for (int i = 0; i < graph->outputs().size(); ++i) {
+    if (dst_tensors[i].data.size() != dst_tensors_v2[i].data.size()) {
+      std::cout << "Different sizes for " << i << " output tensor" << std::endl;
+      break;
+    }
+    for (int j = 0; j < dst_tensors[i].data.size(); ++j) {
+      if (dst_tensors[i].data[j] != dst_tensors_v2[i].data[j]) {
+        std::cout << "Different elements for " << j << " element in " << i
+                  << " tensor: " << dst_tensors[i].data[j] << " - " << dst_tensors_v2[i].data[j]
+                  << std::endl;
+        break;
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 class DelegateContext {
  public:
   bool Init(TfLiteContext* context,
@@ -353,6 +463,11 @@ int main(int argc, char** argv) {
       }
 
       s = tflite::gpu::metal::TestCorrectnessVsTfliteCPU(flatbuffer, &graph, /*use_fp16*/ true);
+      if (!s.ok()) {
+        std::cout << "Error in GPUBenchmark. " << s.message() << std::endl;
+      }
+
+      s = tflite::gpu::metal::GPUBenchmarkSerialized(&graph, true);
       if (!s.ok()) {
         std::cout << "Error in GPUBenchmark. " << s.message() << std::endl;
       }

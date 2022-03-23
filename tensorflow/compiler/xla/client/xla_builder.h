@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_XLA_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_XLA_BUILDER_H_
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
@@ -58,6 +59,9 @@ struct XlaBuilderFriend {
 
   static XlaOp BuildBitcast(XlaBuilder* builder, XlaOp operand,
                             const Shape& shape);
+
+  static XlaOp BuildRngGetAndUpdateState(XlaBuilder* builder, int64_t delta,
+                                         const Shape& shape);
 
   static HloInstructionProto* GetInstruction(XlaOp op);
   static HloInstructionProto* GetInstructionByHandle(XlaBuilder* builder,
@@ -745,6 +749,9 @@ class XlaBuilder {
       const absl::optional<Layout>& layout = absl::nullopt,
       const absl::optional<bool> use_global_device_ids = absl::nullopt);
 
+  // TODO(b/219961627): Add overload that accepts one operand per replica (i.e.
+  // with no split_dimension provided).  Also, allow the replica_groups to be
+  // inferred (one group containing all replicas).
   XlaOp AllToAll(XlaOp operand, int64_t split_dimension,
                  int64_t concat_dimension, int64_t split_count,
                  absl::Span<const ReplicaGroup> replica_groups,

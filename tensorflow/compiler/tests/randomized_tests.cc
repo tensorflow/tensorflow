@@ -42,6 +42,7 @@ limitations under the License.
 // TODO(phawkins): improve tests for:
 // * StridedSliceGrad (need to use shape function to compute sensible inputs)
 
+#include <algorithm>
 #include <random>
 #include <unordered_map>
 
@@ -763,13 +764,15 @@ std::vector<int64_t> OpTest::RandomDims(int min_rank, int max_rank,
   std::uniform_int_distribution<int> rank_distribution(min_rank, max_rank);
   int rank = rank_distribution(generator());
   std::vector<int64_t> dims(rank);
-  // TODO(phawkins): too small a maximum tensor size could lead to an infinite
-  // loop here.
-  do {
-    std::generate(dims.begin(), dims.end(), [this, min_size, max_size]() {
-      return RandomDim(min_size, max_size);
-    });
-  } while (!TensorSizeIsOk(dims));
+  if (rank == 0) {
+    return dims;
+  }
+  int64_t per_dim_limit = std::pow(tf_xla_max_tensor_size, 1.0 / rank);
+  int64_t per_dim_max = std::min(max_size, per_dim_limit);
+  std::generate(dims.begin(), dims.end(), [this, min_size, per_dim_max]() {
+    return RandomDim(min_size, per_dim_max);
+  });
+  CHECK(TensorSizeIsOk(dims));  // Crash OK
   return dims;
 }
 
@@ -3321,7 +3324,7 @@ TEST_F(OpTest, MatrixSetDiag) {
 TEST_F(OpTest, MatrixSetDiagV2) {
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
-    auto shape = RandomDims(2);
+    auto shape = RandomDims(2, kDefaultMaxRank, 1 /* non-zero dims */);
     int rank = shape.size();
     int64_t max_num_diags = shape[rank - 2] + shape[rank - 1] - 1;
     int64_t num_diags =

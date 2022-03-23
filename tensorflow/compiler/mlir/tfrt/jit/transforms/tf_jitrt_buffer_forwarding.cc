@@ -175,6 +175,9 @@ struct LinalgTrivialBufferForwardingPattern
             });
 
         reused_inputs.insert(input_buffer);
+        // We have found an input buffer which we can forward. No need to keep
+        // looking for another input buffer to forward.
+        break;
       }
     }
 
@@ -193,7 +196,7 @@ struct LinalgTrivialBufferForwardingPass
     mlir::MLIRContext* ctx = function.getContext();
 
     mlir::RewritePatternSet patterns(ctx);
-    patterns.insert<LinalgTrivialBufferForwardingPattern>(ctx);
+    patterns.add<LinalgTrivialBufferForwardingPattern>(ctx);
 
     (void)mlir::applyPatternsAndFoldGreedily(function, std::move(patterns));
   }

@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
@@ -25,12 +25,20 @@ load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
-load("//tensorflow:tensorflow.bzl", "if_windows")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_profiler_deps")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_lib_deps",
+    "tf_proto_library",
+)
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+    "tf_additional_plugin_deps",
+    "tf_additional_profiler_deps",
+)
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 
 # TODO(mdan): Break into per-directory files.
@@ -148,6 +156,10 @@ py_library(
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
         ":distributed_framework_test_lib",
+        # copybara:uncomment_begin(google-only)
+        # # FIXME(b/189332820): Link the target when it is available on OSS.
+        # ":dtensor",
+        # copybara:uncomment_end
         ":filesystem_ops",
         ":functional_ops",
         ":gradient_checker",
@@ -184,6 +196,7 @@ py_library(
         ":training",
         ":weights_broadcast_ops",
         ":while_v2",
+        "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
@@ -253,7 +266,6 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -280,9 +292,11 @@ py_library(
     ],
     deps = [
         ":no_contrib",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:sharded_variable",
     ],
 )
 
@@ -821,6 +835,10 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "random_index_shuffle_ops_gen",
+)
+
+tf_gen_op_wrapper_private_py(
     name = "list_ops_gen",
 )
 
@@ -1023,7 +1041,6 @@ py_library(
         ":boosted_trees_ops_gen",
         ":ops",
         ":training",
-        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
         "//tensorflow/python/framework",
     ],
 )
@@ -2169,6 +2186,7 @@ py_library(
     deps = [
         ":array_ops",
         ":math_ops",
+        ":random_index_shuffle_ops_gen",
         ":stateless_random_ops_gen",
         ":stateless_random_ops_v2_gen",
         "//tensorflow/python/framework:dtypes",
@@ -3256,6 +3274,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:pybind11_proto",
+        "//tensorflow/python/framework:op_def_util_cc",
         "//tensorflow/python/framework:python_api_dispatcher",
         "//tensorflow/python/framework:python_api_info",
         "//tensorflow/python/framework:python_api_parameter_converter",
@@ -3271,12 +3290,15 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/experimental/ops",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:server_lib",
+        "//tensorflow/core/function:runtime_client_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:cluster",
@@ -3304,6 +3326,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/compiler/mlir/python:mlir",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",
     ] + (tf_additional_lib_deps() +
          tf_monitoring_python_deps() +
          tf_additional_plugin_deps() +
@@ -3334,6 +3357,7 @@ filegroup(
         ":numpy_lib",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
         "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/framework:op_def_util_cc",  # op_def_util
         "//tensorflow/python/framework:python_api_dispatcher",  # python_api_dispatcher
         "//tensorflow/python/framework:python_tensor_converter",  # python_tensor_converter
         "//tensorflow/python/framework:python_op_gen",  # python_op_gen
@@ -3350,6 +3374,8 @@ filegroup(
         "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
         "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:session_state",  # tf_session
+        "//tensorflow/core/config:flag_defs",  # flags_api
+        "//tensorflow/core/config:flags",  # flags_api
         "//tensorflow/core/data/service:dispatcher_client",  # dispatcher_client
         "//tensorflow/core/data/service:grpc_util",  # grpc_util
         "//tensorflow/core/data/service:server_lib",  # server_lib
@@ -3361,6 +3387,7 @@ filegroup(
         "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
         "//tensorflow/core/framework:attr_value_proto_cc_impl",  # tf_text
         "//tensorflow/core/framework:op_def_proto_cc_impl",  # tf_text
+        "//tensorflow/core/function:runtime_client_cc",  # runtime_client_pybind
         "//tensorflow/core/grappler:devices",  # tf_cluster
         "//tensorflow/core/grappler:grappler_item",  # tf_item
         "//tensorflow/core/grappler:grappler_item_builder",  # tf_item
@@ -3395,6 +3422,7 @@ filegroup(
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",  # quantization
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
@@ -3916,6 +3944,21 @@ py_library(
     deps = [
         ":_pywrap_sanitizers",
         ":pywrap_tensorflow",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "flags_pybind",
+    srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
+    module_name = "flags_pybind",
+    visibility = ["//tensorflow/core/config:__subpackages__"],
+    deps = [
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core/config:flags_headers",
+        "//tensorflow/python:pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
     ],
 )
 
@@ -4542,6 +4585,18 @@ alias(
     name = "layers",
     actual = "//tensorflow/python/layers:layers",
 )
+
+# copybara:uncomment_begin(google-only)
+# # FIXME(b/189332820): Link the target when it is available on OSS.
+# py_library(
+#     name = "dtensor",
+#     deps = [
+#         "//tensorflow/dtensor/python:core",
+#         "//tensorflow/dtensor/python:mesh_util",
+#         "//tensorflow/dtensor/python:tpu_util",
+#     ],
+# )
+# copybara:uncomment_end
 
 py_library(
     name = "learning_rate_decay",

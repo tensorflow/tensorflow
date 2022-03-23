@@ -646,7 +646,7 @@ Status DatasetBase::Get(OpKernelContext* ctx, int64 index,
 StatusOr<DatasetBase*> DatasetBase::Finalize(
     OpKernelContext* ctx,
     std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
-        make_finalized_dataset) {
+        make_finalized_dataset) const {
   mutex_lock l(mu_);
   if (!finalized_dataset_) {
     TF_ASSIGN_OR_RETURN(finalized_dataset_, make_finalized_dataset());

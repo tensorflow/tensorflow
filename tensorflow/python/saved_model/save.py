@@ -23,7 +23,6 @@ import sys
 import traceback
 
 from absl import logging
-import numpy
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import versions_pb2
@@ -33,6 +32,7 @@ from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager import function_saved_model_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
@@ -74,10 +74,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 _UNCOPIABLE_DTYPES = frozenset((dtypes.resource, dtypes.variant))
 
-# A container for an EagerTensor constant which has been copied to the exported
-# Graph.
-_CapturedConstant = collections.namedtuple("_CapturedConstant",
-                                           ["eager_tensor", "graph_tensor"])
 # Container for tensors captured from external functions.
 _CapturedTensor = collections.namedtuple("_CapturedTensor",
                                          ["name", "concrete_function"])
@@ -119,23 +115,56 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     # `Trackable._trackable_children()`.
     self._serialization_cache = object_identity.ObjectIdentityDictionary()
 
-  def set_signature(self, signature_map):
-    """Attach signature to the root object."""
+    # Maps functions -> wrapped functions that capture non-cached variables.
+    self._wrapped_functions = {}
+
+    self.untraced_functions = []
+
+  def set_signature(self, signature_map, wrapped_functions):
+    """Attach signature to the root object.
+
+    Args:
+      signature_map: An object that contains signature functions.
+      wrapped_functions: A dictionary mapping functions to functions that are
+        guaranteed to not capture cached variables (functions that capture
+        cached variables can't be saved).
+    """
     self.list_children(self.root)
     # Overrides existing dependency.
     name = signature_serialization.SIGNATURE_ATTRIBUTE_NAME
     self._children_cache[self.root][name] = signature_map
+    self._wrapped_functions.update(wrapped_functions)
 
   def list_children(self, obj):
     """Lists children of `obj` for SavedModel."""
     if obj not in self._children_cache:
-      self._children_cache[obj] = dict(
-          super(_AugmentedGraphView, self).list_children(
-              obj,
-              save_type=base.SaveType.SAVEDMODEL,
-              cache=self._serialization_cache))
+      children = self._children_cache[obj] = {}
+
+      for name, child in super(_AugmentedGraphView, self).list_children(
+          obj,
+          save_type=base.SaveType.SAVEDMODEL,
+          cache=self._serialization_cache):
+        if isinstance(child, defun.ConcreteFunction):
+          child = self._maybe_uncache_variable_captures(child)
+        children[name] = child
+
+      # Keep track of untraced functions for later reporting to the user.
+      if isinstance(obj, def_function.Function) and not children:
+        self.untraced_functions.append(obj.name)
+
     for name, child in self._children_cache[obj].items():
       yield base.TrackableReference(name, child)
+
+  def _maybe_uncache_variable_captures(self, concrete_function):
+    if concrete_function in self._wrapped_functions:
+      return self._wrapped_functions[concrete_function]
+    for capture in concrete_function.captured_inputs:
+      if hasattr(capture, "_cached_variable"):
+        if concrete_function not in self._wrapped_functions:
+          wrapped = self._wrapped_functions[concrete_function] = (
+              function_serialization.wrap_cached_variables(concrete_function))
+          return wrapped
+    return concrete_function
 
   def list_dependencies(self, obj):
     """Yields `Trackables` that must be loaded before `obj`.
@@ -154,7 +183,12 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
       TypeError: if any of the returned dependencies are not instances of
         `Trackable`.
     """
-    for name, dep in obj._deserialization_dependencies().items():  # pylint: disable=protected-access
+    if obj not in self._children_cache:
+      # Slot variables do not appear in the children_cache.
+      children = {}
+    else:
+      children = self._children_cache[obj]
+    for name, dep in obj._deserialization_dependencies(children).items():  # pylint: disable=protected-access
       if not isinstance(dep, base.Trackable):
         raise TypeError(
             f"The dependency of type {type(dep)} is not an instance `Trackable`"
@@ -179,34 +213,33 @@ class _SaveableView(object):
   ignored.
   """
 
-  def __init__(self, augmented_graph_view, options, wrapped_functions=None):
+  def __init__(self, augmented_graph_view, options):
     """Initializes a SaveableView.
 
     Args:
       augmented_graph_view: A GraphView object.
       options: A SaveOptions instance.
-      wrapped_functions: Dictionary that maps concrete functions to functions
-        that do not capture cached variable values.
     """
 
     self.augmented_graph_view = augmented_graph_view
     self._options = options
-    # Maps functions -> wrapped functions that capture variables
-    self._wrapped_functions = wrapped_functions or {}
 
     (self._trackable_objects, self.node_paths, self.node_ids,
      self._slot_variables, self.object_names) = (
          self.augmented_graph_view.objects_ids_and_slot_variables_and_paths())
 
+    untraced_functions = self.augmented_graph_view.untraced_functions
+    if untraced_functions:
+      logging.warning(
+          "Found untraced functions such as %s while saving (showing %d of %d)."
+          " These functions will not be directly callable after loading.",
+          ", ".join(untraced_functions[:_NUM_DISPLAY_UNTRACED_FUNCTIONS]),
+          min(_NUM_DISPLAY_UNTRACED_FUNCTIONS, len(untraced_functions)),
+          len(untraced_functions))
+
     self._initialize_save_and_restore_functions()
     self._initialize_nodes_and_concrete_functions()
 
-    # Maps names of concrete functions in the object to names of wrapped
-    # functions. When writing the SavedFunction protos, the names of the
-    # wrapped functions should be used in place of the original functions.
-    self.function_name_map = {
-        compat.as_text(original.name): compat.as_text(wrapped.name)
-        for original, wrapped in self._wrapped_functions.items()}
     self.captured_tensor_node_ids = object_identity.ObjectIdentityDictionary()
 
   def _initialize_save_and_restore_functions(self):
@@ -241,67 +274,24 @@ class _SaveableView(object):
     concrete functions to `self.concrete_functions` for serialization.
     """
     self.nodes = list(self._trackable_objects)
-    self.concrete_functions = []
     self.gradient_functions = []
     self.gradient_defs = []
-    self._seen_function_names = set()
-    self._untraced_functions = []
 
     for obj in self.nodes:
-      if isinstance(obj, (def_function.Function, defun.ConcreteFunction)):
-        self._add_function_to_graph(obj)
-
       if obj in self._saveable_objects_map:
         for save_fn, restore_fn in self._saveable_objects_map[obj].values():
-          self._add_function_to_graph(save_fn)
-          self._add_function_to_graph(restore_fn)
+          self.node_ids[save_fn] = len(self.nodes)
+          self.nodes.append(save_fn)
 
-    if self._untraced_functions:
-      logging.warning(
-          "Found untraced functions such as %s while saving (showing %d of %d)."
-          " These functions will not be directly callable after loading.",
-          ", ".join(self._untraced_functions[:_NUM_DISPLAY_UNTRACED_FUNCTIONS]),
-          min(_NUM_DISPLAY_UNTRACED_FUNCTIONS, len(self._untraced_functions)),
-          len(self._untraced_functions))
+          self.node_ids[restore_fn] = len(self.nodes)
+          self.nodes.append(restore_fn)
+
+    self.concrete_functions = [obj for obj in self.nodes
+                               if isinstance(obj, defun.ConcreteFunction)]
 
   @property
   def concrete_and_gradient_functions(self):
     return self.concrete_functions + self.gradient_functions
-
-  def _add_function_to_graph(self, function):
-    """Adds a function to serialize to the object graph.
-
-    If `function` is a concrete function, it will be added to the list of
-    concrete functions tracked by `_SaveableView`. If the function is a
-    tf.function, any underlying concrete functions will be added to the list of
-    concrete functions for later serialization.
-
-    Args:
-      function: a `def_function.Function` or `ConcreteFunction`
-    """
-    # Add the function to the graph
-    if function not in self.node_ids:
-      self.node_ids[function] = len(self.nodes)
-      self.nodes.append(function)
-
-    # Gather the concrete function(s)
-    if isinstance(function, def_function.Function):
-      concrete_functions = (
-          function._list_all_concrete_functions_for_serialization())  # pylint: disable=protected-access
-    else:
-      concrete_functions = [function]
-
-    # Keep track of untraced functions for later reporting to the user
-    if not concrete_functions:
-      self._untraced_functions.append(function.name)
-
-    # Add the concrete functions for later serialization
-    for concrete_function in concrete_functions:
-      # Users can attach the same tf.function to their model multiple times,
-      # so we deduplicate their underlying concrete functions.
-      if concrete_function.name not in self._seen_function_names:
-        self.concrete_functions.append(concrete_function)
-        self._seen_function_names.add(concrete_function.name)
 
   @property
   def root(self):
@@ -313,10 +303,7 @@ class _SaveableView(object):
       assert self.node_ids[node] == node_id
       object_proto = proto.nodes.add()
       object_proto.slot_variables.extend(self._slot_variables.get(node, ()))
-      if isinstance(
-          node,
-          (def_function.Function, defun.ConcreteFunction, _CapturedConstant,
-           _CapturedTensor)):
+      if isinstance(node, _CapturedTensor):
         continue
       for child in self.augmented_graph_view.list_children(node):
         child_proto = object_proto.children.add()
@@ -349,10 +336,10 @@ class _SaveableView(object):
     C++ loader API to interact with resources.
 
     Returns:
-      A tuple of (object_map, resource_map, asset_info):
+      A tuple of (object_map, tensor_map, asset_info):
         object_map: A dictionary mapping from object in `accessible_objects` to
           replacement objects created to hold the new resource tensors.
-        resource_map: A dictionary mapping from resource tensors extracted from
+        tensor_map: A dictionary mapping from resource tensors extracted from
           `accessible_objects` to newly created resource tensors.
         asset_info: An _AssetInfo tuple describing external assets referenced
           from accessible_objects.
@@ -362,23 +349,21 @@ class _SaveableView(object):
     # TODO(b/205007558): Handle MirroredVariables and other types of variables
     # which may need special casing.
     object_map = object_identity.ObjectIdentityDictionary()
-    resource_map = {}
+    tensor_map = {}
     asset_info = _AssetInfo(
         asset_defs=[],
         asset_initializers_by_resource={},
         asset_filename_map={},
         asset_index={})
 
-    for node_id, obj in enumerate(self.nodes):
+    for node_id in _dependency_sorted_node_ids(self):
+      obj = self.nodes[node_id]
+      tensors = obj._export_to_saved_model_graph(  # pylint: disable=protected-access
+          object_map=object_map, tensor_map=tensor_map, options=self._options)
       if isinstance(obj, tracking.Asset):
-        _process_asset(obj, asset_info, resource_map)
-        self.captured_tensor_node_ids[obj.asset_path] = node_id
-      elif isinstance(obj, base.Trackable):
-        node_object_map, node_resource_map = obj._map_resources(self._options)  # pylint: disable=protected-access
-        for capturable in node_resource_map.keys():
-          self.captured_tensor_node_ids[capturable] = node_id
-        object_map.update(node_object_map)
-        resource_map.update(node_resource_map)
+        _add_asset_info(obj, asset_info, tensor_map[obj.asset_path])
+      for tensor in tensors:
+        self.captured_tensor_node_ids[tensor] = node_id
 
     for concrete_function in self.concrete_functions:
       if not concrete_function.graph.saveable:
@@ -390,44 +375,14 @@ class _SaveableView(object):
         if (tensor_util.is_tf_type(capture) and
             capture.dtype not in _UNCOPIABLE_DTYPES and
             capture not in self.captured_tensor_node_ids):
-          if hasattr(capture, "_cached_variable"):
-            if concrete_function not in self._wrapped_functions:
-              wrapped = self._wrapped_functions[concrete_function] = (
-                  function_serialization.wrap_cached_variables(
-                      concrete_function))
-              self.function_name_map[compat.as_text(concrete_function.name)] = (
-                  compat.as_text(wrapped.name))
-            continue
-          capture_constant_value = tensor_util.constant_value(capture)
-          if capture_constant_value is None:
-            raise ValueError(
-                f"Unable to save function {concrete_function.name} because it "
-                f"captures graph tensor {capture} from a parent function which "
-                "cannot be converted to a constant with `tf.get_static_value`.")
-
-          if numpy.prod(capture.shape.as_list()) > 1 and numpy.all(
-              capture_constant_value == capture_constant_value.flat[0]):
-            # For the common case of a constant array filled with the same
-            # value, rebuidling the constant op specifically with the shape arg,
-            # since otherwise the whole array is written into the node def,
-            # causing performance and graph proto size issues (protos cannot be
-            # bigger than 2GB).
-            copied_tensor = constant_op.constant(
-                capture_constant_value.flat[0],
-                dtype=capture.dtype,
-                shape=capture.shape)
-          else:
-            copied_tensor = constant_op.constant(capture_constant_value)
-
-          node = _CapturedConstant(
-              eager_tensor=capture, graph_tensor=copied_tensor)
+          node = function_saved_model_utils.TrackableConstant(
+              capture, concrete_function)
+          node._export_to_saved_model_graph(  # pylint: disable=protected-access
+              object_map=object_map, tensor_map=tensor_map,
+              options=self._options)
           self.add_capture_and_node(capture, node)
-          resource_map[capture] = copied_tensor
 
-    self.concrete_functions = [
-        self._wrapped_functions.get(x, x) for x in self.concrete_functions
-    ]
-    return object_map, resource_map, asset_info
+    return object_map, tensor_map, asset_info
 
   def add_capture_and_node(self, capture, node):
     node_id = len(self.nodes)
@@ -490,15 +445,18 @@ def _tensor_dict_to_tensorinfo(tensor_dict):
   }
 
 
-def _map_captures_to_created_tensors(original_captures, resource_map):
+def _map_captures_to_created_tensors(original_captures, tensor_map,
+                                     function):
   """Maps eager tensors captured by a function to Graph resources for export.
 
   Args:
     original_captures: A dictionary mapping from tensors captured by the
       function to interior placeholders for those tensors (inside the function
       body).
-    resource_map: A dictionary mapping from resource tensors owned by the eager
+    tensor_map: A dictionary mapping from resource tensors owned by the eager
       context to resource tensors in the exported graph.
+    function: Function with the original captures. Only used when raising the
+      AssertionError.
 
   Returns:
     A list of stand-in tensors which belong to the exported graph, corresponding
@@ -506,34 +464,46 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
 
   Raises:
     AssertionError: If the function references a resource which is not part of
-      `resource_map`.
+      `tensor_map`.
   """
   export_captures = []
   for exterior, interior in original_captures:
-    mapped_resource = resource_map.get(exterior, None)
+    mapped_resource = tensor_map.get(exterior, None)
     if mapped_resource is None:
-      trackable_referrers = []
-      # Try to figure out where the resource came from by iterating over objects
-      # which reference it. This is slow and doesn't help us figure out how to
-      # match it to other objects when loading the SavedModel as a checkpoint,
-      # so we can't continue saving. But we can at least tell the user what
-      # needs attaching.
-      for primary_referrer in gc.get_referrers(exterior):
-        if isinstance(primary_referrer, base.Trackable):
-          trackable_referrers.append(primary_referrer)
-        for secondary_referrer in gc.get_referrers(primary_referrer):
-          if isinstance(secondary_referrer, base.Trackable):
-            trackable_referrers.append(secondary_referrer)
       raise AssertionError(
           "Tried to export a function which references 'untracked' resource "
           f"{interior}. TensorFlow objects (e.g. tf.Variable) captured by "
           "functions must be 'tracked' by assigning them to an attribute of a "
           "tracked object or assigned to an attribute of the main object "
-          "directly.\n\n Trackable Python objects referring to this tensor "
-          "(from gc.get_referrers, limited to two hops):\n{}".format("\n".join(
-              [repr(obj) for obj in trackable_referrers])))
+          "directly. See the information below:"
+          f"\n\tFunction name = {function.name}"
+          f"\n\tCaptured Tensor = {exterior}"
+          f"\n\t{_get_trackable_parent_error_string(exterior)}")
     export_captures.append(mapped_resource)
   return export_captures
+
+
+def _get_trackable_parent_error_string(capture):
+  """Gets error string with the capture's parent object."""
+  parent = getattr(capture, "_parent_trackable", None)
+  if parent is not None:
+    return f"Trackable referencing this tensor = {parent()}"
+
+  # Try to figure out where the resource came from by iterating over objects
+  # which reference it. This is slow and doesn't help us figure out how to
+  # match it to other objects when loading the SavedModel as a checkpoint,
+  # so we can't continue saving. But we can at least tell the user what
+  # needs attaching.
+  trackable_referrers = []
+  for primary_referrer in gc.get_referrers(capture):
+    if isinstance(primary_referrer, base.Trackable):
+      trackable_referrers.append(primary_referrer)
+    for secondary_referrer in gc.get_referrers(primary_referrer):
+      if isinstance(secondary_referrer, base.Trackable):
+        trackable_referrers.append(secondary_referrer)
+  return ("Trackable Python objects referring to this tensor "
+          "(from gc.get_referrers, limited to two hops) = [\n\t\t{}]"
+          .format("\n\t\t".join([repr(obj) for obj in trackable_referrers])))
 
 
 def _to_safe_name_scope(signature_key, user_input_name):
@@ -626,10 +596,10 @@ def _map_function_arguments_to_created_inputs(function_arguments, signature_key,
   return mapped_inputs, exterior_argument_placeholders
 
 
-def _call_function_with_mapped_captures(function, args, resource_map):
+def _call_function_with_mapped_captures(function, args, tensor_map):
   """Calls `function` in the exported graph, using mapped resource captures."""
   export_captures = _map_captures_to_created_tensors(function.graph.captures,
-                                                     resource_map)
+                                                     tensor_map, function)
   # Calls the function quite directly, since we have new captured resource
   # tensors we need to feed in which weren't part of the original function
   # definition.
@@ -639,14 +609,14 @@ def _call_function_with_mapped_captures(function, args, resource_map):
   return outputs
 
 
-def _generate_signatures(signature_functions, resource_map):
+def _generate_signatures(signature_functions, tensor_map):
   """Validates and calls `signature_functions` in the default graph.
 
   Args:
     signature_functions: A dictionary mapping string keys to concrete TensorFlow
       functions (e.g. from `signature_serialization.canonicalize_signatures`)
       which will be used to generate SignatureDefs.
-    resource_map: A dictionary mapping from resource tensors in the eager
+    tensor_map: A dictionary mapping from resource tensors in the eager
       context to resource tensors in the Graph being exported. This dictionary
       is used to re-bind resources captured by functions to tensors which will
       exist in the SavedModel.
@@ -677,7 +647,7 @@ def _generate_signatures(signature_functions, resource_map):
         _map_function_arguments_to_created_inputs(argument_inputs,
                                                   signature_key, function.name))
     outputs = _call_function_with_mapped_captures(
-        function, mapped_inputs, resource_map)
+        function, mapped_inputs, tensor_map)
     signatures[signature_key] = signature_def_utils.build_signature_def(
         _tensor_dict_to_tensorinfo(exterior_argument_placeholders),
         _tensor_dict_to_tensorinfo(outputs),
@@ -720,8 +690,8 @@ _AssetInfo = collections.namedtuple(
     ])
 
 
-def _process_asset(trackable_asset, asset_info, resource_map):
-  """Add `trackable_asset` to `asset_info` and `resource_map`."""
+def _add_asset_info(trackable_asset, asset_info, mapped_path_variable):
+  """Add `trackable_asset` to `asset_info`."""
   original_path_tensor = trackable_asset.asset_path
   original_path = tensor_util.constant_value(original_path_tensor)
   try:
@@ -729,27 +699,18 @@ def _process_asset(trackable_asset, asset_info, resource_map):
   except AttributeError:
     # Already a string rather than a numpy array
     pass
+
   path = builder_impl.get_asset_filename_to_add(
       asset_filepath=original_path,
       asset_filename_map=asset_info.asset_filename_map)
-  # TODO(b/205008097): Instead of mapping 1-1 between trackable asset
-  # and asset in the graph def consider deduping the assets that
-  # point to the same file.
-  asset_path_initializer = array_ops.placeholder(
-      shape=original_path_tensor.shape,
-      dtype=dtypes.string,
-      name="asset_path_initializer")
-  asset_variable = resource_variable_ops.ResourceVariable(
-      asset_path_initializer)
   asset_info.asset_filename_map[path] = original_path
   asset_def = meta_graph_pb2.AssetFileDef()
   asset_def.filename = path
-  asset_def.tensor_info.name = asset_path_initializer.name
+  asset_def.tensor_info.name = mapped_path_variable.initial_value.name
   asset_info.asset_defs.append(asset_def)
   asset_info.asset_initializers_by_resource[original_path_tensor] = (
-      asset_variable.initializer)
+      mapped_path_variable.initializer)
   asset_info.asset_index[trackable_asset] = len(asset_info.asset_defs) - 1
-  resource_map[original_path_tensor] = asset_variable
 
 
 def _iterate_op_types(fn):
@@ -897,7 +858,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   exported_graph = ops.Graph()
   resource_initializer_ops = []
   with exported_graph.as_default():
-    object_map, resource_map, asset_info = saveable_view.map_resources()
+    object_map, tensor_map, asset_info = saveable_view.map_resources()
     for resource_initializer_function in resource_initializer_functions:
       asset_dependencies = []
       for capture in resource_initializer_function.graph.external_captures:
@@ -908,7 +869,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
       with ops.control_dependencies(asset_dependencies):
         resource_initializer_ops.append(
             _call_function_with_mapped_captures(resource_initializer_function,
-                                                [], resource_map))
+                                                [], tensor_map))
     resource_initializer_ops.extend(
         asset_info.asset_initializers_by_resource.values())
     with ops.control_dependencies(resource_initializer_ops):
@@ -927,7 +888,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   # variables, but want any operations associated with the save/restore to be in
   # the exported graph (thus the `to_graph` argument).
   call_with_mapped_captures = functools.partial(
-      _call_function_with_mapped_captures, resource_map=resource_map)
+      _call_function_with_mapped_captures, tensor_map=tensor_map)
   named_saveable_objects, registered_savers = (
       saveable_view.augmented_graph_view.frozen_saveables_and_savers(
           object_map=object_map, to_graph=exported_graph,
@@ -937,7 +898,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
                                             call_with_mapped_captures)
 
   with exported_graph.as_default():
-    signatures = _generate_signatures(signature_functions, resource_map)
+    signatures = _generate_signatures(signature_functions, tensor_map)
     for concrete_function in saveable_view.concrete_functions:
       concrete_function.add_to_graph()
     if save_custom_gradients:
@@ -946,8 +907,8 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
     meta_graph_def.saver_def.CopyFrom(saver_def)
 
   # At this point all nodes that can be added to the SavedObjectGraph have been
-  # added, so run the deserialization depenency validation.
-  _validate_dependencies(saveable_view)
+  # added, so run the following to validate deserialization depenencies.
+  _dependency_sorted_node_ids(saveable_view)
 
   graph_def = exported_graph.as_graph_def(add_shapes=True)
   graph_def.library.registered_gradients.extend(saveable_view.gradient_defs)
@@ -1013,39 +974,36 @@ def _verify_ops(graph_def, namespace_whitelist):
         f"argument in tf.saved_model.SaveOptions: {invalid_namespaces}.")
 
 
-def _validate_dependencies(saveble_view):
-  """Ensures that the dependencies can be topologically sorted for loading."""
+def _dependency_sorted_node_ids(saveable_view):
+  """Returns topologically sorted nodes, sorted by dependencies."""
   dependency_map = {}
-  for node in saveble_view.nodes:
-    node_id = saveble_view.node_ids[node]
+  for node in saveable_view.nodes:
+    node_id = saveable_view.node_ids[node]
     deps = dependency_map[node_id] = []
     # TODO(kathywu): Remove once all of these have been converted to trackable.
-    if isinstance(
-        node,
-        (def_function.Function, defun.ConcreteFunction, _CapturedConstant,
-         _CapturedTensor)):
+    if isinstance(node, _CapturedTensor):
       continue  # These are not `Trackable` and therefore have no dependencies.
-    for _, dep in saveble_view.augmented_graph_view.list_dependencies(node):
-      if dep not in saveble_view.node_ids:
+    for _, dep in saveable_view.augmented_graph_view.list_dependencies(node):
+      if dep not in saveable_view.node_ids:
         node_path = trackable_utils.pretty_print_node_path(
-            saveble_view.node_paths[node])
+            saveable_view.node_paths[node])
         raise ValueError(
             f"Found an untracked dependency. Object {node_path} depends "
             f"on {dep}, but this dependency isn't listed as a child. "
             "Please track this child by overriding `_trackable_children` "
             "or use `._track_trackable`.")
-      deps.append(saveble_view.node_ids[dep])
+      deps.append(saveable_view.node_ids[dep])
   try:
-    trackable_utils.order_by_dependency(dependency_map)
+    return trackable_utils.order_by_dependency(dependency_map)
   except trackable_utils.CyclicDependencyError as err:
     pretty_printed_nodes = []
     pretty_printed_dependencies = []
 
     for x, deps in err.leftover_dependency_map.items():
       node_path = trackable_utils.pretty_print_node_path(
-          saveble_view.node_paths[saveble_view.nodes[x]])
+          saveable_view.node_paths[saveable_view.nodes[x]])
       pretty_printed_nodes.append(
-          f"\tNode {x} = {node_path} (type {type(saveble_view.nodes[x])})")
+          f"\tNode {x} = {node_path} (type {type(saveable_view.nodes[x])})")
       pretty_printed_dependencies.append(
           f"\tNode {x} depends on nodes {deps}")
     pretty_printed_nodes = "\n".join(pretty_printed_nodes)
@@ -1066,7 +1024,6 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
 
   for concrete_function in saveable_view.concrete_and_gradient_functions:
     name = compat.as_text(concrete_function.name)
-    name = saveable_view.function_name_map.get(name, name)
     serialized = function_serialization.serialize_concrete_function(
         concrete_function, saveable_view.captured_tensor_node_ids)
     if serialized is not None:
@@ -1074,11 +1031,11 @@ def _serialize_object_graph(saveable_view, asset_file_def_index):
 
   for obj, obj_proto in zip(saveable_view.nodes, proto.nodes):
     _write_object_proto(obj, obj_proto, asset_file_def_index,
-                        saveable_view.function_name_map)
+                        saveable_view.augmented_graph_view.list_children)
   return proto
 
 
-def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
+def _write_object_proto(obj, proto, asset_file_def_index, list_children_fn):
   """Saves an object into SavedObject proto."""
   if isinstance(obj, tracking.Asset):
     proto.asset.SetInParent()
@@ -1088,13 +1045,10 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
     obj._write_object_proto(proto, options)  # pylint: disable=protected-access
   elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(function_serialization.serialize_function(
-        obj, function_name_map))
+        obj, [x.ref for x in list_children_fn(obj)]))
   elif isinstance(obj, defun.ConcreteFunction):
     proto.bare_concrete_function.CopyFrom(
-        function_serialization.serialize_bare_concrete_function(
-            obj, function_name_map))
-  elif isinstance(obj, _CapturedConstant):
-    proto.constant.operation = obj.graph_tensor.op.name
+        function_serialization.serialize_bare_concrete_function(obj))
   elif isinstance(obj, _CapturedTensor):
     proto.captured_tensor.name = obj.name
     proto.captured_tensor.concrete_function = obj.concrete_function
@@ -1115,7 +1069,7 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
   registered_name = registration.get_registered_class_name(obj)
   if registered_name:
     proto.registered_name = registered_name
-    serialized_user_proto = obj._serialize_to_proto()  # pylint: disable=protected-access
+    serialized_user_proto = obj._serialize_to_proto(object_proto=proto)  # pylint: disable=protected-access
     if serialized_user_proto is not None:
       proto.serialized_user_proto.Pack(serialized_user_proto)
 
@@ -1481,11 +1435,10 @@ def _build_meta_graph_impl(obj,
       signature_serialization.canonicalize_signatures(signatures))
   signature_serialization.validate_augmented_graph_view(augmented_graph_view)
   signature_map = signature_serialization.create_signature_map(signatures)
-  augmented_graph_view.set_signature(signature_map)
+  augmented_graph_view.set_signature(signature_map, wrapped_functions)
 
   # Use _SaveableView to provide a frozen listing of properties and functions.
-  saveable_view = _SaveableView(augmented_graph_view, options,
-                                wrapped_functions)
+  saveable_view = _SaveableView(augmented_graph_view, options)
   object_saver = util.TrackableSaver(augmented_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
       meta_graph_def, saveable_view, signatures,

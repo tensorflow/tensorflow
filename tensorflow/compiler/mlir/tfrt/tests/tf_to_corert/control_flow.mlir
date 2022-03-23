@@ -59,14 +59,14 @@ func @while_test() -> (tensor<i32>) {
   // CHECK: [[CONST:%.+]] = corert.const_dense_tensor dense<0> : tensor<i32>
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: [[pred_res:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"([[ARG0]], [[CONST]]) : (!tfrt.chain, !corert.tensorhandle) -> (!tfrt.chain, i1)
-  // CHECK: [[while_res:%.]]:2 = tfrt.while [[pred_res]]#1 @"while_body_add2/tfrt_body"([[pred_res]]#0, [[CONST]])
+  // CHECK: [[while_res:%.]]:2 = tfrt.while [[pred_res]]#1 @"while_body_add2/tfrt_body_1"([[pred_res]]#0, [[CONST]])
   // CHECK-SAME: (!tfrt.chain, !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
-  %1 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
+  %1 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false, parallel_iterations = 1} : (tensor<i32>) -> (tensor<i32>)
   // CHECK: [[out_chain:%.*]] = tfrt.merge.chains [[while_res]]#0, [[ARG0]]
   // CHECK: tfrt.return [[out_chain]], [[while_res]]#1 : !tfrt.chain, !corert.tensorhandle
   return %1 : tensor<i32>
 }
-// CHECK: func @"while_body_add2/tfrt_body"([[ch:%.*]]: !tfrt.chain, [[arg:%.*]]: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle, i1)
+// CHECK: func @"while_body_add2/tfrt_body_1"([[ch:%.*]]: !tfrt.chain, [[arg:%.*]]: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle, i1)
 // CHECK: [[body_res:%.*]]:2 = tfrt.call @while_body_add2([[ch]], [[arg]]) : (!tfrt.chain, !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
 // CHECK: [[pred_res:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"([[body_res]]#0, [[body_res]]#1) : (!tfrt.chain, !corert.tensorhandle) -> (!tfrt.chain, i1)
 // CHECK: tfrt.return [[pred_res]]#0, [[body_res]]#1, [[pred_res]]#1 : !tfrt.chain, !corert.tensorhandle, i1
@@ -83,11 +83,11 @@ func @multi_while_test() -> (tensor<i32>, tensor<i32>) {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Const"() {device = "/device:CPU:0", value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: [[pred_0:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"
-  // CHECK: tfrt.while [[pred_0]]#1 @"while_body_add2/tfrt_body"
+  // CHECK: tfrt.while [[pred_0]]#1 @"while_body_add2/tfrt_body_1"
   // CHECK: [[pred_1:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"
-  // CHECK: tfrt.while [[pred_1]]#1 @"while_body_add2/tfrt_body"
-  %2 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
-  %3 = "tf.While"(%1) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
+  // CHECK: tfrt.while [[pred_1]]#1 @"while_body_add2/tfrt_body_1"
+  %2 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false, parallel_iterations = 1} : (tensor<i32>) -> (tensor<i32>)
+  %3 = "tf.While"(%1) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false, parallel_iterations = 1} : (tensor<i32>) -> (tensor<i32>)
   return %2, %3 : tensor<i32>, tensor<i32>
 }
 

@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -100,16 +100,16 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
   OpBuilder builder(dest_region);
 
   auto entry_block = builder.createBlock(dest_region);
-  CallOp result;
+  func::CallOp result;
   if (!tuple_arg) {
-    auto inputs = func.getType().getInputs();
+    auto inputs = func.getFunctionType().getInputs();
     auto args = entry_block->addArguments(
         inputs, SmallVector<Location>(inputs.size(), loc));
     ArrayRef<Value> callop_args(args.begin(), args.end());
-    result = builder.create<CallOp>(loc, func, callop_args);
+    result = builder.create<func::CallOp>(loc, func, callop_args);
   } else {
     auto tuple_arg = entry_block->addArgument(
-        builder.getTupleType(func.getType().getInputs()), loc);
+        builder.getTupleType(func.getFunctionType().getInputs()), loc);
     llvm::SmallVector<Value, 4> detupled_args;
     detupled_args.reserve(func.getNumArguments());
 
@@ -118,7 +118,7 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
       detupled_args.push_back(extract);
     }
 
-    result = builder.create<CallOp>(loc, func, detupled_args);
+    result = builder.create<func::CallOp>(loc, func, detupled_args);
   }
 
   if (!tuple_return) {

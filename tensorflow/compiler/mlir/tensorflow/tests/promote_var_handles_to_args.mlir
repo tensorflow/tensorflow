@@ -4,7 +4,7 @@
 
 // expected-error@+1 {{expects function 'main' to have 1 block, got 2}}
 func @main() {
-  br ^bb1
+  cf.br ^bb1
 ^bb1:
   return
 }

@@ -63,12 +63,12 @@ std::string GetElementWiseCode(const OperationDef& op_def,
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
        "Z >= args.dst_tensor.Slices()) return; \n";
   if (check_src_slices) {
-    c += "  FLT4 src = INIT_FLT4(0.0f);\n";
+    c += "  args.src_tensor::type src = args.src_tensor::zero_value;\n";
     c += "  if (Z < args.src_tensor.Slices()) {\n";
     c += "    src = args.src_tensor.Read(X, Y, Z);\n";
     c += "  }\n";
   } else {
-    c += "  FLT4 src = args.src_tensor.Read(X, Y, Z);\n";
+    c += "  args.src_tensor::type src = args.src_tensor.Read(X, Y, Z);\n";
   }
   c += "  args.dst_tensor.Write(src, X, Y, Z);\n";
   c += "} \n";

@@ -1870,6 +1870,7 @@ filegroup(
         "platform_strings.cc",
         "platform_strings.h",
         "platform_strings_computed.h",
+        "png.h",
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
         "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
         "//tensorflow/core/platform/profile_utils:cpu_utils.cc",

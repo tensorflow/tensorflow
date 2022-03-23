@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON_H
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON_H
 
 // This file defines functionality shared between chlo/mhlo/lhlo dialects.
 
@@ -52,4 +52,4 @@ ParseResult parseWindowAttributes(OpAsmParser& parser,
 }  // namespace hlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_COMMON_H

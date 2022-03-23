@@ -22,12 +22,15 @@ from mlir import ir
 import numpy as np
 
 from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tfrt_fallback
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 FLAGS = flags.FLAGS
+flags.DEFINE_boolean('compare_with_tensorflow', None,
+                     'Whether the results should be compared to Tensorflow')
 flags.DEFINE_integer('input_data_seed', None,
                      'The random seed to be used for initializing.')
 flags.DEFINE_string(
@@ -121,11 +124,21 @@ class CompileAndRunTest(test.TestCase):
           args.append(arg)
       self.assertEqual(len(args), len(arg_attrs))
       start = time.perf_counter()
-      jitrt.execute(compiled, args)
+      result = jitrt.execute(compiled, args)
       end = time.perf_counter()
       logging.info(f'executed {filename} in {end-start:0.4f} seconds')
+      if FLAGS.compare_with_tensorflow:
+        start = time.perf_counter()
+        expected = tfrt_fallback.run_tfrt_fallback(mlir_function, function_name,
+                                                   args)
+        end = time.perf_counter()
+        logging.info(
+            f'executed {filename} via tfrt fallback in {end-start:0.4f} seconds'
+        )
+        np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
 
 if __name__ == '__main__':
+  flags.mark_flag_as_required('compare_with_tensorflow')
   flags.mark_flag_as_required('input_data_seed')
   flags.mark_flag_as_required('test_file_name')
   flags.mark_flag_as_required('vectorize')

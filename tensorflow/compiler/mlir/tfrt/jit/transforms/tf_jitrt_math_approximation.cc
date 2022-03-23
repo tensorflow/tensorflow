@@ -117,12 +117,12 @@ static Value i32Cst(ImplicitLocOpBuilder &builder, int32_t value) {
 //----------------------------------------------------------------------------//
 
 static Value min(ImplicitLocOpBuilder &builder, Value a, Value b) {
-  return builder.create<mlir::SelectOp>(
+  return builder.create<mlir::arith::SelectOp>(
       builder.create<arith::CmpFOp>(arith::CmpFPredicate::OLT, a, b), a, b);
 }
 
 static Value max(ImplicitLocOpBuilder &builder, Value a, Value b) {
-  return builder.create<mlir::SelectOp>(
+  return builder.create<mlir::arith::SelectOp>(
       builder.create<arith::CmpFOp>(arith::CmpFPredicate::OGT, a, b), a, b);
 }
 

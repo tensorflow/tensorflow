@@ -1142,6 +1142,10 @@ TfLiteStatus Subgraph::Invoke() {
     return kTfLiteError;
   }
 
+  // Allocate large dynamic tensors which memory are required to be allocated
+  // before executing the graph.
+  MaybeAllocateLargeDynamicTensors();
+
   TfLiteStatus status = kTfLiteOk;
   if (state_ == kStateUninvokable) {
     ReportError("Invoke called on model that is not ready.");
@@ -1492,6 +1496,25 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
     return kTfLiteError;
   }
   return kTfLiteOk;
+}
+
+void Subgraph::UseDynamicAllocationForLargeTensors(
+    int large_tensors_threshods_in_bytes) {
+  for (size_t tensor_index = 0; tensor_index < context_.tensors_size;
+       tensor_index++) {
+    TfLiteTensor* tensor = &context_.tensors[tensor_index];
+    if (tensor->bytes >= large_tensors_threshods_in_bytes &&
+        tensor->allocation_type == kTfLiteArenaRw &&
+        // Skip input tensors since they are handled by ResizeInputTensor().
+        std::find(inputs_.begin(), inputs_.end(), tensor_index) ==
+            inputs_.end()) {
+      large_static_shape_tensors_.insert(tensor_index);
+      // Change large tensors' allocation_type and data.raw. This method must be
+      // called before AllocateTensors() to avoid handling them by ArenaPlanner.
+      tensor->allocation_type = kTfLiteDynamic;
+      tensor->data.raw = nullptr;
+    }
+  }
 }
 
 void Subgraph::SwitchToDelegateContext() {
@@ -1865,6 +1888,16 @@ void Subgraph::MaybeReleaseDynamicInputs(const TfLiteNode& node,
       if (input_tensor->data.raw) {
         TfLiteTensorDataFree(input_tensor);
       }
+    }
+  }
+}
+
+void Subgraph::MaybeAllocateLargeDynamicTensors() {
+  for (int tensor_index : large_static_shape_tensors_) {
+    TfLiteTensor* tensor = &context_.tensors[tensor_index];
+    if (tensor->allocation_type == kTfLiteDynamic &&
+        tensor->data.raw == nullptr) {
+      TfLiteTensorRealloc(tensor->bytes, tensor);
     }
   }
 }

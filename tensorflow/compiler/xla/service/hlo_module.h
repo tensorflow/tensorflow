@@ -21,8 +21,10 @@ limitations under the License.
 #include <memory>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -250,6 +252,13 @@ class HloModule {
   std::string ToString() const { return ToString(HloPrintOptions()); }
   std::string ToString(const HloPrintOptions& options) const;
 
+  // Returns a Cord representation of the module.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  absl::Cord ToCord() const { return ToCord(HloPrintOptions()); }
+  absl::Cord ToCord(const HloPrintOptions& options) const;
+
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
   static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
@@ -403,17 +412,30 @@ class HloModule {
 
   void set_session_id(uint64_t session_id) { session_id_ = session_id; }
 
-  void add_profile_info(HloModuleProto::ProfileType profile_type,
-                        double relative_speedup) {
-    HloModuleProto::ProfileInfo profile_info;
-    profile_info.set_profile_type(profile_type);
-    profile_info.set_relative_speedup(relative_speedup);
+  void add_profile_info(const HloModuleProto::ProfileInfo& profile_info) {
     profile_info_list_.push_back(profile_info);
+  }
+
+  void set_profile_info(
+      const std::vector<HloModuleProto::ProfileInfo>& profile_info) {
+    profile_info_list_ = profile_info;
+  }
+
+  const std::vector<HloModuleProto::ProfileInfo>& profile_info() const {
+    return profile_info_list_;
   }
 
   void set_relative_speedup(double relative_speedup) {
     relative_speedup_ = relative_speedup;
   }
+
+  // Sets the **unoptimized** fingerprint for the module. This fingerprint is
+  // prior to any optimizations.
+  void set_autofdo_fingerprint(absl::string_view fingerprint) {
+    autofdo_fingerprint_ = std::string(fingerprint);
+  }
+
+  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
  private:
   HloComputation* AddComputationInternal(
@@ -481,6 +503,9 @@ class HloModule {
 
   // Relative speedup of best config compared to default config.
   double relative_speedup_;
+
+  // The unoptimized module fingerprint.
+  std::string autofdo_fingerprint_;
 };
 
 }  // namespace xla

@@ -47,7 +47,7 @@ class FooHardware : public SimpleHardware {
     mlir::RewritePatternSet patterns;
     // Pick the transformations that we want to perform,
     // We can add other transformations we like here.
-    patterns.insert<LowerPackIntoConcatReshape, UnrollSplit, UnrollSplitV,
+    patterns.add<LowerPackIntoConcatReshape, UnrollSplit, UnrollSplitV,
                   PadSlice>(context);
     return patterns;
   }

@@ -23,17 +23,17 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-SAME:                  %[[INPUT:.*]]: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-DAG:       %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:       %[[C1:.*]] = arith.constant 1 : index
-// CHECK-DAG:       %[[C8:.*]] = arith.constant 8 : index
+// CHECK-DAG:       %[[STEP:.*]] = arith.constant 8 : index
 // CHECK-NOT:       tensor.dim
 // CHECK-DAG:       %[[DIM0:.*]] = tensor.dim %[[INPUT]], %[[C0]]
 // CHECK-DAG:       %[[DIM1:.*]] = tensor.dim %[[INPUT]], %[[C1]]
 // CHECK:           %[[INIT:.*]] = linalg.init_tensor {{\[}}%[[DIM0]], %[[DIM1]]]
 // CHECK-DAG:       %[[DIM0_OUT:.*]] = tensor.dim %[[INPUT]], %[[C0]]
 // CHECK-DAG:       %[[DIM1_OUT:.*]] = tensor.dim %[[INPUT]], %[[C1]]
-// CHECK:           %[[OUTPUT:.*]] = linalg.tiled_loop
+// CHECK:           %[[OUTPUT:.*]] = gml_st.loop
 // CHECK-SAME:          (%[[ARG1:.*]], %[[ARG2:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-SAME:          to (%[[DIM0_OUT]], %[[DIM1_OUT]])
-// CHECK-SAME:          step (%[[C1]], %[[C8]])
+// CHECK-SAME:          step (%[[C1]], %[[STEP]])
 // CHECK-SAME:          ins (%[[IN_TENS:.*]] = %[[INPUT]]: tensor<?x?xf32>)
 // CHECK-SAME:          outs (%[[OUT_TENS:.*]] = %[[INIT]]: tensor<?x?xf32>) {
 // CHECK:           %[[IN_SLICE:.*]] = tensor.extract_slice
@@ -55,7 +55,7 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-SAME:            %[[VAL_23:.*]] into %[[OUT_TENS]]
 // CHECK-SAME:            {{\[}}%[[ARG1]], %[[ARG2]]] [%[[C1]],
 // CHECK-SAME:            %{{.*}}] [1, 1]
-// CHECK-NEXT:        linalg.yield %[[INSERT_RESULT]] : tensor<?x?xf32>
+// CHECK-NEXT:        gml_st.yield %[[INSERT_RESULT]] : tensor<?x?xf32>
 // CHECK-NEXT:      }
 // CHECK-NEXT:      return %[[FINAL_OUTPUT:.*]] : tensor<?x?xf32>
 // CHECK-NEXT:    }

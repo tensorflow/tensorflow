@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -137,6 +137,7 @@ class GpuKernelToBlobPass
     config.set_debug_options(options);
 
     llvmModule->setDataLayout(xla::gpu::nvptx::DataLayout());
+    llvmModule->setTargetTriple(xla::gpu::nvptx::TargetTriple());
 
     // Compile and collect requested cubin and PTX images.
     std::vector<tensorflow::se::CubinOrPTXImage> images;

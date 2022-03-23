@@ -27,9 +27,9 @@
 // CHECK-DAG:  %[[CST_BIAS:.*]] = arith.constant 127 : i32
 // CHECK-DAG:  %[[CST_TWO:.*]] = arith.constant 2 : i32
 // CHECK:  %[[VAL_18:.*]] = arith.cmpf olt, %[[VAL_0]], %[[CST_EXP_HI]] : f32
-// CHECK:  %[[VAL_19:.*]] = select %[[VAL_18]], %[[VAL_0]], %[[CST_EXP_HI]] : f32
+// CHECK:  %[[VAL_19:.*]] = arith.select %[[VAL_18]], %[[VAL_0]], %[[CST_EXP_HI]] : f32
 // CHECK:  %[[VAL_20:.*]] = arith.cmpf ogt, %[[VAL_19]], %[[CST_EXP_LO]] : f32
-// CHECK:  %[[VAL_21:.*]] = select %[[VAL_20]], %[[VAL_19]], %[[CST_EXP_LO]] : f32
+// CHECK:  %[[VAL_21:.*]] = arith.select %[[VAL_20]], %[[VAL_19]], %[[CST_EXP_LO]] : f32
 // CHECK:  %[[VAL_22:.*]] = math.fma %[[VAL_21]], %[[CST_CEPHES_LOG2E]], %[[CST_CEPHES_EXP_P5]] : f32
 // CHECK:  %[[VAL_23:.*]] = math.floor %[[VAL_22]] : f32
 // CHECK:  %[[VAL_24:.*]] = math.fma %[[VAL_23]], %[[CST_CEPHES_EXP_C1]], %[[VAL_21]] : f32
@@ -44,9 +44,9 @@
 // CHECK:  %[[VAL_33:.*]] = math.fma %[[VAL_31]], %[[VAL_27]], %[[VAL_32]] : f32
 // CHECK:  %[[VAL_34:.*]] = math.fma %[[VAL_33]], %[[VAL_26]], %[[VAL_30]] : f32
 // CHECK:  %[[VAL_35:.*]] = arith.cmpf olt, %[[VAL_23]], %[[CST_MAX_EXPONENT]] : f32
-// CHECK:  %[[VAL_36:.*]] = select %[[VAL_35]], %[[VAL_23]], %[[CST_MAX_EXPONENT]] : f32
+// CHECK:  %[[VAL_36:.*]] = arith.select %[[VAL_35]], %[[VAL_23]], %[[CST_MAX_EXPONENT]] : f32
 // CHECK:  %[[VAL_37:.*]] = arith.cmpf ogt, %[[VAL_36]], %[[CST_MIN_EXPONENT]] : f32
-// CHECK:  %[[VAL_38:.*]] = select %[[VAL_37]], %[[VAL_36]], %[[CST_MIN_EXPONENT]] : f32
+// CHECK:  %[[VAL_38:.*]] = arith.select %[[VAL_37]], %[[VAL_36]], %[[CST_MIN_EXPONENT]] : f32
 // CHECK:  %[[VAL_39:.*]] = arith.fptosi %[[VAL_38]] : f32 to i32
 // CHECK:  %[[VAL_40:.*]] = arith.shrsi %[[VAL_39]], %[[CST_TWO]] : i32
 // CHECK:  %[[VAL_41:.*]] = arith.addi %[[VAL_40]], %[[CST_BIAS]] : i32
@@ -63,7 +63,7 @@
 // CHECK:  %[[VAL_52:.*]] = arith.bitcast %[[VAL_51]] : i32 to f32
 // CHECK:  %[[VAL_53:.*]] = arith.mulf %[[VAL_46]], %[[VAL_52]] : f32
 // CHECK:  %[[VAL_54:.*]] = arith.cmpf ogt, %[[VAL_53]], %[[VAL_0]] : f32
-// CHECK:  %[[VAL_55:.*]] = select %[[VAL_54]], %[[VAL_53]], %[[VAL_0]] : f32
+// CHECK:  %[[VAL_55:.*]] = arith.select %[[VAL_54]], %[[VAL_53]], %[[VAL_0]] : f32
 // CHECK:  return %[[VAL_55]] : f32
 // CHECK: }
 func @exp_scalar(%arg0: f32) -> f32 {

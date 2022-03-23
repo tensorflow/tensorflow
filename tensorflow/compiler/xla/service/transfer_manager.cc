@@ -221,7 +221,8 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
           return Status::OK();
         }
 
-        // Read the dynamic shape metadata from the device stream.
+        // Read the dynamic shape metadata from the device stream.  The dynamic
+        // shape itself is stored at the end of the buffer.
         auto shape_size_fn = compiler->ShapeSizeBytesFunction();
         Shape buffer_shape_static = ShapeUtil::MakeStaticShape(buffer_shape);
         const int64_t offset = shape_size_fn(buffer_shape_static);
@@ -420,6 +421,10 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
 StatusOr<Shape> TransferManager::ChooseCompactLayoutForShape(
     const Shape& host_shape) const {
   return LayoutUtil::GetWithDefaultLayout(host_shape);
+}
+
+xla::Shape TransferManager::ChooseGoodInfeedLayout(const Shape& shape) const {
+  return LayoutUtil::GetWithDefaultLayout(shape);
 }
 
 }  // namespace xla

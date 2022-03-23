@@ -103,7 +103,7 @@ void OptimizeOpOrderPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
-  patterns.insert<PushDownDequantize>(ctx);
+  patterns.add<PushDownDequantize>(ctx);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     signalPassFailure();
   }

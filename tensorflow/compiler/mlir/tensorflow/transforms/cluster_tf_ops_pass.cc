@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -242,7 +242,7 @@ void CreateFunctions(ModuleOp module_op,
     for (Value result : metadata.results) {
       results_after_mapping.push_back(mapping.lookupOrDefault(result));
     }
-    builder.create<ReturnOp>(loc, results_after_mapping);
+    builder.create<func::ReturnOp>(loc, results_after_mapping);
     symbol_table.insert(func_op, metadata.insertion_point++);
     // Record the actual name. The symbol table might rename the FuncOp if there
     // is name collision.

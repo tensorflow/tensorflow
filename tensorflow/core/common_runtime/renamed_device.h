@@ -50,7 +50,8 @@ class RenamedDevice : public Device {
     return underlying_device_->tensorflow_cpu_worker_threads();
   }
 
-  const GpuDeviceInfo* tensorflow_gpu_device_info() const override {
+  const DeviceBase::AcceleratorDeviceInfo* tensorflow_gpu_device_info()
+      const override {
     return underlying_device_->tensorflow_gpu_device_info();
   }
 

@@ -216,10 +216,8 @@ func @merge_assuming_ops(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
   // CHECK:      %[[SHAPE0:.*]] = shape.shape_of %[[ARG0]]
   // CHECK:      %[[SHAPE1:.*]] = shape.shape_of %[[ARG1]]
   // CHECK:      %[[SHAPE2:.*]] = shape.shape_of %[[ARG2]]
-  // CHECK:      %[[WITNESS0:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]]
-  // CHECK:      %[[WITNESS1:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
-  // CHECK:      %[[COMBINED_WITNESS:.*]] = shape.assuming_all %[[WITNESS0]], %[[WITNESS1]]
-  // CHECK:      %[[MERGED:.*]]:2 = shape.assuming %[[COMBINED_WITNESS]]
+  // CHECK:      %[[WITNESS:.*]] = shape.cstr_broadcastable %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
+  // CHECK:      %[[MERGED:.*]]:2 = shape.assuming %[[WITNESS]]
   // CHECK-SAME: {
   // CHECK:        "some.op"
   // CHECK:        %[[RESULT0:.*]] = "some.producer"
@@ -308,12 +306,10 @@ func @move_assuming_all_over_assuming_region(%arg0: tensor<?xindex>,
     %arg4 : tensor<?xindex>) {
   // CHECK-DAG: %[[CSTR0:.*]] = shape.cstr_broadcastable %[[ARG0]], %[[ARG1]]
   // CHECK-DAG: %[[CSTR1:.*]] = shape.cstr_broadcastable %[[ARG1]], %[[ARG2]]
-  // CHECK-DAG: %[[CSTR_ALL01:.*]] = shape.assuming_all %[[CSTR0]], %[[CSTR1]]
   // CHECK-DAG: %[[CSTR2:.*]] = shape.cstr_broadcastable %[[ARG2]], %[[ARG3]]
   // CHECK-DAG: %[[CSTR3:.*]] = shape.cstr_broadcastable %[[ARG3]], %[[ARG4]]
-  // CHECK-DAG: %[[CSTR_ALL23:.*]] = shape.assuming_all %[[CSTR2]], %[[CSTR3]]
-  // CHECK-DAG: %[[CSTR_ALL0123:.*]] = shape.assuming_all %[[CSTR_ALL01]], %[[CSTR_ALL23]]
-  // CHECK:     shape.assuming %[[CSTR_ALL0123]] {
+  // CHECK-DAG: %[[CSTR_ALL:.*]] = shape.assuming_all %[[CSTR0]], %[[CSTR1]], %[[CSTR2]], %[[CSTR3]]
+  // CHECK:     shape.assuming %[[CSTR_ALL]] {
   // CHECK:       "some.op"()
   // CHECK:       "some.op"()
   // CHECK:     }

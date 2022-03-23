@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <iostream>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -136,7 +136,7 @@ struct TensorFlowOptimizePass
   LogicalResult initialize(MLIRContext *context) override {
     RewritePatternSet pattern_list(context);
     populateWithGenerated(pattern_list);
-    pattern_list.insert<SimplifyBroadcastReshape>(context);
+    pattern_list.add<SimplifyBroadcastReshape>(context);
     patterns = std::move(pattern_list);
     return success();
   }

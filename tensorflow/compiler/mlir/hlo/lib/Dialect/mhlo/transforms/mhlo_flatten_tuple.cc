@@ -211,7 +211,7 @@ struct FlattenWhileOp : public RewritePattern {
 template <typename T>
 void ApplyFlatteningTuplePatterns(T target, MLIRContext *context) {
   RewritePatternSet patterns(context);
-  patterns.insert<FlattenWhileOp>(context);
+  patterns.add<FlattenWhileOp>(context);
   (void)applyPatternsAndFoldGreedily(target, std::move(patterns));
 }
 

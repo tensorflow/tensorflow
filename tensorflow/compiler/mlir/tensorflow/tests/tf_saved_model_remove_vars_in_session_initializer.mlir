@@ -19,7 +19,7 @@ module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   // expected-error@+1 {{expects exactly one block in the MLIR function}}
   func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
-    br ^bb1
+    cf.br ^bb1
     ^bb1:
     return
   }

@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -301,8 +301,8 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
 
     // Symbolic shape analysis might have given us an i32 or i64. Cast to index.
     if (!output_dyn_dim.getType().isIndex())
-      output_dyn_dim = rewriter.create<IndexCastOp>(loc, output_dyn_dim,
-                                                    rewriter.getIndexType());
+      output_dyn_dim = rewriter.create<IndexCastOp>(
+          loc, rewriter.getIndexType(), output_dyn_dim);
 
     output_dyn_dimensions.push_back(output_dyn_dim);
   }
@@ -348,13 +348,13 @@ struct SymbolicShapeOptimizationPass
     mlir::RewritePatternSet patterns(ctx);
 
     // Rewrite constraints based on the symbolic shapes.
-    patterns.insert<CstrBroadcastableOpLowering>(ctx);
+    patterns.add<CstrBroadcastableOpLowering>(ctx);
     // Rewrite shape.broadcast based on the symbolic shapes.
-    patterns.insert<BroadcastOpLowering>(ctx);
+    patterns.add<BroadcastOpLowering>(ctx);
 
     // Rewrite broadcasts based on the symbolic shapes if enabled.
     if (!optimize_only_constraints)
-      patterns.insert<DynamicBroadcastInDimOpLowering>(ctx);
+      patterns.add<DynamicBroadcastInDimOpLowering>(ctx);
 
     // Add shape dialect canonicalization patterns to fold shape operations
     // after constraints are replaced with constant witness.

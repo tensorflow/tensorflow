@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {

@@ -80,8 +80,10 @@ cc_library_with_tflite(
         "//tensorflow/lite/core/shims:c_api_without_op_resolver",
         "//tensorflow/lite/core/shims:common",
         "//tensorflow/lite/core/shims:create_op_resolver_header",
+        "//tensorflow/lite/core/shims:delegate_plugin",
         "//tensorflow/lite/core/shims:framework_stable",
         "//tensorflow/lite/core/shims:jni_utils",
+        "//tensorflow/lite/core/shims:xnnpack_plugin",
     ],
     deps = [
         "//tensorflow/lite:minimal_logging",

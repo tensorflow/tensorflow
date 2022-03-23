@@ -39,9 +39,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
@@ -93,6 +96,19 @@ StatusOr<py::bytes> GetHloModuleSerializedProto(const HloModule& module) {
   return py::bytes(result);
 }
 
+// Converts a serialized HloModuleProto into a HloModule.
+StatusOr<std::shared_ptr<HloModule>> HloModuleFromSerializedProto(
+    const py::bytes& bytes) {
+  HloModuleProto proto;
+  proto.ParseFromString(bytes);
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          proto, GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(proto, module_config));
+  return std::shared_ptr<HloModule>(std::move(module));
+}
+
 StatusOr<std::shared_ptr<HloModule>> GetHloModule(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
@@ -105,12 +121,13 @@ StatusOr<std::shared_ptr<HloModule>> GetHloModule(
 }
 
 // Converts a computation to textual HLO form.
-StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
+StatusOr<std::string> GetComputationHloText(
+    const XlaComputation& computation, bool print_large_constants = false) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
                       GetHloModule(computation));
   HloPrintOptions options;
   options = HloPrintOptions::ShortParsable();
-  options.set_print_large_constants(false);
+  options.set_print_large_constants(print_large_constants);
   return hlo_module->ToString(options);
 }
 
@@ -385,7 +402,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("program_shape", &XlaComputation::GetProgramShape)
       .def("name", &XlaComputation::name)
       .def("as_serialized_hlo_module_proto", &GetComputationSerializedProto)
-      .def("as_hlo_text", &GetComputationHloText)
+      .def("as_hlo_text", &GetComputationHloText,
+           py::arg("print_large_constants") = false)
       .def("as_hlo_dot_graph", &GetComputationHloDotGraph)
       .def("hash", &HashComputation)
       .def("as_hlo_module", &GetHloModule);
@@ -454,11 +472,24 @@ void BuildXlaCompilerSubmodule(py::module& m) {
               &HloModule::ToString),
           py::arg("options") = HloPrintOptions())
       .def("as_serialized_hlo_module_proto", &GetHloModuleSerializedProto)
+      .def("from_serialized_hlo_module_proto", &HloModuleFromSerializedProto)
       .def_property_readonly(
           "spmd_output_sharding",
           [](const HloModule& m) -> absl::optional<xla::OpSharding> {
             if (!m.has_spmd_output_sharding()) return absl::nullopt;
             return m.spmd_output_sharding().ToProto();
+          })
+      .def_property_readonly(
+          "spmd_parameters_shardings",
+          [](const HloModule& m)
+              -> absl::optional<std::vector<xla::OpSharding>> {
+            if (!m.has_spmd_parameters_shardings()) return absl::nullopt;
+            std::vector<xla::OpSharding> param_shardings;
+            for (const auto& parameter_sharding :
+                 m.spmd_parameters_shardings()) {
+              param_shardings.push_back(parameter_sharding.ToProto());
+            }
+            return param_shardings;
           });
 
   m.def("hlo_module_to_dot_graph",
@@ -470,7 +501,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   m.def(
       "hlo_module_cost_analysis",
       [](PyClient* client,
-         const HloModule& module) -> StatusOr<std::map<std::string, float>> {
+         const HloModule& module) -> StatusOr<HloCostAnalysis::Properties> {
         TF_ASSIGN_OR_RETURN(auto analysis,
                             client->pjrt_client()->GetHloCostAnalysis());
         TF_RETURN_IF_ERROR(module.entry_computation()->Accept(analysis.get()));
@@ -680,6 +711,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("use_spmd_partitioning",
                     &ExecutableBuildOptions::use_spmd_partitioning,
                     &ExecutableBuildOptions::set_use_spmd_partitioning)
+      .def_property("use_auto_spmd_partitioning",
+                    &ExecutableBuildOptions::use_auto_spmd_partitioning,
+                    &ExecutableBuildOptions::set_use_auto_spmd_partitioning)
       .def_property(
           "allow_spmd_sharding_propagation_to_output",
           &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,
@@ -689,6 +723,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   py::enum_<OpSharding::Type> op_sharding_type(m, "OpSharding_Type");
   op_sharding_type.value("REPLICATED", OpSharding::REPLICATED)
       .value("MAXIMAL", OpSharding::MAXIMAL)
+      .value("MANUAL", OpSharding::MANUAL)
       .value("TUPLE", OpSharding::TUPLE)
       .value("OTHER", OpSharding::OTHER);
 
@@ -712,6 +747,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                       &xla::OpSharding::mutable_tile_assignment_devices);
   DefRepeatedProperty(op_sharding, "tuple_shardings",
                       &xla::OpSharding::mutable_tuple_shardings);
+  DefRepeatedProperty(op_sharding, "last_tile_dims",
+                      &xla::OpSharding::mutable_last_tile_dims);
 
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)

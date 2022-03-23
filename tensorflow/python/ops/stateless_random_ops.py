@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Stateless random ops which take seed as a tensor input."""
-
 import enum
 import numpy as np
 
@@ -24,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import gen_random_index_shuffle_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
@@ -47,6 +47,7 @@ ops.NotDifferentiable("StatelessRandomUniformV2")
 ops.NotDifferentiable("StatelessRandomUniformIntV2")
 ops.NotDifferentiable("StatelessRandomUniformFullIntV2")
 ops.NotDifferentiable("StatelessTruncatedNormalV2")
+ops.NotDifferentiable("RandomIndexShuffle")
 
 
 @tf_export("random.Algorithm", "random.experimental.Algorithm")
@@ -239,6 +240,85 @@ def fold_in(seed, data, alg="auto_select"):
   seed1 = stateless_random_uniform(shape=[], seed=seed, dtype=data.dtype,
                                    minval=None, maxval=None, alg=alg)
   return array_ops.stack([seed1, data])
+
+
+@tf_export("random.experimental.index_shuffle")
+@dispatch.add_dispatch_support
+def index_shuffle(index, seed, max_index):
+  """Outputs the position of `index` in a permutation of [0, ..., max_index].
+
+  For each possible `seed` and `max_index` there is one pseudorandom permutation
+  of the sequence S=[0, ..., max_index]. Instead of materializing the full array
+  we can compute the new position of any single element in S. This can be useful
+  for very large `max_index`s.
+
+  The input `index` and output can be used as indices to shuffle a vector.
+  For example:
+
+  >>> vector = tf.constant(['e0', 'e1', 'e2', 'e3'])
+  >>> indices = tf.random.experimental.index_shuffle(tf.range(4), [5, 9], 3)
+  >>> shuffled_vector = tf.gather(vector, indices)
+  >>> print(shuffled_vector)
+  tf.Tensor([b'e2' b'e0' b'e1' b'e3'], shape=(4,), dtype=string)
+
+  More usefully, it can be used in a streaming (aka online) scenario such as
+  `tf.data`,  where each element of `vector` is processed individually and the
+  whole `vector` is never materialized in memory.
+
+  >>> dataset = tf.data.Dataset.range(10)
+  >>> dataset = dataset.map(
+  ...  lambda idx: tf.random.experimental.index_shuffle(idx, [5, 8], 9))
+  >>> print(list(dataset.as_numpy_iterator()))
+  [3, 8, 0, 1, 2, 7, 6, 9, 4, 5]
+
+  This operation is stateless (like other `tf.random.stateless_*` functions),
+  meaning the output is fully determined by the `seed` (other inputs being
+  equal).
+  Each `seed` choice corresponds to one permutation, so when calling this
+  function
+  multiple times for the same shuffling, please make sure to use the same
+  `seed`. For example:
+
+  >>> seed = [5, 9]
+  >>> idx0 = tf.random.experimental.index_shuffle(0, seed, 3)
+  >>> idx1 = tf.random.experimental.index_shuffle(1, seed, 3)
+  >>> idx2 = tf.random.experimental.index_shuffle(2, seed, 3)
+  >>> idx3 = tf.random.experimental.index_shuffle(3, seed, 3)
+  >>> shuffled_vector = tf.gather(vector, [idx0, idx1, idx2, idx3])
+  >>> print(shuffled_vector)
+  tf.Tensor([b'e2' b'e0' b'e1' b'e3'], shape=(4,), dtype=string)
+
+  Args:
+    index: An integer scalar tensor or vector with values in [0, `max_index`].
+      It can be seen as either a value `v` in the sequence `S`=[0, ...,
+      `max_index`] to be permutated, or as an index of an element `e` in a
+      shuffled vector.
+    seed: A tensor of shape [2] or [n, 2] with dtype int32/uint32/int64/uint64.
+      The RNG seed. If the rank is unknown during graph building it must be 1 at
+      runtime.
+    max_index: A non-negative tensor with the same shape and dtype as `index`.
+      The upper bound (inclusive).
+
+  Returns:
+    If all inputs were scalar (shape [2] for `seed`) the output will be a scalar
+    with the same dtype as `index`. The output can be seen as the new position
+    of `v` in `S`, or as the index of `e` in the vector before shuffling.
+    If one or multiple inputs were vectors (shape [n, 2] for `seed`) then the
+    output will be a vector of the same size which each element shuffled
+    independently. Scalar values are broadcasted in this case.
+  """
+  # We expect users to pass a seed with shape [2] to be consistent with other
+  # stateless_* ops, but the raw op expects shape [3].
+  seed = ops.convert_to_tensor(seed)
+  # Pad the first dimension with an arbitrary number since our raw op expects
+  # shape [3].
+  if seed.shape.rank is None:
+    paddings = [[1, 0]]
+  else:
+    paddings = [[1, 0]] + (seed.shape.rank - 1) * [[0, 0]]
+  seed = array_ops.pad(seed, paddings, constant_values=498247692)
+  return gen_random_index_shuffle_ops.random_index_shuffle(
+      index, seed=seed, max_index=max_index)
 
 
 @tf_export("random.stateless_uniform")

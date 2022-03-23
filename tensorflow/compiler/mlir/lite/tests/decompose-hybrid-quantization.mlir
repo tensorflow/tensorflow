@@ -28,6 +28,20 @@ func @test_conv2d_qi8(%arg0: tensor<1x32x32x8x!quant.uniform<i8:f32, 1.0>>) -> t
 
 // -----
 
+// CHECK-LABEL: @test_conv2d_qi16
+func @test_conv2d_qi16(%arg0: tensor<1x32x32x8x!quant.uniform<i16:f32, 1.0>>) -> tensor<1x32x32x16x!quant.uniform<i16:f32, 1.0>> {
+  // CHECK-DAG: %[[BIAS:.+]] = arith.constant dense<0> : tensor<16xi64>
+  // CHECK-DAG: %[[VAL0:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<{{.+}}>, value = dense<42> : tensor<16x1x1x8xi8>}
+  // CHECK-DAG: %[[VAL1:.+]] = "tfl.conv_2d"(%arg0, %[[VAL0]], %[[BIAS]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}
+  // CHECK: return %[[VAL1]]
+  %0 = "tfl.pseudo_qconst"() {qtype = tensor<16x1x1x8x!quant.uniform<i8:f32, 1.0>>, value = dense<42> : tensor<16x1x1x8xi8>} : () -> tensor<16x1x1x8x!quant.uniform<i8:f32, 1.0>>
+  %1 = "arith.constant"() {value = dense<0> : tensor<16xi64>} : () -> tensor<16xi64>
+  %2 = "tfl.conv_2d"(%arg0, %0, %1) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x32x32x8x!quant.uniform<i16:f32, 1.0>>, tensor<16x1x1x8x!quant.uniform<i8:f32, 1.0>>, tensor<16xi64>) -> tensor<1x32x32x16x!quant.uniform<i16:f32, 1.0>>
+  return %2 : tensor<1x32x32x16x!quant.uniform<i16:f32, 1.0>>
+}
+
+// -----
+
 // CHECK-LABEL: @test_conv2d_replace_qi8
 func @test_conv2d_replace_qi8(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x32x32x16x!quant.uniform<i8:f32, 1.0>> {
   // CHECK-DAG: %[[VAL0:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<{{.+}}>, value = dense<42> : tensor<16x1x1x8xi8>}

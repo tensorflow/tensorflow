@@ -40,7 +40,6 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/lite/core/api",
-        "@com_google_absl//absl/strings",
     ],
 )
 

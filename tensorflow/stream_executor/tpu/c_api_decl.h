@@ -302,6 +302,7 @@ typedef struct XLA_HloModuleConfig {
   int64_t replica_count;
   int64_t num_partitions;
   bool use_spmd_partitioning;
+  bool use_auto_spmd_partitioning;
   TpuSerializedProto debug_options;
   bool has_static_device_assignment;
   TpuSerializedProto static_device_assignment;

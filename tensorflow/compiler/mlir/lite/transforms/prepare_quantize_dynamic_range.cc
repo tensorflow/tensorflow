@@ -95,12 +95,13 @@ class PrepareDynamicRangeQuantizePass
         !enable_dynamic_range_per_channel_quantization;
     quant_specs_.minimum_elements_for_weights = min_elements_for_weights;
     ParseCustomOpSpecs(enable_custom_op_quantization,
-                       CustomOpUpdateOptions::kINputIndices,
+                       quant::CustomOpUpdateOptions::kINputIndices,
                        quant_specs_.custom_map);
   }
 
   // Constructor used by manually creating the pass.
-  explicit PrepareDynamicRangeQuantizePass(const QuantizationSpecs& quant_specs)
+  explicit PrepareDynamicRangeQuantizePass(
+      const quant::QuantizationSpecs& quant_specs)
       : quant_specs_(quant_specs) {}
 
   StringRef getArgument() const final {
@@ -119,7 +120,7 @@ class PrepareDynamicRangeQuantizePass
   void runOnOperation() override;
 
  private:
-  QuantizationSpecs quant_specs_;
+  quant::QuantizationSpecs quant_specs_;
 };
 
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
@@ -130,7 +131,7 @@ class PrepareDynamicRangeQuantizableOp
     : public OpRewritePattern<arith::ConstantOp> {
  public:
   explicit PrepareDynamicRangeQuantizableOp(
-      MLIRContext* context, const QuantizationSpecs& quant_specs)
+      MLIRContext* context, const quant::QuantizationSpecs& quant_specs)
       : OpRewritePattern<arith::ConstantOp>(context),
         quant_specs_(quant_specs) {}
 
@@ -202,7 +203,7 @@ class PrepareDynamicRangeQuantizableOp
     int quantize_operand_num = quant_op.second;
 
     // If the constant is an output tensor, do nothing.
-    if (llvm::dyn_cast_or_null<ReturnOp>(quantize_op)) {
+    if (llvm::dyn_cast_or_null<func::ReturnOp>(quantize_op)) {
       return;
     }
 
@@ -411,7 +412,7 @@ class PrepareDynamicRangeQuantizableOp
       // old ConstantOp is guaranteed to have one F32->F16 cast regardless of
       // its number of users.
       rewriter.setInsertionPointAfter(op);
-      auto new_const = rewriter.create<ConstantOp>(
+      auto new_const = rewriter.create<arith::ConstantOp>(
           op->getLoc(), new_result_type, new_value_attr);
       auto dq = rewriter.create<DQ>(op->getLoc(), old_result_type, new_const);
       cast_op->replaceAllUsesWith(dq);
@@ -424,7 +425,7 @@ class PrepareDynamicRangeQuantizableOp
   }
 
  protected:
-  QuantizationSpecs quant_specs_;
+  quant::QuantizationSpecs quant_specs_;
 };
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
@@ -443,7 +444,7 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
   removeAllStatsOp(func);
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
+  patterns.add<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
@@ -454,7 +455,7 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
 // Creates an instance of the TensorFlow Lite dialect
 // PrepareDynamicRangeQuantize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicRangeQuantizePass(
-    const QuantizationSpecs& quant_specs) {
+    const quant::QuantizationSpecs& quant_specs) {
   return std::make_unique<PrepareDynamicRangeQuantizePass>(quant_specs);
 }
 

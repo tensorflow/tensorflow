@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -119,7 +120,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
 void GpuOpFusionPass::runOnOperation() {
   FuncOp func = getOperation();
   RewritePatternSet patterns(&getContext());
-  patterns.insert<ReluToFusedBatchNorm>(&getContext());
+  patterns.add<ReluToFusedBatchNorm>(&getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 

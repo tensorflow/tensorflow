@@ -18,6 +18,7 @@
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_gpu_binary.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/lmhlo_to_tfrt_gpu.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/gpu/wrapper/wrapper.h"  // from @tf_runtime
@@ -41,8 +42,8 @@ Status ConvertLmhloToTfrtGpuWithBinary(mlir::ModuleOp module,
         "Failed to lower LMHLO to TFRT Dialect with gpu kernels.");
   }
 
-  tfrt::gpu::setEntryPoint(module, tfrt::gpu::wrapper::Platform::CUDA,
-                           entry_function_name, buffer_sizes);
+  tfrt::gpu::setEntryPoint(module, kGpuTargetPlatform, entry_function_name,
+                           buffer_sizes);
   return Status::OK();
 }
 

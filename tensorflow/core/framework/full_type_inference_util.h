@@ -74,6 +74,44 @@ ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx);
 ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
                                          int element_idx, bool homogeneous);
 
+// Helper for ops with semantics of unstacking multiple inputs into a container
+// `<t>[T1, ..., Tn]`, that is `T1, ..., Tn -> <t>[PRODUCT[U1, ..., Un]]`
+// where Ui is obtained from an "unstack" mapping T -> U. Both <t> and the
+// "unstack" mapping are parameterized by this factory.
+// Note that when the "unstack" function is the identity function, this becomes
+// equivalent to ContainerCreate.
+ForwardTypeInferenceFn MultiaryUnstack(
+    FullTypeId t, std::function<FullTypeDef(const FullTypeDef&)> unstack);
+
+// Helper for ops with semantics of applying some transformation to the
+// elements of a container:
+// `<t>[PRODUCT[T1, ..., Tn]] -> <t>[PRODUCT[U1, ..., Un]]`,
+// where Ui is obtained by applying a map T -> U. Both <t> and the "map"
+// function are parameterized by this factory. See BatchTensor and ShardTensor
+// for examples of "map".
+ForwardTypeInferenceFn ContainerMap(
+    FullTypeId t, int input_idx,
+    std::function<FullTypeDef(const FullTypeDef&)> map);
+
+// Mapping function representing the type function for unstacking of
+// Tensor (or Tensor-like) types. Note that this is a helper to use with
+// other type inference functions; it's not a function itself.
+// TODO(mdan): Replace with a trait, when available.
+FullTypeDef UnstackTensor(const FullTypeDef& t);
+
+// Mapping function representing the type function for an op that changes the
+// batch size of dataset. Note that this is a helper to use with other type
+// inference functions; it's not a function itself.
+// TODO(mdan): Replace with a trait, when available.
+FullTypeDef BatchTensor(const FullTypeDef& t);
+
+// Mapping function representing the type function for an op that creates a
+// fixed (given) number of tensors of a size calculated based on the input. Note
+// that this is a helper to use with other type inference functions; it's not a
+// function itself.
+// TODO(mdan): Replace with a trait, when available.
+FullTypeDef ShardTensor(const FullTypeDef& t);
+
 }  // namespace full_type
 
 }  // namespace tensorflow

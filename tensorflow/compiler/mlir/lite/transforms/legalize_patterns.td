@@ -16,8 +16,9 @@ limitations under the License.
 // TFLite legalization patterns
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
@@ -542,3 +543,7 @@ def LegalizeMultinomial : Pat<
   (TF_MultinomialOp $logits, $num_samples, $seed, $seed2),
   (TFL_MultinomialOp $logits, $num_samples, (convertIntAttrTo64Bit $seed),
    (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeXlaDynamicUpdateSlice : Pat<
+  (TF_XlaDynamicUpdateSliceOp $operand, $update, $start_indices),
+  (TFL_DynamicUpdateSliceOp $operand, $update, $start_indices)>;

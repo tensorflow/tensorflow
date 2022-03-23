@@ -152,8 +152,6 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-      # TODO(b/143910018) Remove graph_parents in V3.
-      self._set_graph_parents([self._matrix])
 
   def _check_matrix(self, matrix):
     """Static check of the `matrix` argument."""

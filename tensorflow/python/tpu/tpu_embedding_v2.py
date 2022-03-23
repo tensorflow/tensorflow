@@ -62,7 +62,10 @@ _NAME_KEY = "_tpu_embedding_layer"
 
 class TPUShardedVariable(sharded_variable.ShardedVariableMixin):
   """A ShardedVariable class for TPU."""
-  pass
+
+  @property
+  def _in_graph_mode(self):
+    return self.variables[0]._in_graph_mode  # pylint: disable=protected-access
 
 
 def _add_key_attr(op, name):
@@ -909,7 +912,7 @@ class TPUEmbedding(tracking.AutoTrackable):
           "Weight will always be 1 in this case.".format(path))
     # For tensors, there are no indices and no weights.
     indices.append(int_zeros)
-    values.append(math_ops.cast(array_ops.reshape(tensor, [-1]), dtypes.int32))
+    values.append(math_ops.cast(array_ops.reshape(tensor, [-1]), dtypes.int64))
     weights.append(float_zeros)
 
   def _add_data_for_sparse_tensor(self, tensor, weight, indices, values,
@@ -922,7 +925,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         sample_indices = array_ops.pad(
             sample_indices, paddings=[[0, 0], [0, 1]])
     indices.append(sample_indices)
-    values.append(math_ops.cast(tensor.values, dtypes.int32))
+    values.append(math_ops.cast(tensor.values, dtypes.int64))
     # If we have weights they must be a SparseTensor.
     if weight is not None:
       if not isinstance(weight, sparse_tensor.SparseTensor):
@@ -937,7 +940,7 @@ class TPUEmbedding(tracking.AutoTrackable):
                                   weights, int_zeros, float_zeros, path,
                                   feature):
     row_splits.append(math_ops.cast(tensor.row_splits, dtypes.int32))
-    values.append(math_ops.cast(tensor.values, dtypes.int32))
+    values.append(math_ops.cast(tensor.values, dtypes.int64))
     # If we have weights they must be a RaggedTensor.
     if weight is not None:
       if not isinstance(weight, ragged_tensor.RaggedTensor):

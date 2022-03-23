@@ -69,7 +69,7 @@ def TestFactory(xla_backend,
     float_dtypes = [np.float32]
     complex_dtypes = [np.complex64]
     standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
-  dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_]
+  dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
     """Base class for running an XLA Computation through the local client."""
@@ -576,14 +576,14 @@ def TestFactory(xla_backend,
       self.assertNotEqual(hash(a), hash(c))
       self.assertNotEqual(hash(b), hash(c))
 
-    def testBlockHostUntilReadyWorks(self):
+    def testBlockUntilReadyWorks(self):
       arg = np.array([[1., 2.]], np.float32)
       arg_buffer = self.backend.buffer_from_pyval(arg)
-      arg_buffer.block_host_until_ready()
+      arg_buffer.block_until_ready()
       # This test merely checks that nothing goes awry when we call
-      # block_host_until_ready(); it's difficult to test anything else.
+      # block_until_ready(); it's difficult to test anything else.
 
-    def testBlockHostUntilReadyRaisesOnDeletedBuffer(self):
+    def testBlockUntilReadyRaisesOnDeletedBuffer(self):
       arg = np.array([[1., 2.]], np.float32)
       buffer = self.backend.buffer_from_pyval(arg)
       buffer.delete()
@@ -591,7 +591,7 @@ def TestFactory(xla_backend,
           RuntimeError,
           re.escape(
               "BlockHostUntilReady() called on deleted or donated buffer")):
-        buffer.block_host_until_ready()
+        buffer.block_until_ready()
 
     def testDeviceArrayBaseSignatures(self):
       # When extending `DeviceArrayBase`, the object behaves as a `DeviceArray`

@@ -125,9 +125,11 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
     absl::Span<const int64_t> fft_length) {
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
+  auto fft_type_attr = mlir::mhlo::symbolizeFftType(FftType_Name(fft_type));
   auto op = builder_.create<mlir::mhlo::FftOp>(
       loc_, ty, GetValue(operand),
-      builder_.getStringAttr(FftType_Name(fft_type)),
+      mlir::mhlo::FftTypeAttr::get(builder_.getContext(),
+                                   fft_type_attr.getValue()),
       GetI64ElementsAttr(fft_length, &builder_));
   return MakeXlaOp(op);
 }
@@ -203,7 +205,8 @@ StatusOr<XlaOp> MlirHloBuilder::ReduceInternal(
       loc_, GetValues(all_operands.first(num_args)),
       GetValues(all_operands.subspan(num_args)),
       GetI64ElementsAttr(dimensions_to_reduce, &builder_));
-  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body()));
+  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body(),
+                                       /*flatten_region_arg_tuple*/ true));
   if (op.getNumResults() == 1) return MakeXlaOp(op.getResult(0));
   auto tuple = builder_.create<mlir::mhlo::TupleOp>(loc_, op.getResults());
   return MakeXlaOp(tuple);
@@ -234,7 +237,8 @@ StatusOr<XlaOp> MlirHloBuilder::ReduceWindowInternal(
       GetI64ElementsAttr(base_dilations, &builder_),
       GetI64ElementsAttr(win_dilations, &builder_),
       mlir::DenseIntElementsAttr::get(padding_ty, padding));
-  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body()));
+  TF_RETURN_IF_ERROR(ImportComputation(computation.proto(), &op.body(),
+                                       /*flatten_region_arg_tuple*/ true));
   return MakeXlaOp(op.getResult(0));
 }
 
@@ -492,8 +496,14 @@ StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
                                          shape, builder_));
   auto op = builder_.create<mlir::mhlo::CompareOp>(
       loc_, ty, GetValue(lhs), GetValue(rhs),
-      builder_.getStringAttr(ComparisonDirectionToString(direction)),
-      builder_.getStringAttr(ComparisonTypeToString(type)));
+      mlir::mhlo::ComparisonDirectionAttr::get(
+          builder_.getContext(), mlir::mhlo::symbolizeComparisonDirection(
+                                     ComparisonDirectionToString(direction))
+                                     .getValue()),
+      mlir::mhlo::ComparisonTypeAttr::get(
+          builder_.getContext(),
+          mlir::mhlo::symbolizeComparisonType(ComparisonTypeToString(type))
+              .getValue()));
   return MakeXlaOp(op.getResult());
 }
 
@@ -527,8 +537,11 @@ StatusOr<XlaOp> MlirHloBuilder::TriangularSolveInternal(
       builder_.getBoolAttr(options.left_side()),
       builder_.getBoolAttr(options.lower()),
       builder_.getBoolAttr(options.unit_diagonal()),
-      builder_.getStringAttr(
-          TriangularSolveOptions::Transpose_Name(options.transpose_a())));
+      mlir::mhlo::TransposeAttr::get(
+          builder_.getContext(),
+          ::mlir::mhlo::symbolizeTranspose(
+              TriangularSolveOptions::Transpose_Name(options.transpose_a()))
+              .getValue()));
   return MakeXlaOp(op);
 }
 
@@ -569,8 +582,11 @@ StatusOr<XlaOp> MlirHloBuilder::OutfeedWithTokenInternal(
     XlaOp operand, XlaOp token, const Shape& shape_with_layout,
     const std::string& outfeed_config) {
   auto token_type = mlir::mhlo::TokenType::get(builder_.getContext());
+  llvm::SmallVector<mlir::Value> flattened_operands;
+  HloFunctionImporter::FlattenTupleValue(&builder_, loc_, GetValue(operand),
+                                         flattened_operands);
   return MakeXlaOp(builder_.create<mlir::mhlo::OutfeedOp>(
-      loc_, token_type, GetValue(operand), GetValue(token), outfeed_config));
+      loc_, token_type, flattened_operands, GetValue(token), outfeed_config));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::ConcatInDimInternal(

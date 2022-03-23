@@ -341,7 +341,7 @@ func @testMultipleBlockFunc() {
     %1:2 = tf_executor.island wraps "tf.Identity"(%0#0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#1 : !tf_executor.control
   }
-  br ^bb1
+  cf.br ^bb1
 ^bb1:
   return
 }

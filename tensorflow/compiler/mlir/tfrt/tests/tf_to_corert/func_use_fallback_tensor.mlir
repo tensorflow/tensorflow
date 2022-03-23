@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-to-tfrt=func-use-fallback-tensor=true %s | FileCheck %s --dump-input=fail
+// RUN: tf-tfrt-opt -tf-to-tfrt="func-use-fallback-tensor=true enable-while-parallel-iterations=true" %s | FileCheck %s --dump-input=fail
 
 // This file tests the correctness of `func-use-fallback-tensor` option when
 // converting from TF to TFRT. Since func op is used by the control flow ops,
@@ -65,14 +65,14 @@ func @while_test() -> (tensor<i32>) {
   // CHECK: [[CONST:%.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor [[CONST_TH]]
   // CHECK: (!corert.tensorhandle) -> (!tfrt_fallback.tf_tensor)
   // CHECK: [[pred_res:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"([[ARG0]], [[CONST]]) : (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, i1)
-  // CHECK: [[while_res:%.]]:2 = tfrt.while [[pred_res]]#1 @"while_body_add2/tfrt_body"([[pred_res]]#0, [[CONST]])
+  // CHECK: [[while_res:%.]]:2 = tfrt.while [[pred_res]]#1 @"while_body_add2/tfrt_body_1"([[pred_res]]#0, [[CONST]])
   // CHECK-SAME: (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
-  %1 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
+  %1 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false, parallel_iterations = 1} : (tensor<i32>) -> (tensor<i32>)
   // CHECK: [[out_chain:%.*]] = tfrt.merge.chains [[while_res]]#0, [[ARG0]]
   // CHECK: tfrt.return [[out_chain]], [[while_res]]#1 : !tfrt.chain, !tfrt_fallback.tf_tensor
   return %1 : tensor<i32>
 }
-// CHECK: func @"while_body_add2/tfrt_body"([[ch:%.*]]: !tfrt.chain, [[arg:%.*]]: !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor, i1)
+// CHECK: func @"while_body_add2/tfrt_body_1"([[ch:%.*]]: !tfrt.chain, [[arg:%.*]]: !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor, i1)
 // CHECK: [[body_res:%.*]]:2 = tfrt.call @while_body_add2([[ch]], [[arg]]) : (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, !tfrt_fallback.tf_tensor)
 // CHECK: [[pred_res:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"([[body_res]]#0, [[body_res]]#1) : (!tfrt.chain, !tfrt_fallback.tf_tensor) -> (!tfrt.chain, i1)
 // CHECK: tfrt.return [[pred_res]]#0, [[body_res]]#1, [[pred_res]]#1 : !tfrt.chain, !tfrt_fallback.tf_tensor, i1
@@ -87,11 +87,13 @@ func @multi_while_test() -> (tensor<i32>, tensor<i32>) {
   %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Const"() {device = "/device:CPU:0", value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: [[pred_0:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"
-  // CHECK: tfrt.while [[pred_0]]#1 @"while_body_add2/tfrt_body"
+  // CHECK: tfrt.while [[pred_0]]#1 @"while_body_add2/tfrt_body_10"
+  // CHECK-SAME: parallel_iterations(10)
   // CHECK: [[pred_1:%.*]]:2 = tfrt.call @"while_cond_lt9/tfrt_predicate"
-  // CHECK: tfrt.while [[pred_1]]#1 @"while_body_add2/tfrt_body"
-  %2 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
-  %3 = "tf.While"(%1) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
+  // CHECK: tfrt.while [[pred_1]]#1 @"while_body_add2/tfrt_body_1"
+  // CHECK-SAME: parallel_iterations(1)
+  %2 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false, parallel_iterations = 10} : (tensor<i32>) -> (tensor<i32>)
+  %3 = "tf.While"(%1) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false, parallel_iterations = 1} : (tensor<i32>) -> (tensor<i32>)
   return %2, %3 : tensor<i32>, tensor<i32>
 }
 
@@ -113,9 +115,9 @@ func @side_effect_while_body_add2(%arg: tensor<!tf_type.resource<tensor<i32>>>) 
 // CHECK-LABEL: func @side_effect_while_test
 func @side_effect_while_test() -> (tensor<i32>) {
   %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "c", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<i32>>>
-  // CHECK: [[while_res:%.]]:2 = tfrt.while {{%.*}} @"side_effect_while_body_add2/tfrt_body"
+  // CHECK: [[while_res:%.]]:2 = tfrt.while {{%.*}} @"side_effect_while_body_add2/tfrt_body_1"
   // CHECK: [[out_ch:%.*]], [[res:%.*]] = tfrt_fallback_async.executeop.seq([[while_res]]#0) {{.*}} "tf.ReadVariableOp"
-  %1 = "tf.While"(%0) { cond = @side_effect_while_cond_lt9, body = @side_effect_while_body_add2, is_stateless = false} : (tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<!tf_type.resource<tensor<i32>>>)
+  %1 = "tf.While"(%0) { cond = @side_effect_while_cond_lt9, body = @side_effect_while_body_add2, is_stateless = false, parallel_iterations = 1} : (tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<!tf_type.resource<tensor<i32>>>)
   %2 = "tf.ReadVariableOp"(%1) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   return %2 : tensor<i32>
 }
@@ -144,7 +146,8 @@ func @tensor_array_while_test(%indices: tensor<?xi32>, %input_0: tensor<?x?x?xf3
   %handle_1, %flow_1 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf_type.shape<?x512>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/output_0"} : (tensor<i32>) -> (tensor<2x!tf_type.resource<tensor<?x512xf32>>>, tensor<f32>)
   %flow_01 = "tf.TensorArrayScatterV3"(%handle_0, %indices, %input_0, %flow_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<?xi32>, tensor<?x?x?xf32>, tensor<f32>) -> tensor<f32>
   // CHECK: [[pred_0:%.*]]:2 = tfrt.call @"tensor_array_while_cond/tfrt_predicate"([[in_chain]]
-  // CHECK: [[while_res_0:%.*]]:7 = tfrt.while {{%.*}} @"tensor_array_while_body/tfrt_body"([[pred_0]]#0
+  // CHECK: [[while_res_0:%.*]]:7 = tfrt.while {{%.*}} @"tensor_array_while_body/tfrt_body_10"([[pred_0]]#0
+  // CHECK-SAME: parallel_iterations(10)
   %res_0:6 = "tf.While"(%index, %size, %flow_01, %flow_1, %handle_0, %handle_1) {body = @tensor_array_while_body, cond = @tensor_array_while_cond, device = "", is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>)
   %output_0 = "tf.TensorArrayGatherV3"(%handle_1, %indices, %res_0#3) {device = "/job:localhost/replica:0/task:0/device:CPU:0", element_shape = #tf_type.shape<?x512>} : (tensor<2x!tf_type.resource<tensor<?x512xf32>>>, tensor<?xi32>, tensor<f32>) -> tensor<?x?x512xf32>
 
@@ -152,11 +155,14 @@ func @tensor_array_while_test(%indices: tensor<?xi32>, %input_0: tensor<?x?x?xf3
   %handle_3, %flow_3 = "tf.TensorArrayV3"(%size) {clear_after_read = true, device = "/job:localhost/replica:0/task:0/device:CPU:0", dtype = f32, dynamic_size = false, element_shape = #tf_type.shape<?x512>, identical_element_shapes = true, tensor_array_name = "processed_embeddings/bidirectional_rnn/bw/bw/dynamic_rnn/output_0"} : (tensor<i32>) -> (tensor<2x!tf_type.resource<tensor<?x512xf32>>>, tensor<f32>)
   %flow_21 = "tf.TensorArrayScatterV3"(%handle_2, %indices, %input_1, %flow_2) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<?xi32>, tensor<?x?x?xf32>, tensor<f32>) -> tensor<f32>
   // CHECK: [[pred_1:%.*]]:2 = tfrt.call @"tensor_array_while_cond/tfrt_predicate"([[in_chain]]
-  // CHECK: [[while_res_1:%.*]]:7 = tfrt.while {{%.*}} @"tensor_array_while_body/tfrt_body"([[pred_1]]#0
+  // CHECK: [[while_res_1:%.*]]:7 = tfrt.while {{%.*}} @"tensor_array_while_body/tfrt_body_10"([[pred_1]]#0
+  // CHECK-SAME: parallel_iterations(10)
   %res_1:6 = "tf.While"(%index, %size, %flow_21, %flow_3, %handle_2, %handle_3) {body = @tensor_array_while_body, cond = @tensor_array_while_cond, device = "", is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<f32>, tensor<f32>, tensor<2x!tf_type.resource<tensor<?x100xf32>>>, tensor<2x!tf_type.resource<tensor<?x512xf32>>>)
   %output_1 = "tf.TensorArrayGatherV3"(%handle_3, %indices, %res_1#3) {device = "/job:localhost/replica:0/task:0/device:CPU:0", element_shape = #tf_type.shape<?x512>} : (tensor<2x!tf_type.resource<tensor<?x512xf32>>>, tensor<?xi32>, tensor<f32>) -> tensor<?x?x512xf32>
   return %output_0, %output_1 : tensor<?x?x512xf32>, tensor<?x?x512xf32>
 }
+
+// CHECK: func @"tensor_array_while_body/tfrt_body_10"
 
 func @callee(%arg0: tensor<i32>) -> (tensor<i32>) {
   return %arg0: tensor<i32>

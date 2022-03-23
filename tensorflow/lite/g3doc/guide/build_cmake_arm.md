@@ -137,7 +137,9 @@ cmake -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
 ```
 
 **Note:** Since ARMv7 architecture is diverse, you may need to update
-ARMCC_FLAGS for your target device profiles.
+ARMCC_FLAGS for your target device profiles. For example, when compiling with
+XNNPACK enabled (i.e. `XNNPACK=ON`) in Tensorflow Lite 2.8, please add
+`-mfp16-format=ieee` to ARMCC_FLAGS.
 
 ## Build for Raspberry Pi Zero (ARMv6)
 

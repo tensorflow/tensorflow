@@ -676,6 +676,16 @@ class ShardedVariableTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(equal, [True, True])
     self.assertAllEqual(sv1 + sv2, [2.0, 4.0])
 
+  def test_shards_have_container_set(self):
+    v1 = [
+        variables_lib.Variable([1.]),
+        variables_lib.Variable([2.]),
+    ]
+    sv1 = sharded_variable.ShardedVariable(v1)
+    for v in sv1.variables:
+      self.assertTrue(hasattr(v, '_sharded_container'))
+      self.assertIs(v._sharded_container(), sv1)
+
 
 if __name__ == '__main__':
   v2_compat.enable_v2_behavior()

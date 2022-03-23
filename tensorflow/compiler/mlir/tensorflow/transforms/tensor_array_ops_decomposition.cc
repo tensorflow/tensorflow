@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -596,7 +596,8 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
       new_retvals.push_back(body_stats[arg].grads[source]);
     }
   }
-  OpBuilder(old_body_ret).create<ReturnOp>(old_body_ret->getLoc(), new_retvals);
+  OpBuilder(old_body_ret)
+      .create<func::ReturnOp>(old_body_ret->getLoc(), new_retvals);
   old_body_ret->erase();
   UpdateFuncType(body);
   // Recreate the while op.
@@ -622,9 +623,9 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
     }
   }
   OpBuilder builder(while_op);
-  auto new_while =
-      builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  operands, while_op->getAttrs());
+  auto new_while = builder.create<TF::WhileOp>(
+      while_op.getLoc(), body.getFunctionType().getInputs(), operands,
+      while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumOperands(); ++i) {
     if (ta_arg_buffer_type(i)) {
       while_op.getResult(i).replaceAllUsesWith(while_op.getOperand(i));
@@ -689,9 +690,9 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
     }
   }
   OpBuilder builder(if_op);
-  auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
-                                         then_branch.getType().getResults(),
-                                         operands, if_op->getAttrs());
+  auto new_if = builder.create<TF::IfOp>(
+      if_op.getLoc(), then_branch.getFunctionType().getResults(), operands,
+      if_op->getAttrs());
   auto ret_forwards_input = [](FuncOp f, int64_t ret_ind) -> int64_t {
     auto retval = f.front().getTerminator()->getOperand(ret_ind);
     auto arg = retval.dyn_cast<BlockArgument>();
@@ -749,7 +750,7 @@ LogicalResult HandlePartitionedCallOp(
     }
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
-        call.getLoc(), info.decomposed_callee.getType().getResults(),
+        call.getLoc(), info.decomposed_callee.getFunctionType().getResults(),
         new_operands, call->getAttrs());
     new_call->setAttr(
         "f", SymbolRefAttr::get(

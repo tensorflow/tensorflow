@@ -1965,21 +1965,17 @@ Applies a reduction function to one or more arrays in parallel.
 Where:
 
 *   N is required to be greater or equal to 1.
+*   The computation has to be "roughly" associative (see below).
 *   All input arrays must have the same dimensions.
+*   All initial values have to form an identity under `computation`.
 *   If `N = 1`, `Collate(T)` is `T`.
 *   If `N > 1`, `Collate(T_0, ..., T_{N-1})` is a tuple of `N` elements of type
     `T`.
 
-The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
-`T_i`, the dimensions of which are described below.
-
 This operation reduces one or more dimensions of each input array into scalars.
-The rank of each returned array is `rank(operand) - len(dimensions)`. The
-initial value used for every reduction is `init_value`, and it may be inserted
-anywhere during computation by the back-end. It is required that `init_value` is
-an identity of the reduction function (for example, `0` for addition) or
-undefined behavior will occur. The applied `computation` is always passed the
-`init_value` on the left-hand side.
+The rank of each returned array is `rank(operand) - len(dimensions)`. The output
+of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type `T_i`, the
+dimensions of which are described below.
 
 Different backends are allowed to reassociate the reduction computation.  This
 can lead to numerical differences, as some reduction functions like addition are
@@ -1987,9 +1983,11 @@ not associative for floats.
 However, if the range of the data is limited, floating-point addition is close
 enough to being associative for most practical uses.
 
-As an example, when reducing across one dimension in a single 1D array with
-values `[10, 11, 12, 13]`, with reduction function `f` (this is `computation`)
-then that could be computed as
+### Examples
+
+When reducing across one dimension in a single 1D array with values `[10, 11,
+12, 13]`, with reduction function `f` (this is `computation`) then that could be
+computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
 

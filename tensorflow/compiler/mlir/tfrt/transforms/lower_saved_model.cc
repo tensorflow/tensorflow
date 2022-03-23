@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -46,7 +46,7 @@ bool IsSessionInitializer(mlir::FuncOp op) {
   if (!session_initializer_op) return false;
 
   for (auto sym_ref : session_initializer_op.initializers()) {
-    if (op.sym_name() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
+    if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
       return true;
   }
 
@@ -342,7 +342,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
 
   mlir::TF::SideEffectAnalysis side_effect_analysis(module);
 
-  mlir::OpBuilder builder(&module.body());
+  mlir::OpBuilder builder(&module.getBodyRegion());
   // "_tfrt_resource_init" is the special function that executes all invariant
   // ops (eg. read-only variables) used in the model. This function should be
   // executed after user-specified initialization.
@@ -359,8 +359,8 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     // Skips hoisting if this function is an init function or any callees,
     // including recursive ones, of an init functions, because otherwise the
     // hoisted values won't be initialized when this function is called.
-    if (IsSessionInitializer(func) || init_callees.contains(func.sym_name()) ||
-        func == init_func_op)
+    if (IsSessionInitializer(func) ||
+        init_callees.contains(func.getSymName()) || func == init_func_op)
       continue;
 
     HoistInvariantOpsInFunction(func, read_only_vars,
@@ -390,7 +390,7 @@ void HoistInvariantOps(mlir::ModuleOp module) {
 
   builder.setInsertionPointToEnd(block);
   // Finish building the init function by inserting an return op.
-  builder.create<mlir::ReturnOp>(init_func_op.getLoc());
+  builder.create<mlir::func::ReturnOp>(init_func_op.getLoc());
 
   // Now that we have the index for each value that will be replaced, we can
   // create the tf._TfrtGetResource op in each function using these indices.
@@ -571,12 +571,12 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteGlobalTensors(
         mlir::tf_saved_model::GlobalTensorOp>(op, i, symbol_table);
     if (!global_tensor_op) continue;
 
-    auto result_types = op.getType().getResults();
+    auto result_types = op.getFunctionType().getResults();
     if (failed(PromoteFunctionArgument(op, i, global_tensor_op.type(),
                                        symbol_table)))
       return mlir::failure();
 
-    if (!CompareTypes(op.getType().getResults(), result_types).empty())
+    if (!CompareTypes(op.getFunctionType().getResults(), result_types).empty())
       op.emitOpError("cannot promote exported functions's results");
   }
   return mlir::success();
@@ -600,7 +600,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteFunctionArgument(
   cleanup_on_failure.release();
 
   // Update the function type accordingly.
-  auto return_op = llvm::cast<mlir::ReturnOp>(block.getTerminator());
+  auto return_op = llvm::cast<mlir::func::ReturnOp>(block.getTerminator());
   auto new_results = return_op.operands();
 
   func.setType(mlir::FunctionType::get(
@@ -624,7 +624,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
   // Next, we handle control flow ops.
   if (!llvm::isa<mlir::TF::IfOp, mlir::TF::CaseOp, mlir::TF::WhileOp,
                  mlir::CallOpInterface, mlir::TF::BatchFunctionOp,
-                 mlir::ReturnOp>(op))
+                 mlir::func::ReturnOp>(op))
     return op->emitOpError("unsupported users of resource variables");
 
   llvm::SmallVector<unsigned, 2> promoted_result_indices;
@@ -661,15 +661,15 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
 
     unsigned arg_index = operand_number - 1;
     for (auto func : {then_branch, else_branch}) {
-      if (func.getType().getInput(arg_index) != promoted.getType()) {
+      if (func.getFunctionType().getInput(arg_index) != promoted.getType()) {
         // Rescursively promote the uses in branches.
         if (failed(PromoteFunctionArgument(func, arg_index, promoted.getType(),
                                            symbol_table)))
           return mlir::failure();
       }
 
-      if (failed(update_promoted_result_indices(if_op,
-                                                func.getType().getResults())))
+      if (failed(update_promoted_result_indices(
+              if_op, func.getFunctionType().getResults())))
         return mlir::failure();
     }
   } else if (auto case_op = llvm::dyn_cast<mlir::TF::CaseOp>(op)) {
@@ -679,15 +679,15 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
       auto branch = symbol_table.lookup<mlir::FuncOp>(
           branch_attr.cast<mlir::FlatSymbolRefAttr>().getValue());
 
-      if (branch.getType().getInput(arg_index) != promoted.getType()) {
+      if (branch.getFunctionType().getInput(arg_index) != promoted.getType()) {
         // Rescursively promote the uses in branches.
         if (failed(PromoteFunctionArgument(branch, arg_index,
                                            promoted.getType(), symbol_table)))
           return mlir::failure();
       }
 
-      if (failed(update_promoted_result_indices(case_op,
-                                                branch.getType().getResults())))
+      if (failed(update_promoted_result_indices(
+              case_op, branch.getFunctionType().getResults())))
         return mlir::failure();
     }
   } else if (auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(op)) {
@@ -697,26 +697,26 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
     assert(body);
 
     unsigned arg_index = operand_number;
-    if (cond.getType().getInput(arg_index) != promoted.getType()) {
-      auto cond_result_type = cond.getType().getResult(0);
+    if (cond.getFunctionType().getInput(arg_index) != promoted.getType()) {
+      auto cond_result_type = cond.getFunctionType().getResult(0);
       if (failed(PromoteFunctionArgument(cond, arg_index, promoted.getType(),
                                          symbol_table)))
         return mlir::failure();
 
       // We cannot promote the result of cond branch as it may change the
       // behavior of this while op.
-      if (cond_result_type != cond.getType().getResult(0))
+      if (cond_result_type != cond.getFunctionType().getResult(0))
         return while_op.emitOpError("failed to promote cond for tf.While");
     }
 
-    if (body.getType().getInput(arg_index) != promoted.getType()) {
+    if (body.getFunctionType().getInput(arg_index) != promoted.getType()) {
       if (failed(PromoteFunctionArgument(body, /*arg_index=*/operand_number,
                                          promoted.getType(), symbol_table)))
         return mlir::failure();
     }
 
-    if (failed(update_promoted_result_indices(while_op,
-                                              body.getType().getResults())))
+    if (failed(update_promoted_result_indices(
+            while_op, body.getFunctionType().getResults())))
       return mlir::failure();
 
   } else if (auto call_interface = llvm::dyn_cast<mlir::CallOpInterface>(op)) {
@@ -729,14 +729,14 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
 
     unsigned arg_index =
         operand_number - call_interface.getArgOperands().getBeginOperandIndex();
-    if (callee.getType().getInput(arg_index) != promoted.getType()) {
+    if (callee.getFunctionType().getInput(arg_index) != promoted.getType()) {
       if (failed(PromoteFunctionArgument(callee, arg_index, promoted.getType(),
                                          symbol_table)))
         return mlir::failure();
     }
 
-    if (failed(
-            update_promoted_result_indices(op, callee.getType().getResults())))
+    if (failed(update_promoted_result_indices(
+            op, callee.getFunctionType().getResults())))
       return mlir::failure();
   } else if (auto batch_function_op =
                  llvm::dyn_cast<mlir::TF::BatchFunctionOp>(op)) {
@@ -745,14 +745,14 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
     assert(batch_fn);
 
     unsigned arg_index = operand_number;
-    if (batch_fn.getType().getInput(arg_index) != promoted.getType()) {
+    if (batch_fn.getFunctionType().getInput(arg_index) != promoted.getType()) {
       if (failed(PromoteFunctionArgument(batch_fn, arg_index,
                                          promoted.getType(), symbol_table)))
         return mlir::failure();
     }
 
-    if (failed(update_promoted_result_indices(op,
-                                              batch_fn.getType().getResults())))
+    if (failed(update_promoted_result_indices(
+            op, batch_fn.getFunctionType().getResults())))
       return mlir::failure();
   }
 

@@ -41,10 +41,10 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -1226,7 +1226,7 @@ LogicalResult ValidateOp(Operation *op) {
 LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   ConversionTarget target(*context);
   target.addLegalDialect<arith::ArithmeticDialect>();
-  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<FuncOp>();
@@ -1391,10 +1391,10 @@ void PrepareTFPass::runOnOperation() {
   // This pattern will try to identify and optimize for dilated convolution.
   // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be
   // replaced with a single Conv op with dilation parameter.
-  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
-                  ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
+  patterns.add<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
+               ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
-  patterns.insert<RemoveIdentity>(ctx);
+  patterns.add<RemoveIdentity>(ctx);
   TFL::populateWithGenerated(patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
@@ -1421,9 +1421,9 @@ void PrepareTFPass::runOnOperation() {
     TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }
   phase_2_patterns
-      .insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
-              ConvertTFStridedSlice, ConvertRfftToRfft2d, RemoveIdentity>(ctx);
-  phase_2_patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
+      .add<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFStridedSlice,
+           ConvertRfftToRfft2d, RemoveIdentity>(ctx);
+  phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));

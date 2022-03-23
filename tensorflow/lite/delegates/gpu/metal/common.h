@@ -37,6 +37,21 @@ absl::Status CreateComputeProgram(
     const std::map<std::string, std::string>& macros,
     id<MTLComputePipelineState>* program);
 
+absl::Status CreateComputeProgramWithArgumentBuffer(
+    id<MTLDevice> device, const std::string& code,
+    const std::string& function_name,
+    const std::map<std::string, std::string>& macros,
+    id<MTLComputePipelineState>* program,
+    id<MTLArgumentEncoder>* arguments_encoder);
+
+// ICB - indirect command buffer
+absl::Status CreateComputeProgramWithICBSupport(
+    id<MTLDevice> device, const std::string& code,
+    const std::string& function_name,
+    const std::map<std::string, std::string>& macros,
+    id<MTLComputePipelineState>* program,
+    id<MTLArgumentEncoder>* arguments_encoder);
+
 absl::Status CreateFunction(id<MTLDevice> device, const std::string& code,
                             const std::string& function_name,
                             const std::map<std::string, std::string>& macros,

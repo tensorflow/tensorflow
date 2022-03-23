@@ -475,6 +475,72 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveBcastRecv").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("CollectiveBcastRecv").Device(DEVICE_DEFAULT),
                         CollectiveBcastRecvOpKernel);
 
+class CollectiveAssignGroupV2OpKernel : public OpKernel {
+ public:
+  explicit CollectiveAssignGroupV2OpKernel(OpKernelConstruction* c)
+      : OpKernel(c) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& group_assignment = context->input(0);
+    const Tensor& device_index = context->input(1);
+
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(device_index.shape()),
+        errors::InvalidArgument(
+            "device_index must be a scalar, but received tensor of shape: ",
+            device_index.shape().DebugString()));
+
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsMatrix(group_assignment.shape()),
+        errors::InvalidArgument("group_assignment must be a 2-d Tensor, but "
+                                "received tensor of shape: ",
+                                group_assignment.shape().DebugString()));
+
+    Tensor* output = nullptr;
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &output, attr));
+    OP_REQUIRES_OK(context,
+                   ComputeGroupKey(group_assignment,
+                                   device_index.scalar<int32_t>()(), output));
+  }
+
+ private:
+  static Status ComputeGroupKey(const Tensor& group_assignment,
+                                const int32_t device_index, Tensor* output) {
+    for (int group_id = 0; group_id < group_assignment.dim_size(0);
+         group_id++) {
+      for (int color = 0; color < group_assignment.dim_size(1); color++) {
+        const auto index = group_assignment.matrix<int32>()(group_id, color);
+        if (index < 0 || index >= group_assignment.shape().num_elements()) {
+          return errors::InvalidArgument("Not all items in group_assignment ",
+                                         group_assignment.DebugString(),
+                                         " is within [0, number of devices)");
+        }
+        if (index == device_index) {
+          // Ensure we don't create 0 group keys
+          // Potentially reserved for special use to represent all devices.
+          output->flat<int32_t>()(0) = 0x7F000000 + group_id;
+          return Status::OK();
+        }
+      }
+    }
+    return errors::InvalidArgument("device_index ", device_index,
+                                   " is not found in group_assignment ",
+                                   group_assignment.DebugString());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("CollectiveAssignGroupV2").Device(DEVICE_CPU),
+                        CollectiveAssignGroupV2OpKernel);
+REGISTER_KERNEL_BUILDER(Name("CollectiveAssignGroupV2")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("device_index")
+                            .HostMemory("group_assignment")
+                            .HostMemory("group_key"),
+                        CollectiveAssignGroupV2OpKernel);
+
 class CollectiveOpV2Kernel : public AsyncOpKernel {
  public:
   explicit CollectiveOpV2Kernel(OpKernelConstruction* c)

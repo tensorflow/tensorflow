@@ -98,6 +98,7 @@ typedef enum {
   kTfLiteResource = 14,
   kTfLiteVariant = 15,
   kTfLiteUInt32 = 16,
+  kTfLiteUInt16 = 17,
 } TfLiteType;
 
 // Legacy. Will be deprecated in favor of TfLiteAffineQuantization.

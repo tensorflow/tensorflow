@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/hash_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -773,8 +774,8 @@ void SnapshotDatasetV2Op::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     params.input_list = &input_list;
     params.external_state_policy =
         SerializationContext::ExternalStatePolicy::kIgnore;
-    OP_REQUIRES_OK(
-        ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
+    OP_REQUIRES_OK(ctx,
+                   AsGraphDef(input, SerializationContext(params), &graph_def));
     OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash));
     // Different compression modes should result in different graph hashes.
     hash = Hash64Combine(hash, Hash64(compression));
@@ -926,8 +927,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         SerializationContext::ExternalStatePolicy::kIgnore;
 
     GraphDef graph_def;
-    OP_REQUIRES_OK(
-        ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
+    OP_REQUIRES_OK(ctx,
+                   AsGraphDef(input, SerializationContext(params), &graph_def));
 
     uint64 hash;
     OP_REQUIRES_OK(ctx, ComputeDatasetHash(graph_def, path, &hash));

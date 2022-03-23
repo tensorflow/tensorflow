@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -267,6 +268,7 @@ inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t) {
 
 Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
                       FullTypeDef& target) {
+  target.Clear();
   target.set_type_id(TFT_PRODUCT);
 
   AttrMap map;
@@ -337,6 +339,20 @@ bool IsEqual(const FullTypeDef& lhs, const FullTypeDef& rhs) {
     }
   }
   return true;
+}
+
+uint64_t Hash(const FullTypeDef& arg) {
+  // Following style of IsEqual above and walking across FullTypeDef.
+  uint64_t val = Hash64Combine(arg.type_id(), 0);
+
+  const auto& arg_s = arg.s();
+  val = Hash64Combine(val, Hash64(arg_s));
+  for (int i = 0, e = arg.args_size(); i < e; ++i) {
+    const FullTypeDef& arg_arg = GetArgDefaultAny(arg, i);
+    val = Hash64Combine(val, Hash(arg_arg));
+  }
+
+  return val;
 }
 
 bool IsSubtype(const FullTypeDef& lhs, const FullTypeDef& rhs, bool covariant) {

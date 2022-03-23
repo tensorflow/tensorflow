@@ -85,7 +85,7 @@ struct FissionPass : public FissionBase<FissionPass> {
     mlir::MLIRContext* ctx = function.getContext();
 
     mlir::RewritePatternSet patterns(ctx);
-    patterns.insert<FusedMatMulFission>(ctx);
+    patterns.add<FusedMatMulFission>(ctx);
 
     (void)mlir::applyPatternsAndFoldGreedily(function, std::move(patterns));
   }

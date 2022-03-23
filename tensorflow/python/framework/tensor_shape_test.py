@@ -493,5 +493,62 @@ class ShapeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(reconstructed, shape)
 
 
+class TraceTypeTest(test_util.TensorFlowTestCase):
+
+  def testSubtypeOfEqualTypes(self):
+    type_1 = tensor_shape.TensorShape([1, 2, 3])
+    type_2 = tensor_shape.TensorShape([1, 2, 3])
+
+    self.assertTrue(type_2.is_subtype_of(type_1))
+    self.assertTrue(type_1.is_subtype_of(type_2))
+
+  def testReflexivity(self):
+    type_1 = tensor_shape.TensorShape([1, None, 3])
+    self.assertTrue(type_1.is_subtype_of(type_1))
+
+  def testSubtypeOfShapeless(self):
+    type_1 = tensor_shape.TensorShape(None)
+    type_2 = tensor_shape.TensorShape([1, 2, 3])
+    self.assertNotEqual(type_1, type_2)
+    self.assertFalse(type_1.is_subtype_of(type_2))
+    self.assertTrue(type_2.is_subtype_of(type_1))
+
+  def testSubtypeOfDimlessShape(self):
+    type_1 = tensor_shape.TensorShape([None, None, None])
+    type_2 = tensor_shape.TensorShape([1, 2, 3])
+    self.assertNotEqual(type_1, type_2)
+    self.assertFalse(type_1.is_subtype_of(type_2))
+    self.assertTrue(type_2.is_subtype_of(type_1))
+
+  def testSubtypeOfPartialShape(self):
+    type_1 = tensor_shape.TensorShape([None, 2, None])
+    type_2 = tensor_shape.TensorShape([1, 2, 3])
+    self.assertNotEqual(type_1, type_2)
+    self.assertFalse(type_1.is_subtype_of(type_2))
+    self.assertTrue(type_2.is_subtype_of(type_1))
+
+  def testSupertypeOfEqualTypes(self):
+    type_1 = tensor_shape.TensorShape([1, 2, 3])
+    type_2 = tensor_shape.TensorShape([1, 2, 3])
+    self.assertEqual(type_1.most_specific_common_supertype([type_2]), type_1)
+    self.assertEqual(type_2.most_specific_common_supertype([type_1]), type_2)
+
+  def testSupertypeOfRelatedTypes(self):
+    type_1 = tensor_shape.TensorShape([1, 2, 3])
+    type_2 = tensor_shape.TensorShape([None, 2, 3])
+    self.assertEqual(type_1.most_specific_common_supertype([type_2]), type_2)
+    self.assertEqual(type_2.most_specific_common_supertype([type_1]), type_2)
+
+  def testSupertypeOfUnrelatedTypes(self):
+    type_1 = tensor_shape.TensorShape([1, 2, 4])
+    type_2 = tensor_shape.TensorShape([None, 2, 3])
+    self.assertEqual(
+        type_1.most_specific_common_supertype([type_2]),
+        tensor_shape.TensorShape([None, 2, None]))
+    self.assertEqual(
+        type_2.most_specific_common_supertype([type_1]),
+        tensor_shape.TensorShape([None, 2, None]))
+
+
 if __name__ == "__main__":
   googletest.main()

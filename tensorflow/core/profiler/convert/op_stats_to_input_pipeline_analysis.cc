@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/util/stats_calculator.h"
 
 namespace tensorflow {
@@ -108,7 +107,7 @@ const char* kKernelLaunchTfDataContention =
 
 template <class Collection>
 double GetTimeInMs(const Collection& type_ps, EventType event_type) {
-  return PicosToMillis(gtl::FindWithDefault(type_ps, event_type, /*value=*/0));
+  return PicoToMilli(gtl::FindWithDefault(type_ps, event_type, /*value=*/0));
 }
 
 StepSummary GetStepSummaryForSampleStats(const Stat<double>& sample_stats) {
@@ -217,7 +216,7 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     } else {
       details.set_step_name(step_info.step_name());
     }
-    details.set_step_time_ms(PicosToMillis(step_info.duration_ps()));
+    details.set_step_time_ms(PicoToMilli(step_info.duration_ps()));
     GenericStepBreakdown generic;
     bool success = step_info.step_breakdown().UnpackTo(&generic);
     if (!success && !step_info.step_breakdown().type_url().empty()) {
@@ -343,8 +342,8 @@ InputOpDetails ConvertOpMetricsToInputOpDetails(const OpMetrics& op_metrics,
   InputOpDetails details;
   details.set_op_name(op_metrics.name());
   details.set_count(op_metrics.occurrences());
-  details.set_time_in_ms(PicosToMillis(op_metrics.time_ps()));
-  details.set_self_time_in_ms(PicosToMillis(op_metrics.self_time_ps()));
+  details.set_time_in_ms(PicoToMilli(op_metrics.time_ps()));
+  details.set_self_time_in_ms(PicoToMilli(op_metrics.self_time_ps()));
   details.set_time_in_percent(
       100.0 * SafeDivide(op_metrics.time_ps(), input_op_time_ps));
   details.set_self_time_in_percent(
@@ -486,7 +485,7 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
     *result->add_input_op_details() = ConvertOpMetricsToInputOpDetails(
         *op_metrics, input_op_metrics.input_op_time_ps, category);
     aggregated_input_op_times_us[category] +=
-        PicosToMicros(op_metrics->self_time_ps());
+        PicoToMicro(op_metrics->self_time_ps());
   }
 
   double enqueue_time_us =

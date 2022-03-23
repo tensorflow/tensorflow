@@ -28,11 +28,6 @@ limitations under the License.
 namespace mlir {
 namespace chlo {
 
-template <typename T>
-static LogicalResult Verify(T op) {
-  return success();
-}
-
 Value getConstantLikeMaxFiniteValue(OpBuilder& b, Location loc, Value val) {
   auto ty = getElementTypeOrSelf(val.getType()).cast<FloatType>();
   return getConstantLike(
@@ -187,7 +182,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
 
 LogicalResult BroadcastComplexOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange /*regions*/,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   ShapedType lhs_type = operands[0].getType().dyn_cast<ShapedType>();
   if (!lhs_type) {
@@ -212,8 +207,21 @@ LogicalResult BroadcastComplexOp::reifyReturnTypeShapes(
 void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
                                Value lhs, Value rhs,
                                DenseIntElementsAttr broadcast_dimensions,
-                               StringAttr comparison_direction,
-                               StringAttr compare_type) {
+                               mhlo::ComparisonDirection comparison_direction,
+                               mhlo::ComparisonType compare_type) {
+  auto new_type = GetBroadcastType(lhs.getType(), rhs.getType(),
+                                   builder.getI1Type(), broadcast_dimensions);
+  build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
+        mhlo::ComparisonDirectionAttr::get(builder.getContext(),
+                                           comparison_direction),
+        mhlo::ComparisonTypeAttr::get(builder.getContext(), compare_type));
+}
+
+void BroadcastCompareOp::build(
+    OpBuilder& builder, OperationState& result, Value lhs, Value rhs,
+    DenseIntElementsAttr broadcast_dimensions,
+    mhlo::ComparisonDirectionAttr comparison_direction,
+    mhlo::ComparisonTypeAttr compare_type) {
   auto new_type = GetBroadcastType(lhs.getType(), rhs.getType(),
                                    builder.getI1Type(), broadcast_dimensions);
   build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
@@ -222,7 +230,7 @@ void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
 
 LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, RegionRange /*regions*/,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   Type element_type = IntegerType::get(context, 1);
   return InferBroadcastBinaryOpReturnTypeComponents(context, location, operands,
@@ -248,8 +256,8 @@ static Type getIsInfLikeReturnType(Value operand) {
 }
 
 LogicalResult IsInfOp::inferReturnTypes(
-    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
-    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
   return success();
 }
@@ -259,8 +267,8 @@ LogicalResult IsInfOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult IsNegInfOp::inferReturnTypes(
-    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
-    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
   return success();
 }
@@ -270,8 +278,8 @@ LogicalResult IsNegInfOp::inferReturnTypes(
 //===----------------------------------------------------------------------===//
 
 LogicalResult IsPosInfOp::inferReturnTypes(
-    MLIRContext* ctx, Optional<Location>, ValueRange operands, DictionaryAttr,
-    RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+    MLIRContext* /*ctx*/, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(getIsInfLikeReturnType(operands.front()));
   return success();
 }
@@ -330,35 +338,35 @@ BROADCAST_BINARY_OP_DEFS(BroadcastZetaOp);
 #undef BROADCAST_INFER_SHAPE_TYPE_OP_DEFS
 #undef BROADCAST_BINARY_OP_DEFS
 
-static LogicalResult Verify(ConstantLikeOp op) {
-  if (op.value().getType() != op.getType().cast<ShapedType>().getElementType())
-    return op.emitOpError() << "value's type doesn't match element return type";
+LogicalResult ConstantLikeOp::verify() {
+  if (value().getType() != getType().cast<ShapedType>().getElementType())
+    return emitOpError() << "value's type doesn't match element return type";
   return success();
 }
 
 //===----------------------------------------------------------------------===//
 // MinimumBroadcastShapesOp
 //===----------------------------------------------------------------------===//
-static LogicalResult Verify(MinimumBroadcastShapesOp op) {
+LogicalResult MinimumBroadcastShapesOp::verify() {
   // Check that the number of operands matches the number of outputs.
-  unsigned result_shapes_count = op.results().size();
-  unsigned operand_shapes_count = op.shapes().size();
+  unsigned result_shapes_count = results().size();
+  unsigned operand_shapes_count = shapes().size();
   if (operand_shapes_count != result_shapes_count) {
-    return op.emitOpError()
-           << "number of operand shapes (" << operand_shapes_count
-           << ") does not match number of result shapes ("
-           << result_shapes_count << ")";
+    return emitOpError() << "number of operand shapes (" << operand_shapes_count
+                         << ") does not match number of result shapes ("
+                         << result_shapes_count << ")";
   }
   if (operand_shapes_count < 2) {
-    return op.emitOpError() << "number of operand shapes ("
-                            << operand_shapes_count << ") should be >= 2";
+    return emitOpError() << "number of operand shapes (" << operand_shapes_count
+                         << ") should be >= 2";
   }
   return success();
 }
 
 LogicalResult ConstantLikeOp::inferReturnTypeComponents(
-    MLIRContext* context, Optional<Location> location, ValueShapeRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    MLIRContext* /*context*/, Optional<Location> location,
+    ValueShapeRange operands, DictionaryAttr attributes,
+    RegionRange /*regions*/,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
   ConstantLikeOp::Adaptor op(operands, attributes);
   if (failed(op.verify(location.getValue()))) return failure();
@@ -380,7 +388,7 @@ LogicalResult ConstantLikeOp::reifyReturnTypeShapes(
       &builder, getOperation(), operands.front(), &reifiedReturnShapes);
 }
 
-OpFoldResult ConstantLikeOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConstantLikeOp::fold(ArrayRef<Attribute> /*operands*/) {
   auto op_type = operand().getType().cast<ShapedType>();
   if (!op_type.hasStaticShape()) return {};
   auto type = RankedTensorType::get(op_type.getShape(), value().getType());
@@ -424,7 +432,7 @@ LogicalResult BroadcastSelectOp::reifyReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 
 void RankSpecializationClusterOp::getSuccessorRegions(
-    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    Optional<unsigned> index, ArrayRef<Attribute> /*operands*/,
     SmallVectorImpl<RegionSuccessor>& regions) {
   // RankSpecializationClusterOp has unconditional control flows into the region
   // and back to the parent, so return the correct RegionSuccessor purely based
@@ -436,22 +444,20 @@ void RankSpecializationClusterOp::getSuccessorRegions(
   regions.push_back(RegionSuccessor(&body()));
 }
 
-static LogicalResult Verify(RankSpecializationClusterOp op) {
-  if (failed(RegionBranchOpInterface::verifyTypes(op))) return failure();
-  if (op.body().getArgumentTypes() != op.getOperandTypes())
-    return op.emitOpError() << "block argument types must match operand types";
+LogicalResult RankSpecializationClusterOp::verify() {
+  if (body().getArgumentTypes() != getOperandTypes())
+    return emitOpError() << "block argument types must match operand types";
 
   // All operands of nested ops must be defined in the body or declared by the
   // cluster.
-  Block* body = op.getBody();
+  Block* body = getBody();
   for (Operation& nested : body->without_terminator()) {
     if (!llvm::all_of(nested.getOpOperands(), [&](OpOperand& operand) {
           Operation* def = operand.get().getDefiningOp();
           if (def != nullptr && def->getBlock() == body) return true;
           return llvm::is_contained(body->getArguments(), operand.get());
         })) {
-      return op.emitOpError()
-             << "nested ops must not depend on implicit operands";
+      return emitOpError() << "nested ops must not depend on implicit operands";
     }
   }
 

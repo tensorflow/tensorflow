@@ -339,7 +339,7 @@ func private @callee(%arg0: tensor<!tf_type.resource<tensor<2xf32>>>) -> tensor<
 
 // expected-error@+1 {{expects function 'main' to have 1 block, got 2}}
 func @main() {
-  br ^bb1
+  cf.br ^bb1
 ^bb1:
   return
 }

@@ -143,4 +143,32 @@ def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
   }];
 }
 
+def XLIR_InfeedOp : XLIR_Op<"infeed"> {
+  let description = [{
+    xlir.infeed copies data from the streaming interface of the device to the
+    output buffers.
+  }];
+  let arguments = (ins GPU_StreamType:$stream,
+                   Variadic<GPU_BufferType>:$outputs,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream `,` ($outputs^ `,`)?  $chain attr-dict
+  }];
+}
+
+def XLIR_OutfeedOp : XLIR_Op<"outfeed"> {
+  let description = [{
+    xlir.outfeed outputs data from the input buffers to the streaming interface
+    to the host.
+  }];
+  let arguments = (ins GPU_StreamType:$stream,
+                   Variadic<GPU_BufferType>:$inputs,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream `,` ($inputs^ `,`)? $chain attr-dict
+  }];
+}
+
 #endif  // XLIR_OPS
