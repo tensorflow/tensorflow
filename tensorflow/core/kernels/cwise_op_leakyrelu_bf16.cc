@@ -98,7 +98,7 @@ class LeakyReluOp : public OpKernel {
     } else {
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, inp.shape(), &out));
     }
-    functor::UnaryFunctorWithArg<Device, Functor>()(
+    functor::UnaryFunctorWithArg<Device, Functor, float>()(
         ctx->eigen_device<Device>(), out->flat<Tout>(), inp.flat<Tin>(), alpha_);
   }
   private:

@@ -618,10 +618,10 @@ struct UnaryFunctor<CPUDevice, Functor> {
   }
 };
 
-template <typename Functor>
-struct UnaryFunctorWithArg<CPUDevice, Functor> {
+template <typename Functor, typename Targ>
+struct UnaryFunctorWithArg<CPUDevice, Functor, Targ> {
   void operator()(const CPUDevice& d, typename Functor::tout_type out,
-                  typename Functor::tin_type in, float val) {
+                  typename Functor::tin_type in, Targ val) {
     Assign(d, out, in.unaryExpr(typename Functor::func(val)));
   }
 };
