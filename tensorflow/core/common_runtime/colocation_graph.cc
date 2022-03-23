@@ -411,9 +411,9 @@ Status Member::MergeDeviceNames(const Member& other,
                                        resource_device_name_copy);
 
   // We checked for all errors, now change the devices.
-  assigned_device_name_ = assigned_device_name_copy;
-  resource_device_name_ = resource_device_name_copy;
-  requested_device_name_ = requested_device_name_copy;
+  assigned_device_name_ = std::move(assigned_device_name_copy);
+  resource_device_name_ = std::move(resource_device_name_copy);
+  requested_device_name_ = std::move(requested_device_name_copy);
   return Status::OK();
 }
 
