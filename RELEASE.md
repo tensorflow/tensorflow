@@ -121,6 +121,15 @@
         *   Set `experimental_new_dynamic_range_quantizer` in
             tf.lite.TFLiteConverter to False to disable this change
 
+*   `tf.function`:
+
+    *    Custom classes used as arguments for `tf.function` can now specify
+         rules regarding when retracing needs to occur by implementing the
+         Tracing Protocol available through
+         `tf.types.experimental.SupportsTracingProtocol`.
+    *    `TypeSpec` classes (as associated with `ExtensionTypes`) also implement
+         the Tracing Protocol which can be overriden if necessary.
+
 # Bug Fixes and Other Changes
 
 *   `tf.data`:
