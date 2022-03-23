@@ -1,7 +1,7 @@
 // RUN: tf-mlir-translate -mlir-hlo-to-hlo-text --print-layouts=true %s | FileCheck %s
 
 // CHECK:  HloModule
-func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {
+func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {
   // CHECK:  ROOT
   // CHECK-SAME:  f32[1,2,3]{2,0,1} custom-call
   // CHECK-SAME:  operand_layout_constraints={f32[2,3]{0,1}, f32[5,5]{1,0}}

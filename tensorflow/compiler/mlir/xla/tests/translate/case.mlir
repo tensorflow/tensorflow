@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FILECHECK_OPTS="" FileCheck %s
 
-func @main() -> tensor<f32> {
+func.func @main() -> tensor<f32> {
   %cst = arith.constant dense<1> : tensor<i32>
   %cst_0 = arith.constant dense<5.600000e+01> : tensor<f32>
   %cst_1 = arith.constant dense<1.200000e+01> : tensor<f32>
@@ -44,7 +44,7 @@ func @main() -> tensor<f32> {
 
 // -----
 
-func @main() -> (tensor<f32>, tensor<f32>) {
+func.func @main() -> (tensor<f32>, tensor<f32>) {
   %cst = arith.constant dense<1> : tensor<i32>
   %cst_0 = arith.constant dense<5.600000e+01> : tensor<f32>
   %cst_1 = arith.constant dense<1.200000e+01> : tensor<f32>
@@ -95,7 +95,7 @@ func @main() -> (tensor<f32>, tensor<f32>) {
 // -----
 // Test export mhlo::CaseOp with diffrent number of block-arguments (even 0).
 
-func @main() -> (tensor<f32>, tensor<f32>) {
+func.func @main() -> (tensor<f32>, tensor<f32>) {
   %cst = arith.constant dense<1> : tensor<i32>
   %cst_0 = arith.constant dense<5.600000e+01> : tensor<f32>
   %cst_1 = arith.constant dense<1.200000e+01> : tensor<f32>

@@ -2,7 +2,7 @@
 // RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s --dump-input=always --check-prefixes=CHECK,LNN
 
 // CHECK-LABEL: %main
-func @main(%arg0: !mhlo.token) -> !mhlo.token {
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc(unknown)
   func.return %0 : !mhlo.token
 }
@@ -13,7 +13,7 @@ func @main(%arg0: !mhlo.token) -> !mhlo.token {
 // -----
 
 // CHECK-LABEL: %main
-func @main(%arg0: !mhlo.token) -> !mhlo.token {
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc("AfterAll")
   func.return %0 : !mhlo.token
 }
@@ -24,7 +24,7 @@ func @main(%arg0: !mhlo.token) -> !mhlo.token {
 // -----
 
 // CHECK-LABEL: %main
-func @main(%arg0: !mhlo.token) -> !mhlo.token {
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc("name@function")
   func.return %0 : !mhlo.token
 }
@@ -35,7 +35,7 @@ func @main(%arg0: !mhlo.token) -> !mhlo.token {
 // -----
 
 // CHECK-LABEL: %main
-func @main(%arg0: !mhlo.token) -> !mhlo.token {
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc("file_name":2:8)
   func.return %0 : !mhlo.token
 }
@@ -46,7 +46,7 @@ func @main(%arg0: !mhlo.token) -> !mhlo.token {
 // -----
 
 // CHECK-LABEL: %main
-func @main(%arg0: !mhlo.token) -> !mhlo.token {
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc("name(with)[]")
   func.return %0 : !mhlo.token
 }
@@ -58,7 +58,7 @@ func @main(%arg0: !mhlo.token) -> !mhlo.token {
 // -----
 
 // CHECK-LABEL: %main
-func @main(%arg0: !mhlo.token) -> !mhlo.token {
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.after_all"(%arg0) : (!mhlo.token) -> !mhlo.token loc("name(anothername)"("file_name":2:8))
   func.return %0 : !mhlo.token
 }
