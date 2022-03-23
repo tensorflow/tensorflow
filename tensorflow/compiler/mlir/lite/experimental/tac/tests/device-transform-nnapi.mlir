@@ -1,6 +1,6 @@
 // RUN: tac-opt-all-backends -tfl-device-transform-nnapi %s -split-input-file -verify-diagnostics | FileCheck %s
 
-func @mean_4d_keepdim(%arg0: tensor<1x48x48x512xf32>) -> tensor<1x1x1x512xf32> {
+func.func @mean_4d_keepdim(%arg0: tensor<1x48x48x512xf32>) -> tensor<1x1x1x512xf32> {
   %cst = arith.constant dense<[1, 2]> : tensor<2xi32>
   %0 = "tfl.mean"(%arg0, %cst) {keep_dims = true} : (tensor<1x48x48x512xf32>, tensor<2xi32>) -> tensor<1x1x1x512xf32>
   return %0 : tensor<1x1x1x512xf32>
@@ -13,7 +13,7 @@ func @mean_4d_keepdim(%arg0: tensor<1x48x48x512xf32>) -> tensor<1x1x1x512xf32> {
 
 // -----
 
-func @mean_4d_no_keepdim(%arg0: tensor<1x48x48x512xf32>) -> tensor<1x512xf32> {
+func.func @mean_4d_no_keepdim(%arg0: tensor<1x48x48x512xf32>) -> tensor<1x512xf32> {
   %cst = arith.constant dense<[1, 2]> : tensor<2xi32>
   %0 = "tfl.mean"(%arg0, %cst) {keep_dims = false} : (tensor<1x48x48x512xf32>, tensor<2xi32>) -> tensor<1x512xf32>
   return %0 : tensor<1x512xf32>
@@ -28,7 +28,7 @@ func @mean_4d_no_keepdim(%arg0: tensor<1x48x48x512xf32>) -> tensor<1x512xf32> {
 
 // -----
 
-func @mean_quant_same_scale(%arg0: tensor<?x7x7x2048x!quant.uniform<i8:f32, 0.6:-128>>) -> tensor<?x2048x!quant.uniform<i8:f32, 0.6:-128>> {
+func.func @mean_quant_same_scale(%arg0: tensor<?x7x7x2048x!quant.uniform<i8:f32, 0.6:-128>>) -> tensor<?x2048x!quant.uniform<i8:f32, 0.6:-128>> {
    %0 = "tfl.pseudo_const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
    %1 = "tfl.mean"(%arg0, %0) {keep_dims = false} : (tensor<?x7x7x2048x!quant.uniform<i8:f32, 0.6:-128>>, tensor<2xi32>) -> tensor<?x2048x!quant.uniform<i8:f32, 0.6:-128>>
   return %1 : tensor<?x2048x!quant.uniform<i8:f32, 0.6:-128>>
@@ -43,7 +43,7 @@ func @mean_quant_same_scale(%arg0: tensor<?x7x7x2048x!quant.uniform<i8:f32, 0.6:
 
 // -----
 
-func @mean_quant_different_scales(%arg0: tensor<?x7x7x2048x!quant.uniform<i8:f32, 0.6:-128>>) -> tensor<?x2048x!quant.uniform<i8:f32, 0.9:-128>> {
+func.func @mean_quant_different_scales(%arg0: tensor<?x7x7x2048x!quant.uniform<i8:f32, 0.6:-128>>) -> tensor<?x2048x!quant.uniform<i8:f32, 0.9:-128>> {
    %0 = "tfl.pseudo_const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
    %1 = "tfl.mean"(%arg0, %0) {keep_dims = false} : (tensor<?x7x7x2048x!quant.uniform<i8:f32, 0.6:-128>>, tensor<2xi32>) -> tensor<?x2048x!quant.uniform<i8:f32, 0.9:-128>>
   return %1 : tensor<?x2048x!quant.uniform<i8:f32, 0.9:-128>>

@@ -1,6 +1,6 @@
 // RUN: tac-opt-all-backends -tfl-device-transform-gpu %s -split-input-file -verify-diagnostics | FileCheck %s
 
-func @pack(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<2x1xf32> {
+func.func @pack(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<2x1xf32> {
   %0 = "tfl.pack"(%arg0, %arg1) {axis = 0 : i32, values_count = 2 : i32} : (tensor<1xf32>, tensor<1xf32>) -> tensor<2x1xf32>
   return %0 : tensor<2x1xf32>
 }
@@ -20,7 +20,7 @@ func @pack(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<2x1xf32> {
 // -----
 
 // CHECK-LABEL: @avoidPackToConcatenationOnUnknownShapes
-func @avoidPackToConcatenationOnUnknownShapes(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x1xf32> {
+func.func @avoidPackToConcatenationOnUnknownShapes(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x1xf32> {
   %0 = "tfl.pack"(%arg0, %arg1) {axis = 0 : i32, values_count = 2 : i32} : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?x1xf32>
   return %0 : tensor<?x?x1xf32>
 }
@@ -31,7 +31,7 @@ func @avoidPackToConcatenationOnUnknownShapes(%arg0: tensor<?x?xf32>, %arg1: ten
 // -----
 
 // CHECK-LABEL: @avoidPackToConcatenationOnUnknownRank
-func @avoidPackToConcatenationOnUnknownRank(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+func.func @avoidPackToConcatenationOnUnknownRank(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tfl.pack"(%arg0, %arg1) {axis = 0 : i32, values_count = 2 : i32} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
@@ -41,7 +41,7 @@ func @avoidPackToConcatenationOnUnknownRank(%arg0: tensor<*xf32>, %arg1: tensor<
 
 // -----
 
-func @squaredDifference(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+func.func @squaredDifference(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -54,7 +54,7 @@ func @squaredDifference(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4x
 
 // -----
 
-func @unrollSplit(%arg0: tensor<i32>, %arg1: tensor<1x8x8x1024xf32>) -> (tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>) {
+func.func @unrollSplit(%arg0: tensor<i32>, %arg1: tensor<1x8x8x1024xf32>) -> (tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>) {
   %0:4 = "tfl.split"(%arg0, %arg1) {num_splits = 4 : i32, tac.device = "CPU"} : (tensor<i32>, tensor<1x8x8x1024xf32>) -> (tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>)
   return %0#0, %0#1, %0#3 : tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>, tensor<1x8x8x256xf32>
 }
@@ -72,7 +72,7 @@ func @unrollSplit(%arg0: tensor<i32>, %arg1: tensor<1x8x8x1024xf32>) -> (tensor<
 
 // -----
 
-func @unrollSplitUnknownRankResults(%arg0: tensor<i32>, %arg1: tensor<1x8x8x1024xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
+func.func @unrollSplitUnknownRankResults(%arg0: tensor<i32>, %arg1: tensor<1x8x8x1024xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
   %0:4 = "tfl.split"(%arg0, %arg1) {num_splits = 4 : i32, tac.device = "CPU"} : (tensor<i32>, tensor<1x8x8x1024xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>)
   return %0#0, %0#1, %0#3 : tensor<*xf32>, tensor<*xf32>, tensor<*xf32>
 }
@@ -83,7 +83,7 @@ func @unrollSplitUnknownRankResults(%arg0: tensor<i32>, %arg1: tensor<1x8x8x1024
 
 // -----
 
-func @unrollSplitV(%arg0: tensor<?x13x13x85xf32>) -> (tensor<?x13x13x2xf32>, tensor<?x13x13x2xf32>, tensor<?x13x13x81xf32>) {
+func.func @unrollSplitV(%arg0: tensor<?x13x13x85xf32>) -> (tensor<?x13x13x2xf32>, tensor<?x13x13x2xf32>, tensor<?x13x13x81xf32>) {
   %0 = "tfl.pseudo_const"() {value = dense<[2, 2, 81]> : tensor<3xi32>} : () -> tensor<3xi32>
   %1 = "tfl.pseudo_const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
   %2:3 = "tfl.split_v"(%arg0, %0, %1) {num_splits = 3 : i32} : (tensor<?x13x13x85xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<?x13x13x2xf32>, tensor<?x13x13x2xf32>, tensor<?x13x13x81xf32>)
@@ -104,7 +104,7 @@ func @unrollSplitV(%arg0: tensor<?x13x13x85xf32>) -> (tensor<?x13x13x2xf32>, ten
 
 // -----
 
-func @unrollSplitVUnknownRankResults(%arg0: tensor<?x13x13x85xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
+func.func @unrollSplitVUnknownRankResults(%arg0: tensor<?x13x13x85xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
   %0 = "tfl.pseudo_const"() {value = dense<[2, 2, 81]> : tensor<3xi32>} : () -> tensor<3xi32>
   %1 = "tfl.pseudo_const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
   %2:3 = "tfl.split_v"(%arg0, %0, %1) {num_splits = 3 : i32} : (tensor<?x13x13x85xf32>, tensor<3xi32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>)
@@ -117,7 +117,7 @@ func @unrollSplitVUnknownRankResults(%arg0: tensor<?x13x13x85xf32>) -> (tensor<*
 
 // -----
 
-func @sub(%arg0: tensor<1x384x384x3xf32>, %arg1: tensor<3xf32>) -> tensor<1x384x384x3xf32> {
+func.func @sub(%arg0: tensor<1x384x384x3xf32>, %arg1: tensor<3xf32>) -> tensor<1x384x384x3xf32> {
   %0 = "tfl.sub"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x384x384x3xf32>, tensor<3xf32>) -> tensor<1x384x384x3xf32>
   return %0 : tensor<1x384x384x3xf32>
 }
@@ -131,7 +131,7 @@ func @sub(%arg0: tensor<1x384x384x3xf32>, %arg1: tensor<3xf32>) -> tensor<1x384x
 
 // -----
 
-func @ensureBiasForConv2d(%arg0: tensor<128x32x32x3xf32>, %arg1: tensor<32x1x1x3xf32>) -> tensor<128x32x32x32xf32> {
+func.func @ensureBiasForConv2d(%arg0: tensor<128x32x32x3xf32>, %arg1: tensor<32x1x1x3xf32>) -> tensor<128x32x32x32xf32> {
   %cst = "tfl.no_value"() {value = unit} : () -> none
   %0 = "tfl.conv_2d"(%arg0, %arg1, %cst) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<128x32x32x3xf32>, tensor<32x1x1x3xf32>, none) -> tensor<128x32x32x32xf32>
   return %0 : tensor<128x32x32x32xf32>
@@ -145,7 +145,7 @@ func @ensureBiasForConv2d(%arg0: tensor<128x32x32x3xf32>, %arg1: tensor<32x1x1x3
 
 // -----
 
-func @padSliceTo4D(%arg0: tensor<4x384x32xf32>) -> tensor<1x384x32xf32> {
+func.func @padSliceTo4D(%arg0: tensor<4x384x32xf32>) -> tensor<1x384x32xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
   %1 = "tfl.pseudo_const"() {value = dense<[1, 384, 32]> : tensor<3xi32>} : () -> tensor<3xi32>
   %2 = "tfl.slice"(%arg0, %0, %1) : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
@@ -166,7 +166,7 @@ func @padSliceTo4D(%arg0: tensor<4x384x32xf32>) -> tensor<1x384x32xf32> {
 // -----
 
 // CHECK-LABEL: @avoidPadSliceTo4DOnUnknownOutputShape
-func @avoidPadSliceTo4DOnUnknownOutputShape(%arg0: tensor<4x384x32xf32>) -> tensor<1x?x?xf32> {
+func.func @avoidPadSliceTo4DOnUnknownOutputShape(%arg0: tensor<4x384x32xf32>) -> tensor<1x?x?xf32> {
   %0 = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
   %1 = "tfl.pseudo_const"() {value = dense<[1, 384, 32]> : tensor<3xi32>} : () -> tensor<3xi32>
   %2 = "tfl.slice"(%arg0, %0, %1) : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x?x?xf32>
@@ -178,7 +178,7 @@ func @avoidPadSliceTo4DOnUnknownOutputShape(%arg0: tensor<4x384x32xf32>) -> tens
 
 // -----
 
-func @fullyConnectedToConv(%arg0: tensor<384x384xf32>, %arg1: tensor<512x384xf32>, %arg2: tensor<512xf32>) -> tensor<384x512xf32> {
+func.func @fullyConnectedToConv(%arg0: tensor<384x384xf32>, %arg1: tensor<512x384xf32>, %arg2: tensor<512xf32>) -> tensor<384x512xf32> {
   %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<384x384xf32>, tensor<512x384xf32>, tensor<512xf32>) -> tensor<384x512xf32>
   return %0: tensor<384x512xf32>
 }
@@ -196,7 +196,7 @@ func @fullyConnectedToConv(%arg0: tensor<384x384xf32>, %arg1: tensor<512x384xf32
 
 // -----
 
-func @padConcatTo4D(%arg0: tensor<384x384xf32>, %arg1: tensor<384x384xf32>, %arg2: tensor<384x384xf32>, %arg3: tensor<384x384xf32>) -> tensor<1536x384xf32> {
+func.func @padConcatTo4D(%arg0: tensor<384x384xf32>, %arg1: tensor<384x384xf32>, %arg2: tensor<384x384xf32>, %arg3: tensor<384x384xf32>) -> tensor<1536x384xf32> {
  %0 = "tfl.concatenation"(%arg0, %arg1, %arg2, %arg3) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<384x384xf32>, tensor<384x384xf32>, tensor<384x384xf32>, tensor<384x384xf32>) -> tensor<1536x384xf32>
   return %0: tensor<1536x384xf32>
 }
@@ -216,7 +216,7 @@ func @padConcatTo4D(%arg0: tensor<384x384xf32>, %arg1: tensor<384x384xf32>, %arg
 // -----
 
 // CHECK-LABEL: @avoidPadConcatTo4DOnUnknownOutputShape
-func @avoidPadConcatTo4DOnUnknownOutputShape(%arg0: tensor<384x384xf32>, %arg1: tensor<384x384xf32>, %arg2: tensor<384x384xf32>, %arg3: tensor<384x384xf32>) -> tensor<?x?xf32> {
+func.func @avoidPadConcatTo4DOnUnknownOutputShape(%arg0: tensor<384x384xf32>, %arg1: tensor<384x384xf32>, %arg2: tensor<384x384xf32>, %arg3: tensor<384x384xf32>) -> tensor<?x?xf32> {
  %0 = "tfl.concatenation"(%arg0, %arg1, %arg2, %arg3) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<384x384xf32>, tensor<384x384xf32>, tensor<384x384xf32>, tensor<384x384xf32>) -> tensor<?x?xf32>
   return %0: tensor<?x?xf32>
 }

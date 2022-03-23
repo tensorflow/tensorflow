@@ -5,7 +5,7 @@
 // CHECK-LABEL: func @noop
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<4x8xf32>)
 // CHECK: return %[[ARG0]]
-func @noop(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+func.func @noop(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %2 = "mhlo.reduce"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
@@ -18,7 +18,7 @@ func @noop(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
 // -----
 
 // CHECK-LABEL: func @and_fold
-func @and_fold() -> (tensor<i1>, tensor<i1>) {
+func.func @and_fold() -> (tensor<i1>, tensor<i1>) {
   %0 = mhlo.constant dense<true> : tensor<2xi1>
   %2 = mhlo.constant dense<true> : tensor<i1>
   %3 = mhlo.constant dense<false> : tensor<i1>
@@ -43,7 +43,7 @@ func @and_fold() -> (tensor<i1>, tensor<i1>) {
 // -----
 
 // CHECK-LABEL: func @or_fold
-func @or_fold() -> (tensor<i1>, tensor<i1>) {
+func.func @or_fold() -> (tensor<i1>, tensor<i1>) {
   %0 = mhlo.constant dense<false> : tensor<2xi1>
   %2 = mhlo.constant dense<false> : tensor<i1>
   %3 = mhlo.constant dense<true> : tensor<i1>
