@@ -2321,6 +2321,7 @@ class Subgraph {
     const int kernel_height = SizeOfDimension(&filter_tensor, 1);
     const int kernel_width = SizeOfDimension(&filter_tensor, 2);
     const int input_channels = SizeOfDimension(&filter_tensor, 3);
+    const int groups = SizeOfDimension(&input_tensor, 3) / input_channels;
 
     uint32_t flags;
     TF_LITE_ENSURE_STATUS(CalculatePadding(
@@ -2343,9 +2344,9 @@ class Subgraph {
           static_cast<uint32_t>(conv_params->stride_height),
           static_cast<uint32_t>(conv_params->stride_width),
           static_cast<uint32_t>(conv_params->dilation_height_factor),
-          static_cast<uint32_t>(conv_params->dilation_width_factor),
-          /*groups=*/1, static_cast<size_t>(input_channels),
-          static_cast<size_t>(output_channels), output_min, output_max,
+          static_cast<uint32_t>(conv_params->dilation_width_factor), groups,
+          static_cast<size_t>(input_channels),
+          static_cast<size_t>(output_channels) / groups, output_min, output_max,
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*filter_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
