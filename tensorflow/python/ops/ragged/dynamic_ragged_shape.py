@@ -656,7 +656,7 @@ class DynamicRaggedShape(extension_type.ExtensionType):
     result = tensor_shape.dimension_value(self._static_inner_shape[dimension])
     return self._inner_shape[dimension] if result is None else result
 
-  def with_inner_rank(self, inner_rank):
+  def _with_inner_rank(self, inner_rank):
     """Returns the same shape but a different inner_rank.
 
     All dimensions that are to be represented in the inner_shape must be dense.
