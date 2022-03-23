@@ -14,6 +14,6 @@ func @main() -> (tensor<1xi32>, tensor<1xi32>) {
     tf_executor.NextIteration.Sink [%token_2] %output_2 : tensor<1xi32> {T = i32, device = ""}
     tf_executor.fetch %output_1, %output_2 : tensor<1xi32>, tensor<1xi32>
   }
-  return %0, %1 : tensor<1xi32>, tensor<1xi32>
+  func.return %0, %1 : tensor<1xi32>, tensor<1xi32>
 }
 

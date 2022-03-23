@@ -14,7 +14,7 @@ module attributes {tf.versions = {producer = 888 : i32}} {
       tf_device.return %4 : tensor<?xi32>
     }
     %6 = "tf._C"(%5#1) : (tensor<?xi32>) -> tensor<?xi32>
-    return %6 : tensor<?xi32>
+    func.return %6 : tensor<?xi32>
   }
 
   // CHECK-LABEL: func @_func
@@ -23,7 +23,7 @@ module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-SAME: %[[ARG2:.*]]: tensor<?xi32>)
   func @_func(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>, %arg2: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf._D"(%arg0, %arg1) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -50,7 +50,7 @@ module attributes {tf.versions = {producer = 888 : i32}} {
       tf_device.return %2 : tensor<?xi32>
     }
     %4 = "tf._C"(%3#1) : (tensor<?xi32>) -> tensor<?xi32>
-    return %4 : tensor<?xi32>
+    func.return %4 : tensor<?xi32>
   }
 
   // CHECK-LABEL: func @_func
@@ -59,7 +59,7 @@ module attributes {tf.versions = {producer = 888 : i32}} {
   // CHECK-SAME: %[[ARG2:.*]]: tensor<!tf_type.resource<tensor<?xi32>>> {mhlo.is_same_data_across_replicas}
   func @_func(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>, %arg2: tensor<!tf_type.resource<tensor<?xi32>>>) -> tensor<?xi32> {
     %0 = "tf._D"(%arg0, %arg1) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -74,13 +74,13 @@ module attributes {tf.versions = {producer = 888 : i32}} {
     %1 = "tf._B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     %2 = "tf_device.cluster_func"(%0, %1) {func = @_func, device = ""} : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
     %3 = "tf._C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
-    return %3 : tensor<?xi32>
+    func.return %3 : tensor<?xi32>
   }
 
   // CHECK-LABEL: func @_func
   // CHECK-NOT: mhlo.is_same_data_across_replicas
   func @_func(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf._D"(%arg0, %arg1) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }

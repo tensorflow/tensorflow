@@ -22,13 +22,13 @@ func @fuse_pmap_and_batch() -> tensor<!tf_type.variant> attributes {tf.entry_fun
            output_types = [i32],
            parallel_copy = false,
            metadata = ""} : (tensor<!tf_type.variant>, tensor<i64>, tensor<i1>) -> tensor<!tf_type.variant>
-  return %6 : tensor<!tf_type.variant>
+  func.return %6 : tensor<!tf_type.variant>
 }
 
 func @"__inference_Dataset_map_<lambda>_80"(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Mul"(%arg0, %0) {device = ""} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
   %2 = "tf.Identity"(%1) {device = ""} : (tensor<*xi32>) -> tensor<*xi32>
-  return %2 : tensor<*xi32>
+  func.return %2 : tensor<*xi32>
 }
 }

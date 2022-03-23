@@ -9,7 +9,7 @@ func @testArgToRet(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/tas
   %0 = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // Tests supported ops.
@@ -24,7 +24,7 @@ func @testIdentityOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/t
     %1:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // CHECK-LABEL: func @testIdentityNOp
@@ -37,7 +37,7 @@ func @testIdentityNOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/
     %1:3 = tf_executor.island wraps "tf.IdentityN"(%arg0, %arg1) : (tensor<i64>, tensor<i32>) -> (tensor<i64>, tensor<i32>)
     tf_executor.fetch %1#0, %1#1 : tensor<i64>, tensor<i32>
   }
-  return %0#0, %0#1 : tensor<i64>, tensor<i32>
+  func.return %0#0, %0#1 : tensor<i64>, tensor<i32>
 }
 
 // CHECK-LABEL: func @testShapeOp
@@ -50,7 +50,7 @@ func @testShapeOp(%arg0: tensor<*xi64> {tf.device = "/job:localhost/replica:0/ta
     %1:2 = tf_executor.island wraps "tf.Shape"(%arg0) : (tensor<*xi64>) -> tensor<?xi64>
     tf_executor.fetch %1#0 : tensor<?xi64>
   }
-  return %0 : tensor<?xi64>
+  func.return %0 : tensor<?xi64>
 }
 
 // CHECK-LABEL: func @testEnterOp
@@ -63,7 +63,7 @@ func @testEnterOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task
     %1:2 = tf_executor.Enter %arg0 frame "frame" : tensor<i64>
     tf_executor.fetch %1#0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // CHECK-LABEL: func @testExitOp
@@ -76,7 +76,7 @@ func @testExitOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task:
     %1:2 = tf_executor.Exit %arg0 : tensor<i64>
     tf_executor.fetch %1#0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // CHECK-LABEL: func @testMergeOp
@@ -89,7 +89,7 @@ func @testMergeOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:0/task
     %1:3 = tf_executor.Merge %arg0, %arg1 : tensor<i64>
     tf_executor.fetch %1#0, %1#1 : tensor<i64>, tensor<i32>
   }
-  return %0#0, %0#1 : tensor<i64>, tensor<i32>
+  func.return %0#0, %0#1 : tensor<i64>, tensor<i32>
 }
 
 // CHECK-LABEL: func @testSwitchOp
@@ -123,7 +123,7 @@ func @testUnsupportedOp(%arg0: tensor<i64> {tf.device = "/job:localhost/replica:
     %1:2 = tf_executor.island wraps "tf.UnsupportedOp"(%arg0) : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // Tests empty devices are overwritten.
@@ -138,7 +138,7 @@ func @testEmptyDeviceOverwritten(%arg0: tensor<i64> {tf.device = "/job:localhost
     %1:2 = tf_executor.island wraps "tf.Identity"(%arg0) {device = ""} : (tensor<i64>) -> tensor<i64>
     tf_executor.fetch %1#0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // Tests only devices are propagated when all operands are on the same TPU
@@ -154,7 +154,7 @@ func @testOperandsNoDevice(%arg0: tensor<i64> {tf.device = "/job:localhost/repli
     %1:3 = tf_executor.island wraps "tf.IdentityN"(%arg0, %arg1) : (tensor<i64>, tensor<i32>) -> (tensor<i64>, tensor<i32>)
     tf_executor.fetch %1#0, %1#1 : tensor<i64>, tensor<i32>
   }
-  return %0#0, %0#1 : tensor<i64>, tensor<i32>
+  func.return %0#0, %0#1 : tensor<i64>, tensor<i32>
 }
 
 // CHECK-LABEL: func @testOperandsDifferentDevice
@@ -168,7 +168,7 @@ func @testOperandsDifferentDevice(%arg0: tensor<i64> {tf.device = "/job:localhos
     %1:3 = tf_executor.island wraps "tf.IdentityN"(%arg0, %arg1) : (tensor<i64>, tensor<i32>) -> (tensor<i64>, tensor<i32>)
     tf_executor.fetch %1#0, %1#1 : tensor<i64>, tensor<i32>
   }
-  return %0#0, %0#1 : tensor<i64>, tensor<i32>
+  func.return %0#0, %0#1 : tensor<i64>, tensor<i32>
 }
 
 // Tests op with operand on different device does not have its device
@@ -193,7 +193,7 @@ func @testDifferentOperandAndResultDevice(%arg0: tensor<i64> {tf.device = "/job:
   %0 = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<i64>
   }
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // Tests non TPU devices are not propagated.
@@ -367,7 +367,7 @@ func @testNoGraph() -> tensor<i64> {
   // CHECK:      tf.Identity
   // CHECK-NOT:  device = "/job:localhost/replica:0/task:0/device:TPU:0"
   %1 = "tf.Identity"(%0) : (tensor<i64>) -> tensor<i64>
-  return %1 : tensor<i64>
+  func.return %1 : tensor<i64>
 }
 
 // CHECK-LABEL: func @testMismatchedGraphResults

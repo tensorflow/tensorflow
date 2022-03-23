@@ -21,7 +21,7 @@ func @single_cluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     }
     tf_executor.fetch %1#0 : tensor<?xi32>
   }
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK: func private @[[CLUSTER]]
@@ -63,7 +63,7 @@ func @multiple_clusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     }
     tf_executor.fetch %1#0 : tensor<?xi32>
   }
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK: func private @[[CLUSTER_0]]
@@ -94,7 +94,7 @@ func @cluster_operands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     // CHECK: tf_executor.fetch %[[CLUSTER_OUTPUT]]
     tf_executor.fetch %1#0 : tensor<?xi32>
   }
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK: func private @[[CLUSTER]]
@@ -112,7 +112,7 @@ func @cluster_attrs() -> tensor<?xi32> {
     %1 = "tf.A"() : () -> tensor<?xi32>
     tf_device.return %1 : tensor<?xi32>
   }) {cluster_attr = "cluster_attr"} : () -> tensor<?xi32>
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK: "tf_device.cluster_func"

@@ -241,7 +241,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    return %arg0 : tensor<?xi32>
+    func.return %arg0 : tensor<?xi32>
   }
 }
 
@@ -266,7 +266,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    return %arg0 : tensor<?xi32>
+    func.return %arg0 : tensor<?xi32>
   }
 }
 
@@ -281,7 +281,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    return %arg0 : tensor<?xi32>
+    func.return %arg0 : tensor<?xi32>
   }
 }
 
@@ -296,7 +296,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi2>) -> tensor<?xi2> {
-    return %arg0 : tensor<?xi2>
+    func.return %arg0 : tensor<?xi2>
   }
 }
 
@@ -311,7 +311,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    return %arg0 : tensor<?xi32>
+    func.return %arg0 : tensor<?xi32>
   }
 }
 
@@ -326,7 +326,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    return %arg0 : tensor<?xi32>
+    func.return %arg0 : tensor<?xi32>
   }
 }
 
@@ -341,7 +341,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    return %arg0 : tensor<?xi32>
+    func.return %arg0 : tensor<?xi32>
   }
 }
 
@@ -356,7 +356,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    return %arg0 : tensor<?xi32>
+    func.return %arg0 : tensor<?xi32>
   }
 }
 
@@ -371,7 +371,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    return %arg0 : tensor<?xi32>
+    func.return %arg0 : tensor<?xi32>
   }
 }
 
@@ -387,7 +387,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    return %arg0 : tensor<?xi32>
+    func.return %arg0 : tensor<?xi32>
   }
 }
 
@@ -402,7 +402,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    return %arg0 : tensor<?xi32>
+    func.return %arg0 : tensor<?xi32>
   }
 }
 
@@ -441,10 +441,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      metadata
     // CHECK-SAME: shape {\0A unknown_rank: true
 
-    return %0: tensor<*xi32>
+    func.return %0: tensor<*xi32>
   }
   func @_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-    return %arg0 : tensor<*xi32>
+    func.return %arg0 : tensor<*xi32>
   }
 }
 
@@ -459,10 +459,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      metadata
     // CHECK-SAME: args
     // CHECK-SAME: shape {\0A dim {\0A size: -1\0A }\0A dim {\0A size: -1\0A }\0A dim {\0A size: 3\0A }\0A }
-    return %0: tensor<?x?x3xi32>
+    func.return %0: tensor<?x?x3xi32>
   }
   func @_func(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {
-    return %arg0 : tensor<?x?x3xi32>
+    func.return %arg0 : tensor<?x?x3xi32>
   }
 }
 
@@ -497,10 +497,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: dim
     // CHECK-SAME: size: 3
 
-    return %0: tensor<1x2x3xi32>
+    func.return %0: tensor<1x2x3xi32>
   }
   func @_func(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
-    return %arg0 : tensor<1x2x3xi32>
+    func.return %arg0 : tensor<1x2x3xi32>
   }
 }
 
@@ -516,10 +516,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      dtype: DT_RESOURCE
     // CHECK-SAME: kind: VARIABLE
 
-    return %0: tensor<*x!tf_type.resource>
+    func.return %0: tensor<*x!tf_type.resource>
   }
   func @_func(%arg0: tensor<*x!tf_type.resource>) -> tensor<*x!tf_type.resource> {
-    return %arg0 : tensor<*x!tf_type.resource>
+    func.return %arg0 : tensor<*x!tf_type.resource>
   }
 }
 
@@ -535,10 +535,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      dtype: DT_FLOAT
     // CHECK-SAME: kind: PARAMETER
 
-    return %0: tensor<*xf32>
+    func.return %0: tensor<*xf32>
   }
   func @_func(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-    return %arg0 : tensor<*xf32>
+    func.return %arg0 : tensor<*xf32>
   }
 }
 
@@ -596,10 +596,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: num_cores_per_replica: 1
     // CHECK-SAME: step_marker_location: STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP
 
-    return %0: tensor<8xi32>
+    func.return %0: tensor<8xi32>
   }
   func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
-    return %arg0 : tensor<8xi32>
+    func.return %arg0 : tensor<8xi32>
   }
 }
 
@@ -614,10 +614,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = true} : (tensor<8xi32>) -> tensor<8xi32>
     // CHECK:      metadata
     // CHECK-SAME: use_spmd_for_xla_partitioning: true
-    return %0: tensor<8xi32>
+    func.return %0: tensor<8xi32>
   }
   func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
-    return %arg0 : tensor<8xi32>
+    func.return %arg0 : tensor<8xi32>
   }
 }
 
@@ -632,10 +632,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK:      metadata
     // CHECK-SAME: is_same_data_across_replicas: true
     // CHECK-SAME: mhlo.is_same_data_across_replicas
-    return %0: tensor<8xi32>
+    func.return %0: tensor<8xi32>
   }
   func @tpu0_func(%arg0: tensor<8xi32> {mhlo.is_same_data_across_replicas}) -> tensor<8xi32> {
-    return %arg0 : tensor<8xi32>
+    func.return %arg0 : tensor<8xi32>
   }
 }
 
@@ -654,10 +654,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf_device.cluster_func"(%arg0, %arg1, %arg2, %arg3) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @_func, num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<*xi32>, tensor<8xi32>, tensor<*xi32>, tensor<8xi32>) -> tensor<8xi32>
     // CHECK:      "tf._TPUCompileMlir"(%[[ARG_0_SHAPE]], %[[ARG_2_SHAPE]])
 
-    return %0: tensor<8xi32>
+    func.return %0: tensor<8xi32>
   }
   func @_func(%arg0: tensor<*xi32>, %arg1: tensor<8xi32>, %arg2: tensor<*xi32>, %arg3: tensor<8xi32>) -> tensor<8xi32> {
-    return %arg1 : tensor<8xi32>
+    func.return %arg1 : tensor<8xi32>
   }
 }
 
@@ -692,13 +692,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
 
-    return %2 : tensor<?xi32>
+    func.return %2 : tensor<?xi32>
     // CHECK: return %[[C_OUTPUT]]
   }
 
   func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -744,12 +744,12 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %2 = "tf.C"(%1#1) : (tensor<?xi32>) -> tensor<?xi32>
 
     // CHECK: return %[[C_OUTPUT]]
-    return %2 : tensor<?xi32>
+    func.return %2 : tensor<?xi32>
   }
 
   func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -770,12 +770,12 @@ module attributes {tf.versions = {producer = 888 : i32}} {
     // CHECK-SAME: step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP"
     // CHECK-NOT: metadata
 
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 
   func @gpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -811,19 +811,19 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
 
-    return %2 : tensor<?xi32>
+    func.return %2 : tensor<?xi32>
     // CHECK: return %[[C_OUTPUT]]
   }
 
   func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     %1 = call @nested_func(%0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 
   func @nested_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.D"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -857,18 +857,18 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
 
-    return %2 : tensor<?xi32>
+    func.return %2 : tensor<?xi32>
     // CHECK: return %[[C_OUTPUT]]
   }
 
   func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) {body = @referenced_func} : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 
   func @referenced_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.D"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -904,24 +904,24 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
 
-    return %2 : tensor<?xi32>
+    func.return %2 : tensor<?xi32>
     // CHECK: return %[[C_OUTPUT]]
   }
 
   func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) {body = @referenced_func1} : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 
   func @referenced_func1(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.D"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     %1 = call @referenced_func2(%0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 
   func @referenced_func2(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.E"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -956,7 +956,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
 
-    return %2 : tensor<?xi32>
+    func.return %2 : tensor<?xi32>
     // CHECK: return %[[C_OUTPUT]]
   }
 
@@ -964,12 +964,12 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.B"(%arg0) {body = @referenced_func1} : (tensor<?xi32>) -> tensor<?xi32>
     %1 = call @referenced_func(%0) : (tensor<?xi32>) -> tensor<?xi32>
     %2 = call @referenced_func(%1) : (tensor<?xi32>) -> tensor<?xi32>
-    return %2 : tensor<?xi32>
+    func.return %2 : tensor<?xi32>
   }
 
   func @referenced_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %1 = "tf.D"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 }
 
@@ -1014,18 +1014,18 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %3 = "tf.C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE1_OUTPUT]])
 
-    return %3 : tensor<?xi32>
+    func.return %3 : tensor<?xi32>
     // CHECK: return %[[C_OUTPUT]]
   }
 
   func @tpu0_func0(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 
   func @tpu0_func1(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.D"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -1070,13 +1070,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %3 = "tf.C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE1_OUTPUT]])
 
-    return %3 : tensor<?xi32>
+    func.return %3 : tensor<?xi32>
     // CHECK: return %[[C_OUTPUT]]
   }
 
   func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -1115,7 +1115,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
 
-    return %2 : tensor<?xi32>
+    func.return %2 : tensor<?xi32>
     // CHECK: return %[[C_OUTPUT]]
   }
 
@@ -1123,27 +1123,27 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     %1 = "tf.D"(%0) {array_attr_funcs = [@referenced_func0, @referenced_func1]} : (tensor<?xi32>) -> tensor<?xi32>
     %2 = "tf.E"(%1) {dictionary_attr_funcs = {fn1 = @referenced_func2, fn2 = @referenced_func3}} : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 
   func @referenced_func0(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %1 = "tf.F"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 
   func @referenced_func1(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %1 = "tf.G"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 
   func @referenced_func2(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %1 = "tf.H"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 
   func @referenced_func3(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %1 = "tf.I"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 }
 
@@ -1181,7 +1181,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @computation(%arg0: tensor<i32>) -> tensor<i32> {
-    return %arg0: tensor<i32>
+    func.return %arg0: tensor<i32>
   }
 }
 
@@ -1219,7 +1219,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @computation(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
-    return %arg0: tensor<3x4xf32>
+    func.return %arg0: tensor<3x4xf32>
   }
 }
 
@@ -1242,7 +1242,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @computation(%arg0: tensor<i32>) -> tensor<i32> {
-    return %arg0: tensor<i32>
+    func.return %arg0: tensor<i32>
   }
 }
 
@@ -1265,7 +1265,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @computation(%arg0: tensor<i32>) -> tensor<i32> {
-    return %arg0: tensor<i32>
+    func.return %arg0: tensor<i32>
   }
 }
 
@@ -1288,7 +1288,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   func @computation(%arg0: tensor<i32>) -> tensor<i32> {
-    return %arg0: tensor<i32>
+    func.return %arg0: tensor<i32>
   }
 }
 
@@ -1316,12 +1316,12 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NOT: "tf.TPUCompilationResult"
 
     // CHECK: return %[[EXECUTE_OUTPUT]], %[[COMPILE_OUTPUT]]#0, %[[COMPILE_OUTPUT]]#0
-    return %1, %compile_result, %compile_result2 : tensor<?xi32>, tensor<!tf_type.string>, tensor<!tf_type.string>
+    func.return %1, %compile_result, %compile_result2 : tensor<?xi32>, tensor<!tf_type.string>, tensor<!tf_type.string>
   }
 
   func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -1361,12 +1361,12 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %3 : tensor<?xi32>
     }
     %2 = "tf.C"(%1#1) : (tensor<?xi32>) -> tensor<?xi32>
-    return %2 : tensor<?xi32>
+    func.return %2 : tensor<?xi32>
   }
 
   func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -1395,10 +1395,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-NEXT:     tf_device.return
     // CHECK-NEXT:   device = "/job:localhost/replica:0/task:0/device:TPU:1"
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> tensor<8xi32>
-    return %0 : tensor<8xi32>
+    func.return %0 : tensor<8xi32>
   }
   func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
-    return %arg0 : tensor<8xi32>
+    func.return %arg0 : tensor<8xi32>
   }
 }
 
@@ -1461,10 +1461,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1 = "tf_device.cluster_func"(%ri) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> tensor<8xi32>
       tf_device.return %1 : tensor<8xi32>
     }
-    return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
+    func.return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
   }
   func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
-    return %arg0 : tensor<8xi32>
+    func.return %arg0 : tensor<8xi32>
   }
 }
 
@@ -1496,11 +1496,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1 = "tf_device.cluster_func"(%ri, %ri2, %ri3) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "", ""], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>, tensor<*xi1>, tensor<*xi32>) -> tensor<8xi32>
       tf_device.return %1 : tensor<8xi32>
     }
-    return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
+    func.return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
   }
   func @tpu0_func(%arg0: tensor<8xi32>, %arg1: tensor<*xi1>, %arg2: tensor<*xi32>) -> tensor<8xi32> {
     %1 = "tf.A"(%arg0, %arg1, %arg2) : (tensor<8xi32>, tensor<*xi1>, tensor<*xi32>) -> (tensor<8xi32>)
-    return %1 : tensor<8xi32>
+    func.return %1 : tensor<8xi32>
   }
 }
 
@@ -1534,10 +1534,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1 = "tf_device.cluster_func"(%ri) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> tensor<8xi32>
       tf_device.return %1 : tensor<8xi32>
     }
-    return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
+    func.return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
   }
   func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
-    return %arg0 : tensor<8xi32>
+    func.return %arg0 : tensor<8xi32>
   }
 }
 
@@ -1572,12 +1572,12 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1, %2 = "tf_device.cluster_func"(%ri) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %1, %3 : tensor<*xi32>, tensor<*xi1>
+    func.return %1, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
 
@@ -1639,13 +1639,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01", "\08\01\1A\01\01\22\01\01"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+    func.return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
 
@@ -1707,13 +1707,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01", "\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+    func.return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
 
@@ -1784,13 +1784,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
         use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+    func.return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
 
@@ -1827,13 +1827,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\01\04\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\01\04\22\04\00\01\02\03", "\08\01\1A\01\01\22\01\01"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+    func.return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
 
@@ -1867,13 +1867,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["", ""], output_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\01\04\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\01\04\22\04\00\01\02\03", ""], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi1>, tensor<*xi32>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %3, %4 : tensor<*xi1>, tensor<*xi32>
+    func.return %3, %4 : tensor<*xi1>, tensor<*xi32>
   }
 }
 
@@ -1973,13 +1973,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 4, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1], input_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\00\01\02\03", "\08\01\1A\01\01\22\01\01"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+    func.return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
 
@@ -2080,13 +2080,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 4, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1], input_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\00\01\02\03", "\08\01\1A\01\01\22\01\01"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+    func.return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
 
@@ -2164,13 +2164,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 4, step_marker_location = "", topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\00\01\02\03", "\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+    func.return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
 
@@ -2249,13 +2249,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 4, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1], input_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\03\02\01\00", "\08\01\1A\01\01\22\01\01"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+    func.return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
 
@@ -2333,13 +2333,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 4, step_marker_location = "", topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\03\02\01\00", "\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
-    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+    func.return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
   }
   func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "", sharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
-    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+    func.return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
 

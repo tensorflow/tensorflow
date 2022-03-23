@@ -33,7 +33,7 @@ func @check_default_sharding_for_block_arg_inputs_outputs(%arg0: tensor<*xi32>) 
 // CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
 // CHECK-SAME: -> (tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
 func @func_without_sharding(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-  return %arg0 : tensor<*xi32>
+  func.return %arg0 : tensor<*xi32>
 }
 
 // -----
@@ -55,7 +55,7 @@ func @check_default_sharding_for_inputs_outputs(%arg0: tensor<*xi32>) {
 // CHECK-SAME: -> (tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
 func @func_without_sharding(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = "tf.A"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 // -----
@@ -77,7 +77,7 @@ func @check_sharding_for_input_correctly_identified(%arg0: tensor<*xi32>) {
 func @inputs_with_sharding_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03", sharding = "\01\02\03" } : (tensor<*xi32>) -> tensor<*xi32>
   %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
-  return %1 : tensor<*xi32>
+  func.return %1 : tensor<*xi32>
 }
 
 // -----
@@ -102,7 +102,7 @@ func @func_with_sharding(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) -> (tensor<*
   %2, %3 = "tf.A"(%0, %1) : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
   %4 = "tf.XlaSharding"(%2) { _XlaSharding = "\0A\0B\0C", sharding = "\0A\0B\0C" } : (tensor<*xi32>) -> tensor<*xi32>
   %5 = "tf.XlaSharding"(%3) { _XlaSharding = "\0D\0E\0F", sharding = "\0D\0E\0F" } : (tensor<*xi1>) -> tensor<*xi1>
-  return %4, %5 : tensor<*xi32> , tensor<*xi1>
+  func.return %4, %5 : tensor<*xi32> , tensor<*xi1>
 }
 
 // -----
@@ -128,7 +128,7 @@ func @func_with_sharding_after_identity(%arg0: tensor<*xi32>, %arg1: tensor<*xi1
   %3, %4 = "tf.A"(%1, %2) : (tensor<*xi32>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
   %5 = "tf.XlaSharding"(%3) { _XlaSharding = "\0A\0B\0C", sharding = "\0A\0B\0C" } : (tensor<*xi32>) -> tensor<*xi32>
   %6 = "tf.XlaSharding"(%4) { _XlaSharding = "\0D\0E\0F", sharding = "\0D\0E\0F" } : (tensor<*xi1>) -> tensor<*xi1>
-  return %5, %6 : tensor<*xi32> , tensor<*xi1>
+  func.return %5, %6 : tensor<*xi32> , tensor<*xi1>
 }
 
 // -----
@@ -156,7 +156,7 @@ func @func_with_sharding_after_read_variable(%arg0: tensor<*x!tf_type.resource<t
   %5, %6 = "tf.A"(%1, %3) : (tensor<32xf32>, tensor<32xf32>) -> (tensor<*xi32>, tensor<*xi1>)
   %7 = "tf.XlaSharding"(%5) { _XlaSharding = "\0A\0B\0C", sharding = "\0A\0B\0C" } : (tensor<*xi32>) -> tensor<*xi32>
   %8 = "tf.XlaSharding"(%6) { _XlaSharding = "\0D\0E\0F", sharding = "\0D\0E\0F" } : (tensor<*xi1>) -> tensor<*xi1>
-  return %7, %8 : tensor<*xi32> , tensor<*xi1>
+  func.return %7, %8 : tensor<*xi32> , tensor<*xi1>
 }
 
 // -----
@@ -183,7 +183,7 @@ func @func_with_sharding_after_cast(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) -
   %4, %5 = "tf.A"(%2, %3) : (tensor<*xi1>, tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>)
   %6 = "tf.XlaSharding"(%4) { _XlaSharding = "\0A\0B\0C", sharding = "\0A\0B\0C" } : (tensor<*xi32>) -> tensor<*xi32>
   %7 = "tf.XlaSharding"(%5) { _XlaSharding = "\0D\0E\0F", sharding = "\0D\0E\0F" } : (tensor<*xi1>) -> tensor<*xi1>
-  return %6, %7 : tensor<*xi32> , tensor<*xi1>
+  func.return %6, %7 : tensor<*xi32> , tensor<*xi1>
 }
 
 // -----
@@ -211,21 +211,21 @@ func @func_with_device_training_loop(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) 
   %5 = "tf.XlaSharding"(%3) { _XlaSharding = "\0A\0B\0C", sharding = "\0A\0B\0C" } : (tensor<*xi32>) -> tensor<*xi32>
   %6 = "tf.XlaSharding"(%4) { _XlaSharding = "\0D\0E\0F", sharding = "\0D\0E\0F" } : (tensor<*xi1>) -> tensor<*xi1>
 
-  return %5, %6 : tensor<*xi32> , tensor<*xi1>
+  func.return %5, %6 : tensor<*xi32> , tensor<*xi1>
 }
 
 // CHECK-LABEL: func @func_body
 func @func_body(%arg0: tensor<*xi32>)-> (tensor<*xi32>, tensor<*xi1>) {
   %1 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03", sharding = "\01\02\03" } : (tensor<*xi32>) -> tensor<*xi32>
   %2, %3 = "tf.C"(%1) : (tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
-  return %2, %3 : tensor<*xi32> , tensor<*xi1>
+  func.return %2, %3 : tensor<*xi32> , tensor<*xi1>
 }
 
 // CHECK-LABEL: func @pcall_func_body
 func @pcall_func_body(%arg0: tensor<*xi1>) -> tensor<i32> {
   %1 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\04\05\06", sharding = "\04\05\06" } : (tensor<*xi1>) -> tensor<*xi1>
   %2 = "tf.D"(%1) : (tensor<*xi1>) -> (tensor<i32>)
-  return %2 : tensor<i32>
+  func.return %2 : tensor<i32>
 }
 
 // -----
@@ -244,13 +244,13 @@ func @check_sharding_inside_functional_op(%arg0: tensor<*xi32>) {
 
 func @cluster_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = "tf.PartitionedCall"(%arg0) {f= @func_body, config="", config_proto="", executor_type=""} : (tensor<*xi32>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 func @func_body(%arg0: tensor<*xi32>)-> tensor<*xi32> {
   %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03", sharding = "\01\02\03" } : (tensor<*xi32>) -> tensor<*xi32>
   %1 = "tf.Identity"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
-  return %1 : tensor<*xi32>
+  func.return %1 : tensor<*xi32>
 }
 
 // -----
@@ -267,14 +267,14 @@ func @partitioned_input_output(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (t
   // CHECK-SAME: output_sharding_configuration = ["", "\04\05\06"]
   %1:2 = "tf_device.cluster_func"(%0, %arg1) {func = @cluster_func, use_spmd_for_xla_partitioning = true} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>)
   %2 = "tf.TPUPartitionedOutput"(%1#1) {_XlaSharding = "\04\05\06", partition_dim = -1 : i64} : (tensor<*xi32>) -> tensor<*xi32>
-  return %1#0, %2 : tensor<*xi32>, tensor<*xi32>
+  func.return %1#0, %2 : tensor<*xi32>, tensor<*xi32>
 }
 
 // CHECK-LABEL: func @cluster_func
 // CHECK-SAME: ({{.+}}: tensor<*xi32> {mhlo.sharding = "\01\02\03"}, {{.+}}: tensor<*xi32> {mhlo.sharding = ""})
 // CHECK-SAME: -> (tensor<*xi32> {mhlo.sharding = ""}, tensor<*xi32> {mhlo.sharding = "\04\05\06"})
 func @cluster_func(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
-  return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
+  func.return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
 }
 
 // -----
@@ -362,14 +362,14 @@ func @partitioned_input_output(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   // CHECK-SAME: output_sharding_configuration = [""]
   %1 = "tf_device.cluster_func"(%0) {func = @cluster_func, use_spmd_for_xla_partitioning = true} : (tensor<*xi32>) -> tensor<*xi32>
   %2 = "tf.TPUPartitionedOutput"(%1) {partition_dim = -1 : i64} : (tensor<*xi32>) -> tensor<*xi32>
-  return %2 : tensor<*xi32>
+  func.return %2 : tensor<*xi32>
 }
 
 // CHECK-LABEL: func @cluster_func
 // CHECK-SAME: ({{.+}}: tensor<*xi32> {mhlo.sharding = ""})
 // CHECK-SAME: -> (tensor<*xi32> {mhlo.sharding = ""})
 func @cluster_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-  return %arg0 : tensor<*xi32>
+  func.return %arg0 : tensor<*xi32>
 }
 
 // -----
@@ -392,7 +392,7 @@ func @partitioned_input_output(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
 // CHECK-SAME: -> (tensor<f32> {mhlo.sharding = "\01\02\03"})
 func @cluster_func() -> tensor<f32> {
   %0 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----
@@ -408,14 +408,14 @@ func @partitioned_input_maximal_sharding_revert_mpmd(%arg0: tensor<*xi32>, %arg1
   // CHECK-SAME: use_spmd_for_xla_partitioning = false
   %1:2 = "tf_device.cluster_func"(%0, %arg1) {func = @cluster_func, use_spmd_for_xla_partitioning = true} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>)
   %2 = "tf.TPUPartitionedOutput"(%1#1) {_XlaSharding = "\04\05\06", partition_dim = -1 : i64} : (tensor<*xi32>) -> tensor<*xi32>
-  return %1#0, %2 : tensor<*xi32>, tensor<*xi32>
+  func.return %1#0, %2 : tensor<*xi32>, tensor<*xi32>
 }
 
 // CHECK-LABEL: func @cluster_func
 // CHECK-SAME: ({{.+}}: tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, {{.+}}: tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
 // CHECK-SAME: -> (tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, tensor<*xi32> {mhlo.sharding = "\04\05\06"})
 func @cluster_func(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
-  return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
+  func.return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
 }
 
 // -----
@@ -431,14 +431,14 @@ func @partitioned_output_maximal_sharding_revert_mpmd(%arg0: tensor<*xi32>, %arg
   %0 = "tf.TPUPartitionedInput"(%arg0) {_XlaSharding = "\04\05\06", partition_dim = -1 : i64} : (tensor<*xi32>) -> tensor<*xi32>
   %1:2 = "tf_device.cluster_func"(%0, %arg1) {func = @cluster_func, use_spmd_for_xla_partitioning = true} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>)
   %2 = "tf.TPUPartitionedOutput"(%1#1) {_XlaSharding = "\08\01\1A\01\01\22\01\00", partition_dim = -1 : i64} : (tensor<*xi32>) -> tensor<*xi32>
-  return %1#0, %2 : tensor<*xi32>, tensor<*xi32>
+  func.return %1#0, %2 : tensor<*xi32>, tensor<*xi32>
 }
 
 // CHECK-LABEL: func @cluster_func
 // CHECK-SAME: ({{.+}}: tensor<*xi32> {mhlo.sharding = "\04\05\06"}, {{.+}}: tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
 // CHECK-SAME: -> (tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"})
 func @cluster_func(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
-  return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
+  func.return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
 }
 
 // -----
@@ -466,7 +466,7 @@ func @func(%arg0: tensor<*xi32> {tf.aliasing_output = 1 : i64},
   // flip order
   %2 = "tf.A"(%1) : (tensor<*xi32>) -> (tensor<*xi32>)
   %3 = "tf.B"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
-  return %2, %3 : tensor<*xi32>, tensor<*xi32>
+  func.return %2, %3 : tensor<*xi32>, tensor<*xi32>
 }
 
 // -----
@@ -485,7 +485,7 @@ func @func(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
   // Since the input tensor only has three dimensions, we expect this to fail.
   %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\08\03\1A\04\01\01\01\01\22\01\00" } : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
   %1 = "tf.A"(%0) : (tensor<1x2x3xi32>) -> (tensor<1x2x3xi32>)
-  return %1: tensor<1x2x3xi32>
+  func.return %1: tensor<1x2x3xi32>
 }
 
 // -----
@@ -504,7 +504,7 @@ func @func(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
   // Use a four dimension sharding (devices=[1,1,1,1]0)
   // Since the output tensor only has three dimensions, we expect this to fail.
   %1 = "tf.XlaSharding"(%0) { _XlaSharding = "\08\03\1A\04\01\01\01\01\22\01\00" } : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
-  return %1: tensor<1x2x3xi32>
+  func.return %1: tensor<1x2x3xi32>
 }
 
 // -----
@@ -524,7 +524,7 @@ func @check_propagation_upwards_when_spmd_for_xla_is_true(%arg0: tensor<*xi32>) 
 func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
   %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
-  return %1 : tensor<*xi32>
+  func.return %1 : tensor<*xi32>
 }
 
 // -----
@@ -544,7 +544,7 @@ func @check_propagation_downwards_when_spmd_for_xla_is_true(%arg0: tensor<*xi32>
 func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = "tf.A"(%arg0) : (tensor<*xi32>) -> (tensor<*xi32>)
   %1 = "tf.XlaSharding"(%0) { _XlaSharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
-  return %1 : tensor<*xi32>
+  func.return %1 : tensor<*xi32>
 }
 
 // -----
@@ -571,5 +571,5 @@ func @func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   %4 = "tf.Mul"(%cst, %3) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
   %5 = "tf.Sub"(%4, %cst) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
   %6 = "tf.Sub"(%cst, %5) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
-  return %6 : tensor<4xf32>
+  func.return %6 : tensor<4xf32>
 }

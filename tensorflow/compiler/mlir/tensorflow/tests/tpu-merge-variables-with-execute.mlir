@@ -151,7 +151,7 @@ func @interfering_accesses(
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[ARG_4]], %[[EXE]]#1)
   "tf.AssignVariableOp"(%arg4, %execute#2) : (tensor<*x!tf_type.resource<tensor<8xf32>>>, tensor<8xf32>) -> ()
   // CHECK-NEXT: return %[[READ_3]]
-  return %read3 : tensor<8xf32>
+  func.return %read3 : tensor<8xf32>
 }
 
 // -----
@@ -217,7 +217,7 @@ func @non_interfering_accesses(
   "tf.AssignVariableOp"(%arg1, %execute#1) : (tensor<*x!tf_type.resource<tensor<64xf32>>>, tensor<64xf32>) -> ()
   "tf.AssignVariableOp"(%arg0, %execute#0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
   // CHECK-NEXT: return %[[READ]]
-  return %read3 : tensor<8xf32>
+  func.return %read3 : tensor<8xf32>
 }
 
 // -----

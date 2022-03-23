@@ -29,5 +29,5 @@ func @transposeConv2D(%arg0: tensor<1x3x32x32xf32>, %arg1: tensor<1x1x3x8xf32>) 
 
   // CHECK: return %[[CONV]]
 
-  return %4 : tensor<1x8x32x32xf32>
+  func.return %4 : tensor<1x8x32x32xf32>
 }

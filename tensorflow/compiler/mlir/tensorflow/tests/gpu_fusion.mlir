@@ -8,7 +8,7 @@ func @FusedBatchNormRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2
 // CHECK-NEXT: return %[[Y]]
   %y:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
   %relu = "tf.Relu"(%y#0) : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
-  return %relu : tensor<8x8x8x8xf32>
+  func.return %relu : tensor<8x8x8x8xf32>
 }
 
 // CHECK-LABEL: func @FusedBatchNormAddRelu
@@ -18,7 +18,7 @@ func @FusedBatchNormAddRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %a
   %y:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
   %add = "tf.AddV2"(%arg0, %y#0) : (tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
   %relu = "tf.Relu"(%add) : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
-  return %relu : tensor<8x8x8x8xf32>
+  func.return %relu : tensor<8x8x8x8xf32>
 }
 
 // CHECK-LABEL: func @FusedBatchNormAddReluTwoUses
@@ -31,7 +31,7 @@ func @FusedBatchNormAddReluTwoUses(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf
   %y:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
   %add = "tf.AddV2"(%arg0, %y#0) : (tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
   %relu = "tf.Relu"(%add) : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
-  return %relu, %add  : tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>
+  func.return %relu, %add  : tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>
 }
 
 // CHECK-LABEL: func @TrainingFusedBatchNormRelu
@@ -42,6 +42,6 @@ func @TrainingFusedBatchNormRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32
 // CHECK-NEXT: return %[[relu]]
   %y:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = true} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
   %relu = "tf.Relu"(%y#0) : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
-  return %relu : tensor<8x8x8x8xf32>
+  func.return %relu : tensor<8x8x8x8xf32>
 }
 

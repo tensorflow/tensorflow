@@ -28,7 +28,7 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0" 
     %9 = "tf.Identity"(%2) {device = ""} : (tensor<i32>) -> tensor<i32>
     %10 = "tf.AddV2"(%arg0, %0) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
     %11 = "tf.Identity"(%10) {device = ""} : (tensor<i32>) -> tensor<i32>
-    return %11, %8, %9, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.resource>, tensor<!tf_type.resource<tensor<7x7x3x64xf32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<i64>>>
+    func.return %11, %8, %9, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<!tf_type.resource>, tensor<!tf_type.resource<tensor<7x7x3x64xf32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<i64>>>
   }
   func @while_cond_2700(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>, %arg5: tensor<!tf_type.resource> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}, %arg6: tensor<!tf_type.resource<tensor<7x7x3x64xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg7: tensor<!tf_type.resource<tensor<f32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg8: tensor<!tf_type.resource<tensor<f32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}, %arg9: tensor<!tf_type.resource<tensor<i64>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"}) -> tensor<i1> {
     %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -42,7 +42,7 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0" 
     %8 = "tf.Less"(%arg0, %arg1) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     %9 = "tf.LogicalAnd"(%8, %7) {device = ""} : (tensor<i1>, tensor<i1>) -> tensor<i1>
     %10 = "tf.Identity"(%9) {device = ""} : (tensor<i1>) -> tensor<i1>
-    return %10 : tensor<i1>
+    func.return %10 : tensor<i1>
   }
   // CHECK-LABEL: func private @_func
   // CHECK-SAME: [[FUNCINPUT0:.*]]: tensor<2x112x112x12xf32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, [[FUNCINPUT1:%.*]]: tensor<7x7x3x64xf32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, [[FUNCINPUT2:%.*]]: tensor<f32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, [[VAL_59:%.*]]: tensor<i64> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) -> (tensor<7x7x3x64xf32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, tensor<i64> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) {
@@ -79,7 +79,7 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0" 
     %9 = "tf.Mul"(%arg2, %8) : (tensor<f32>, tensor<7x7x3x64xf32>) -> tensor<7x7x3x64xf32>
     %10 = "tf.Sub"(%arg1, %9) : (tensor<7x7x3x64xf32>, tensor<7x7x3x64xf32>) -> tensor<7x7x3x64xf32>
     %11 = "tf.AddV2"(%arg3, %0) : (tensor<i64>, tensor<i64>) -> tensor<i64>
-    return %10, %11 : tensor<7x7x3x64xf32>, tensor<i64>
+    func.return %10, %11 : tensor<7x7x3x64xf32>, tensor<i64>
   }
 }
 
@@ -156,7 +156,7 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:COMPOSI
     %34 = "tf.AddV2"(%arg7, %30) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %35 = "tf.CrossReplicaSum"(%0, %3) : (tensor<f32>, tensor<1x2xi32>) -> tensor<f32>
     %36 = "tf.AddV2"(%arg8, %35) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    return %31, %33, %34, %36 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
+    func.return %31, %33, %34, %36 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
   }
 }
 
@@ -230,7 +230,7 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:COMPOSI
     %34 = "tf.AddV2"(%arg7, %30) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %35 = "tf.CrossReplicaSum"(%0, %3) : (tensor<f32>, tensor<1x2xi32>) -> tensor<f32>
     %36 = "tf.AddV2"(%arg8, %35) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    return %31, %33, %34, %36 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
+    func.return %31, %33, %34, %36 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
   }
 }
 

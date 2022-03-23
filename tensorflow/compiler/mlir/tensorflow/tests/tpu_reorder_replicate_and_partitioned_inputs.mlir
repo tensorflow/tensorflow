@@ -10,7 +10,7 @@ func @simple(%arg0: tensor<!tf_type.resource<tensor<10x3xf32>>>, %arg1: tensor<!
   %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
   %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
   // CHECK: return [[PI]]
-  return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
+  func.return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
 }
 
 // CHECK-LABEL:func @missing_xla_sharding
@@ -23,7 +23,7 @@ func @missing_xla_sharding(%arg0: tensor<!tf_type.resource<tensor<10x3xf32>>>, %
   %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {device = "", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
   %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
   // CHECK: return [[PI]]
-  return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
+  func.return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
 }
 
 // Test IR is not modified when none of the operands of tf.TPUReplicaedInput is
@@ -39,7 +39,7 @@ func @no_change_to_dag(%arg0: tensor<!tf_type.resource<tensor<10x3xf32>>>, %arg1
   // CHECK: [[RI:%.*]] = "tf.TPUReplicatedInput"([[ARG0]], [[ARG1]])
   %ri = "tf.TPUReplicatedInput"(%arg0, %arg1) : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
   // CHECK: return [[RI]], [[PI_0]], [[PI_1]]
-  return %ri, %pi_0, %pi_1 : tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>
+  func.return %ri, %pi_0, %pi_1 : tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>
 }
 
 // -----
@@ -49,7 +49,7 @@ func @xla_sharding_mismatch(%arg0: tensor<!tf_type.resource<tensor<10x3xf32>>>, 
   %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "123", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
   // expected-error@+1 {{expects all inputs from 'tf.TPUPartitionedInput' ops to have identical XLA sharding}}
   %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
-  return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
+  func.return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
 }
 
 // -----
@@ -59,7 +59,7 @@ func @partition_dim_mismatch(%arg0: tensor<!tf_type.resource<tensor<10x3xf32>>>,
   // expected-error@+1 {{expects partition_dim = -1 but found 0}}
   %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", partition_dim = 0 : i64} : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
   %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
-  return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
+  func.return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
 }
 
 // -----
@@ -69,7 +69,7 @@ func @num_partitioned_inputs_mismatch(%arg0: tensor<!tf_type.resource<tensor<10x
   // expected-error@+1 {{expects 2 operands but found 3}}
   %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3, %arg4) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
   %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
-  return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
+  func.return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
 }
 
 // -----
@@ -79,7 +79,7 @@ func @unsupported_replicated_input_index(%arg0: tensor<!tf_type.resource<tensor<
   %pi_1 = "tf.TPUPartitionedInput"(%arg2, %arg3) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
   // expected-error@+1 {{'tf.TPUReplicatedInput' op unsupported index = 1}}
   %ri = "tf.TPUReplicatedInput"(%pi_0, %pi_1) {index = 1} : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
-  return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
+  func.return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
 }
 
 // -----
@@ -88,5 +88,5 @@ func @mixed_inputs_to_replicated_op(%arg0: tensor<!tf_type.resource<tensor<10x3x
   %pi_0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
   // expected-error@+1 {{'tf.TPUReplicatedInput' op expects all inputs from 'tf.TPUPartitionedInput' ops}}
   %ri = "tf.TPUReplicatedInput"(%pi_0, %arg2) {index = 1} : (tensor<!tf_type.resource<tensor<10x3xf32>>>, tensor<!tf_type.resource<tensor<10x3xf32>>>) -> tensor<!tf_type.resource<tensor<10x3xf32>>>
-  return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
+  func.return %ri : tensor<!tf_type.resource<tensor<10x3xf32>>>
 }

@@ -20,7 +20,7 @@ func @convert_to_legacy_attribute(%arg0: tensor<*xf32>, %arg1: tensor<f32>, %arg
     %outputs_19, %control_20 = tf_executor.island(%control_3) wraps "tf.Identity"(%outputs_17) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
     tf_executor.fetch %outputs_19 : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -43,5 +43,5 @@ func @convert_to_legacy_attributes_failure(%arg0: tensor<*xf32>, %arg1: tensor<f
     %outputs_19, %control_20 = tf_executor.island(%control_3) wraps "tf.Identity"(%outputs_17) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
     tf_executor.fetch %outputs_19 : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }

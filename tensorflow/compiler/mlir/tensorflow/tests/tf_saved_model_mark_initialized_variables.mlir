@@ -12,7 +12,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     %3 = "tf.ReadVariableOp"(%2) {device = ""} : (tensor<!tf_type.resource<tensor<50xf32>>>) -> tensor<50xf32>
     %4 = "tf.Add"(%1, %3) {device = ""} : (tensor<100x50xf32>, tensor<50xf32>) -> tensor<100x50xf32>
     %5 = "tf.VarHandleOp"() {_class = ["loc:@dense/bias"], allowed_devices = [], container = "", device = "/job:worker/replica:0/task:1/device:CPU:0", shared_name = "var3"} : () -> tensor<!tf_type.resource<tensor<50xf32>>>
-    return %4 : tensor<100x50xf32>
+    func.return %4 : tensor<100x50xf32>
   }
   // CHECK: "tf.VarHandleOp"
   // CHECK-SAME: _is_initialized = true

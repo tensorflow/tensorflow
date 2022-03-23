@@ -16,7 +16,7 @@ module attributes {tf_saved_model.semantics} {
   func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}) -> (tensor<f32> {tf_saved_model.index_path = []})
   attributes {tf_saved_model.exported_names = ["f"]} {
     %val = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    return %val : tensor<f32>
+    func.return %val : tensor<f32>
   }
 
 }
@@ -55,7 +55,7 @@ module attributes {tf_saved_model.semantics} {
   func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}) -> (tensor<f32> {tf_saved_model.index_path = []})
   attributes {tf_saved_model.exported_names = ["f"]} {
     %val = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    return %val : tensor<f32>
+    func.return %val : tensor<f32>
   }
 
 }
@@ -71,7 +71,7 @@ module attributes {tf_saved_model.semantics} {
   func @g(%arg0: tensor<f32> {tf_saved_model.index_path = [0]}) -> (tensor<f32> {tf_saved_model.index_path = []})
   attributes {tf_saved_model.exported_names = ["g"]} {
     // CHECK: return %arg0
-    return %arg0 : tensor<f32>
+    func.return %arg0 : tensor<f32>
   }
 
 }

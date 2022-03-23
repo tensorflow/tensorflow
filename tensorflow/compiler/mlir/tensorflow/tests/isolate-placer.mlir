@@ -14,7 +14,7 @@ func @foo(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   %graph = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<!tf_type.resource>
   }
-  return %graph : tensor<!tf_type.resource>
+  func.return %graph : tensor<!tf_type.resource>
 }
 }
 

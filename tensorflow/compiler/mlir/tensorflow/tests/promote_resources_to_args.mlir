@@ -14,7 +14,7 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
   %3 = "tf.AddV2"(%2, %0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   %4 = "tf.Pack"(%0, %3) : (tensor<f32>, tensor<f32>) -> tensor<2xf32>
-  return %4 : tensor<2xf32>
+  func.return %4 : tensor<2xf32>
 }
 
 // -----
@@ -25,7 +25,7 @@ func @main() -> tensor<f32> {
   // CHECK: "tf.VarHandleOp"
   %1 = "tf.VarHandleOp"() {container = "", shared_name = "x", _is_initialized = false} : () -> tensor<!tf_type.resource<tensor<f32>>>
   %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-  return %2 : tensor<f32>
+  func.return %2 : tensor<f32>
 }
 
 // -----
@@ -37,7 +37,7 @@ func @main() -> tensor<f32> {
   // CHECK-NOT: "tf.VarHandleOp"
   %1 = "tf.VarHandleOp"() {container = "", shared_name = "x", _is_initialized = true} : () -> tensor<!tf_type.resource<tensor<f32>>>
   %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-  return %2 : tensor<f32>
+  func.return %2 : tensor<f32>
 }
 
 // -----
@@ -76,7 +76,7 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   %5 = "tf.ReadVariableOp"(%4) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
   %6 = "tf.AddV2"(%3, %5) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   %7 = "tf.Pack"(%0, %6) : (tensor<f32>, tensor<f32>) -> tensor<2xf32>
-  return %7 : tensor<2xf32>
+  func.return %7 : tensor<2xf32>
 }
 
 // -----
@@ -100,7 +100,7 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   %5 = "tf.ReadVariableOp"(%4) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
   %6 = "tf.AddV2"(%3, %5) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   %7 = "tf.Pack"(%0, %6) : (tensor<f32>, tensor<f32>) -> tensor<2xf32>
-  return %7 : tensor<2xf32>
+  func.return %7 : tensor<2xf32>
 }
 
 // -----
@@ -124,7 +124,7 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   %5 = "tf.ReadVariableOp"(%1) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
   %6 = "tf.AddV2"(%4, %5) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   %7 = "tf.Pack"(%2, %6) : (tensor<f32>, tensor<f32>) -> tensor<2xf32>
-  return %7 : tensor<2xf32>
+  func.return %7 : tensor<2xf32>
 }
 
 // -----
@@ -149,21 +149,21 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   %5 = "tf.ReadVariableOp"(%1) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
   %6 = "tf.AddV2"(%4, %5) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   %7 = "tf.Pack"(%2, %6) : (tensor<f32>, tensor<f32>) -> tensor<2xf32>
-  return %7 : tensor<2xf32>
+  func.return %7 : tensor<2xf32>
 }
 
 // -----
 
 // A resource is passed into tf.If
 func @cond_false(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<f32>) -> tensor<f32> {
-  return %arg1 : tensor<f32>
+  func.return %arg1 : tensor<f32>
 }
 
 func @cond_true(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<f32>) -> tensor<f32> {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
   %1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
   %2 = "tf.AddV2"(%1, %0) {T = f32, device = ""} : (tensor<f32>, tensor<f32>) -> tensor<f32>
-  return %2 : tensor<f32>
+  func.return %2 : tensor<f32>
 }
 
 // CHECK-LABEL: func @main(%arg0: tensor<i1>, %arg1: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
@@ -177,7 +177,7 @@ func @main(%arg0: tensor<i1>) -> tensor<2xf32> attributes {tf.entry_function = {
        (tensor<i1>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> tensor<f32>
   %5 = "tf.Identity"(%4) : (tensor<f32>) -> tensor<f32>
   %6 = "tf.Pack"(%2, %5) {N = 2 : i64, T = f32, axis = 0 : i64, device = ""} : (tensor<f32>, tensor<f32>) -> tensor<2xf32>
-  return %6 : tensor<2xf32>
+  func.return %6 : tensor<2xf32>
 }
 
 // -----
@@ -245,7 +245,7 @@ func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>) -> 
   %1 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[CONST]], %[[CONST]] : tensor<f32>, tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // -----
@@ -267,7 +267,7 @@ func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>) -> 
   %3 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[ADD]], %[[CONST_1]] : tensor<f32>, tensor<f32>
-  return %2 : tensor<f32>
+  func.return %2 : tensor<f32>
 }
 
 // -----
@@ -325,11 +325,11 @@ func @main(%arg0: tensor<i32>) -> tensor<2xf32> {
   %1 = "tf._SomeOp"() : () -> tensor<2xf32>
   "tf.AssignVariableOp"(%0, %1) : (tensor<!tf_type.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
   %2 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<!tf_type.resource<tensor<2xf32>>>) -> tensor<2xf32>
-  return %2 : tensor<2xf32>
+  func.return %2 : tensor<2xf32>
 }
 func private @callee(%arg0: tensor<!tf_type.resource<tensor<2xf32>>>) -> tensor<2xf32> {
   %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<2xf32>>>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 
@@ -382,7 +382,7 @@ func @main() {
 func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>) -> tensor<i1> {
   %0 = "tf.VarIsInitializedOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<i1>
   %1 = "tf.UnknownOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<i1>
-  return %0 : tensor<i1>
+  func.return %0 : tensor<i1>
 }
 
 // -----
@@ -394,5 +394,5 @@ func @main() -> tensor<i1> {
   %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<f32>>>
   %1 = "tf.VarIsInitializedOp"(%0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<i1>
   %2 = "tf.UnknownOp"(%0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }

@@ -15,7 +15,7 @@ func @main(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/devi
   %1 = "tf.While"(%arg0) {cond = @while_cond, body = @while_body, is_stateless = false, shape_invariant, device="/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<i32>) -> (tensor<i32>)
 
   %2 = "tf.AddV2"(%arg1, %arg1) {device = "/job:worker/replica:0/task:1/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %1, %2 : tensor<i32>, tensor<i32>
+  func.return %1, %2 : tensor<i32>, tensor<i32>
 }
 // Subgraph of @main function that is placed on worker:1
 // CHECK: func @[[MAIN_PARTITION_0]](%[[ARG_0:.*]]: tensor<i32> {tf.device = "/job:worker/replica:0/task:1/device:CPU:0"})
@@ -32,7 +32,7 @@ func @main(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/devi
 func @while_cond(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) -> tensor<i1> {
   %0 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Less"(%arg0, %0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 
 // The @while_body function is a Multi-hosts function which contains three
@@ -62,7 +62,7 @@ func @while_body(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:
   %5 = tf_device.receive "key-1" "/job:localhost/replica:0/task:0/device:CPU:0" {device="/job:worker/replica:0/task:2/device:CPU:0"} : tensor<i32>
   %6 = "tf.AddV2"(%5, %5) {device = "/job:worker/replica:0/task:2/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
 
-  return %1 : tensor<i32>
+  func.return %1 : tensor<i32>
 }
 
 // Subgraph of @while_body function that is placed on worker:1

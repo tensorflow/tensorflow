@@ -9,7 +9,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %2 = "tf.B"(%1) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>) -> tensor<2xi32>
       tf_device.return %2 : tensor<2xi32>
     }) {num_cores_per_replica = 2, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
-    return %0 : tensor<2xi32>
+    func.return %0 : tensor<2xi32>
   }
 }
 
@@ -29,7 +29,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %2 = "tf.B"(%1) : (tensor<?xi32>) -> tensor<?xi32>
       tf_device.return %2 : tensor<?xi32>
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 
 
@@ -102,7 +102,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<?xi32>
     }
 
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 
   // Tests launch wrap of multiple outside compiled cluster with input/output.
@@ -137,7 +137,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<?xi32>
     }
 
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 
   // Tests the launch wrap of an outside compiled op that's called from a tf_device.cluster.

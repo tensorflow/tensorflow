@@ -9,7 +9,7 @@ func @recv_tpu_embedding_activations() -> (tensor<512x256xf32>) {
   // CHECK-NOT: tf.SendTPUEmbeddingGradients
 
   %0 = "tf.RecvTPUEmbeddingActivations"() {config = "\0A%\0A\0Dwatches_table\10\F5\03\18\80\02 \01*\0C\1A\00j\05\0D\00\00\80?\88\01\01\10\02\18\80\04 \01(\02"} : () -> tensor<512x256xf32>
-  return %0 : tensor<512x256xf32>
+  func.return %0 : tensor<512x256xf32>
 }
 
 // CHECK-LABEL: func @send_tpu_embedding_gradients
@@ -38,7 +38,7 @@ func @recv_send_ops() -> () {
 func @no_embedding_ops(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
   // CHECK: tf.Add
   %0 = "tf.Add"(%arg0, %arg0) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-  return %0 : tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
 }
 
 // CHECK-LABEL: func @nested_embedding_op
@@ -52,7 +52,7 @@ func @nested_embedding_op(%arg0: tensor<i1>, %arg1: tensor<512x256xf32>) -> (ten
   }, {
     "tf.Yield"(%arg1) : (tensor<512x256xf32>) -> ()
   }) { is_stateless = true}: (tensor<i1>) -> tensor<512x256xf32>
-  return %1 : tensor<512x256xf32>
+  func.return %1 : tensor<512x256xf32>
 }
 
 // CHECK-LABEL: func @doubly_nested_embedding_op
@@ -71,5 +71,5 @@ func @doubly_nested_embedding_op(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: te
   }, {
     "tf.Yield"(%arg2) : (tensor<512x256xf32>) -> ()
   }) { is_stateless = true}: (tensor<i1>) -> tensor<512x256xf32>
-  return %2 : tensor<512x256xf32>
+  func.return %2 : tensor<512x256xf32>
 }

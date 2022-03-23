@@ -53,7 +53,7 @@ func @callee0(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK-SAME: f = @callee1
   %0 = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
   %1 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @callee1} : (tensor<i32>) -> tensor<i32>
-  return %1 : tensor<i32>
+  func.return %1 : tensor<i32>
 }
 
 // CHECK-LABEL: func @callee1
@@ -62,7 +62,7 @@ func @callee1(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK-NOT:  "tf.Identity"
   // CHECK:      return [[ARG0]]
   %0 = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // Tests Identity ops not reachable from the cluster are not pruned away.
@@ -89,5 +89,5 @@ func @callee2(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK:      [[IDENTITY:%.*]] = "tf.Identity"([[ARG0]])
   %0 = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
   // CHECK:      return [[IDENTITY]]
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }

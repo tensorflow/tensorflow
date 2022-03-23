@@ -13,7 +13,7 @@ func @multiple_uses(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) -> tens
   // CHECK-NEXT: "tf.AssignVariableOp"([[ARG1]], [[PARALLEL_EXECUTE]]#0)
   "tf.AssignVariableOp"(%arg1, %0#0) : (tensor<!tf_type.resource>, tensor<i1>) -> ()
   // CHECK-NEXT: return [[PARALLEL_EXECUTE]]#0
-  return %0#0 : tensor<i1>
+  func.return %0#0 : tensor<i1>
 }
 
 // CHECK-LABEL: func @not_assign_var

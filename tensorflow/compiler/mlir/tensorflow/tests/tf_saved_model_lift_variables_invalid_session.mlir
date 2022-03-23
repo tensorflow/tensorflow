@@ -11,7 +11,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     %2 = "tf.VarHandleOp"() {_class = ["loc:@dense/bias"], allowed_devices = [], container = "", device = "", shared_name = "dense/bias"} : () -> tensor<!tf_type.resource<tensor<50xf32>>>
     %3 = "tf.ReadVariableOp"(%2) {device = ""} : (tensor<!tf_type.resource<tensor<50xf32>>>) -> tensor<50xf32>
     %4 = "tf.Add"(%1, %3) {device = ""} : (tensor<100x50xf32>, tensor<50xf32>) -> tensor<100x50xf32>
-    return %4 : tensor<100x50xf32>
+    func.return %4 : tensor<100x50xf32>
   }
 }
 
@@ -28,6 +28,6 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     %2 = "tf.VarHandleOp"() {_class = ["loc:@dense/bias"], allowed_devices = [], container = "", device = "", shared_name = "dense/bias"} : () -> tensor<!tf_type.resource<tensor<50xf32>>>
     %3 = "tf.ReadVariableOp"(%2) {device = ""} : (tensor<!tf_type.resource<tensor<50xf32>>>) -> tensor<50xf32>
     %4 = "tf.Add"(%1, %3) {device = ""} : (tensor<100x50xf32>, tensor<50xf32>) -> tensor<100x50xf32>
-    return %4 : tensor<100x50xf32>
+    func.return %4 : tensor<100x50xf32>
   }
 }

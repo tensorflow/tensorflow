@@ -26,7 +26,7 @@ func @non_aliasing_reads_writes(
     }
     tf_executor.fetch %island#0 : tensor<32xf32>
   }
-  return %graph : tensor<32xf32>
+  func.return %graph : tensor<32xf32>
 }
 
 // -----
@@ -118,7 +118,7 @@ func @if_then(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
   %u0 = "tf._UnknownSideEffectingOp_"() : () -> !tf_res
   // expected-remark@below {{Result #0, ID 1 : 0, 1, 2}}
   %id0 = "tf.Identity"(%arg0) : (!tf_res) -> !tf_res
-  return %u0, %id0, %id0 : !tf_res, !tf_res, !tf_res
+  func.return %u0, %id0, %id0 : !tf_res, !tf_res, !tf_res
 }
 
 // expected-remark@below {{Region #0, Arg #0, ID 1 : 0, 1}}
@@ -126,7 +126,7 @@ func @if_then(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
 func @if_else(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
   // expected-remark@below {{Result #0, ID 0 : 0, 1}}
   %id0 = "tf.Identity"(%arg0) : (!tf_res) -> !tf_res
-  return %id0, %id0, %arg1 : !tf_res, !tf_res, !tf_res
+  func.return %id0, %id0, %arg1 : !tf_res, !tf_res, !tf_res
 }
 
 // -----
@@ -158,7 +158,7 @@ func @case_branch0(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res
   %u0 = "tf._UnknownSideEffectingOp_"() : () -> !tf_res
   // expected-remark@below {{Result #0, ID 1 : 0, 1, 2}}
   %id0 = "tf.Identity"(%arg0) : (!tf_res) -> !tf_res
-  return %u0, %id0, %id0 : !tf_res, !tf_res, !tf_res
+  func.return %u0, %id0, %id0 : !tf_res, !tf_res, !tf_res
 }
 
 // expected-remark@below {{Region #0, Arg #0, ID 1 : 0, 1}}
@@ -166,13 +166,13 @@ func @case_branch0(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res
 func @case_branch1(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
   // expected-remark@below {{Result #0, ID 0 : 0, 1}}
   %id0 = "tf.Identity"(%arg0) : (!tf_res) -> !tf_res
-  return %id0, %id0, %arg1 : !tf_res, !tf_res, !tf_res
+  func.return %id0, %id0, %arg1 : !tf_res, !tf_res, !tf_res
 }
 
 // expected-remark@below {{Region #0, Arg #0, ID 0 : 0}}
 // expected-remark@below {{Region #0, Arg #1, ID 1 : 1}}
 func @case_branch2(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
-  return %arg0, %arg0, %arg1 : !tf_res, !tf_res, !tf_res
+  func.return %arg0, %arg0, %arg1 : !tf_res, !tf_res, !tf_res
 }
 
 // -----
@@ -205,7 +205,7 @@ func @while_op_aliasing(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) {
 func @while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
   // expected-remark@below {{Result #0, ID 0 : Unknown}}
   %u0 = "tf._UnknownSideEffectingOp_"() : () -> !tf_res
-  return %u0, %arg2, %arg1 : !tf_res, !tf_res, !tf_res
+  func.return %u0, %arg2, %arg1 : !tf_res, !tf_res, !tf_res
 }
 
 // CHECK-LABEL: func @while_cond
@@ -214,7 +214,7 @@ func @while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) -> (!tf_res, !t
 // expected-remark@below {{Region #0, Arg #2, ID 2 : 2}}
 func @while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) -> tensor<i1> {
   %0 = arith.constant dense<false> : tensor<i1>
-  return %0 : tensor<i1>
+  func.return %0 : tensor<i1>
 }
 
 // -----
@@ -236,7 +236,7 @@ func @aliasing_through_calls(%arg0: tensor<32xf32>) -> () {
 func @passthru(%arg0: !tf_res) -> (!tf_res, !tf_res) {
   // expected-remark@below {{Result #0, ID 0 : 0}}
   %vx = "tf.VarHandleOp"() {container = "cf", shared_name = "vx"} : () -> !tf_res
-  return %vx, %arg0 : !tf_res, !tf_res
+  func.return %vx, %arg0 : !tf_res, !tf_res
 }
 
 // -----
@@ -350,7 +350,7 @@ func @aliasing_through_calls(%arg0: tensor<32xf32>) -> () {
 func @passthru(%arg0: !tf_res) -> (!tf_res, !tf_res) {
   // expected-remark@below {{Result #0, ID 0 : 0}}
   %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
-  return %vh0, %arg0 : !tf_res, !tf_res
+  func.return %vh0, %arg0 : !tf_res, !tf_res
 }
 
 // -----

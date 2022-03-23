@@ -19,7 +19,7 @@ func @testSimple(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
     %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
     }) {is_stateless = true, _attr0 = false, attr1 = "hello", _then_func_name = "test_then_name", _else_func_name = "test_else_name"} :  (tensor<i1>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -42,7 +42,7 @@ func @testSimpleEmptyBranchNames(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> ten
     %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
     }) {is_stateless = true, _attr0 = false, attr1 = "hello", _then_func_name = "", _else_func_name = ""} :  (tensor<i1>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -65,7 +65,7 @@ func @testIfCondition(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> 
      %5 = "tf.Select"(%arg0, %1, %2):  (tensor<i1>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%5) : (tensor<2xf32>) -> ()
     }) { is_stateless = true} : (tensor<i1>) -> tensor<2xf32>
-   return %3 : tensor<2xf32>
+   func.return %3 : tensor<2xf32>
 }
 
 // -----
@@ -85,7 +85,7 @@ func @testIfConstant(%arg0: tensor<i1>) -> tensor<2xf32> {
      %cst_one = arith.constant dense<1.0> : tensor<2xf32>
      "tf.Yield"(%cst_one) : (tensor<2xf32>) -> ()
     }) { is_stateless = true} : (tensor<i1>) -> tensor<2xf32>
-   return %0 : tensor<2xf32>
+   func.return %0 : tensor<2xf32>
 }
 
 // -----
@@ -128,7 +128,7 @@ func @testNested(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
     %3 = "tf.Abs"(%acos) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%3) : (tensor<*xf32>) -> ()
     }) { is_stateless = true } :  (tensor<i1>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -145,7 +145,7 @@ func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
     %1 = call @testIf1Else(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%1) : (tensor<*xf32>) -> ()
  }) {is_stateless = false} : (tensor<i1>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -165,7 +165,7 @@ func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
     %2 = call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // -----
@@ -187,7 +187,7 @@ func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
     %3 = call @testIf1Else(%2) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%3) : (tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // -----
@@ -207,7 +207,7 @@ func @testIfExternIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: ten
     %2 = call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // -----
@@ -231,7 +231,7 @@ func @testIfIncompatibleCastTrivialTransform(%arg0: tensor<i1>, %arg1: tensor<2x
     %2 = call @testIf1Else(%1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // -----
@@ -254,7 +254,7 @@ func @testSimple(%arg0: tensor<i1>) -> tensor<2xf32> {
     %2 = "tf.Neg"(%cst_one) : (tensor<2xf32>) -> tensor<2xf32>
     "tf.Yield"(%2) : (tensor<2xf32>) -> ()
     }) { is_stateless = true } :  (tensor<i1>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // -----
@@ -299,7 +299,7 @@ func @testToBoolFold(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> 
     %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
     }) {is_stateless = true} :  (tensor<i1>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -338,7 +338,7 @@ func @testValidWhileRegion(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor
     }
   ) { is_stateless = false, _attr0 = false, attr1 = "hello"} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -372,7 +372,7 @@ func @testWhileRegionTypeMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -405,7 +405,7 @@ func @testWhileRegionConstantSink(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -439,7 +439,7 @@ func @testWhileRegionExternInCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %a
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -475,7 +475,7 @@ func @testWhileRegionExternInBody(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %a
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -506,7 +506,7 @@ func @testWhileRegionExternInBodyAndCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -535,7 +535,7 @@ func @testWhileRegionSameExternInBodyAndCond(%arg0 : tensor<*xf32>, %arg1 : tens
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -562,7 +562,7 @@ func @testWhileRegionTrivial(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tens
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -591,7 +591,7 @@ func @testWhileRegionTrivialCasts(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -622,7 +622,7 @@ func @testWhileRegionTrivialMultipleCasts(%arg0 : tensor<*xf32>, %arg1 : tensor<
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -653,7 +653,7 @@ func @testWhileRegionIncompatibleCast(%arg0 : tensor<*xi64>, %arg1 : tensor<i32>
     }
   ) { is_stateless = false } : (tensor<*xi64>, tensor<i32>) -> (tensor<*xi64>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xi64>
+  func.return %0#0 : tensor<*xi64>
 }
 
 // -----
@@ -683,7 +683,7 @@ func @testWhileRegionExtern(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tenso
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -712,7 +712,7 @@ func @testWhileRegionBlockArgMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -740,7 +740,7 @@ func @testWhileRegionTrivial(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tens
     }
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
-  return %0#0 : tensor<*xf32>
+  func.return %0#0 : tensor<*xf32>
 }
 
 // -----
@@ -789,5 +789,5 @@ func @testOverrideIfRegionXlaPropageCompileTimeConsts(%arg0: tensor<i1>, %arg1: 
     %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
     "tf.Yield"(%2) : (tensor<*xf32>) -> ()
     }) {is_stateless = true, _attr0 = false, attr1 = "hello", _then_func_name = "test_then_name", _else_func_name = "test_else_name", _xla_propagate_compile_time_consts = false} :  (tensor<i1>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }

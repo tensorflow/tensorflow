@@ -17,7 +17,7 @@ func @transposeConv2D_3x3_f32(%input: tensor<1x28x28x64xf32>, %filter: tensor<3x
        } : (tensor<1x28x28x64xf32>, tensor<3x3x64x64xf32>)
         -> tensor<1x26x26x64xf32>
 
-  return %0 : tensor<1x26x26x64xf32>
+  func.return %0 : tensor<1x26x26x64xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2D_1x1_f32
@@ -44,7 +44,7 @@ func @transposeConv2D_1x1_f32(%input: tensor<1x64x28x28xf32>, %filter: tensor<1x
        } : (tensor<1x64x28x28xf32>, tensor<1x1x64x64xf32>)
         -> tensor<1x64x14x14xf32>
 
-  return %0 : tensor<1x64x28x28xf32>
+  func.return %0 : tensor<1x64x28x28xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2D_3x3_f16
@@ -60,7 +60,7 @@ func @transposeConv2D_3x3_f16(%input: tensor<1x64x28x28xf16>, %filter: tensor<3x
        } : (tensor<1x64x28x28xf16>, tensor<3x3x64x64xf16>)
         -> tensor<1x64x26x26xf16>
 
-  return %0 : tensor<1x64x26x26xf16>
+  func.return %0 : tensor<1x64x26x26xf16>
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropFilter_f32
@@ -80,7 +80,7 @@ func @transposeConv2DBackpropFilter_f32(
        } : (tensor<1x28x28x64xf32>, tensor<4xi32>, tensor<1x28x28x64xf32>)
         -> tensor<1x1x64x64xf32>
 
-  return %0 : tensor<1x1x64x64xf32>
+  func.return %0 : tensor<1x1x64x64xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropFilter_f16
@@ -100,7 +100,7 @@ func @transposeConv2DBackpropFilter_f16(
        } : (tensor<1x64x28x28xf16>, tensor<4xi32>, tensor<1x64x28x28xf16>)
         -> tensor<1x1x64x64xf16>
 
-  return %0 : tensor<1x1x64x64xf16>
+  func.return %0 : tensor<1x1x64x64xf16>
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropInput_f32
@@ -120,7 +120,7 @@ func @transposeConv2DBackpropInput_f32(
        } : (tensor<4xi32>, tensor<1x28x28x64xf32>, tensor<1x28x28x64xf32>)
         -> tensor<1x28x28x64xf32>
 
-  return %0 : tensor<1x28x28x64xf32>
+  func.return %0 : tensor<1x28x28x64xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropInput_f16
@@ -140,7 +140,7 @@ func @transposeConv2DBackpropInput_f16(
        } : (tensor<4xi32>, tensor<1x64x28x28xf16>, tensor<1x64x28x28xf16>)
         -> tensor<1x64x28x28xf16>
 
-  return %0 : tensor<1x64x28x28xf16>
+  func.return %0 : tensor<1x64x28x28xf16>
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormV3_f32
@@ -165,7 +165,7 @@ func @transposeFusedBatchNormV3_f32(
        -> (tensor<1x28x28x64xf32>, tensor<64xf32>, tensor<64xf32>,
            tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
 
-  return %y : tensor<1x28x28x64xf32>
+  func.return %y : tensor<1x28x28x64xf32>
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormV3_f16
@@ -190,7 +190,7 @@ func @transposeFusedBatchNormV3_f16(
        -> (tensor<1x64x28x28xf16>, tensor<64xf32>, tensor<64xf32>,
            tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
 
-  return %y : tensor<1x64x28x28xf16>
+  func.return %y : tensor<1x64x28x28xf16>
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormGradV3_f32
@@ -216,7 +216,7 @@ func @transposeFusedBatchNormGradV3_f32(
        -> (tensor<1x28x28x64xf32>,
            tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
 
-  return %x_backprop : tensor<1x28x28x64xf32>
+  func.return %x_backprop : tensor<1x28x28x64xf32>
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormGradV3_f16
@@ -242,7 +242,7 @@ func @transposeFusedBatchNormGradV3_f16(
        -> (tensor<1x64x28x28xf16>,
            tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
 
-  return %x_backprop : tensor<1x64x28x28xf16>
+  func.return %x_backprop : tensor<1x64x28x28xf16>
 }
 
 }

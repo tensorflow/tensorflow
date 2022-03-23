@@ -16,7 +16,7 @@ func @write_only_resource(%arg0: tensor<i32>, %arg1: tensor<f32>, %arg2: tensor<
 // CHECK-LABEL: func @write_func
 // CHECK-SAME: ({{%.*}}: tensor<i32>, {{%.*}}: tensor<f32>, {{%.*}}: tensor<i32>) -> (tensor<f32>, tensor<i32>)
 func @write_func(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<i32>) {
-  return %arg1, %arg0 : tensor<f32>, tensor<i32>
+  func.return %arg1, %arg0 : tensor<f32>, tensor<i32>
 }
 
 // CHECK-LABEL: func @read_write_resource
@@ -31,7 +31,7 @@ func @read_write_resource(%arg0: tensor<i32>, %arg1: tensor<f32>, %arg2: tensor<
 // CHECK-LABEL: func @read_write_func
 // CHECK-SAME: ({{%.*}}: tensor<i32>, {{%.*}}: tensor<f32>) -> (tensor<f32>, tensor<i32>)
 func @read_write_func(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<i32>) {
-  return %arg1, %arg0 : tensor<f32>, tensor<i32>
+  func.return %arg1, %arg0 : tensor<f32>, tensor<i32>
 }
 
 // CHECK-LABEL: func @multiple_write_resource
@@ -46,7 +46,7 @@ func @multiple_write_resource(%arg0: tensor<i32>, %arg1: tensor<*x!tf_type.resou
 // CHECK-LABEL: func @multiple_write_func
 // CHECK-SAME: ({{%.*}}: tensor<i32>) -> (tensor<i32>, tensor<i32>)
 func @multiple_write_func(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
-  return %arg0, %arg0 : tensor<i32>, tensor<i32>
+  func.return %arg0, %arg0 : tensor<i32>, tensor<i32>
 }
 
 // CHECK-LABEL: func @multiple_result_user
@@ -54,11 +54,11 @@ func @multiple_result_user(%arg0: tensor<i32>, %arg1: tensor<*x!tf_type.resource
   // CHECK-NOT: tf.ReadVariableOp
   %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "multiple_uses", func = @multiple_result_user_func} : (tensor<i32>) -> tensor<i32>
   "tf.AssignVariableOp"(%arg1, %0) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK-LABEL: func @multiple_result_user_func
 // CHECK-SAME: ({{%.*}}: tensor<i32>) -> tensor<i32>
 func @multiple_result_user_func(%arg0: tensor<i32>) -> tensor<i32> {
-  return %arg0 : tensor<i32>
+  func.return %arg0 : tensor<i32>
 }

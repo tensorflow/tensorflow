@@ -9,7 +9,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %2 = "tf.B"(%1) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>) -> tensor<2xi32>
       tf_device.return %2 : tensor<2xi32>
     }) {num_cores_per_replica = 2, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
-    return %0 : tensor<2xi32>
+    func.return %0 : tensor<2xi32>
   }
 }
 
@@ -26,7 +26,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %2 = "tf.B"(%1) : (tensor<2xi32>) -> tensor<2xi32>
       tf_device.return %2 : tensor<2xi32>
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
-    return %0 : tensor<2xi32>
+    func.return %0 : tensor<2xi32>
   }
 
   // CHECK-LABEL: func @attribute_outside_of_cluster
@@ -37,7 +37,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %1 : tensor<2xi32>
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
     %2 = "tf.B"(%0) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>) -> tensor<2xi32>
-    return %0 : tensor<2xi32>
+    func.return %0 : tensor<2xi32>
   }
 
 
@@ -134,7 +134,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster with multiple TPU cluster return.
@@ -159,7 +159,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2, %3 : tensor<3xf32>, tensor<2xi32>
     }
 
-    return %1 : tensor<3xf32>
+    func.return %1 : tensor<3xf32>
   }
 
   // Tests extraction of a single outside compiled cluster with single device->host input.
@@ -190,7 +190,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests value is added as operand to XlaHostCompute op only if defining op is
@@ -216,7 +216,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster with single host->device output.
@@ -244,7 +244,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %3 : tensor<2xi32>
     }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
 
-    return %0 : tensor<2xi32>
+    func.return %0 : tensor<2xi32>
   }
 
   // CHECK-LABEL: func @single_outside_compiled_output_single_outside_compilation_replicated
@@ -274,7 +274,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster host output returned by TPU cluster.
@@ -308,7 +308,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster with single input/output.
@@ -340,7 +340,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests host to device communcation is added only if value is used for ops
@@ -375,7 +375,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
 
@@ -412,7 +412,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a multiple outside compiled clusters with input/output.
@@ -451,7 +451,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster with arg input and single device->host input.
@@ -481,7 +481,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a multiple outside compiled clusters with single device->host input.
@@ -518,7 +518,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster with multiple device->host inputs.
@@ -556,7 +556,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests only directly used results of tpu cluster are remapped with
@@ -577,7 +577,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> (tensor<2xi32>, tensor<2xi32>)
       tf_device.return %2#1 : tensor<2xi32>
     }
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster inside a tf.IfRegion op.
@@ -632,7 +632,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster inside a tf.IfRegion op with dynamic shape.
@@ -687,7 +687,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Ensures that separate send/recvs are added for values that are used by ops inside of multiple IfRegions.
@@ -741,7 +741,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of an outside compiled tf.IfRegion op where the entirety
@@ -792,7 +792,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of an outside compiled tf.IfRegion op where the entirety
@@ -867,7 +867,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster inside a tf.IfRegion
@@ -925,7 +925,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster inside a tf.IfRegion op without external inputs/outputs
@@ -971,7 +971,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster inside a nested
@@ -1042,7 +1042,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster inside a tf.WhileRegion op body.
@@ -1098,7 +1098,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster inside a tf.WhileRegion op cond.
@@ -1155,7 +1155,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster inside a tf.WhileRegion op cond and body.
@@ -1215,7 +1215,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of a single outside compiled cluster inside a tf.IfRegion op
@@ -1280,7 +1280,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of an outside compiled tf.IfRegion op where the entirety
@@ -1348,7 +1348,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of an outside compiled tf.WhileRegion where the entire
@@ -1402,7 +1402,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Tests extraction of an outside compiled cluster that contains ops wrapped
@@ -1465,7 +1465,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // Verifies that ops in between outside compile ops and depending on results
@@ -1588,7 +1588,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   // CHECK-LABEL: func @dynamic_input_chained_ops_outside_compilation
@@ -1618,7 +1618,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
    //  Tests that all inputs to a function are passed and all outputs are returned
@@ -1656,7 +1656,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   //  Tests that all inputs to a function are passed and all outputs are returned for an outside compilation cluster
@@ -1698,7 +1698,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   //  Tests the case when an outside compiled op with only statically shaped inputs/outputs
@@ -1747,7 +1747,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
   //  Tests the case when an outside compiled op with some dynamically shaped input but static output
@@ -1788,7 +1788,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<2xi32>
     }
 
-    return %1 : tensor<2xi32>
+    func.return %1 : tensor<2xi32>
   }
 
 }

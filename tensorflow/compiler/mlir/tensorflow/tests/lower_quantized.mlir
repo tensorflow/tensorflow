@@ -13,7 +13,7 @@ func @dequantize(%arg0: tensor<2x3x!tf_type.qint8>, %min_range: tensor<f32>, %ma
   %0 = "tf.Dequantize"(%arg0, %min_range, %max_range) : (tensor<2x3x!tf_type.qint8>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
 
   // CHECK-DAG: return %[[RESULT]]
-  return %0 : tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
 }
 
 // CHECK-LABEL: dequantize_quint8
@@ -27,7 +27,7 @@ func @dequantize_quint8(%arg0: tensor<2x3x!tf_type.quint8>, %min_range: tensor<f
   %0 = "tf.Dequantize"(%arg0, %min_range, %max_range) : (tensor<2x3x!tf_type.quint8>, tensor<f32>, tensor<f32>) -> tensor<2x3xf32>
 
   // CHECK-DAG: return %[[RESULT]]
-  return %0 : tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
 }
 
 // CHECK-LABEL: dequantize_to_bf16
@@ -44,5 +44,5 @@ func @dequantize_to_bf16(%arg0: tensor<2x3x!tf_type.qint8>, %min_range: tensor<f
   %0 = "tf.Dequantize"(%arg0, %min_range, %max_range) : (tensor<2x3x!tf_type.qint8>, tensor<f32>, tensor<f32>) -> tensor<2x3xbf16>
 
   // CHECK-DAG: return %[[RESULT]]
-  return %0 : tensor<2x3xbf16>
+  func.return %0 : tensor<2x3xbf16>
 }

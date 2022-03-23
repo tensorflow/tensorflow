@@ -28,7 +28,7 @@ func @simple_input_output_pairs(%arg0: !tf_res_i32, %arg1: !tf_res_f32, %arg2: !
 // CHECK-SAME: [[ARG1:%.*]]: tensor<f32> {tf.aliasing_output = 0 : i64},
 // CHECK-SAME: [[ARG2:%.*]]: tensor<f32>
 func @device_func_0(%arg0: tensor<i32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> (tensor<f32>, tensor<i32>) {
-  return %arg1, %arg0 : tensor<f32>, tensor<i32>
+  func.return %arg1, %arg0 : tensor<f32>, tensor<i32>
 }
 
 // CHECK-LABEL: func @skip_outputs_with_multiple_use
@@ -43,7 +43,7 @@ func @skip_outputs_with_multiple_use(%arg0: !tf_res_i32) {
 // CHECK-LABEL: func @device_func_1
 // CHECK-NOT: tf.aliasing_output
 func @device_func_1(%arg0: tensor<i32>) -> tensor<i32> {
-  return %arg0 : tensor<i32>
+  func.return %arg0 : tensor<i32>
 }
 
 // CHECK-LABEL: func @skip_inputs_with_multiple_use
@@ -58,7 +58,7 @@ func @skip_inputs_with_multiple_use(%arg0: !tf_res_i32) {
 // CHECK-LABEL: func @device_func_2
 // CHECK-NOT: tf.aliasing_output
 func @device_func_2(%arg0: tensor<i32>) -> tensor<i32> {
-  return %arg0 : tensor<i32>
+  func.return %arg0 : tensor<i32>
 }
 
 // CHECK-LABEL: func @skip_multiple_assigns_to_resource
@@ -74,7 +74,7 @@ func @skip_multiple_assigns_to_resource(%arg0: !tf_res_f32, %arg1: !tf_res_f32) 
 // CHECK-LABEL: func @device_func_3
 // CHECK-NOT: tf.aliasing_output
 func @device_func_3(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
-  return %arg1, %arg0 : tensor<f32>, tensor<f32>
+  func.return %arg1, %arg0 : tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: func @skip_multiple_reads_of_resource
@@ -90,5 +90,5 @@ func @skip_multiple_reads_of_resource(%arg0: !tf_res_f32, %arg1: !tf_res_f32) {
 // CHECK-LABEL: func @device_func_4
 // CHECK-NOT: tf.aliasing_output
 func @device_func_4(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
-  return %arg1, %arg0 : tensor<f32>, tensor<f32>
+  func.return %arg1, %arg0 : tensor<f32>, tensor<f32>
 }

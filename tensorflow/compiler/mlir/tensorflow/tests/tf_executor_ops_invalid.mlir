@@ -42,7 +42,7 @@ func @graph_with_invalid_op(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // expected-error@-1 {{'arith.addf' op unallowed inside a tf_executor.graph region}}
     tf_executor.fetch %val : tensor<*xf32>
   }) : () -> tensor<*xf32>
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -64,7 +64,7 @@ func @graph_with_invalid_terminator(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // expected-error@-1 {{custom op 'tf_executor.graph' expects a tf_executor.fetch terminator}}
     return
   }
-  return %arg0 : tensor<*xf32>
+  func.return %arg0 : tensor<*xf32>
 }
 
 // -----
@@ -86,7 +86,7 @@ func @graph_with_invalid_terminator(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   "tf_executor.graph" () ({
     tf_executor.yield
   }) : () -> ()
-  return %arg0 : tensor<*xf32>
+  func.return %arg0 : tensor<*xf32>
 }
 
 // -----
@@ -97,7 +97,7 @@ func @graph_with_invalid_terminator(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     "tf_executor.fetch"() : () -> ()
 // expected-error@-1 {{'tf_executor.fetch' op does not have enough operands to cover the graph returned values}}
   }) : () -> tensor<*xf32>
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -110,7 +110,7 @@ func @graph_with_multiple_region(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   ^bb:
     tf_executor.fetch %arg0 : tensor<*xf32>
   }
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -121,7 +121,7 @@ func @invalid_fetch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     "tf_executor.fetch"() : () -> ()
 // expected-error@-1 {{'tf_executor.fetch' op does not have enough operands to cover the graph returned values}}
   }) : () -> tensor<*xf32>
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -132,7 +132,7 @@ func @invalid_fetch(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) -> tensor<
     "tf_executor.fetch"(%ctl) : (!tf_executor.control) -> ()
 // expected-error@-1 {{'tf_executor.fetch' op operand #0 is a control type, can't be bound to a graph result}}
   }) : () -> tensor<*xf32>
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -143,7 +143,7 @@ func @invalid_fetch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     "tf_executor.fetch"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> ()
 // expected-error@-1 {{'tf_executor.fetch' op operand #1 does not have a graph results to bind}}
   }) : () -> tensor<*xf32>
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -154,7 +154,7 @@ func @invalid_fetch(%arg0: tensor<*xf32>) -> i32 {
     "tf_executor.fetch"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> ()
 // expected-error@-1 {{'tf_executor.fetch' op operand #0 type mismatch graph results}}
   }) : () -> i32
-  return %result : i32
+  func.return %result : i32
 }
 
 // -----
@@ -166,7 +166,7 @@ func @invalid_fetch(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) -> tensor<
 // expected-error@-1 {{'tf_executor.fetch' op found non-control operand #2 after control operand}}
 // expected-error@-2 {{'tf_executor.fetch' op failed to verify that all control inputs must appear after any non-control input}}
   }) : () -> tensor<*xf32>
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -374,7 +374,7 @@ func @invalid_switch(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
 // expected-error@-1 {{'tf_executor.Switch' op operand #1 must be tensor of 1-bit signless integer values}}
     tf_executor.fetch %true : tensor<*xf32>
   }
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -386,7 +386,7 @@ func @invalid_switch(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 // expected-error@-1 {{'tf_executor.Switch' op failed to verify that data operand must be broadcastable to true result}}
     tf_executor.fetch %true : tensor<*xf32>
   }
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -398,7 +398,7 @@ func @invalid_switch(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 // expected-error@-1 {{'tf_executor.Switch' op failed to verify that data operand must be broadcastable to false result}}
     tf_executor.fetch %false : tensor<*xf32>
   }
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -423,7 +423,7 @@ func @invalid_switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32>
 
      tf_executor.fetch %1#0 : tensor<*xf32>
   }
-  return %fetches : tensor<*xf32>
+  func.return %fetches : tensor<*xf32>
 }
 
 // -----
@@ -435,7 +435,7 @@ func @invalid_switchN(%arg0: i32, %arg1: tensor<i32>) -> tensor<*xi32> {
 // expected-error@-1 {{'tf_executor._SwitchN' op expects data operand to have tensor type but got 'i32'}}
     tf_executor.fetch %1#0 : tensor<*xi32>
   }
-  return %result : tensor<*xi32>
+  func.return %result : tensor<*xi32>
 }
 
 // -----
@@ -447,7 +447,7 @@ func @invalid_switchN(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> i32 {
 // expected-error@-1 {{'tf_executor._SwitchN' op expects outputs to have tensor type but got 'i32'}}
     tf_executor.fetch %1#0 : i32
   }
-  return %result : i32
+  func.return %result : i32
 }
 
 // -----
@@ -460,7 +460,7 @@ func @invalid_switchN(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> tensor<4x!tf_
 // expected-error@-1 {{'tf_executor._SwitchN' op expects same operand and output element type but got 'tensor<4xf32>' vs 'tensor<4x!tf_type.f32ref>'}}
     tf_executor.fetch %1#0 : tensor<4x!tf_type.f32ref>
   }
-  return %fetches : tensor<4x!tf_type.f32ref>
+  func.return %fetches : tensor<4x!tf_type.f32ref>
 }
 
 // -----
@@ -474,7 +474,7 @@ func @invalid_switchN(%arg0: tensor<*xf32>, %arg1: tensor<i32>) -> tensor<*xf32>
 
      tf_executor.fetch %1#0 : tensor<*xf32>
   }
-  return %fetches : tensor<*xf32>
+  func.return %fetches : tensor<*xf32>
 }
 
 // -----
@@ -488,7 +488,7 @@ func @invalid_switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32>
 
      tf_executor.fetch %1#0 : tensor<*xf32>
   }
-  return %fetches : tensor<*xf32>
+  func.return %fetches : tensor<*xf32>
 }
 
 // -----
@@ -513,7 +513,7 @@ func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 // expected-error@-1 {{'tf_executor.Merge' op expects at least one operand}}
     tf_executor.fetch %value : tensor<*xf32>
   }
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -527,7 +527,7 @@ func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 // expected-error@-1 {{'tf_executor.Merge' op expects a non-control input}}
     tf_executor.fetch %value : tensor<*xf32>
   }
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -539,7 +539,7 @@ func @invalid_merge(%arg0: tensor<*xi32>, %arg1: i32) -> tensor<*xi32> {
 // expected-error@-1 {{'tf_executor.Merge' op expects data operands to have tensor type but got 'i32'}}
     tf_executor.fetch %value : tensor<*xi32>
   }
-  return %result : tensor<*xi32>
+  func.return %result : tensor<*xi32>
 }
 
 // -----
@@ -551,7 +551,7 @@ func @invalid_merge(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> i32 {
 // expected-error@-1 {{'tf_executor.Merge' op result #0 must be tensor of any type values, but got 'i32'}}
     tf_executor.fetch %value : i32
   }
-  return %result : i32
+  func.return %result : i32
 }
 
 // -----
@@ -565,7 +565,7 @@ func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 // expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<i1>' vs 'tensor<*xf32>'}}
     tf_executor.fetch %value : tensor<*xf32>
   }
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -577,7 +577,7 @@ func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<4xf32>) -> tensor<8xf32>
 // expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4xf32>' vs 'tensor<8xf32>'}}
     tf_executor.fetch %value : tensor<8xf32>
   }
-  return %result : tensor<8xf32>
+  func.return %result : tensor<8xf32>
 }
 
 // -----
@@ -589,7 +589,7 @@ func @invalid_merge(%arg0: tensor<*x!tf_type.variant>, %arg1: tensor<4x!tf_type.
 // expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4x!tf_type.variant>' vs 'tensor<8x!tf_type.variant>'}}
     tf_executor.fetch %value : tensor<8x!tf_type.variant>
   }
-  return %result : tensor<8x!tf_type.variant>
+  func.return %result : tensor<8x!tf_type.variant>
 }
 
 // -----
@@ -601,7 +601,7 @@ func @invalid_merge(%arg0: tensor<*x!tf_type.resource>, %arg1: tensor<4x!tf_type
 // expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4x!tf_type.resource>' vs 'tensor<8x!tf_type.resource>'}}
     tf_executor.fetch %value : tensor<8x!tf_type.resource>
   }
-  return %result : tensor<8x!tf_type.resource>
+  func.return %result : tensor<8x!tf_type.resource>
 }
 
 // -----
@@ -613,7 +613,7 @@ func @invalid_merge(%arg0: tensor<4x!tf_type.f32ref>, %arg1: tensor<4xf32>) -> t
     // expected-error@-1 {{'tf_executor.Merge' op expects same operand and output element type but got 'tensor<4xf32>' vs 'tensor<4x!tf_type.f32ref>'}}
     tf_executor.fetch %value : tensor<4x!tf_type.f32ref>
   }
-  return %result : tensor<4x!tf_type.f32ref>
+  func.return %result : tensor<4x!tf_type.f32ref>
 }
 
 // -----
@@ -628,7 +628,7 @@ func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 // expected-error@-2 {{'tf_executor.Merge' op found non-control operand #2 after control operand}}
     tf_executor.fetch %value : tensor<*xf32>
   }
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -651,7 +651,7 @@ func @invalid_enter(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
 // expected-error@-1 {{'tf_executor.Enter' op failed to verify that data operand must be broadcastable to result}}
     tf_executor.fetch %res#0 : tensor<*xf32>
   }
-  return %result : tensor<*xf32>
+  func.return %result : tensor<*xf32>
 }
 
 // -----
@@ -684,7 +684,7 @@ func @invalid_nextiteration(%arg0: tensor<*xf32>, %arg1: !tf_executor.token) -> 
 // expected-error@-1 {{'tf_executor.NextIteration.Source' op expects a single user for produced token}}
     tf_executor.fetch %1#0 : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -698,7 +698,7 @@ func @invalid_nextiteration(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     }
     tf_executor.fetch %arg0 : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -713,7 +713,7 @@ func @invalid_nextiteration(%arg0: tensor<*xf32>, %arg1: !tf_executor.token) -> 
 // expected-error@-1 {{'tf_executor.NextIteration.Sink' op expects a token produced by a tf_executor.NextIteration.Source op}}
     tf_executor.fetch %arg0 : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -724,7 +724,7 @@ func @invalid_nextiteration(%arg0: tensor<*xf32>, %arg1: !tf_executor.token) -> 
 // expected-error@-1 {{'tf_executor.NextIteration.Sink' op expects a token directly produced by a tf_executor.NextIteration.Source op}}
     tf_executor.fetch %arg0 : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -736,7 +736,7 @@ func @invalid_nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
 // expected-error@-1 {{'tf_executor.NextIteration.Sink' op input type 'i1' mismatch the tf_executor.NextIteration.Source output type: 'tensor<*xf32>'}}
     tf_executor.fetch %1#0 : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -758,7 +758,7 @@ func @exit(%arg0: tensor<*xi32>) -> tensor<*xf32> {
 // expected-error@-1 {{'tf_executor.Exit' op failed to verify that data operand must be broadcastable to result}}
     tf_executor.fetch %1#0 : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----

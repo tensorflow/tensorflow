@@ -10,7 +10,7 @@
 // CHECK:         }
 func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
   %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
-  return %0 : tensor<1x32x10x32xi32>
+  func.return %0 : tensor<1x32x10x32xi32>
 }
 
 // CHECK-LABEL:   func @biasAdd_NCHW(
@@ -21,7 +21,7 @@ func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tens
 // CHECK:         }
 func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
   %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<1x32x10x32xi32>, tensor<32xi32>) -> tensor<1x32x10x32xi32>
-  return %0 : tensor<1x32x10x32xi32>
+  func.return %0 : tensor<1x32x10x32xi32>
 }
 
 // CHECK-LABEL:   func @biasAdd_dynamic(
@@ -32,7 +32,7 @@ func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tens
 // CHECK:         }
 func @biasAdd_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?x?x?xi32> {
   %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<?x?x?x?xi32>, tensor<?xi32>) -> tensor<?x?x?x?xi32>
-  return %0 : tensor<?x?x?x?xi32>
+  func.return %0 : tensor<?x?x?x?xi32>
 }
 
 // CHECK-LABEL:   func @add(
@@ -44,7 +44,7 @@ func @biasAdd_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<?xi32>) -> tenso
 func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   %0 = mhlo.add %arg0, %arg0 : tensor<2xi32>
   %1 = mhlo.add %0, %arg0 : tensor<2xi32>
-  return %1 : tensor<2xi32>
+  func.return %1 : tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @broadcast_add(
@@ -55,7 +55,7 @@ func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK:         }
 func @broadcast_add(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
-  return %0 : tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
 }
 
 // CHECK-LABEL:   func @broadcast_multi_dim_add(
@@ -66,14 +66,14 @@ func @broadcast_add(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2x
 // CHECK:         }
 func @broadcast_multi_dim_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32> {
   %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>} : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
-  return %0 : tensor<4x4x4x4xi32>
+  func.return %0 : tensor<4x4x4x4xi32>
 }
 
 // CHECK-LABEL:   func @unsupported_broadcast_add
 // CHECK: chlo.broadcast_add
 func @unsupported_broadcast_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32> {
   %0 = "chlo.broadcast_add"(%arg0, %arg1) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
-  return %0 : tensor<4x4x4x4xi32>
+  func.return %0 : tensor<4x4x4x4xi32>
 }
 
 // CHECK-LABEL:   func @div(
@@ -83,7 +83,7 @@ func @unsupported_broadcast_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4x
 // CHECK:         }
 func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   %0 = mhlo.divide %arg0, %arg0 : tensor<2xi32>
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @broadcast_div(
@@ -94,7 +94,7 @@ func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK:         }
 func @broadcast_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
-  return %0 : tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
 }
 
 // CHECK-LABEL:   func @shift_left(
@@ -105,7 +105,7 @@ func @broadcast_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2x
 // CHECK:         }
 func @shift_left(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   %0 = mhlo.shift_left %arg0, %arg1 : tensor<4xi32>
-  return %0 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
 }
 
 // CHECK-LABEL:   func @div_dynamic(
@@ -116,7 +116,7 @@ func @shift_left(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
 // CHECK:         }
 func @div_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi32> {
   %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
-  return %0 : tensor<?x?xi32>
+  func.return %0 : tensor<?x?xi32>
 }
 
 // CHECK-LABEL:   func @maximum(
@@ -127,7 +127,7 @@ func @div_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi3
 // CHECK:         }
 func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %0 = mhlo.maximum %arg0, %arg1 : tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // CHECK-LABEL:   func @minimum(
@@ -138,7 +138,7 @@ func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 // CHECK:         }
 func @minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %0 = mhlo.minimum %arg0, %arg1 : tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // CHECK-LABEL:   func @mul(
@@ -148,7 +148,7 @@ func @minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 // CHECK:         }
 func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   %0 = mhlo.multiply %arg0, %arg0 : tensor<2xi32>
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @broadcast_mul(
@@ -159,7 +159,7 @@ func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK:         }
 func @broadcast_mul(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   %0 = "chlo.broadcast_multiply"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
-  return %0 : tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
 }
 
 // CHECK-LABEL:   func @real_div(
@@ -169,7 +169,7 @@ func @broadcast_mul(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2x
 // CHECK:         }
 func @real_div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   %0 = mhlo.divide %arg0, %arg0 : tensor<2xi32>
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @broadcast_real_div(
@@ -180,7 +180,7 @@ func @real_div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK:         }
 func @broadcast_real_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
-  return %0 : tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
 }
 
 // CHECK-LABEL:   func @sub(
@@ -190,7 +190,7 @@ func @broadcast_real_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor
 // CHECK:         }
 func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   %0 = mhlo.subtract %arg0, %arg0 : tensor<2xi32>
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @broadcast_sub(
@@ -201,7 +201,7 @@ func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK:         }
 func @broadcast_sub(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
   %0 = "chlo.broadcast_subtract"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
-  return %0 : tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
 }
 
 // CHECK-LABEL:   func @shift_right(
@@ -212,7 +212,7 @@ func @broadcast_sub(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2x
 // CHECK:         }
 func @shift_right(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   %0 = mhlo.shift_right_arithmetic %arg0, %arg1 : tensor<4xi32>
-  return %0 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
 }
 
 // CHECK-LABEL:   func @broadcast_shift_right(
@@ -223,7 +223,7 @@ func @shift_right(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
 // CHECK:         }
 func @broadcast_shift_right(%arg0: tensor<4xi32>, %arg1: tensor<2x4xi32>) -> tensor<2x4xi32> {
   %0 = "chlo.broadcast_shift_right_arithmetic"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xi32>, tensor<2x4xi32>) -> tensor<2x4xi32>
-  return %0 : tensor<2x4xi32>
+  func.return %0 : tensor<2x4xi32>
 }
 
 // CHECK-LABEL:   func @and(
@@ -234,7 +234,7 @@ func @broadcast_shift_right(%arg0: tensor<4xi32>, %arg1: tensor<2x4xi32>) -> ten
 // CHECK:         }
 func @and(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
   %0 = mhlo.and %arg0, %arg1 : tensor<2xi1>
-  return %0 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @and_broadcast(
@@ -245,7 +245,7 @@ func @and(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
 // CHECK:         }
 func @and_broadcast(%arg0: tensor<1xi1>, %arg1: tensor<1x2xi1>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_and"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi1>, tensor<1x2xi1>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL:   func @and_dynamic(
@@ -256,7 +256,7 @@ func @and_broadcast(%arg0: tensor<1xi1>, %arg1: tensor<1x2xi1>) -> tensor<1x2xi1
 // CHECK:         }
 func @and_dynamic(%arg0: tensor<?xi1>, %arg1: tensor<1xi1>) -> tensor<?xi1> {
   %0 = "chlo.broadcast_and"(%arg0, %arg1) : (tensor<?xi1>, tensor<1xi1>) -> tensor<?xi1>
-  return %0 : tensor<?xi1>
+  func.return %0 : tensor<?xi1>
 }
 
 // CHECK-LABEL:   func @or(
@@ -267,7 +267,7 @@ func @and_dynamic(%arg0: tensor<?xi1>, %arg1: tensor<1xi1>) -> tensor<?xi1> {
 // CHECK:         }
 func @or(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
   %0 = mhlo.or %arg0, %arg1 : tensor<2xi1>
-  return %0 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @or_broadcast(
@@ -278,7 +278,7 @@ func @or(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
 // CHECK:         }
 func @or_broadcast(%arg0: tensor<1xi1>, %arg1: tensor<1x2xi1>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_or"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi1>, tensor<1x2xi1>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL:   func @or_dynamic(
@@ -289,7 +289,7 @@ func @or_broadcast(%arg0: tensor<1xi1>, %arg1: tensor<1x2xi1>) -> tensor<1x2xi1>
 // CHECK:         }
 func @or_dynamic(%arg0: tensor<?xi1>, %arg1: tensor<1xi1>) -> tensor<?xi1> {
   %0 = "chlo.broadcast_or"(%arg0, %arg1) : (tensor<?xi1>, tensor<1xi1>) -> tensor<?xi1>
-  return %0 : tensor<?xi1>
+  func.return %0 : tensor<?xi1>
 }
 
 // CHECK-LABEL:   func @bitwise_or(
@@ -300,7 +300,7 @@ func @or_dynamic(%arg0: tensor<?xi1>, %arg1: tensor<1xi1>) -> tensor<?xi1> {
 // CHECK:         }
 func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   %0 = mhlo.or %arg0, %arg1 : tensor<4xi32>
-  return %0 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
 }
 
 // CHECK-LABEL:   func @bitwise_or_broadcast(
@@ -311,7 +311,7 @@ func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
 // CHECK:         }
 func @bitwise_or_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
   %0 = "chlo.broadcast_or"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
-  return %0 : tensor<1x4xi8>
+  func.return %0 : tensor<1x4xi8>
 }
 
 // CHECK-LABEL:   func @bitwise_or_dynamic(
@@ -322,7 +322,7 @@ func @bitwise_or_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor
 // CHECK:         }
 func @bitwise_or_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi32> {
   %0 = "chlo.broadcast_or"(%arg0, %arg1) : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi32>
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK-LABEL:   func @bitwise_and(
@@ -333,7 +333,7 @@ func @bitwise_or_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?
 // CHECK:         }
 func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   %0 = mhlo.and %arg0, %arg1 : tensor<4xi32>
-  return %0 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
 }
 
 // CHECK-LABEL:   func @bitwise_and_broadcast(
@@ -344,7 +344,7 @@ func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
 // CHECK:         }
 func @bitwise_and_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
   %0 = "chlo.broadcast_and"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
-  return %0 : tensor<1x4xi8>
+  func.return %0 : tensor<1x4xi8>
 }
 
 // CHECK-LABEL:   func @bitwise_and_dynamic(
@@ -355,7 +355,7 @@ func @bitwise_and_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tenso
 // CHECK:         }
 func @bitwise_and_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi32> {
   %0 = "chlo.broadcast_and"(%arg0, %arg1) : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi32>
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK-LABEL:   func @pow(
@@ -365,7 +365,7 @@ func @bitwise_and_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<
 // CHECK:         }
 func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = mhlo.power %arg0, %arg0 : tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @pow_dynamic(
@@ -375,7 +375,7 @@ func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @pow_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = mhlo.power %arg0, %arg0 : tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @floordiv_broadcast_i32(
@@ -414,7 +414,7 @@ func @floordiv_broadcast_i32(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32>) -> te
   %12 = "mhlo.abs"(%arg1) : (tensor<3xi32>) -> tensor<3xi32>
   %13 = "chlo.broadcast_divide"(%11, %12) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
   %14 = "mhlo.select"(%4, %5, %13) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
-  return %14 : tensor<2x3xi32>
+  func.return %14 : tensor<2x3xi32>
 }
 
 // CHECK-LABEL:   func @floordiv_reverse_broadcast_i32(
@@ -453,7 +453,7 @@ func @floordiv_reverse_broadcast_i32(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32
   %12 = "mhlo.abs"(%arg1) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %13 = mhlo.divide %11, %12 : tensor<2x3xi32>
   %14 = "mhlo.select"(%4, %5, %13) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
-  return %14 : tensor<2x3xi32>
+  func.return %14 : tensor<2x3xi32>
 }
 
 // CHECK-LABEL:   func @floordiv_f32(
@@ -467,7 +467,7 @@ func @floordiv_f32(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = mhlo.divide %arg0, %arg0 : tensor<2xf32>
   %1 = mhlo.divide %arg0, %arg0 : tensor<2xf32>
   %2 = "mhlo.floor"(%1) : (tensor<2xf32>) -> tensor<2xf32>
-  return %2 : tensor<2xf32>
+  func.return %2 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @floordiv_f16_broadcast(
@@ -482,7 +482,7 @@ func @floordiv_f16_broadcast(%arg0: tensor<2x3xf16>, %arg1: tensor<3xf16>) -> te
   %0 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
   %1 = "chlo.broadcast_divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xf16>, tensor<3xf16>) -> tensor<2x3xf16>
   %2 = "mhlo.floor"(%1) : (tensor<2x3xf16>) -> tensor<2x3xf16>
-  return %2 : tensor<2x3xf16>
+  func.return %2 : tensor<2x3xf16>
 }
 
 // CHECK-LABEL:   func @equal(
@@ -493,7 +493,7 @@ func @floordiv_f16_broadcast(%arg0: tensor<2x3xf16>, %arg1: tensor<3xf16>) -> te
 // CHECK:         }
 func @equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-  return %0 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @equal_dynamic(
@@ -504,7 +504,7 @@ func @equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
 // CHECK:         }
 func @equal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
-  return %0 : tensor<?xi1>
+  func.return %0 : tensor<?xi1>
 }
 
 // CHECK-LABEL:   func @equal_broadcast(
@@ -515,7 +515,7 @@ func @equal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> 
 // CHECK:         }
 func @equal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL:   func @equal_broadcast_no_incompatible_shapes_error(
@@ -526,7 +526,7 @@ func @equal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x
 // CHECK:         }
 func @equal_broadcast_no_incompatible_shapes_error(%arg0: tensor<2xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL:   func @equal_incompatible_shape_broadcastable(
@@ -537,14 +537,14 @@ func @equal_broadcast_no_incompatible_shapes_error(%arg0: tensor<2xi32>, %arg1: 
 // CHECK:         }
 func @equal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
-  return %0 : tensor<?xi1>
+  func.return %0 : tensor<?xi1>
 }
 
 // CHECK-LABEL: func @equal_unsupported_compare_type
 func @equal_unsupported_compare_type(%arg0: tensor<1xf32>, %arg1: tensor<1x2xf32>) -> tensor<1x2xi1> {
   // CHECK: chlo.broadcast_compare
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, compare_type = #mhlo<"comparison_type TOTALORDER">, comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<1xf32>, tensor<1x2xf32>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL:   func @notequal(
@@ -555,7 +555,7 @@ func @equal_unsupported_compare_type(%arg0: tensor<1xf32>, %arg1: tensor<1x2xf32
 // CHECK:         }
 func @notequal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction NE">} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-  return %0 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @notequal_broadcast(
@@ -566,7 +566,7 @@ func @notequal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
 // CHECK:         }
 func @notequal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #mhlo<"comparison_direction NE">} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL:   func @notequal_broadcast_no_incompatible_shapes_error(
@@ -577,7 +577,7 @@ func @notequal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor
 // CHECK:         }
 func @notequal_broadcast_no_incompatible_shapes_error(%arg0: tensor<2xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #mhlo<"comparison_direction NE">} : (tensor<2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL:   func @notequal_incompatible_shape_broadcastable(
@@ -588,7 +588,7 @@ func @notequal_broadcast_no_incompatible_shapes_error(%arg0: tensor<2xi32>, %arg
 // CHECK:         }
 func @notequal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction NE">} : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
-  return %0 : tensor<?xi1>
+  func.return %0 : tensor<?xi1>
 }
 
 // CHECK-LABEL:   func @greater(
@@ -599,7 +599,7 @@ func @notequal_incompatible_shape_broadcastable(%arg0: tensor<?xi32>, %arg1: ten
 // CHECK:         }
 func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-  return %0 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @broadcast_greater(
@@ -610,14 +610,14 @@ func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
 // CHECK:         }
 func @broadcast_greater(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL: func @greater_unsupported_compare_type
 func @greater_unsupported_compare_type(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xi1> {
   // CHECK: mhlo.compare
   %0 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type TOTALORDER">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xi1>
-  return %0 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @greater_equal(
@@ -628,7 +628,7 @@ func @greater_unsupported_compare_type(%arg0: tensor<2xf32>, %arg1: tensor<2xf32
 // CHECK:         }
 func @greater_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GE">} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-  return %0 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @broadcast_greater_equal(
@@ -639,7 +639,7 @@ func @greater_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> 
 // CHECK:         }
 func @broadcast_greater_equal(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #mhlo<"comparison_direction GE">} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL:   func @less(
@@ -650,7 +650,7 @@ func @broadcast_greater_equal(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> t
 // CHECK:         }
 func @less(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-  return %0 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @broadcast_less(
@@ -661,7 +661,7 @@ func @less(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
 // CHECK:         }
 func @broadcast_less(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL:   func @less_equal(
@@ -672,7 +672,7 @@ func @broadcast_less(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2
 // CHECK:         }
 func @less_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction LE">} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
-  return %0 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @broadcast_less_equal(
@@ -683,7 +683,7 @@ func @less_equal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
 // CHECK:         }
 func @broadcast_less_equal(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #mhlo<"comparison_direction LE">} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
-  return %0 : tensor<1x2xi1>
+  func.return %0 : tensor<1x2xi1>
 }
 
 // CHECK-LABEL:   func @concat_v2(
@@ -695,7 +695,7 @@ func @broadcast_less_equal(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tens
 // CHECK:         }
 func @concat_v2(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<6x3xf32> {
   %2 = "mhlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
-  return %2 : tensor<6x3xf32>
+  func.return %2 : tensor<6x3xf32>
 }
 
 // CHECK-LABEL:   func @concat_v2_1d_axis(
@@ -707,7 +707,7 @@ func @concat_v2(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<6x3xf3
 // CHECK:         }
 func @concat_v2_1d_axis(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<3x6xf32> {
   %2 = "mhlo.concatenate"(%arg0, %arg1) {dimension = 1 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<3x6xf32>
-  return %2 : tensor<3x6xf32>
+  func.return %2 : tensor<3x6xf32>
 }
 
 // CHECK-LABEL:   func @const() -> tensor<2xi32> {
@@ -716,7 +716,7 @@ func @concat_v2_1d_axis(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tenso
 // CHECK:         }
 func @const() -> tensor<2xi32> {
   %0 = mhlo.constant dense<0> : tensor<2xi32>
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @relu(
@@ -728,7 +728,7 @@ func @const() -> tensor<2xi32> {
 func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = "chlo.broadcast_maximum"(%0, %arg0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
-  return %1 : tensor<1xi32>
+  func.return %1 : tensor<1xi32>
 }
 
 // CHECK-LABEL:   func @relu_unranked(
@@ -740,7 +740,7 @@ func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 func @relu_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = "chlo.broadcast_maximum"(%0, %arg0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<i32>, tensor<?xi32>) -> tensor<?xi32>
-  return %1 : tensor<?xi32>
+  func.return %1 : tensor<?xi32>
 }
 
 // CHECK-LABEL:   func @relu6(
@@ -756,7 +756,7 @@ func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %1 = mhlo.constant dense<6> : tensor<i32>
   %2 = "chlo.broadcast_minimum"(%arg0, %1) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
   %3 = "chlo.broadcast_maximum"(%2, %0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
-  return %3 : tensor<1xi32>
+  func.return %3 : tensor<1xi32>
 }
 
 // CHECK-LABEL:   func @relu6_unranked(
@@ -772,7 +772,7 @@ func @relu6_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   %1 = mhlo.constant dense<6> : tensor<i32>
   %2 = "chlo.broadcast_minimum"(%arg0, %1) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
   %3 = "chlo.broadcast_maximum"(%2, %0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
-  return %3 : tensor<?xi32>
+  func.return %3 : tensor<?xi32>
 }
 
 // CHECK-LABEL:   func @relu_grad(
@@ -789,7 +789,7 @@ func @relu_grad(%arg0: tensor<4x8xf32>, %arg1: tensor<?x?xf32>) -> tensor<4x8xf3
   %1 = "chlo.broadcast_compare"(%arg1, %0) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xi1>
   %2 = mhlo.constant dense<0.000000e+00> : tensor<4x8xf32>
   %3 = "mhlo.select"(%1, %arg0, %2) : (tensor<?x?xi1>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
-  return %3 : tensor<4x8xf32>
+  func.return %3 : tensor<4x8xf32>
 }
 
 // CHECK-LABEL:   func @select(
@@ -801,7 +801,7 @@ func @relu_grad(%arg0: tensor<4x8xf32>, %arg1: tensor<?x?xf32>) -> tensor<4x8xf3
 // CHECK:         }
 func @select(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
   %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @select_float(
@@ -813,7 +813,7 @@ func @select(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) ->
 // CHECK:         }
 func @select_float(%arg0: tensor<2xi1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @select_multidimensional(
@@ -825,7 +825,7 @@ func @select_float(%arg0: tensor<2xi1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf3
 // CHECK:         }
 func @select_multidimensional(%arg0: tensor<3x2xi1>, %arg1: tensor<3x2xi32>, %arg2: tensor<3x2xi32>) -> tensor<3x2xi32> {
   %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<3x2xi1>, tensor<3x2xi32>, tensor<3x2xi32>) -> tensor<3x2xi32>
-  return %0 : tensor<3x2xi32>
+  func.return %0 : tensor<3x2xi32>
 }
 
 // CHECK-LABEL:   func @selectv2(
@@ -837,7 +837,7 @@ func @select_multidimensional(%arg0: tensor<3x2xi1>, %arg1: tensor<3x2xi32>, %ar
 // CHECK:         }
 func @selectv2(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
   %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @selectv2_pred_scalar(
@@ -849,7 +849,7 @@ func @selectv2(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) 
 // CHECK:         }
 func @selectv2_pred_scalar(%arg0: tensor<i1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
   %0 = "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @transpose_2d(
@@ -864,7 +864,7 @@ func @transpose_2d(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
   %0 = mhlo.constant dense<[1, 0]> : tensor<2xi64>
   %1 = mhlo.constant dense<[1, 0]> : tensor<2xi64>
   %2 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<2x3xf32>) -> tensor<3x2xf32>
-  return %2 : tensor<3x2xf32>
+  func.return %2 : tensor<3x2xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d_int32(
@@ -879,7 +879,7 @@ func @transpose_3d_int32(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
   %0 = mhlo.constant dense<[2, 1, 0]> : tensor<3xi32>
   %1 = mhlo.constant dense<[2, 1, 0]> : tensor<3xi64>
   %2 = "mhlo.transpose"(%arg0) {permutation = dense<[2, 1, 0]> : tensor<3xi64>} : (tensor<1x2x3xf32>) -> tensor<3x2x1xf32>
-  return %2 : tensor<3x2x1xf32>
+  func.return %2 : tensor<3x2x1xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d(
@@ -894,7 +894,7 @@ func @transpose_3d(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
   %0 = mhlo.constant dense<[2, 1, 0]> : tensor<3xi64>
   %1 = mhlo.constant dense<[2, 1, 0]> : tensor<3xi64>
   %2 = "mhlo.transpose"(%arg0) {permutation = dense<[2, 1, 0]> : tensor<3xi64>} : (tensor<1x2x3xf32>) -> tensor<3x2x1xf32>
-  return %2 : tensor<3x2x1xf32>
+  func.return %2 : tensor<3x2x1xf32>
 }
 
 // CHECK-LABEL:   func @transpose_dynamic_2d(
@@ -909,7 +909,7 @@ func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
   %0 = mhlo.constant dense<[1, 0]> : tensor<2xi64>
   %1 = mhlo.constant dense<[1, 0]> : tensor<2xi64>
   %2 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<?x4xf32>) -> tensor<4x?xf32>
-  return %2 : tensor<4x?xf32>
+  func.return %2 : tensor<4x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_unranked_2d(
@@ -924,7 +924,7 @@ func @transpose_unranked_2d(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = mhlo.constant dense<[1, 0]> : tensor<2xi64>
   %1 = mhlo.constant dense<[1, 0]> : tensor<2xi64>
   %2 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<*xf32>) -> tensor<*xf32>
-  return %2 : tensor<*xf32>
+  func.return %2 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @abs(
@@ -934,7 +934,7 @@ func @transpose_unranked_2d(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @abs_dynamic(
@@ -944,7 +944,7 @@ func @abs(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @abs_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.abs"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @abs_unranked(
@@ -954,7 +954,7 @@ func @abs_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @abs_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @ceil(
@@ -964,7 +964,7 @@ func @abs_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @ceil(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.ceil"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @ceil_dynamic(
@@ -974,7 +974,7 @@ func @ceil(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @ceil_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.ceil"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @ceil_unranked(
@@ -984,7 +984,7 @@ func @ceil_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @ceil_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.ceil"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @complex_abs(
@@ -994,7 +994,7 @@ func @ceil_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
   %0 = "mhlo.abs"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @cos(
@@ -1004,7 +1004,7 @@ func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
 // CHECK:         }
 func @cos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.cosine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @cos_dynamic(
@@ -1014,7 +1014,7 @@ func @cos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @cos_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.cosine"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @cos_unranked(
@@ -1024,7 +1024,7 @@ func @cos_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @cos_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.cosine"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @exp(
@@ -1034,7 +1034,7 @@ func @cos_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @exp(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @exp_dynamic(
@@ -1044,7 +1044,7 @@ func @exp(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @exp_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.exponential"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @exp_unranked(
@@ -1054,7 +1054,7 @@ func @exp_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @exp_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.exponential"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @floor(
@@ -1064,7 +1064,7 @@ func @exp_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @floor(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.floor"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @floor_dynamic(
@@ -1074,7 +1074,7 @@ func @floor(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @floor_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.floor"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @floor_unranked(
@@ -1084,7 +1084,7 @@ func @floor_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @floor_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.floor"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @is_finite(
@@ -1094,7 +1094,7 @@ func @floor_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @is_finite(%arg0: tensor<2xf32>) -> tensor<2xi1> {
   %0 = "mhlo.is_finite"(%arg0) : (tensor<2xf32>) -> tensor<2xi1>
-  return %0 : tensor<2xi1>
+  func.return %0 : tensor<2xi1>
 }
 
 // CHECK-LABEL:   func @is_finite_dynamic(
@@ -1104,7 +1104,7 @@ func @is_finite(%arg0: tensor<2xf32>) -> tensor<2xi1> {
 // CHECK:         }
 func @is_finite_dynamic(%arg0: tensor<?xf32>) -> tensor<?xi1> {
   %0 = "mhlo.is_finite"(%arg0) : (tensor<?xf32>) -> tensor<?xi1>
-  return %0 : tensor<?xi1>
+  func.return %0 : tensor<?xi1>
 }
 
 // CHECK-LABEL:   func @is_finite_unranked(
@@ -1114,7 +1114,7 @@ func @is_finite_dynamic(%arg0: tensor<?xf32>) -> tensor<?xi1> {
 // CHECK:         }
 func @is_finite_unranked(%arg0: tensor<*xf32>) -> tensor<*xi1> {
   %0 = "mhlo.is_finite"(%arg0) : (tensor<*xf32>) -> tensor<*xi1>
-  return %0 : tensor<*xi1>
+  func.return %0 : tensor<*xi1>
 }
 
 // CHECK-LABEL:   func @log(
@@ -1124,7 +1124,7 @@ func @is_finite_unranked(%arg0: tensor<*xf32>) -> tensor<*xi1> {
 // CHECK:         }
 func @log(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.log"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @log_dynamic(
@@ -1134,7 +1134,7 @@ func @log(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @log_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.log"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @log_unranked(
@@ -1144,7 +1144,7 @@ func @log_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @log_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.log"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @log1p(
@@ -1154,7 +1154,7 @@ func @log_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @log1p(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.log_plus_one"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @log1p_dynamic(
@@ -1164,7 +1164,7 @@ func @log1p(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @log1p_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.log_plus_one"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @log1p_unranked(
@@ -1174,7 +1174,7 @@ func @log1p_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @log1p_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.log_plus_one"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @neg(
@@ -1184,7 +1184,7 @@ func @log1p_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @neg(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.negate"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @neg_dynamic(
@@ -1194,7 +1194,7 @@ func @neg(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.negate"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @neg_unranked(
@@ -1204,7 +1204,7 @@ func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @neg_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.negate"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @sigmoid(
@@ -1226,7 +1226,7 @@ func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %4 = "mhlo.tanh"(%3) : (tensor<2xf32>) -> tensor<2xf32>
   %5 = mhlo.multiply %4, %2 : tensor<2xf32>
   %6 = mhlo.add %5, %2 : tensor<2xf32>
-  return %6 : tensor<2xf32>
+  func.return %6 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @sin(
@@ -1236,7 +1236,7 @@ func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @sin(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.sine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @sin_dynamic(
@@ -1246,7 +1246,7 @@ func @sin(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @sin_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.sine"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @sin_unranked(
@@ -1256,7 +1256,7 @@ func @sin_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @sin_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.sine"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @rsqrt(
@@ -1266,7 +1266,7 @@ func @sin_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.rsqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @rsqrt_dynamic(
@@ -1276,7 +1276,7 @@ func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @rsqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.rsqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @rsqrt_unranked(
@@ -1286,7 +1286,7 @@ func @rsqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @rsqrt_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.rsqrt"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @sqrt(
@@ -1296,7 +1296,7 @@ func @rsqrt_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @sqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.sqrt"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @sqrt_dynamic(
@@ -1306,7 +1306,7 @@ func @sqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @sqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.sqrt"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @sqrt_unranked(
@@ -1316,7 +1316,7 @@ func @sqrt_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @sqrt_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.sqrt"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @tanh(
@@ -1326,7 +1326,7 @@ func @sqrt_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @tanh(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.tanh"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @tanh_dynamic(
@@ -1336,7 +1336,7 @@ func @tanh(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @tanh_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.tanh"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @tanh_unranked(
@@ -1346,7 +1346,7 @@ func @tanh_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @tanh_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.tanh"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @bitcast(
@@ -1356,7 +1356,7 @@ func @tanh_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @bitcast(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @bitcast_dynamic(
@@ -1366,7 +1366,7 @@ func @bitcast(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:         }
 func @bitcast_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL:   func @bitcast_unranked(
@@ -1376,7 +1376,7 @@ func @bitcast_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK:         }
 func @bitcast_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL:   func @bitcast_same_widths(
@@ -1386,7 +1386,7 @@ func @bitcast_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:         }
 func @bitcast_same_widths(%arg0: tensor<2xf32>) -> tensor<2xi32> {
   %0 = "mhlo.bitcast_convert"(%arg0) : (tensor<2xf32>) -> tensor<2xi32>
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL:   func @sign(
@@ -1409,7 +1409,7 @@ func @sign(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3x4xf32>) -> tensor<1x2
   %4 = "mhlo.sign"(%arg0) : (tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
   %5 = "mhlo.select"(%2, %3, %4) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
   %6 = "mhlo.select"(%0, %1, %5) : (tensor<1x2x3x4xi1>, tensor<1x2x3x4xf32>, tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
-  return %6 : tensor<1x2x3x4xf32>
+  func.return %6 : tensor<1x2x3x4xf32>
 }
 
 // CHECK-LABEL:   func @size_rank_one_i32(
@@ -1419,7 +1419,7 @@ func @sign(%arg0: tensor<1x2x3x4xf32>, %arg1: tensor<1x2x3x4xf32>) -> tensor<1x2
 // CHECK:         }
 func @size_rank_one_i32(%arg0: tensor<f32>) -> tensor<i32> {
   %0 = mhlo.constant dense<1> : tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK-LABEL:   func @size_rank_one_i64(
@@ -1429,7 +1429,7 @@ func @size_rank_one_i32(%arg0: tensor<f32>) -> tensor<i32> {
 // CHECK:         }
 func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
   %0 = mhlo.constant dense<1> : tensor<i64>
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // CHECK-LABEL:   func @complex(
@@ -1440,7 +1440,7 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 // CHECK:         }
 func @complex(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<3xcomplex<f32>> {
   %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xcomplex<f32>>
-  return %0 : tensor<3xcomplex<f32>>
+  func.return %0 : tensor<3xcomplex<f32>>
 }
 
 // CHECK-LABEL:   func @convert_i32_f32(
@@ -1450,7 +1450,7 @@ func @complex(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<3xcomplex<f3
 // CHECK:         }
 func @convert_i32_f32(%arg0: tensor<2xi32>) -> tensor<2xf32> {
   %0 = "mhlo.convert"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @convert_slice(
@@ -1462,7 +1462,7 @@ func @convert_i32_f32(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 // CHECK:         }
 func @convert_slice(%arg0: tensor<1x4672xf32>) -> tensor<1x519xf32> {
   %0 = "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4672]> : tensor<2xi64>, start_indices = dense<[0, 4153]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<1x4672xf32>) -> tensor<1x519xf32>
-  return %0 : tensor<1x519xf32>
+  func.return %0 : tensor<1x519xf32>
 }
 
 
@@ -1475,7 +1475,7 @@ func @convert_slice(%arg0: tensor<1x4672xf32>) -> tensor<1x519xf32> {
 // CHECK:         }
 func @convert_slice_non_one_stride(%arg0: tensor<2xbf16>) -> tensor<1xbf16> {
   %0 = "mhlo.slice"(%arg0) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<2> : tensor<1xi64>} : (tensor<2xbf16>) -> tensor<1xbf16>
-  return %0 : tensor<1xbf16>
+  func.return %0 : tensor<1xbf16>
 }
 
 // CHECK-LABEL:   func @reshape(
@@ -1486,7 +1486,7 @@ func @convert_slice_non_one_stride(%arg0: tensor<2xbf16>) -> tensor<1xbf16> {
 // CHECK:         }
 func @reshape(%arg0: tensor<4x6xf32>) -> tensor<2x2x6xf32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<4x6xf32>) -> tensor<2x2x6xf32>
-  return %0 : tensor<2x2x6xf32>
+  func.return %0 : tensor<2x2x6xf32>
 
 }
 
@@ -1502,7 +1502,7 @@ func @reshape(%arg0: tensor<4x6xf32>) -> tensor<2x2x6xf32> {
 // CHECK:         }
 func @convert_dot_2d_1d(%arg0: tensor<1x256xf32>, %arg1: tensor<256xf32>) -> tensor<1xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<1x256xf32>, tensor<256xf32>) -> tensor<1xf32>
-  return %0 : tensor<1xf32>
+  func.return %0 : tensor<1xf32>
 }
 
 // CHECK-LABEL:   func @convert_dot_1d_1d(
@@ -1519,7 +1519,7 @@ func @convert_dot_2d_1d(%arg0: tensor<1x256xf32>, %arg1: tensor<256xf32>) -> ten
 // CHECK:         }
 func @convert_dot_1d_1d(%arg0: tensor<256xf32>, %arg1: tensor<256xf32>) -> tensor<f32> {
   %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<256xf32>, tensor<256xf32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL:   func @convert_dot_2d_2d(
@@ -1530,7 +1530,7 @@ func @convert_dot_1d_1d(%arg0: tensor<256xf32>, %arg1: tensor<256xf32>) -> tenso
 // CHECK:         }
 func @convert_dot_2d_2d(%arg0: tensor<1x256xf32>, %arg1: tensor<256x1xf32>) -> tensor<1x1xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<1x256xf32>, tensor<256x1xf32>) -> tensor<1x1xf32>
-  return %0 : tensor<1x1xf32>
+  func.return %0 : tensor<1x1xf32>
 }
 
 // CHECK-LABEL:   func @broadcast_in_dim_tf_style(
@@ -1541,7 +1541,7 @@ func @convert_dot_2d_2d(%arg0: tensor<1x256xf32>, %arg1: tensor<256x1xf32>) -> t
 // CHECK:         }
 func @broadcast_in_dim_tf_style(%arg0: tensor<8x1x16xf32>) -> tensor<3x8x8x16xf32> {
   %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>, name = "broadcast.0"} : (tensor<8x1x16xf32>) -> tensor<3x8x8x16xf32>
-  return %0 : tensor<3x8x8x16xf32>
+  func.return %0 : tensor<3x8x8x16xf32>
 }
 
 // CHECK-LABEL:   func @broadcast_in_dim_general_case(
@@ -1554,7 +1554,7 @@ func @broadcast_in_dim_tf_style(%arg0: tensor<8x1x16xf32>) -> tensor<3x8x8x16xf3
 // CHECK:         }
 func @broadcast_in_dim_general_case(%arg0: tensor<3x1x16xf32>) -> tensor<3x8x8x16xf32> {
   %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 2, 3]> : tensor<3xi64>, name = "broadcast.0"} : (tensor<3x1x16xf32>) -> tensor<3x8x8x16xf32>
-  return %0 : tensor<3x8x8x16xf32>
+  func.return %0 : tensor<3x8x8x16xf32>
 }
 
 // CHECK-LABEL:   func @convert_dot_general(
@@ -1583,7 +1583,7 @@ func @convert_dot_general(%arg0: tensor<3x2x6x5x1xf32>, %arg1: tensor<3x2x4x6xf3
     >,
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   } : (tensor<3x2x6x5x1xf32>, tensor<3x2x4x6xf32>) -> tensor<3x5x1x4xf32>
-  return %0 : tensor<3x5x1x4xf32>
+  func.return %0 : tensor<3x5x1x4xf32>
 }
 
 // CHECK-LABEL:   func @convert_dot_general_repeated(
@@ -1606,7 +1606,7 @@ func @convert_dot_general_repeated(%arg0: tensor<1x1x1024xf32>, %arg1: tensor<10
     >,
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   } : (tensor<1x1x1024xf32>, tensor<1024x1024xf32>) -> tensor<1x1x1024xf32>
-  return %0 : tensor<1x1x1024xf32>
+  func.return %0 : tensor<1x1x1024xf32>
 }
 
 // CHECK-LABEL:   func @convert_conv2d(
@@ -1629,7 +1629,7 @@ func @convert_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x207x16xf32>
       output_spatial_dimensions = [1, 2]
     >, feature_group_count = 1 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x8x8x16xf32>
-  return %0 : tensor<1x8x8x16xf32>
+  func.return %0 : tensor<1x8x8x16xf32>
 }
 
 // CHECK-LABEL:   func @convert_conv2d_with_transpose(
@@ -1658,7 +1658,7 @@ func @convert_conv2d_with_transpose(%arg0: tensor<8x8x1x207xf32>, %arg1: tensor<
       output_spatial_dimensions = [1, 2]
     >, feature_group_count = 1 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} :
        (tensor<8x8x1x207xf32>, tensor<3x3x16x207xf32>) -> tensor<16x8x8x1xf32>
-  return %0 : tensor<16x8x8x1xf32>
+  func.return %0 : tensor<16x8x8x1xf32>
 }
 
 // CHECK-LABEL:   func @convert_conv2d_explicit_padding(
@@ -1682,7 +1682,7 @@ func @convert_conv2d_explicit_padding(%arg0: tensor<64x8x8x8xf32>, %arg1: tensor
     >, feature_group_count = 1 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>,
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
   } : (tensor<64x8x8x8xf32>, tensor<8x8x8x64xf32>) -> tensor<64x3x3x64xf32>
-  return %0 : tensor<64x3x3x64xf32>
+  func.return %0 : tensor<64x3x3x64xf32>
 }
 
 // CHECK-LABEL:   func @convert_conv2d_negative_explicit_padding(
@@ -1712,7 +1712,7 @@ func @convert_conv2d_negative_explicit_padding(%arg0: tensor<128x7x9x64xf32>, %a
     >, feature_group_count = 1 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<[[4, -2], [-5, 2]]> : tensor<2x2xi64>,
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<2> : tensor<2xi64>
   } : (tensor<128x7x9x64xf32>, tensor<3x2x64x4xf32>) -> tensor<128x4x3x4xf32>
-  return %0 : tensor<128x4x3x4xf32>
+  func.return %0 : tensor<128x4x3x4xf32>
 }
 
 // CHECK-LABEL:   func @convert_depthwise_conv2d(
@@ -1737,7 +1737,7 @@ func @convert_depthwise_conv2d(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3x3x1
       output_spatial_dimensions = [1, 2]
     >, feature_group_count = 207 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<1> : tensor<2x2xi64>, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} :
        (tensor<1x8x8x207xf32>, tensor<3x3x1x3312xf32>) -> tensor<1x8x8x16xf32>
-  return %0 : tensor<1x8x8x16xf32>
+  func.return %0 : tensor<1x8x8x16xf32>
 }
 
 // CHECK-LABEL:   func @convert_conv2d_to_resize(
@@ -1756,7 +1756,7 @@ func @convert_conv2d_to_resize(%arg0: tensor<1x56x624x16xf32>, %arg1: tensor<1x2
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
     rhs_dilation = dense<1> : tensor<2xi64>,
     window_strides = dense<[1, 89]> : tensor<2xi64>} : (tensor<1x56x624x16xf32>, tensor<1x257x16x1xf32>) -> tensor<1x56x904x16xf32>
-  return %0 : tensor<1x56x904x16xf32>
+  func.return %0 : tensor<1x56x904x16xf32>
 }
 
 // CHECK-LABEL:   func @convert_conv2d_resize_perferred(
@@ -1775,7 +1775,7 @@ func @convert_conv2d_resize_perferred(%arg0: tensor<1x56x1248x16xf32>, %arg1: te
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
     rhs_dilation = dense<[1, 1]> : tensor<2xi64>,
     window_strides = dense<[1, 1]> : tensor<2xi64>} : (tensor<1x56x1248x16xf32>, tensor<3x1x16x1xf32>) -> tensor<1x111x1248x16xf32>
-  return %0 : tensor<1x111x1248x16xf32>
+  func.return %0 : tensor<1x111x1248x16xf32>
 }
 
 // CHECK-LABEL:   func @convert_conv2d_back_prop_input(
@@ -1802,7 +1802,7 @@ func @convert_conv2d_back_prop_input(%arg0: tensor<8x4x4x32xf32>, %arg1: tensor<
     >, feature_group_count = 1 : i64, lhs_dilation = dense<2> : tensor<2xi64>, padding = dense<[[2, 1], [2, 1]]> : tensor<2x2xi64>,
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
   } : (tensor<8x4x4x32xf32>, tensor<3x3x64x32xf32>) -> tensor<8x8x8x64xf32>
-  return %0 : tensor<8x8x8x64xf32>
+  func.return %0 : tensor<8x8x8x64xf32>
 }
 
 // CHECK-LABEL:   func @convert_conv2d_valid_padding(
@@ -1825,7 +1825,7 @@ func @convert_conv2d_valid_padding(%arg0: tensor<1x8x8x207xf32>, %arg1: tensor<3
       output_spatial_dimensions = [1, 2]
     >, feature_group_count = 1 : i64, lhs_dilation = dense<1> : tensor<2xi64>, padding = dense<0> : tensor<2x2xi64>, precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} :
        (tensor<1x8x8x207xf32>, tensor<3x3x207x16xf32>) -> tensor<1x6x6x16xf32>
-  return %0 : tensor<1x6x6x16xf32>
+  func.return %0 : tensor<1x6x6x16xf32>
 }
 
 // CHECK-LABEL:   func @convert_reduce_to_sum(
@@ -1842,7 +1842,7 @@ func @convert_reduce_to_sum(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
     %2 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
-  return %1 : tensor<1xf32>
+  func.return %1 : tensor<1xf32>
 }
 
 // CHECK-LABEL:   func @convert_reduce_to_sum_non_constant_init(
@@ -1859,7 +1859,7 @@ func @convert_reduce_to_sum_non_constant_init(%arg0: tensor<1x256xf32>, %arg1: t
     %2 = mhlo.add %arg2, %arg3 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
-  return %1 : tensor<1xf32>
+  func.return %1 : tensor<1xf32>
 }
 
 // CHECK-LABEL:   func @convert_int_reduce_to_sum(
@@ -1876,7 +1876,7 @@ func @convert_int_reduce_to_sum(%arg0: tensor<1x256xi32>) -> tensor<1xi32> {
     %2 = mhlo.add %arg1, %arg2 : tensor<i32>
     "mhlo.return"(%2) : (tensor<i32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xi32>, tensor<i32>) -> tensor<1xi32>
-  return %1 : tensor<1xi32>
+  func.return %1 : tensor<1xi32>
 }
 
 // CHECK-LABEL:   func @convert_reduce_to_max(
@@ -1893,7 +1893,7 @@ func @convert_reduce_to_max(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
     %2 = mhlo.maximum %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
-  return %1 : tensor<1xf32>
+  func.return %1 : tensor<1xf32>
 }
 
 // CHECK-LABEL:   func @convert_reduce_to_max_int(
@@ -1909,7 +1909,7 @@ func @convert_reduce_to_max_int(%arg0: tensor<1x4xi32>) -> tensor<1xi32> {
     %892 = mhlo.maximum %arg2, %arg3 : tensor<i32>
     "mhlo.return"(%892) : (tensor<i32>) -> ()
   }
-  return %1 : tensor<1xi32>
+  func.return %1 : tensor<1xi32>
 }
 
 // CHECK-LABEL:   func @convert_reduce_to_min(
@@ -1926,7 +1926,7 @@ func @convert_reduce_to_min(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
     %2 = mhlo.minimum %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x256xf32>, tensor<f32>) -> tensor<1xf32>
-  return %1 : tensor<1xf32>
+  func.return %1 : tensor<1xf32>
 }
 
 // CHECK-LABEL:   func @convert_reduce_to_min_int(
@@ -1942,7 +1942,7 @@ func @convert_reduce_to_min_int(%arg0: tensor<1x4xi32>) -> tensor<1xi32> {
     %892 = mhlo.minimum %arg2, %arg3 : tensor<i32>
     "mhlo.return"(%892) : (tensor<i32>) -> ()
   }
-  return %1 : tensor<1xi32>
+  func.return %1 : tensor<1xi32>
 }
 
 // CHECK-LABEL:   func @convert_iota_1d() -> tensor<123xf32> {
@@ -1954,7 +1954,7 @@ func @convert_reduce_to_min_int(%arg0: tensor<1x4xi32>) -> tensor<1xi32> {
 // CHECK:         }
 func @convert_iota_1d() -> tensor<123xf32> {
   %0 = "mhlo.iota"() { iota_dimension = 0 : i64 } : () -> tensor<123xf32>
-  return %0 : tensor<123xf32>
+  func.return %0 : tensor<123xf32>
 }
 
 // CHECK-LABEL:   func @convert_iota_3d() -> tensor<5x7x9xi32> {
@@ -1970,7 +1970,7 @@ func @convert_iota_1d() -> tensor<123xf32> {
 // CHECK:         }
 func @convert_iota_3d() -> tensor<5x7x9xi32> {
   %0 = "mhlo.iota"() { iota_dimension = 1 : i64 } : () -> tensor<5x7x9xi32>
-  return %0 : tensor<5x7x9xi32>
+  func.return %0 : tensor<5x7x9xi32>
 }
 
 // CHECK-LABEL:   func @convert_avgpool_valid(
@@ -1992,7 +1992,7 @@ func @convert_avgpool_valid(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32>
     window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>,
     window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>} : (tensor<4x16x16x8xf32>, tensor<f32>) -> tensor<4x7x7x8xf32>
   %3 = mhlo.divide %2, %1 : tensor<4x7x7x8xf32>
-  return %3 : tensor<4x7x7x8xf32>
+  func.return %3 : tensor<4x7x7x8xf32>
 }
 
 // CHECK-LABEL:   func @convert_avgpool_valid_rw(
@@ -2024,7 +2024,7 @@ func @convert_avgpool_valid_rw(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf
     window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>,
     window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>} : (tensor<4x16x16x8xf32>, tensor<f32>) -> tensor<4x7x7x8xf32>
   %4 = mhlo.divide %2, %3 : tensor<4x7x7x8xf32>
-  return %4 : tensor<4x7x7x8xf32>
+  func.return %4 : tensor<4x7x7x8xf32>
 }
 
 // CHECK-LABEL:   func @convert_avgpool_valid_3d(
@@ -2046,7 +2046,7 @@ func @convert_avgpool_valid_3d(%arg0: tensor<4x16x16x16x8xf32>) -> tensor<4x7x7x
     window_dimensions = dense<[1, 3, 3, 3, 1]> : tensor<5xi64>,
     window_strides = dense<[1, 2, 2, 2, 1]> : tensor<5xi64>} : (tensor<4x16x16x16x8xf32>, tensor<f32>) -> tensor<4x7x7x7x8xf32>
   %3 = mhlo.divide %2, %1 : tensor<4x7x7x7x8xf32>
-  return %3 : tensor<4x7x7x7x8xf32>
+  func.return %3 : tensor<4x7x7x7x8xf32>
 }
 
 // CHECK-LABEL:   func @convert_avgpool_same(
@@ -2078,7 +2078,7 @@ func @convert_avgpool_same(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x8x8x8xf32> 
     window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>,
     window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>} : (tensor<4x16x16x8xf32>, tensor<f32>) -> tensor<4x8x8x8xf32>
   %4 = mhlo.divide %2, %3 : tensor<4x8x8x8xf32>
-  return %4 : tensor<4x8x8x8xf32>
+  func.return %4 : tensor<4x8x8x8xf32>
 }
 
 // CHECK-LABEL:   func @convert_maxpool_valid(
@@ -2099,7 +2099,7 @@ func @convert_maxpool_valid(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32>
     window_dilations = dense<1> : tensor<4xi64>,
     window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>,
     window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>} : (tensor<4x16x16x8xf32>, tensor<f32>) -> tensor<4x7x7x8xf32>
-  return %1 : tensor<4x7x7x8xf32>
+  func.return %1 : tensor<4x7x7x8xf32>
 }
 
 // CHECK-LABEL:   func @convert_maxpool_valid_3d(
@@ -2120,7 +2120,7 @@ func @convert_maxpool_valid_3d(%arg0: tensor<4x16x16x16x8xf32>) -> tensor<4x7x7x
     window_dilations = dense<1> : tensor<5xi64>,
     window_dimensions = dense<[1, 3, 3, 3, 1]> : tensor<5xi64>,
     window_strides = dense<[1, 2, 2, 2, 1]> : tensor<5xi64>} : (tensor<4x16x16x16x8xf32>, tensor<f32>) -> tensor<4x7x7x7x8xf32>
-  return %1 : tensor<4x7x7x7x8xf32>
+  func.return %1 : tensor<4x7x7x7x8xf32>
 }
 
 // CHECK-LABEL:   func @convert_maxpool_same(
@@ -2141,7 +2141,7 @@ func @convert_maxpool_same(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x8x8x8xf32> 
     window_dilations = dense<1> : tensor<4xi64>,
     window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>,
     window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>} : (tensor<4x16x16x8xf32>, tensor<f32>) -> tensor<4x8x8x8xf32>
-  return %1 : tensor<4x8x8x8xf32>
+  func.return %1 : tensor<4x8x8x8xf32>
 }
 
 // CHECK-LABEL:   func @convert_pad(
@@ -2157,7 +2157,7 @@ func @convert_pad(%arg0: tensor<8x128xf32>, %arg1: tensor<f32>) -> tensor<11x131
     edge_padding_high = dense<[2, 3]> : tensor<2xi64>,
     interior_padding = dense<0> : tensor<2xi64>
   } : (tensor<8x128xf32>, tensor<f32>) -> tensor<11x131xf32>
-  return %0 : tensor<11x131xf32>
+  func.return %0 : tensor<11x131xf32>
 }
 
 // CHECK-LABEL:   func @convert_round(
@@ -2182,7 +2182,7 @@ func @convert_round(%arg0: tensor<8x128xbf16>) -> tensor<8x128xbf16> {
   %13 = mhlo.or %5, %12 : tensor<8x128xi1>
   %14 = mhlo.add %3, %2 : tensor<8x128xbf16>
   %15 = "mhlo.select"(%13, %14, %3) : (tensor<8x128xi1>, tensor<8x128xbf16>, tensor<8x128xbf16>) -> tensor<8x128xbf16>
-  return %15 : tensor<8x128xbf16>
+  func.return %15 : tensor<8x128xbf16>
 }
 
 // CHECK-LABEL: func @convert_floor_mod
@@ -2199,7 +2199,7 @@ func @convert_floor_mod(%arg0: tensor<192x8xbf16>, %arg1: tensor<192x8xbf16>) ->
   %6 = mhlo.and %4, %5 : tensor<192x8xi1>
   %7 = mhlo.add %1, %arg1 : tensor<192x8xbf16>
   %8 = "mhlo.select"(%6, %7, %1) : (tensor<192x8xi1>, tensor<192x8xbf16>, tensor<192x8xbf16>) -> tensor<192x8xbf16>
-  return %8 : tensor<192x8xbf16>
+  func.return %8 : tensor<192x8xbf16>
 }
 
 // CHECK-LABEL: func @convert_floor_mod_cst
@@ -2217,7 +2217,7 @@ func @convert_floor_mod_cst(%arg0: tensor<192x8xbf16>) -> tensor<192x8xbf16> {
   %5 = mhlo.and %3, %4 : tensor<192x8xi1>
   %6 = mhlo.add %2, %1 : tensor<192x8xbf16>
   %7 = "mhlo.select"(%5, %6, %2) : (tensor<192x8xi1>, tensor<192x8xbf16>, tensor<192x8xbf16>) -> tensor<192x8xbf16>
-  return %7 : tensor<192x8xbf16>
+  func.return %7 : tensor<192x8xbf16>
 }
 
 // CHECK-LABEL: func @convert_floor_div
@@ -2239,7 +2239,7 @@ func @convert_floor_div(%arg0: tensor<10x10xbf16>, %arg1: tensor<10x10xbf16>) ->
   %11 = "mhlo.select"(%7, %10, %9) : (tensor<10x10xi1>, tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xbf16>
   %12 = "mhlo.round_nearest_afz"(%11) : (tensor<10x10xbf16>) -> tensor<10x10xbf16>
   %13 = "mhlo.tuple"(%12) : (tensor<10x10xbf16>) -> tuple<tensor<10x10xbf16>>
-  return %12 : tensor<10x10xbf16>
+  func.return %12 : tensor<10x10xbf16>
 }
 
 // CHECK-LABEL: func @convert_floor_div_cst
@@ -2264,7 +2264,7 @@ func @convert_floor_div_cst(%arg0: tensor<10x10xbf16>) -> tensor<10x10xbf16> {
   %13 = "mhlo.select"(%9, %12, %11) : (tensor<10x10xi1>, tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xbf16>
   %14 = "mhlo.round_nearest_afz"(%13) : (tensor<10x10xbf16>) -> tensor<10x10xbf16>
   %15 = "mhlo.tuple"(%14) : (tensor<10x10xbf16>) -> tuple<tensor<10x10xbf16>>
-  return %14 : tensor<10x10xbf16>
+  func.return %14 : tensor<10x10xbf16>
 }
 
 // CHECK-LABEL: func @convert_floor_div_cst2
@@ -2288,7 +2288,7 @@ func @convert_floor_div_cst2(%arg0: tensor<10x10xbf16>) -> tensor<10x10xbf16> {
   %12 = "mhlo.select"(%8, %11, %10) : (tensor<10x10xi1>, tensor<10x10xbf16>, tensor<10x10xbf16>) -> tensor<10x10xbf16>
   %13 = "mhlo.round_nearest_afz"(%12) : (tensor<10x10xbf16>) -> tensor<10x10xbf16>
   %14 = "mhlo.tuple"(%13) : (tensor<10x10xbf16>) -> tuple<tensor<10x10xbf16>>
-  return %13 : tensor<10x10xbf16>
+  func.return %13 : tensor<10x10xbf16>
 }
 
 // CHECK-LABEL: func @convert_floor_div_broadcast_cst
@@ -2313,7 +2313,7 @@ func @convert_floor_div_broadcast_cst(%arg0: tensor<10x8xf32>) -> tensor<10x8xf3
   %14 = "mhlo.select"(%10, %13, %12) : (tensor<10x8xi1>, tensor<10x8xf32>, tensor<10x8xf32>) -> tensor<10x8xf32>
   %15 = "mhlo.round_nearest_afz"(%14) : (tensor<10x8xf32>) -> tensor<10x8xf32>
   %16 = "mhlo.tuple"(%15) : (tensor<10x8xf32>) -> tuple<tensor<10x8xf32>>
-  return %15 : tensor<10x8xf32>
+  func.return %15 : tensor<10x8xf32>
 }
 
 
@@ -2333,7 +2333,7 @@ func @convert_gather(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xi32>) ->
     indices_are_sorted = false,
     slice_sizes = dense<1> : tensor<1xi64>
   } : (tensor<147456xf16>, tensor<192x256x1xi32>) -> tensor<192x256xf16>
-  return %0 : tensor<192x256xf16>
+  func.return %0 : tensor<192x256xf16>
 }
 
 // CHECK-LABEL:   func @convert_gather_nd(
@@ -2355,7 +2355,7 @@ func @convert_gather_nd(%arg0: tensor<98x128xf32>, %arg1: tensor<4x64xi32>) -> t
     indices_are_sorted = false,
     slice_sizes = dense<[1, 128]> : tensor<2xi64>
   } : (tensor<98x128xf32>, tensor<4x64xi32>) -> tensor<4x64x128xf32>
-  return %0 : tensor<4x64x128xf32>
+  func.return %0 : tensor<4x64x128xf32>
 }
 
 // CHECK-LABEL:   func @convert_gather_transpose(
@@ -2379,7 +2379,7 @@ func @convert_gather_transpose(%arg0: tensor<128x256xf32>, %arg1: tensor<4x1xi32
     indices_are_sorted = false,
     slice_sizes = dense<[128, 1]> : tensor<2xi64>
   } : (tensor<128x256xf32>, tensor<4x1xi32>) -> tensor<4x128xf32>
-  return %0 : tensor<4x128xf32>
+  func.return %0 : tensor<4x128xf32>
 }
 
 // CHECK-LABEL: func @convert_gather_offset(
@@ -2403,7 +2403,7 @@ func @convert_gather_offset(%arg0: tensor<1x20xi32>, %arg1: tensor<1x1xi32>) -> 
     indices_are_sorted = false,
     slice_sizes = dense<1> : tensor<2xi64>
   } : (tensor<1x20xi32>, tensor<1x1xi32>) -> tensor<1x1xi32>
-  return %0 : tensor<1x1xi32>
+  func.return %0 : tensor<1x1xi32>
 }
 
 // CHECK-LABEL: func @convert_dynamic_slice(
@@ -2426,7 +2426,7 @@ func @convert_gather_offset(%arg0: tensor<1x20xi32>, %arg1: tensor<1x1xi32>) -> 
 // CHECK:         }
 func @convert_dynamic_slice(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<4x2xf32> {
   %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[4, 2]> : tensor<2xi64>} : (tensor<7x3xf32>, tensor<i32>, tensor<i32>) -> tensor<4x2xf32>
-  return %0 : tensor<4x2xf32>
+  func.return %0 : tensor<4x2xf32>
 }
 
 // CHECK-LABEL: func @convert_dynamic_slice_ui32(
@@ -2449,7 +2449,7 @@ func @convert_dynamic_slice(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>, %arg2: t
 // CHECK:         }
 func @convert_dynamic_slice_ui32(%arg0: tensor<7x3xf32>, %arg1: tensor<ui32>, %arg2: tensor<ui32>) -> tensor<4x2xf32> {
   %0 = "mhlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[4, 2]> : tensor<2xi64>} : (tensor<7x3xf32>, tensor<ui32>, tensor<ui32>) -> tensor<4x2xf32>
-  return %0 : tensor<4x2xf32>
+  func.return %0 : tensor<4x2xf32>
 }
 
 // CHECK-LABEL:   func @convert_scatter_update(
@@ -2474,7 +2474,7 @@ func @convert_scatter_update(%arg0: tensor<20x6xf32>, %arg1: tensor<4xi32>, %arg
     >,
     indices_are_sorted = false,
     unique_indices = false} : (tensor<20x6xf32>, tensor<4xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
-  return %0 : tensor<20x6xf32>
+  func.return %0 : tensor<20x6xf32>
 }
 
 // CHECK-LABEL:   func @convert_scatter_update_with_non_trailing_update_window_dims(
@@ -2503,7 +2503,7 @@ func @convert_scatter_update_with_non_trailing_update_window_dims(
     >,
     indices_are_sorted = false,
     unique_indices = false} : (tensor<5x10xf32>, tensor<3x1xi32>, tensor<10x3xf32>) -> tensor<5x10xf32>
-  return %0 : tensor<5x10xf32>
+  func.return %0 : tensor<5x10xf32>
 }
 
 // CHECK-LABEL:   func @convert_scatter_update_to_non_trailing_operand_dimensions(
@@ -2533,7 +2533,7 @@ func @convert_scatter_update_to_non_trailing_operand_dimensions(
         index_vector_dim = 1>,
       indices_are_sorted = false,
       unique_indices = false} : (tensor<5x4x3x7xf32>, tensor<2x2xi32>, tensor<2x5x3xf32>) -> tensor<5x4x3x7xf32>
-  return %0 : tensor<5x4x3x7xf32>
+  func.return %0 : tensor<5x4x3x7xf32>
 }
 
 // CHECK-LABEL:   func @convert_scatter_add(
@@ -2557,7 +2557,7 @@ func @convert_scatter_add(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, %arg2
     >,
     indices_are_sorted = false,
     unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
-  return %0 : tensor<20x6xf32>
+  func.return %0 : tensor<20x6xf32>
 }
 
 // CHECK-LABEL:   func @convert_scatter_max(
@@ -2581,7 +2581,7 @@ func @convert_scatter_max(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, %arg2
     >,
     indices_are_sorted = false,
     unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
-  return %0 : tensor<20x6xf32>
+  func.return %0 : tensor<20x6xf32>
 }
 
 // CHECK-LABEL:   func @convert_scatter_min(
@@ -2605,7 +2605,7 @@ func @convert_scatter_min(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, %arg2
     >,
     indices_are_sorted = false,
     unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
-  return %0 : tensor<20x6xf32>
+  func.return %0 : tensor<20x6xf32>
 }
 
 // CHECK-LABEL:   func @convert_scatter_sub(
@@ -2629,7 +2629,7 @@ func @convert_scatter_sub(%arg0: tensor<20x6xf32>, %arg1: tensor<4x1xi32>, %arg2
     >,
     indices_are_sorted = false,
     unique_indices = false} : (tensor<20x6xf32>, tensor<4x1xi32>, tensor<4x6xf32>) -> tensor<20x6xf32>
-  return %0 : tensor<20x6xf32>
+  func.return %0 : tensor<20x6xf32>
 }
 
 // CHECK-LABEL:   func @convert_argmax(
@@ -2657,7 +2657,7 @@ func @convert_argmax(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4
     %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
     "mhlo.return"(%10, %15) : (tensor<f32>, tensor<i32>) -> ()
   }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<4x32x256xf32>, tensor<4x32x256xi32>, tensor<f32>, tensor<i32>) -> (tensor<4x32xf32>, tensor<4x32xi32>)
-  return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
+  func.return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
 }
 
 // CHECK-LABEL: func @convert_argmax_constant(
@@ -2687,7 +2687,7 @@ func @convert_argmax_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, ten
     %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
     "mhlo.return"(%10, %15) : (tensor<f32>, tensor<i32>) -> ()
   }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<2x2x4xf32>, tensor<2x2x4xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %4#0, %4#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %4#0, %4#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // CHECK-LABEL:   func @convert_argmin(
@@ -2715,7 +2715,7 @@ func @convert_argmin(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, tensor<4
     %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
     "mhlo.return"(%10, %15) : (tensor<f32>, tensor<i32>) -> ()
   }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<4x32x256xf32>, tensor<4x32x256xi32>, tensor<f32>, tensor<i32>) -> (tensor<4x32xf32>, tensor<4x32xi32>)
-  return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
+  func.return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
 }
 
 // CHECK-LABEL:   func @convert_argmin_i16(
@@ -2742,7 +2742,7 @@ func @convert_argmin_i16(%arg0: tensor<2xi16>) -> (tensor<i16>, tensor<i32>) {
     %18 = "mhlo.select"(%17, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
     "mhlo.return"(%13, %18) : (tensor<i16>, tensor<i32>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi16>, tensor<2xi32>, tensor<i16>, tensor<i32>) -> (tensor<i16>, tensor<i32>)
-  return %4#0, %4#1 : tensor<i16>, tensor<i32>
+  func.return %4#0, %4#1 : tensor<i16>, tensor<i32>
 }
 
 
@@ -2773,7 +2773,7 @@ func @convert_argmin_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, ten
     %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
     "mhlo.return"(%10, %15) : (tensor<f32>, tensor<i32>) -> ()
   }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<2x2x4xf32>, tensor<2x2x4xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %4#0, %4#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %4#0, %4#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // CHECK-LABEL:   func @convert_argmax_with_reshaped_iota(
@@ -2809,7 +2809,7 @@ func @convert_argmax_with_reshaped_iota(%arg0: tensor<1x1x32xf32>) -> (tensor<1x
     %13 = "mhlo.select"(%12, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
     "mhlo.return"(%8, %13) : (tensor<f32>, tensor<i32>) -> ()
   }
-  return %4#0, %4#1 : tensor<1x1xf32>, tensor<1x1xi32>
+  func.return %4#0, %4#1 : tensor<1x1xf32>, tensor<1x1xi32>
 }
 
 // CHECK-LABEL:   func @convert_not(
@@ -2819,7 +2819,7 @@ func @convert_argmax_with_reshaped_iota(%arg0: tensor<1x1x32xf32>) -> (tensor<1x
 // CHECK:         }
 func @convert_not(%arg0: tensor<5x3x1xi1>) -> tensor<5x3x1xi1> {
   %0 = "mhlo.not"(%arg0): (tensor<5x3x1xi1>) -> (tensor<5x3x1xi1>)
-  return %0 : tensor<5x3x1xi1>
+  func.return %0 : tensor<5x3x1xi1>
 }
 
 // -----
@@ -2852,7 +2852,7 @@ func @while_with_variadic() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
     %1 = mhlo.add %arg0, %arg1 : tensor<i32>
     "mhlo.return"(%1, %arg1, %arg2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
   }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
-  return %0#0, %0#1, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
+  func.return %0#0, %0#1, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
 // -----
@@ -2896,7 +2896,7 @@ func @while_with_reduce(%arg0: tensor<1x256xf32>, %arg1: tensor<1xf32>) -> (tens
     %5  = mhlo.add %3, %arg6 : tensor<1xf32>
     "mhlo.return"(%1, %arg3, %arg4, %arg5, %5) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>) -> ()
   }) : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<1x256xf32>, tensor<1xf32>)
-  return %0#0, %0#1, %0#2, %0#4: tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>
+  func.return %0#0, %0#1, %0#2, %0#4: tensor<i32>, tensor<i32>, tensor<i32>, tensor<1xf32>
 }
 
 // -----
@@ -2918,7 +2918,7 @@ func @if(%arg0: tensor<i1>) -> (tensor<i32>) {
   }, {
     "mhlo.return"(%cst_1) : (tensor<i32>) -> ()
   }) : (tensor<i1>) -> tensor<i32>
-  return %1: tensor<i32>
+  func.return %1: tensor<i32>
 }
 
 // CHECK-LABEL:   func @convert_dynamic_update_slice(
@@ -2953,7 +2953,7 @@ func @if(%arg0: tensor<i1>) -> (tensor<i32>) {
 // CHECK:         }
 func @convert_dynamic_update_slice(%arg0: tensor<28x1x100xf32>, %arg1: tensor<1x1x100xf32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<i32>) -> tensor<28x1x100xf32> {
   %0 = "mhlo.dynamic-update-slice"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<28x1x100xf32>, tensor<1x1x100xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<28x1x100xf32>
-  return %0 : tensor<28x1x100xf32>
+  func.return %0 : tensor<28x1x100xf32>
 }
 
 // CHECK-LABEL:   func @convert_reduce_to_all(
@@ -2971,7 +2971,7 @@ func @convert_reduce_to_all(%arg0: tensor<1x2x3x4x5xi1>, %arg1: tensor<2xi64>) -
         %2 = mhlo.and %arg2, %arg3 : tensor<i1>
         "mhlo.return"(%2) : (tensor<i1>) -> ()
     }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
-  return %1: tensor<2x4x5xi1>
+  func.return %1: tensor<2x4x5xi1>
 }
 
 // CHECK-LABEL:   func @convert_reduce_to_all_non_constant_init(
@@ -2989,7 +2989,7 @@ func @convert_reduce_to_all_non_constant_init(%arg0: tensor<i1>, %arg1: tensor<1
         %1 = mhlo.and %arg3, %arg4 : tensor<i1>
         "mhlo.return"(%1) : (tensor<i1>) -> ()
     }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
-  return %0: tensor<2x4x5xi1>
+  func.return %0: tensor<2x4x5xi1>
 }
 
 // CHECK-LABEL:   func @convert_reduce_to_any(
@@ -3007,7 +3007,7 @@ func @convert_reduce_to_any(%arg0: tensor<1x2x3x4x5xi1>, %arg1: tensor<2xi64>) -
         %2 = mhlo.or %arg2, %arg3 : tensor<i1>
         "mhlo.return"(%2) : (tensor<i1>) -> ()
     }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
-  return %1: tensor<2x4x5xi1>
+  func.return %1: tensor<2x4x5xi1>
 }
 
 // CHECK-LABEL:   func @convert_reduce_to_any_non_constant_init(
@@ -3025,7 +3025,7 @@ func @convert_reduce_to_any_non_constant_init(%arg0: tensor<i1>, %arg1: tensor<1
         %1 = mhlo.or %arg3, %arg4 : tensor<i1>
         "mhlo.return"(%1) : (tensor<i1>) -> ()
     }) {dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<1x2x3x4x5xi1>, tensor<i1>) -> tensor<2x4x5xi1>
-  return %0: tensor<2x4x5xi1>
+  func.return %0: tensor<2x4x5xi1>
 }
 
 // CHECK-LABEL:   func @convert_sort_to_topk_iota_broadcast(
@@ -3048,7 +3048,7 @@ func @convert_sort_to_topk_iota_broadcast(%arg0: tensor<3x6xf32>) -> (tensor<3x6
     %3 = "mhlo.compare"(%arg1, %arg2) {compare_type = #mhlo<"comparison_type TOTALORDER">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%3) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<3x6xf32>, tensor<3x6xi32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
-  return %2#0, %2#1 : tensor<3x6xf32>, tensor<3x6xi32>
+  func.return %2#0, %2#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
 
 // CHECK-LABEL:   func @convert_sort_to_topk_iotacst_broadcast(
@@ -3068,7 +3068,7 @@ func @convert_sort_to_topk_iotacst_broadcast(%arg0: tensor<3x6xf32>) -> (tensor<
     %3 = "mhlo.compare"(%arg1, %arg2) {compare_type = #mhlo<"comparison_type TOTALORDER">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%3) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<3x6xf32>, tensor<3x6xi32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
-  return %2#0, %2#1 : tensor<3x6xf32>, tensor<3x6xi32>
+  func.return %2#0, %2#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
 
 // CHECK-LABEL:   func @convert_sort_to_topk_const(
@@ -3085,7 +3085,7 @@ func @convert_sort_to_topk_const(%arg0: tensor<3x6xf32>) -> (tensor<3x6xf32>, te
     %3 = "mhlo.compare"(%arg1, %arg2) {compare_type = #mhlo<"comparison_type TOTALORDER">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%3) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<3x6xf32>, tensor<3x6xi32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
-  return %1#0, %1#1 : tensor<3x6xf32>, tensor<3x6xi32>
+  func.return %1#0, %1#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
 
 // CHECK-LABEL:   func @not_convert_sort_to_topk
@@ -3097,7 +3097,7 @@ func @not_convert_sort_to_topk(%arg0: tensor<3x6xf32>) -> (tensor<3x6xf32>, tens
     %4 = "mhlo.compare"(%arg1, %arg2) {compare_type = #mhlo<"comparison_type TOTALORDER">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%4) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<3x6xf32>, tensor<3x6xi32>) -> (tensor<3x6xf32>, tensor<3x6xi32>)
-  return %1#0, %1#1 : tensor<3x6xf32>, tensor<3x6xi32>
+  func.return %1#0, %1#1 : tensor<3x6xf32>, tensor<3x6xi32>
 }
 
 // CHECK-LABEL:   func @convert_remainder_for_int32(
@@ -3108,7 +3108,7 @@ func @not_convert_sort_to_topk(%arg0: tensor<3x6xf32>) -> (tensor<3x6xf32>, tens
 // CHECK:         }
 func @convert_remainder_for_int32(%arg0: tensor<10x8xi32>, %arg1: tensor<10x8xi32>) -> tensor<10x8xi32> {
   %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xi32>
-  return %0 : tensor<10x8xi32>
+  func.return %0 : tensor<10x8xi32>
 }
 
 // CHECK-LABEL:   func @convert_remainder_for_int64(
@@ -3119,35 +3119,35 @@ func @convert_remainder_for_int32(%arg0: tensor<10x8xi32>, %arg1: tensor<10x8xi3
 // CHECK:         }
 func @convert_remainder_for_int64(%arg0: tensor<10x8xi64>, %arg1: tensor<10x8xi64>) -> tensor<10x8xi64> {
   %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xi64>
-  return %0 : tensor<10x8xi64>
+  func.return %0 : tensor<10x8xi64>
 }
 
 // CHECK-LABEL:   func @not_convert_remainder_for_int16(
 // CHECK-NOT:       "tf.Mod"
 func @not_convert_remainder_for_int16(%arg0: tensor<10x8xi16>, %arg1: tensor<10x8xi16>) -> tensor<10x8xi16> {
   %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xi16>
-  return %0 : tensor<10x8xi16>
+  func.return %0 : tensor<10x8xi16>
 }
 
 // CHECK-LABEL:   func @not_convert_remainder_for_uint16(
 // CHECK-NOT:       "tf.Mod"
 func @not_convert_remainder_for_uint16(%arg0: tensor<10x8xui16>, %arg1: tensor<10x8xui16>) -> tensor<10x8xui16> {
   %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xui16>
-  return %0 : tensor<10x8xui16>
+  func.return %0 : tensor<10x8xui16>
 }
 
 // CHECK-LABEL:   func @not_convert_remainder_for_uint32(
 // CHECK-NOT:       "tf.Mod"
 func @not_convert_remainder_for_uint32(%arg0: tensor<10x8xui32>, %arg1: tensor<10x8xui32>) -> tensor<10x8xui32> {
   %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xui32>
-  return %0 : tensor<10x8xui32>
+  func.return %0 : tensor<10x8xui32>
 }
 
 // CHECK-LABEL:   func @not_convert_remainder_for_uint64(
 // CHECK-NOT:       "tf.Mod"
 func @not_convert_remainder_for_uint64(%arg0: tensor<10x8xui64>, %arg1: tensor<10x8xui64>) -> tensor<10x8xui64> {
   %0 = mhlo.remainder %arg0, %arg1 : tensor<10x8xui64>
-  return %0 : tensor<10x8xui64>
+  func.return %0 : tensor<10x8xui64>
 }
 
 
@@ -3160,5 +3160,5 @@ func @torch_index_select(%arg0: tensor<2x1xf32>, %arg1: tensor<2xi32>) -> tensor
   %0 = "mhlo.torch_index_select"(%arg0, %arg1) {
     batch_dims = 0 : i64, dim = 0 : i64
   } : (tensor<2x1xf32>, tensor<2xi32>) -> tensor<2x1xf32>
-  return %0 : tensor<2x1xf32>
+  func.return %0 : tensor<2x1xf32>
 }

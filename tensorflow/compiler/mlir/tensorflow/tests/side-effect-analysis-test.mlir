@@ -50,7 +50,7 @@ func @non_aliasing_reads_writes(
     // expected-remark@above {{ID: 10}}
     // expected-remark@above {{Predecessors: {9}}}
   }
-  return %graph : tensor<32xf32>
+  func.return %graph : tensor<32xf32>
   // expected-remark@above {{ID: 12}}
   // expected-remark@above {{Sinks: {11}}}
 }
@@ -323,7 +323,7 @@ func @if_then(%arg0: tensor<i1>) -> tensor<i1> {
     // expected-remark@above {{ID: 2}}
     // expected-remark@above {{Predecessors: {1}}}
   }
-  return %graph : tensor<i1>
+  func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
   // expected-remark@above {{Sinks: {3}}}
 }
@@ -343,7 +343,7 @@ func @if_else(%arg0: tensor<i1>) -> tensor<i1> {
     // expected-remark@above {{ID: 2}}
     // expected-remark@above {{Predecessors: {1}}}
   }
-  return %graph : tensor<i1>
+  func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
   // expected-remark@above {{Sinks: {3}}}
 }
@@ -480,7 +480,7 @@ func @while_body(%arg0: tensor<i1>) -> tensor<i1> {
     // expected-remark@above {{ID: 2}}
     // expected-remark@above {{Predecessors: {1}}}
   }
-  return %graph : tensor<i1>
+  func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
   // expected-remark@above {{Sinks: {3}}}
 }
@@ -500,7 +500,7 @@ func @while_cond(%arg0: tensor<i1>) -> tensor<i1> {
     // expected-remark@above {{ID: 2}}
     // expected-remark@above {{Predecessors: {1}}}
   }
-  return %graph : tensor<i1>
+  func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 4}}
   // expected-remark@above {{Sinks: {3}}}
 }
@@ -694,7 +694,7 @@ func @if_then(
       tensor<*x!tf_type.resource<tensor<32xf32>>>,
       tensor<*x!tf_type.resource<tensor<32xf32>>>
   }
-  return %graph#0, %graph#1, %graph#2 :
+  func.return %graph#0, %graph#1, %graph#2 :
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
     tensor<*x!tf_type.resource<tensor<32xf32>>>,
@@ -734,7 +734,7 @@ func @if_else(
       tensor<*x!tf_type.resource<tensor<32xf32>>>,
       tensor<*x!tf_type.resource<tensor<32xf32>>>
   }
-  return %graph#0, %graph#1, %graph#2 :
+  func.return %graph#0, %graph#1, %graph#2 :
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
     tensor<*x!tf_type.resource<tensor<32xf32>>>,
@@ -987,7 +987,7 @@ func @while_body(
       tensor<*x!tf_type.resource<tensor<32xf32>>>,
       tensor<*x!tf_type.resource<tensor<32xf32>>>
   }
-  return %graph#0, %graph#1, %graph#2, %graph#3 :
+  func.return %graph#0, %graph#1, %graph#2, %graph#3 :
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
     tensor<i1>, tensor<*x!tf_type.resource<tensor<32xf32>>>,
@@ -1018,7 +1018,7 @@ func @while_cond(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return %graph : tensor<i1>
+  func.return %graph : tensor<i1>
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }

@@ -28,7 +28,7 @@ func @main() -> tensor<3xf32> {
   // CHECK-NOT: TensorArrayCloseV3
   "tf.TensorArrayCloseV3"(%ta#0) : (tensor<!tf_type.resource>) -> ()
   // CHECK: return %[[READ]] : tensor<3xf32>
-  return %read: tensor<3xf32>
+  func.return %read: tensor<3xf32>
 }
 
 // -----
@@ -49,7 +49,7 @@ func @main() -> tensor<i32> {
   // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %size_out = "tf.TensorArraySizeV3"(%ta#0, %write) : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<i32>
   // CHECK: return %[[SIZE]] : tensor<i32>
-  return %size_out : tensor<i32>
+  func.return %size_out : tensor<i32>
 }
 
 // -----
@@ -65,7 +65,7 @@ func @main() -> tensor<i32> {
   %values = "tf.Const"() {value = dense<[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]> : tensor<2x3xf32>} : () -> tensor<2x3xf32>
   %write = "tf.TensorArrayScatterV3"(%ta#0, %indices, %values, %ta#1) : (tensor<!tf_type.resource>, tensor<2xi32>, tensor<2x3xf32>, tensor<f32>) -> tensor<f32>
   %size_out = "tf.TensorArraySizeV3"(%ta#0, %write) : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<i32>
-  return %size_out : tensor<i32>
+  func.return %size_out : tensor<i32>
 }
 
 // -----
@@ -79,7 +79,7 @@ func @main() -> tensor<2x3xf32> {
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   %indices = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
   %gather = "tf.TensorArrayGatherV3"(%ta#0, %indices, %ta#1) : (tensor<!tf_type.resource>, tensor<2xi32>, tensor<f32>) -> tensor<2x3xf32>
-  return %gather : tensor<2x3xf32>
+  func.return %gather : tensor<2x3xf32>
 }
 
 // -----
@@ -93,7 +93,7 @@ func @main() -> tensor<*xf32> {
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   %indices = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
   %gather = "tf.TensorArrayGatherV3"(%ta#0, %indices, %ta#1) {element_shape = #tf_type.shape<3>} : (tensor<!tf_type.resource>, tensor<2xi32>, tensor<f32>) -> tensor<*xf32>
-  return %gather : tensor<*xf32>
+  func.return %gather : tensor<*xf32>
 }
 
 
@@ -273,12 +273,12 @@ func @while_body(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> (tenso
   // CHECK: "tf.AssignVariableOp"(%[[BARG2]], %[[UPDATE2]])
   %gwrite = "tf.TensorArrayWriteV3"(%grad#0, %sub, %elem, %grad#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
   // CHECK: return %[[BARG0]], %[[SUB]], %[[BARG2]]
-  return %arg0, %sub : tensor<!tf_type.resource>, tensor<i32>
+  func.return %arg0, %sub : tensor<!tf_type.resource>, tensor<i32>
 }
 // CHECK: func @while_cond(%[[CARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[CARG1:.*]]: tensor<i32>, %[[CARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
 func @while_cond(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
   // CHECK-NEXT: return %[[CARG1]]
-  return %arg1 : tensor<i32>
+  func.return %arg1 : tensor<i32>
 }
 
 // -----
@@ -324,7 +324,7 @@ func @then_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
   %grad:2 = "tf.TensorArrayGradV3"(%arg0, %flow) {source = "a"} : (tensor<!tf_type.resource>, tensor<f32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   %gwrite = "tf.TensorArrayWriteV3"(%grad#0, %const1, %elem, %grad#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
   // CHECK: return %[[TARG0]]
-  return %arg0 : tensor<!tf_type.resource>
+  func.return %arg0 : tensor<!tf_type.resource>
 }
 // CHECK: func @else_branch(%[[EARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[EARG1:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[EARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
 func @else_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
@@ -338,7 +338,7 @@ func @else_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
   %grad:2 = "tf.TensorArrayGradV3"(%arg0, %flow) {source = "b"} : (tensor<!tf_type.resource>, tensor<f32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   %gwrite = "tf.TensorArrayWriteV3"(%grad#0, %const1, %elem, %grad#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
   // CHECK: return %[[EARG0]]
-  return %arg0 : tensor<!tf_type.resource>
+  func.return %arg0 : tensor<!tf_type.resource>
 }
 
 // -----
@@ -469,7 +469,7 @@ func @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   %gwrite = "tf.TensorArrayWriteV3"(%grad#0, %const1, %elem, %grad#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
   %grad2:2 = "tf.TensorArrayGradV3"(%arg0, %flow) {source = "b"} : (tensor<!tf_type.resource>, tensor<f32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   %gwrite2 = "tf.TensorArrayWriteV3"(%grad2#0, %const1, %elem, %grad2#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
-  return %arg0 : tensor<!tf_type.resource>
+  func.return %arg0 : tensor<!tf_type.resource>
 }
 // CHECK: func private @callee_tensorarray_decomposed(%[[CARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[CARG1:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[CARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
 // CHECK: %[[READ1:.*]] = "tf.ReadVariableOp"(%[[CARG1]]) : (tensor<!tf_type.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
@@ -525,7 +525,7 @@ func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resour
   %grad2:2 = "tf.TensorArrayGradV3"(%arg0, %flow) {source = "b"} : (tensor<!tf_type.resource>, tensor<f32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   %gwrite2 = "tf.TensorArrayWriteV3"(%grad2#0, %const1, %elem, %grad2#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
   // CHECK: return %[[CARG0]]
-  return %arg0 : tensor<!tf_type.resource>
+  func.return %arg0 : tensor<!tf_type.resource>
 }
 
 // -----
@@ -546,7 +546,7 @@ func @callee() -> tensor<i32> {
   // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %size_out = "tf.TensorArraySizeV3"(%ta#0, %ta#1) : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<i32>
   // CHECK: return %[[SIZE]] : tensor<i32>
-  return %size_out : tensor<i32>
+  func.return %size_out : tensor<i32>
 }
 
 // -----
@@ -572,7 +572,7 @@ func private @callee() -> (tensor<*xf32>) {
   %val = "tf.TensorArrayReadV3"(%ta#0, %index, %ta#1) : (tensor<!tf_type.resource<tensor<*xf32>>>, tensor<i32>, tensor<f32>) -> tensor<*xf32>
   // CHECK: %[[CAST:.*]] = tensor.cast %[[ELEM]] : tensor<3xf32> to tensor<*xf32>
   // CHECK: return %[[CAST]] : tensor<*xf32>
-  return %val : tensor<*xf32>
+  func.return %val : tensor<*xf32>
 }
 // -----
 
@@ -625,7 +625,7 @@ func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resour
     "tf.Yield"() : () -> ()
   }) {is_stateless = false} : (tensor<i32>) -> ()
   // CHECK: return %[[VAR]]
- return %arg0 : tensor<!tf_type.resource>
+ func.return %arg0 : tensor<!tf_type.resource>
 }
 
 // -----
@@ -665,10 +665,10 @@ func @main(%arg0: tensor<i1>) -> () {
   return
 }
 func @if_then(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
-  return %arg0 : tensor<!tf_type.resource>
+  func.return %arg0 : tensor<!tf_type.resource>
 }
 func @if_else(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
-  return %arg1 : tensor<!tf_type.resource>
+  func.return %arg1 : tensor<!tf_type.resource>
 }
 
 // -----
@@ -711,5 +711,5 @@ func @main(%arg0: tensor<i1>) -> (tensor<3xf32>) {
       %read_false = "tf.TensorArrayReadV3"(%ta#0, %idx, %ta#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
       "tf.Yield"(%read_false, %ta#0) : (tensor<3xf32>, tensor<!tf_type.resource>) -> ()
     }) {is_stateless = false} : (tensor<i1>) -> (tensor<3xf32>, tensor<!tf_type.resource>)
-  return %if_op : tensor<3xf32>
+  func.return %if_op : tensor<3xf32>
 }

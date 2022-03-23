@@ -169,7 +169,7 @@ func @while_body(
       : tensor<i32>, !tf_res,
         !tf_res
   }
-  return %graph#0, %graph#1, %graph#2
+  func.return %graph#0, %graph#1, %graph#2
      : tensor<i32>, !tf_res,
        !tf_res
 }
@@ -192,7 +192,7 @@ func @while_cond(
     }
     tf_executor.fetch %island#0 : tensor<32xf32>
   }
-  return %graph : tensor<32xf32>
+  func.return %graph : tensor<32xf32>
 }
 
 // -----
@@ -516,7 +516,7 @@ func @whileregion_body(%arg0: tensor<i32>, %arg1: !tf_res, %arg2: !tf_res) -> (t
     }
     tf_executor.fetch %island#0, %island#1, %island#2 : tensor<i32>, !tf_res, !tf_res
   }
-  return %graph#0, %graph#1, %graph#2: tensor<i32>, !tf_res, !tf_res
+  func.return %graph#0, %graph#1, %graph#2: tensor<i32>, !tf_res, !tf_res
 }
 
 // CHECK-LABEL: func @whileregion_cond
@@ -536,5 +536,5 @@ func @whileregion_cond(%arg0: tensor<i32>, %arg1: !tf_res, %arg2: !tf_res) -> te
     }
     tf_executor.fetch %island#0 : tensor<i1>
   }
-  return %graph : tensor<i1>
+  func.return %graph : tensor<i1>
 }

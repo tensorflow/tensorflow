@@ -9,5 +9,5 @@ attributes  {tf.entry_function = {inputs = "input", outputs = "output_node"}} {
   %1 = arith.constant dense<1.000000e+00> : tensor<f32>
   %2 = "tf.AddV2"(%arg0, %1) {T = "tfdtype$DT_FLOAT", device = "", name = "StatefulPartitionedCall/add"} : (tensor<1xf32>, tensor<f32>) -> tensor<1xf32>
   %3 = "tf.Mul"(%2, %0) {T = "tfdtype$DT_FLOAT", device = "", name = "output_node"} : (tensor<1xf32>, tensor<f32>) -> tensor<1xf32>
-  return %3 : tensor<1xf32>
+  func.return %3 : tensor<1xf32>
 }

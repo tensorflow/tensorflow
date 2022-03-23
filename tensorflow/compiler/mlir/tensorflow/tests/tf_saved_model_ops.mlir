@@ -43,7 +43,7 @@ module attributes {tf_saved_model.semantics} {
   ) attributes { tf_saved_model.exported_names = ["some_func"] }
   {
     "tf.some_call"() {callee = @f} : () -> ()
-    return %arg0 : tensor<f32>
+    func.return %arg0 : tensor<f32>
   }
 
   func private @f() attributes {

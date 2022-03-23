@@ -12,7 +12,7 @@ func @conv2DBiasAdd_noActivation(%arg0: tensor<128xf32>, %arg1: tensor<1x1x3x128
   %0 = "tf.Conv2D"(%arg2, %arg1) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<8x32x32x3xf32>, tensor<1x1x3x128xf32>) -> tensor<*xf32>
   %1 = "tf.BiasAdd"(%0, %arg0) {data_format = "NHWC"} : (tensor<*xf32>, tensor<128xf32>) -> tensor<*xf32>
   %2 = "tf.Identity"(%1) : (tensor<*xf32>) -> tensor<*xf32>
-  return %2 : tensor<*xf32>
+  func.return %2 : tensor<*xf32>
 }
 
 // CHECK-LABEL: conv2DBiasAdd_reluActivation
@@ -24,7 +24,7 @@ func @conv2DBiasAdd_reluActivation(%arg0: tensor<128xf32>, %arg1: tensor<1x1x3x1
   %1 = "tf.BiasAdd"(%0, %arg0) {data_format = "NHWC"} : (tensor<*xf32>, tensor<128xf32>) -> tensor<*xf32>
   %2 = "tf.Relu"(%1) : (tensor<*xf32>) -> tensor<*xf32>
   %3 = "tf.Identity"(%2) : (tensor<*xf32>) -> tensor<*xf32>
-  return %3 : tensor<*xf32>
+  func.return %3 : tensor<*xf32>
 }
 
 // CHECK-LABEL: conv2DBiasAdd_relu6Activation
@@ -36,7 +36,7 @@ func @conv2DBiasAdd_relu6Activation(%arg0: tensor<128xf32>, %arg1: tensor<1x1x3x
   %1 = "tf.BiasAdd"(%0, %arg0) {data_format = "NHWC"} : (tensor<*xf32>, tensor<128xf32>) -> tensor<*xf32>
   %2 = "tf.Relu6"(%1) : (tensor<*xf32>) -> tensor<*xf32>
   %3 = "tf.Identity"(%2) : (tensor<*xf32>) -> tensor<*xf32>
-  return %3 : tensor<*xf32>
+  func.return %3 : tensor<*xf32>
 }
 
 // CHECK-LABEL: conv2DBiasAdd_eluActivation
@@ -48,7 +48,7 @@ func @conv2DBiasAdd_eluActivation(%arg0: tensor<128xf32>, %arg1: tensor<1x1x3x12
   %1 = "tf.BiasAdd"(%0, %arg0) {data_format = "NHWC"} : (tensor<*xf32>, tensor<128xf32>) -> tensor<*xf32>
   %2 = "tf.Elu"(%1) : (tensor<*xf32>) -> tensor<*xf32>
   %3 = "tf.Identity"(%2) : (tensor<*xf32>) -> tensor<*xf32>
-  return %3 : tensor<*xf32>
+  func.return %3 : tensor<*xf32>
 }
 
 // CHECK-LABEL: conv2DBiasAdd_convMultipleUses
@@ -59,7 +59,7 @@ func @conv2DBiasAdd_convMultipleUses(%arg0: tensor<128xf32>, %arg1: tensor<1x1x3
   %2 = "tf.Elu"(%1) : (tensor<*xf32>) -> tensor<*xf32>
   %3 = "tf.Identity"(%2) : (tensor<*xf32>) -> tensor<*xf32>
   %4 = "tf.Identity"(%0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %3, %4 : tensor<*xf32>, tensor<*xf32>
+  func.return %3, %4 : tensor<*xf32>, tensor<*xf32>
 }
 
 // CHECK-LABEL: conv2DBiasAdd_biasAddMultipleUse
@@ -74,7 +74,7 @@ func @conv2DBiasAdd_biasAddMultipleUse(%arg0: tensor<128xf32>, %arg1: tensor<1x1
   %2 = "tf.Elu"(%1) : (tensor<*xf32>) -> tensor<*xf32>
   %3 = "tf.Identity"(%2) : (tensor<*xf32>) -> tensor<*xf32>
   %4 = "tf.Identity"(%1) : (tensor<*xf32>) -> tensor<*xf32>
-  return %3, %4 : tensor<*xf32>, tensor<*xf32>
+  func.return %3, %4 : tensor<*xf32>, tensor<*xf32>
 }
 
 // CHECK-LABEL: conv2D_noFusion
@@ -83,7 +83,7 @@ func @conv2D_noFusion(%arg0: tensor<128xf32>, %arg1: tensor<1x1x3x128xf32>, %arg
   %0 = "tf.Conv2D"(%arg2, %arg1) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<8x32x32x3xf32>, tensor<1x1x3x128xf32>) -> tensor<*xf32>
   %2 = "tf.Elu"(%0) : (tensor<*xf32>) -> tensor<*xf32>
   %3 = "tf.Identity"(%2) : (tensor<*xf32>) -> tensor<*xf32>
-  return %3 : tensor<*xf32>
+  func.return %3 : tensor<*xf32>
 }
 
 // CHECK-LABEL: conv2D_noFusion1
@@ -94,7 +94,7 @@ func @conv2D_noFusion1(%arg0: tensor<*xf32>, %arg1: tensor<1x1x3x128xf32>, %arg2
   %1 = "tf.BiasAdd"(%arg0, %0) {data_format = "NHWC"} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   %2 = "tf.Elu"(%1) : (tensor<*xf32>) -> tensor<*xf32>
   %3 = "tf.Identity"(%2) : (tensor<*xf32>) -> tensor<*xf32>
-  return %3 : tensor<*xf32>
+  func.return %3 : tensor<*xf32>
 }
 
 // CHECK-LABEL: conv2D_dataFormatMismatch
@@ -105,7 +105,7 @@ func @conv2D_dataFormatMismatch(%arg0: tensor<128xf32>, %arg1: tensor<1x1x3x128x
   %1 = "tf.BiasAdd"(%0, %arg0) {data_format = "NCHW"} : (tensor<*xf32>, tensor<128xf32>) -> tensor<*xf32>
   %2 = "tf.Elu"(%1) : (tensor<*xf32>) -> tensor<*xf32>
   %3 = "tf.Identity"(%2) : (tensor<*xf32>) -> tensor<*xf32>
-  return %3 : tensor<*xf32>
+  func.return %3 : tensor<*xf32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -120,7 +120,7 @@ func @matmulBiasAdd(%arg0: tensor<64xf32>, %arg1: tensor<8x32xf32>, %arg2: tenso
   %3 = "tf.MatMul"(%arg1, %arg2) {transpose_a = false, transpose_b = false} : (tensor<8x32xf32>, tensor<32x64xf32>) -> tensor<*xf32>
   %4 = "tf.BiasAdd"(%3, %arg0) {data_format = "NHWC"} : (tensor<*xf32>, tensor<64xf32>) -> tensor<*xf32>
   %5 = "tf.Identity"(%4) : (tensor<*xf32>) -> tensor<*xf32>
-  return %5 : tensor<*xf32>
+  func.return %5 : tensor<*xf32>
 }
 
 // CHECK-LABEL: matmulBiasAdd_relu
@@ -132,7 +132,7 @@ func @matmulBiasAdd_relu(%arg0: tensor<64xf32>, %arg1: tensor<8x32xf32>, %arg2: 
   %4 = "tf.BiasAdd"(%3, %arg0) {data_format = "NHWC"} : (tensor<*xf32>, tensor<64xf32>) -> tensor<*xf32>
   %5 = "tf.Relu"(%4) : (tensor<*xf32>) -> tensor<*xf32>
   %6 = "tf.Identity"(%5) : (tensor<*xf32>) -> tensor<*xf32>
-  return %6 : tensor<*xf32>
+  func.return %6 : tensor<*xf32>
 }
 
 // CHECK-LABEL: matmulBiasAdd_relu6
@@ -144,7 +144,7 @@ func @matmulBiasAdd_relu6(%arg0: tensor<64xf32>, %arg1: tensor<8x32xf32>, %arg2:
   %4 = "tf.BiasAdd"(%3, %arg0) {data_format = "NHWC"} : (tensor<*xf32>, tensor<64xf32>) -> tensor<*xf32>
   %5 = "tf.Relu6"(%4) : (tensor<*xf32>) -> tensor<*xf32>
   %6 = "tf.Identity"(%5) : (tensor<*xf32>) -> tensor<*xf32>
-  return %6 : tensor<*xf32>
+  func.return %6 : tensor<*xf32>
 }
 
 // CHECK-LABEL: matmulBiasAdd_elu
@@ -156,5 +156,5 @@ func @matmulBiasAdd_elu(%arg0: tensor<64xf32>, %arg1: tensor<8x32xf32>, %arg2: t
   %4 = "tf.BiasAdd"(%3, %arg0) {data_format = "NHWC"} : (tensor<*xf32>, tensor<64xf32>) -> tensor<*xf32>
   %5 = "tf.Elu"(%4) : (tensor<*xf32>) -> tensor<*xf32>
   %6 = "tf.Identity"(%5) : (tensor<*xf32>) -> tensor<*xf32>
-  return %6 : tensor<*xf32>
+  func.return %6 : tensor<*xf32>
 }

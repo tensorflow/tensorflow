@@ -21,7 +21,7 @@ func @testIf1Result(tensor<i1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:   cf.br ^bb3([[ELSE]] : tensor<*xf32>)
 // CHECK: ^bb3([[BBARG0:%.+]]: tensor<*xf32>):
 
-  return %1 : tensor<*xf32>
+  func.return %1 : tensor<*xf32>
 // CHECK:   return [[BBARG0]] : tensor<*xf32>
 }
 
@@ -45,17 +45,17 @@ func @testIf3Result(tensor<i1>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xi8>, 
 // CHECK:   [[ELSE:%.+]]:3 = call @testIf3Else(%arg1)
 // CHECK:   cf.br ^bb3([[ELSE]]#0, [[ELSE]]#1, [[ELSE]]#2 : tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>)
 // CHECK: ^bb3([[BBARG0:%.+]]: tensor<*xf32>, [[BBARG1:%.+]]: tensor<*xi8>, [[BBARG2:%.+]]: tensor<*xbf16>):
-  return %1#0, %1#1, %1#2 : tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>
+  func.return %1#0, %1#1, %1#2 : tensor<*xf32>, tensor<*xi8>, tensor<*xbf16>
 // CHECK:  return [[BBARG0]], [[BBARG1]], [[BBARG2]]
 }
 
 // -----
 
 func @testIfThen(%arg0: tensor<!tf_type.variant>) -> tensor<!tf_type.variant> {
-  return %arg0 : tensor<!tf_type.variant>
+  func.return %arg0 : tensor<!tf_type.variant>
 }
 func @testIfElse(%arg0: tensor<!tf_type.variant>) -> tensor<!tf_type.variant> {
-  return %arg0 : tensor<!tf_type.variant>
+  func.return %arg0 : tensor<!tf_type.variant>
 }
 
 // CHECK-LABEL: func @testIfCasts(%arg0: tensor<i1>, %arg1: tensor<!tf_type.variant<tensor<f32>>>) -> tensor<!tf_type.variant<tensor<f32>>>
@@ -63,7 +63,7 @@ func @testIfCasts(%arg0: tensor<i1>, %arg1: tensor<!tf_type.variant<tensor<f32>>
   %0 = "tf.If"(%arg0, %arg1) {
     then_branch = @testIfThen, else_branch = @testIfElse, is_stateless = false
   } : (tensor<i1>, tensor<!tf_type.variant<tensor<f32>>>) -> tensor<!tf_type.variant<tensor<f32>>>
-  return %0: tensor<!tf_type.variant<tensor<f32>>>
+  func.return %0: tensor<!tf_type.variant<tensor<f32>>>
 // CHECK:   [[TOBOOL:%.+]] = "tf.ToBool"(%arg0) : (tensor<i1>) -> tensor<i1>
 // CHECK:   [[PRED:%.+]] = tensor.extract [[TOBOOL]][] : tensor<i1>
 // CHECK:   cf.cond_br [[PRED]], ^bb1, ^bb2
@@ -98,7 +98,7 @@ func @testIf1x4(tensor<4xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32> {
     then_branch = @testIf1Then, else_branch = @testIf1Else, is_stateless = false
   } : (tensor<4xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
-  return %1 : tensor<*xf32>
+  func.return %1 : tensor<*xf32>
 }
 
 // -----
@@ -125,7 +125,7 @@ func @testWhile2Result(tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*
 // CHECK:   cf.br ^bb1([[BODYRETS]]#0, [[BODYRETS]]#1 : tensor<*xf32>, tensor<*xf32>)
 // CHECK: ^bb3([[EXITARG0:%.+]]: tensor<*xf32>, [[EXITARG1:%.+]]: tensor<*xf32>):
 
-  return %1#0, %1#1 : tensor<*xf32>, tensor<*xf32>
+  func.return %1#0, %1#1 : tensor<*xf32>, tensor<*xf32>
 // CHECK:   return [[EXITARG0]], [[EXITARG1]] : tensor<*xf32>, tensor<*xf32>
 }
 
@@ -178,7 +178,7 @@ func @testComplexWhile1Result(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> (te
 
 ^bb1(%2: tensor<*xf32>, %3: tensor<*xf32>):
   %4 = arith.subf %arg0, %arg1 : tensor<*xf32>
-  return %4 : tensor<*xf32>
+  func.return %4 : tensor<*xf32>
 // CHECK:  ^bb4([[FINALARG0:%.+]]: tensor<*xf32>, [[FINALARG1:%.+]]: tensor<*xf32>):
 // CHECK:    [[SUBF:%.+]] = arith.subf %arg0, %arg1 : tensor<*xf32>
 // CHECK:    return [[SUBF]] : tensor<*xf32>
@@ -188,11 +188,11 @@ func @testComplexWhile1Result(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> (te
 
 func @testWhileCond(%arg0: tensor<!tf_type.variant>) -> (tensor<i1>) {
   %true = "tf.Const"() { value = dense<true> : tensor<i1> } : () -> (tensor<i1>)
-  return %true : tensor<i1>
+  func.return %true : tensor<i1>
 }
 func @testWhileBody(%arg0: tensor<!tf_type.variant<tensor<1x?xf32>>>) -> (tensor<!tf_type.variant<tensor<?x?xf32>>>) {
   %0 = "tf.Cast"(%arg0) : (tensor<!tf_type.variant<tensor<1x?xf32>>>) -> tensor<!tf_type.variant<tensor<?x?xf32>>>
-  return %0 : tensor<!tf_type.variant<tensor<?x?xf32>>>
+  func.return %0 : tensor<!tf_type.variant<tensor<?x?xf32>>>
 }
 
 // CHECK-LABEL: func @testWhileCasts(%arg0: tensor<!tf_type.variant<tensor<1x3xf32>>>) -> tensor<!tf_type.variant<tensor<*xf32>>>
@@ -200,7 +200,7 @@ func @testWhileCasts(%arg0: tensor<!tf_type.variant<tensor<1x3xf32>>>) -> (tenso
   %0 = "tf.While"(%arg0) {
     cond = @testWhileCond, body = @testWhileBody, is_stateless = false
   } : (tensor<!tf_type.variant<tensor<1x3xf32>>>) -> (tensor<!tf_type.variant<tensor<*xf32>>>)
-  return %0 : tensor<!tf_type.variant<tensor<*xf32>>>
+  func.return %0 : tensor<!tf_type.variant<tensor<*xf32>>>
 // CHECK:   [[CASTENTRY:%.+]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<!tf_type.variant<tensor<1x3xf32>>>) -> tensor<!tf_type.variant>
 // CHECK:   cf.br ^bb1([[CASTENTRY]] : tensor<!tf_type.variant>)
 // CHECK: ^bb1([[CONDARG0:%.+]]: tensor<!tf_type.variant>):        // 2 preds: ^bb0, ^bb2

@@ -42,7 +42,7 @@ func @island_forwarding_result(%arg0: tensor<i32>) -> tensor<i32> {
     }
     tf_executor.fetch %output : tensor<i32>
   }
-  return %graph_result : tensor<i32>
+  func.return %graph_result : tensor<i32>
 }
 
 // CHECK-LABEL: func @transitive_data_dependencies
@@ -62,7 +62,7 @@ func @transitive_data_dependencies(%arg0: tensor<i32>) -> tensor<i32> {
     }
     tf_executor.fetch %output1 : tensor<i32>
   }
-  return %graph_result : tensor<i32>
+  func.return %graph_result : tensor<i32>
 }
 
 // CHECK-LABEL: func @transitive_control_dependencies
@@ -82,7 +82,7 @@ func @transitive_control_dependencies(%arg0: tensor<i32>) -> tensor<i32> {
     }
     tf_executor.fetch %output1 : tensor<i32>
   }
-  return %graph_result : tensor<i32>
+  func.return %graph_result : tensor<i32>
 }
 
 // CHECK-LABEL: func @multiple_inner_ops
@@ -106,5 +106,5 @@ func @multiple_inner_ops(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
     }
     tf_executor.fetch %output0_1, %output1_1 : tensor<i32>, tensor<i32>
   }
-  return %graph_result#0, %graph_result#1 : tensor<i32>, tensor<i32>
+  func.return %graph_result#0, %graph_result#1 : tensor<i32>, tensor<i32>
 }

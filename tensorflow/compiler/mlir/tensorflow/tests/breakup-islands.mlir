@@ -16,7 +16,7 @@ func @multiple_return(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32
     }
     tf_executor.fetch %island#0, %island#1 : tensor<*xi32>, tensor<*xi32>
   }
-  return %graph#0, %graph#1 : tensor<*xi32>, tensor<*xi32>
+  func.return %graph#0, %graph#1 : tensor<*xi32>, tensor<*xi32>
 }
 
 // CHECK-LABEL: func @multiple_return
@@ -52,7 +52,7 @@ func @multiple_islands(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi3
     }
     tf_executor.fetch %island1#1, %island2#1, %island3, %island4 : tensor<*xi32>, tensor<*xi32>, !tf_executor.control, !tf_executor.control
   }
-  return %graph#0, %graph#1 : tensor<*xi32>, tensor<*xi32>
+  func.return %graph#0, %graph#1 : tensor<*xi32>, tensor<*xi32>
 }
 
 // CHECK-LABEL: func @multiple_islands
@@ -80,7 +80,7 @@ func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>
     }
     tf_executor.fetch %island1#0, %island1#1 : tensor<*xi32>, tensor<*xi32>
   }
-  return %graph#0, %graph#1 : tensor<*xi32>, tensor<*xi32>
+  func.return %graph#0, %graph#1 : tensor<*xi32>, tensor<*xi32>
 }
 
 // CHECK-LABEL:  func @dangling_print
@@ -109,7 +109,7 @@ func @switch_and_merge(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi3
     %merge_out:3 = tf_executor.Merge %island1#0, %switch#1 : tensor<*xi32>
     tf_executor.fetch %merge_out#0, %merge_out#1 : tensor<*xi32>, tensor<i32>
   }
-  return %graph#0, %graph#1 : tensor<*xi32>, tensor<i32>
+  func.return %graph#0, %graph#1 : tensor<*xi32>, tensor<i32>
 }
 
 // CHECK-LABEL:  func @switch_and_merge(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<i32>) {
@@ -136,7 +136,7 @@ func @control_flow_plumbing(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> tensor<
     }
     tf_executor.fetch %island1#0 : tensor<*xi32>
   }
-  return %graph : tensor<*xi32>
+  func.return %graph : tensor<*xi32>
 }
 
 // CHECK-LABEL: func @control_flow_plumbing
@@ -185,7 +185,7 @@ func @non_aliasing_reads_writes(
     }
     tf_executor.fetch %island#0 : tensor<32xf32>
   }
-  return %graph : tensor<32xf32>
+  func.return %graph : tensor<32xf32>
 }
 
 // CHECK-LABEL: func @non_aliasing_reads_writes
@@ -357,7 +357,7 @@ func @single_op_island_forward_block_arg(%arg0: tensor<?x?x?x?xbf16>) -> (tensor
     }
     tf_executor.fetch %outputs#0, %outputs#1 : tensor<2048xf32>, tensor<?x?x?x?xbf16>
   }
-  return %0#0, %0#1 : tensor<2048xf32>, tensor<?x?x?x?xbf16>
+  func.return %0#0, %0#1 : tensor<2048xf32>, tensor<?x?x?x?xbf16>
 }
 
 // CHECK-LABEL: func @single_op_island_duplicate_result
@@ -371,7 +371,7 @@ func @single_op_island_duplicate_result() -> (tensor<2048xf32>, tensor<2048xf32>
     }
     tf_executor.fetch %outputs#0, %outputs#1 : tensor<2048xf32>, tensor<2048xf32>
   }
-  return %0#0, %0#1 : tensor<2048xf32>, tensor<2048xf32>
+  func.return %0#0, %0#1 : tensor<2048xf32>, tensor<2048xf32>
 }
 
 // CHECK: func @tpu_load_embedding_ops_sink_controls
@@ -427,7 +427,7 @@ func @stateful_composite_op_control(%arg0: tensor<i1>, %arg1: tensor<*x!tf_type.
     // CHECK: tf_executor.fetch [[IDENTITY_OUTPUT]], [[SINK]]
     tf_executor.fetch %output : tensor<i32>
   }
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK: func @stateful_composite_op_control_else
@@ -441,7 +441,7 @@ func @stateful_composite_op_control_else(%arg0: tensor<*x!tf_type.resource<tenso
     }
     tf_executor.fetch %outputs : tensor<i32>
   }
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK: func @stateful_composite_op_control_then
@@ -455,7 +455,7 @@ func @stateful_composite_op_control_then(%arg0: tensor<*x!tf_type.resource<tenso
     }
     tf_executor.fetch %outputs : tensor<i32>
   }
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK-LABEL: func @generator_op

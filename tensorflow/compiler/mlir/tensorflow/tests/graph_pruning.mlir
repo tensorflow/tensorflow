@@ -15,7 +15,7 @@ func @chained_islands(%arg0 : i32) -> i32 {
     }
     tf_executor.fetch %2#0 : i32
   }
-  return %0 : i32
+  func.return %0 : i32
 }
 
 // Check that an unused island that doesn't contribute to the fetch is removed.
@@ -35,7 +35,7 @@ func @dead_island(%arg0 : i32) -> i32 {
     }
     tf_executor.fetch %1#0 : i32
   }
-  return %0 : i32
+  func.return %0 : i32
 }
 
 
@@ -50,7 +50,7 @@ func @nextiteration_sink_preserved(%arg0 : i32) -> i32 {
     tf_executor.NextIteration.Sink[%1#1] %1#0 : i32
     tf_executor.fetch %1#0 : i32
   }
-  return %0 : i32
+  func.return %0 : i32
 }
 
 // Check that NextIteration.sink node is deleted when the source does not have
@@ -65,7 +65,7 @@ func @nextiteration_deleted(%arg0 : i32) -> i32 {
     tf_executor.NextIteration.Sink[%1#1] %1#0 : i32
     tf_executor.fetch %arg0 : i32
   }
-  return %0 : i32
+  func.return %0 : i32
 }
 
 // Check that NextIteration.source/sink ops and associated ops are deleted when

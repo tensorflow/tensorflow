@@ -34,7 +34,7 @@ func @graph_with_outputs(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
     }
     tf_executor.fetch %1#1, %1#0, %1#2 : tensor<i1>, tensor<i1>, tensor<i1>
   }
-  return %0#2, %0#1 : tensor<i1>, tensor<i1>
+  func.return %0#2, %0#1 : tensor<i1>, tensor<i1>
 }
 
 // CHECK-NEXT: %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
@@ -62,7 +62,7 @@ func @nested_graph(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
     }
     tf_executor.fetch %1#1, %1#0, %1#2 : tensor<i1>, tensor<i1>, tensor<i1>
   }
-  return %0#2, %0#1 : tensor<i1>, tensor<i1>
+  func.return %0#2, %0#1 : tensor<i1>, tensor<i1>
 }
 
 // CHECK-NEXT: %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
@@ -89,7 +89,7 @@ func @graph_with_multiple_islands(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>
     }
     tf_executor.fetch %1#1, %1#0, %6#0 : tensor<i1>, tensor<i1>, tensor<i1>
   }
-  return %0#2, %0#1 : tensor<i1>, tensor<i1>
+  func.return %0#2, %0#1 : tensor<i1>, tensor<i1>
 }
 
 // CHECK-NEXT: %[[GRAPH:[0-9]*]]:3 = tf_executor.graph {
@@ -120,7 +120,7 @@ func @graph_with_island_and_executor_op(%arg0 : tensor<i1>) -> (tensor<i1>, tens
     %6:2 = tf_executor.LoopCond %1#0 : tensor<i1>
     tf_executor.fetch %1#1, %1#0, %6#0 : tensor<i1>, tensor<i1>, tensor<i1>
   }
-  return %0#2, %0#1 : tensor<i1>, tensor<i1>
+  func.return %0#2, %0#1 : tensor<i1>, tensor<i1>
 }
 
 // CHECK-NEXT: %[[GRAPH:[0-9]*]]:3 = tf_executor.graph {
@@ -155,7 +155,7 @@ func @multiple_graphs(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1>
     }
     tf_executor.fetch %arg0, %6#0, %6#1 : tensor<i1>, tensor<i1>, tensor<i1>
   }
-  return %1#1, %1#0, %1#2, %0#1, %0#0, %0#3 : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
+  func.return %1#1, %1#0, %1#2, %0#1, %0#0, %0#3 : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
 }
 
 // CHECK-NEXT: %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
@@ -185,7 +185,7 @@ func @empty_graph_with_outputs(%arg0 : tensor<i1>, %arg1 : tensor<i1>) -> (tenso
   %0:2 = tf_executor.graph {
     tf_executor.fetch %arg1, %arg0 : tensor<i1>, tensor<i1>
   }
-  return %0#0, %0#1 : tensor<i1>, tensor<i1>
+  func.return %0#0, %0#1 : tensor<i1>, tensor<i1>
 }
 
 // CHECK-NEXT: return %[[ARG_1]], %[[ARG_0]] : tensor<i1>, tensor<i1>
@@ -204,7 +204,7 @@ func @empty_graphs(%arg0 : tensor<i1>, %arg1 : tensor<i1>) -> (tensor<i1>, tenso
   %1 = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<i1>
   }
-  return %0, %1 : tensor<i1>, tensor<i1>
+  func.return %0, %1 : tensor<i1>, tensor<i1>
 }
 
 // CHECK-NEXT: return %[[ARG_1]], %[[ARG_0]] : tensor<i1>, tensor<i1>
@@ -237,7 +237,7 @@ func @empty_and_filled_graphs(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, te
   %9 = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<i1>
   }
-  return %1#1, %1#0, %9, %0#1, %0#0, %0#3 : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
+  func.return %1#1, %1#0, %9, %0#1, %0#0, %0#3 : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
 }
 
 // CHECK-NEXT: %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])

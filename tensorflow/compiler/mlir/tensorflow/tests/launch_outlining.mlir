@@ -21,7 +21,7 @@ func @single_launch(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     }
     tf_executor.fetch %1#0 : tensor<?xi32>
   }
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK: func private @[[LAUNCH]]
@@ -63,7 +63,7 @@ func @multiple_launches(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     }
     tf_executor.fetch %1#0 : tensor<?xi32>
   }
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK: func private @[[LAUNCH_0]]
@@ -94,7 +94,7 @@ func @launch_operands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     // CHECK: tf_executor.fetch %[[LAUNCH_OUTPUT]]
     tf_executor.fetch %1#0 : tensor<?xi32>
   }
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK: func private @[[LAUNCH]]
@@ -112,7 +112,7 @@ func @launch_attrs() -> tensor<?xi32> {
     %1 = "tf.A"() : () -> tensor<?xi32>
     tf_device.return %1 : tensor<?xi32>
   }) {device = "/device:test_device:0", launch_attr = "launch_attr"} : () -> tensor<?xi32>
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK: "tf_device.launch_func"

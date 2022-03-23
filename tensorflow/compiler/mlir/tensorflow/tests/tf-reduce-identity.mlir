@@ -13,5 +13,5 @@ func @target_function() -> tensor<i32> {
     // CHECK: tf_device.return
     tf_device.return %4 : tensor<i32>
   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }

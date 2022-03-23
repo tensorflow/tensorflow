@@ -166,7 +166,7 @@ module attributes {tf_saved_model.semantics} {
   func @f() -> tensor<f32>
   attributes { tf_saved_model.exported_names = ["f"] } {
     %ret = "some_dialect.some_op"() : () -> tensor<f32>
-    return %ret : tensor<f32>
+    func.return %ret : tensor<f32>
   }
 
 }
@@ -183,7 +183,7 @@ module attributes {tf_saved_model.semantics} {
   func @f() -> (tensor<f32> {tf_saved_model.index_path = [1.0]})
   attributes { tf_saved_model.exported_names = ["f"] } {
     %ret = "some_dialect.some_op"() : () -> tensor<f32>
-    return %ret : tensor<f32>
+    func.return %ret : tensor<f32>
   }
 
 }
@@ -248,7 +248,7 @@ module attributes {tf_saved_model.semantics} {
   func private @f(%arg0: tensor<!tf_type.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
   -> (tensor<?xf32> {tf_saved_model.index_path = []}) {
     %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<?xf32>>>) -> tensor<?xf32>
-    return %0 : tensor<?xf32>
+    func.return %0 : tensor<?xf32>
   }
 }
 
@@ -288,7 +288,7 @@ module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func private @init() -> tensor<1xf32> {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
-    return %0 : tensor<1xf32>
+    func.return %0 : tensor<1xf32>
   }
 }
 
@@ -301,7 +301,7 @@ module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func private @init() -> tensor<1xf32> {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
-    return %0 : tensor<1xf32>
+    func.return %0 : tensor<1xf32>
   }
 }
 
@@ -348,7 +348,7 @@ module attributes {tf_saved_model.semantics} {
   func @init() -> (tensor<1xf32> {tf_saved_model.index_path = ["output"]})
     attributes { tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"] } {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
-    return %0 : tensor<1xf32>
+    func.return %0 : tensor<1xf32>
   }
 }
 
@@ -362,7 +362,7 @@ module attributes {tf_saved_model.semantics} {
   func @init() -> (tensor<1xf32> {tf_saved_model.index_path = ["output"]})
     attributes { tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"] } {
     %0 = "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
-    return %0 : tensor<1xf32>
+    func.return %0 : tensor<1xf32>
   }
 }
 

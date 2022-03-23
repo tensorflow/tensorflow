@@ -21,7 +21,7 @@ module {
 
     // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[TPU0_OUTPUT]])
     %5 = "tf.D"(%4) : (tensor<?xi32>) -> tensor<?xi32>
-    return %5 : tensor<?xi32>
+    func.return %5 : tensor<?xi32>
   }
 }
 
@@ -55,7 +55,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -86,7 +86,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -120,7 +120,7 @@ module {
 
       tf_executor.fetch %2#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -147,7 +147,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -185,7 +185,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -226,7 +226,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -267,7 +267,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -310,7 +310,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 

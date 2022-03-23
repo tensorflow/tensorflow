@@ -41,7 +41,7 @@ func @main() -> tensor<f32> {
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[SIZE]], %[[SUB]]) : (tensor<!tf_type.resource<tensor<1xi32>>>, tensor<1xi32>) -> ()
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
   // CHECK-NEXT:  return %[[ELEM]] : tensor<f32>
-  return %pop : tensor<f32>
+  func.return %pop : tensor<f32>
 }
 
 // -----
@@ -78,7 +78,7 @@ func @main() -> tensor<2xi32> {
   %push = "tf.StackPushV2"(%stack, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<2xi32>) -> tensor<2xi32>
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
   // CHECK-NEXT: return %[[PUSH_VAL]] : tensor<2xi32>
-  return %push : tensor<2xi32>
+  func.return %push : tensor<2xi32>
 }
 
 // -----
@@ -112,12 +112,12 @@ func @while_body(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> (tenso
   // CHECK-NOT: "tf.StackPushV2"
   %push = "tf.StackPushV2"(%arg0, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
   // CHECK: return %[[BARG0]], %[[SUB]], %[[BARG2]]
-  return %arg0, %sub : tensor<!tf_type.resource>, tensor<i32>
+  func.return %arg0, %sub : tensor<!tf_type.resource>, tensor<i32>
 }
 // CHECK: func @while_cond(%[[CARG0:.*]]: tensor<!tf_type.resource<tensor<10xf32>>>, %[[CARG1:.*]]: tensor<i32>, %[[CARG2:.*]]: tensor<!tf_type.resource<tensor<1xi32>>>)
 func @while_cond(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
   // CHECK-NEXT: return %[[CARG1]]
-  return %arg1 : tensor<i32>
+  func.return %arg1 : tensor<i32>
 }
 
 // -----
@@ -249,7 +249,7 @@ func @if_then(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   // CHECK: "tf.AssignVariableOp"(%[[EARG1:.*]],
   // CHECK-NOT: "tf.StackPushV2"
   %push = "tf.StackPushV2"(%arg0, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
-  return %arg0 : tensor<!tf_type.resource>
+  func.return %arg0 : tensor<!tf_type.resource>
 }
 // CHECK: func @if_else(%[[EARG0:.*]]: tensor<!tf_type.resource<tensor<10xf32>>>, %[[EARG1:.*]]: tensor<!tf_type.resource<tensor<1xi32>>>)
 func @if_else(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
@@ -258,7 +258,7 @@ func @if_else(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   // CHECK: "tf.AssignVariableOp"(%[[EARG1:.*]],
   // CHECK-NOT: "tf.StackPopV2"
   %pop = "tf.StackPopV2"(%arg0) : (tensor<!tf_type.resource>) -> tensor<f32>
-  return %arg0 : tensor<!tf_type.resource>
+  func.return %arg0 : tensor<!tf_type.resource>
 }
 
 // -----
@@ -291,7 +291,7 @@ func @callee(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i1>) -> tensor<!tf_
   %elem = "tf._SomeOp"(%arg1) : (tensor<i1>) -> tensor<f32>
   // CHECK: tf.StackPushV2"
   %push = "tf.StackPushV2"(%arg0, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
-  return %arg0 : tensor<!tf_type.resource>
+  func.return %arg0 : tensor<!tf_type.resource>
 }
 
 // CHECK: func private @callee_stack_decomposed(%[[ARG0:.*]]: tensor<!tf_type.resource<tensor<10xf32>>>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<!tf_type.resource<tensor<1xi32>>>)
@@ -335,7 +335,7 @@ func private @callee(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i1>) -> ten
   // CHECK: "tf.AssignVariableOp"(%[[EARG1:.*]],
   // CHECK-NOT: "tf.StackPushV2"
   %push = "tf.StackPushV2"(%arg0, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
-  return %arg0 : tensor<!tf_type.resource>
+  func.return %arg0 : tensor<!tf_type.resource>
 }
 
 // -----
@@ -367,7 +367,7 @@ func @main(%arg0: tensor<i32>) -> tensor<2xi32> {
   %elem = "tf._SomeOp"() : () -> tensor<2xi32>
   %push = "tf.StackPushV2"(%stack, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<2xi32>) -> tensor<2xi32>
   "tf.StackCloseV2"(%stack) : (tensor<!tf_type.resource>) -> ()
-  return %push : tensor<2xi32>
+  func.return %push : tensor<2xi32>
 }
 
 // -----
@@ -403,12 +403,12 @@ func @main(%arg0: tensor<i1>) -> () {
 func @if_then(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   %elem = "tf._SomeOp"() : () -> tensor<f32>
   %push = "tf.StackPushV2"(%arg0, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
-  return %arg0 : tensor<!tf_type.resource>
+  func.return %arg0 : tensor<!tf_type.resource>
 }
 func @if_else(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   %elem = "tf._SomeOp"() : () -> tensor<f32>
   %push = "tf.StackPushV2"(%arg1, %elem) {swap_memory = false} : (tensor<!tf_type.resource>, tensor<f32>) -> tensor<f32>
-  return %arg1 : tensor<!tf_type.resource>
+  func.return %arg1 : tensor<!tf_type.resource>
 }
 
 // -----

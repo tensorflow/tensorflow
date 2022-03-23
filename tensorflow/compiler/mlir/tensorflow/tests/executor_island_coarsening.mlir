@@ -16,7 +16,7 @@ func @control_input(%arg0 : tensor<i1>) -> tensor<f32> {
     }
     tf_executor.fetch %2#0 : tensor<f32>
   }
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK:        %[[ISLAND:.*]], %[[ISLAND_control:.*]] = tf_executor.island {
@@ -41,7 +41,7 @@ func @data_input(%arg0 : tensor<i1>) -> tensor<i1> {
     }
     tf_executor.fetch %2#0 : tensor<i1>
   }
-  return %0 : tensor<i1>
+  func.return %0 : tensor<i1>
 }
 
 // CHECK:        %[[ISLAND:.*]], %[[ISLAND_control:.*]] = tf_executor.island {
@@ -83,7 +83,7 @@ func @empty_islands(%arg0 : tensor<i1>, %arg1 : tensor<i1>) -> (tensor<i1>, tens
     }
     tf_executor.fetch %8#0, %8#1 : tensor<i1>, tensor<i1>
   }
-  return %0#0, %0#1 : tensor<i1>, tensor<i1>
+  func.return %0#0, %0#1 : tensor<i1>, tensor<i1>
 }
 
 // CHECK:        %[[ISLAND:.*]]:2, %{{.*}} = tf_executor.island
@@ -100,7 +100,7 @@ func @multiple_outputs(%arg0 : tensor<i1>, %arg1 : tensor<i1>) -> (tensor<i1>, t
     %2:2 = tf_executor.island(%1#1) wraps "tf.opB"(%arg1) : (tensor<i1>) -> tensor<i1>
     tf_executor.fetch %1#0, %2#0 : tensor<i1>, tensor<i1>
   }
-  return %0#0, %0#1 : tensor<i1>, tensor<i1>
+  func.return %0#0, %0#1 : tensor<i1>, tensor<i1>
 }
 
 // CHECK:        %[[ISLAND:.*]]:2, %{{.*}} = tf_executor.island {
@@ -127,7 +127,7 @@ func @multi_op_regions(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> tensor<i32> 
     }
     tf_executor.fetch %4#0 : tensor<i32>
   }
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK:        %[[ISLAND:.*]], %[[ISLAND_control:.*]] = tf_executor.island {
@@ -161,7 +161,7 @@ func @transitive_preserve_order(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> ten
     }
     tf_executor.fetch %7#0 : tensor<i32>
   }
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK:        %[[ISLAND:.*]], %[[ISLAND_control:.*]] = tf_executor.island {
@@ -188,7 +188,7 @@ func @islands_interleaved(%arg0 : tensor<i32>, %arg1 : tensor<i32>) -> (tensor<i
     %6:2 = tf_executor.island wraps "tf.opF"(%arg1) : (tensor<i32>) -> tensor<i32>
     tf_executor.fetch %4#0, %3#0 : tensor<i32>, tensor<i32>
   }
-  return %0#0, %0#1 : tensor<i32>, tensor<i32>
+  func.return %0#0, %0#1 : tensor<i32>, tensor<i32>
 }
 
 // CHECK:        %[[ISLAND_0:.*]]:2, %{{.*}} = tf_executor.island {
@@ -383,7 +383,7 @@ func @merge_independently_fetched_islands(%arg0: tensor<i32>) -> (tensor<i32>, t
     %2:2 = tf_executor.island wraps "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     tf_executor.fetch %1#0, %2#0 : tensor<i32>, tensor<i1>
   }
-  return %0#0, %0#1 : tensor<i32>, tensor<i1>
+  func.return %0#0, %0#1 : tensor<i32>, tensor<i1>
 }
 
 // CHECK:      tf_executor.island
@@ -401,7 +401,7 @@ func @merge_independently_fetched_islands_data_and_control(%arg0: tensor<i32>) -
     %2 = tf_executor.island { tf_executor.yield }
     tf_executor.fetch %1#0, %2 : tensor<i32>, !tf_executor.control
   }
-  return %0#0 : tensor<i32>
+  func.return %0#0 : tensor<i32>
 }
 
 // CHECK:      tf_executor.graph

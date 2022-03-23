@@ -15,21 +15,21 @@ func @invert_permutation(%arg0: tensor<5xi32>) -> tensor<5xi32> {
   // CHECK-DAG: %[[INDICES_4:.*]] = "tf.TensorScatterAdd"(%[[cst_3]], %0, %[[UPDATES]]) : (tensor<5xi32>, tensor<5x1xi32>, tensor<5xi32>) -> tensor<5xi32>
   // CHECK-DAG: %[[INDICES_5:.*]] = "tf.AddV2"(%[[INDICES_3]], %[[INDICES_4]]) : (tensor<5xi32>, tensor<5xi32>) -> tensor<5xi32>
   %0 = "tf.InvertPermutation"(%arg0) : (tensor<5xi32>) -> tensor<5xi32>
-  return %0 : tensor<5xi32>
+  func.return %0 : tensor<5xi32>
 }
 
 // CHECK-LABEL: invert_permutation_dynamic
 func @invert_permutation_dynamic(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   // CHECK: tf.InvertPermutation
   %0 = "tf.InvertPermutation"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // CHECK-LABEL: invert_permutation_unranked
 func @invert_permutation_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   // CHECK: tf.InvertPermutation
   %0 = "tf.InvertPermutation"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 // CHECK-LABEL: simple_pack
@@ -41,14 +41,14 @@ func @simple_pack(%arg0: tensor<3x5xf32>, %arg1: tensor<3x5xf32>) -> tensor<2x3x
   // CHECK: "tf.ConcatV2"(%[[INP0]], %[[INP1]], %[[AXIS]]) : (tensor<1x3x5xf32>, tensor<1x3x5xf32>, tensor<i64>) -> tensor<2x3x5xf32>
 
   %0 = "tf.Pack"(%arg0, %arg1) : (tensor<3x5xf32>, tensor<3x5xf32>) -> tensor<2x3x5xf32>
-  return %0 : tensor<2x3x5xf32>
+  func.return %0 : tensor<2x3x5xf32>
 }
 
 // CHECK-LABEL: func @square
 func @square(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   // CHECK: "tf.Mul"(%arg0, %arg0)
   %1 = "tf.Square"(%arg0) : (tensor<3xf32>) -> tensor<3xf32>
-  return %1 : tensor<3xf32>
+  func.return %1 : tensor<3xf32>
 }
 
 // CHECK-LABEL: func @squared_difference_real
@@ -56,7 +56,7 @@ func @squared_difference_real(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> ten
   // CHECK: [[R1:%.+]] = "tf.Sub"(%arg0, %arg1)
   // CHECK: "tf.Mul"([[R1]], [[R1]])
   %1 = "tf.SquaredDifference"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
-  return %1 : tensor<3xf32>
+  func.return %1 : tensor<3xf32>
 }
 
 // CHECK-LABEL: func @squared_difference_complex
@@ -65,7 +65,7 @@ func @squared_difference_complex(%arg0: tensor<3xcomplex<f32>>, %arg1: tensor<3x
   // CHECK-DAG: [[R2:%.+]] = "tf.Conj"([[R1]])
   // CHECK-DAG: "tf.Mul"([[R1]], [[R2]])
   %1 = "tf.SquaredDifference"(%arg0, %arg1) : (tensor<3xcomplex<f32>>, tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>>
-  return %1 : tensor<3xcomplex<f32>>
+  func.return %1 : tensor<3xcomplex<f32>>
 }
 
 // CHECK-LABEL: func @div_no_nan
@@ -78,7 +78,7 @@ func @div_no_nan(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.DivNoNan"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
   // CHECK: return %[[RESULT]]
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: @truncate_div
@@ -89,7 +89,7 @@ func @truncate_div(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>)
   // CHECK: return %[[RESULT]]
   %0 = "tf.TruncateDiv"(%arg0, %arg1)
       : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 // CHECK-LABEL: func @mul_no_nan
@@ -102,7 +102,7 @@ func @mul_no_nan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32
   %0 = "tf.MulNoNan"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<3xf32>) -> tensor<2x3xf32>
 
   // CHECK: return %[[RESULT]]
-  return %0 : tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
 }
 
 // CHECK-LABEL: @is_inf
@@ -112,7 +112,7 @@ func @is_inf(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
   // CHECK: %[[RESULT:.*]] = "tf.Equal"(%[[ABS]], %[[INF]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
   %0 = "tf.IsInf"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
   // CHECK: return %[[RESULT]]
-  return %0 : tensor<3x4xi1>
+  func.return %0 : tensor<3x4xi1>
 }
 
 // CHECK-LABEL: @is_nan
@@ -120,7 +120,7 @@ func @is_nan(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
   // CHECK: %[[RESULT:.*]] = "tf.NotEqual"(%arg0, %arg0) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<3x4xf32>) -> tensor<3x4xi1>
   %0 = "tf.IsNan"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
   // CHECK: return %[[RESULT]]
-  return %0 : tensor<3x4xi1>
+  func.return %0 : tensor<3x4xi1>
 }
 
 // CHECK-LABEL: func @fill
@@ -128,7 +128,7 @@ func @is_nan(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
 func @fill(%arg0: tensor<*xi64>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.BroadcastTo"(%[[ARG1]], %[[ARG0]])
   %0 = "tf.Fill"(%arg0, %arg1) : (tensor<*xi64>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 func @empty(%arg0: tensor<?xi32>) -> tensor<*xf32> {
@@ -137,7 +137,7 @@ func @empty(%arg0: tensor<?xi32>) -> tensor<*xf32> {
   %0 = "tf.Empty"(%arg0) {init = true} : (tensor<?xi32>) -> (tensor<*xf32>)
 
   // CHECK: return [[RES]]
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @l2_loss
@@ -153,14 +153,14 @@ func @l2_loss(%arg0: tensor<?x?xf32>) -> tensor<f32> {
   %0 = "tf.L2Loss"(%arg0) : (tensor<?x?xf32>) -> tensor<f32>
 
   // CHECK: return %[[LOSS]] : tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @l2_loss_unranked
 func @l2_loss_unranked(%arg0: tensor<*xf32>) -> tensor<f32> {
   // CHECK: tf.L2Loss
   %0 = "tf.L2Loss"(%arg0) : (tensor<*xf32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: pack_with_unranked
@@ -172,7 +172,7 @@ func @pack_with_unranked(%arg0: tensor<?x5xf32>, %arg1: tensor<*xf32>) -> tensor
   // CHECK: "tf.ConcatV2"(%[[INP0]], %[[INP1]], %[[AXIS]]) : (tensor<?x1x5xf32>, tensor<*xf32>, tensor<i64>) -> tensor<*xf32>
 
   %0 = "tf.Pack"(%arg0, %arg1) {axis = -2 : i64} : (tensor<?x5xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @pad
@@ -182,7 +182,7 @@ func @pad(%arg0: tensor<3xf32>) -> tensor<6xf32> {
   // CHECK-DAG: [[CST:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
   // CHECK: "tf.PadV2"(%arg0, [[PAD]], [[CST]])
   %0 = "tf.Pad"(%arg0, %padding) : (tensor<3xf32>, tensor<1x2xi64>) -> tensor<6xf32>
-  return %0 : tensor<6xf32>
+  func.return %0 : tensor<6xf32>
 }
 
 // CHECK-LABEL: func @pad_bf16
@@ -192,14 +192,14 @@ func @pad_bf16(%arg0: tensor<3xbf16>) -> tensor<6xbf16> {
   // CHECK-DAG: [[CST:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<bf16>}
   // CHECK: "tf.PadV2"(%arg0, [[PAD]], [[CST]])
   %0 = "tf.Pad"(%arg0, %padding) : (tensor<3xbf16>, tensor<1x2xi64>) -> tensor<6xbf16>
-  return %0 : tensor<6xbf16>
+  func.return %0 : tensor<6xbf16>
 }
 
 // CHECK-LABEL: func @add_f32
 func @add_f32(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<3xf32> {
   // CHECK-DAG: [[ADD:%.+]] = "tf.AddV2"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
   %add = "tf.Add"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
-  return %add : tensor<3xf32>
+  func.return %add : tensor<3xf32>
 }
 
 // CHECK-LABEL: func @BiasAddGrad_NHWC
@@ -208,7 +208,7 @@ func @BiasAddGrad_NHWC(%arg0: tensor<2x3x4x5xf32>) -> tensor<5xf32> {
   // CHECK: "tf.Sum"({{.*}}) {keep_dims = false}
 
   %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NHWC"} : (tensor<2x3x4x5xf32>) -> tensor<5xf32>
-  return %0 : tensor<5xf32>
+  func.return %0 : tensor<5xf32>
 }
 
 // CHECK-LABEL: func @BiasAddGrad_NCHW
@@ -217,21 +217,21 @@ func @BiasAddGrad_NCHW(%arg0: tensor<2x3x4x5xf32>) -> tensor<3xf32> {
   // CHECK: "tf.Sum"({{.*}}) {keep_dims = false}
 
   %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NCHW"} : (tensor<2x3x4x5xf32>) -> tensor<3xf32>
-  return %0 : tensor<3xf32>
+  func.return %0 : tensor<3xf32>
 }
 
 // CHECK-LABEL: func @BiasAddGrad_dynamic
 func @BiasAddGrad_dynamic(%arg0: tensor<?x?x?x?xf32>) -> tensor<?xf32> {
   // CHECK: tf.Sum
   %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NCHW"} : (tensor<?x?x?x?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @BiasAddGrad_unranked
 func @BiasAddGrad_unranked(%arg0: tensor<*xf32>) -> tensor<?xf32> {
   // CHECK: tf.BiasAddGrad
   %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NCHW"} : (tensor<*xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @rsqrt_grad
@@ -245,7 +245,7 @@ func @rsqrt_grad(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
 
   %0 = "tf.RsqrtGrad"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK: return %[[RET]]
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL: func @rsqrt_grad_unranked
@@ -256,7 +256,7 @@ func @rsqrt_grad_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<
   // CHECK: tf.Div
   // CHECK: tf.Mul
   %0 = "tf.RsqrtGrad"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @sqrt_grad_unranked
@@ -268,7 +268,7 @@ func @sqrt_grad_unranked(%arg0: tensor<*xcomplex<f32>>, %arg1: tensor<*xcomplex<
 
   %0 = "tf.SqrtGrad"(%arg0, %arg1) : (tensor<*xcomplex<f32>>, tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>>
   // CHECK: return %[[RET]]
-  return %0 : tensor<*xcomplex<f32>>
+  func.return %0 : tensor<*xcomplex<f32>>
 }
 
 // %input has 1 batch dimension then 2 block dimensions then 1 remainder
@@ -299,7 +299,7 @@ func @fourdim_space_to_batch_nd(%input: tensor<3x5x7x10xf32>, %block_shape: tens
   // CHECK-DAG: [[RESULT:%.+]] = "tf.Reshape"([[PERMUTED]], [[OUTPUT_SHAPE]])
   // CHECK-DAG: return [[RESULT]]
   %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<?x?x?x10xf32>
-  return %0 : tensor<?x?x?x10xf32>
+  func.return %0 : tensor<?x?x?x10xf32>
 }
 
 // Verify SpaceToBatchND with input tensor of element type f16. This test case is derived from 'fourdim_space_to_batch_nd'. It checks the output
@@ -309,7 +309,7 @@ func @space_to_batch_nd_element_type_f16(%input: tensor<3x5x7x10xf16>, %block_sh
   // CHECK-DAG: "tf.PadV2"(%arg0, {{.*}}, {{.*}}) {{.*}} -> tensor<3x?x?x10xf16>
   // CHECK-DAG: return {{.*}}: tensor<?x?x?x10xf16>
   %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf16>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<?x?x?x10xf16>
-  return %0 : tensor<?x?x?x10xf16>
+  func.return %0 : tensor<?x?x?x10xf16>
 }
 
 // Verify the result shape for the tf.PadV2 op.
@@ -332,14 +332,14 @@ func @const_paddings_space_to_batch_nd(%arg0: tensor<1x8x2xf32>) -> (tensor<3x5x
   %2 = "tf.SpaceToBatchND"(%arg0, %0, %1) : (tensor<1x8x2xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<3x5x2xf32>
 
   // CHECK: return [[VAL8]]
-  return %2 : tensor<3x5x2xf32>
+  func.return %2 : tensor<3x5x2xf32>
 }
 
 // CHECK-LABEL: avoid_lowering_space_to_batch_nd
 func @avoid_lowering_space_to_batch_nd(%arg0: tensor<1x8x2xf32>, %arg1: tensor<*xi32>) -> (tensor<3x5x2xf32>) {
   %0 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
   %1 = "tf.SpaceToBatchND"(%arg0, %0, %arg1) : (tensor<1x8x2xf32>, tensor<1xi32>, tensor<*xi32>) -> tensor<3x5x2xf32>
-  return %1 : tensor<3x5x2xf32>
+  func.return %1 : tensor<3x5x2xf32>
 
   // CHECK: "tf.SpaceToBatchND"
 }
@@ -364,7 +364,7 @@ func @sixdim_space_to_batch_nd(%input: tensor<3x5x7x9x10x11xf32>, %block_shape: 
   // CHECK-DAG: [[OUTPUT_BATCH:%.+]] = "tf.Mul"([[OUTPUT_BATCH_PART2]], [[BLOCK_SHAPE_SPLITS]]#2)
   // CHECK-DAG: [[OUTPUT_SHAPE:%.+]] = "tf.ConcatV2"([[OUTPUT_BATCH]], [[OUTER_SHAPE_0]], [[OUTER_SHAPE_1]], [[OUTER_SHAPE_2]], [[PADDED_SHAPE_SPLITS]]#4, [[PADDED_SHAPE_SPLITS]]#5, {{.+}})
   %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x9x10x11xf32>, tensor<3xi64>, tensor<3x2xi64>) -> tensor<?x?x?x?x10x11xf32>
-  return %0 : tensor<?x?x?x?x10x11xf32>
+  func.return %0 : tensor<?x?x?x?x10x11xf32>
 }
 
 // CHECK-LABEL: func @batchToSpace
@@ -383,7 +383,7 @@ func @batchToSpace(%arg0: tensor<3x5x2xf32>) -> (tensor<1x8x2xf32>) {
   %2 = "tf.BatchToSpaceND"(%arg0, %0, %1) {device = ""} : (tensor<3x5x2xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x8x2xf32>
 
   // CHECK: return [[VAL8]] : tensor<1x8x2xf32>
-  return %2 : tensor<1x8x2xf32>
+  func.return %2 : tensor<1x8x2xf32>
 }
 
 func @fake_quant_with_min_max_args(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
@@ -402,7 +402,7 @@ func @fake_quant_with_min_max_args(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
   %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {max = 1.0 : f32, min = -1.0 : f32, narrow_range = false, num_bits = 8 : i64} : (tensor<?x?xf32>) -> tensor<?x?xf32>
 
   // CHECK: return [[VAL11]]
-  return %0 : tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
 }
 
 func @fake_quant_with_min_max_vars(%arg0 : tensor<?x?xf32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<?x?xf32> {
@@ -446,7 +446,7 @@ func @fake_quant_with_min_max_vars(%arg0 : tensor<?x?xf32>, %arg1 : tensor<f32>,
   %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {narrow_range = false, num_bits = 8 : i64} : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
 
   // CHECK: return %[[VAL34]]
-  return %0 : tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: SoftmaxCrossEntropyWithLogits
@@ -481,7 +481,7 @@ func @SoftmaxCrossEntropyWithLogits(%features: tensor<2x3xf32>, %labels: tensor<
   // CHECK: return %[[LOSS]], %[[BACKPROP]]
 
   %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<2xf32>, tensor<2x3xf32>)
-  return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
+  func.return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
 }
 
 // CHECK-LABEL: unranked_SoftmaxCrossEntropyWithLogits
@@ -491,7 +491,7 @@ func @unranked_SoftmaxCrossEntropyWithLogits(%features: tensor<?x?xf32>, %labels
   // CHECK-NOT: tf.Softmax
   // CHECK-NOT: tf.LogSoftmax
   %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<?x?xf32>, tensor<?x?xf32>) -> (tensor<?xf32>, tensor<?x?xf32>)
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?x?xf32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?x?xf32>
 }
 
 // CHECK-LABEL: broadcasted_SoftmaxCrossEntropyWithLogits
@@ -501,7 +501,7 @@ func @broadcasted_SoftmaxCrossEntropyWithLogits(%features: tensor<?x?xf32>, %lab
   // CHECK-NOT: tf.Softmax
   // CHECK-NOT: tf.LogSoftmax
   %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<?x?xf32>, tensor<3xf32>) -> (tensor<?xf32>, tensor<?x3xf32>)
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?x3xf32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?x3xf32>
 }
 
 // CHECK-LABEL: scalar_SoftmaxCrossEntropyWithLogits
@@ -510,7 +510,7 @@ func @scalar_SoftmaxCrossEntropyWithLogits(%features: tensor<f32>, %labels: tens
   // CHECK-NOT: tf.Softmax
   // CHECK-NOT: tf.LogSoftmax
   %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<f32>, tensor<?x?xf32>) -> (tensor<?xf32>, tensor<?x?xf32>)
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?x?xf32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?x?xf32>
 }
 
 // CHECK-LABEL: SparseSoftmaxCrossEntropyWithLogits
@@ -538,35 +538,35 @@ func @SparseSoftmaxCrossEntropyWithLogits(%features: tensor<2x3xf32>, %labels: t
   // CHECK: "tf.Exp"
   // CHECK: "tf.Div"
   %0:2 = "tf.SparseSoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<2x3xf32>, tensor<2xi32>) -> (tensor<2xf32>, tensor<2x3xf32>)
-  return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
+  func.return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
 }
 
 // CHECK-LABEL: SparseSoftmaxCrossEntropyWithLogits_with_bf16_i64
 func @SparseSoftmaxCrossEntropyWithLogits_with_bf16_i64(%features: tensor<2x3xbf16>, %labels: tensor<2xi64>) -> (tensor<2xbf16>, tensor<2x3xbf16>) {
   // CHECK-NOT: tf.SparseSoftmaxCrossEntropyWithLogits
   %0:2 = "tf.SparseSoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<2x3xbf16>, tensor<2xi64>) -> (tensor<2xbf16>, tensor<2x3xbf16>)
-  return %0#0, %0#1 : tensor<2xbf16>, tensor<2x3xbf16>
+  func.return %0#0, %0#1 : tensor<2xbf16>, tensor<2x3xbf16>
 }
 
 // CHECK-LABEL: SparseSoftmaxCrossEntropyWithLogits_with_unranked_labels
 func @SparseSoftmaxCrossEntropyWithLogits_with_unranked_labels(%features: tensor<2x3xf32>, %labels: tensor<?xi64>) -> (tensor<2xf32>, tensor<2x3xf32>) {
   // CHECK-NOT: tf.SparseSoftmaxCrossEntropyWithLogits
   %0:2 = "tf.SparseSoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<2x3xf32>, tensor<?xi64>) -> (tensor<2xf32>, tensor<2x3xf32>)
-  return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
+  func.return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
 }
 
 // CHECK-LABEL: SparseSoftmaxCrossEntropyWithLogits_with_dynamic_labels
 func @SparseSoftmaxCrossEntropyWithLogits_with_dynamic_labels(%features: tensor<2x3xf32>, %labels: tensor<*xi64>) -> (tensor<2xf32>, tensor<2x3xf32>) {
   // CHECK-NOT: tf.SparseSoftmaxCrossEntropyWithLogits
   %0:2 = "tf.SparseSoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<2x3xf32>, tensor<*xi64>) -> (tensor<2xf32>, tensor<2x3xf32>)
-  return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
+  func.return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
 }
 
 // CHECK-LABEL: SparseSoftmaxCrossEntropyWithLogits_with_dynamic
 func @SparseSoftmaxCrossEntropyWithLogits_with_dynamic(%features: tensor<*xbf16>, %labels: tensor<*xi64>) -> (tensor<2xbf16>, tensor<*xbf16>) {
   // CHECK: tf.SparseSoftmaxCrossEntropyWithLogits
   %0:2 = "tf.SparseSoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<*xbf16>, tensor<*xi64>) -> (tensor<2xbf16>, tensor<*xbf16>)
-  return %0#0, %0#1 : tensor<2xbf16>, tensor<*xbf16>
+  func.return %0#0, %0#1 : tensor<2xbf16>, tensor<*xbf16>
 }
 
 // CHECK-LABEL: func @tanhgrad_float
@@ -579,7 +579,7 @@ func @tanhgrad_float(%y : tensor<*xf32>, %dy: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.TanhGrad"(%y, %dy) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
   // CHECK: return %[[RESULT]]
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @tanhgrad_complex
@@ -588,7 +588,7 @@ func @tanhgrad_complex(%y : tensor<*xcomplex<f32>>, %dy: tensor<*xcomplex<f32>>)
   // CHECK-NOT: tf.TanhGrad
   %0 = "tf.TanhGrad"(%y, %dy) : (tensor<*xcomplex<f32>>, tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>>
 
-  return %0 : tensor<*xcomplex<f32>>
+  func.return %0 : tensor<*xcomplex<f32>>
 }
 
 // CHECK-LABEL: func @ZerosLike_unranked
@@ -598,14 +598,14 @@ func @ZerosLike_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   // CHECK: "tf.BroadcastTo"(%[[ZERO]], %[[SHAPE]]) : (tensor<i32>, tensor<?xi64>) -> tensor<*xi32>
 
   %0 = "tf.ZerosLike"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 // CHECK-LABEL: func @ZerosLike_variant
 func @ZerosLike_variant(%arg0: tensor<!tf_type.variant<tensor<2xi32>>>) -> tensor<!tf_type.variant<tensor<2xi32>>> {
   // CHECK: tf.ZerosLike
   %0 = "tf.ZerosLike"(%arg0) : (tensor<!tf_type.variant<tensor<2xi32>>>) -> tensor<!tf_type.variant<tensor<2xi32>>>
-  return %0 : tensor<!tf_type.variant<tensor<2xi32>>>
+  func.return %0 : tensor<!tf_type.variant<tensor<2xi32>>>
 }
 
 // CHECK-LABEL: func @OnesLike_unranked
@@ -615,7 +615,7 @@ func @OnesLike_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   // CHECK: "tf.BroadcastTo"(%[[ONE]], %[[SHAPE]]) : (tensor<i32>, tensor<?xi64>) -> tensor<*xi32>
 
   %0 = "tf.OnesLike"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 // CHECK-LABEL: func @addN_2
@@ -623,7 +623,7 @@ func @addN_2(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
   // return %[[SUM0]]
   %0 = "tf.AddN"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @addN_3
@@ -632,7 +632,7 @@ func @addN_3(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -
   // CHECK: %[[SUM1:.*]] = "tf.AddV2"(%[[SUM0]], %arg2)
   // return %[[SUM1]]
   %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @addN_4
@@ -642,7 +642,7 @@ func @addN_4(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %
   // CHECK: %[[SUM2:.*]] = "tf.AddV2"(%[[SUM0]], %[[SUM1]])
   // return %[[SUM2]]
   %0 = "tf.AddN"(%arg0, %arg1, %arg2, %arg3) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @addN_5
@@ -653,14 +653,14 @@ func @addN_5(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %
   // CHECK: %[[SUM3:.*]] = "tf.AddV2"(%[[SUM2]], %arg4)
   // return %[[SUM3]]
   %0 = "tf.AddN"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @addN_variant
 func @addN_variant(%arg0: tensor<!tf_type.variant<tensor<2xf32>>>, %arg1: tensor<!tf_type.variant<tensor<2xf32>>>, %arg2: tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant<tensor<2xf32>>> {
   // CHECK: tf.AddN
   %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<!tf_type.variant<tensor<2xf32>>>, tensor<!tf_type.variant<tensor<2xf32>>>, tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant<tensor<2xf32>>>
-  return %0 : tensor<!tf_type.variant<tensor<2xf32>>>
+  func.return %0 : tensor<!tf_type.variant<tensor<2xf32>>>
 }
 
 // CHECK-LABEL: func @DynamicStitch_simple
@@ -674,7 +674,7 @@ func @DynamicStitch_simple(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
   %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
   %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-  return %0 : tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
 }
 
 // CHECK-LABEL: DynamicStitch_scalar_matrix_indices
@@ -695,7 +695,7 @@ func @DynamicStitch_scalar_matrix_indices(%arg0: tensor<2xf32>, %arg1: tensor<2x
   %indices0 = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
   %indices1 = "tf.Const"() {value = dense<[[3, 2], [1, 0]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
   %0 = "tf.DynamicStitch"(%indices0, %indices1, %arg0, %arg1) : (tensor<i32>, tensor<2x2xi32>, tensor<2xf32>, tensor<2x2x2xf32>) -> tensor<5x2xf32>
-  return %0 : tensor<5x2xf32>
+  func.return %0 : tensor<5x2xf32>
 }
 
 // Verify that custom types are lowered and have legal output.
@@ -705,7 +705,7 @@ func @DynamicStitch_uint8(%arg0: tensor<2x2xui8>) -> tensor<2x2xui8> {
 
   %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
   %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2xui8>) -> tensor<2x2xui8>
-  return %0 : tensor<2x2xui8>
+  func.return %0 : tensor<2x2xui8>
 }
 
 // CHECK-LABEL: func @DynamicStitch_scalar_item
@@ -719,7 +719,7 @@ func @DynamicStitch_scalar_item(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
   %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
   %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2xf32>) -> tensor<2xf32>
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL: func @DynamicStitch_matrix_item
@@ -733,14 +733,14 @@ func @DynamicStitch_matrix_item(%arg0: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
 
   %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
   %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>
-  return %0 : tensor<2x2x2xf32>
+  func.return %0 : tensor<2x2x2xf32>
 }
 
 // CHECK-LABEL: func @DynamicStitch_dynamic
 func @DynamicStitch_dynamic(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: tf.DynamicStitch
   %0 = "tf.DynamicStitch"(%arg0, %arg1) : (tensor<*xi32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @DynamicStitch_duplicates
@@ -753,7 +753,7 @@ func @DynamicStitch_duplicates(%arg0: tensor<2x2xf32>) -> tensor<1x2xf32> {
 
   %indices = "tf.Const"() {value = dense<[0, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
   %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2xf32>) -> tensor<1x2xf32>
-  return %0 : tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
 }
 
 // CHECK-LABEL: func @ParallelDynamicStitch
@@ -761,7 +761,7 @@ func @ParallelDynamicStitch(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-NOT: tf.ParallelDynamicStitch
   %0 = "tf.ParallelDynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-  return %0 : tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
 }
 
 // CHECK-LABEL: @Reciprocal_i32
@@ -769,7 +769,7 @@ func @Reciprocal_i32(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: "tf.Div"(%[[ONE]], %arg0) : (tensor<i32>, tensor<*xi32>) -> tensor<*xi32>
   %0 = "tf.Reciprocal"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 // CHECK-LABEL: @Reciprocal_f32
@@ -777,7 +777,7 @@ func @Reciprocal_f32(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK: "tf.Div"(%[[ONE]], %arg0) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
   %0 = "tf.Reciprocal"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: @Reciprocal_complexf32
@@ -785,7 +785,7 @@ func @Reciprocal_complexf32(%arg0: tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f
   // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f32>>} : () -> tensor<complex<f32>>
   // CHECK: "tf.Div"(%[[ONE]], %arg0) : (tensor<complex<f32>>, tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>>
   %0 = "tf.Reciprocal"(%arg0) : (tensor<*xcomplex<f32>>) -> tensor<*xcomplex<f32>>
-  return %0 : tensor<*xcomplex<f32>>
+  func.return %0 : tensor<*xcomplex<f32>>
 }
 
 // CHECK-LABEL: @Reciprocal_complexf64
@@ -793,7 +793,7 @@ func @Reciprocal_complexf64(%arg0: tensor<*xcomplex<f64>>) -> tensor<*xcomplex<f
   // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>} : () -> tensor<complex<f64>>
   // CHECK: "tf.Div"(%[[ONE]], %arg0) : (tensor<complex<f64>>, tensor<*xcomplex<f64>>) -> tensor<*xcomplex<f64>>
   %0 = "tf.Reciprocal"(%arg0) : (tensor<*xcomplex<f64>>) -> tensor<*xcomplex<f64>>
-  return %0 : tensor<*xcomplex<f64>>
+  func.return %0 : tensor<*xcomplex<f64>>
 }
 
 // Inv is the same as Reciprocal
@@ -802,7 +802,7 @@ func @Inv_i32(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: "tf.Div"(%[[ONE]], %arg0) : (tensor<i32>, tensor<*xi32>) -> tensor<*xi32>
   %0 = "tf.Inv"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 // CHECK-LABEL: @ScatterNd
@@ -812,7 +812,7 @@ func @ScatterNd(%arg0: tensor<4x1xi32>, %arg1: tensor<4xf32>) -> tensor<8xf32> {
 
   %shape = "tf.Const"() {value = dense<[8]> : tensor<1xi32>} : () -> tensor<1xi32>
   %0 = "tf.ScatterNd"(%arg0, %arg1, %shape) : (tensor<4x1xi32>, tensor<4xf32>, tensor<1xi32>) -> tensor<8xf32>
-  return %0 : tensor<8xf32>
+  func.return %0 : tensor<8xf32>
 }
 
 // CHECK-LABEL: @_UnaryOpsComposition
@@ -825,7 +825,7 @@ func @_UnaryOpsComposition(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: return %[[RESULT2]]
 
   %0 = "tf._UnaryOpsComposition"(%arg0) {op_names = ["Asin", "Abs", "Log"]} : (tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 
@@ -834,7 +834,7 @@ func @round_int(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK: [[IDENTITY:%.+]] = "tf.Identity"(%arg0)
   %0 = "tf.Round"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
   // CHECK: return [[IDENTITY]]
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL: @round
@@ -861,14 +861,14 @@ func @round(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "tf.Round"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
 
   // CHECK: return %[[SELECT]]
-  return %0 : tensor<2xf32>
+  func.return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL: func @round_dynamic
 func @round_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK-NOT: tf.Round
   %0 = "tf.Round"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @rint_dynamic
@@ -895,14 +895,14 @@ func @rint_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "tf.Rint"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
 
   // CHECK: return %[[SELECT]]
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @round_unranked
 func @round_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-NOT: tf.Round
   %0 = "tf.Round"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @lgamma
@@ -913,7 +913,7 @@ func @lgamma(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   // tests to check it is lowered correctly and with sufficient precision.
   // CHECK-NOT: tf.Lgamma
   %0 = "tf.Lgamma"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
-  return %0 : tensor<4xf32>
+  func.return %0 : tensor<4xf32>
 }
 
 // CHECK-LABEL: func @imag_resize_nearest
@@ -929,7 +929,7 @@ func @imag_resize_nearest(%arg0: tensor<1x7x7x1xi32>) -> tensor<1x3x3x1xi32> {
   // CHECK: [[VAL6:%.+]] = "tf.Reshape"([[VAL5]], [[VAL1]])
   // CHECK: return [[VAL6]]
   %resize = "tf.ResizeNearestNeighbor"(%arg0, %shape) {align_corners = false, device = "", half_pixel_centers = false} : (tensor<1x7x7x1xi32>, tensor<2xi32>) -> tensor<1x3x3x1xi32>
-  return %resize: tensor<1x3x3x1xi32>
+  func.return %resize: tensor<1x3x3x1xi32>
 }
 
 // CHECK-LABEL: func @imag_resize_nearest_dyn_img
@@ -973,7 +973,7 @@ func @imag_resize_nearest_dyn_img(%arg0: tensor<1x?x?x1xi32>) -> tensor<1x3x3x1x
   // CHECK: [[VAL34:%.+]] = "tf.Reshape"([[VAL33]], [[VAL14]])
   // CHECK: return [[VAL34]]
   %resize = "tf.ResizeNearestNeighbor"(%arg0, %shape) {align_corners = false, device = "", half_pixel_centers = false} : (tensor<1x?x?x1xi32>, tensor<2xi32>) -> tensor<1x3x3x1xi32>
-  return %resize: tensor<1x3x3x1xi32>
+  func.return %resize: tensor<1x3x3x1xi32>
 }
 
 // CHECK-LABEL: func @imag_resize_nearest_full_dyn
@@ -1027,7 +1027,7 @@ func @imag_resize_nearest_full_dyn(%arg0: tensor<1x?x?x1xi32>, %arg1: tensor<2xi
   // CHECK: [[VAL45:%.+]] = "tf.Reshape"([[VAL44]], [[VAL16]])
   // CHECK: return [[VAL45]]
   %resize = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = false, device = "", half_pixel_centers = false} : (tensor<1x?x?x1xi32>, tensor<2xi32>) -> tensor<1x?x?x1xi32>
-  return %resize: tensor<1x?x?x1xi32>
+  func.return %resize: tensor<1x?x?x1xi32>
 }
 
 // CHECK-LABEL: func @xdivy
@@ -1039,7 +1039,7 @@ func @xdivy(%lhs: tensor<*xf32>, %rhs: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK:  %[[RESULT:.*]] = "tf.SelectV2"(%[[IS_ZERO]], %[[X]], %[[MUL]]) : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   %0 = "tf.Xdivy"(%lhs, %rhs) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   // CHECK: return %[[RESULT]]
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @xlog1py
@@ -1052,7 +1052,7 @@ func @xlog1py(%lhs: tensor<*xf32>, %rhs: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK:  %[[RESULT:.*]] = "tf.SelectV2"(%[[IS_ZERO]], %[[X]], %[[MUL]]) : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   %0 = "tf.Xlog1py"(%lhs, %rhs) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   // CHECK: return %[[RESULT]]
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @xlogy
@@ -1065,13 +1065,13 @@ func @xlogy(%lhs: tensor<*xf32>, %rhs: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK:  %[[RESULT:.*]] = "tf.SelectV2"(%[[IS_ZERO]], %[[X]], %[[MUL]]) : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   %0 = "tf.Xlogy"(%lhs, %rhs) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   // CHECK: return %[[RESULT]]
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: size_to_prod_shape_i32
 func @size_to_prod_shape_i32(%arg0 : tensor<1x?x2x3xf32>) -> tensor<i32> {
   %0 = "tf.Size"(%arg0) : (tensor<1x?x2x3xf32>) -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
   // CHECK: %[[CONSTANT:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%arg0) : (tensor<1x?x2x3xf32>) -> tensor<4xi32>
   // CHECK: %[[PROD:.*]] = "tf.Prod"(%[[SHAPE]], %[[CONSTANT]]) {keep_dims = false} : (tensor<4xi32>, tensor<i32>) -> tensor<i32>
@@ -1081,7 +1081,7 @@ func @size_to_prod_shape_i32(%arg0 : tensor<1x?x2x3xf32>) -> tensor<i32> {
 // CHECK-LABEL: size_to_prod_shape_i64
 func @size_to_prod_shape_i64(%arg0 : tensor<1x?x2x3xf32>) -> tensor<i64> {
   %0 = "tf.Size"(%arg0) : (tensor<1x?x2x3xf32>) -> tensor<i64>
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
   // CHECK: %[[CONSTANT:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
   // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%arg0) : (tensor<1x?x2x3xf32>) -> tensor<4xi64>
   // CHECK: %[[PROD:.*]] = "tf.Prod"(%[[SHAPE]], %[[CONSTANT]]) {keep_dims = false} : (tensor<4xi64>, tensor<i64>) -> tensor<i64>
@@ -1091,7 +1091,7 @@ func @size_to_prod_shape_i64(%arg0 : tensor<1x?x2x3xf32>) -> tensor<i64> {
 // CHECK-LABEL: @is_finite
 func @is_finite(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
   %0 = "tf.IsFinite"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
-  return %0 : tensor<3x4xi1>
+  func.return %0 : tensor<3x4xi1>
   // CHECK: %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK: %[[SUB:.*]] = "tf.Sub"(%arg0, %arg0) : (tensor<3x4xf32>, tensor<3x4xf32>) -> tensor<3x4xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Equal"(%[[SUB]], %[[ZERO]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
@@ -1101,7 +1101,7 @@ func @is_finite(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
 // CHECK-LABEL: @is_finite_dynamic
 func @is_finite_dynamic(%arg0: tensor<?x4xf32>) -> tensor<?x4xi1> {
   %0 = "tf.IsFinite"(%arg0) : (tensor<?x4xf32>) -> tensor<?x4xi1>
-  return %0 : tensor<?x4xi1>
+  func.return %0 : tensor<?x4xi1>
   // CHECK: %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK: %[[SUB:.*]] = "tf.Sub"(%arg0, %arg0) : (tensor<?x4xf32>, tensor<?x4xf32>) -> tensor<?x4xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Equal"(%[[SUB]], %[[ZERO]]) {incompatible_shape_error = true} : (tensor<?x4xf32>, tensor<f32>) -> tensor<?x4xi1>
@@ -1112,7 +1112,7 @@ func @roll_scalar_axis(%arg0: tensor<3x8x4xi32>) -> tensor<3x8x4xi32> {
   %axis = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %shift = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %0 = "tf.Roll"(%arg0, %shift, %axis) : (tensor<3x8x4xi32>, tensor<i32>, tensor<i32>) -> tensor<3x8x4xi32>
-  return %0 : tensor<3x8x4xi32>
+  func.return %0 : tensor<3x8x4xi32>
   // CHECK-LABEL: roll_scalar_axis
   // CHECK-DAG:  %[[CST:.*]] = "tf.Const"() {value = dense<[0, 6, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
   // CHECK-DAG:  %[[CST0:.*]] = "tf.Const"() {value = dense<[3, 2, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
@@ -1129,7 +1129,7 @@ func @roll_1d_axis(%arg0: tensor<3x8x4xi32>) -> tensor<3x8x4xi32> {
   %axis = "tf.Const"() {value = dense<[1]> : tensor<1xi32>} : () -> tensor<1xi32>
   %shift = "tf.Const"() {value = dense<[2]> : tensor<1xi32>} : () -> tensor<1xi32>
   %0 = "tf.Roll"(%arg0, %shift, %axis) : (tensor<3x8x4xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3x8x4xi32>
-  return %0 : tensor<3x8x4xi32>
+  func.return %0 : tensor<3x8x4xi32>
   // CHECK-LABEL: roll_1d_axis
   // CHECK-DAG:  %[[CST:.*]] = "tf.Const"() {value = dense<[0, 6, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
   // CHECK-DAG:  %[[CST0:.*]] = "tf.Const"() {value = dense<[3, 2, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
@@ -1146,7 +1146,7 @@ func @roll_multiple_axis(%arg0: tensor<3x8x4xi32>) -> tensor<3x8x4xi32> {
   %axis = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
   %shift = "tf.Const"() {value = dense<[2, -6]> : tensor<2xi32>} : () -> tensor<2xi32>
   %0 = "tf.Roll"(%arg0, %shift, %axis) : (tensor<3x8x4xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x8x4xi32>
-  return %0 : tensor<3x8x4xi32>
+  func.return %0 : tensor<3x8x4xi32>
   // CHECK-LABEL: roll_multiple_axis
   // CHECK-DAG:  %[[CST:.*]] = "tf.Const"() {value = dense<[1, 0, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
   // CHECK-DAG:  %[[CST0:.*]] = "tf.Const"() {value = dense<[2, 8, 4]> : tensor<3xi64>} : () -> tensor<3xi64>
@@ -1170,7 +1170,7 @@ func @roll_dynamic_shape(%arg0: tensor<?x8x4xi32>) -> tensor<?x8x4xi32> {
   %axis = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %shift = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %0 = "tf.Roll"(%arg0, %shift, %axis) : (tensor<?x8x4xi32>, tensor<i32>, tensor<i32>) -> tensor<?x8x4xi32>
-  return %0 : tensor<?x8x4xi32>
+  func.return %0 : tensor<?x8x4xi32>
   // CHECK-LABEL: roll_dynamic_shape
   // CHECK:  "tf.Roll"
 }
@@ -1178,7 +1178,7 @@ func @roll_dynamic_shape(%arg0: tensor<?x8x4xi32>) -> tensor<?x8x4xi32> {
 func @roll_non_constant_axis(%arg0: tensor<3x8x4xi32>, %arg1: tensor<i32>) -> tensor<3x8x4xi32> {
   %shift = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %0 = "tf.Roll"(%arg0, %shift, %arg1) : (tensor<3x8x4xi32>, tensor<i32>, tensor<i32>) -> tensor<3x8x4xi32>
-  return %0 : tensor<3x8x4xi32>
+  func.return %0 : tensor<3x8x4xi32>
   // CHECK-LABEL: roll_non_constant_axis
   // CHECK:  "tf.Roll"
 }
@@ -1186,14 +1186,14 @@ func @roll_non_constant_axis(%arg0: tensor<3x8x4xi32>, %arg1: tensor<i32>) -> te
 func @roll_non_constant_shift(%arg0: tensor<3x8x4xi32>, %arg1: tensor<i32>) -> tensor<3x8x4xi32> {
   %axis = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %0 = "tf.Roll"(%arg0, %arg1, %axis) : (tensor<3x8x4xi32>, tensor<i32>, tensor<i32>) -> tensor<3x8x4xi32>
-  return %0 : tensor<3x8x4xi32>
+  func.return %0 : tensor<3x8x4xi32>
   // CHECK-LABEL: roll_non_constant_shift
   // CHECK:  "tf.Roll"
 }
 
 func @scatter_nd_updates(%arg0: tensor<14xf32>, %arg1: tensor<1x1xi32>, %arg2: tensor<1xf32>) -> tensor<14xf32> {
   %0 = "tf.TensorScatterUpdate"(%arg0, %arg1, %arg2) : (tensor<14xf32>, tensor<1x1xi32>, tensor<1xf32>) -> tensor<14xf32>
-  return %0 : tensor<14xf32>
+  func.return %0 : tensor<14xf32>
 
   // CHECK-LABEL: scatter_nd_updates
   // CHECK-DAG: %[[CST:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
@@ -1209,7 +1209,7 @@ func @scatter_nd_updates(%arg0: tensor<14xf32>, %arg1: tensor<1x1xi32>, %arg2: t
 
 func @scatter_nd_updates_bool(%arg0: tensor<1x24xi1>, %arg1: tensor<1x2x2xi32>, %arg2: tensor<1x2xi1>) -> tensor<1x24xi1> {
   %0 = "tf.TensorScatterUpdate"(%arg0, %arg1, %arg2) : (tensor<1x24xi1>, tensor<1x2x2xi32>, tensor<1x2xi1>) -> tensor<1x24xi1>
-  return %0 : tensor<1x24xi1>
+  func.return %0 : tensor<1x24xi1>
 
 // CHECK-LABEL: scatter_nd_updates_bool(
 // CHECK-DAG:       %[[CST:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -1241,7 +1241,7 @@ func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK-DAG: %[[RESULT:.*]] = "tf.Div"(%[[EXP]], %[[SUM]]) : (tensor<2x3xf32>, tensor<2x1xf32>) -> tensor<2x3xf32>
   // CHECK: return %[[RESULT]]
   %0 = "tf.Softmax"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  return %0: tensor<2x3xf32>
+  func.return %0: tensor<2x3xf32>
 }
 
 // Verify intermediate and final shape are correct with dynamic shapes.
@@ -1249,7 +1249,7 @@ func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
 func @unranked_softmax(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-NOT: "tf.Softmax"
   %0 = "tf.Softmax"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0: tensor<*xf32>
+  func.return %0: tensor<*xf32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -1269,14 +1269,14 @@ func @simple_logsoftmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK-DAG: %[[RESULT:.*]] = "tf.Sub"(%[[SHIFTED]], %[[LOG]]) : (tensor<2x3xf32>, tensor<2x1xf32>) -> tensor<2x3xf32>
   // CHECK: return %[[RESULT]]
   %0 = "tf.LogSoftmax"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-  return %0: tensor<2x3xf32>
+  func.return %0: tensor<2x3xf32>
 }
 
 // CHECK-LABEL: func @unranked_logsoftmax
 func @unranked_logsoftmax(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-NOT: "tf.LogSoftmax"
   %0 = "tf.LogSoftmax"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0: tensor<*xf32>
+  func.return %0: tensor<*xf32>
 }
 
 // CHECK-LABEL: func @selu
@@ -1294,7 +1294,7 @@ func @selu(%arg0: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32> {
     // CHECK-NEXT:  %[[RES:.*]] = "tf.SelectV2"(%[[PRED]], %[[SCALED_FEATURES]], %[[SELU_VAL]]) : (tensor<1x4x4x3xi1>, tensor<1x4x4x3xf32>, tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
     // CHECK-NEXT:  return %[[RES]] : tensor<1x4x4x3xf32>
     %0 = "tf.Selu"(%arg0) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
-    return %0 : tensor<1x4x4x3xf32>
+    func.return %0 : tensor<1x4x4x3xf32>
 }
 
 // CHECK-LABEL: func @selu_grad
@@ -1310,14 +1310,14 @@ func @selu_grad(%gradients: tensor<4x8xf32>, %features: tensor<4x8xf32>) -> tens
     // CHECK-NEXT:  %[[RES:.*]] = "tf.SelectV2"(%[[PRED]], %[[SCALED_GRADIENTS]], %[[SELU_GRAD_VALUE]]) : (tensor<4x8xi1>, tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
     // CHECK-NEXT:  return %[[RES]] : tensor<4x8xf32>
     %2 = "tf.SeluGrad"(%gradients, %features) : (tensor<4x8xf32>, tensor<4x8xf32>) -> tensor<4x8xf32>
-    return %2 : tensor<4x8xf32>
+    func.return %2 : tensor<4x8xf32>
 }
 
 // CHECK-LABEL: func @expm1
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<3x4xf32>)
 func @expm1(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
   %0 = "tf.Expm1"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xf32>
-  return %0 : tensor<3x4xf32>
+  func.return %0 : tensor<3x4xf32>
   // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK: %[[EXP:.*]] = "tf.Exp"(%[[ARG0]]) : (tensor<3x4xf32>) -> tensor<3x4xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Sub"(%[[EXP]], %[[ONE]]) : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xf32>

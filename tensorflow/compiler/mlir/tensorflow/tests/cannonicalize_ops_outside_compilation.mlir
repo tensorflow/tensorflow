@@ -21,6 +21,6 @@ module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0",
     %5 = "tf.TPUReplicatedOutput"(%4) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
     %6 = "tf.Reshape"(%2#0, %arg2) {_tpu_replicate = "cluster_Fn", _xla_outside_compilation = "1", device = ""} : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
     %7 = "tf.Reshape"(%2#1, %arg3) {_tpu_replicate = "cluster_Fn", _xla_outside_compilation = "1", device = ""} : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
-    return %7 : tensor<*xi32>
+    func.return %7 : tensor<*xi32>
   }
 }

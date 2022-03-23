@@ -16,7 +16,7 @@ module {
     %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
     %3 = "tf.AddV2"(%2, %0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     %4 = "tf.Pack"(%0, %3) : (tensor<f32>, tensor<f32>) -> tensor<2xf32>
-    return %4 : tensor<2xf32>
+    func.return %4 : tensor<2xf32>
   }
 
   // One resource, one read. _is_initialized is true, should be promoted.
@@ -27,6 +27,6 @@ module {
     // CHECK: return %arg0
     %1 = "tf.VarHandleOp"() {container = "", shared_name = "x", _is_initialized = true} : () -> tensor<!tf_type.resource<tensor<f32>>>
     %2 = "tf.ReadVariableOp"(%1) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    return %2 : tensor<f32>
+    func.return %2 : tensor<f32>
   }
 }

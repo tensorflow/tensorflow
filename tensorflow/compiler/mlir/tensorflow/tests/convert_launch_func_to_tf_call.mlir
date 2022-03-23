@@ -20,11 +20,11 @@ func @single_launch_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
     }
     tf_executor.fetch %1#0 : tensor<?xf32>
   }
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 func @_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  return %arg0 : tensor<?xf32>
+  func.return %arg0 : tensor<?xf32>
 }
 
 // -----
@@ -54,9 +54,9 @@ func @multi_launch_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
     }
     tf_executor.fetch %1#0 : tensor<?xf32>
   }
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 func @_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  return %arg0 : tensor<?xf32>
+  func.return %arg0 : tensor<?xf32>
 }

@@ -11,7 +11,7 @@ func @propagate_constraints(%arg0 : tensor<?x?xf32>)
   // expected-remark@below {{operand #0 constrained to: shape}}
   %1 = "test.OpB"(%0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   // expected-remark@below {{operand #0 constrained to: value}}
-  return %1 : tensor<?x?xf32>
+  func.return %1 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: func @failed_to_propagate_constraints
@@ -20,5 +20,5 @@ func @failed_to_propagate_constraints(%arg0 : tensor<?x?xf32>)
   // expected-error@below {{failed to propagate results constraints: 0:value}}
   %0 = "test.OpC"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   // expected-remark@below {{operand #0 constrained to: value}}
-  return %0 : tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
 }

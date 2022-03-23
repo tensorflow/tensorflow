@@ -3,7 +3,7 @@
 func @multiple_return(%arg0 : tensor<*xi32>, %arg1 : tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
   %1 = "tf.Add"(%arg0, %arg1) {} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
   %2 = "tf.Add"(%1, %arg1) {} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
-  return %1, %2 : tensor<*xi32>, tensor<*xi32>
+  func.return %1, %2 : tensor<*xi32>, tensor<*xi32>
 }
 
 // CHECK-LABEL: func @multiple_return
@@ -59,7 +59,7 @@ func @graph_and_more(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> tensor<*xi32> 
     tf_executor.fetch %control : !tf_executor.control
   }
   %result = "tf.Add"(%arg0, %arg1) {} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
-  return %result : tensor<*xi32>
+  func.return %result : tensor<*xi32>
 }
 
 // CHECK-LABEL: func @graph_and_more

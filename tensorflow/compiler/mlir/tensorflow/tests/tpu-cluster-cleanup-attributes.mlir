@@ -23,7 +23,7 @@ func @control_flow_cleanup(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<
   // CHECK-SAME: {_replication_info = "x", _xla_compile_device_type = "TPU", device = "y"}
   %2 = "tf.Add"(%arg2, %1) {_xla_compile_device_type = "TPU", _replication_info = "x", device = "y"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK: return
-  return %2 : tensor<f32>
+  func.return %2 : tensor<f32>
 }
 
 // CHECK-LABEL: func @skip_launch_device
@@ -41,7 +41,7 @@ func @skip_launch_device(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f3
     tf_device.return %2 : tensor<f32>
   }) {cluster_attr = "cluster_attr", _xla_compile_device_type = "TPU", _replication_info = "x", device = "y"} : () -> tensor<f32>
 
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // CHECK-LABEL: func @remove_class_attribute
@@ -54,5 +54,5 @@ func @remove_class_attribute(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tenso
     tf_device.return %2 : tensor<f32>
   }) {cluster_attr = "cluster_attr", _xla_compile_device_type = "TPU", _replication_info = "x", device = "y"} : () -> tensor<f32>
 
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }

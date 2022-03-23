@@ -31,7 +31,7 @@ func @transposeConv2D(%input: tensor<1x32x32x3xf32>, %filter: tensor<1x1x3x8xf32
          strides = [5, 6, 7, 8]
        } : (tensor<1x32x32x3xf32>, tensor<1x1x3x8xf32>) -> tensor<1x7x7x8xf32>
 
-  return %0 : tensor<1x7x7x8xf32>
+  func.return %0 : tensor<1x7x7x8xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2DWithDefaultAttr
@@ -63,7 +63,7 @@ func @transposeConv2DWithDefaultAttr(%input: tensor<1x32x32x3xf32>, %filter: ten
          strides = [5, 6, 7, 8]
        } : (tensor<1x32x32x3xf32>, tensor<1x1x3x8xf32>) -> tensor<?x?x?x?xf32>
 
-  return %0 : tensor<?x?x?x?xf32>
+  func.return %0 : tensor<?x?x?x?xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropFilter
@@ -103,7 +103,7 @@ func @transposeConv2DBackpropFilter(
        } : (tensor<1x32x32x3xf32>, tensor<4xi32>, tensor<1x32x32x8xf32>)
          -> tensor<1x1x3x8xf32>
 
-  return %0 : tensor<1x1x3x8xf32>
+  func.return %0 : tensor<1x1x3x8xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropInput
@@ -144,7 +144,7 @@ func @transposeConv2DBackpropInput(
        } : (tensor<4xi32>, tensor<1x1x3x8xf32>, tensor<1x32x32x8xf32>)
          -> tensor<1x32x32x3xf32>
 
-  return %0 : tensor<1x32x32x3xf32>
+  func.return %0 : tensor<1x32x32x3xf32>
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormV3
@@ -181,7 +181,7 @@ func @transposeFusedBatchNormV3(
        -> (tensor<1x28x28x64xf32>, tensor<64xf32>, tensor<64xf32>,
            tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
 
-  return %y : tensor<1x28x28x64xf32>
+  func.return %y : tensor<1x28x28x64xf32>
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormGradV3
@@ -223,5 +223,5 @@ func @transposeFusedBatchNormGradV3(
        -> (tensor<1x28x28x64xf32>,
            tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
 
-  return %x_backprop : tensor<1x28x28x64xf32>
+  func.return %x_backprop : tensor<1x28x28x64xf32>
 }

@@ -6,7 +6,7 @@ func @testSingleConj(%arg0: tensor<complex<f32>>) -> tensor<complex<f32>> {
   // CHECK: [[CONJ:%.+]] = "tf.Conj"([[ARG0]])
   %0 = "tf.Conj"(%arg0) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   // CHECK: return [[CONJ]]
-  return %0: tensor<complex<f32>>
+  func.return %0: tensor<complex<f32>>
 }
 
 // CHECK-LABEL: func @testDoubleConj
@@ -15,7 +15,7 @@ func @testDoubleConj(%arg0: tensor<complex<f32>>) -> tensor<complex<f32>> {
   %0 = "tf.Conj"(%arg0) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   %1 = "tf.Conj"(%0) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   // CHECK: return [[ARG0]]
-  return %1: tensor<complex<f32>>
+  func.return %1: tensor<complex<f32>>
 }
 
 // CHECK-LABEL: func @testTripleConj
@@ -26,7 +26,7 @@ func @testTripleConj(%arg0: tensor<complex<f32>>) -> tensor<complex<f32>> {
   %1 = "tf.Conj"(%0) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   %2 = "tf.Conj"(%1) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   // CHECK: return [[CONJ]]
-  return %2: tensor<complex<f32>>
+  func.return %2: tensor<complex<f32>>
 }
 
 // CHECK-LABEL: func @testSingleReciprocal
@@ -35,7 +35,7 @@ func @testSingleReciprocal(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: [[RECIPROCAL:%.+]] = "tf.Reciprocal"([[ARG0]])
   %0 = "tf.Reciprocal"(%arg0) : (tensor<i32>) -> tensor<i32>
   // CHECK: return [[RECIPROCAL]]
-  return %0: tensor<i32>
+  func.return %0: tensor<i32>
 }
 
 // CHECK-LABEL: func @testDoubleReciprocal
@@ -44,7 +44,7 @@ func @testDoubleReciprocal(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Reciprocal"(%arg0) : (tensor<i32>) -> tensor<i32>
   %1 = "tf.Reciprocal"(%0) : (tensor<i32>) -> tensor<i32>
   // CHECK: return [[ARG0]]
-  return %1: tensor<i32>
+  func.return %1: tensor<i32>
 }
 
 // CHECK-LABEL: func @testTripleReciprocal
@@ -55,7 +55,7 @@ func @testTripleReciprocal(%arg0: tensor<i32>) -> tensor<i32> {
   %1 = "tf.Reciprocal"(%0) : (tensor<i32>) -> tensor<i32>
   %2 = "tf.Reciprocal"(%1) : (tensor<i32>) -> tensor<i32>
   // CHECK: return [[RECIPROCAL]]
-  return %2: tensor<i32>
+  func.return %2: tensor<i32>
 }
 
 // CHECK-LABEL: func @testSingleInvert
@@ -64,7 +64,7 @@ func @testSingleInvert(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: [[INVERT:%.+]] = "tf.Invert"([[ARG0]])
   %0 = "tf.Invert"(%arg0) : (tensor<i32>) -> tensor<i32>
   // CHECK: return [[INVERT]]
-  return %0: tensor<i32>
+  func.return %0: tensor<i32>
 }
 
 // CHECK-LABEL: func @testDoubleInvert
@@ -73,7 +73,7 @@ func @testDoubleInvert(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Invert"(%arg0) : (tensor<i32>) -> tensor<i32>
   %1 = "tf.Invert"(%0) : (tensor<i32>) -> tensor<i32>
   // CHECK: return [[ARG0]]
-  return %1: tensor<i32>
+  func.return %1: tensor<i32>
 }
 
 // CHECK-LABEL: func @testTripleInvert
@@ -84,7 +84,7 @@ func @testTripleInvert(%arg0: tensor<i32>) -> tensor<i32> {
   %1 = "tf.Invert"(%0) : (tensor<i32>) -> tensor<i32>
   %2 = "tf.Invert"(%1) : (tensor<i32>) -> tensor<i32>
   // CHECK: return [[INVERT]]
-  return %2: tensor<i32>
+  func.return %2: tensor<i32>
 }
 
 // CHECK-LABEL: func @testSingleNeg
@@ -93,7 +93,7 @@ func @testSingleNeg(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK: [[NEG:%.+]] = "tf.Neg"([[ARG0]])
   %0 = "tf.Neg"(%arg0) : (tensor<i32>) -> tensor<i32>
   // CHECK: return [[NEG]]
-  return %0: tensor<i32>
+  func.return %0: tensor<i32>
 }
 
 // CHECK-LABEL: func @testDoubleNeg
@@ -102,7 +102,7 @@ func @testDoubleNeg(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf.Neg"(%arg0) : (tensor<i32>) -> tensor<i32>
   %1 = "tf.Neg"(%0) : (tensor<i32>) -> tensor<i32>
   // CHECK: return [[ARG0]]
-  return %1: tensor<i32>
+  func.return %1: tensor<i32>
 }
 
 // CHECK-LABEL: func @testTripleNeg
@@ -113,7 +113,7 @@ func @testTripleNeg(%arg0: tensor<i32>) -> tensor<i32> {
   %1 = "tf.Neg"(%0) : (tensor<i32>) -> tensor<i32>
   %2 = "tf.Neg"(%1) : (tensor<i32>) -> tensor<i32>
   // CHECK: return [[NEG]]
-  return %2: tensor<i32>
+  func.return %2: tensor<i32>
 }
 
 // CHECK-LABEL: func @testSingleLogicalNot
@@ -122,7 +122,7 @@ func @testSingleLogicalNot(%arg0: tensor<i1>) -> tensor<i1> {
   // CHECK: [[LNOT:%.+]] = "tf.LogicalNot"([[ARG0]])
   %0 = "tf.LogicalNot"(%arg0) : (tensor<i1>) -> tensor<i1>
   // CHECK: return [[LNOT]]
-  return %0: tensor<i1>
+  func.return %0: tensor<i1>
 }
 
 // CHECK-LABEL: func @testDoubleLogicalNot
@@ -131,7 +131,7 @@ func @testDoubleLogicalNot(%arg0: tensor<i1>) -> tensor<i1> {
   %0 = "tf.LogicalNot"(%arg0) : (tensor<i1>) -> tensor<i1>
   %1 = "tf.LogicalNot"(%0) : (tensor<i1>) -> tensor<i1>
   // CHECK: return [[ARG0]]
-  return %1: tensor<i1>
+  func.return %1: tensor<i1>
 }
 
 // CHECK-LABEL: func @testTripleLogicalNot
@@ -142,5 +142,5 @@ func @testTripleLogicalNot(%arg0: tensor<i1>) -> tensor<i1> {
   %1 = "tf.LogicalNot"(%0) : (tensor<i1>) -> tensor<i1>
   %2 = "tf.LogicalNot"(%1) : (tensor<i1>) -> tensor<i1>
   // CHECK: return [[LNOT]]
-  return %2: tensor<i1>
+  func.return %2: tensor<i1>
 }

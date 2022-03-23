@@ -14,7 +14,7 @@ func @test_supported_lowering_of_tf_if_region1(%arg0: tensor<i1>, %arg1: tensor<
     %call_0 = call @test_if_else1(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
     "tf.Yield"(%call_0, %call_0) : (tensor<4xf32>, tensor<4xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> (tensor<*xf32>, tensor<4xf32>)
-  return %res#0, %res#1 : tensor<*xf32>, tensor<4xf32>
+  func.return %res#0, %res#1 : tensor<*xf32>, tensor<4xf32>
 
   // CHECK-NEXT: %[[COND:.*]] = tensor.extract %[[ARG0]][] : tensor<i1>
   // CHECK-NEXT: %[[RES:.*]]:2 = scf.if %[[COND]] -> (tensor<*xf32>, tensor<4xf32>) {
@@ -70,7 +70,7 @@ func @test_supported_lowering_of_tf_while_region(%arg0: tensor<f32>, %arg1: tens
     %1 = "tf.Sub"(%arg3, %cst) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     "tf.Yield"(%1, %arg4) : (tensor<f32>, tensor<*xf32>) -> ()
   }) {is_stateless = false} : (tensor<f32>, tensor<*xf32>) -> (tensor<f32>, tensor<*xf32>)
-  return %0#0 : tensor<f32>
+  func.return %0#0 : tensor<f32>
 
   // CHECK-NEXT: %[[CST:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK-NEXT: %[[RES:.*]]:2 = scf.while (%[[ARG3:.*]] = %[[ARG0]], %[[ARG4:.*]] = %[[ARG2]]) : (tensor<f32>, tensor<*xf32>) -> (tensor<f32>, tensor<*xf32>) {

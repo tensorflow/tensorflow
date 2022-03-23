@@ -26,7 +26,7 @@ func @simple_independent_chains_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2
     tf_executor.fetch %arg0, %arg1, %add, %mul, %control_barrier, %mul_control : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, !tf_executor.control, !tf_executor.control
   }
   // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2, %[[GRAPH_OUT]]#3, %[[GRAPH_OUT]]#4, %[[GRAPH_OUT]]#5
-  return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+  func.return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: func @simple_independent_chains_while_cond
@@ -39,7 +39,7 @@ func @simple_independent_chains_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @simple_independent_chains
@@ -92,7 +92,7 @@ func @intersecting_chains_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tens
    tf_executor.fetch %arg0, %arg1, %add, %mul, %control_barrier : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, !tf_executor.control
   }
   // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2, %[[GRAPH_OUT]]#3, %[[GRAPH_OUT]]#4
-  return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+  func.return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: func @intersecting_chains_while_cond
@@ -105,7 +105,7 @@ func @intersecting_chains_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tens
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @intersecting_chains
@@ -138,7 +138,7 @@ func @multiple_callers_while_body(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_re
     tf_executor.fetch %arg0, %arg1, %control : tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control
   }
   // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2
-  return %graph#0, %graph#1 : !tf_res, tensor<f32>
+  func.return %graph#0, %graph#1 : !tf_res, tensor<f32>
 }
 
 // CHECK-LABEL: func @multiple_callers_while_cond
@@ -151,7 +151,7 @@ func @multiple_callers_while_cond(%arg0: !tf_res, %arg1: tensor<f32>) -> (tensor
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @multiple_callers
@@ -189,7 +189,7 @@ func @nested_loop_while_body_inner(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_r
     tf_executor.fetch %arg0, %arg1, %control : tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control
   }
   // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2
-  return %graph#0, %graph#1 : !tf_res, tensor<f32>
+  func.return %graph#0, %graph#1 : !tf_res, tensor<f32>
 }
 
 // CHECK-LABEL: func @nested_loop_while_cond_inner
@@ -202,7 +202,7 @@ func @nested_loop_while_cond_inner(%arg0: !tf_res, %arg1: tensor<f32>) -> (tenso
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL: func @nested_loop_while_body_outer
@@ -219,7 +219,7 @@ func @nested_loop_while_body_outer(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_r
     tf_executor.fetch %arg0, %while_out#1, %while_control : tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control
   }
   // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2
-  return %graph#0, %graph#1 : !tf_res, tensor<f32>
+  func.return %graph#0, %graph#1 : !tf_res, tensor<f32>
 }
 
 // CHECK-LABEL: func @nested_loop_while_cond_outer
@@ -232,7 +232,7 @@ func @nested_loop_while_cond_outer(%arg0: !tf_res, %arg1: tensor<f32>) -> (tenso
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @nested_while
@@ -270,7 +270,7 @@ func @unknown_resource_op_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tens
     // CHECK-SAME: tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, !tf_executor.control
     tf_executor.fetch %arg0, %arg1, %add, %mul, %control_barrier: tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, !tf_executor.control
   }
-  return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+  func.return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: func @unknown_resource_op_while_cond
@@ -283,7 +283,7 @@ func @unknown_resource_op_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tens
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @unknown_resource_op
@@ -318,7 +318,7 @@ func @no_control_output_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor
     %mul, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     tf_executor.fetch %arg0, %arg1, %add, %mul: tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>
   }
-  return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+  func.return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: func @no_control_output_while_cond
@@ -331,7 +331,7 @@ func @no_control_output_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @no_control_output
@@ -388,7 +388,7 @@ func @unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -
     %add2:2 = tf_executor.island wraps "tf.Add"(%arg0, %one#0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
     tf_executor.fetch %add2#0, %arg1, %stack_push2#1 : tensor<i32>, tensor<f32>, !tf_executor.control
   }
-  return %graph#0, %graph#1 : tensor<i32>, tensor<f32>
+  func.return %graph#0, %graph#1 : tensor<i32>, tensor<f32>
 }
 // CHECK-LABEL:   func @unique_resource_chain_while_body
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
@@ -410,7 +410,7 @@ func @unique_resource_chain_while_cond(%arg0: tensor<i32>, %arg1: tensor<f32>) -
     %less:2 = tf_executor.island wraps "tf.Less"(%const#0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
     tf_executor.fetch %less#0 : tensor<i1>
   }
-  return %graph : tensor<i1>
+  func.return %graph : tensor<i1>
 }
 // CHECK-LABEL:   func @unique_resource_chain_while_cond
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
@@ -455,7 +455,7 @@ func @mixed_unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f
     %assign = tf_executor.island wraps "tf.AssignVariableOp"(%var_handle, %arg1) : (!tf_res, tensor<f32>) -> ()
     tf_executor.fetch %add2#0, %arg1, %stack_push2#1, %assign : tensor<i32>, tensor<f32>, !tf_executor.control, !tf_executor.control
   }
-  return %graph#0, %graph#1 : tensor<i32>, tensor<f32>
+  func.return %graph#0, %graph#1 : tensor<i32>, tensor<f32>
 }
 // CHECK-LABEL:   func @mixed_unique_resource_chain_while_body
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_TOKEN:.*]]: tensor<i32>
@@ -481,7 +481,7 @@ func @mixed_unique_resource_chain_while_cond(%arg0: tensor<i32>, %arg1: tensor<f
     %less:2 = tf_executor.island wraps "tf.Less"(%const#0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
     tf_executor.fetch %less#0 : tensor<i1>
   }
-  return %graph : tensor<i1>
+  func.return %graph : tensor<i1>
 }
 // CHECK-LABEL:   func @mixed_unique_resource_chain_while_cond
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_TOKEN:.*]]: tensor<i32>

@@ -500,7 +500,7 @@ func @decompose_resource_gather_op(%indices : tensor<?xi32>) -> tensor<*xi32> {
     %1 = "tf.ResourceGather"(%resource, %indices) : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<?xi32>) -> (tensor<*xi32>)
     tf_device.return %1 : tensor<*xi32>
   }) : () -> (tensor<*xi32>)
-  return %0: tensor<*xi32>
+  func.return %0: tensor<*xi32>
 }
 
 
@@ -517,7 +517,7 @@ func @decompose_resource_gather_op_subtype(%indices : tensor<5xi32>) -> tensor<2
 
     tf_device.return %1 : tensor<2x5x16xi32>
   }) : () -> (tensor<2x5x16xi32>)
-  return %0: tensor<2x5x16xi32>
+  func.return %0: tensor<2x5x16xi32>
 }
 
 
@@ -692,7 +692,7 @@ func @decompose_variable_shape_i32(%input: tensor<!tf_type.resource<tensor<?x?x?
     // CHECK: return %[[SHAPE]]
     tf_device.return %1 : tensor<3xi32>
   }) : () -> tensor<3xi32>
-  return %0 : tensor<3xi32>
+  func.return %0 : tensor<3xi32>
 }
 
 // CHECK-LABEL: @decompose_variable_shape_i64
@@ -704,7 +704,7 @@ func @decompose_variable_shape_i64(%input: tensor<!tf_type.resource<tensor<?x?x?
     // CHECK: return %[[SHAPE]]
     tf_device.return %1 : tensor<3xi64>
   }) : () -> tensor<3xi64>
-  return %0 : tensor<3xi64>
+  func.return %0 : tensor<3xi64>
 }
 
 // CHECK-LABEL: @decompose_variable_shape_no_subtype
@@ -716,7 +716,7 @@ func @decompose_variable_shape_no_subtype(%input: tensor<!tf_type.resource>) -> 
     // CHECK-NOT: "tf.Shape"
     tf_device.return %1 : tensor<3xi32>
   }) : () -> tensor<3xi32>
-  return %0 : tensor<3xi32>
+  func.return %0 : tensor<3xi32>
 }
 
 
@@ -775,7 +775,7 @@ func @decompose_rng_read_and_skip_op(%resource: tensor<!tf_type.resource<tensor<
     %1 = "tf.RngReadAndSkip"(%resource, %alg, %delta) : (tensor<!tf_type.resource<tensor<3xi64>>>, tensor<i32>, tensor<ui64>) -> tensor<3xi64>
     tf_device.return %1 : tensor<3xi64>
   }) : () -> tensor<3xi64>
-  return %0 : tensor<3xi64>
+  func.return %0 : tensor<3xi64>
 }
 
 // Test that ordering token resource of tf.CollectiveReduceV2 op is removed.
@@ -798,5 +798,5 @@ func @decompose_collective_reduce_v2_op(%input: tensor<3xi64>,
             tensor<!tf_type.resource<tensor<f32>>>) -> tensor<3xi64>
     tf_device.return %0 : tensor<3xi64>
   }) : () -> tensor<3xi64>
-  return %0 : tensor<3xi64>
+  func.return %0 : tensor<3xi64>
 }

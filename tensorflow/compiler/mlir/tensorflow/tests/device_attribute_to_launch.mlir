@@ -22,7 +22,7 @@ func @launch_return() -> tensor<i1> {
   // CHECK: device = "CPU:0"
   // CHECK: return %[[LAUNCH_OUT]]
   %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
-  return %a : tensor<i1>
+  func.return %a : tensor<i1>
 }
 
 // Tests that single TensorFlow op with no device attribute is not wrapped in `tf_device.launch`.

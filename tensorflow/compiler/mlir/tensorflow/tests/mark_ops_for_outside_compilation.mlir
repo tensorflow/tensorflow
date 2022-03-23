@@ -7,7 +7,7 @@ func @unsupported_op_missing_soft_placement_attribute() -> tensor<i32> {
     %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %2 : tensor<i32>
   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // -----
@@ -19,7 +19,7 @@ func @unsupported_op_soft_placement_false() -> tensor<i32> {
     %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %2 : tensor<i32>
   }) {allow_soft_placement = false, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // -----
@@ -39,7 +39,7 @@ func @assert_op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
     %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %2 : tensor<i32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK-LABEL: func @unsupported_op
@@ -53,7 +53,7 @@ func @unsupported_op() -> tensor<i32> {
     %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %2 : tensor<i32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK-LABEL: func @tf2xla_fallback_op
@@ -71,7 +71,7 @@ func @tf2xla_fallback_op() -> tensor<f32> {
     %4 = "tf.Sinh"(%2) : (tensor<f32>) -> tensor<f32>
     tf_device.return %4 : tensor<f32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func @ignore_embedding_ops
@@ -128,7 +128,7 @@ func @op_string_result() -> tensor<i32> {
     %3 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %3 : tensor<i32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 // CHECK-LABEL: func @op_string_operand
 func @op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
@@ -145,7 +145,7 @@ func @op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
     %3 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %3 : tensor<i32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK-LABEL: func @op_string_operand_string_result
@@ -163,7 +163,7 @@ func @op_string_operand_string_result(%arg0: tensor<!tf_type.string>) -> tensor<
     %3 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
     tf_device.return %3 : tensor<i32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // Test that operations inside tf.IfRegion op are corrected marked for outside
@@ -188,7 +188,7 @@ func @ops_inside_tf_if_outside_compiled(%arg0: tensor<i1>, %arg1: tensor<!tf_typ
     %5 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
     tf_device.return %5 : tensor<f32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // Test that ops with string results/operands inside a tf.IfRegion branch are
@@ -217,7 +217,7 @@ func @if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32
     %6 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
     tf_device.return %6: tensor<f32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // Test that ops with string results/operands inside a nested tf.IfRegion branch
@@ -258,7 +258,7 @@ func @nested_if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> ten
     %9 = "tf.Identity"(%2) : (tensor<f32>) -> tensor<f32>
     tf_device.return %9: tensor<f32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // Test that ops inside tf.WhileRegion op are correct marked for outside
@@ -290,7 +290,7 @@ func @ops_inside_while_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<!tf_ty
     %5 = "tf.Identity"(%2#0) : (tensor<f32>) -> (tensor<f32>)
     tf_device.return %5 : tensor<f32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // Test that an unsupported op within a  tf.WhileRegion is marked for outside compilation.
@@ -324,7 +324,7 @@ func @while_region_unsupported_op(%arg0: tensor<i32>, %arg1: tensor<!tf_type.str
     %5 = "tf.Identity"(%2#0) : (tensor<f32>) -> (tensor<f32>)
     tf_device.return %5 : tensor<f32>
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // Checks that ops with inputs and outputs with string subtypes are marked

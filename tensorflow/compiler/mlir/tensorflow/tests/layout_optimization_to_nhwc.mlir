@@ -156,6 +156,6 @@ func @transpose_resnet_layer(%arg0: tensor<?x224x224x3xf32>, // input
   // CHECK-SAME: (tensor<?x56x56x256xf32>, tensor<2xi32>) -> tensor<?x256xf32>
   // CHECK: return %[[MEAN]] : tensor<?x256xf32>
 
-  return %16 : tensor<?x256xf32>
+  func.return %16 : tensor<?x256xf32>
 }
 

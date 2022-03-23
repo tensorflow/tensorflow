@@ -34,7 +34,7 @@ func @non_replicated(%arg0: tensor<*x!tf_type.resource> {tf.device = "/device:CP
       : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<2x!tf_type.string>) -> tensor<i32>
     tf_device.return %3 : tensor<i32>
   }) {device = "/device:TPU:0"} : () -> tensor<i32>
-  return %execute : tensor<i32>
+  func.return %execute : tensor<i32>
 }
 
 // -----
@@ -71,7 +71,7 @@ func @multiple_compile_uses(%arg0: tensor<*x!tf_type.resource> {tf.device = "/de
       : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<2x!tf_type.string>) -> tensor<i32>
     tf_device.return %5 : tensor<i32>
   }) {device = "/device:TPU:0"} : () -> tensor<i32>
-  return %execute1 : tensor<i32>
+  func.return %execute1 : tensor<i32>
 }
 
 // -----
@@ -101,7 +101,7 @@ func @on_tpu_iter(%arg0: tensor<*x!tf_type.resource> {tf.device = "/device:TPU:0
       : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<2x!tf_type.string>) -> tensor<i32>
     tf_device.return %3 : tensor<i32>
   }) {device = "/device:TPU:0"} : () -> tensor<i32>
-  return %execute : tensor<i32>
+  func.return %execute : tensor<i32>
 }
 
 // -----
@@ -132,7 +132,7 @@ func @arg_on_tpu_iter_on_cpu(%arg0: tensor<*x!tf_type.resource> {tf.device = "/d
       : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<2x!tf_type.string>) -> tensor<i32>
     tf_device.return %3 : tensor<i32>
   }) {device = "/device:TPU:0"} : () -> tensor<i32>
-  return %execute : tensor<i32>
+  func.return %execute : tensor<i32>
 }
 
 // -----
@@ -166,7 +166,7 @@ func @arg_on_tpu_intermediate_ops_on_cpu(%arg0: tensor<*x!tf_type.resource> {tf.
       : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<2x!tf_type.string>) -> tensor<i32>
     tf_device.return %3 : tensor<i32>
   }) {device = "/device:TPU:0"} : () -> tensor<i32>
-  return %execute : tensor<i32>
+  func.return %execute : tensor<i32>
 }
 
 // -----
@@ -198,7 +198,7 @@ func @var_handle_on_tpu_iter_on_cpu() -> tensor<i32> {
       : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<2x!tf_type.string>) -> tensor<i32>
     tf_device.return %3 : tensor<i32>
   }) {device = "/device:TPU:0"} : () -> tensor<i32>
-  return %execute : tensor<i32>
+  func.return %execute : tensor<i32>
 }
 
 // -----
@@ -227,7 +227,7 @@ func @unsupported_ops(%arg0: tensor<3x3x1x32xf32> {tf.device = "/device:CPU:0"})
       : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<2x!tf_type.string>) -> tensor<i32>
     tf_device.return %3 : tensor<i32>
   }) {device = "/device:TPU:0"} : () -> tensor<i32>
-  return %execute : tensor<i32>
+  func.return %execute : tensor<i32>
 }
 
 // -----
@@ -272,7 +272,7 @@ func @replicated(%arg0: tensor<*x!tf_type.resource> {tf.device = "/device:CPU:0"
     }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<i32>
     tf_device.return %execute : tensor<i32>
   }
-  return %5#0 : tensor<i32>
+  func.return %5#0 : tensor<i32>
 }
 
 // -----
@@ -309,7 +309,7 @@ func @replicated_packed(%arg0: tensor<*x!tf_type.resource> {tf.device = "/device
     }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<i32>
     tf_device.return %execute : tensor<i32>
   }
-  return %5#0 : tensor<i32>
+  func.return %5#0 : tensor<i32>
 }
 
 // -----
@@ -354,7 +354,7 @@ func @replicated(%arg0: tensor<*x!tf_type.resource> {tf.device = "/device:CPU:0"
     }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<i32>
     tf_device.return %execute : tensor<i32>
   }
-  return %5#0 : tensor<i32>
+  func.return %5#0 : tensor<i32>
 }
 
 // -----
@@ -387,7 +387,7 @@ func @inside_replicated(%arg0: tensor<*x!tf_type.resource> {tf.device = "/device
     }) {device = "TPU_REPLICATED_CORE_0"} : () -> tensor<i32>
     tf_device.return %execute : tensor<i32>
   }
-  return %5#0 : tensor<i32>
+  func.return %5#0 : tensor<i32>
 }
 
 // -----

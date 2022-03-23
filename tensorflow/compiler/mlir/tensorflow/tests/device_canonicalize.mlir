@@ -19,7 +19,7 @@ func @empty_launch(%arg0 : tensor<i1>, %arg1 : tensor<i32>) -> (tensor<i32>, ten
   %result:2 = "tf_device.launch"() ({
     tf_device.return %arg0, %arg1 : tensor<i1>, tensor<i32>
   }) {device = "device"} : () -> (tensor<i1>, tensor<i32>)
-  return %result#1, %result#0 : tensor<i32>, tensor<i1>
+  func.return %result#1, %result#0 : tensor<i32>, tensor<i1>
 }
 
 // CHECK-NOT: tf_device.launch
@@ -41,7 +41,7 @@ func @eliminate_passthrough_args_cluster_op(%arg0 : tensor<!tf_type.string>, %ar
   }) : () -> (tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>)
 
   // CHECK: return %arg0, %[[RESULT]]#0, %[[MUL]], %[[RESULT]]#1
-  return %1#0, %1#1, %1#2, %1#3 : tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>
+  func.return %1#0, %1#1, %1#2, %1#3 : tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>
 }
 
 // Verifies handling op a cluster op with only pass through arguments.
@@ -57,7 +57,7 @@ func @all_pass_through_args_cluster_op(%arg0 : tensor<!tf_type.string>, %arg1 : 
     tf_device.return %arg0, %arg1 : tensor<!tf_type.string>, tensor<!tf_type.string>
   }) : () -> (tensor<!tf_type.string>, tensor<!tf_type.string>)
   // CHECK: return %arg0, %arg1
-  return %0#0, %0#1 : tensor<!tf_type.string>, tensor<!tf_type.string>
+  func.return %0#0, %0#1 : tensor<!tf_type.string>, tensor<!tf_type.string>
 }
 
 // Verifies handling op a cluster op requiring no rewrites.
@@ -72,7 +72,7 @@ func @canonical_cluster(%arg0 : tensor<!tf_type.string>, %arg1 : tensor<!tf_type
     // CHECK: tf_device.return %[[MATCH]], %[[PREFIX]]
     tf_device.return %1, %2 : tensor<!tf_type.string>, tensor<!tf_type.string>
   }) : () -> (tensor<!tf_type.string>, tensor<!tf_type.string>)
-  return %0#0, %0#1 : tensor<!tf_type.string>, tensor<!tf_type.string>
+  func.return %0#0, %0#1 : tensor<!tf_type.string>, tensor<!tf_type.string>
 }
 
 
@@ -94,7 +94,7 @@ func @cluster_result_for_resource_update(%arg0 : tensor<!tf_type.string>, %arg1 
   "tf.AssignVariableOp"(%resource, %0#1) {dtype = !tf_type.string} : (tensor<*x!tf_type.resource<tensor<*x!tf_type.string>>>, tensor<!tf_type.string>) -> ()
 
   // CHECK: return %arg0, %[[RESULT]]
-  return %0#0, %0#1 : tensor<!tf_type.string>, tensor<!tf_type.string>
+  func.return %0#0, %0#1 : tensor<!tf_type.string>, tensor<!tf_type.string>
 }
 
 // Verifies that i32 pass through arguments are not rewritten.
@@ -113,5 +113,5 @@ func @eliminate_passthrough_args_cluster_op_i32(%arg0 : tensor<i32>, %arg1 : ten
   }) : () -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>)
 
   // CHECK: return %[[RESULT]]#0, %[[RESULT]]#1, %[[RESULT]]#2, %[[RESULT]]#3
-  return %1#0, %1#1, %1#2, %1#3 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
+  func.return %1#0, %1#1, %1#2, %1#3 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
 }

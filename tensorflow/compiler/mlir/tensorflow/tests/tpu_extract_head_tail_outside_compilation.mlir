@@ -92,7 +92,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %a, %c, %b : tensor<i32>, tensor<i32>, tensor<i32>
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> (tensor<i32>, tensor<i32>, tensor<i32>)
     // CHECK:      return %[[LAUNCH_OUT]], %[[CLUSTER_OUT]]#0, %[[CLUSTER_OUT]]#1
-    return %cluster#0, %cluster#1, %cluster#2 : tensor<i32>, tensor<i32>, tensor<i32>
+    func.return %cluster#0, %cluster#1, %cluster#2 : tensor<i32>, tensor<i32>, tensor<i32>
   }
 
   // CHECK-LABEL: func @head_all_cluster_op
@@ -116,7 +116,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %c : tensor<i32>
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> tensor<i32>
     // CHECK:      return %[[LAUNCH_OUT]]
-    return %cluster : tensor<i32>
+    func.return %cluster : tensor<i32>
   }
 
   // CHECK-LABEL: func @head_multiple_outside_compiled_ops
@@ -252,7 +252,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %b : tensor<i32>
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> tensor<i32>
     // CHECK:      return %[[LAUNCH_OUT]]
-    return %cluster : tensor<i32>
+    func.return %cluster : tensor<i32>
   }
 
   // CHECK-LABEL: func @tail_multiple_outside_compiled_ops
@@ -350,7 +350,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %a, %b, %c, %d, %e : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>)
     // CHECK:      return %[[A_OUT]], %[[B_OUT]], %[[CLUSTER_OUT]]#0, %[[LAUNCH_OUT]], %[[CLUSTER_OUT]]#1
-    return %cluster#0, %cluster#1, %cluster#2, %cluster#3, %cluster#4 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
+    func.return %cluster#0, %cluster#1, %cluster#2, %cluster#3, %cluster#4 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
   }
 
   // CHECK-LABEL: func @tail_replicated_outside_compilation
@@ -428,7 +428,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %c : tensor<i32>
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> tensor<i32>
     // CHECK:      return %[[TAIL_LAUNCH_OUT]]
-    return %cluster : tensor<i32>
+    func.return %cluster : tensor<i32>
   }
 
   // CHECK-LABEL: func @head_tail_replicated_outside_compilation

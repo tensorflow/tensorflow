@@ -31,7 +31,7 @@ func @transposeConv2D(%input: tensor<1x3x32x32xf32>, %filter: tensor<1x1x3x8xf32
          strides = [5, 6, 7, 8]
        } : (tensor<1x3x32x32xf32>, tensor<1x1x3x8xf32>) -> tensor<1x8x7x6xf32>
 
-  return %0 : tensor<1x8x7x6xf32>
+  func.return %0 : tensor<1x8x7x6xf32>
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormV3
@@ -68,7 +68,7 @@ func @transposeFusedBatchNormV3(
        -> (tensor<1x64x28x28xf32>, tensor<64xf32>, tensor<64xf32>,
            tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
 
-  return %y : tensor<1x64x28x28xf32>
+  func.return %y : tensor<1x64x28x28xf32>
 }
 
 // CHECK-LABEL: bias_add_nchw
@@ -80,7 +80,7 @@ func @bias_add_nchw(%arg0: tensor<1x256x150x150xf32>, %arg1: tensor<256xf32>) ->
   // CHECK: %[[CST_0:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>}
   // CHECK: "tf.Transpose"(%[[R1]], %[[CST_0]])
   %0 = "tf.BiasAdd"(%arg0, %arg1) {data_format = "NCHW", device = ""} : (tensor<1x256x150x150xf32>, tensor<256xf32>) -> tensor<1x256x150x150xf32>
-  return %0 : tensor<1x256x150x150xf32>
+  func.return %0 : tensor<1x256x150x150xf32>
 }
 
 // CHECK-LABEL: maxpool_nchw
@@ -97,5 +97,5 @@ func @maxpool_nchw(%arg0: tensor<1x64x112x112xf32>) -> tensor<1x64x56x56xf32> {
          padding = "SAME",
          strides = [1, 1, 2, 2]
        } : (tensor<1x64x112x112xf32>) -> tensor<1x64x56x56xf32>
-  return %0 : tensor<1x64x56x56xf32>
+  func.return %0 : tensor<1x64x56x56xf32>
 }
