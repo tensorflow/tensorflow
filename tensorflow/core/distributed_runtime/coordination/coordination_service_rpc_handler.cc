@@ -123,6 +123,11 @@ void CoordinationServiceRpcHandler::ResetTaskAsync(
 void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
     const ReportErrorToTaskRequest* request,
     ReportErrorToTaskResponse* response, StatusCallback done) {
+  if (agent_ == nullptr) {
+    done(MakeCoordinationError(errors::Internal(
+        "CoordinationServiceAgent is uninitialized or has already shutdown.")));
+    return;
+  }
   const CoordinationServiceError& error_payload = request->error_payload();
   Status error(static_cast<error::Code>(request->error_code()),
                strings::StrCat("Error reported from /job:",

@@ -47,6 +47,7 @@ void ConfigCoordinationService(tensorflow::ServerDef* server_def) {
   coord_config->set_service_type(kCoordinationServiceType);
   coord_config->set_service_leader("/job:worker/replica:0/task:0");
   coord_config->set_heartbeat_timeout_in_ms(5 * 1000);  // 5 seconds
+  coord_config->set_shutdown_barrier_timeout_in_ms(5 * 1000);  // 5 seconds
 }
 
 string SetConfigKeyValueFn() {
