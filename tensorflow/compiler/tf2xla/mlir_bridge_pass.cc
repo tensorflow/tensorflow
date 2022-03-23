@@ -151,7 +151,8 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     const DeviceSet* device_set, const ConfigProto& config_proto,
     const Graph& graph,
     const FunctionLibraryDefinition& function_library) const {
-  // Skip MLIR TPU Bridge if no TPU devices found.
+  // Skip MLIR TF XLA Bridge if no TPU devices found and the non TPU graph is
+  // not qualified.
   if (device_set && !HasTPUDevice(*device_set)) {
     return EnableNonTpuBridge(graph) ? MlirOptimizationPassState::Enabled
                                      : MlirOptimizationPassState::Disabled;
@@ -196,12 +197,22 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
   static absl::once_flag flag;
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
-  // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
+  // Check if there are TPU devices or TPU ops. If not, then check if the
+  // non TPU graph is qualified to run TF XLA Bridge.
   // This check needs to precede GetPassState for instrumentation purposes.
   if (!HasTPUDevicesAndOps(module)) {
-    VLOG(1) << "Skipping MLIR TPU Bridge, no TPU devices or TPU ops found";
-    return Status::OK();
+    if (EnableNonTpuBridge(graph)) {
+      VLOG(1) << "No TPU devices or TPU ops found, "
+              << "this non TPU graph is qualified to run MLIR TF XLA Bridge";
+      return mlir::TF::RunTFXLABridge(module, VLOG_IS_ON(1));
+    } else {
+      VLOG(1) << " Skipping MLIR TF XLA Bridge,"
+              << " no TPU devices or TPU ops found, and this non TPU graph"
+              << " is not qualified to run MLIR TF XLA Bridge.";
+      return Status::OK();
+    }
   }
+
   // Set device_set to nullptr here as the device specific checks are performed
   // based on the devices in the module.
   auto pass_state = GetPassState(/*device_set=*/nullptr, config_proto, graph,

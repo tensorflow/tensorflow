@@ -46,13 +46,15 @@ void EnableDetailedLogging(PassManager *pm) {
 namespace TFTPU {
 
 namespace {
-tensorflow::Status RunTPUBridge(
+// Run the TF XLA Bridge based on the input pipeline, which can be either TPU
+// bridge pipeline or non TPU bridge pipeline.
+tensorflow::Status RunTFXLABridge(
     ModuleOp module, bool enable_logging,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
   PassManager bridge(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(bridge);
   if (enable_logging || VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("tpu_bridge_before", module);
+    tensorflow::DumpMlirOpToFile("tf_xla_bridge_before", module);
     if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
   }
 
@@ -69,7 +71,7 @@ tensorflow::Status RunTPUBridge(
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("tpu_bridge_after", module);
+    tensorflow::DumpMlirOpToFile("tf_xla_bridge_after", module);
   return diag_handler.ConsumeStatus();
 }
 
@@ -214,7 +216,8 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
 
 tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
                              bool fallback_enabled) {
-  Status status = RunTPUBridge(module, enable_logging, CreateTPUBridgePipeline);
+  Status status =
+      RunTFXLABridge(module, enable_logging, CreateTPUBridgePipeline);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v2", fallback_enabled,
       status == Status::OK() ? "success" : "failure");
@@ -223,7 +226,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
 tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
                                      bool fallback_enabled) {
   Status status =
-      RunTPUBridge(module, enable_logging, CreateTPUBridgePipelineV1);
+      RunTFXLABridge(module, enable_logging, CreateTPUBridgePipelineV1);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v1", fallback_enabled,
       status == Status::OK() ? "success" : "failure");
@@ -276,6 +279,52 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
   if (enable_logging || VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("standard_pipeline_after", module);
   return diag_handler.ConsumeStatus();
+}
+
+namespace {
+void CreateTFXLABridgePipeline(OpPassManager &pm) {
+  // The following ops must be preserved regardless of reachability. Ideally,
+  // all graphs should have control dependencies to enforce this.
+  VLOG(2) << "Create TF XLA Bridge pipeline";
+  const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
+  pm.addNestedPass<FuncOp>(
+      tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
+  // It is assumed at this stage there are no V1 control flow ops as Graph
+  // functionalization is ran before import. Ops can be lifted out of
+  // tf_executor dialect islands/graphs.
+  pm.addNestedPass<FuncOp>(CreateExecutorDialectToFunctionalConversionPass());
+  // Guarantee all functions have one use, which enables more exact shape
+  // inference.
+  pm.addPass(TF::CreateTFShapeInferencePass());
+  // Running canonicalizer before decomposing resource ops in cluster helps the
+  // latter pass to converge faster as it does not have to spend time folding
+  // away dead ops.
+  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
+  // Place DecomposeResourceOpsPass.
+  pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
+  // Run another shape inference pass because resource decomposition might have
+  // created new partial types. Also, after dropping `shape_invariant` attribute
+  // from While/WhileRegion ops within cluster would lead to more precise
+  // shapes.
+  pm.addPass(TF::CreateTFShapeInferencePass());
+  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
+  pm.addPass(TFDevice::CreateResourceOpLiftingPass());
+  // Re-run the canonicalizer pass as some cleanup during resource op lifting
+  // pass opens up some opportunities for canonicalization of cluster ops.
+  // Specifically, we want to eliminate pass through results from the cluster
+  // op.
+  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
+
+  pm.addNestedPass<FuncOp>(createCSEPass());
+  pm.addPass(createSymbolDCEPass());
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
+}
+
+}  // namespace
+
+tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
+  return mlir::TFTPU::RunTFXLABridge(module, enable_logging,
+                                     CreateTFXLABridgePipeline);
 }
 
 }  // namespace TF
