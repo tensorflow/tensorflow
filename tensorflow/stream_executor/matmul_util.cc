@@ -12,6 +12,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/matmul_util.h"
 
+#include "tensorflow/core/util/env_var.h"
 
 namespace stream_executor {
 
