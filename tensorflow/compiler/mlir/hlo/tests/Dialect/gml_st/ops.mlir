@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file -allow-unregistered-dialect | FileCheck %s
 
 // CHECK-LABEL: @types
-func @types() {
+func.func @types() {
   // CHECK: %{{.*}} = gml_st.point [42] : !gml_st.point
   %0 = gml_st.point [42] : !gml_st.point
   // CHECK: %{{.*}} = gml_st.tile [0] [42] [1] : !gml_st.tile<42>
@@ -13,7 +13,7 @@ func @types() {
 
 // CHECK-LABEL: @materialize
 // CHECK-SAME: %[[MEMREF:.*]]: memref<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<42>, %[[POINT:.*]]: !gml_st.point
-func @materialize(%memref: memref<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gml_st.point) {
+func.func @materialize(%memref: memref<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gml_st.point) {
   // CHECK: %{{.*}} = gml_st.materialize %[[MEMREF]] at %[[TILE]] : memref<?x?xf32> at !gml_st.tile<42>
   %0 = gml_st.materialize %memref at %tile : memref<?x?xf32> at !gml_st.tile<42>
   // CHECK: %{{.*}} = gml_st.materialize %[[MEMREF]] at %[[POINT]] : memref<?x?xf32> at !gml_st.point
@@ -25,7 +25,7 @@ func @materialize(%memref: memref<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gm
 
 // CHECK-LABEL: @materialize
 // CHECK-SAME: %[[TENSOR:.*]]: tensor<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<42>, %[[POINT:.*]]: !gml_st.point
-func @materialize(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gml_st.point) {
+func.func @materialize(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gml_st.point) {
   // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]] at %[[TILE]] : tensor<?x?xf32> at !gml_st.tile<42>
   %0 = gml_st.materialize %tensor at %tile : tensor<?x?xf32> at !gml_st.tile<42>
   // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]] at %[[POINT]] : tensor<?x?xf32> at !gml_st.point
@@ -44,7 +44,7 @@ func @materialize(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42>, %point: !gm
   iterator_types = ["parallel", "parallel"]
 }
 
-func @tiled_loop(%lhs: tensor<24x64xi8>, %rhs: tensor<24x64xi8>,
+func.func @tiled_loop(%lhs: tensor<24x64xi8>, %rhs: tensor<24x64xi8>,
                  %out: tensor<24x64xi8>) -> tensor<24x64xi8> {
  %c0 = arith.constant 0 : index
  %c1 = arith.constant 1 : index
@@ -90,7 +90,7 @@ func @tiled_loop(%lhs: tensor<24x64xi8>, %rhs: tensor<24x64xi8>,
   iterator_types = ["reduction", "parallel", "reduction"]
 }
 
-func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
+func.func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
                            %input_2d: tensor<16x32xf32>,
                            %input_1d: tensor<24xf32>,
                            %output: tensor<24xf32>) -> tensor<24xf32> {
@@ -142,7 +142,7 @@ func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
 #map_2 = affine_map<(d0, d1)[s0] -> (d0 * 32 + s0 + d1)>
 #map_3 = affine_map<(d0)[s0] -> (d0 + s0)>
 
-func @tiled_loop_on_buffers(%input_3d: memref<16x24x32xf32>,
+func.func @tiled_loop_on_buffers(%input_3d: memref<16x24x32xf32>,
                             %input_2d: memref<16x32xf32>,
                             %input_1d: memref<24xf32>,
                             %output: memref<24xf32>) {

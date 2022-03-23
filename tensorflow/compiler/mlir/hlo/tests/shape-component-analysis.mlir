@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt --test-print-shape-components --split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: Testing : assuming
-func @assuming(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2 : !shape.witness) -> tensor<2xi32> {
+func.func @assuming(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2 : !shape.witness) -> tensor<2xi32> {
   %0:2 = shape.assuming %arg2 -> (tensor<?x?xf32>, tensor<?x?xf32>) {
     shape.assuming_yield %arg0, %arg1 : tensor<?x?xf32>, tensor<?x?xf32>
   }
@@ -33,7 +33,7 @@ func @assuming(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2 : !shape.wi
 // -----
 
 // CHECK-LABEL: Testing : num_elements
-func @num_elements(%arg0: tensor<?x8x?x64xf32>) -> index {
+func.func @num_elements(%arg0: tensor<?x8x?x64xf32>) -> index {
   // CHECK:      Value info for %0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x8x?x64xf32>' at index: 0)[0]
@@ -53,7 +53,7 @@ func @num_elements(%arg0: tensor<?x8x?x64xf32>) -> index {
 // -----
 
 // CHECK-LABEL: Testing : dynamic_broadcast_in_dim
-func @dynamic_broadcast_in_dim(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<2xindex> {
+func.func @dynamic_broadcast_in_dim(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<2xindex> {
   %0 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %1 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   // CHECK:      Value info for %2 = shape.shape_of %1 : tensor<?x?xf32> -> tensor<2xindex>
@@ -68,7 +68,7 @@ func @dynamic_broadcast_in_dim(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -
 // -----
 
 // CHECK-LABEL: Testing : dynamic_reshape
-func @dynamic_reshape(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<2xindex> {
+func.func @dynamic_reshape(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<2xindex> {
   %0 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %1 = "mhlo.dynamic_reshape"(%arg0, %0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   // CHECK:      Value info for %2 = shape.shape_of %1 : tensor<?x?xf32> -> tensor<2xindex>
@@ -83,7 +83,7 @@ func @dynamic_reshape(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<
 // -----
 
 // CHECK-LABEL: Testing : reduce
-func @reduce(%arg0: tensor<?x?x?xf32>, %arg1: tensor<f32>) -> tensor<2xindex> {
+func.func @reduce(%arg0: tensor<?x?x?xf32>, %arg1: tensor<f32>) -> tensor<2xindex> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
   ^bb0(%a: tensor<f32>, %b: tensor<f32>):
     %26 = mhlo.add %a, %b : tensor<f32>
@@ -101,7 +101,7 @@ func @reduce(%arg0: tensor<?x?x?xf32>, %arg1: tensor<f32>) -> tensor<2xindex> {
 // -----
 
 // CHECK-LABEL: Testing : transpose
-func @transpose(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
+func.func @transpose(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<?x?xf32>) -> tensor<?x?xf32>
   // CHECK:      Value info for %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
   // CHECK-NEXT: s0 with
@@ -115,7 +115,7 @@ func @transpose(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
 // -----
 
 // CHECK-LABEL: Testing : select
-func @select(%arg0: tensor<i1>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>) -> tensor<2xindex> {
+func.func @select(%arg0: tensor<i1>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>) -> tensor<2xindex> {
   %0 = "mhlo.select"(%arg0, %arg1, %arg2)  : (tensor<i1>, tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   // CHECK:      Value info for %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
   // CHECK-NEXT: s0 with
@@ -129,7 +129,7 @@ func @select(%arg0: tensor<i1>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>) 
 // -----
 
 // CHECK-LABEL: Testing : dim
-func @dim(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
+func.func @dim(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %c0 = arith.constant 0 : index
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %t = tensor.from_elements %d0, %d0 : tensor<2xindex>
@@ -144,7 +144,7 @@ func @dim(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
 // -----
 
 // CHECK-LABEL: Testing : extract
-func @extract(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
+func.func @extract(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %shape = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %c1 = arith.constant 1 : index
   %d0 = tensor.extract %shape[%c1] : tensor<2xindex>
@@ -160,7 +160,7 @@ func @extract(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
 // -----
 
 // CHECK-LABEL: Testing : symbolic_constraint
-func @symbolic_constraint(
+func.func @symbolic_constraint(
   %arg0: tensor<?x?xf32>
     {jitrt.symbolic_shape = dense<[-3, -2]> : tensor<2xi64>},
   %arg1: tensor<?x?xf32>
@@ -184,7 +184,7 @@ func @symbolic_constraint(
 // -----
 
 // CHECK-LABEL: Testing : dynamic_reshape
-func @dynamic_reshape(%arg0: tensor<?x8x?x64xf32>, %arg1: tensor<4xi32>)
+func.func @dynamic_reshape(%arg0: tensor<?x8x?x64xf32>, %arg1: tensor<4xi32>)
     -> tensor<?x8x?x64xf32> {
   %0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
   %1 = shape.num_elements %0 : tensor<4xindex> -> index
@@ -207,7 +207,7 @@ func @dynamic_reshape(%arg0: tensor<?x8x?x64xf32>, %arg1: tensor<4xi32>)
 // Larger examples.
 
 // CHECK-LABEL: Testing : softmax
-func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %0 = mhlo.constant dense<-1> : tensor<1xi64>
   %1 = "mhlo.convert"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %2 = mhlo.constant dense<0xFF800000> : tensor<f32>
@@ -289,7 +289,7 @@ func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // -----
 
 // CHECK-LABEL: Testing : reshape_integration
-func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32>, %arg2: tensor<4xi32>, %arg3: tensor<512xf32>, %arg4: tensor<?x?x512xf32>, %arg5: tensor<512xf32>, %arg6: tensor<512xf32>, %arg7: tensor<512x2048xf32>, %arg8: tensor<2048xf32>, %arg9: tensor<2048x512xf32>, %arg10: tensor<512xf32>, %arg11: tensor<512xf32>, %arg12: tensor<512xf32>) -> tensor<?x512xf32> {
+func.func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32>, %arg2: tensor<4xi32>, %arg3: tensor<512xf32>, %arg4: tensor<?x?x512xf32>, %arg5: tensor<512xf32>, %arg6: tensor<512xf32>, %arg7: tensor<512x2048xf32>, %arg8: tensor<2048xf32>, %arg9: tensor<2048x512xf32>, %arg10: tensor<512xf32>, %arg11: tensor<512xf32>, %arg12: tensor<512xf32>) -> tensor<?x512xf32> {
   %0 = mhlo.constant dense<512> : tensor<1xi32>
   %1 = shape.shape_of %arg1 : tensor<?x8x?x64xf32> -> tensor<4xindex>
   %2 = shape.num_elements %1 : tensor<4xindex> -> index
@@ -331,7 +331,7 @@ func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x64xf32
 // -----
 
 // CHECK-LABEL: Testing : broadcast
-func @broadcast(%arg0 : tensor<?x5x1xf32>, %arg1 : tensor<1x?x7xf32>)
+func.func @broadcast(%arg0 : tensor<?x5x1xf32>, %arg1 : tensor<1x?x7xf32>)
     -> tensor<3xindex> {
   %s0 = shape.shape_of %arg0 : tensor<?x5x1xf32> -> tensor<3xindex>
   %s1 = shape.shape_of %arg1 : tensor<1x?x7xf32> -> tensor<3xindex>
@@ -348,7 +348,7 @@ func @broadcast(%arg0 : tensor<?x5x1xf32>, %arg1 : tensor<1x?x7xf32>)
 // -----
 
 // CHECK-LABEL: Testing : broadcast
-func @broadcast(%arg0 : tensor<?xf32>, %arg1 : tensor<1x5x?x?xf32>)
+func.func @broadcast(%arg0 : tensor<?xf32>, %arg1 : tensor<1x5x?x?xf32>)
     -> tensor<4xindex> {
   %s0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
   %s1 = shape.shape_of %arg1 : tensor<1x5x?x?xf32> -> tensor<4xindex>

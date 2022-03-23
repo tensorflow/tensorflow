@@ -3,7 +3,7 @@
 // test: `memref -> bufferization.to_tensor -> tensor.extract` -> `memref -> memref.load`
 // CHECK-LABEL: forward_extract_op
 // CHECK-SAME: (%[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<3xindex>)
-func @forward_extract_op(%arg0: memref<?x?xf32>, %arg1: memref<3xindex>) -> memref<?x?x?xf32> {
+func.func @forward_extract_op(%arg0: memref<?x?xf32>, %arg1: memref<3xindex>) -> memref<?x?x?xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
@@ -27,7 +27,7 @@ func @forward_extract_op(%arg0: memref<?x?xf32>, %arg1: memref<3xindex>) -> memr
 // test: `memref -> bufferization.to_tensor -> shape.shape_of` -> `memref -> shape.shape_of`
 // CHECK-LABEL: forward_shape_of_op
 // CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>)
-func @forward_shape_of_op(%arg0: memref<?x?xf32>) -> tensor<2xindex> {
+func.func @forward_shape_of_op(%arg0: memref<?x?xf32>) -> tensor<2xindex> {
   // CHECK-NOT: bufferization.to_tensor
   // CHECK: shape.shape_of %[[ARG]] : memref<?x?xf32> -> tensor<2xindex>
   %0 = bufferization.to_tensor %arg0 : memref<?x?xf32>

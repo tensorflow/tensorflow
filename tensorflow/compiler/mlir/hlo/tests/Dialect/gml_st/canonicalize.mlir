@@ -3,7 +3,7 @@
 #map = affine_map<(d0)[s0, s1] -> (d0 * s1 + s0)>
 
 // CHECK-LABEL: func @memref_cast_into_loop(
-func @memref_cast_into_loop(%arg0: memref<192xf32>)  {
+func.func @memref_cast_into_loop(%arg0: memref<192xf32>)  {
   %0 = memref.cast %arg0
     : memref<192xf32> to memref<192xf32, #map>
   %cst = arith.constant 0.000000e+00 : f32
@@ -25,10 +25,10 @@ func @memref_cast_into_loop(%arg0: memref<192xf32>)  {
 
 // -----
 
-func private @foo(%A: memref<48xf32>, %B: tensor<48xf32>,
+func.func private @foo(%A: memref<48xf32>, %B: tensor<48xf32>,
                   %C: memref<48xf32>) -> (tensor<48xf32>)
 
-func @fold_loop_results(%A: memref<48xf32>, %B: tensor<48xf32>,
+func.func @fold_loop_results(%A: memref<48xf32>, %B: tensor<48xf32>,
     %C: memref<48xf32>, %C_tensor: tensor<48xf32>) -> tensor<48xf32> {
   %c0 = arith.constant 0 : index
   %c24 = arith.constant 24 : index
@@ -65,9 +65,9 @@ func @fold_loop_results(%A: memref<48xf32>, %B: tensor<48xf32>,
 
 // -----
 
-func private @foo(%A: memref<192xf32>, %B: tensor<192xf32>) -> tensor<192xf32>
+func.func private @foo(%A: memref<192xf32>, %B: tensor<192xf32>) -> tensor<192xf32>
 
-func @fold_loop_inputs(%A: memref<192xf32>, %A_tensor: tensor<192xf32>,
+func.func @fold_loop_inputs(%A: memref<192xf32>, %A_tensor: tensor<192xf32>,
                              %B_tensor: tensor<192xf32>) -> tensor<192xf32> {
   %c0 = arith.constant 0 : index
   %c24 = arith.constant 24 : index
@@ -95,7 +95,7 @@ func @fold_loop_inputs(%A: memref<192xf32>, %A_tensor: tensor<192xf32>,
 //       CHECK:   gml_st.loop {{.*}} outs (%[[o:.*]] =
 //       CHECK:     %[[dim:.*]] = tensor.dim %[[o]], %[[c0]]
 //       CHECK:     arith.index_cast %[[dim]]
-func @dim_of_loop_input_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>, %s: index)
+func.func @dim_of_loop_input_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>, %s: index)
     -> tensor<?x?xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -123,7 +123,7 @@ func @dim_of_loop_input_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x
 //       CHECK:   gml_st.loop
 //       CHECK:     %[[dim:.*]] = tensor.dim %[[arg1]], %[[c0]]
 //       CHECK:     arith.index_cast %[[dim]]
-func @dim_of_loop_input(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>)
+func.func @dim_of_loop_input(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>)
     -> tensor<?x?xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -148,7 +148,7 @@ func @dim_of_loop_input(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: t
 //  CHECK-SAME:     %[[arg0:.*]]: tensor<?x?xf32>, %[[arg1:.*]]: tensor<?x?xf32>, %[[arg2:.*]]: tensor<?x?xf32>
 //       CHECK:   %[[c0:.*]] = arith.constant 0 : index
 //       CHECK:   tensor.dim %[[arg2]], %[[c0]]
-func @dim_of_loop_result(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>, %s: index)
+func.func @dim_of_loop_result(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>, %s: index)
     -> index {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -172,7 +172,7 @@ func @dim_of_loop_result(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: 
 //       CHECK:   %[[c0:.*]] = arith.constant 0 : index
 //       CHECK:   %[[r:.*]] = gml_st.loop
 //       CHECK:   tensor.dim %[[r]], %[[c0]]
-func @dim_of_loop_result_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>, %s: index)
+func.func @dim_of_loop_result_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>, %s: index)
     -> index {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -191,9 +191,9 @@ func @dim_of_loop_result_no_canonicalize(%arg0: tensor<?x?xf32>, %arg1: tensor<?
 
 // -----
 
-func private @do(%A: tensor<?x4xf32>, %B: tensor<?xf32>) -> tensor<?xf32>
+func.func private @do(%A: tensor<?x4xf32>, %B: tensor<?xf32>) -> tensor<?xf32>
 
-func @fold_tensor_cast(%in: tensor<4x600xf32>,
+func.func @fold_tensor_cast(%in: tensor<4x600xf32>,
                        %out: tensor<4xf32>) -> tensor<4xf32> {
   %c0 = arith.constant 0 : index
   %c4 = arith.constant 4 : index

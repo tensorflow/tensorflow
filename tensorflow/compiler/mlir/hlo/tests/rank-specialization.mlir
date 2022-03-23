@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: @add_mul
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>, %[[ARG2:.*]]: tensor<*xf32>)
-func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
+func.func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
     %arg2 : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG2]], %[[ARG0]], %[[ARG1]]) ({
   // CHECK: ^bb0(%[[ARG2_:.*]]: tensor<*xf32>, %[[ARG0_:.*]]: tensor<*xf32>, %[[ARG1_:.*]]: tensor<*xf32>):
@@ -120,7 +120,7 @@ func @add_mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>,
 
 // CHECK-LABEL: @compare_const_like
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>)
-func @compare_const_like(%arg0 : tensor<*xf32>) -> tensor<*xi1> {
+func.func @compare_const_like(%arg0 : tensor<*xf32>) -> tensor<*xi1> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG0]]) ({
   // CHECK: ^bb0(%[[ARG1:.*]]: tensor<*xf32>):
   // CHECK:   %[[ZERO:.*]] = "chlo.constant_like"(%[[ARG1]]) {value = 0.000000e+00 : f32} : (tensor<*xf32>) -> tensor<*xf32>
@@ -139,7 +139,7 @@ func @compare_const_like(%arg0 : tensor<*xf32>) -> tensor<*xi1> {
 // Unary MHLO operation.
 // CHECK-LABEL: @sqrt
 // CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>)
-func @sqrt(%arg : tensor<*xf32>) -> tensor<*xf32> {
+func.func @sqrt(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG]])
   // CHECK: ^bb0(%[[ARG_:.*]]: tensor<*xf32>):
   // CHECK:   %[[TMP0:.*]] = "mhlo.sqrt"(%[[ARG_]])
@@ -170,7 +170,7 @@ func @sqrt(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // Don't cluster ranked operations.
 // CHECK-LABEL: @sqrt_ranked
 // CHECK-SAME: (%[[ARG:.*]]: tensor<3x?xf32>)
-func @sqrt_ranked(%arg: tensor<3x?xf32>) -> tensor<3x?xf32> {
+func.func @sqrt_ranked(%arg: tensor<3x?xf32>) -> tensor<3x?xf32> {
   // CHECK-NOT: rank_specialization_cluster
   %0 = "mhlo.sqrt"(%arg) : (tensor<3x?xf32>) -> tensor<3x?xf32>
   %1 = "mhlo.sqrt"(%0) : (tensor<3x?xf32>) -> tensor<3x?xf32>
@@ -187,7 +187,7 @@ func @sqrt_ranked(%arg: tensor<3x?xf32>) -> tensor<3x?xf32> {
 // Operation with mixed ranked and unranked operands.
 // CHECK-LABEL: @select_mixed
 // CHECK-SAME: (%[[PRED:.*]]: tensor<*xi1>, %[[ARG1:.*]]: tensor<*xf32>, %[[ARG2:.*]]: tensor<2xf32>)
-func @select_mixed(%pred: tensor<*xi1>, %arg1: tensor<*xf32>,
+func.func @select_mixed(%pred: tensor<*xi1>, %arg1: tensor<*xf32>,
     %arg2: tensor<2xf32>)  -> tensor<*xf32> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[PRED]], %[[ARG1]], %[[ARG2]])
   // CHECK: ^bb0(%[[PRED_:.*]]: tensor<*xi1>, %[[ARG1_:.*]]: tensor<*xf32>, %[[ARG2_:.*]]: tensor<2xf32>)
@@ -208,7 +208,7 @@ func @select_mixed(%pred: tensor<*xi1>, %arg1: tensor<*xf32>,
 // Unary CHLO operation.
 // CHECK-LABEL: @tan
 // CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>)
-func @tan(%arg : tensor<*xf32>) -> tensor<*xf32> {
+func.func @tan(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG]]) ({
   // CHECK: ^bb0(%[[ARG_:.*]]: tensor<*xf32>)
   // CHECK:   %[[TMP0:.*]] = chlo.tan %[[ARG_]]
@@ -239,7 +239,7 @@ func @tan(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // Composition of unary/binary CHLO and unary MHLO ops.
 // CHECK-LABEL: @mixed
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>, %[[ARG2:.*]]: tensor<*xf32>)
-func @mixed(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<*xf32>)
+func.func @mixed(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<*xf32>)
     -> tensor<*xf32> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG2]], %[[ARG1]], %[[ARG0]])
   // CHECK: ^bb0(%[[ARG2_:.*]]: tensor<*xf32>, %[[ARG1_:.*]]: tensor<*xf32>, %[[ARG0_:.*]]: tensor<*xf32>)
@@ -275,7 +275,7 @@ func @mixed(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<*xf32>)
 // Constant cluster operand.
 // CHECK-LABEL: @relu
 // CHECK-SAME:  (%[[ARG:.*]]: tensor<*xf32>)
-func @relu(%arg : tensor<*xf32>) -> tensor<*xf32> {
+func.func @relu(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG]], %[[C0]])
   // CHECK: ^bb0(%[[ARG_:.*]]: tensor<*xf32>, %[[C0_:.*]]: tensor<f32>):
@@ -304,7 +304,7 @@ func @relu(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // Cluster with binary non-broadcasting operation.
 // CHECK-LABEL: @angle
 // CHECK-SAME:  (%[[ARG:.*]]: tensor<*xcomplex<f32>>)
-func @angle(%arg : tensor<*xcomplex<f32>>) -> tensor<*xf32> {
+func.func @angle(%arg : tensor<*xcomplex<f32>>) -> tensor<*xf32> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG]])
   // CHECK: ^bb0(%[[ARG_:.*]]: tensor<*xcomplex<f32>>):
   // CHECK:   %[[IMAG:.*]] = "mhlo.imag"(%[[ARG_]])
@@ -335,7 +335,7 @@ func @angle(%arg : tensor<*xcomplex<f32>>) -> tensor<*xf32> {
 // Scalar cluster operand.
 // CHECK-LABEL: @xlogy
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
-func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
+func.func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[C0]], %[[ARG0]], %[[ARG1]])
   // CHECK: ^bb0(%[[C0_:.*]]: tensor<f32>, %[[ARG0_:.*]]: tensor<*xf32>, %[[ARG1_:.*]]: tensor<*xf32>):
@@ -445,7 +445,7 @@ func @xlogy(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL: @mul
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
-func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
+func.func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG0]], %[[ARG1]])
   // CHECK: ^bb0(%[[ARG0_:.*]]: tensor<*xf32>, %[[ARG1_:.*]]: tensor<*xf32>):
   // CHECK:   %[[TMP:.*]] = chlo.broadcast_multiply %[[ARG0_]], %[[ARG1_]]
@@ -560,7 +560,7 @@ func @mul(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL: @merge_clusters
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf64>, %[[ARG1:.*]]: tensor<*xf64>)
-func @merge_clusters(%arg0: tensor<*xf64>, %arg1 : tensor<*xf64>)
+func.func @merge_clusters(%arg0: tensor<*xf64>, %arg1 : tensor<*xf64>)
     -> tensor<*xf64> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG0]], %[[ARG1]])
   // CHECK: ^bb0(%[[ARG0_:.*]]: tensor<*xf64>, %[[ARG1_:.*]]: tensor<*xf64>):
@@ -589,7 +589,7 @@ func @merge_clusters(%arg0: tensor<*xf64>, %arg1 : tensor<*xf64>)
 
 // CHECK-LABEL: @all_equal_shapes_inferrable
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf64>, %[[ARG1:.*]]: tensor<*xf64>)
-func @all_equal_shapes_inferrable(%arg0: tensor<*xf64>, %arg1 : tensor<*xf64>)
+func.func @all_equal_shapes_inferrable(%arg0: tensor<*xf64>, %arg1 : tensor<*xf64>)
     -> tensor<*xf64> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG0]], %[[ARG1]])
   // CHECK: ^bb0(%[[ARG0_:.*]]: tensor<*xf64>, %[[ARG1_:.*]]: tensor<*xf64>)
@@ -619,7 +619,7 @@ func @all_equal_shapes_inferrable(%arg0: tensor<*xf64>, %arg1 : tensor<*xf64>)
 // All shapes are equal, which is inferrable through the select op.
 // CHECK-LABEL: @relu_grad
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
-func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+func.func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[RES:.*]] = "chlo.rank_specialization_cluster"(%[[ARG1]], %[[ARG0]])
   // CHECK: ^bb0(%[[ARG1_:.*]]: tensor<*xf32>, %[[ARG0_:.*]]: tensor<*xf32>)
   // CHECK:   %[[TMP0:.*]] = "chlo.constant_like"(%[[ARG0_]]) {value = 0.0{{.*}}e+00 : f32}
@@ -653,7 +653,7 @@ func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 // Find shape equivalences through surrounding constraints.
 // CHECK-LABEL: @relu_grad
 // CHECK-SAME:  (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
-func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+func.func @relu_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK-DAG: %[[S0:.*]] = shape.shape_of %[[ARG0]]
   // CHECK-DAG: %[[S1:.*]] = shape.shape_of %[[ARG1]]
   // CHECK-DAG: %[[CSTR_EQ:.*]] = shape.cstr_eq %[[S0]], %[[S1]]

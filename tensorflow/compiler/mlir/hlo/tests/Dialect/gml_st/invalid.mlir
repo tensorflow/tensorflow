@@ -4,10 +4,10 @@
 #map1 = affine_map<(d0, d1)[s0] -> (d0 * 192 + s0 + d1)>
 #map2 = affine_map<(d0) -> (16, -d0 + 192)>
 
-func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
+func.func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
                   %C: memref<192x192xf32>) -> ()
 
-func @loop_incorrent_num_yield_operands(%A: memref<192x192xf32>,
+func.func @loop_incorrent_num_yield_operands(%A: memref<192x192xf32>,
     %B: memref<192x192xf32>, %C: memref<192x192xf32>,
     %C_tensor: tensor<192x192xf32>) {
   %c24 = arith.constant 24 : index
@@ -32,10 +32,10 @@ func @loop_incorrent_num_yield_operands(%A: memref<192x192xf32>,
 #map1 = affine_map<(d0, d1)[s0] -> (d0 * 192 + s0 + d1)>
 #map2 = affine_map<(d0) -> (16, -d0 + 192)>
 
-func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
+func.func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
                   %C: memref<192x192xf32>) -> tensor<f32>
 
-func @loop_incorrent_yield_operand_type(%A: memref<192x192xf32>,
+func.func @loop_incorrent_yield_operand_type(%A: memref<192x192xf32>,
     %B: memref<192x192xf32>, %C: memref<192x192xf32>,
     %C_tensor: tensor<192x192xf32>) {
   %c24 = arith.constant 24 : index
@@ -56,10 +56,10 @@ func @loop_incorrent_yield_operand_type(%A: memref<192x192xf32>,
 
 // -----
 
-func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
+func.func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
                   %C: memref<192x192xf32>) -> ()
 
-func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
+func.func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
     %B: memref<192x192xf32>, %C: memref<192x192xf32>,
     %C_tensor: tensor<192x192xf32>) {
   %c24 = arith.constant 24 : index
@@ -84,9 +84,9 @@ func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
 
 // -----
 
-func private @foo(%A: memref<100xf32>) -> ()
+func.func private @foo(%A: memref<100xf32>) -> ()
 
-func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
+func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
   %c0 = arith.constant 0 : index
   %c192 = arith.constant 192 : index
   %c24 = arith.constant 24 : index

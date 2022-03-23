@@ -4,7 +4,7 @@
 // alias of %0, %3 & %4 are also replaced by %0. %0 and %1 do not
 // interfere with each other despite their shared alias.
 // CHECK-LABEL: func @condBranchWithAlias
-func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
+func.func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   cf.cond_br %arg0, ^bb1, ^bb2
@@ -43,7 +43,7 @@ func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 
 // Expected behavior: Every alloc can be replaced by %0.
 // CHECK-LABEL: func @allReuseSimple
-func @allReuseSimple(%arg0: memref<2xf32>) {
+func.func @allReuseSimple(%arg0: memref<2xf32>) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
@@ -68,7 +68,7 @@ func @allReuseSimple(%arg0: memref<2xf32>) {
 // Expected behavior: %0 can't replace %1 as its alloc OP does not dominate the
 // first use of %1.
 // CHECK-LABEL: func @allocDominance
-func @allocDominance(%arg0: i1, %arg1: memref<2xf32>) {
+func.func @allocDominance(%arg0: i1, %arg1: memref<2xf32>) {
   cf.cond_br %arg0, ^bb1, ^bb2
  ^bb1:
   %0 = memref.alloc() : memref<2xf32>
@@ -95,7 +95,7 @@ func @allocDominance(%arg0: i1, %arg1: memref<2xf32>) {
 
 // Expected behavior: Nothing can be replaced as there is an alias interference.
 // CHECK-LABEL: func @aliasInterference
-func @aliasInterference(%arg0: i1, %arg1: memref<2xf32>) {
+func.func @aliasInterference(%arg0: i1, %arg1: memref<2xf32>) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   "lmhlo.negate"(%arg1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -121,7 +121,7 @@ func @aliasInterference(%arg0: i1, %arg1: memref<2xf32>) {
 // Expected behavior: %1 should be replaced by %2 as there is no interference.
 // %2 is an alias of %0, so %0 replaces %1.
 // CHECK-LABEL: func @aliasReuse
-func @aliasReuse(%arg0: memref<2xf32>) {
+func.func @aliasReuse(%arg0: memref<2xf32>) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   "lmhlo.negate"(%arg0, %0) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -146,7 +146,7 @@ func @aliasReuse(%arg0: memref<2xf32>) {
 // within a single OP. There is no replace in place, because copy is not
 // elementwise.
 // CHECK-LABEL: func @sameOperation
-func @sameOperation() {
+func.func @sameOperation() {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   "lmhlo.copy"(%1, %0) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -162,7 +162,7 @@ func @sameOperation() {
 
 // Expected behavior: %0 replaces both %1 and %2.
 // CHECK-LABEL: func @branchReuse
-func @branchReuse(%arg0: i1, %arg1: memref<2xf32>) {
+func.func @branchReuse(%arg0: i1, %arg1: memref<2xf32>) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
@@ -195,7 +195,7 @@ func @branchReuse(%arg0: i1, %arg1: memref<2xf32>) {
 
 // Expected behavior: No replacement due to type mismatch.
 // CHECK-LABEL: func @typeMismatch
-func @typeMismatch(%arg0: memref<2xf32>, %arg1: memref<4xf16>) {
+func.func @typeMismatch(%arg0: memref<2xf32>, %arg1: memref<4xf16>) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<4xf16>
   "lmhlo.negate"(%arg0, %0) : (memref<2xf32>, memref<2xf32>) -> ()
@@ -215,7 +215,7 @@ func @typeMismatch(%arg0: memref<2xf32>, %arg1: memref<4xf16>) {
 // Expected behavior: %2 replaces %5 due to the same allocation with the same
 // operands, otherwise no replacement due to type mismatch.
 // CHECK-LABEL: func @complexTypeMatching
-func @complexTypeMatching(%arg0: i1, %arg1: index, %arg2: index, %arg3 : index) {
+func.func @complexTypeMatching(%arg0: i1, %arg1: index, %arg2: index, %arg3 : index) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc(%arg1) : memref<?xf32>
   %2 = memref.alloc(%arg2) : memref<?xf32>
@@ -266,7 +266,7 @@ func @complexTypeMatching(%arg0: i1, %arg1: index, %arg2: index, %arg3 : index) 
 // However, %2 cannot replace %1. Due to the ordering of the allocs the only
 // valid replacement is %0 replaces %2.
 // CHECK-LABEL: func @nonTransitive
-func @nonTransitive(%arg0: i1, %arg1: memref<2xf32>) {
+func.func @nonTransitive(%arg0: i1, %arg1: memref<2xf32>) {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
@@ -302,7 +302,7 @@ func @nonTransitive(%arg0: i1, %arg1: memref<2xf32>) {
 
 // Expected behavior: %1 can replace %2 and %5.
 // CHECK-LABEL: func @nestedRegionControlFlow
-func @nestedRegionControlFlow(%arg0 : index, %arg1 : index) -> memref<2xf32> {
+func.func @nestedRegionControlFlow(%arg0 : index, %arg1 : index) -> memref<2xf32> {
   %0 = arith.cmpi "eq", %arg0, %arg1 : index
   %1 = memref.alloc() : memref<2xf32>
   %2 = memref.alloc() : memref<2xf32>
@@ -335,7 +335,7 @@ func @nestedRegionControlFlow(%arg0 : index, %arg1 : index) -> memref<2xf32> {
 
 // Expected behavior: Nothing should be reused here.
 // CHECK-LABEL: func @nestedRegionControlFlowNoReuse
-func @nestedRegionControlFlowNoReuse(%arg0 : index,
+func.func @nestedRegionControlFlowNoReuse(%arg0 : index,
                                      %arg1 : index) -> memref<2xf32> {
   %0 = arith.cmpi "eq", %arg0, %arg1 : index
   %1 = memref.alloc() : memref<2xf32>
@@ -370,7 +370,7 @@ func @nestedRegionControlFlowNoReuse(%arg0 : index,
 // Expected behavior: No reuse is possible here as both buffers are used inside
 //                    a loop and thus interfere.
 // CHECK-LABEL: func @noReuseInNestedRegionLoop
-func @noReuseInNestedRegionLoop(
+func.func @noReuseInNestedRegionLoop(
   %arg0: memref<2xf32>,
   %lb: index,
   %ub: index,
@@ -402,7 +402,7 @@ func @noReuseInNestedRegionLoop(
 // Expected behavior: %0 and %1 cannot replace each other as they are used
 // inside a loop. However, %0 can replace %2 as it is only used after the loop.
 // CHECK-LABEL: func @replaceAfterLoop
-func @replaceAfterLoop(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
+func.func @replaceAfterLoop(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
@@ -438,7 +438,7 @@ func @replaceAfterLoop(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 
 // Expected behavior: Due to the gap in the userange %0 can replace %1.
 // CHECK-LABEL: func @useRangeGap
-func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
+func.func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
@@ -469,7 +469,7 @@ func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 // outside the loop, because of the interference inside the loop. %3 can be
 // replaced by %0.
 // CHECK-LABEL: func @loopWithNestedRegion
-func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
+func.func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>

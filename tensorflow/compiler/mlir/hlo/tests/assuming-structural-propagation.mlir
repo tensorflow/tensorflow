@@ -2,7 +2,7 @@
 
 // Test that assuming ops propagate tensor types.
 // CHECK-LABEL: func @shape_assuming_tensor
-func @shape_assuming_tensor(%arg0: tensor<?xf16>) -> tensor<?xf16> {
+func.func @shape_assuming_tensor(%arg0: tensor<?xf16>) -> tensor<?xf16> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f16>
   %1 = shape.const_witness true
   // CHECK: shape.assuming %{{.*}} -> (memref<?xf16>)

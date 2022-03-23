@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
-func @reduce(%arg: memref<100x10x5xf32>,
+func.func @reduce(%arg: memref<100x10x5xf32>,
              %init: memref<f32>,
              %result: memref<100x5xf32>) {
   "lmhlo.reduce"(%arg, %init, %result) ({
@@ -46,7 +46,7 @@ func @reduce(%arg: memref<100x10x5xf32>,
 
 // -----
 
-func @reduce_no_outer_loop(%arg: memref<100xf32>,
+func.func @reduce_no_outer_loop(%arg: memref<100xf32>,
                            %init: memref<f32>,
                            %result: memref<1xf32>) {
   "lmhlo.reduce"(%arg, %init, %result) ({
@@ -85,7 +85,7 @@ func @reduce_no_outer_loop(%arg: memref<100xf32>,
 
 // -----
 
-func @dynamic_reduce(%arg: memref<?x?x?xf32>,
+func.func @dynamic_reduce(%arg: memref<?x?x?xf32>,
                      %init: memref<f32>,
                      %result: memref<?x?xf32>) {
   "lmhlo.reduce"(%arg, %init, %result) ({
@@ -132,7 +132,7 @@ func @dynamic_reduce(%arg: memref<?x?x?xf32>,
 
 // -----
 
-func @reduce_window(%arg: memref<112x112xf32>,
+func.func @reduce_window(%arg: memref<112x112xf32>,
              %init: memref<f32>,
              %result: memref<56x56xf32>) {
   "lmhlo.reduce_window"(%arg, %init, %result) ({
