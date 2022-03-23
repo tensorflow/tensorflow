@@ -609,6 +609,15 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         self._tf_ifft_for_rank(rank), re, im, result_is_complex=False,
         rtol=tol, atol=tol)
 
+  def test_invalid_args(self):
+    # Test case for GitHub issue 55263
+    a = np.empty([6, 0])
+    b = np.array([1, -1])
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "must >= 0"):
+      with self.session():
+        v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
+        self.evaluate(v)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class FFTShiftTest(test.TestCase, parameterized.TestCase):
