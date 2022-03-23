@@ -12,5 +12,5 @@
 func @isinf(%arg0: tensor<?xf32>) -> tensor<?xi1> {
   // CHECK-NOT: shape
   %0 = "tf.IsInf"(%arg0) : (tensor<?xf32>) -> tensor<?xi1>
-  return %0 : tensor<?xi1>
+  func.return %0 : tensor<?xi1>
 }

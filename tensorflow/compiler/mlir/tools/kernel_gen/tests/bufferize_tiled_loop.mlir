@@ -31,7 +31,7 @@ func @tiled_dot(%A: tensor<10xf32>, %B: tensor<10xf32>,
   // CHECK-NEXT: linalg.dot ins(%[[SV_A]], %[[SV_B]]
   // CHECK-SAME:            outs(%[[C]] : memref<f32>)
   // CHECK-NEXT: gml_st.yield
-  return %dot : tensor<f32>
+  func.return %dot : tensor<f32>
 }
 
 // -----
@@ -79,7 +79,7 @@ func @tiled_add(%A: tensor<10xf32>, %B: tensor<10xf32>,
   // CHECK-SAME:    outs(%[[SV_C]] : memref<2xf32, #map{{[0-9]}}>)
   // CHECK:         linalg.yield %{{[0-9]}} : f32
   // CHECK:       gml_st.yield
-  return %sum : tensor<10xf32>
+  func.return %sum : tensor<10xf32>
 }
 
 // -----
@@ -113,5 +113,5 @@ func @tiled_add_broadcast(%A: tensor<1x?x12xf32>, %B: tensor<?x?x12xf32>,
   // CHECK: gml_st.loop
   // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{[0-9]+}}: memref<?x?x12xf32>)
   // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: memref<?x?x12xf32>)
-  return %sum : tensor<?x?x12xf32>
+  func.return %sum : tensor<?x?x12xf32>
 }

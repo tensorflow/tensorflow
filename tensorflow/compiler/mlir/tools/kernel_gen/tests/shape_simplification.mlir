@@ -7,7 +7,7 @@ func @f() -> !shape.shape {
   %0 = shape.const_shape [2] : !shape.shape
   %1 = shape.const_shape [7] : !shape.shape
   %2 = shape.broadcast %0, %1 : !shape.shape, !shape.shape -> !shape.shape
-  return %2 : !shape.shape
+  func.return %2 : !shape.shape
 }
 
 // -----
@@ -21,7 +21,7 @@ func @f(%arg0 : tensor<42x?x42x?xf32>, %arg1 : tensor<42x?x?xf32>) -> !shape.sha
   %1 = shape.shape_of %arg0 : tensor<42x?x42x?xf32> -> !shape.shape
   %2 = shape.shape_of %arg1 : tensor<42x?x?xf32> -> !shape.shape
   %3 = shape.broadcast %0, %1, %2 : !shape.shape, !shape.shape, !shape.shape -> !shape.shape
-  return %3 : !shape.shape
+  func.return %3 : !shape.shape
 }
 
 // -----
@@ -35,7 +35,7 @@ func @f(%arg0 : tensor<?x?x42x42xf32>, %arg1 : tensor<42x42xf32>) -> tensor<?xin
   %1 = shape.shape_of %arg0 : tensor<?x?x42x42xf32> -> tensor<?xindex>
   %2 = shape.shape_of %arg1 : tensor<42x42xf32> -> tensor<2xindex>
   %3 = shape.broadcast %0, %1, %2 : tensor<2xindex>, tensor<?xindex>, tensor<2xindex> -> tensor<?xindex>
-  return %3 : tensor<?xindex>
+  func.return %3 : tensor<?xindex>
 }
 
 // -----
@@ -47,7 +47,7 @@ func @f(%arg0 : tensor<?xf32>) -> !shape.shape {
   %0 = shape.const_shape [1, 1] : !shape.shape
   %1 = shape.shape_of %arg0 : tensor<?xf32> -> !shape.shape
   %2 = shape.broadcast %0, %1 : !shape.shape, !shape.shape -> !shape.shape
-  return %2 : !shape.shape
+  func.return %2 : !shape.shape
 }
 
 // -----
@@ -59,7 +59,7 @@ func @f(%arg0 : tensor<?x?xf32>) -> !shape.shape {
   %0 = shape.const_shape [256] : !shape.shape
   %1 = shape.shape_of %arg0 : tensor<?x?xf32> -> !shape.shape
   %2 = shape.broadcast %0, %1 : !shape.shape, !shape.shape -> !shape.shape
-  return %2 : !shape.shape
+  func.return %2 : !shape.shape
 }
 
 // -----
@@ -76,7 +76,7 @@ func @static_non1_succeeds(%arg0 : tensor<?x?xf64>, %arg1 : tensor<?x1xf64>,
  %4 = shape.broadcast %1, %2, %3 : tensor<2xindex>, tensor<2xindex>,
                                    tensor<2xindex> -> tensor<2xindex>
  %result = tensor.extract %4[%c1] : tensor<2xindex>
- return %result : index
+ func.return %result : index
 }
 
 // -----
@@ -92,7 +92,7 @@ func @all_static_1s_succeeds(%arg0 : tensor<?x1xf64>, %arg1 : tensor<?x1xf64>)
  %3 = shape.broadcast %1, %2 : tensor<2xindex>, tensor<2xindex>
                                -> tensor<2xindex>
  %result = tensor.extract %3[%c1] : tensor<2xindex>
- return %result : index
+ func.return %result : index
 }
 
 // -----
@@ -110,7 +110,7 @@ func @single_non_static_1_succeeds(%arg0 : tensor<?x?xf64>,
  %3 = shape.broadcast %1, %2 : tensor<2xindex>, tensor<2xindex>
                                -> tensor<2xindex>
  %result = tensor.extract %3[%c0] : tensor<2xindex>
- return %result : index
+ func.return %result : index
 }
 
 // -----
@@ -130,7 +130,7 @@ func @multiple_non_static_1_fails(%arg0 : tensor<?x?xf64>,
  %3 = shape.broadcast %1, %2 : tensor<2xindex>, tensor<2xindex>
                                -> tensor<2xindex>
  %result = tensor.extract %3[%c0] : tensor<2xindex>
- return %result : index
+ func.return %result : index
 }
 
 // -----
@@ -139,5 +139,5 @@ func @multiple_non_static_1_fails(%arg0 : tensor<?x?xf64>,
 // CHECK-NEXT:   tensor.extract
 func @extract_no_crash(%arg0 : tensor<index>) -> index {
  %result = tensor.extract %arg0[] : tensor<index>
- return %result : index
+ func.return %result : index
 }

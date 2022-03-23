@@ -40,5 +40,5 @@ func @unary_tanh_rint(%arg : tensor<*xf32>) -> (tensor<*xf32>) {
   // CHECK:      }
   // CHECK:      return %[[IF_RES]]
   %0 = "tf.Tanh"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }

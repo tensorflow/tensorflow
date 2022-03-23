@@ -67,7 +67,7 @@ func @jit_execute(%ctx : !tf_framework.op_kernel_context,
   // CHECK: return %[[RES]]
   %0 = tf_framework.jit_execute %f(%arg0, %arg1)
       : tensor<2x?xf32>, tensor<2x?xf32> -> tensor<2x?xf32>
-  return %0 : tensor<2x?xf32>
+  func.return %0 : tensor<2x?xf32>
 }
 
 // -----
@@ -82,5 +82,5 @@ func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
       architectures = ["sm_123", "sm_456"], tileSizes = [1, 2, 3],
       unrollFactors = [4], maxSupportedRank = 3 : i64, enableFtz = false,
       index64Bit = false, cpuCodegen = false }
-  return %0 : !tf_framework.jit_callable
+  func.return %0 : !tf_framework.jit_callable
 }
