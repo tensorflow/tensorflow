@@ -1908,7 +1908,10 @@ class RaggedTensor(composite_tensor.CompositeTensor,
             indices = math_ops.segment_max(indices, rowids)
           # Here we assume that the sparse indices are reordered
           # The start of each nested row is index 0
-          rowids = math_ops.cast(math_ops.equal(indices[:, -1], 0), row_splits_dtype)
+          rowids = math_ops.cast(
+            math_ops.equal(indices[:, -1], 0),
+            row_splits_dtype
+          )
           # This cumsum becomes the rowids of the last dimension
           rowids = math_ops.cumsum(rowids) - 1
           nrows = math_ops.reduce_max(rowids)+1
