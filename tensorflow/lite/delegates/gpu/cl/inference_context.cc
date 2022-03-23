@@ -220,7 +220,7 @@ absl::Status GetBufferAsignment(
   *use_offset_assignment = false;
   if (*is_sub_buffers_supported) {
     RETURN_IF_ERROR(AssignOffsetsToTensors(
-        *buffer_usage_records, MemoryStrategy::EQUALITY,
+        *buffer_usage_records, MemoryStrategy::EQUALITY, /*MemoryStrategy::GREEDY_BY_SIZE causes segfault on exit on NVidia GPU*/
         offset_assignment, base_align_bytes));
     if (offset_assignment->total_size <= TotalSize(*buffer_assignment) &&
         offset_assignment->total_size <= gpu_info.GetMaxBufferSize()) {
