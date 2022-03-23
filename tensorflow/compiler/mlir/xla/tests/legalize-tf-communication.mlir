@@ -53,7 +53,7 @@ func @host_compute(%arg0: tensor<i32>, %arg1: tensor<i64>) -> (tensor<f32>, tens
   %0:2 = "tf._XlaHostComputeMlir"(%arg0, %arg1) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>, tensor<i64>) -> (tensor<f32>, tensor<f64>)
 
   // CHECK:      return [[RECV_RETVAL0_TUPLE]]#0, [[RECV_RETVAL1_TUPLE]]#0 : tensor<f32>, tensor<f64>
-  return %0#0, %0#1 : tensor<f32>, tensor<f64>
+  func.return %0#0, %0#1 : tensor<f32>, tensor<f64>
 }
 
 // -----
@@ -78,7 +78,7 @@ func @host_compute_sharding(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK-SAME: mhlo.sharding = "\08\01\1A\01\01\22\01\01"
   // CHECK-NOT:      "mhlo.get_tuple_element"
   %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 1 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // -----
@@ -167,7 +167,7 @@ func @recv_from_host() -> tensor<i32> {
   // CHECK-SAME: (!mhlo.token) -> (tensor<i32>, !mhlo.token)
   %0 = "tf.XlaRecvFromHost"() {key = "recv_key", shape = #tf_type.shape<>} : () -> tensor<i32>
   // CHECK:      return [[RECV_TUPLE]]#0 : tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // -----
@@ -201,7 +201,7 @@ func @multiple_consecutive_ops(%arg0: tensor<i32>) -> tensor<i32> {
   %1 = "tf._XlaHostComputeMlir"(%0) {recv_key = "recv1", send_key = "send1", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      return [[RECV1_RETVAL0_TUPLE]]#0 : tensor<i32>
-  return %1 : tensor<i32>
+  func.return %1 : tensor<i32>
 }
 
 // -----
@@ -220,7 +220,7 @@ func @main(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = call @callee(%arg0) : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      return [[CALL]]#0
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK: func private @callee([[CALLEE_ARG0:%.*]]: tensor<i32>, [[CALLEE_ARG1:%.*]]: !mhlo.token) -> (tensor<i32>, !mhlo.token)
@@ -232,7 +232,7 @@ func private @callee(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "recv", send_key = "send", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      return [[RECV_RETVAL0_TUPLE]]#0, [[RECV_RETVAL0_TUPLE]]#1
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // -----
@@ -253,7 +253,7 @@ func @main(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = call @callee(%arg0) : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      return [[CALL]]#0 : tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK: func @callee([[CALLEE_ARG0:%.*]]: tensor<i32>) -> tensor<i32>
@@ -265,7 +265,7 @@ func @callee(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "recv", send_key = "send", tpu_core = 0 : i64, host_mlir_module = ""} : (tensor<i32>) -> tensor<i32>
 
   // CHECK:      return [[RECV_RETVAL0_TUPLE]]#0
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // CHECK: func private [[CALLEE_CLONE]]([[CALLEE_CLONE_ARG0:%.*]]: tensor<i32>, [[CALLEE_CLONE_ARG1:%.*]]: !mhlo.token) -> (tensor<i32>, !mhlo.token)
@@ -426,7 +426,7 @@ func @if_both_branches(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>
   }) : (tensor<i1>) -> tensor<f32>
 
   // CHECK:      return [[IF]]#0
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----
@@ -460,7 +460,7 @@ func @if_true_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) 
   }) : (tensor<i1>) -> tensor<f32>
 
   // CHECK:      return [[IF]]#0
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----
@@ -494,7 +494,7 @@ func @if_false_branch(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>)
   }) : (tensor<i1>) -> tensor<f32>
 
   // CHECK:      return [[IF]]#0
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----
@@ -515,7 +515,7 @@ func @if_replace_tuple_arg(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<
   },  {
     "mhlo.return"(%arg1) : (tensor<f32>) -> ()
   }) : (tensor<i1>) -> tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // -----
@@ -538,7 +538,7 @@ func @if_unpack_tuple_arg(%arg0: tensor<i1>, %arg1: tuple<tensor<f32>, tensor<f3
   },  {
     "mhlo.return"(%0) : (tensor<f32>) -> ()
   }) : (tensor<i1>) -> tensor<f32>
-  return %2 : tensor<f32>
+  func.return %2 : tensor<f32>
 }
 
 // -----
@@ -561,7 +561,7 @@ func @if_extend_tuple_result(%arg0: tensor<i1>, %arg1: tuple<tensor<f32>, tensor
   // CHECK:      [[IF_SUBTUPLE_RESULT:%.*]] = "mhlo.tuple"([[IF]]#0, [[IF]]#1)
   %3 = "mhlo.tuple"(%2#0, %2#1) : (tensor<f32>, tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
   // CHECK:      return [[IF_SUBTUPLE_RESULT]]
-  return %3 : tuple<tensor<f32>, tensor<f32>>
+  func.return %3 : tuple<tensor<f32>, tensor<f32>>
 }
 
 // -----
@@ -605,7 +605,7 @@ func @if_nested(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
   // CHECK-NEXT: (tensor<i1>) -> (tensor<f32>, !mhlo.token)
   }) : (tensor<i1>) -> tensor<f32>
   // CHECK-NEXT: return [[IF]]#0
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----
@@ -626,7 +626,7 @@ func @if_function_call(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
   },  {
     "mhlo.return"(%arg1) : (tensor<f32>) -> ()
   }) : (tensor<i1>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: func private @callee
@@ -733,7 +733,7 @@ func @while_cond_body(%arg0: tensor<f32>) -> tensor<f32> {
   }) : (tensor<f32>) -> tensor<f32>
 
   // CHECK:      return [[WHILE]]#0
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----
@@ -770,7 +770,7 @@ func @while_cond(%arg0: tensor<f32>) -> tensor<f32> {
   }) : (tensor<f32>) -> tensor<f32>
 
   // CHECK:      return [[WHILE]]#0
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----
@@ -808,7 +808,7 @@ func @while_body(%arg0: tensor<f32>) -> tensor<f32> {
   }) : (tensor<f32>) -> tensor<f32>
 
   // CHECK:      return [[WHILE]]#0
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----

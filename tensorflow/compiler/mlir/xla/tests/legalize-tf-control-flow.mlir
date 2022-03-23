@@ -15,19 +15,19 @@ func @if(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   %1 = "tf.If"(%0, %arg0, %arg1) {else_branch = @cond_false, is_stateless = true, then_branch = @cond_true} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
 
   // CHECK: return [[VAL2]]
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 func @cond_false(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32>
 attributes  {tf._input_shapes = ["tfshape$", "tfshape$"]} {
   %0 = "mhlo.exponential"(%arg1) : (tensor<f32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 func @cond_true(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32>
 attributes  {tf._input_shapes = ["tfshape$", "tfshape$"]} {
   %0 = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: @ifRegion
@@ -49,7 +49,7 @@ func @ifRegion(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   // CHECK: }) : (tensor<i1>) -> tensor<f32>
   }) {is_stateless = true} : (tensor<i1>) -> tensor<f32>
   // CHECK: return [[VAL1]]
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 
@@ -67,23 +67,23 @@ func @case(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32>) -> (tens
   // CHECK:     %[[CALL_FLOOR:.*]]:2 = call @floor(%[[ARG0]], %[[ARG1]]) : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
   // CHECK:     "mhlo.return"(%[[CALL_FLOOR]]#0, %[[CALL_FLOOR]]#1) : (tensor<f32>, tensor<f32>) -> ()
   // CHECK:   }) : (tensor<i32>) -> (tensor<f32>, tensor<f32>)
-  return %0#0, %0#1 : tensor<f32>, tensor<f32>
+  func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
 // CHECK:   return %[[CASE]]#0, %[[CASE]]#1 : tensor<f32>, tensor<f32>
 }
 
 func @exponential(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0 = "mhlo.exponential"(%arg1) : (tensor<f32>) -> tensor<f32>
-  return %0, %arg1 : tensor<f32>, tensor<f32>
+  func.return %0, %arg1 : tensor<f32>, tensor<f32>
 }
 
 func @log(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0 = "mhlo.log"(%arg0) : (tensor<f32>) -> tensor<f32>
-  return %0, %arg1 : tensor<f32>, tensor<f32>
+  func.return %0, %arg1 : tensor<f32>, tensor<f32>
 }
 
 func @floor(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0 = "mhlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
-  return %0, %arg1 : tensor<f32>, tensor<f32>
+  func.return %0, %arg1 : tensor<f32>, tensor<f32>
 }
 
 
@@ -109,7 +109,7 @@ func @caseRegion(%index: tensor<i32>, %arg0: tensor<f32>, %arg1: tensor<f32>) ->
   // CHECK: }) : (tensor<i32>) -> (tensor<f32>, tensor<f32>)
   }) {is_stateless = true} : (tensor<i32>) -> (tensor<f32>, tensor<f32>)
   // CHECK: return [[VAL1]]#0, [[VAL1]]#1 : tensor<f32>, tensor<f32>
-  return %0#0, %0#1 : tensor<f32>, tensor<f32>
+  func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
 }
 
 // -----
@@ -128,15 +128,15 @@ func @while(%in0: tensor<i32>, %in1: tensor<i32>) -> tensor<i32> {
   // CHECK:   "mhlo.return"([[VAL3]]#0, [[VAL3]]#1, [[VAL3]]#2)
   // CHECK: return [[VAL2]]#2
   %2:3 = "tf.While"(%in0, %in1, %in0) {body = @while_body, cond = @while_cond, is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
-  return %2#2 : tensor<i32>
+  func.return %2#2 : tensor<i32>
 }
 func @while_cond(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<i1> {
   %0 = "tf.Const"()  {value = dense<1> : tensor<i1>}  : () -> tensor<i1>
-  return %0 : tensor<i1>
+  func.return %0 : tensor<i1>
 }
 func @while_body(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
   %0 = "tf.Const"()  {value = dense<1> : tensor<i32>}  : () -> tensor<i32>
-  return %0, %0, %0 : tensor<i32>, tensor<i32>, tensor<i32>
+  func.return %0, %0, %0 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
 // -----
@@ -168,7 +168,7 @@ func @whileRegion() -> tensor<i32> {
     "tf.Yield"(%7, %barg1, %6) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
   }) {is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
   // CHECK: return [[VAL2]]#2
-  return %2#2 : tensor<i32>
+  func.return %2#2 : tensor<i32>
 }
 
 
@@ -196,7 +196,7 @@ func @whileRegionImplicitInputs(%arg0: tensor<i32>) -> tensor<i32> {
     "tf.Yield"(%4) : (tensor<i32>) -> ()
   }) {is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>) -> tensor<i32>
   // CHECK: return [[VAL2]]#0
-  return %2 : tensor<i32>
+  func.return %2 : tensor<i32>
 }
 
 
