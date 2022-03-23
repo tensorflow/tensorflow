@@ -17,7 +17,7 @@
 // Empty module
 module {
   func @simple_fn(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-    return %arg0 : tensor<*xf32>
+    func.return %arg0 : tensor<*xf32>
   }
 }
 

@@ -12,7 +12,7 @@ func @noop(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
   }) {dimensions = dense<[]> : tensor<0xi64>} : (tensor<4x8xf32>, tensor<f32>) -> tensor<4x8xf32>
-  return %2 : tensor<4x8xf32>
+  func.return %2 : tensor<4x8xf32>
 }
 
 // -----
@@ -33,7 +33,7 @@ func @and_fold() -> (tensor<i1>, tensor<i1>) {
     %12 = mhlo.and %arg4, %arg5 : tensor<i1>
     "mhlo.return"(%12) : (tensor<i1>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi1>, tensor<i1>) -> tensor<i1>
-  return %4, %5 : tensor<i1>, tensor<i1>
+  func.return %4, %5 : tensor<i1>, tensor<i1>
 
  // CHECK-DAG: %[[CST:.*]] = mhlo.constant dense<true> : tensor<i1>
  // CHECK-DAG: %[[CST1:.*]] = mhlo.constant dense<false> : tensor<i1>
@@ -58,7 +58,7 @@ func @or_fold() -> (tensor<i1>, tensor<i1>) {
     %12 = mhlo.or %arg4, %arg5 : tensor<i1>
     "mhlo.return"(%12) : (tensor<i1>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi1>, tensor<i1>) -> tensor<i1>
-  return %4, %5 : tensor<i1>, tensor<i1>
+  func.return %4, %5 : tensor<i1>, tensor<i1>
 
  // CHECK-DAG: %[[CST:.*]] = mhlo.constant dense<false> : tensor<i1>
  // CHECK-DAG: %[[CST1:.*]] = mhlo.constant dense<true> : tensor<i1>

@@ -46,11 +46,11 @@ module {
     %8 = "quant.stats"(%7) {
       layerStats = dense<[-2.0, 2.0]> : tensor<2xf32>
     } : (tensor<*xf32>) -> tensor<*xf32>
-    return %8 : tensor<*xf32>
+    func.return %8 : tensor<*xf32>
   }
 
   func private @fused_matmul_fn_1(%a: tensor<*xf32>, %b: tensor<*xf32>, %c: tensor<*xf32>) -> tensor<*xf32> {
-    return %a: tensor<*xf32>
+    func.return %a: tensor<*xf32>
   }
 }
 

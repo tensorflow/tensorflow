@@ -34,11 +34,11 @@ module {
     } : (tensor<*xf32>, tensor<144x10xf32>, tensor<10xf32>) -> tensor<*xf32>
     %5 = "quant.qcast"(%4) : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 0.1>>
     %6 = "quant.dcast"(%5) : (tensor<*x!quant.uniform<i8:f32, 0.1>>) -> tensor<*xf32>
-    return %6 : tensor<*xf32>
+    func.return %6 : tensor<*xf32>
   }
 
   func private @fused_matmul_fn_1(%a: tensor<*xf32>, %b: tensor<*xf32>, %c: tensor<*xf32>) -> tensor<*xf32> {
-    return %a: tensor<*xf32>
+    func.return %a: tensor<*xf32>
   }
 }
 

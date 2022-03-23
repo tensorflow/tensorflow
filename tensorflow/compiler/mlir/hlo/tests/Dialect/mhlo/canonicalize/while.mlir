@@ -26,7 +26,7 @@ module  {
       "mhlo.return"(%arg0, %1, %arg6) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
     }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
     // CHECK: return %arg0, %[[WHILE]], %arg3
-    return %0#0, %0#1, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
+    func.return %0#0, %0#1, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
   }
 }
 
@@ -47,6 +47,6 @@ module  {
     ^bb0(%arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) : (tensor<i32>) -> (tensor<i32>)
-    return %0 : tensor<i32>
+    func.return %0 : tensor<i32>
   }
 }

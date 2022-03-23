@@ -11,7 +11,7 @@ func @scatter_fold_explosion() ->  tensor<512x1x6400x6400xf32> {
       "mhlo.return"(%arg6) : (tensor<f32>) -> ()
   }) {indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [0, 1, 2, 3], scatter_dims_to_operand_dims = [3]>, unique_indices = true} : (tensor<512x1x6400x6400xf32>, tensor<1xi32>, tensor<511x1x6400x6400xf32>) -> tensor<512x1x6400x6400xf32>
 
-  return %scatter :  tensor<512x1x6400x6400xf32>
+  func.return %scatter :  tensor<512x1x6400x6400xf32>
 }
 
 // -----
@@ -30,7 +30,7 @@ func @scatter_full_overwrite_type_mismatch(%base : tensor<1x1x1xf64>) ->  tensor
 
   // CHECK: %[[SCATTER:.*]] = "mhlo.scatter
   // CHECK: return %[[SCATTER]]
-  return %scatter :  tensor<1x1x1xf64>
+  func.return %scatter :  tensor<1x1x1xf64>
 }
 
 // -----
@@ -48,7 +48,7 @@ func @scatter_full_overwrite() ->  tensor<512x1x6400x6400xf32> {
 
   // CHECK: %[[FOLD:.*]] = mhlo.constant dense<1.000000e+00> : tensor<512x1x6400x6400xf32>
   // CHECK: return %[[FOLD]]
-  return %scatter :  tensor<512x1x6400x6400xf32>
+  func.return %scatter :  tensor<512x1x6400x6400xf32>
 }
 
 // -----
@@ -65,7 +65,7 @@ func @scatter_full_overwrite_non_const(
   }) {indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [0, 1, 2, 3], scatter_dims_to_operand_dims = [3]>, unique_indices = true} : (tensor<512x1x6400x6400xf32>, tensor<1xi32>, tensor<512x1x6400x6400xf32>) -> tensor<512x1x6400x6400xf32>
 
   // CHECK: return %arg1
-  return %scatter :  tensor<512x1x6400x6400xf32>
+  func.return %scatter :  tensor<512x1x6400x6400xf32>
 }
 
 // -----
@@ -81,5 +81,5 @@ func public @scatter_non_identity(%arg0: tensor<12xbf16>, %arg1: tensor<12xbf16>
   }) {indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [0], scatter_dims_to_operand_dims = [0]>, unique_indices = true} : (tensor<12xbf16>, tensor<1xi32>, tensor<12xbf16>) -> tensor<12xbf16>
   // CHECK: %[[SCATTER:.*]] = "mhlo.scatter
   // CHECK: return %[[SCATTER]]
-  return %1 : tensor<12xbf16>
+  func.return %1 : tensor<12xbf16>
 }
