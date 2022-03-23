@@ -3088,7 +3088,12 @@ def _assert_is_supported_ragged_values_type(value):
 def _formatter(x):
   """Separate Numpy array elements with comma."""
   if isinstance(x, np.ndarray):
-    return np.array2string(x, separator=", ")
+    if x.size != 0:
+      return np.array2string(x, separator=", ")
+    else:
+      # When x.size==0, np.array2string always returns `[]`.  This isn't always
+      # what we want.  E.g., if `x.shape=[0, 3]`, then we want `[[], [], []]`.
+      return repr(x.tolist())
   else:
     return str(x)
 
