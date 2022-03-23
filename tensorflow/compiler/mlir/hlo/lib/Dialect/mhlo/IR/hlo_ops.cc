@@ -538,7 +538,7 @@ LogicalResult verifyReducerShape(
       return mlir::emitError(loc)
              << "The type of reduction-region's result type at index "
              << inputIdx
-             << " differs from the reduce-op's corresponding init-value type: "
+             << " differs from the op's corresponding init-value type: "
              << accumulatorSubShapes[inputIdx] << " vs "
              << initValueTypes[inputIdx];
 
@@ -547,11 +547,11 @@ LogicalResult verifyReducerShape(
             inputArgTypes[inputIdx],
             block.getArgument(numInputs + inputIdx).getType(), true))
       return mlir::emitError(loc)
-             << "The element-type of reduce-op's input-parameter at index "
-             << inputIdx
-             << " differs from that of reduction-region's argument at index "
-             << numInputs + inputIdx << ": " << inputArgTypes[inputIdx]
-             << " vs " << block.getArgument(numInputs + inputIdx).getType();
+             << "The element-type of reduction-region's argument at index "
+             << numInputs + inputIdx << " is expected to be "
+             << inputArgTypes[inputIdx].getElementType() << ", but got "
+             << block.getArgument(numInputs + inputIdx).getType()
+             << " as its type.";
 
     // Check C4.2.
     Type blockArgType = block.getArgument(numInputs + inputIdx).getType();
@@ -6103,6 +6103,123 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
 #undef COMPARE_FOLDER
 
   return {};
+}
+
+//===----------------------------------------------------------------------===//
+// SelectAndScatterOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Infer the return-type of SelectAndScatterOp.
+TensorType inferSelectAndScatterOpReturnType(
+    TensorType operand_type, const ArrayRef<WindowDimension> window) {
+  if (!operand_type.hasRank())
+    return UnrankedTensorType::get(operand_type.getElementType());
+
+  return RankedTensorType::get(
+      inferWindowOutputShape(operand_type.getShape(), window),
+      operand_type.getElementType());
+}
+}  // namespace
+
+//  We intend to verify the following properties:
+//   P1. Check if the select function has a proper shape of (T,T) -> PRED, where
+//        T is a 0-D tensor with element-type same as 'operand' element-type.
+//   P2. Verify scatter-computation type.
+//   P3. size-of(window_dimension) == rank-of(input),
+//         where input is an element of 'inputs'.
+//   P4. Verify and collect the window attributes.
+//   P5. Verify the return type matches the operand-type.
+//   P6. Check if the result type of window operation matches the source type.
+LogicalResult SelectAndScatterOp::verify() {
+  auto operand_type = operand().getType().cast<TensorType>();
+  auto init_value_type = init_value().getType().cast<TensorType>();
+  auto source_type = source().getType().cast<TensorType>();
+  auto result_type = getResult().getType().cast<TensorType>();
+
+  // P1.
+  Block& select_block = select().front();
+
+  if (select_block.getArguments().size() != 2)
+    return emitOpError()
+           << "expects the select-region to take 2 parameters, but takes "
+           << select_block.getArguments().size();
+
+  Type expected_select_arg_type =
+      RankedTensorType::get({}, operand_type.getElementType());
+  for (const auto& select_arg_it : llvm::enumerate(select_block.getArguments()))
+    if (!compatibleShapeAndElementType(expected_select_arg_type,
+                                       select_arg_it.value().getType(),
+                                       /*ignoreFpPrecision=*/true))
+      return emitOpError()
+             << "expects the type of select-region's parameter at index "
+             << select_arg_it.index() << " to be " << expected_select_arg_type
+             << ", but got " << select_arg_it.value().getType();
+
+  auto select_result = select_block.getTerminator()->getOperands();
+  if (select_result.size() != 1)
+    return emitOpError()
+           << "expects select-region to return single value, but got: "
+           << select_result.size();
+
+  auto select_result_type = select_result[0].getType().dyn_cast<TensorType>();
+  if (!select_result_type ||
+      !select_result_type.getElementType().isInteger(1) ||
+      (select_result_type.hasRank() &&
+       select_result_type.cast<RankedTensorType>().getRank() != 0))
+    return emitOpError() << "expects the return-type of select-region to be "
+                            "tensor<i1>, but got: "
+                         << select_result[0].getType();
+
+  // P2.
+  Block& scatter_block = scatter().front();
+  SmallVector<TensorType> accumulator_subshapes;
+  if (failed(verifyReducerShape(
+          this->getLoc(), scatter_block,
+          {RankedTensorType::get({}, source_type.getElementType())},
+          {init_value_type},
+          /*numInputs=*/1, /*allowedDimensions=*/{},
+          /*allInputsUnranked=*/false, accumulator_subshapes)))
+    return failure();
+
+  // P3.
+  SmallVector<int64_t> window_dims =
+      convertDenseIntAttr(this->window_dimensions());
+  if (operand_type.hasRank()) {
+    if (operand_type.getRank() != window_dims.size())
+      return emitOpError()
+             << "expects window-dimensions size == operand rank, but got "
+                "window-dimensions size: "
+             << window_dims.size() << " and operand-type: " << operand_type
+             << " with rank = " << operand_type.getRank() << ".";
+  }
+
+  // P4.
+  auto padding_or_err = convertNx2Attribute(this->padding(), getLoc());
+  if (failed(padding_or_err)) return failure();
+  SmallVector<std::pair<int64_t, int64_t>> padding = *padding_or_err;
+
+  auto window_or_err = verifyWindowAttributesAndInferWindowDimensions(
+      window_dims, convertDenseIntAttr(window_strides()), padding,
+      /*lhs_dilation=*/{}, /*rhs_dilation=*/{}, getLoc());
+  if (failed(window_or_err)) return failure();
+
+  // P5.
+  if (!compatibleShapeAndElementType(operand_type, result_type))
+    return emitOpError()
+           << "expects the return-type to match the operand-type, but got "
+           << result_type << " and " << operand_type << " resp.";
+
+  // P6.
+  auto window_result_type =
+      inferSelectAndScatterOpReturnType(operand_type, *window_or_err);
+
+  if (!compatibleShapeAndElementType(window_result_type, source_type,
+                                     /*ignoreFpPrecision=*/true))
+    return emitOpError() << "expects source-type to be " << window_result_type
+                         << ", but got" << source_type;
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

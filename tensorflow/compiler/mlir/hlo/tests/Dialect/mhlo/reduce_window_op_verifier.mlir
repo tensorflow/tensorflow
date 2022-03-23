@@ -609,7 +609,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
 func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
     (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the reduce-op's corresponding init-value type: 'tensor<f32>' vs 'tensor<i32>'}}
+  // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<f32>' vs 'tensor<i32>'}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init1, %init0) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>,
                 %b1: tensor<i32>):
@@ -630,7 +630,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
 func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
     (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error@+1 {{The element-type of reduce-op's input-parameter at index 0 differs from that of reduction-region's argument at index 2: 'tensor<4x2xi32>' vs 'tensor<f32>'}}
+  // expected-error@+1 {{The element-type of reduction-region's argument at index 2 is expected to be 'i32', but got 'tensor<f32>' as its type.}}
   %0:2 = "mhlo.reduce_window"(%arg1, %arg0, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>,
                 %b1: tensor<i32>):

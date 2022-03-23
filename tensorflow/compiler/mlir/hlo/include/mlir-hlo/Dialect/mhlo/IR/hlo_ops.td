@@ -1930,6 +1930,7 @@ def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
 
   let results = (outs HLO_Tensor);
 
+  let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
 }
 

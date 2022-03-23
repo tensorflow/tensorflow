@@ -684,7 +684,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xi32>) ->
       tensor<200x100x300xf32> {
 
-  // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the reduce-op's corresponding init-value type: 'tensor<f32>' vs 'tensor<i32>'}}
+  // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<f32>' vs 'tensor<i32>'}}
   %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
     %add = mhlo.add %lhs, %rhs :  tensor<f32>
@@ -709,7 +709,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xi32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
-  // expected-error@+1 {{The element-type of reduce-op's input-parameter at index 0 differs from that of reduction-region's argument at index 1: 'tensor<200x100x300xi32>' vs 'tensor<f32>'}}
+  // expected-error@+1 {{The element-type of reduction-region's argument at index 1 is expected to be 'i32', but got 'tensor<f32>' as its type.}}
   %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
     %add = mhlo.add %lhs, %rhs :  tensor<f32>
