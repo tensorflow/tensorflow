@@ -19,7 +19,7 @@ func @single_bcast(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
   %4 = "mhlo.dynamic_broadcast_in_dim"(%3, %shape) {
       broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} :
       (tensor<16x?xf32>, tensor<3xindex>) -> tensor<?x16x?xf32>
-  return %4 : tensor<?x16x?xf32>
+  func.return %4 : tensor<?x16x?xf32>
 }
 
 // -----
@@ -42,7 +42,7 @@ func @single_bcast_ensure_order(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf3
   %4 = "mhlo.dynamic_broadcast_in_dim"(%3, %shape) {
       broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} :
       (tensor<16x?xf32>, tensor<3xindex>) -> tensor<?x16x?xf32>
-  return %4 : tensor<?x16x?xf32>
+  func.return %4 : tensor<?x16x?xf32>
 }
 
 // -----
@@ -75,7 +75,7 @@ func @double_bcasts(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
   %5 = "mhlo.dynamic_broadcast_in_dim"(%3, %shape1) {
       broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>} :
       (tensor<16x?xf32>, tensor<3xindex>) -> tensor<?x16x?xf32>
-  return %4, %5 : tensor<?x16x?xf32>, tensor<?x16x?xf32>
+  func.return %4, %5 : tensor<?x16x?xf32>, tensor<?x16x?xf32>
 }
 
 // -----
@@ -96,7 +96,7 @@ func @late_output_dimensions(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
       {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} :
       (tensor<?x32xf32>, tensor<3xindex>) -> tensor<?x?x32xf32>
   %3 = mhlo.add %2, %2 : tensor<?x?x32xf32>
-  return %3 : tensor<?x?x32xf32>
+  func.return %3 : tensor<?x?x32xf32>
 }
 
 // -----
@@ -119,7 +119,7 @@ func @very_late_output_dimensions(%arg0 : tensor<?x32xf32>,
   %acc3 = mhlo.divide %acc2, %arg1 : tensor<?x32xf32>
   %1 = shape.shape_of %arg2 : tensor<?x?x?xf32> -> tensor<3xindex>
   %3 = "mhlo.dynamic_broadcast_in_dim"(%acc3, %1) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x32xf32>, tensor<3xindex>) -> tensor<?x?x32xf32>
-  return %3 : tensor<?x?x32xf32>
+  func.return %3 : tensor<?x?x32xf32>
 }
 
 // -----
@@ -144,7 +144,7 @@ func @propagate_within_block(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
         (tensor<?x32xf32>, tensor<3xindex>) -> tensor<?x?x32xf32>
     shape.assuming_yield %bcasted : tensor<?x?x32xf32>
   }
-  return %result : tensor<?x?x32xf32>
+  func.return %result : tensor<?x?x32xf32>
 }
 
 // -----
@@ -167,7 +167,7 @@ func @propagate_within_block_2(%arg : tensor<?x?x?xf32>,
         : (tensor<?x?x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
     shape.assuming_yield %2 : tensor<?x?x?xf32>
   }
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // -----
@@ -185,7 +185,7 @@ func @propagate_across_bcasts_cst_src(%s : tensor<1xindex>) -> tensor<?xi1> {
   %2 = "mhlo.dynamic_broadcast_in_dim"(%1, %s)
       {broadcast_dimensions = dense<0> : tensor<1xi64>}
       : (tensor<?xi1>, tensor<1xindex>) -> tensor<?xi1>
-  return %2 : tensor<?xi1>
+  func.return %2 : tensor<?xi1>
 }
 
 // -----
@@ -201,7 +201,7 @@ func @compose_bcast_dims(%arg : tensor<?x?xi1>, %s0 : tensor<3xindex>, %s1 : ten
   %2 = "mhlo.dynamic_broadcast_in_dim"(%1, %s1)
       {broadcast_dimensions = dense<[0, 1, 3]> : tensor<3xi64>}
       : (tensor<1x?x?xi1>, tensor<4xindex>) -> tensor<1x?x1x?xi1>
-  return %2 : tensor<1x?x1x?xi1>
+  func.return %2 : tensor<1x?x1x?xi1>
 }
 
 // -----
@@ -220,5 +220,5 @@ func @propagate_across_bcasts(%arg : tensor<?x?x?xf32>, %shape : tensor<3xindex>
   %2 = "mhlo.dynamic_broadcast_in_dim"(%1, %shape)
       {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
       : (tensor<?x?x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
-  return %2 : tensor<?x?x?xf32>
+  func.return %2 : tensor<?x?x?xf32>
 }

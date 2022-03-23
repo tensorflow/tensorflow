@@ -31,7 +31,7 @@ func @while() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
     %1 = mhlo.add %iterArg, %cst_0 : tensor<i32>
     "mhlo.return"(%1, %iterArg_3, %iterArg_4) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
   }
-  return %0#0, %0#2, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
+  func.return %0#0, %0#2, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
 // CHECK-LABEL: func @while_no_arg

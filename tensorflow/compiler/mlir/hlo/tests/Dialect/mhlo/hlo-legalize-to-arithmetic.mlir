@@ -2,7 +2,7 @@
 
 func @reshape_unsigned() -> tensor<2xui64> {
   %result = mhlo.xla.rng_get_and_update_state {delta = 1 : i64}
-  return %result : tensor<2xui64>
+  func.return %result : tensor<2xui64>
 }
 
 // CHECK: memref.global "private" @rng_state : memref<i128>

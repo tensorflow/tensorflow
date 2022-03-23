@@ -15,7 +15,7 @@ func @reduce_valid(%arg0: tensor<4x4xf32>, %arg1 : tensor<4xf32>)
 
   }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4xf32>
 
-  return %0: tensor<4xf32>
+  func.return %0: tensor<4xf32>
 }
 
 // -----
@@ -30,7 +30,7 @@ func @reduce_complex_type(%arg0: tensor<1x2xcomplex<f32>>, %arg1 : tensor<comple
     "mhlo.return"(%1) : (tensor<complex<f32>>) -> () loc("foo")
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x2xcomplex<f32>>, tensor<complex<f32>>) -> tensor<1xcomplex<f32>> loc("foo")
 
-  return %0: tensor<1xcomplex<f32>>
+  func.return %0: tensor<1xcomplex<f32>>
 }
 
 // -----
@@ -46,7 +46,7 @@ func @reduce_unranked(%arg0: tensor<*xf32>, %arg1 : tensor<*xf32>)
 
   }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
 
-  return %0: tensor<*xf32>
+  func.return %0: tensor<*xf32>
 }
 
 // -----
@@ -63,7 +63,7 @@ func @reduce_unranked(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<4x4xf32>, tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
 
-  return %0#0, %0#1 : tensor<*xf32>, tensor<*xf32>
+  func.return %0#0, %0#1 : tensor<*xf32>, tensor<*xf32>
 }
 
 // Next, we have the invalid testcases.
@@ -83,7 +83,7 @@ func @reduce_odd_num_args(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
 
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
 }
 
 // -----
@@ -100,7 +100,7 @@ func @reduce_zero_args(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : () -> tensor<?xf32>
 
-  return %0: tensor<?xf32>
+  func.return %0: tensor<?xf32>
 }
 
 // -----
@@ -118,7 +118,7 @@ func @reduce_diferent_input_shapes(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?xf32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
 
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
 }
 
 // -----
@@ -136,7 +136,7 @@ func @reduce_diferent_input_shapes(%arg0: tensor<2x3xf32>, %arg1: tensor<3x2xf32
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<2x3xf32>, tensor<3x2xf32>, tensor<f32>, tensor<f32>) -> (tensor<2xf32>, tensor<2xf32>)
 
-  return %0#0, %0#1 : tensor<2xf32>, tensor<2xf32>
+  func.return %0#0, %0#1 : tensor<2xf32>, tensor<2xf32>
 }
 
 // -----
@@ -152,7 +152,7 @@ func @reduce_oob_dims(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<[2]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
 
-  return %0: tensor<?xf32>
+  func.return %0: tensor<?xf32>
 }
 
 // -----
@@ -169,7 +169,7 @@ func @reduce_duplicate_dims(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 
   }) {dimensions = dense<[1,1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
 
-  return %0: tensor<?xf32>
+  func.return %0: tensor<?xf32>
 }
 
 // -----
@@ -186,7 +186,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
 
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // -----
@@ -203,7 +203,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<f32>
 
-    return %0: tensor<f32>
+    func.return %0: tensor<f32>
 }
 
 // -----
@@ -220,7 +220,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
 
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
 }
 
 // -----
@@ -237,7 +237,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<f32>
 
-    return %0: tensor<f32>
+    func.return %0: tensor<f32>
 }
 
 // -----
@@ -256,7 +256,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
 
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
 }
 
 // -----
@@ -274,7 +274,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
 
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
 }
 
 // -----
@@ -292,7 +292,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
 
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
 }
 
 // -----
@@ -310,7 +310,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xi32>)
 
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
 }
 
 // -----
@@ -328,7 +328,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>)
 
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
 }
 
 // -----
@@ -346,7 +346,7 @@ func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
 
-  return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xf32>
 }
 
 // -----
@@ -363,7 +363,7 @@ func @verify_reducer_function(%arg0: tensor<?xf32>, %arg1 : tensor<?xf32>)
 
   }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<?xf32>, tensor<?xf32>) -> tensor<f32>
 
-  return %0: tensor<f32>
+  func.return %0: tensor<f32>
 }
 
 // -----
@@ -380,7 +380,7 @@ func @verify_reducer_function(%arg0: tensor<8x5xf32>, %arg1 : tensor<4xf32>)
 
   }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<8x5xf32>, tensor<4xf32>) -> tensor<5xf32>
 
-  return %0: tensor<5xf32>
+  func.return %0: tensor<5xf32>
 }
 
 // -----
@@ -398,7 +398,7 @@ func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>, tensor<?xi32>)
 
-  return %0#0: tensor<?xf32>
+  func.return %0#0: tensor<?xf32>
 }
 
 // -----
@@ -415,7 +415,7 @@ func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)
 
-  return %0#0: tensor<?xf32>
+  func.return %0#0: tensor<?xf32>
 }
 
 // -----
@@ -433,7 +433,7 @@ func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xi32>, tensor<f32>, tensor<i32>) -> (tensor<?xf32>, tensor<?x?xf32>)
 
-  return %0#0: tensor<?xf32>
+  func.return %0#0: tensor<?xf32>
 }
 
 // -----
@@ -450,7 +450,7 @@ func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xi32>
 
-  return %0: tensor<?xi32>
+  func.return %0: tensor<?xi32>
 }
 
 // -----
@@ -467,7 +467,7 @@ func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
 
-  return %0: tensor<?x?xf32>
+  func.return %0: tensor<?x?xf32>
 }
 
 // The following invalid cases arises while parsing a pretty-printed version of reduce-op will "non-eligible" inner-op.
@@ -476,7 +476,7 @@ func @reduce_verify_rettype(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>)
 func @reduce_parsing_pretty_reduce_non_commutative(%arg0: tensor<?x?xf32> , %arg1: tensor<f32> ) -> tensor<?xf32> {
   // expected-error@+1 {{expected the inner-op to be a commutative binary-op from mhlo dialect, zero region, producing single result such that the operands and result all have the same type}}
  %0 = mhlo.reduce(%arg0 init: %arg1) applies mhlo.divide across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
- return %0 : tensor<?xf32>
+ func.return %0 : tensor<?xf32>
 }
 
 // -----
@@ -484,7 +484,7 @@ func @reduce_parsing_pretty_reduce_non_commutative(%arg0: tensor<?x?xf32> , %arg
 func @reduce_parsing_pretty_reduce_wrong_dialect(%arg0: tensor<?x?xf32> , %arg1: tensor<f32> ) -> tensor<?xf32> {
   // expected-error@+1 {{expected the inner-op to be a commutative binary-op from mhlo dialect, zero region, producing single result such that the operands and result all have the same type}}
  %0 = mhlo.reduce(%arg0 init: %arg1) applies std.add across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
- return %0 : tensor<?xf32>
+ func.return %0 : tensor<?xf32>
 }
 
 // -----
@@ -492,5 +492,5 @@ func @reduce_parsing_pretty_reduce_wrong_dialect(%arg0: tensor<?x?xf32> , %arg1:
 func @reduce_parsing_pretty_reduce_non_binary(%arg0: tensor<?x?xf32> , %arg1: tensor<f32> ) -> tensor<?xf32> {
   // expected-error@+1 {{expected the inner-op to be a commutative binary-op from mhlo dialect, zero region, producing single result such that the operands and result all have the same type}}
  %0 = mhlo.reduce(%arg0 init: %arg1) applies mhlo.reshape across dimensions = [1] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
- return %0 : tensor<?xf32>
+ func.return %0 : tensor<?xf32>
 }

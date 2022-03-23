@@ -5,7 +5,7 @@ func @main(%arg0: tensor<1x1xf32>, %arg1: tensor<1x8x8x16xf32>) -> tuple<tensor<
   %1 = "mhlo.reshape"(%arg0) : (tensor<1x1xf32>) -> tensor<1xf32>
   %2 = "mhlo.reshape"(%arg1) : (tensor<1x8x8x16xf32>) -> tensor<1024xf32>
   %3 = "mhlo.tuple"(%2, %1) {name = "tuple.374"} : (tensor<1024xf32>, tensor<1xf32>) -> tuple<tensor<1024xf32>, tensor<1xf32>>
-  return %3 : tuple<tensor<1024xf32>, tensor<1xf32>>
+  func.return %3 : tuple<tensor<1024xf32>, tensor<1xf32>>
   // CHECK: %[[RES0:.*]] = "mhlo.reshape"(%arg0) : (tensor<1x1xf32>) -> tensor<1xf32>
   // CHECK: %[[RES1:.*]] = "mhlo.reshape"(%arg1) : (tensor<1x8x8x16xf32>) -> tensor<1024xf32>
   // CHECK: return %[[RES1]], %[[RES0]] : tensor<1024xf32>, tensor<1xf32>
@@ -13,13 +13,13 @@ func @main(%arg0: tensor<1x1xf32>, %arg1: tensor<1x8x8x16xf32>) -> tuple<tensor<
 
 // -----
 func @main(%arg0: tensor<1x224x224x3xf16>, %arg1: tensor<f32>) -> tensor<1x224x224x3xf16> {
-  return %arg0 : tensor<1x224x224x3xf16>
+  func.return %arg0 : tensor<1x224x224x3xf16>
 }
 
 // -----
 
 func @main(%arg0: tuple<tensor<1024xf32>, tensor<1xf32>>) -> tuple<tensor<1024xf32>, tensor<1xf32>> {
-  return %arg0 : tuple<tensor<1024xf32>, tensor<1xf32>>
+  func.return %arg0 : tuple<tensor<1024xf32>, tensor<1xf32>>
 }
 
 // CHECK:   func @main(%[[VAL_0:.*]]: tensor<1024xf32>, %[[VAL_1:.*]]: tensor<1xf32>) -> (tensor<1024xf32>, tensor<1xf32>) {

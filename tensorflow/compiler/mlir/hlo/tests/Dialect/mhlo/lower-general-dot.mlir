@@ -13,7 +13,7 @@ func @testDebatch1(%arg0: tensor<1x1x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<1
    precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   } : (tensor<1x1x2xf32>, tensor<2x3xf32>) -> tensor<1x1x3xf32>
 
-  return %0 : tensor<1x1x3xf32>
+  func.return %0 : tensor<1x1x3xf32>
 }
 
 // -----
@@ -33,7 +33,7 @@ func @testDebatch2(%arg0: tensor<2x3xf32>, %arg1: tensor<1x1x2xf32>) -> tensor<3
     >,
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   } : (tensor<2x3xf32>, tensor<1x1x2xf32>) -> tensor<3x1x1xf32>
-  return %0 : tensor<3x1x1xf32>
+  func.return %0 : tensor<3x1x1xf32>
 }
 
 // -----
@@ -50,7 +50,7 @@ func @testBatchPassthrough(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf32>) -
     >,
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   } : (tensor<2x2x3xf32>, tensor<2x1x2xf32>) -> tensor<3x2x1xf32>
-  return %0 : tensor<3x2x1xf32>
+  func.return %0 : tensor<3x2x1xf32>
 }
 
 // -----
@@ -69,7 +69,7 @@ func @testVec(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> tensor<f32> {
     >,
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   } : (tensor<32xf32>, tensor<32xf32>) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----
@@ -88,7 +88,7 @@ func @testMatVec(%arg0: tensor<32x20xf32>, %arg1: tensor<32xf32>) -> tensor<20xf
     >,
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   } : (tensor<32x20xf32>, tensor<32xf32>) -> tensor<20xf32>
-  return %0 : tensor<20xf32>
+  func.return %0 : tensor<20xf32>
 }
 
 // -----
@@ -103,7 +103,7 @@ func @dot_general_to_dot_dynamic(%arg0: tensor<128x4x?x32xf32>, %arg1: tensor<8x
     >,
     precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]
   } : (tensor<128x4x?x32xf32>, tensor<8x?x128x4xf32>) -> tensor<?x32x8x?xf32>
-  return %0 : tensor<?x32x8x?xf32>
+  func.return %0 : tensor<?x32x8x?xf32>
 }
 // CHECK-LABEL: func @dot_general_to_dot_dynamic
 // CHECK-DAG: %[[C32:.+]] = mhlo.constant dense<32> : tensor<1xi32>
@@ -135,7 +135,7 @@ func @dot_no_rhs_batch(%arg0: tensor<1x512x768xf32>, %arg1: tensor<768x12x64xf32
       lhs_contracting_dimensions = [2],
       rhs_contracting_dimensions = [0]>
     } : (tensor<1x512x768xf32>, tensor<768x12x64xf32>) -> tensor<1x512x12x64xf32>
-  return %0 : tensor<1x512x12x64xf32>
+  func.return %0 : tensor<1x512x12x64xf32>
 }
 
 // CHECK-LABEL:  func @dot_no_rhs_batch

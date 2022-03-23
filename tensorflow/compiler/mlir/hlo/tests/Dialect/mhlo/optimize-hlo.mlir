@@ -16,7 +16,7 @@ func @gather_is_slice_no_rank(%arg0: tensor<2x1x2xi32>, %arg1: tensor<i64>) -> t
   } : (tensor<2x1x2xi32>, tensor<i64>) -> tensor<1x2xi32>
 
   // CHECK: return [[RESHAPE]]
-  return %res : tensor<1x2xi32>
+  func.return %res : tensor<1x2xi32>
 }
 
 // CHECK-LABEL: @gather_is_slice
@@ -37,5 +37,5 @@ func @gather_is_slice(%arg0: tensor<2x1x2xi32>, %arg1: tensor<1xi64>) -> tensor<
   } : (tensor<2x1x2xi32>, tensor<1xi64>) -> tensor<1x2xi32>
 
   // CHECK: return [[RES]]
-  return %res : tensor<1x2xi32>
+  func.return %res : tensor<1x2xi32>
 }

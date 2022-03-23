@@ -22,7 +22,7 @@ func @reduce_one_op_all_locs_same(%arg0: tensor<?x?xf32>, %arg1 : tensor<f32>) -
     "mhlo.return"(%1) : (tensor<f32>) -> () loc("foo")
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
 
-  return %0: tensor<?xf32>
+  func.return %0: tensor<?xf32>
 }
 
 // The test case is not eligible for pretty-printing reduce-op. The location of
@@ -44,7 +44,7 @@ func @reduce_one_op_all_locs_not_same_1(%arg0: tensor<?x?xf32>, %arg1 : tensor<f
     "mhlo.return"(%1) : (tensor<f32>) -> () loc("foo")
   }) {dimensions = dense<[1]> : tensor<1xi64>, foo = "bar"} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("not_foo")
 
-  return %0: tensor<?xf32>
+  func.return %0: tensor<?xf32>
 }
 
 // The test case is not eligible for pretty-printing reduce-op. The location of
@@ -60,7 +60,7 @@ func @reduce_one_op_all_locs_not_same_2(%arg0: tensor<?x?xf32>, %arg1 : tensor<f
     "mhlo.return"(%1) : (tensor<f32>) -> () loc("foo")
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
 
-  return %0: tensor<?xf32>
+  func.return %0: tensor<?xf32>
 }
 
 
@@ -78,7 +78,7 @@ func @reduce_one_op_more_than_two_block_args(%arg0: tensor<?x?xf32>, %arg1: tens
     "mhlo.return"(%1, %1) : (tensor<f32>, tensor<f32>) -> () loc("foo")
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>)  loc("foo")
 
-  return %0#0: tensor<?xf32>
+  func.return %0#0: tensor<?xf32>
 }
 
 // The test case is not eligible for pretty-printing reduce-op because of
@@ -94,7 +94,7 @@ func @reduce_non_commutative_inner_op(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>
     "mhlo.return"(%1) : (tensor<f32>) -> () loc("foo")
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
 
-  return %0: tensor<?xf32>
+  func.return %0: tensor<?xf32>
 }
 
 // The test case is not eligible for pretty-printing reduce-op because of
@@ -110,7 +110,7 @@ func @reduce_non_binary_inner_op(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> 
     "mhlo.return"(%1) : (tensor<f32>) -> () loc("foo")
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32> loc("foo")
 
-  return %0: tensor<?xf32>
+  func.return %0: tensor<?xf32>
 }
 
 // The test case is not eligible for pretty-printing reduce-op. More than one
@@ -129,7 +129,7 @@ func @reduce_more_than_one_inner_op(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi3
   }) {dimensions = dense<0> : tensor<1xi64>}
     : (tensor<1x8xf32>, tensor<1x8xi32>, tensor<f32>, tensor<i32>) -> (tensor<8xf32>, tensor<8xi32>) loc("foo")
 
-  return %0#0, %0#1 : tensor<8xf32>, tensor<8xi32>
+  func.return %0#0, %0#1 : tensor<8xf32>, tensor<8xi32>
 }
 
 // The test case is eligible for pretty-printing reduce-op with complex types.
@@ -144,7 +144,7 @@ func @reduce_complex_type(%arg0: tensor<1x2xcomplex<f32>>, %arg1 : tensor<comple
     "mhlo.return"(%1) : (tensor<complex<f32>>) -> () loc("foo")
   }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x2xcomplex<f32>>, tensor<complex<f32>>) -> tensor<1xcomplex<f32>> loc("foo")
 
-  return %0: tensor<1xcomplex<f32>>
+  func.return %0: tensor<1xcomplex<f32>>
 }
 
 // The test case is not eligible for pretty-printing reduce-op. During parsing
@@ -166,5 +166,5 @@ func @reduce_innerop_type_not_trivially_derived(%arg0: tensor<4x4xf32>, %arg1 : 
 
   }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4xf32>
 
-  return %0: tensor<4xf32>
+  func.return %0: tensor<4xf32>
 }

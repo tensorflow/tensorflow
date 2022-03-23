@@ -41,7 +41,7 @@ func @inline_bcasted_shape_operands(%a : tensor<?xindex>, %b : tensor<?xindex>,
   %0 = shape.broadcast %a, %b : tensor<?xindex>, tensor<?xindex>
       -> tensor<?xindex>
   %1 = shape.cstr_broadcastable %0, %c : tensor<?xindex>, tensor<?xindex>
-  return %1 : !shape.witness
+  func.return %1 : !shape.witness
 }
 
 // -----
@@ -63,7 +63,7 @@ func @move_shape_of_into_assuming(%arg0 : !shape.witness,
   }
   %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<2xindex>
   "use"(%0#0, %0#1) : (tensor<?x32xf32>, tensor<?x32xf32>) -> ()
-  return %2 : tensor<2xindex>
+  func.return %2 : tensor<2xindex>
 }
 
 // -----
@@ -85,7 +85,7 @@ func @move_cstr_broadcastable_into_assuming(%arg0 : !shape.witness,
   }
   %1 = shape.cstr_broadcastable %arg1, %0#1 : tensor<2xindex>, tensor<3xindex>
   "use"(%0#0, %0#1) : (tensor<2xindex>, tensor<3xindex>) -> ()
-  return %1 : !shape.witness
+  func.return %1 : !shape.witness
 }
 
 // -----
@@ -105,7 +105,7 @@ func @not_move_shape_of_into_assuming(%arg0 : !shape.witness,
   }
   "some.other.op"(%0#0) : (tensor<?x32xf32>) -> ()
   %2 = shape.shape_of %0#1 : tensor<?x32xf32> -> tensor<2xindex>
-  return %2 : tensor<2xindex>
+  func.return %2 : tensor<2xindex>
 }
 
 // -----
@@ -122,7 +122,7 @@ func @move_cstr_broadcastable_out_of_assuming(%arg0 : !shape.witness,
     %1 = shape.cstr_broadcastable %arg1, %arg2 : tensor<2xindex>, tensor<3xindex>
     shape.assuming_yield %1 : !shape.witness
   }
-  return %0 : !shape.witness
+  func.return %0 : !shape.witness
 }
 
 // -----
@@ -146,7 +146,7 @@ func @move_elementwise_into_assuming(%arg0 : !shape.witness,
   %1 = "mhlo.tanh"(%arg1) : (tensor<?xf32>) -> tensor<?xf32>
   %2 = chlo.broadcast_add %1, %0#1
       : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  return %2 : tensor<?xf32>
+  func.return %2 : tensor<?xf32>
 }
 
 // -----
@@ -163,7 +163,7 @@ func @move_shape_of_out_of_assuming(%arg0 : !shape.witness,
     %1 = shape.shape_of %arg1 : tensor<2x?xf32> -> tensor<2xindex>
     shape.assuming_yield %1 : tensor<2xindex>
   }
-  return %0 : tensor<2xindex>
+  func.return %0 : tensor<2xindex>
 }
 
 // -----
@@ -184,7 +184,7 @@ func @move_shape_of_out_of_assuming(%arg0 : !shape.witness,
     shape.assuming_yield %1, %2 : tensor<2x?xf32>, tensor<2xindex>
   }
   "use"(%0#0, %0#1) : (tensor<2x?xf32>, tensor<2xindex>) -> ()
-  return %0#1 : tensor<2xindex>
+  func.return %0#1 : tensor<2xindex>
 }
 
 // -----
@@ -204,7 +204,7 @@ func @not_move_shape_of_out_of_assuming(%arg0 : !shape.witness,
     %2 = shape.shape_of %1 : tensor<2x?xf32> -> tensor<2xindex>
     shape.assuming_yield %2 : tensor<2xindex>
   }
-  return %0 : tensor<2xindex>
+  func.return %0 : tensor<2xindex>
 }
 
 // -----
@@ -243,7 +243,7 @@ func @merge_assuming_ops(%arg0: tensor<?x32xf16>, %arg1 : tensor<?x32xf16>,
     shape.assuming_yield %8 : tensor<?x?x32xf16>
   }
   "use"(%5, %7) : (tensor<?x32xf16>, tensor<?x?x32xf16>) -> ()
-  return %7 : tensor<?x?x32xf16>
+  func.return %7 : tensor<?x?x32xf16>
 }
 
 // -----
@@ -344,5 +344,5 @@ func @move_down_into_assuming(%arg0: tensor<?x32xi16>, %w: !shape.witness) -> te
   %4 = shape.assuming %w -> (tensor<?x32xf16>) {
     shape.assuming_yield %0 : tensor<?x32xf16>
   }
-  return %4 : tensor<?x32xf16>
+  func.return %4 : tensor<?x32xf16>
 }

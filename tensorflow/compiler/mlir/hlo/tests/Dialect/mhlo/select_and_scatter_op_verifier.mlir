@@ -23,7 +23,7 @@ func @select_and_scatter(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 func @select_and_scatter_with_unranked_dims(
@@ -53,7 +53,7 @@ func @select_and_scatter_with_unranked_dims(
   : (tensor<4x5x1x1xbf16>, tensor<2x2x1x1xbf16>, tensor<bf16>) ->
       tensor<?x?x?x?xbf16>
 
-  return %3 : tensor<?x?x?x?xbf16>
+  func.return %3 : tensor<?x?x?x?xbf16>
 }
 
 // -----
@@ -81,7 +81,7 @@ func @select_and_scatter_invalid_select_computation(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -108,7 +108,7 @@ func @select_and_scatter_invalid_select_computation(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -136,7 +136,7 @@ func @select_and_scatter_invalid_select_computation(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -163,7 +163,7 @@ func @select_and_scatter_invalid_select_computation(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -191,7 +191,7 @@ func @select_and_scatter_invalid_select_computation(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -219,7 +219,7 @@ func @select_and_scatter_invalid_select_computation(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -245,7 +245,7 @@ func @select_and_scatter_invalid_attributes(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -272,7 +272,7 @@ func @select_and_scatter_invalid_attributes(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -300,7 +300,7 @@ func @select_and_scatter_invalid_attributes(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -328,7 +328,7 @@ func @select_and_scatter_invalid_attributes(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -356,7 +356,7 @@ func @select_and_scatter_invalid_attributes(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -384,7 +384,7 @@ func @select_and_scatter_invalid_attributes(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----
@@ -412,7 +412,7 @@ func @select_and_scatter_invalid_attributes(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return %1 : tensor<10x24x24x64xf32>
+    func.return %1 : tensor<10x24x24x64xf32>
 }
 
 // -----

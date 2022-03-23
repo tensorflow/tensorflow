@@ -16,7 +16,7 @@ func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 func @reduce_window_with_unranked_dynamic_dims(%arg0: tensor<*xf32>,
@@ -36,7 +36,7 @@ func @reduce_window_with_unranked_dynamic_dims(%arg0: tensor<*xf32>,
            window_dilations = dense<[1,1]> : tensor<2xi64> }
          : (tensor<*xf32>, tensor<4x?xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<?x?xf32>, tensor<*xi32>)
-  return %0#0, %0#1 : tensor<?x?xf32>, tensor<*xi32>
+  func.return %0#0, %0#1 : tensor<?x?xf32>, tensor<*xi32>
 }
 
 func @reduce_window_with_non_scalar_block_arg1(%arg0: tensor<4x2xf32>,
@@ -52,7 +52,7 @@ func @reduce_window_with_non_scalar_block_arg1(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64>
          }
          : (tensor<4x2xf32>, tensor<4xf32>) -> (tensor<2x1xf32>)
-  return %0 : tensor<2x1xf32>
+  func.return %0 : tensor<2x1xf32>
 }
 
 func @reduce_window_with_non_scalar_block_arg2(%arg0: tensor<4x2xf32>,
@@ -68,7 +68,7 @@ func @reduce_window_with_non_scalar_block_arg2(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64>
          }
          : (tensor<4x2xf32>, tensor<2xf32>) -> (tensor<2x1xf32>)
-  return %0 : tensor<2x1xf32>
+  func.return %0 : tensor<2x1xf32>
 }
 
 // -----
@@ -86,7 +86,7 @@ func @reduce_window_invalid_inputs() -> (tensor<2x2xf32>, tensor<2x2xi32>) {
            window_dimensions = dense<[5, 1]> : tensor<2xi64>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : () -> (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -107,7 +107,7 @@ func @reduce_window_invalid_inputs(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x3xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -128,7 +128,7 @@ func @reduce_window_invalid_inputs(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -148,7 +148,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -169,7 +169,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_strides = dense<[1]> : tensor<1xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -192,7 +192,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_dilations = dense<[1, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -215,7 +215,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_dilations = dense<[1]> : tensor<1xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -236,7 +236,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -257,7 +257,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -278,7 +278,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -299,7 +299,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -320,7 +320,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_strides = dense<[0, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -343,7 +343,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_dilations = dense<[1,1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -366,7 +366,7 @@ func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>,
            window_dilations = dense<[0,1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -388,7 +388,7 @@ func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
          }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               tensor<2x2xf32>
-  return %0 : tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
 }
 
 // -----
@@ -410,7 +410,7 @@ func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
          }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x3xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x3xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x3xi32>
 }
 
 // -----
@@ -432,7 +432,7 @@ func @reduce_window_invalid_ret_type(%arg0: tensor<4x2xf32>,
          }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xi32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xi32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xi32>, tensor<2x2xi32>
 }
 
 // -----
@@ -451,7 +451,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -472,7 +472,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -494,7 +494,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -514,7 +514,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -538,7 +538,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -559,7 +559,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -580,7 +580,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -601,7 +601,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -622,7 +622,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<i32>, tensor<f32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -645,7 +645,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
          }
          : (tensor<4x2xi32>, tensor<4x2xf32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // -----
@@ -662,7 +662,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<f32>, %init0: tensor<1xf32>)
            window_dimensions = dense<> : tensor<0xi64>
          }
          : (tensor<f32>, tensor<1xf32>) -> (tensor<f32>)
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----
@@ -681,7 +681,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>, %init0: tensor<4x2xf
            window_strides = dense<[3, 1]> : tensor<2xi64>
          }
          : (tensor<4x2xf32>, tensor<4x2xf32>) -> (tensor<2x2xf32>)
-  return %0 : tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
 }
 
 // -----
@@ -699,7 +699,7 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>, %init0: tensor<4x2xf
            window_strides = dense<[3, 1]> : tensor<2xi64>
          }
          : (tensor<4x2xf32>, tensor<4x2xf32>) -> (tensor<2x1xf32>)
-  return %0 : tensor<2x1xf32>
+  func.return %0 : tensor<2x1xf32>
 }
 
 // -----
@@ -723,5 +723,5 @@ func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
            window_strides = dense<[3, 1]> : tensor<2xi64> }
          : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
               (tensor<2x2xf32>, tensor<2x2xi32>)
-  return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }

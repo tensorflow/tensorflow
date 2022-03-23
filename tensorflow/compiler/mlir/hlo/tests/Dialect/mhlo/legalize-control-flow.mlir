@@ -28,7 +28,7 @@ func @while(%arg0: tensor<1xi64>) -> tensor<1xi64> {
   }) : (tensor<1xi64>) -> tensor<1xi64>
 
   // CHECK: return %[[VAL_7:.*]] : tensor<1xi64>
-  return %0 : tensor<1xi64>
+  func.return %0 : tensor<1xi64>
 }
 
 
@@ -79,7 +79,7 @@ func @while_multi_operands(%arg0: tensor<3xi32>) -> tuple<tensor<i32>, tensor<3x
   // CHECK: %[[VAL_18:.*]] = "mhlo.tuple"(%[[VAL_19:.*]]#0, %[[VAL_19]]#1) {xla_shape = "(s32[], s32[3]{0})"} : (tensor<i32>, tensor<3xi32>) -> tuple<tensor<i32>, tensor<3xi32>>
   // CHECK: return %[[VAL_18]] : tuple<tensor<i32>, tensor<3xi32>>
   %3 = "mhlo.tuple"(%2#0, %2#1) {xla_shape = "(s32[], s32[3]{0})"} : (tensor<i32>, tensor<3xi32>) -> tuple<tensor<i32>, tensor<3xi32>>
-  return %3 : tuple<tensor<i32>, tensor<3xi32>>
+  func.return %3 : tuple<tensor<i32>, tensor<3xi32>>
 }
 
 // CHECK-LABEL: func @conditional(
@@ -111,7 +111,7 @@ func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
   }) : (tensor<i1>) -> tensor<f32>
 
   // CHECK:           return %[[VAL_7:.*]] : tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // Check that we recursively lower nested ifs.
@@ -138,7 +138,7 @@ func @conditional_nested(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> 
     "mhlo.return"(%exp) : (tensor<f32>) -> ()
   }) : (tensor<i1>) -> tensor<f32>
 
-  return %if1 : tensor<f32>
+  func.return %if1 : tensor<f32>
 }
 
 // Test the two branches case as the common. Following tests verify degenerate
@@ -168,7 +168,7 @@ func @case2(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>) -
   }) : (tensor<i32>) -> tensor<4xf32>
 
   // CHECK: return %[[VAL_9:.*]] : tensor<4xf32>
-  return %1 : tensor<4xf32>
+  func.return %1 : tensor<4xf32>
 }
 
 
@@ -211,7 +211,7 @@ func @case3(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>, %
   // CHECK:   scf.yield %[[VAL_15:.*]] : tensor<4xf32>
 
   // CHECK: return %[[VAL_16:.*]] : tensor<4xf32>
-  return %1 : tensor<4xf32>
+  func.return %1 : tensor<4xf32>
 }
 
 // Case with only one branch is inlined rather than lowering.
@@ -225,7 +225,7 @@ func @case0(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>) -> tensor<4xf32> {
       "mhlo.return"(%2) : (tensor<4xf32>) -> ()
   }) : (tensor<i32>) -> tensor<4xf32>
   // CHECK: return %[[VAL_2]] : tensor<4xf32>
-  return %1 : tensor<4xf32>
+  func.return %1 : tensor<4xf32>
 }
 
 // Case with only one branch is inlined. Check that we recursively lower.
@@ -242,5 +242,5 @@ func @case0_nested(%arg0 : tensor<i32>, %arg1 : tensor<4xf32>) -> tensor<4xf32> 
     "mhlo.return"(%2) : (tensor<4xf32>) -> ()
   }) : (tensor<i32>) -> tensor<4xf32>
   // CHECK: return %[[VAL_2]] : tensor<4xf32>
-  return %1 : tensor<4xf32>
+  func.return %1 : tensor<4xf32>
 }

@@ -10,7 +10,7 @@ func @test_rank2_column_reduction(%arg0: tensor<?x?xf32>) -> tensor<?xf32> {
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
   }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
-  return %2 : tensor<?xf32>
+  func.return %2 : tensor<?xf32>
 }
 
 // -----
@@ -25,7 +25,7 @@ func @test_rank2_row_reduction(%arg0: tensor<?x?xf32>) -> tensor<?xf32> {
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
-  return %2 : tensor<?xf32>
+  func.return %2 : tensor<?xf32>
 }
 
 // -----
@@ -46,7 +46,7 @@ func @test_rank3_column_reduction(%arg0: tensor<?x?x?xf32>) -> tensor<?xf32> {
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
   }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?x?xf32>, tensor<f32>) -> tensor<?xf32>
-  return %2 : tensor<?xf32>
+  func.return %2 : tensor<?xf32>
 }
 
 // // -----
@@ -67,7 +67,7 @@ func @test_rank3_row_reduction(%arg0: tensor<?x?x?xf32>) -> tensor<?xf32> {
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x?x?xf32>, tensor<f32>) -> tensor<?xf32>
-  return %2 : tensor<?xf32>
+  func.return %2 : tensor<?xf32>
 }
 
 // // -----
@@ -88,7 +88,7 @@ func @test_reduce_to_scalar(%arg0: tensor<?x?x?xf32>) -> tensor<f32> {
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
   }) {dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<?x?x?xf32>, tensor<f32>) -> tensor<f32>
-  return %2 : tensor<f32>
+  func.return %2 : tensor<f32>
 }
 
 // -----
@@ -103,5 +103,5 @@ func @test_mid_reduction(%arg0: tensor<?x?x?xf32>) -> tensor<?x?xf32> {
     %4 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%4) : (tensor<f32>) -> ()
   }) {dimensions = dense<[1]> : tensor<1xi64>} : (tensor<?x?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  return %2 : tensor<?x?xf32>
+  func.return %2 : tensor<?x?xf32>
 }

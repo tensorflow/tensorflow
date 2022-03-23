@@ -25,7 +25,7 @@ func @sink_const_to_while(%arg0: tensor<i64>) -> tensor<i64> {
     %4 = mhlo.add %c1, %3 : tensor<i64>
     "mhlo.return"(%4) : (tensor<i64>) -> ()
   }) : (tensor<i64>) -> tensor<i64>
-  return %0 : tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // Tests sinking constants to a conditional op.
@@ -47,7 +47,7 @@ func @sink_const_to_conditional(%arg0: tensor<i64>) -> tensor<i64> {
     %4 = mhlo.add %c1, %arg0 : tensor<i64>
     "mhlo.return"(%4) : (tensor<i64>) -> ()
   }) : (tensor<i1>) -> tensor<i64>
-  return %2 : tensor<i64>
+  func.return %2 : tensor<i64>
 }
 
 func @sink_const_to_sort(%arg0: tensor<16xf32>) {

@@ -26,7 +26,7 @@ func @batchNormInference_2D_inner_features(
       (tensor<4x256xf32>, tensor<256xf32>, tensor<256xf32>, tensor<256xf32>,
         tensor<256xf32>) -> tensor<4x256xf32>
   // CHECK-DAG: return %[[RESULT]]
-  return %0 : tensor<4x256xf32>
+  func.return %0 : tensor<4x256xf32>
 }
 
 // -----
@@ -44,7 +44,7 @@ func @batchNormInference_4D_middle_features(
       {epsilon = 1.001000e-05 : f32, feature_index = 2 : i64} :
       (tensor<3x4x256x6xf32>, tensor<256xf32>, tensor<256xf32>, tensor<256xf32>,
         tensor<256xf32>) -> tensor<3x4x256x6xf32>
-  return %0 : tensor<3x4x256x6xf32>
+  func.return %0 : tensor<3x4x256x6xf32>
 }
 
 // -----
@@ -59,7 +59,7 @@ func @batchNormInference_f64(
       {epsilon = 1.0 : f32, feature_index = 1 : i64} :
       (tensor<4x256xf64>, tensor<256xf64>, tensor<256xf64>, tensor<256xf64>,
         tensor<256xf64>) -> tensor<4x256xf64>
-  return %0 : tensor<4x256xf64>
+  func.return %0 : tensor<4x256xf64>
 }
 
 // -----
@@ -74,7 +74,7 @@ func @batchNormInference_f16(
       {epsilon = 1.0 : f32, feature_index = 1 : i64} :
       (tensor<4x256xf16>, tensor<256xf16>, tensor<256xf16>, tensor<256xf16>,
         tensor<256xf16>) -> tensor<4x256xf16>
-  return %0 : tensor<4x256xf16>
+  func.return %0 : tensor<4x256xf16>
 }
 
 // -----
@@ -88,7 +88,7 @@ func @batchNormInference_f16_overflow(
       {epsilon = 0.00000001 : f32, feature_index = 1 : i64} :
       (tensor<4x256xf16>, tensor<256xf16>, tensor<256xf16>, tensor<256xf16>,
         tensor<256xf16>) -> tensor<4x256xf16>
-  return %0 : tensor<4x256xf16>
+  func.return %0 : tensor<4x256xf16>
 }
 
 // -----
@@ -130,5 +130,5 @@ func @batchNormInference_dynamic_shape(
       {epsilon = 0.001 : f32, feature_index = 1 : i64} :
       (tensor<?x?x?x?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,
         tensor<?xf32>) -> tensor<?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?xf32>
+  func.return %0 : tensor<?x?x?x?xf32>
 }

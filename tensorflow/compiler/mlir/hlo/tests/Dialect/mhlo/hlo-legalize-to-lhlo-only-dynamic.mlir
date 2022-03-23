@@ -13,7 +13,7 @@ func @dynamic_reshape(%lhs: tensor<?x?xf32>, %rhs: tensor<3xindex>) -> tensor<?x
   // CHECK: return %[[OUTPUT]]
   %result = "mhlo.dynamic_reshape"(%lhs, %rhs)
       : (tensor<?x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
-  return %result : tensor<?x?x?xf32>
+  func.return %result : tensor<?x?x?xf32>
 }
 
 // -----
@@ -31,7 +31,7 @@ func @dynamic_broadcast_in_dim(%operand: tensor<?x?xf32>, %shape: tensor<3xindex
   %result = "mhlo.dynamic_broadcast_in_dim"(%operand, %shape) {
     broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
   } : (tensor<?x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
-  return %result : tensor<?x?x?xf32>
+  func.return %result : tensor<?x?x?xf32>
 }
 
 // -----
@@ -44,7 +44,7 @@ func @dynamic_iota(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
   // CHECK: %[[OUTPUT:.*]] = memref.alloc(%[[DIM0]])
   // CHECK: "lmhlo.dynamic_iota"(%[[SHAPE]], %[[OUTPUT]])
   %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 1 : i64} : (tensor<2xindex>) -> tensor<5x?xi32>
-  return %0 : tensor<5x?xi32>
+  func.return %0 : tensor<5x?xi32>
 }
 
 // -----
@@ -79,7 +79,7 @@ func @dynamic_pad(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>, %arg2: tensor<2xin
   // CHECK: %[[OUT:.*]] = memref.alloc(%[[TMP10]], %[[TMP21]]) : memref<?x?xf32>
   // CHECK: "lmhlo.dynamic_pad"(%[[ARG]], %[[VAL]], %[[LOW]], %[[HIGH]], %[[INTER]], %[[OUT]])
   %0 = "mhlo.dynamic_pad"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<?x?xf32>, tensor<f32>, tensor<2xindex>, tensor<2xindex>, tensor<2xindex>) -> tensor<?x?xf32>
-  return %0: tensor<?x?xf32>
+  func.return %0: tensor<?x?xf32>
 }
 
 // -----
@@ -108,7 +108,7 @@ func @real_dynamic_slice(%arg0: tensor<?x?xf32>, %arg1: tensor<2xi32>, %arg2: te
   // CHECK: %[[T16:.*]] = memref.alloc(%[[T14]], %[[T15]]) : memref<?x?xf32>
   // CHECK: "lmhlo.real_dynamic_slice"(%[[ARG]], %[[START]], %[[LIMIT]], %[[STRIDE]], %[[T16]])
   %0 = "mhlo.real_dynamic_slice"(%arg0, %arg1, %arg2, %arg3) : (tensor<?x?xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x?xf32>
-  return %0: tensor<?x?xf32>
+  func.return %0: tensor<?x?xf32>
 }
 
 // -----
@@ -128,7 +128,7 @@ func @row_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<1> : tensor<1xi64>}
       : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
-  return %0: tensor<?xf32>
+  func.return %0: tensor<?xf32>
 }
 
 // -----
@@ -148,7 +148,7 @@ func @column_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32>
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>}
       : (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
-  return %0: tensor<?xf32>
+  func.return %0: tensor<?xf32>
 }
 
 // -----
@@ -162,7 +162,7 @@ func @transpose(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc(%[[DIM1]], %[[DIM0]]) : memref<?x?xf32>
   // CHECK: "lmhlo.transpose"(%[[ARG]], %[[OUT]])
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1,0]> : tensor<2xi64>} : (tensor<?x?xf32>) -> tensor<?x?xf32>
-  return %0: tensor<?x?xf32>
+  func.return %0: tensor<?x?xf32>
 }
 
 // -----
@@ -182,7 +182,7 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
   %concat = "mhlo.concatenate"(%a, %b, %c) {
     dimension = 1
   } : (tensor<?x?xi32>, tensor<?x?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
-  return %concat : tensor<?x?xi32>
+  func.return %concat : tensor<?x?xi32>
 }
 
 // -----
@@ -207,7 +207,7 @@ func @gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>)
       slice_sizes = dense<[1, 7]> : tensor<2xi64>
       }
       : (tensor<?x?xf32>, tensor<?xi32>) -> tensor<?x?xf32>
-  return %result : tensor<?x?xf32>
+  func.return %result : tensor<?x?xf32>
 }
 
 // -----
@@ -231,7 +231,7 @@ func @dynamic_gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>, %slice_siz
       >,
       indices_are_sorted = false
     } : (tensor<?x?xf32>, tensor<?xi32>, tensor<2xi32>) -> tensor<?x?xf32>
-  return %result : tensor<?x?xf32>
+  func.return %result : tensor<?x?xf32>
 }
 
 // -----
@@ -245,5 +245,5 @@ func @logistic(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc(%[[DIM0]], %[[DIM1]]) : memref<?x?xf32>
   // CHECK: "lmhlo.logistic"(%[[ARG]], %[[OUT]])
   %0 = "mhlo.logistic"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
-  return %0: tensor<?x?xf32>
+  func.return %0: tensor<?x?xf32>
 }

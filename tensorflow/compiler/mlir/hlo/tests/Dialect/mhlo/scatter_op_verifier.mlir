@@ -19,7 +19,7 @@ func @scatter(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // CHECK: func @scatter_with_unranked_inputs
@@ -41,7 +41,7 @@ func @scatter_with_unranked_inputs(%input_tensor: tensor<*xf32>,
     unique_indices = true
   } : (tensor<*xf32>, tensor<*xi32>, tensor<*xf32>) ->
     tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -65,7 +65,7 @@ func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xf32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -89,7 +89,7 @@ func @invalid_scatter(%input_tensor: tensor<*xf32>,
     unique_indices = true
   } : (tensor<*xf32>, tensor<10x2xi32>, tensor<*xf32>) ->
       tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -113,7 +113,7 @@ func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -136,7 +136,7 @@ func @invalid_scatter(%input_tensor: tensor<*xf32>,
     indices_are_sorted = true,
     unique_indices = true
   } : (tensor<*xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -160,7 +160,7 @@ func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -184,7 +184,7 @@ func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
     (tensor<512x1x6400x6400xf32>, tensor<1xi32>, tensor<512x1x6400x6400xf32>) ->
       tensor<512x1x6400x6400xf32>
 
-  return %scatter :  tensor<512x1x6400x6400xf32>
+  func.return %scatter :  tensor<512x1x6400x6400xf32>
 }
 
 // -----
@@ -208,7 +208,7 @@ func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
     (tensor<512x1x6400x6400xf32>, tensor<1xi32>, tensor<512x1x6400x6400xf32>) ->
       tensor<512x1x6400x6400xf32>
 
-  return %scatter :  tensor<512x1x6400x6400xf32>
+  func.return %scatter :  tensor<512x1x6400x6400xf32>
 }
 
 // -----
@@ -232,7 +232,7 @@ func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
     (tensor<512x1x6400x6400xf32>, tensor<1xi32>, tensor<512x1x6400x6400xf32>) ->
       tensor<512x1x6400x6400xf32>
 
-  return %scatter :  tensor<512x1x6400x6400xf32>
+  func.return %scatter :  tensor<512x1x6400x6400xf32>
 }
 
 // -----
@@ -256,7 +256,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<*xf32>,
     indices_are_sorted = true,
     unique_indices = true
   } : (tensor<*xf32>, tensor<*xi32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -280,7 +280,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -305,7 +305,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -328,7 +328,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
     indices_are_sorted = true,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<*xi32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -353,7 +353,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<*xf32>,
     unique_indices = true
   } : (tensor<*xf32>, tensor<10x2xi32>, tensor<*xf32>) ->
       tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 func @valid_scatter_dimensions_with_dynamic_index_vector_dim(
@@ -374,7 +374,7 @@ func @valid_scatter_dimensions_with_dynamic_index_vector_dim(
     indices_are_sorted = true,
     unique_indices = true
   } : (tensor<*xf32>, tensor<10x?xi32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -397,7 +397,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
     indices_are_sorted = true,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<*xi32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // -----
@@ -422,7 +422,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -447,7 +447,7 @@ func @invalid_scatter_update_window_dims(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x301xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -472,7 +472,7 @@ func @invalid_scatter_update_window_dims(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<11x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -497,7 +497,7 @@ func @invalid_scatter_return_type(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100xf32>
-  return %0 : tensor<200x100xf32>
+  func.return %0 : tensor<200x100xf32>
 }
 
 // -----
@@ -522,7 +522,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -547,7 +547,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -572,7 +572,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -597,7 +597,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -624,7 +624,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -650,7 +650,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -675,7 +675,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -700,7 +700,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     unique_indices = true
   } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xi32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }
 
 // -----
@@ -725,5 +725,5 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xi32>,
     unique_indices = true
   } : (tensor<200x100x300xi32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
       tensor<200x100x300xf32>
-  return %0 : tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
 }

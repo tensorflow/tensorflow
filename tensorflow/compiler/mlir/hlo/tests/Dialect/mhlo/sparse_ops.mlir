@@ -23,7 +23,7 @@
 //       CHECK: return %[[T]] : tensor<10x20xf32>
 func @dense_abs_eltwise(%arg0: tensor<10x20xf32>) -> tensor<10x20xf32> {
   %0 = "mhlo.abs"(%arg0) : (tensor<10x20xf32>) -> tensor<10x20xf32>
-  return %0 : tensor<10x20xf32>
+  func.return %0 : tensor<10x20xf32>
 }
 
 // CHECK-LABEL: func @dense_add_eltwise(
@@ -34,7 +34,7 @@ func @dense_abs_eltwise(%arg0: tensor<10x20xf32>) -> tensor<10x20xf32> {
 func @dense_add_eltwise(%arg0: tensor<10x20xf32>,
                         %arg1: tensor<10x20xf32>) -> tensor<10x20xf32> {
   %0 = mhlo.add %arg0, %arg1 : tensor<10x20xf32>
-  return %0 : tensor<10x20xf32>
+  func.return %0 : tensor<10x20xf32>
 }
 
 //
@@ -47,7 +47,7 @@ func @dense_add_eltwise(%arg0: tensor<10x20xf32>,
 //       CHECK: return %[[T]] : tensor<10x20xf32>
 func @sparse_abs_eltwise1(%arg0: tensor<10x20xf32, #CSR>) -> tensor<10x20xf32> {
   %0 = "mhlo.abs"(%arg0) : (tensor<10x20xf32, #CSR>) -> tensor<10x20xf32>
-  return %0 : tensor<10x20xf32>
+  func.return %0 : tensor<10x20xf32>
 }
 
 // CHECK-LABEL: func @sparse_abs_eltwise2(
@@ -56,7 +56,7 @@ func @sparse_abs_eltwise1(%arg0: tensor<10x20xf32, #CSR>) -> tensor<10x20xf32> {
 //       CHECK: return %[[T]] : tensor<10x20xf32, #{{.*}}>
 func @sparse_abs_eltwise2(%arg0: tensor<10x20xf32, #CSR>) -> tensor<10x20xf32, #CSR> {
   %0 = "mhlo.abs"(%arg0) : (tensor<10x20xf32, #CSR>) -> tensor<10x20xf32, #CSR>
-  return %0 : tensor<10x20xf32, #CSR>
+  func.return %0 : tensor<10x20xf32, #CSR>
 }
 
 // CHECK-LABEL: func @sparse_abs_eltwise3(
@@ -65,7 +65,7 @@ func @sparse_abs_eltwise2(%arg0: tensor<10x20xf32, #CSR>) -> tensor<10x20xf32, #
 //       CHECK: return %[[T]] : tensor<10x20xf32, #{{.*}}>
 func @sparse_abs_eltwise3(%arg0: tensor<10x20xf32, #CSR>) -> tensor<10x20xf32, #DCSR> {
   %0 = "mhlo.abs"(%arg0) : (tensor<10x20xf32, #CSR>) -> tensor<10x20xf32, #DCSR>
-  return %0 : tensor<10x20xf32, #DCSR>
+  func.return %0 : tensor<10x20xf32, #DCSR>
 }
 
 // CHECK-LABEL: func @sparse_abs_eltwise4(
@@ -74,7 +74,7 @@ func @sparse_abs_eltwise3(%arg0: tensor<10x20xf32, #CSR>) -> tensor<10x20xf32, #
 //       CHECK: return %[[T]] : tensor<10x20xf32, #{{.*}}>
 func @sparse_abs_eltwise4(%arg0: tensor<10x20xf32>) -> tensor<10x20xf32, #CSR> {
   %0 = "mhlo.abs"(%arg0) : (tensor<10x20xf32>) -> tensor<10x20xf32, #CSR>
-  return %0 : tensor<10x20xf32, #CSR>
+  func.return %0 : tensor<10x20xf32, #CSR>
 }
 
 //

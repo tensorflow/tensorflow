@@ -22,7 +22,7 @@ func @compute_reshape_shape(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32>
   // CHECK:   tensor.yield %[[EXTENT_INT]] : i32
   // CHECK: } : tensor<2xi32>
   %0 = "mhlo.compute_reshape_shape"(%arg0, %arg1) : (index, tensor<2xi32>) -> tensor<2xi32>
-  return %0 : tensor<2xi32>
+  func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL: cstr_reshapable_op
@@ -59,5 +59,5 @@ func @cstr_reshapable_op(%arg0: index, %arg1: tensor<2xi32>) -> !shape.witness {
   // CHECK: %[[ALL_CSTRS:.*]] = arith.andi %[[DIVISIBLE]], %[[PARTIAL_AND]] : i1
   // CHECK: %[[W:.*]] = shape.cstr_require %[[ALL_CSTRS]], "Required valid reshape shape input"
   %0 = "mhlo.cstr_reshapable"(%arg0, %arg1) : (index, tensor<2xi32>) -> !shape.witness
-  return %0 : !shape.witness
+  func.return %0 : !shape.witness
 }
