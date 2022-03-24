@@ -19,6 +19,8 @@ import functools
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -65,7 +67,8 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
 
   def while_body(i, *ta_list):
     """Body of while loop."""
-    fn_output = nest.flatten(loop_fn(i))
+    f = autograph.tf_convert(loop_fn, autograph_ctx.control_status_ctx())
+    fn_output = nest.flatten(f(i))
     if len(fn_output) != len(flat_loop_fn_dtypes):
       raise ValueError(
           f"Number of expected outputs {len(flat_loop_fn_dtypes)}, does not "
@@ -278,7 +281,8 @@ def _pfor_impl(loop_fn,
       loop_fn_outputs = loop_fn(loop_var, **{PFOR_CONFIG_ARG: pfor_config})
     else:
       assert pfor_config is None
-      loop_fn_outputs = loop_fn(loop_var)
+      f = autograph.tf_convert(loop_fn, autograph_ctx.control_status_ctx())
+      loop_fn_outputs = f(loop_var)
     loop_fn_output_tensors = nest.map_structure(_composite_to_tensors,
                                                 loop_fn_outputs)
 
