@@ -46,7 +46,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<
       : tensor<?xf32> into tensor<?xf32>
     gml_st.yield %15 : tensor<?xf32>
   }
-  return %5 : tensor<?xf32>
+  func.return %5 : tensor<?xf32>
 }
 // CHECK-LABEL: func @reduce_row_sum_2d(
 // CHECK-SAME:    %[[LHS:.*]]: tensor<?x?xf32>,
@@ -131,7 +131,7 @@ module  {
         : tensor<4xf32> into tensor<8xf32>
       gml_st.yield %6 : tensor<8xf32>
     }
-    return %2 : tensor<8xf32>
+    func.return %2 : tensor<8xf32>
   }
 }
 // CHECK-LABEL: func @reduce_row_sum_2d_static
@@ -178,7 +178,7 @@ module  {
         : tensor<?xf32> into tensor<?xf32>
       gml_st.yield %12 : tensor<?xf32>
     }
-    return %5 : tensor<?xf32>
+    func.return %5 : tensor<?xf32>
   }
 }
 // CHECK-LABEL: func @reduce_column_sum_2d

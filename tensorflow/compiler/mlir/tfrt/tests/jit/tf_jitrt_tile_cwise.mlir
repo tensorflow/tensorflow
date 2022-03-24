@@ -16,7 +16,7 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %2 = math.tanh %arg1 : f32
     linalg.yield %2 : f32
   } -> tensor<?x?xf32>
-  return %1 : tensor<?x?xf32>
+  func.return %1 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @tanh_2d(

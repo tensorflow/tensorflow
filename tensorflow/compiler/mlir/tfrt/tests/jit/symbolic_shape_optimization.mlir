@@ -31,7 +31,7 @@ func @optimize_1dx1d_bcast(
          {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
        : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
 
-  return %3: tensor<?xf32>
+  func.return %3: tensor<?xf32>
 }
 
 // -----
@@ -64,7 +64,7 @@ func @optimize_1dx2d_bcast_const_shape(
          {broadcast_dimensions = dense<[1]> : tensor<1xi64>}
        : (tensor<512xf32>, tensor<2xindex>) -> tensor<?x512xf32>
 
-  return %3: tensor<?x512xf32>
+  func.return %3: tensor<?x512xf32>
 }
 
 // -----
@@ -103,7 +103,7 @@ func @optimize_1dx1dx1d_bcast(
          {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
        : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
 
-  return %5: tensor<?xf32>
+  func.return %5: tensor<?xf32>
 }
 
 // -----
@@ -150,7 +150,7 @@ func @optimize_2dx1d_bcast(
        : (tensor<?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
 
   // CHECK: return %[[RET0]], %[[RET1]]
-  return %3, %4: tensor<10x?xf32>, tensor<10x?xf32>
+  func.return %3, %4: tensor<10x?xf32>, tensor<10x?xf32>
 }
 
 // -----
@@ -208,5 +208,5 @@ func @optimize_3dx3d_bcast(
        : (tensor<1x?x1xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
 
   // CHECK: return %[[RET0]], %[[RET1]]
-  return %3, %4: tensor<?x?x?xf32>, tensor<?x?x?xf32>
+  func.return %3, %4: tensor<?x?x?xf32>, tensor<?x?x?xf32>
 }

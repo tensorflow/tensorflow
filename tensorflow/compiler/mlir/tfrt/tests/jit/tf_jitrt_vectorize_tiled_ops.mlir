@@ -29,7 +29,7 @@ func @tiled_add(%A: tensor<8xf32>, %B: tensor<8xf32>,
       : tensor<2xf32> into tensor<8xf32>
     gml_st.yield %update : tensor<8xf32>
   }
-  return %sum : tensor<8xf32>
+  func.return %sum : tensor<8xf32>
 }
 // CHECK-LABEL: func @tiled_add
 
@@ -97,7 +97,7 @@ func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
         : tensor<4xf32> into tensor<80xf32>
     gml_st.yield %update : tensor<80xf32>
   }
-  return %sum : tensor<80xf32>
+  func.return %sum : tensor<80xf32>
 }
 
 // CHECK-LABEL: func @tiled_reduction_2d
@@ -151,7 +151,7 @@ func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
     %6 = arith.addf %arg1, %arg2 : f32
     linalg.yield %6 : f32
   } -> tensor<f32>
-  return %5 : tensor<f32>
+  func.return %5 : tensor<f32>
 }
 // CHECK-LABEL: func @reduction_1d
 
@@ -180,7 +180,7 @@ func @test_transfer_read_of_one_dim_expand_shape(
     : vector<2x5xf32> to vector<5xf32>
   %4 = vector.transfer_write %3, %1[%c0] {in_bounds = [true]}
     : vector<5xf32>, tensor<5xf32>
-  return %4 : tensor<5xf32>
+  func.return %4 : tensor<5xf32>
 }
 // CHECK-LABEL: func @test_transfer_read_of_one_dim_expand_shape(
 // CHECK-SAME: %[[IN:.*]]: tensor<10xf32>
@@ -209,7 +209,7 @@ func @test_transfer_read_of_one_dim_expand_shape_different_shape(
     : vector<1x18xf32> to vector<18xf32>
   %4 = vector.transfer_write %3, %1[%c0] {in_bounds = [true]}
     : vector<18xf32>, tensor<18xf32>
-  return %4 : tensor<18xf32>
+  func.return %4 : tensor<18xf32>
 }
 // CHECK-LABEL: func @test_transfer_read_of_one_dim_expand_shape_different_shape
 // CHECK: %{{.*}} = tensor.expand_shape
@@ -220,7 +220,7 @@ func @do_not_vectorize_large_untiled_fill() -> tensor<2x1000xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %init = linalg.init_tensor [2, 1000] : tensor<2x1000xf32>
   %out = linalg.fill ins(%cst : f32) outs(%init : tensor<2x1000xf32>) -> tensor<2x1000xf32>
-  return %out : tensor<2x1000xf32>
+  func.return %out : tensor<2x1000xf32>
 }
 // CHECK-LABEL: func @do_not_vectorize_large_untiled_fill
 // CHECK: linalg.fill
@@ -231,7 +231,7 @@ func @vectorize_small_untiled_fill() -> tensor<128xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %init = linalg.init_tensor [128] : tensor<128xf32>
   %out = linalg.fill ins(%cst : f32) outs(%init : tensor<128xf32>) -> tensor<128xf32>
-  return %out : tensor<128xf32>
+  func.return %out : tensor<128xf32>
 }
 // CHECK-LABEL: func @vectorize_small_untiled_fill
 // CHECK: vector.transfer_write
