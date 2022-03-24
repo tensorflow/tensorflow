@@ -166,6 +166,16 @@ const xla::XlaComputation* XlaContext::LookupOrCreate(
   }
 }
 
+Status XlaContext::RecordCollectiveInfoFromNestedCompilationResult(
+    const XlaCompilationResult& result) {
+  if (result.collective_info) {
+    return RecordCollectiveInfo(result.collective_info->group_key,
+                                result.collective_info->group_size)
+        .status();
+  }
+  return Status::OK();
+}
+
 StatusOr<int64_t> XlaContext::RecordCollectiveInfo(int group_key,
                                                    int group_size) {
   if (!collective_info_) {

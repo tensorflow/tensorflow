@@ -162,6 +162,10 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx,
                    compiler->CompileFunction(options, branches[j], arguments,
                                              &branch_results[j]));
+    OP_REQUIRES_OK(
+        ctx,
+        ctx->xla_context()->RecordCollectiveInfoFromNestedCompilationResult(
+            branch_results[j]));
   }
 
   bool has_tensor_array_gradients = false;

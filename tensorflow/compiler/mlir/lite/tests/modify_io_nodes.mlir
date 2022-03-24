@@ -11,7 +11,7 @@ func @modified(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> attribute
   %4 = "tfl.reshape"(%3, %cst) : (tensor<1x112x112x32x!quant.uniform<i8:f32, 0.023528476789885875>>, tensor<2xi32>) -> tensor<1x401408x!quant.uniform<i8:f32, 0.023528476789885875>>
   %5 = "tfl.softmax"(%4) {beta = 1.000000e+00 : f32} : (tensor<1x401408x!quant.uniform<i8:f32, 0.023528476789885875>>) -> tensor<1x401408x!quant.uniform<i8:f32, 3.906250e-03>>
   %6 = "tfl.dequantize"(%5) : (tensor<1x401408x!quant.uniform<i8:f32, 3.906250e-03>>) -> tensor<1x401408xf32>
-  return %6 : tensor<1x401408xf32>
+  func.return %6 : tensor<1x401408xf32>
 
 // CHECK-LABEL: func @modified(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32>
 // CHECK-NEXT: %[[shape:.*]] = arith.constant dense<[1, 401408]> : tensor<2xi32>
@@ -54,7 +54,7 @@ func @not_modified(%arg0: tensor<f32>, %arg1: tensor<1x224x224x3xf32>) -> (tenso
   %4 = "tfl.reshape"(%3, %cst) : (tensor<1x112x112x32x!quant.uniform<i8:f32, 0.023528476789885875>>, tensor<2xi32>) -> tensor<1x401408x!quant.uniform<i8:f32, 0.023528476789885875>>
   %5 = "tfl.softmax"(%4) {beta = 1.000000e+00 : f32} : (tensor<1x401408x!quant.uniform<i8:f32, 0.023528476789885875>>) -> tensor<1x401408x!quant.uniform<i8:f32, 3.906250e-03>>
   %6 = "tfl.dequantize"(%5) : (tensor<1x401408x!quant.uniform<i8:f32, 3.906250e-03>>) -> tensor<1x401408xf32>
-  return %6, %arg1 : tensor<1x401408xf32>, tensor<1x224x224x3xf32>
+  func.return %6, %arg1 : tensor<1x401408xf32>, tensor<1x224x224x3xf32>
 
 // CHECK-LABEL: func @not_modified(%arg0: tensor<f32>, %arg1: tensor<1x224x224x3xf32>) -> (tensor<1x401408xf32>, tensor<1x224x224x3xf32>)
 // CHECK-NEXT: %[[shape:.*]] = arith.constant dense<[1, 401408]> : tensor<2xi32>
@@ -98,7 +98,7 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> {
   %4 = "tfl.reshape"(%3, %cst) : (tensor<1x112x112x32x!quant.uniform<i8:f32, 0.023528476789885875>>, tensor<2xi32>) -> tensor<1x401408x!quant.uniform<i8:f32, 0.023528476789885875>>
   %5 = "tfl.softmax"(%4) {beta = 1.000000e+00 : f32} : (tensor<1x401408x!quant.uniform<i8:f32, 0.023528476789885875>>) -> tensor<1x401408x!quant.uniform<i8:f32, 3.906250e-03>>
   %6 = "tfl.dequantize"(%5) : (tensor<1x401408x!quant.uniform<i8:f32, 3.906250e-03>>) -> tensor<1x401408xf32>
-  return %6 : tensor<1x401408xf32>
+  func.return %6 : tensor<1x401408xf32>
 
 // CHECK-LABEL: func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32>
 // INT8-LABEL: @main(%arg0: tensor<1x224x224x3x!quant.uniform<i8:f32, 7.812500e-03>>) -> tensor<1x401408x!quant.uniform<i8:f32, 3.906250e-03>>
@@ -114,7 +114,7 @@ func @non_entry_funciton(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32>
   %4 = "tfl.reshape"(%3, %cst) : (tensor<1x112x112x32x!quant.uniform<i8:f32, 0.023528476789885875>>, tensor<2xi32>) -> tensor<1x401408x!quant.uniform<i8:f32, 0.023528476789885875>>
   %5 = "tfl.softmax"(%4) {beta = 1.000000e+00 : f32} : (tensor<1x401408x!quant.uniform<i8:f32, 0.023528476789885875>>) -> tensor<1x401408x!quant.uniform<i8:f32, 3.906250e-03>>
   %6 = "tfl.dequantize"(%5) : (tensor<1x401408x!quant.uniform<i8:f32, 3.906250e-03>>) -> tensor<1x401408xf32>
-  return %6 : tensor<1x401408xf32>
+  func.return %6 : tensor<1x401408xf32>
 
 // CHECK-LABEL: func @non_entry_funciton(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32>
 // INT8-LABEL: func @non_entry_funciton(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32>

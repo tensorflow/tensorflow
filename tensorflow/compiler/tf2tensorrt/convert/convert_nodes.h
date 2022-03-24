@@ -46,6 +46,19 @@ namespace tensorrt {
 namespace convert {
 using ::stream_executor::port::StatusOr;
 
+#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                           \
+  do {                                                               \
+    return errors::Internal("TFTRT::", __FUNCTION__, ":", __LINE__,  \
+                            " failed to add TRT layer, at: ", node); \
+  } while (0)
+
+#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
+  do {                                           \
+    if (ptr == nullptr) {                        \
+      TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
+    }                                            \
+  } while (0)
+
 struct EngineConnection {
   // Constructs a non-control edge.
   EngineConnection(const string& outside, int out_id, int out_port,
@@ -99,7 +112,9 @@ struct EngineInfo {
         maximum_cached_engines(0),
         precision_mode(TrtPrecisionMode::FP32),
         use_calibration(true),
-        allow_build_at_runtime(true) {}
+
+        allow_build_at_runtime(true),
+        use_explicit_precision(false) {}
 
   string engine_name;
   string device;
@@ -118,6 +133,7 @@ struct EngineInfo {
   TrtPrecisionMode precision_mode;
   bool use_calibration;
   bool allow_build_at_runtime;
+  bool use_explicit_precision;
 };
 
 // Constructs a graphdef from the segment in the given graph and stores it to
@@ -146,6 +162,9 @@ Status ConvertSegmentToGraphDef(
 // - convert_successfully: indicates whether the conversion to TensorRT network
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
+// Note: When 'cluster' is not null, it contains the graph to be converted.
+//       We may perform additional optimizations to the graph before converting
+//       the graph.
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,
     size_t max_workspace_size_bytes,
@@ -154,7 +173,9 @@ Status ConvertGraphDefToEngine(
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
-    TrtShapeOptimizationProfile* profiles, absl::string_view engine_name);
+    TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
+    bool use_explicit_precision,
+    tensorflow::grappler::Cluster* cluster = nullptr);
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
@@ -165,8 +186,6 @@ class OutputEdgeValidator {
   bool operator()(const Edge* out_edge) const;
 };
 
-int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
-
 // Class to verify if specific TF node is supported by TRT.
 class TrtNodeValidator {
  public:
@@ -175,7 +194,7 @@ class TrtNodeValidator {
   // data type information of a tensor for validation purpose.
   TrtNodeValidator(const grappler::GraphProperties& graph_properties,
                    TrtPrecisionMode precision_mode, bool use_calibration,
-                   bool use_implicit_batch);
+                   bool use_implicit_batch, bool use_explicit_precision);
 
   // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
   // to TRT subgraph and later converted into TRT engine.
@@ -215,6 +234,8 @@ class TrtNodeValidator {
 
   const bool use_implicit_batch_;
 
+  const bool use_explicit_precision_;
+
   friend class ValidatorTest;
   friend class OpConverterTest;
 };
@@ -238,7 +259,7 @@ class Converter {
   static StatusOr<std::unique_ptr<Converter>> Create(
       TrtPrecisionMode precision_mode, bool use_calibration,
       nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,
-      absl::string_view engine_name);
+      absl::string_view engine_name, bool use_explicit_precision = false);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -390,10 +411,12 @@ class Converter {
     return trt_tensors_;
   }
 
+  bool UseExplicitPrecision() const { return use_explicit_precision_; }
+
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,
             nvinfer1::ILogger* trt_logger, const bool use_implicit_batch,
-            absl::string_view engine_name);
+            absl::string_view engine_name, bool use_explicit_precision);
 
   Status Init(nvinfer1::ILogger* trt_logger);
 
@@ -453,6 +476,9 @@ class Converter {
   // The name of the TRTEngineOp node.
   absl::string_view engine_name_;
 
+  // Indicates whether to use explicit precision in TensorRT (Q/DQ support).
+  bool use_explicit_precision_;
+
   friend class ConverterTest;
   friend class OpConverterTest;
 };
@@ -466,7 +492,7 @@ class Converter {
 // If validation_only is false converter must not be nullptr.
 Status PrepareTensorForShape(
     Converter* converter, const TRT_TensorOrWeights& input,
-    const nvinfer1::Dims& dims, const bool validation_only,
+    const DimsAdapter& dims, const bool validation_only,
     ITensorProxyPtr* tensor, const NodeDef& node_def,
     absl::optional<int> op_instance = absl::nullopt,
     absl::optional<std::string> origin_node_name = absl::nullopt);
@@ -489,16 +515,6 @@ const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
 const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
 BinaryOperationMap();
 
-// Returns true if the node is a quantize and dequantize Op.
-bool IsQuantizeAndDequantizeOp(const Node*);
-
-constexpr std::array<const char*, 4> kQuantizationOpNames = {
-    "QuantizeAndDequantizeV2",
-    "QuantizeAndDequantizeV3",
-    "FakeQuantWithMinMaxVars",
-    "FakeQuantWithMinMaxArgs",
-};
-
 constexpr std::array<std::pair<const char*, nvinfer1::ElementWiseOperation>, 10>
     kBinaryOperations = {{
         {"Add", nvinfer1::ElementWiseOperation::kSUM},
@@ -512,6 +528,22 @@ constexpr std::array<std::pair<const char*, nvinfer1::ElementWiseOperation>, 10>
         {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
         {"Pow", nvinfer1::ElementWiseOperation::kPOW},
     }};
+
+template <typename T>
+absl::InlinedVector<std::string, 10> GetOperationNames(const T& set) {
+  absl::InlinedVector<std::string, 10> result;
+  absl::c_transform(set, std::back_inserter(result),
+                    [](const auto x) { return x.first; });
+  return result;
+}
+
+// Adds a matrix multiplication operation to the TensorRT graph. The "params"
+// pointer is only used to access the TRT network builder. The inputs and
+// parameters for the op are fully specified by input_[a|b] and transpose_[a|b].
+StatusOr<ITensorProxyPtr> ConvertMatMulImpl(OpConverterParams* params,
+                                            TRT_TensorOrWeights input_a,
+                                            TRT_TensorOrWeights input_b,
+                                            bool transpose_a, bool transpose_b);
 
 }  // namespace convert
 }  // namespace tensorrt

@@ -467,7 +467,7 @@ TEST_F(InstructionFusionTest, FuseScalarConstant) {
 // Check that we limit the number of operands to fusions we create.
 TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
   constexpr int64_t kNumParams = 200;
-  ASSERT_GT(kNumParams, kMaxOperandsAndOutputsPerFusion);
+  ASSERT_GT(kNumParams, MaxOperandsAndOutputsPerFusion());
 
   // Compute p0 + p1 + ... + pN.
   HloComputation::Builder b(TestName());
@@ -488,7 +488,7 @@ TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
                   .ValueOrDie());
   SCOPED_TRACE(module->ToString());
   for (const HloInstruction* instr : computation->instructions()) {
-    EXPECT_LE(instr->operand_count(), kMaxOperandsAndOutputsPerFusion)
+    EXPECT_LE(instr->operand_count(), MaxOperandsAndOutputsPerFusion())
         << instr->ToString();
   }
 }

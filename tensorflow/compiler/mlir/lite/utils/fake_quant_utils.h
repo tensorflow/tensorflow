@@ -36,7 +36,7 @@ struct FetchMinMaxAttrs {
                   AttrType &max_value) const {
     min_value = tf_op.minAttr();
     max_value = tf_op.maxAttr();
-    return true;  // Succesfully matched and fetched.
+    return true;  // Successfully matched and fetched.
   }
 };
 
@@ -52,7 +52,7 @@ struct FetchConstantMinMaxInputs {
     if (!matchPattern(max, m_Constant(&max_value))) {
       return false;
     }
-    return true;  // Succesfully matched and fetched.
+    return true;  // Successfully matched and fetched.
   }
 };
 

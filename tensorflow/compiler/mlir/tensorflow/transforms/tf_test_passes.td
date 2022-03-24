@@ -58,25 +58,6 @@ def TestResourceAliasAnalysis : Pass<"tf-test-resource-alias-analysis", "FuncOp"
   let constructor = "::mlir::tf_test::CreateTestResourceAliasAnalysisPass()";
 }
 
-def TestTensorFlowVisitorUtil : FunctionPass<"tf-test-visitor-util"> {
-  let summary = "Test pass for TF visitor utils";
-  let description = [{
-    Add remarks that trace order of visiting operations using TF visitor
-    utilities.
-  }];
-  let constructor = "::mlir::tf_test::CreateTestVisitorUtilPass()";
-}
-
-def TestTensorFlowVisitorUtilInterrupt :
-  FunctionPass<"tf-test-visitor-util-interrupt"> {
-  let summary = "Test pass for TF visitor utils with interruption";
-  let description = [{
-    Add remarks that trace order of visiting operations using TF visitor
-    utilities, interrupt version.
-  }];
-  let constructor = "::mlir::tf_test::CreateTestVisitorUtilInterruptPass()";
-}
-
 def TestClusteringPolicyPass : Pass<"tf-test-clustering-policy", "FuncOp"> {
   let summary = "Test pass for clustering based on the user defined policy";
   let constructor = "::mlir::tf_test::CreateTestClusteringPolicyPass()";

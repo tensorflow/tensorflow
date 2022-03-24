@@ -19,15 +19,16 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <memory>
+#include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_cpurt_pipeline.h"
+#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tfrt/cpu/jit/cpurt.h"  // from @tf_runtime
+#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
@@ -41,18 +42,15 @@ namespace tensorflow {
 
 using ::tfrt::HostContext;
 using ::tfrt::RemainingResults;
-using ::tfrt::cpu::jit::JitExecutable;
-using ::tfrt::cpu::jit::MemrefDesc;
-using ::tfrt::cpu::jit::Type;
+using ::tfrt::jitrt::JitExecutable;
+using ::tfrt::jitrt::MemrefDesc;
+using ::tfrt::jitrt::Type;
 
 // Constants to make shape specification more readable.
 // kStaticDim refers to the static shape in IR taken from ARGS of the benchmark.
 ABSL_CONST_INIT extern const bool kStaticDim;
 // kDynamicDim refers to the dynamic shape `?` in IR.
 ABSL_CONST_INIT extern const bool kDynamicDim;
-
-std::unique_ptr<HostContext> CreateSingleThreadedHostContext();
-std::unique_ptr<HostContext> CreateMultiThreadedHostContext(int num_threads);
 
 // Generate random Eigen Tensor of the given dimensions:
 //   (rand<T>() + offset) * scale
@@ -69,11 +67,15 @@ Eigen::Tensor<T, rank, Eigen::RowMajor> GenRandomTensor(
 }
 
 // -------------------------------------------------------------------------- //
-// Run benchmark by compiling MLIR function using TFRT CPURT API.
+// Run benchmark by compiling MLIR function using TFRT JitRt API.
 // -------------------------------------------------------------------------- //
 
-// Do not record any information about operands for the results conversion.
-struct ResultConversionCtx {};
+// Record data ptrs of inputs to free the returned memrefs only if necessary.
+struct ResultConversionCtx {
+  explicit ResultConversionCtx(llvm::SmallVector<void*>&& ptrs)
+      : input_ptrs(std::move(ptrs)) {}
+  llvm::SmallVector<void*> input_ptrs;
+};
 
 // Result converter that simply frees the memrefs returned from the compiled
 // functions. We are not interested in the computed results, and constructing
@@ -90,7 +92,7 @@ JitExecutable& CreateJitExecutable(const HostContext& host,
                                    llvm::StringRef mlir_input,
                                    llvm::StringRef function_name,
                                    bool lower_from_tensorflow,
-                                   const TfCpuRtPipelineOptions& tf_cpurt_opts);
+                                   const TfJitRtPipelineOptions& tf_jitrt_opts);
 
 // Converts Eigen Tensor to Memref descriptor.
 template <typename T, int rank>

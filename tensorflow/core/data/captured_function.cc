@@ -44,6 +44,9 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr char kAllowSmallFunctionOptimizations[] =
+    "allow_small_function_optimizations";
+
 // Simplistic implementation of the `StepStatsCollectorInterface` that only
 // cares about collecting the CPU time needed to execute a captured function.
 class SimpleStepStatsCollector : public StepStatsCollectorInterface {
@@ -541,8 +544,12 @@ Status CapturedFunction::Instantiate(
   inst_opts.default_device_to_target = metadata_->use_default_device();
   inst_opts.config_proto =
       lib->config_proto() ? *lib->config_proto() : ConfigProto();
-  if (!metadata_->use_inter_op_parallelism()) {
-    inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
+  if (GetExperiments().contains(kAllowSmallFunctionOptimizations)) {
+    inst_opts.allow_small_function_optimizations = true;
+  } else {
+    if (!metadata_->use_inter_op_parallelism()) {
+      inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
+    }
   }
   inst_opts.is_multi_device_function = metadata_->use_multi_device_function();
   if (!params.function_handle_cache) {

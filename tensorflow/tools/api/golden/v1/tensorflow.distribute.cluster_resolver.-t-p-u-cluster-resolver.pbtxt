@@ -15,6 +15,10 @@ tf_class {
     name: "task_type"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "tpu_hardware_feature"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'tpu\', \'zone\', \'project\', \'job_name\', \'coordinator_name\', \'coordinator_address\', \'credentials\', \'service\', \'discovery_url\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'worker\', \'None\', \'None\', \'default\', \'None\', \'None\'], "
@@ -46,5 +50,9 @@ tf_class {
   member_method {
     name: "num_accelerators"
     argspec: "args=[\'self\', \'task_type\', \'task_id\', \'config_proto\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "set_tpu_topology"
+    argspec: "args=[\'self\', \'serialized_tpu_topology\'], varargs=None, keywords=None, defaults=None"
   }
 }

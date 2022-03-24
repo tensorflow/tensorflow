@@ -451,17 +451,32 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   def testEagerTensorFormatForResource(self):
     t = resource_variable_ops.VarHandleOp(shape=[], dtype=dtypes.float32)
-    self.assertEqual(f"{t}", "<Resource Tensor>")
-    self.assertEqual(
-        str(t), "tf.Tensor(<Resource Tensor>, shape=(), dtype=resource)")
-    self.assertEqual(f"{t!s}",
-                     "tf.Tensor(<Resource Tensor>, shape=(), dtype=resource)")
-    self.assertEqual(
+
+    # type is compiler-depdendent, as it comes from demangling.
+    handle_str = (f"<ResourceHandle("
+                  f"name=\"\", "
+                  f"device=\"{t.device}\", "
+                  f"container=\"localhost\", "
+                  f"type=\"@@tensorflow@@Var@@\")>")
+
+    def make_regex(s):
+      return re.escape(s).replace("@@", ".*")
+
+    self.assertRegex(f"{t}", make_regex(handle_str))
+    self.assertRegex(
+        str(t),
+        make_regex(f"tf.Tensor({handle_str}, shape=(), dtype=resource)"))
+    self.assertRegex(
+        f"{t!s}",
+        make_regex(f"tf.Tensor({handle_str}, shape=(), dtype=resource)"))
+    self.assertRegex(
         repr(t),
-        "<tf.Tensor: shape=(), dtype=resource, value=<Resource Tensor>>")
-    self.assertEqual(
+        make_regex(
+            f"<tf.Tensor: shape=(), dtype=resource, value={handle_str}>"))
+    self.assertRegex(
         f"{t!r}",
-        "<tf.Tensor: shape=(), dtype=resource, value=<Resource Tensor>>")
+        make_regex(
+            f"<tf.Tensor: shape=(), dtype=resource, value={handle_str}>"))
 
   def testEagerTensorFormatForVariant(self):
     t = list_ops.tensor_list_reserve(

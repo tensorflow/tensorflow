@@ -15,7 +15,7 @@
 
 """MetaGraph and related functions."""
 import copy
-from distutils import version as distutils_version  # pylint: disable=g-bad-import-order
+from packaging import version as packaging_version  # pylint: disable=g-bad-import-order
 import os.path
 import re
 
@@ -113,7 +113,7 @@ def _read_file(filename):
   """
   graph_def = graph_pb2.GraphDef()
   if not file_io.file_exists(filename):
-    raise IOError("File %s does not exist." % filename)
+    raise IOError(f"File {filename} does not exist.")
   # First try to read it as a binary file.
   with file_io.FileIO(filename, "rb") as f:
     file_content = f.read()
@@ -127,7 +127,7 @@ def _read_file(filename):
   try:
     text_format.Merge(file_content, graph_def)
   except text_format.ParseError as e:
-    raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
+    raise IOError(f"Cannot parse file {filename}: {str(e)}.")
 
   return graph_def
 
@@ -243,7 +243,8 @@ def _op_name(tensor_name):
     ValueError: if tensor_name is None or empty.
   """
   if not tensor_name:
-    raise ValueError("Tensor name cannot be empty or None.")
+    raise ValueError(
+        f"Tensor name cannot be empty or None. Received: {tensor_name}.")
 
   # Control dependency inputs start with ^.
   if tensor_name.startswith("^"):
@@ -268,7 +269,8 @@ def _get_scope(node_name):
     ValueError: if tensor_name is None or empty
   """
   if not node_name:
-    raise ValueError("Node name cannot be empty or None.")
+    raise ValueError(
+        f"Node name cannot be empty or None. Received: {node_name}.")
 
   # Control dependency inputs start with ^.
   if node_name.startswith("^"):
@@ -384,7 +386,8 @@ def add_collection_def(meta_graph_def, key, graph=None,
       ignoring the current values (if set).
   """
   if graph and not isinstance(graph, ops.Graph):
-    raise TypeError("graph must be of type Graph, not %s", type(graph))
+    raise TypeError(
+        f"graph must be of type Graph. Received type: {type(graph)}.")
 
   if not isinstance(key, six.string_types) and not isinstance(key, bytes):
     logging.warning("Only collections with string type keys will be "
@@ -540,17 +543,21 @@ def create_meta_graph_def(meta_info_def=None,
   # pylint: enable=line-too-long
   # Type check.
   if graph and not isinstance(graph, ops.Graph):
-    raise TypeError("graph must be of type Graph, not %s", type(graph))
+    raise TypeError(
+        f"graph must be of type Graph. Received type: {type(graph)}.")
   if meta_info_def and not isinstance(meta_info_def,
                                       meta_graph_pb2.MetaGraphDef.MetaInfoDef):
-    raise TypeError("meta_info_def must be of type MetaInfoDef, not %s",
-                    type(meta_info_def))
+    raise TypeError(
+        "meta_info_def must be of type MetaInfoDef. "
+        f"Received type: {type(meta_info_def)}.")
   if graph_def and not isinstance(graph_def, graph_pb2.GraphDef):
-    raise TypeError("graph_def must be of type GraphDef, not %s",
-                    type(graph_def))
+    raise TypeError(
+        "graph_def must be of type GraphDef. "
+        f"Received type: {type(graph_def)}.")
   if saver_def and not isinstance(saver_def, saver_pb2.SaverDef):
-    raise TypeError("saver_def must be of type SaverDef, not %s",
-                    type(saver_def))
+    raise TypeError(
+        f"saver_def must be of type SaverDef. "
+        f"Received type: {type(saver_def)}.")
 
   # Sets graph to default graph if it's not passed in.
   graph = graph or ops.get_default_graph()
@@ -624,7 +631,7 @@ def read_meta_graph_file(filename):
   """
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
   if not file_io.file_exists(filename):
-    raise IOError("File %s does not exist." % filename)
+    raise IOError(f"File does not exist. Received: {filename}.")
   # First try to read it as a binary file.
   with file_io.FileIO(filename, "rb") as f:
     file_content = f.read()
@@ -638,7 +645,7 @@ def read_meta_graph_file(filename):
   try:
     text_format.Merge(file_content.decode("utf-8"), meta_graph_def)
   except text_format.ParseError as e:
-    raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
+    raise IOError(f"Cannot parse file {filename}: {str(e)}.")
 
   return meta_graph_def
 
@@ -808,8 +815,7 @@ def import_scoped_meta_graph_with_return_elements(
       variables_have_trainable = True
     else:
       variables_have_trainable = (
-          distutils_version.LooseVersion(tf_version)
-          >= distutils_version.LooseVersion("1.9"))
+          packaging_version.parse(tf_version) >= packaging_version.parse("1.9"))
 
     # Sort collections so we see TRAINABLE_VARIABLES first and can default these
     # variables to trainable if the value is not set in their VariableDef.
@@ -1008,7 +1014,9 @@ def export_scoped_meta_graph(filename=None,
                 output.get_shape().as_proto() for output in value.outputs])
           bytesize += value.node_def.ByteSize()
           if bytesize >= (1 << 31) or bytesize < 0:
-            raise ValueError("GraphDef cannot be larger than 2GB.")
+            raise ValueError(
+                "GraphDef cannot be larger than 2GB. "
+                f"Received size: {bytesize}.")
 
       graph._copy_functions_to_graph_def(graph_def, bytesize)  # pylint: disable=protected-access
 
@@ -1092,7 +1100,10 @@ def copy_scoped_meta_graph(from_scope, to_scope,
 
   if from_graph == to_graph and from_scope == to_scope:
     raise ValueError("'from_scope' and 'to_scope' need to be different "
-                     "when performing copy in the same graph.")
+                     "when performing copy in the same graph. "
+                     f"Received: 'from_graph': {from_graph}, "
+                     f"'to_graph': {to_graph}, "
+                     f"'from_scope': {from_scope}, 'to_scope': {to_scope}.")
 
   orig_meta_graph, var_list = export_scoped_meta_graph(
       export_scope=from_scope, graph=from_graph)

@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -116,6 +114,7 @@ class DfsHloVisitorBase {
   virtual Status HandleFft(HloInstructionPtr fft) = 0;
   virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;
   virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
+  virtual Status HandleOptimizationBarrier(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllGather(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllGatherStart(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllGatherDone(HloInstructionPtr hlo) = 0;
@@ -270,6 +269,10 @@ class DfsHloVisitorBase {
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 
+  virtual Status HandleAsyncStart(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAsyncUpdate(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAsyncDone(HloInstructionPtr hlo) = 0;
+
   virtual Status HandleCopyStart(HloInstructionPtr copy_start) = 0;
   virtual Status HandleCopyDone(HloInstructionPtr copy_done) = 0;
 
@@ -381,7 +384,8 @@ class DfsHloVisitorBase {
  private:
   absl::flat_hash_map<int, VisitState> visit_state_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorBase);
+  DfsHloVisitorBase(const DfsHloVisitorBase&) = delete;
+  DfsHloVisitorBase& operator=(const DfsHloVisitorBase&) = delete;
 };
 
 // Explicit instantiations in dfs_hlo_visitor.cc.

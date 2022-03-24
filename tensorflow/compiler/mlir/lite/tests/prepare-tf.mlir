@@ -16,7 +16,7 @@ func @conv(tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>, tensor<256x3x32x32xf32
    // Unsupported strides
    %4 = "tf.Conv2D"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", dilations = [1, 1, 1, 1], padding = "SAME", strides = [2, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
 
-  return %0, %1, %2, %3, %4 : tensor<256x8x7x16xf32>, tensor<256x16x32x32xf32>, tensor<256x8x6x16xf32>, tensor<256x32x32x16xf32>, tensor<256x32x32x16xf32>
+  func.return %0, %1, %2, %3, %4 : tensor<256x8x7x16xf32>, tensor<256x16x32x32xf32>, tensor<256x8x6x16xf32>, tensor<256x32x32x16xf32>, tensor<256x32x32x16xf32>
 
 // CHECK-LABEL: conv
 // CHECK-DAG:  %[[CONSTANT:.*]] = arith.constant dense<0.000000e+00> : tensor<16xf32>
@@ -44,7 +44,7 @@ func @depthwiseConv2D(tensor<256x32x32x3xf32>, tensor<3x3x3x4xf32>, tensor<256x3
    // Unsupported strides
    %3 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", dilations = [1, 1, 1, 1], padding = "SAME", strides = [2, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x4xf32>) -> tensor<256x30x30x12xf32>
 
-  return %0, %1, %2, %3 : tensor<256x30x30x12xf32>, tensor<256x12x30x30xf32>, tensor<256x30x30x12xf32>, tensor<256x30x30x12xf32>
+  func.return %0, %1, %2, %3 : tensor<256x30x30x12xf32>, tensor<256x12x30x30xf32>, tensor<256x30x30x12xf32>, tensor<256x30x30x12xf32>
 
 // CHECK-LABEL: depthwiseConv2D
 // CHECK-DAG:  %[[CONSTANT:.*]] = arith.constant dense<0.000000e+00> : tensor<12xf32>
@@ -59,7 +59,7 @@ func @depthwiseConv2D(tensor<256x32x32x3xf32>, tensor<3x3x3x4xf32>, tensor<256x3
 
 func @Conv2dNCHW(%arg0: tensor<256x3x32x32xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x16x32x32xf32> {
   %0 = "tf.Conv2D"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NCHW", dilations = [1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x3x32x32xf32>, tensor<3x3x3x16xf32>) -> tensor<256x16x32x32xf32>
-  return %0 : tensor<256x16x32x32xf32>
+  func.return %0 : tensor<256x16x32x32xf32>
 
   // LAYOUT-LABEL: Conv2dNCHW
   // LAYOUT: "tfl.conv_2d"
@@ -77,7 +77,7 @@ func @fusedBatchNormV3(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor
   // Use other output
   %3:6 = "tf.FusedBatchNormV3"( %2#0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", U = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
 
-  return %3, %3#1 : tensor<8x8x8x8xf32>, tensor<8xf32>
+  func.return %3, %3#1 : tensor<8x8x8x8xf32>, tensor<8xf32>
 
 // CHECK-LABEL: fusedBatchNormV3
 // CHECK-DAG:  %[[CONSTANT:.*]] = arith.constant dense<1.000000e-03>
@@ -106,7 +106,7 @@ func @fusedBatchNormV3(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor
 func @batchNormWithGlobalNormalization(
     %t:tensor<1x10x10x3xf32>, %m:tensor<3xf32>, %v:tensor<3xf32>, %beta:tensor<3xf32>, %gamma:tensor<3xf32>) -> (tensor<1x10x10x3xf32>) {
   %0 = "tf.BatchNormWithGlobalNormalization"(%t, %m, %v, %beta, %gamma) {T = "tfdtype$DT_FLOAT", variance_epsilon = 0.001 : f32, scale_after_normalization = false} : (tensor<1x10x10x3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> (tensor<1x10x10x3xf32>)
-  return %0 : tensor<1x10x10x3xf32>
+  func.return %0 : tensor<1x10x10x3xf32>
 // CHECK-LABEL: batchNormWithGlobalNormalization
 // CHECK:  %[[EPSILON:.*]] = arith.constant dense<1.000000e-03>
 // CHECK:  %[[VARIANCE:.*]] = "tf.Add"(%[[ARG_V:.*]], %[[EPSILON]])
@@ -121,7 +121,7 @@ func @batchNormWithGlobalNormalization(
 func @batchNormWithGlobalNormalizationWithScaleAfterNormalization(
     %t:tensor<1x10x10x3xf32>, %m:tensor<3xf32>, %v:tensor<3xf32>, %beta:tensor<3xf32>, %gamma:tensor<3xf32>) -> (tensor<1x10x10x3xf32>) {
   %0 = "tf.BatchNormWithGlobalNormalization"(%t, %m, %v, %beta, %gamma) {T = "tfdtype$DT_FLOAT", variance_epsilon = 0.001 : f32, scale_after_normalization = true} : (tensor<1x10x10x3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> (tensor<1x10x10x3xf32>)
-  return %0 : tensor<1x10x10x3xf32>
+  func.return %0 : tensor<1x10x10x3xf32>
 // CHECK-LABEL: batchNormWithGlobalNormalizationWithScaleAfterNormalization
 // CHECK:  %[[EPSILON:.*]] = arith.constant dense<1.000000e-03>
 // CHECK:  %[[VARIANCE:.*]] = "tf.Add"(%[[ARG_V:.*]], %[[EPSILON]])
@@ -140,7 +140,7 @@ func @QDQsFollowedByTranspose(tensor<1x2xf32>) -> (tensor<2x1xf32>) {
   %0 = "tfl.quantize"(%arg0){qtype = tensor<1x2x!quant.uniform<u8:f32, 1.0>>}: (tensor<1x2xf32>) -> (tensor<1x2x!quant.uniform<u8:f32, 1.0>>)
   %1 = "tfl.dequantize"(%0): (tensor<1x2x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1x2xf32>)
   %2 = "tf.Transpose"(%1, %cst_0): (tensor<1x2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
-  return %2 : tensor<2x1xf32>
+  func.return %2 : tensor<2x1xf32>
 
 // CHECK: %cst = arith.constant
 // CHECK: %[[trans:.*]] = "tf.Transpose"
@@ -159,7 +159,7 @@ func @QDQFollowedByReshape(tensor<1x2xf32>) -> (tensor<2x1xf32>) {
   %0 = "tfl.quantize"(%arg0){qtype = tensor<1x2x!quant.uniform<u8:f32, 1.0>>}: (tensor<1x2xf32>) -> (tensor<1x2x!quant.uniform<u8:f32, 1.0>>)
   %1 = "tfl.dequantize"(%0): (tensor<1x2x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1x2xf32>)
   %2 = "tf.Reshape"(%1, %cst_0): (tensor<1x2xf32>, tensor<2xi32>) -> tensor<2x1xf32>
-  return %2 : tensor<2x1xf32>
+  func.return %2 : tensor<2x1xf32>
 
 // CHECK: %cst = arith.constant
 // CHECK: %[[rs:.*]] = "tf.Reshape"
@@ -176,25 +176,27 @@ func @QDQFollowedByRank(%arg0: tensor<1x2xf32>) -> (tensor<i32>) {
   %0 = "tfl.quantize"(%arg0){qtype = tensor<1x2x!quant.uniform<u8:f32, 1.0>>}: (tensor<1x2xf32>) -> (tensor<1x2x!quant.uniform<u8:f32, 1.0>>)
   %1 = "tfl.dequantize"(%0): (tensor<1x2x!quant.uniform<u8:f32, 1.0>>) -> (tensor<1x2xf32>)
   %2 = "tf.Rank"(%1): (tensor<1x2xf32>) -> tensor<i32>
-  return %2 : tensor<i32>
+  func.return %2 : tensor<i32>
 
 // CHECK: %[[R:.*]] = arith.constant dense<2>
 // CHECK: return %cst : tensor<i32>
 }
 
-func @identity(%arg0: tensor<10xi32>, %arg1: tensor<20xi32>, %arg2: tensor<30xi32>) -> (tensor<10xi32>, tensor<20xi32>, tensor<30xi32>) {
+func @identity(%arg0: tensor<10xi32>, %arg1: tensor<20xi32>, %arg2: tensor<30xi32>) -> (tensor<10xi32>, tensor<20xi32>, tensor<30xi32>, tensor<*xi32>) {
   %0 = "tf.Identity"(%arg0) : (tensor<10xi32>) -> tensor<10xi32>
   %1:2 = "tf.IdentityN"(%arg1,%arg2) : (tensor<20xi32>, tensor<30xi32>) -> (tensor<20xi32>, tensor<30xi32>)
-  return %0, %1#0, %1#1: tensor<10xi32>, tensor<20xi32>, tensor<30xi32>
+  %2 = "tf.Identity"(%arg0) : (tensor<10xi32>) -> tensor<*xi32>
+  func.return %0, %1#0, %1#1, %2: tensor<10xi32>, tensor<20xi32>, tensor<30xi32>, tensor<*xi32>
 
 // CHECK-LABEL: identity
-// CHECK: return %arg0, %arg1, %arg2
+// CHECK: %0 = "tf.Identity"(%arg0) : (tensor<10xi32>) -> tensor<*xi32>
+// CHECK: return %arg0, %arg1, %arg2, %0
 }
 
 
 func @matmulNoTransposeAOrB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000xf32>) -> tensor<1x1000xf32> {
   %166 = "tf.MatMul"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", _output_shapes = ["tfshape$dim { size = 1} dim { size = 1000}"], device = "", name = "matmul", transpose_a = false, transpose_b = false} : (tensor<1x1280xf32>, tensor<1280x1000xf32>) -> tensor<1x1000xf32>
-  return %166 : tensor<1x1000xf32>
+  func.return %166 : tensor<1x1000xf32>
 
   // CHECK-LABEL: matmulNoTransposeAOrB
   // CHECK: %[[RES:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
@@ -205,7 +207,7 @@ func @matmulNoTransposeAOrB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000xf
 
 func @matmulNoTransposeB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000xf32>) -> tensor<1x1000xf32> {
   %166 = "tf.MatMul"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", _output_shapes = ["tfshape$dim { size = 1} dim { size = 1000}"], device = "", name = "matmul", transpose_a = true, transpose_b = false} : (tensor<1x1280xf32>, tensor<1280x1000xf32>) -> tensor<1x1000xf32>
-  return %166 : tensor<1x1000xf32>
+  func.return %166 : tensor<1x1000xf32>
 
   // CHECK-LABEL: matmulNoTransposeB
   // CHECK: %[[RES:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
@@ -218,7 +220,7 @@ func @matmulNoTransposeB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000xf32>
 
 func @snapshot(%arg0: tensor<3xi32>) -> tensor<3xi32> {
   %0 = "tf.Snapshot"(%arg0) : (tensor<3xi32>) -> tensor<3xi32>
-  return %0 : tensor<3xi32>
+  func.return %0 : tensor<3xi32>
   // Should be converted to Identity and then from Identity to value
   // CHECK-LABEL: snapshot
   // CHECK:  return %arg0 : tensor<3xi32>
@@ -226,7 +228,7 @@ func @snapshot(%arg0: tensor<3xi32>) -> tensor<3xi32> {
 
 func @stop_gradient(%arg0: tensor<3xi32>) -> tensor<3xi32> {
   %0 = "tf.StopGradient"(%arg0) : (tensor<3xi32>) -> tensor<3xi32>
-  return %0 : tensor<3xi32>
+  func.return %0 : tensor<3xi32>
   // Should be converted to Identity and then from Identity to value
   // CHECK-LABEL: stop_gradient
   // CHECK:  return %arg0 : tensor<3xi32>
@@ -234,7 +236,7 @@ func @stop_gradient(%arg0: tensor<3xi32>) -> tensor<3xi32> {
 
 func @CheckNumerics(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %0 = "tf.CheckNumerics"(%arg0) {message = ""}: (tensor<3xf32>) -> tensor<3xf32>
-  return %0 : tensor<3xf32>
+  func.return %0 : tensor<3xf32>
   // Should be converted to Identity and then from Identity to value
   // CHECK-LABEL: CheckNumerics
   // CHECK:  return %arg0 : tensor<3xf32>
@@ -242,7 +244,7 @@ func @CheckNumerics(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 func @placeholder_with_default(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %0 = "tf.PlaceholderWithDefault"(%arg0): (tensor<3xf32>) -> tensor<3xf32>
-  return %0 : tensor<3xf32>
+  func.return %0 : tensor<3xf32>
   // Should be converted to Identity and then from Identity to value
   // CHECK-LABEL: placeholder_with_default
   // CHECK:  return %arg0 : tensor<3xf32>
@@ -253,7 +255,7 @@ func @StridedSliceEllipsisMaskBefore(%arg0: tensor<21x15x7xf32>) -> tensor<21x15
   %cst = arith.constant dense<0> : tensor<2xi32>
   %cst_0 = arith.constant dense<1> : tensor<2xi32>
   %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<21x15x7xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<21x15x2xf32>
-  return %0 : tensor<21x15x2xf32>
+  func.return %0 : tensor<21x15x2xf32>
 
   // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0> : tensor<3xi32>
   // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<1> : tensor<3xi32>
@@ -266,7 +268,7 @@ func @StridedSliceEllipsisMaskBeforeWithBeginAndEndMask(%arg0: tensor<4x5x4xf32>
   %cst_0 = arith.constant dense<0> : tensor<3xi32>
   %cst_1 = arith.constant dense<1> : tensor<3xi32>
   %0 = "tf.StridedSlice"(%arg0, %cst, %cst_0, %cst_1) {begin_mask = 6 : i64, ellipsis_mask = 1 : i64, end_mask = 4 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<4x5x4xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<4x4x4xf32>
-  return %0 : tensor<4x4x4xf32>
+  func.return %0 : tensor<4x4x4xf32>
 
   // CHECK-DAG: %[[CST:.*]] = arith.constant dense<[0, 1, 0]> : tensor<3xi32>
   // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<0> : tensor<3xi32>
@@ -279,7 +281,7 @@ func @StridedSliceEllipsisMaskAfter(%arg0: tensor<21x15x7xf32>) -> tensor<5x15x7
   %cst = arith.constant dense<0> : tensor<2xi32>
   %cst_0 = arith.constant dense<1> : tensor<2xi32>
   %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 0 : i64, ellipsis_mask = 2 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<21x15x7xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<5x15x7xf32>
-  return %0 : tensor<5x15x7xf32>
+  func.return %0 : tensor<5x15x7xf32>
 
   // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0> : tensor<3xi32>
   // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<1> : tensor<3xi32>
@@ -291,7 +293,7 @@ func @NoStridedSliceEllipsisMask(%arg0: tensor<*xf32>) -> tensor<21x15x2xf32> {
   %cst = arith.constant dense<0> : tensor<2xi32>
   %cst_0 = arith.constant dense<1> : tensor<2xi32>
   %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 0 : i64, ellipsis_mask = 1 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<*xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<21x15x2xf32>
-  return %0 : tensor<21x15x2xf32>
+  func.return %0 : tensor<21x15x2xf32>
 
   // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0> : tensor<2xi32>
   // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<1> : tensor<2xi32>
@@ -303,7 +305,7 @@ func @NoPadStridedSliceNonNewAxisMask(%arg0: tensor<1x2x3x1xf32>) -> tensor<1x2x
   %cst = arith.constant dense<0> : tensor<4xi32>
   %cst_0 = arith.constant dense<1> : tensor<4xi32>
   %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 15 : i64, ellipsis_mask = 0 : i64, end_mask = 15 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<1x2x3x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
-  return %0 : tensor<1x2x3x1xf32>
+  func.return %0 : tensor<1x2x3x1xf32>
 
   // CHECK-DAG: %cst = arith.constant dense<0> : tensor<4xi32>
   // CHECK-DAG: %cst_0 = arith.constant dense<1> : tensor<4xi32>
@@ -315,7 +317,7 @@ func @PadStridedSliceNewAxisMask1(%arg0: tensor<2x3xf32>) -> tensor<1x2x3x1xf32>
   %cst = arith.constant dense<0> : tensor<4xi32>
   %cst_0 = arith.constant dense<1> : tensor<4xi32>
   %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 6 : i64, ellipsis_mask = 0 : i64, end_mask = 6 : i64, new_axis_mask = 9 : i64, shrink_axis_mask = 0 : i64} : (tensor<2x3xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
-  return %0 : tensor<1x2x3x1xf32>
+  func.return %0 : tensor<1x2x3x1xf32>
 
   // CHECK-DAG: %[[CST0:.*]] = arith.constant dense<0> : tensor<4xi32>
   // CHECK-DAG: %[[CST1:.*]] = arith.constant dense<1> : tensor<4xi32>
@@ -330,7 +332,7 @@ func @PadStridedSliceNewAxisMask2(%arg0: tensor<4x64x64x1xf32>) -> tensor<1x4x64
   %cst_0 = arith.constant dense<1> : tensor<3xi32>
   %0 = "tf.Squeeze"(%arg0) {T = f32, _output_shapes = ["tfshape$dim { size: 4 } dim { size: 64 } dim { size: 64 }"], device = "", squeeze_dims = []} : (tensor<4x64x64x1xf32>) -> tensor<4x64x64xf32>
   %1 = "tf.StridedSlice"(%0, %cst, %cst, %cst_0) {Index = i32, T = f32, _output_shapes = ["tfshape$dim { size: 1 } dim { size: 4 } dim { size: 64 } dim { size: 64 }"], begin_mask = 6 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 6 : i64, new_axis_mask = 1 : i64, shrink_axis_mask = 0 : i64} : (tensor<4x64x64xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x4x64x64xf32>
-  return %1 : tensor<1x4x64x64xf32>
+  func.return %1 : tensor<1x4x64x64xf32>
 }
 
 // CHECK-LABEL: @AvoidPadStridedSliceNewAxisMaskOnUnknownShapes
@@ -338,7 +340,7 @@ func @AvoidPadStridedSliceNewAxisMaskOnUnknownShapes(%arg0: tensor<?x?xf32>) -> 
   %cst = arith.constant dense<0> : tensor<4xi32>
   %cst_0 = arith.constant dense<1> : tensor<4xi32>
   %0 = "tf.StridedSlice"(%arg0, %cst, %cst, %cst_0) {begin_mask = 6 : i64, ellipsis_mask = 0 : i64, end_mask = 6 : i64, new_axis_mask = 9 : i64, shrink_axis_mask = 0 : i64} : (tensor<?x?xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x?x1xf32>
-  return %0 : tensor<1x?x?x1xf32>
+  func.return %0 : tensor<1x?x?x1xf32>
 
   // CHECK-NOT: "tf.Reshape"
   // CHECK: "tf.StridedSlice"
@@ -361,7 +363,7 @@ func @StridedSliceRewriteMasks(%arg0: tensor<8x4x16x2xf32>) -> tensor<8x4x16x1xf
   // CHECK-SAME: shrink_axis_mask = 0 : i64
 
   %0 = "tf.StridedSlice"(%arg0, %cst, %cst_0, %cst_1) {begin_mask = 1 : i64, device = "", ellipsis_mask = 2 : i64, end_mask = 4 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<8x4x16x2xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<8x4x16x1xf32>
-  return %0 : tensor<8x4x16x1xf32>
+  func.return %0 : tensor<8x4x16x1xf32>
 }
 
 func @strided_slice_with_constant_attributes(%arg0: tensor<10x10x10xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<10x10xf32> {
@@ -369,7 +371,7 @@ func @strided_slice_with_constant_attributes(%arg0: tensor<10x10x10xf32>, %arg1:
   %cst_1 = arith.constant dense<0> : tensor<1xi32>
   %cst_2 = arith.constant dense<1> : tensor<1xi32>
   %0 = "tf.StridedSlice"(%arg0, %cst, %cst_1, %cst_2) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<10x10x10xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<10x10xf32>
-  return %0 : tensor<10x10xf32>
+  func.return %0 : tensor<10x10xf32>
   // CHECK-LABEL: strided_slice_with_constant_attributes
   // CHECK-DAG: [[BEGIN:%cst.*]] = arith.constant dense<[-1, 0, 0]> : tensor<3xi32>
   // CHECK-DAG: [[END:%cst.*]] = arith.constant dense<[0, 10, 10]> : tensor<3xi32>
@@ -385,7 +387,7 @@ func @StridedSliceEllipsisAndNewAxisMaskBothSet(%arg0: tensor<6x7x8xf32>) -> ten
   %0 = "tf.StridedSlice"(%arg0, %begin, %end, %step) {
     begin_mask = 0 : i64, ellipsis_mask = 4 : i64, end_mask = 0 : i64, new_axis_mask = 10 : i64, shrink_axis_mask = 0 : i64
   } : (tensor<6x7x8xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<2x1x7x8x1xf32>
-  return %0 : tensor<2x1x7x8x1xf32>
+  func.return %0 : tensor<2x1x7x8x1xf32>
 
   // CHECK-DAG: %[[BEGIN:.*]] = arith.constant dense<0> : tensor<5xi32>
   // CHECK-DAG: %[[END:.*]] = arith.constant dense<[2, 3, 0, 0, 5]> : tensor<5xi32>
@@ -403,7 +405,7 @@ func @StridedSliceShrinkAxisAndNewAxisMaskBothSet(%arg0: tensor<6x7x8xf32>) -> t
   %0 = "tf.StridedSlice"(%arg0, %begin, %end, %step) {
     begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 10 : i64, shrink_axis_mask = 1 : i64
   } : (tensor<6x7x8xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x4x1x8xf32>
-  return %0 : tensor<1x4x1x8xf32>
+  func.return %0 : tensor<1x4x1x8xf32>
 
   // CHECK-DAG: %[[NEW_DIMS:.*]] = arith.constant dense<[6, 1, 7, 1, 8]> : tensor<5xi32>
   // CHECK-DAG: %[[BEGIN:.*]] = arith.constant dense<0> : tensor<5xi32>
@@ -415,7 +417,7 @@ func @StridedSliceShrinkAxisAndNewAxisMaskBothSet(%arg0: tensor<6x7x8xf32>) -> t
 
 func @broadcast_to_f32_low_dim(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
   %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<2xi32>) -> tensor<3x3xf32>
-  return %0: tensor<3x3xf32>
+  func.return %0: tensor<3x3xf32>
 
 // CHECK-LABEL: broadcast_to_f32_low_dim
 // CHECK:  [[CST:%.*]] = arith.constant dense<1.000000e+00> : tensor<3x3xf32>
@@ -425,7 +427,7 @@ func @broadcast_to_f32_low_dim(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> te
 
 func @broadcast_to_i32_low_dim(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<3x3xi32> {
   %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi32>, tensor<2xi32>) -> tensor<3x3xi32>
-  return %0: tensor<3x3xi32>
+  func.return %0: tensor<3x3xi32>
 
 // CHECK-LABEL: broadcast_to_i32_low_dim
 // CHECK:  [[CST:%.*]] = arith.constant dense<1> : tensor<3x3xi32>
@@ -435,7 +437,7 @@ func @broadcast_to_i32_low_dim(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> 
 
 func @broadcast_to_i16_low_dim(%input: tensor<3xi16>, %shape: tensor<2xi32>) -> tensor<3x3xi16> {
   %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi16>, tensor<2xi32>) -> tensor<3x3xi16>
-  return %0: tensor<3x3xi16>
+  func.return %0: tensor<3x3xi16>
 
 // CHECK-LABEL: broadcast_to_i16_low_dim
 // CHECK:  [[CST:%.*]] = arith.constant dense<1> : tensor<3x3xi16>
@@ -445,7 +447,7 @@ func @broadcast_to_i16_low_dim(%input: tensor<3xi16>, %shape: tensor<2xi32>) -> 
 
 func @broadcast_to_low_dim_with_unknown_shape(%arg0: tensor<3xf32>, %arg1: tensor<*xi32>) -> tensor<3x3xf32> {
   %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<*xi32>) -> tensor<3x3xf32>
-  return %0: tensor<3x3xf32>
+  func.return %0: tensor<3x3xf32>
 
 // CHECK-LABEL: broadcast_to_low_dim_with_unknown_shape
 // CHECK:  [[CST:%.*]] = arith.constant dense<1.000000e+00> : tensor<3x3xf32>
@@ -455,7 +457,7 @@ func @broadcast_to_low_dim_with_unknown_shape(%arg0: tensor<3xf32>, %arg1: tenso
 
 func @broadcast_to_i32_low_dim_with_unknown_output(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<*xi32> {
   %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi32>, tensor<2xi32>) -> tensor<*xi32>
-  return %0: tensor<*xi32>
+  func.return %0: tensor<*xi32>
 
 // CHECK-LABEL: broadcast_to_i32_low_dim_with_unknown_output
 // CHECK:  [[CST:%.*]] = arith.constant dense<1> : tensor<i32>
@@ -466,7 +468,7 @@ func @broadcast_to_i32_low_dim_with_unknown_output(%input: tensor<3xi32>, %shape
 
 func @broadcast_to_high_dim_with_unknown_shape(%arg0: tensor<1x2x3x4x5x6xf32>, %arg1: tensor<*xi32>) -> tensor<7x8x1x2x3x4x5x6xf32> {
   %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<*xi32>) -> tensor<7x8x1x2x3x4x5x6xf32>
-  return %0: tensor<7x8x1x2x3x4x5x6xf32>
+  func.return %0: tensor<7x8x1x2x3x4x5x6xf32>
 
 // CHECK-LABEL: broadcast_to_high_dim_with_unknown_shape
 // CHECK:  [[BCT:%.*]] = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<*xi32>) -> tensor<7x8x1x2x3x4x5x6xf32>
@@ -475,7 +477,7 @@ func @broadcast_to_high_dim_with_unknown_shape(%arg0: tensor<1x2x3x4x5x6xf32>, %
 
 func @broadcast_to_high_dim_with_unknown_output(%arg0: tensor<1x2x3x4x5x6xf32>, %arg1: tensor<8xi32>) -> tensor<*xf32> {
   %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<8xi32>) -> tensor<*xf32>
-  return %0: tensor<*xf32>
+  func.return %0: tensor<*xf32>
 
 // CHECK-LABEL: broadcast_to_high_dim_with_unknown_output
 // CHECK:  [[BCT:%.*]] = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<8xi32>) -> tensor<*xf32>
@@ -484,7 +486,7 @@ func @broadcast_to_high_dim_with_unknown_output(%arg0: tensor<1x2x3x4x5x6xf32>, 
 
 func @broadcast_to_with_unknown_shape_and_output(%arg0: tensor<1x2x3x4x5x6xf32>, %arg1: tensor<*xi32>) -> tensor<*xf32> {
   %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<1x2x3x4x5x6xf32>, tensor<*xi32>) -> tensor<*xf32>
-  return %0: tensor<*xf32>
+  func.return %0: tensor<*xf32>
 
 // CHECK-LABEL: broadcast_to_with_unknown_shape_and_output
 // CHECK:  "tf.BroadcastTo"(%arg0, %arg1)
@@ -492,7 +494,7 @@ func @broadcast_to_with_unknown_shape_and_output(%arg0: tensor<1x2x3x4x5x6xf32>,
 
 func @broadcast_to_ui32(%arg0: tensor<ui32>, %arg1: tensor<1xi64>) -> tensor<10xui32> {
   %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<ui32>, tensor<1xi64>) -> tensor<10xui32>
-  return %0: tensor<10xui32>
+  func.return %0: tensor<10xui32>
 
 // CHECK-LABEL: broadcast_to_ui32
 // CHECK:  [[CST:%.*]] = arith.constant dense<1> : tensor<10xui32>
@@ -507,7 +509,7 @@ func @xla_conv(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
   %2 = "tf.Const"() {value = dense<1> : tensor<2x2xi32>} : () -> tensor<2x2xi32> loc("XlaConv/padding")
   %3 = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> tensor<2xi32> loc("XlaConv/window_strides")
   %4 = "tf.XlaConv"(%arg0, %0, %3, %2, %3, %3, %1) {device = "", dimension_numbers = "\18\02 \032\02\00\01@\03P\03Z\02\01\02b\02\01\02", precision_config = ""} : (tensor<4x8x8x16xf32>, tensor<3x3x16x16xf32>, tensor<2xi32>, tensor<2x2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<4x8x8x16xf32>
-  return %4 : tensor<4x8x8x16xf32>
+  func.return %4 : tensor<4x8x8x16xf32>
   // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : tensor<16xf32>
   // CHECK-DAG: %[[CST0:.*]] = arith.constant dense<1.000000e+00> : tensor<16x3x3x16xf32>
   // CHECK: %[[RES:.*]] = "tfl.conv_2d"(%arg0, %[[CST0]], %[[CST]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<4x8x8x16xf32>, tensor<16x3x3x16xf32>, tensor<16xf32>) -> tensor<4x8x8x16xf32>
@@ -516,7 +518,7 @@ func @xla_conv(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
 
 func @broadcast_to_f32(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
   %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<2xi32>) -> tensor<3x3xf32>
-  return %0: tensor<3x3xf32>
+  func.return %0: tensor<3x3xf32>
 
 // CHECK-LABEL: broadcast_to_f32
 // CHECK:  [[CST:%.*]] = arith.constant dense<1.000000e+00> : tensor<3x3xf32>
@@ -526,7 +528,7 @@ func @broadcast_to_f32(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3
 
 func @broadcast_to_i32(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<3x3xi32> {
   %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi32>, tensor<2xi32>) -> tensor<3x3xi32>
-  return %0: tensor<3x3xi32>
+  func.return %0: tensor<3x3xi32>
 
 // CHECK-LABEL: broadcast_to_i32
 // CHECK:  [[CST:%.*]] = arith.constant dense<1> : tensor<3x3xi32>
@@ -537,7 +539,7 @@ func @broadcast_to_i32(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<3
 // CHECK-LABEL: lower_rfft_to_rfft2d
 func @lower_rfft_to_rfft2d(%input: tensor<10x20x30xf32>, %fft_len: tensor<1xi32>) -> tensor<10x20x30xcomplex<f64>> {
   %0 = "tf.RFFT"(%input, %fft_len) : (tensor<10x20x30xf32>, tensor<1xi32>) -> tensor<10x20x30xcomplex<f64>>
-  return %0: tensor<10x20x30xcomplex<f64>>
+  func.return %0: tensor<10x20x30xcomplex<f64>>
 
 // CHECK-DAG:  %[[CST:.*]] = arith.constant dense<-2> : tensor<i32>
 // CHECK-DAG:  %[[CST0:.*]] = arith.constant dense<1> : tensor<1xi32>
@@ -553,7 +555,7 @@ func @xla_gather_to_slice(%arg0 : tensor<1x9x104x768xf32>) -> tensor<*xf32> {
   %0 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
   %1 = "tf.Const"() {value = dense<[1, 9, 23, 768]> : tensor<4xi32>} : () -> tensor<4xi32>
   %2 = "tf.XlaGather"(%arg0, %0, %1) {device = "", dimension_numbers = "\0A\04\00\01\02\03\1A\01\02", indices_are_sorted = false} : (tensor<1x9x104x768xf32>, tensor<1xi32>, tensor<4xi32>) -> tensor<*xf32>
-  return %2 : tensor<*xf32>
+  func.return %2 : tensor<*xf32>
 
 // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0> : tensor<4xi64>
 // CHECK-DAG: %[[CST0:.*]] = arith.constant dense<[1, 9, 23, 768]> : tensor<4xi64>
@@ -564,56 +566,56 @@ func @xla_gather_to_slice(%arg0 : tensor<1x9x104x768xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: DontMatchFusedBatchNormV3
 func @DontMatchFusedBatchNormV3(%arg0 :tensor<?x576x1x1xf32>, %arg1 : tensor<576xf32>, %arg2 : tensor<576xf32>, %arg3 : tensor<576xf32>,%arg4 : tensor<576xf32>) -> (tensor<?x576x1x1xf32>) {
   %result:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {data_format = "NHWC", device = "", epsilon = 0.001 : f32, exponential_avg_factor = 1.0 : f32, is_training = false} : (tensor<?x576x1x1xf32>, tensor<576xf32>, tensor<576xf32>, tensor<576xf32>, tensor<576xf32>) -> (tensor<?x576x1x1xf32>, tensor<576xf32>, tensor<576xf32>, tensor<576xf32>, tensor<576xf32>, tensor<*xf32>)
-  return %result : tensor<?x576x1x1xf32>
+  func.return %result : tensor<?x576x1x1xf32>
   // CHECK: "tf.FusedBatchNormV3"
 }
 
 // CHECK-LABEL: DoNotConvertConv2DWhenFilterTypeDimIsNotDecided
 func @DoNotConvertConv2DWhenFilterTypeDimIsNotDecided(%arg0 : tensor<?x?x?x96xf32>, %arg1 : tensor<3x3x96x?xf32>) -> tensor<?x?x?x?xf32> {
   %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<?x?x?x96xf32>, tensor<3x3x96x?xf32>) -> tensor<?x?x?x?xf32>
-  return %0 : tensor<?x?x?x?xf32>
+  func.return %0 : tensor<?x?x?x?xf32>
 // CHECK: tf.Conv2D
 }
 
 // CHECK-LABEL: conv2d_f16
 func @conv2d_f16(%arg0 : tensor<?x224x224x3xf16>, %arg1 : tensor<3x3x3x16xf16>) -> tensor<?x112x112x16xf16> {
   %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true} : (tensor<?x224x224x3xf16>, tensor<3x3x3x16xf16>) -> tensor<?x112x112x16xf16>
-  return %0 : tensor<?x112x112x16xf16>
+  func.return %0 : tensor<?x112x112x16xf16>
   // CHECK: "tf.Conv2D"
 }
 
 // CHECK-LABEL: fused_batch_norm_v3_f16
 func @fused_batch_norm_v3_f16(%arg0 : tensor<?x112x112x16xf16>, %arg1 : tensor<16xf32>, %arg2 : tensor<16xf32>, %arg3 : tensor<16xf32>, %arg4 : tensor<16xf32>) -> tensor<?x112x112x16xf16> {
   %0, %1, %2, %3, %4, %5 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {data_format = "NHWC", device = "", epsilon = 1.000000e-03 : f32, exponential_avg_factor = 1.000000e+00 : f32, is_training = false} : (tensor<?x112x112x16xf16>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>) -> (tensor<?x112x112x16xf16>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<*xf32>)
-  return %0 : tensor<?x112x112x16xf16>
+  func.return %0 : tensor<?x112x112x16xf16>
   // CHECK: "tf.FusedBatchNormV3"
 }
 
 // CHECK-LABEL: depthwise_conv2d_native_f16
 func @depthwise_conv2d_native_f16(%arg0 : tensor<?x112x112x16xf16>, %arg1 : tensor<3x3x16x1xf16>) -> tensor<?x112x112x16xf16> {
   %0 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x112x112x16xf16>, tensor<3x3x16x1xf16>) -> tensor<?x112x112x16xf16>
-  return %0 : tensor<?x112x112x16xf16>
+  func.return %0 : tensor<?x112x112x16xf16>
   // CHECK: "tf.DepthwiseConv2dNative"
 }
 
 // CHECK-LABEL: conv_2d_bf16
 func @conv_2d_bf16(%arg0 : tensor<256x32x32x3xbf16>, %arg1 : tensor<3x3x3x16xbf16>) -> tensor<256x8x7x16xbf16> {
   %0 = "tf.Conv2D"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]} : (tensor<256x32x32x3xbf16>, tensor<3x3x3x16xbf16>) -> tensor<256x8x7x16xbf16>
-  return %0 : tensor<256x8x7x16xbf16>
+  func.return %0 : tensor<256x8x7x16xbf16>
   // CHECK: "tf.Conv2D"
 }
 
 // CHECK-LABEL: fused_batch_norm_v3_bf16
 func @fused_batch_norm_v3_bf16(%arg0 : tensor<?x112x112x16xbf16>, %arg1 : tensor<16xf32>, %arg2 : tensor<16xf32>, %arg3 : tensor<16xf32>, %arg4 : tensor<16xf32>) -> tensor<?x112x112x16xbf16> {
   %0, %1, %2, %3, %4, %5 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {data_format = "NHWC", device = "", epsilon = 1.000000e-03 : f32, exponential_avg_factor = 1.000000e+00 : f32, is_training = false} : (tensor<?x112x112x16xbf16>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>) -> (tensor<?x112x112x16xbf16>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<16xf32>, tensor<*xf32>)
-  return %0 : tensor<?x112x112x16xbf16>
+  func.return %0 : tensor<?x112x112x16xbf16>
   // CHECK: "tf.FusedBatchNormV3"
 }
 
 // CHECK-LABEL: depthwise_conv_2d_bf16
 func @depthwise_conv_2d_bf16(%arg0 : tensor<256x32x32x3xbf16>, %arg1 : tensor<3x3x3x4xf32>, %arg2 : tensor<256x3x32x32xf32>) -> tensor<256x30x30x12xbf16> {
   %0 = "tf.DepthwiseConv2dNative"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", dilations = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 5, 1]} : (tensor<256x32x32x3xbf16>, tensor<3x3x3x4xf32>) -> tensor<256x30x30x12xbf16>
-  return %0 : tensor<256x30x30x12xbf16>
+  func.return %0 : tensor<256x30x30x12xbf16>
   // CHECK: "tf.DepthwiseConv2dNative"
 }
 
@@ -622,13 +624,13 @@ func @strided_slice_unranked_input(%arg0 : tensor<*xf32>) -> tensor<*xf32> {
   %18 = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
   %57 = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
   %534 = "tf.StridedSlice"(%arg0, %57, %57, %18) {begin_mask = 11 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 11 : i64, new_axis_mask = 4 : i64, shrink_axis_mask = 0 : i64} : (tensor<*xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<*xf32>
-  return %534 : tensor<*xf32>
+  func.return %534 : tensor<*xf32>
   // CHECK: "tf.StridedSlice"
 }
 
 func @fused_batch_norm_v3_training(%arg0 : tensor<1x1x6x2xf32>, %arg1 : tensor<2xf32>, %arg2 : tensor<2xf32>, %arg3 : tensor<2xf32>, %arg4 : tensor<2xf32>) -> tensor<1x1x6x2xf32> {
   %0, %1, %2, %3, %4, %5 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {data_format = "NHWC", epsilon = 1.000000e-03 : f32, exponential_avg_factor = 1.000000e+00 : f32, is_training = true} : (tensor<1x1x6x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<1x1x6x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<*xf32>)
-  return %0 : tensor<1x1x6x2xf32>
+  func.return %0 : tensor<1x1x6x2xf32>
   // CHECK-LABEL: fused_batch_norm_v3_training
   // CHECK-DAG: %[[CST:.*]] = arith.constant dense<[0, 1, 2]> : tensor<3xi32>
   // CHECK-DAG: %[[CST1:.*]] = arith.constant dense<1.000000e-03> : tensor<f32>
@@ -647,7 +649,7 @@ func @fused_batch_norm_v3_training(%arg0 : tensor<1x1x6x2xf32>, %arg1 : tensor<2
 
 func @scatter_nd_add(%arg0: tensor<7xi64>, %arg1: tensor<1x1xi32>, %arg2: tensor<1xi64>) -> tensor<7xi64> {
   %0 = "tf.TensorScatterAdd"(%arg0, %arg1, %arg2) : (tensor<7xi64>, tensor<1x1xi32>, tensor<1xi64>) -> tensor<7xi64>
-  return %0 : tensor<7xi64>
+  func.return %0 : tensor<7xi64>
 
   // CHECK-LABEL: scatter_nd_add
   // CHECK:  %[[GATHER:.*]] = "tf.GatherNd"(%arg0, %arg1) : (tensor<7xi64>, tensor<1x1xi32>) -> tensor<1xi64>
@@ -658,7 +660,7 @@ func @scatter_nd_add(%arg0: tensor<7xi64>, %arg1: tensor<1x1xi32>, %arg2: tensor
 
 func @add_v2_uint32(%arg0: tensor<ui32>, %arg1: tensor<ui32>) -> tensor<ui32> {
   %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<ui32>, tensor<ui32>) -> tensor<ui32>
-  return %0 : tensor<ui32>
+  func.return %0 : tensor<ui32>
 
   // CHECK-LABEL: add_v2_uint32
   // CHECK:  %[[CAST:.*]] = "tf.Cast"(%arg0) {Truncate = false} : (tensor<ui32>) -> tensor<i32>
@@ -674,24 +676,78 @@ func @QuantDequantTranspose(%arg0: tensor<2x3xf32>) -> (tensor<2x4xf32>) {
   %0 = "tf.Abs"(%cst) {device = ""} : (tensor<3x4xf32>) -> tensor<3x4xf32>
   %1 = "tf.Max"(%0, %cst_0) {device = "", keep_dims = false} : (tensor<3x4xf32>, tensor<i32>) -> tensor<4xf32>
   %2 = "tf.Neg"(%1) {device = ""} : (tensor<4xf32>) -> tensor<4xf32>
-  %3 = "tfl.custom_tf"(%cst, %2, %1) ( {
-  ^bb0(%arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>):  // no predecessors
+  %3 = "tfl.custom_tf"(%cst, %2, %1) ({
+  ^bb0(%arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>):
     %7 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg1, %arg2, %arg3) {device = "", narrow_range = false, num_bits = 8 : i64} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     "tfl.yield"(%7) : (tensor<*xf32>) -> ()
   }) {device = "", narrow_range = false, num_bits = 8 : i64} : (tensor<3x4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<3x4xf32>
   %4 = "tf.MatMul"(%arg0, %3) {device = "", transpose_a = false, transpose_b = false} : (tensor<2x3xf32>, tensor<3x4xf32>) -> tensor<2x4xf32>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
   %6 = "tf.Identity"(%5) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
-  return %6 : tensor<2x4xf32>
+  func.return %6 : tensor<2x4xf32>
 
   // CHECK-LABEL: QuantDequantTranspose
-  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
-  // CHECK: %[[CST_0:.*]] = arith.constant dense<1.00392151> : tensor<3x4xf32>
+  // CHECK-DAG: %[[CST:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<?xi32>
+  // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<1.00392163> : tensor<3x4xf32>
   // CHECK: %[[QUANT:.*]] = "tfl.quantize"(%[[CST_0]]) {qtype = tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>} : (tensor<3x4xf32>) -> tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>
   // CHECK: %[[DEQUANT:.*]] = "tfl.dequantize"(%[[QUANT]]) : (tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>) -> tensor<3x4xf32>
   // CHECK: %[[TRANSPOSE:.*]] = "tf.Transpose"(%[[DEQUANT]], %[[CST]]) : (tensor<3x4xf32>, tensor<?xi32>) -> tensor<*xf32>
   // CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %[[TRANSPOSE]]) {transpose_a = false, transpose_b = true} : (tensor<2x3xf32>, tensor<*xf32>) -> tensor<2x4xf32>
   // CHECK: return %[[MATMUL]] : tensor<2x4xf32>
+}
+
+func @UnsupportedGroupConv(%arg0: tensor<?x128x24xf32>) -> (tensor<?x6x14xf32>) {
+  %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<3x2x14xf32>} : () -> tensor<3x2x14xf32>
+  %cst_0 = "tf.Const"() {value = dense<0.000000e+00> : tensor<14xf32>} : () -> tensor<14xf32>
+  %cst_1 = "tf.Const"() {value = dense<0.000000e+00> : tensor<3x24x14xf32>} : () -> tensor<3x24x14xf32>
+  %cst_2 = "tf.Const"() {value = dense<0.000000e+00> : tensor<14xf32>} : () -> tensor<14xf32>
+  %cst_3 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %cst_4 = "tf.Const"() {value = dense<-3> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tf.ExpandDims"(%arg0, %cst_4) {device = ""} : (tensor<?x128x24xf32>, tensor<i32>) -> tensor<?x1x128x24xf32>
+  %1 = "tf.ExpandDims"(%cst, %cst_3) {device = ""} : (tensor<3x2x14xf32>, tensor<i32>) -> tensor<1x3x2x14xf32>
+  %2 = "tf.ExpandDims"(%cst_1, %cst_3) {device = ""} : (tensor<3x24x14xf32>, tensor<i32>) -> tensor<1x3x24x14xf32>
+  %3 = "tf.Conv2D"(%0, %2) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<?x1x128x24xf32>, tensor<1x3x24x14xf32>) -> tensor<?x1x26x14xf32>
+  %4 = "tf.Squeeze"(%3) {device = "", squeeze_dims = [-3]} : (tensor<?x1x26x14xf32>) -> tensor<?x26x14xf32>
+  %5 = "tf.BiasAdd"(%4, %cst_2) {data_format = "NHWC", device = ""} : (tensor<?x26x14xf32>, tensor<14xf32>) -> tensor<?x26x14xf32>
+  %6 = "tf.ExpandDims"(%5, %cst_4) {device = ""} : (tensor<?x26x14xf32>, tensor<i32>) -> tensor<?x1x26x14xf32>
+  %7 = "tf.Conv2D"(%6, %1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<?x1x26x14xf32>, tensor<1x3x2x14xf32>) -> tensor<?x1x6x14xf32>
+  %8 = "tf.Squeeze"(%7) {device = "", squeeze_dims = [-3]} : (tensor<?x1x6x14xf32>) -> tensor<?x6x14xf32>
+  %9 = "tf.BiasAdd"(%8, %cst_0) {data_format = "NHWC", device = ""} : (tensor<?x6x14xf32>, tensor<14xf32>) -> tensor<?x6x14xf32>
+  %10 = "tf.Identity"(%9) {device = ""} : (tensor<?x6x14xf32>) -> tensor<?x6x14xf32>
+  %11 = "tf.Identity"(%10) {device = ""} : (tensor<?x6x14xf32>) -> tensor<?x6x14xf32>
+  func.return %11 : tensor<?x6x14xf32>
+
+  // CHECK-LABEL: UnsupportedGroupConv
+  // CHECK: "tfl.conv_2d"
+  // CHECK-NOT: "tfl.conv_2d"
+  // CHECK: "tf.Conv2D"
+}
+
+func @UnsupportedGroupConv_UnrankedTensorType(%arg0: tensor<*xf32>, %arg1: tensor<1x3x2x14xf32>) -> (tensor<?x1x6x14xf32>) {
+  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<1x3x2x14xf32>) -> tensor<?x1x6x14xf32>
+  func.return %0 : tensor<?x1x6x14xf32>
+
+  // CHECK-LABEL: UnsupportedGroupConv_UnrankedTensorType
+  // CHECK-NOT: "tfl.conv_2d"
+  // CHECK: "tf.Conv2D"
+}
+
+func @UnsupportedGroupConv_DynamicDimAtInputDimThree(%arg0: tensor<?x1x26x?xf32>, %arg1: tensor<1x3x2x14xf32>) -> (tensor<?x1x6x14xf32>) {
+  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<?x1x26x?xf32>, tensor<1x3x2x14xf32>) -> tensor<?x1x6x14xf32>
+  func.return %0 : tensor<?x1x6x14xf32>
+
+  // CHECK-LABEL: UnsupportedGroupConv_DynamicDimAtInputDimThree
+  // CHECK-NOT: "tfl.conv_2d"
+  // CHECK: "tf.Conv2D"
+}
+
+func @UnsupportedGroupConv_MultipleGroup(%arg0: tensor<?x1x26x14xf32>, %arg1: tensor<1x3x2x14xf32>) -> (tensor<?x1x6x14xf32>) {
+  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<?x1x26x14xf32>, tensor<1x3x2x14xf32>) -> tensor<?x1x6x14xf32>
+  func.return %0 : tensor<?x1x6x14xf32>
+
+  // CHECK-LABEL: UnsupportedGroupConv_MultipleGroup
+  // CHECK-NOT: "tfl.conv_2d"
+  // CHECK: "tf.Conv2D"
 }
 
 }

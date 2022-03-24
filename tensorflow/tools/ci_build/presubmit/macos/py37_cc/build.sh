@@ -39,7 +39,8 @@ function run_build () {
   # fix this after more in-depth profiling.
   "${BAZEL_WRAPPER_PATH}" \
     test \
-    --profile="${KOKORO_ARTIFACTS_DIR}/profile.json" \
+    --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
+    --build_event_binary_file="${KOKORO_ARTIFACTS_DIR}/build_events.pb" \
     --nodistinct_host_configuration \
     --build_tag_filters="${tag_filters}" \
     --test_tag_filters="${tag_filters}" \
@@ -48,6 +49,9 @@ function run_build () {
     --remote_local_fallback=false \
     --remote_timeout=600 \
     -- //tensorflow/python/... # ${DEFAULT_BAZEL_TARGETS} -//tensorflow/java/... -//tensorflow/lite/java/...
+
+  # Print build time statistics, including critical path.
+  bazel analyze-profile "${KOKORO_ARTIFACTS_DIR}/profile.json.gz"
 
   # Copy log to output to be available to GitHub
   ls -la "$(bazel info output_base)/java.log"

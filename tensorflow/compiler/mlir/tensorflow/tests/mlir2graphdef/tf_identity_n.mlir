@@ -7,7 +7,7 @@ func @main() -> tensor<2x3xi32> {
     %2:3 = tf_executor.island wraps "tf.IdentityN"(%0, %1) : (tensor<2x3xi32>, tensor<4x5xf32>) -> (tensor<2x3xi32>, tensor<4x5xf32>) loc("MyIdentityN")
     tf_executor.fetch %2#0 : tensor<2x3xi32>
   }
-  return %graph : tensor<2x3xi32>
+  func.return %graph : tensor<2x3xi32>
 }
 
 // CHECK:        name: "MyIdentityN"

@@ -74,6 +74,10 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
   int64_t CardinalityInternal() const override { return 1LL; }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return 1LL;
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     return Status::OK();
   }

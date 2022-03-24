@@ -15,9 +15,10 @@
 """Test configs for placeholder_with_default."""
 import numpy as np
 import tensorflow.compat.v1 as tf
+
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
+from tensorflow.lite.testing.zip_test_utils import MAP_TF_TO_NUMPY_TYPE
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
-from tensorflow.lite.testing.zip_test_utils import TF_TYPE_INFO
 
 
 @register_make_test_function()
@@ -40,7 +41,7 @@ def make_placeholder_with_default_tests(options):
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    numpy_type = TF_TYPE_INFO[parameters["dtype"]][0]
+    numpy_type = MAP_TF_TO_NUMPY_TYPE[parameters["dtype"]]
     input_value = np.array([[1, 0], [2, 1]], numpy_type)
     return [input_value], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value])))

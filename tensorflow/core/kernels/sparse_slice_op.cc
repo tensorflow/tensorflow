@@ -53,8 +53,10 @@ struct SparseSliceFunctor<CPUDevice, T> {
     const gtl::ArraySlice<int64_t> size(input_size.flat<int64_t>().data(),
                                         input_dims);
 
-    const sparse::SparseTensor output =
+    const StatusOr<sparse::SparseTensor> output_or =
         sparse::SparseTensor::Slice<T>(sparse_tensor, start, size);
+    OP_REQUIRES_OK(context, output_or.status());
+    auto output = output_or.ValueOrDie();
 
     context->set_output(0, output.indices());
     context->set_output(1, output.values());
@@ -158,5 +160,35 @@ class SparseSliceOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+typedef Eigen::GpuDevice GPUDevice;
+
+template <typename T>
+class SparseSliceGPUOp : public AsyncOpKernel {
+ public:
+  explicit SparseSliceGPUOp(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    SparseSliceOpImpl<GPUDevice, T>(context, done);
+  }
+};
+
+#define REGISTER_KERNELS(type)                            \
+  REGISTER_KERNEL_BUILDER(Name("SparseSlice")             \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("shape")        \
+                              .HostMemory("start")        \
+                              .HostMemory("size")         \
+                              .HostMemory("output_shape") \
+                              .TypeConstraint<type>("T"), \
+                          SparseSliceGPUOp<type>)
+
+TF_CALL_POD_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

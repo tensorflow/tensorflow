@@ -419,7 +419,7 @@ def _bucketize(input, boundaries, name=None):
 # pylint: enable=redefined-builtin
 
 
-class DivideDelegateWithName(object):
+class DivideDelegateWithName:
   """Use Python2/Python3 division delegation to implement divide for tensors."""
 
   def __init__(self, x, name):
@@ -998,7 +998,7 @@ def cast(x, dtype, name=None):
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
-      if x.dtype.base_dtype != base_type:
+      if x.dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
     if x.dtype.is_complex and base_type.is_floating:
       logging.warn("Casting complex to real discards imaginary part.")
@@ -4567,9 +4567,19 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
 
+  Caution: On CPU, values in `segment_ids` are always validated to be less than
+  `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+  does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+  result in safe but unspecified behavior, which may include ignoring
+  out-of-bound indices or outputting a tensor with a 0 stored in the first
+  dimension of its shape if `num_segments` is 0.
+
   Args:
     data: A `Tensor` with floating point or complex dtype.
     segment_ids: An integer tensor whose shape is a prefix of `data.shape`.
+      The values must be less than `num_segments`.
+      The values are always validated to be in range on CPU,
+      never validated on GPU.
     num_segments: An integer scalar `Tensor`.  The number of distinct segment
       IDs.
     name: A name for the operation (optional).
@@ -4615,9 +4625,19 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   If the given segment ID `i` is negative, the value is dropped and will not
   be added to the sum of the segment.
 
+  Caution: On CPU, values in `segment_ids` are always validated to be less than
+  `num_segments`, and an error is thrown for out-of-bound indices. On GPU, this
+  does not throw an error for out-of-bound indices. On Gpu, out-of-bound indices
+  result in safe but unspecified behavior, which may include ignoring
+  out-of-bound indices or outputting a tensor with a 0 stored in the first
+  dimension of its shape if `num_segments` is 0.
+
   Args:
     data: A `Tensor` with floating point or complex dtype.
     segment_ids: An integer tensor whose shape is a prefix of `data.shape`.
+      The values must be in the range `[0, num_segments)`.
+      The values are always validated to be in range on CPU,
+      never validated on GPU.
     num_segments: An integer scalar `Tensor`.  The number of distinct segment
       IDs.
     name: A name for the operation (optional).
@@ -5521,7 +5541,7 @@ def acos(x, name=None):
   Args:
     x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
       `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
-      `complex64`, `complex128`, `string`.
+      `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:

@@ -16,11 +16,13 @@
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -179,6 +181,13 @@ class CastOpTest(test.TestCase):
           err = gradient_checker_v2.max_error(
               *gradient_checker_v2.compute_gradient(cast, [x]))
           self.assertLess(err, 1e-3)
+
+  def testRefDtype(self):
+    with context.graph_mode(), self.cached_session():
+      x = gen_state_ops.variable(shape=[1], dtype=dtypes.float32)
+      result = math_ops.cast(x, dtypes.float32)
+      self.assertEqual(x.dtype, dtypes.float32_ref)
+      self.assertEqual(result.dtype, dtypes.float32)
 
 
 class SparseTensorCastTest(test.TestCase):

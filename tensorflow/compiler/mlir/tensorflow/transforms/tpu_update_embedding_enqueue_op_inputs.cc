@@ -42,7 +42,7 @@ constexpr char kTPUEmbeddingAttr[] = "_tpu_embedding_layer";
 struct TPUUpdateEmbeddingEnqueueOpInputsPass
     : public TF::TPUUpdateEmbeddingEnqueueOpInputsPassBase<
           TPUUpdateEmbeddingEnqueueOpInputsPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Extracts `_tpu_embedding_layer` attribute from TPU embedding ops and
@@ -140,9 +140,9 @@ LogicalResult UpdateEmbeddingEnqueueOpInput(
   return success();
 }
 
-void TPUUpdateEmbeddingEnqueueOpInputsPass::runOnFunction() {
+void TPUUpdateEmbeddingEnqueueOpInputsPass::runOnOperation() {
   OpBuilder builder(&getContext());
-  auto func_op = getFunction();
+  auto func_op = getOperation();
 
   // All TPU embedding layer related ops are annotated with
   // `_tpu_embedding_layer` attribute along with corresponding string attribute.

@@ -19,7 +19,7 @@ package_group(
     packages = ["//tensorflow/compiler/mlir/..."],
 )
 
-exports_files(glob(["g3doc/*.md"]))
+exports_files(glob(["g3doc/*.md"] + ["g3doc/_includes/tf_passes.md"]))
 
 # To reference all tablegen files here when checking for updates to them.
 filegroup(
@@ -145,9 +145,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -155,9 +156,9 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:StandardOps",
     ],
     alwayslink = 1,
 )
@@ -221,7 +222,8 @@ tf_cc_binary(
     srcs = ["tf_mlir_translate_main.cc"],
     deps = [
         ":init_mlir",
-        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tf_xla_mlir_translate",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",

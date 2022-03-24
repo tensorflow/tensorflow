@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 45
+_version = 61
+
+# Version number for MLIR:Python components.
+mlir_api_version = 4
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -378,7 +380,7 @@ Client = _xla.Client
 Buffer = _xla.Buffer
 DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
-OpSharding = _xla.OpSharding  # type: ignore
+OpSharding = _xla.OpSharding
 
 
 def register_custom_call_target(name, fn, platform='cpu'):

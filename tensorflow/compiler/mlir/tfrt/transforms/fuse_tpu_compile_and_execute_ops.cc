@@ -30,7 +30,7 @@ namespace {
 // TPUCompileSucceededAssertOp.
 class FuseTpuCompileAndExecutePass
     : public mlir::PassWrapper<FuseTpuCompileAndExecutePass,
-                               mlir::FunctionPass> {
+                               mlir::OperationPass<mlir::FuncOp>> {
  public:
   llvm::StringRef getArgument() const final {
     return "tfrt-fuse-tpu-compile-and-execute-ops";
@@ -39,8 +39,8 @@ class FuseTpuCompileAndExecutePass
     return "Fuse TPU Ops according to TFRT's requirements.";
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
 
     // remove TPUCompileSucceededAssertOp
     func.walk([&](mlir::Operation *op) {
@@ -73,7 +73,7 @@ class FuseTpuCompileAndExecutePass
       }
     });
 
-    mlir::OpBuilder builder(&func.body());
+    mlir::OpBuilder builder(&func.getBody());
 
     for (auto exec_op : tpu_execute_ops) {
       auto compile_cache_entry = exec_op.key();
@@ -96,36 +96,34 @@ class FuseTpuCompileAndExecutePass
       llvm::SmallVector<mlir::Value> exec_op_args;
       exec_op_args.resize(exec_op.args().size());
 
-      const auto &static_shaped_operands =
+      auto &static_shaped_operands =
           exec_to_static_shaped_operands_map[exec_op];
       for (int i = 0; i < exec_op.args().size(); ++i) {
         auto iter = static_shaped_operands.find(i);
         if (iter != static_shaped_operands.end()) {
           static_shaped_operand_indices_attr.push_back(iter->first);
-          static_shape_tensors.push_back(iter->second->getOperand(1));
-          exec_op_args[i] = iter->second->getOperand(0);
-          // There should be only one user of this op.
-          if (!iter->second->hasOneUse()) {
-            iter->second->emitOpError(
-                "there should be only one user of the "
-                "tf.SetStaticDimensionBounds op");
-            signalPassFailure();
-            return;
-          }
-          iter->second->dropAllDefinedValueUses();
-          iter->second->dropAllReferences();
+          static_shape_tensors.push_back(iter->second.static_shape());
+          exec_op_args[i] = iter->second.input();
+          // The first operand is the input tensor, while the second operand is
+          // the static shape tensor, hence the drop_back here.
+          iter->second->replaceAllUsesWith(
+              mlir::ValueRange({iter->second.input()}));
           iter->second->erase();
         } else {
           exec_op_args[i] = exec_op->getOperand(i);
         }
       }
 
+      auto producer_name =
+          exec_op->getAttrOfType<mlir::StringAttr>("_producer_name");
+      if (!producer_name)
+        producer_name = mlir::StringAttr::get(&getContext(), "default");
       auto compile_and_execute_op =
           builder.create<mlir::TF::TPUCompileMlirAndExecuteOp>(
               exec_op.getLoc(), output_types, exec_op_args,
               static_shape_tensors,
               builder.getI32ArrayAttr(static_shaped_operand_indices_attr),
-              compile_op.mlir_module(), compile_op.metadata());
+              compile_op.mlir_module(), compile_op.metadata(), producer_name);
 
       exec_op.replaceAllUsesWith(compile_and_execute_op.results());
       for (auto program_result : compile_op.program()) {

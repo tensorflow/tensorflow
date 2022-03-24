@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "AdagradMomentum"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Adam"
     mtype: "<type \'type\'>"
   }

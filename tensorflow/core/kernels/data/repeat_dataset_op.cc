@@ -91,6 +91,23 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return count_ * n;
   }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t n = input_->Cardinality(options);
+    if (count_ < 0) {
+      if (n == 0) {
+        return 0;
+      }
+      return kInfiniteCardinality;
+    }
+    if (count_ == 0) {
+      return 0;
+    }
+    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+      return n;
+    }
+    return count_ * n;
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return Status::OK();

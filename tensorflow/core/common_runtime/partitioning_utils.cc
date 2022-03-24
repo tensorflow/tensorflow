@@ -15,6 +15,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 
 #include <algorithm>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -25,18 +30,27 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+// A helper to partiton a `graph` given a `device_set` and a `graph`.
+// `partitions` maps device names to the graphdef assigned to that device.
 Status PartitionFunctionGraph(
-    const DeviceSet& device_set, std::unique_ptr<Graph> graph,
-    std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
+    const DeviceSet& device_set, Graph* graph,
+    std::unordered_map<string, GraphDef>* partitions,
+    std::function<string(const Node*)> node_to_loc,
     std::function<string(const Edge*)> get_tensor_name_attr) {
   PartitionOptions partition_options;
-  partition_options.node_to_loc = [](const Node* node) {
-    // TODO(iga): To support the distributed case, first split the graph by
-    // worker (e.g,. using the master session's `SplitByWorker` policy), and
-    // then recursively partition the per-worker shards at the remote worker(s).
-    // Currently, we simply split the graph at device boundaries.
-    return node->assigned_device_name();
-  };
+  if (node_to_loc != nullptr) {
+    partition_options.node_to_loc = node_to_loc;
+  } else {
+    partition_options.node_to_loc = [](const Node* node) {
+      // TODO(iga): To support the distributed case, first split the graph by
+      // worker (e.g,. using the master session's `SplitByWorker` policy), and
+      // then recursively partition the per-worker shards at the remote
+      // worker(s). Currently, we simply split the graph at device boundaries.
+      return node->assigned_device_name();
+    };
+  }
   int64_t edge_name_counter = 0;
   partition_options.new_name = [&edge_name_counter](const string& prefix) {
     return strings::StrCat(prefix, "/_", ++edge_name_counter);
@@ -52,8 +66,20 @@ Status PartitionFunctionGraph(
   };
   partition_options.control_flow_added = false;
   partition_options.get_tensor_name_attr = get_tensor_name_attr;
+
+  return Partition(partition_options, graph, partitions);
+}
+
+}  // namespace
+
+Status PartitionFunctionGraph(
+    const DeviceSet& device_set, std::unique_ptr<Graph> graph,
+    std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
+    std::function<string(const Edge*)> get_tensor_name_attr) {
   std::unordered_map<string, GraphDef> partitions;
-  TF_RETURN_IF_ERROR(Partition(partition_options, graph.get(), &partitions));
+  TF_RETURN_IF_ERROR(
+      PartitionFunctionGraph(device_set, graph.get(), &partitions,
+                             /*node_to_loc=*/nullptr, get_tensor_name_attr));
 
   for (auto& partition : partitions) {
     const string& device = partition.first;
@@ -72,11 +98,64 @@ Status PartitionFunctionGraph(
   return Status::OK();
 }
 
+StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
+    const DeviceSet& device_set, std::unique_ptr<Graph> graph) {
+  // Skip transfer op insertion if the graph nodes are not assigned to multiple
+  // devices.
+  auto node_to_loc = [](const Node* node) {
+    return node->assigned_device_name();
+  };
+  bool has_multiple_devices = false;
+  absl::optional<std::string> location;
+  for (const Node* node : graph->op_nodes()) {
+    if (location) {
+      if (*location != node_to_loc(node)) {
+        has_multiple_devices = true;
+        break;
+      }
+    } else {
+      location = node_to_loc(node);
+    }
+  }
+  if (!has_multiple_devices) {
+    return graph;
+  }
+
+  // Transfer ops are needed as there are multiple devices, so proceed with the
+  // partitioning.
+  auto new_graph = std::make_unique<Graph>(graph->flib_def());
+
+  std::unordered_map<string, GraphDef> partitions;
+  TF_RETURN_IF_ERROR(PartitionFunctionGraph(device_set, graph.get(),
+                                            &partitions, node_to_loc,
+                                            /*get_tensor_name_attr=*/nullptr));
+
+  GraphDef merged_graph_def;
+  if (!partitions.empty()) {
+    auto iter = partitions.begin();
+    merged_graph_def = std::move(iter->second);
+    while (++iter != partitions.end()) {
+      // TODO(b/220440252): MergeFrom() does memory copies when merging repeated
+      // fields. Ideally, we can merge repeated fields by 'moving' data.
+      // Consider using `proto2::util::MoveToEnd()` or so, once it is open
+      // sourced.
+      merged_graph_def.MergeFrom(iter->second);
+    }
+  }
+
+  GraphConstructorOptions opts;
+  opts.allow_internal_ops = true;
+  opts.expect_device_spec = true;
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, std::move(merged_graph_def),
+                                            new_graph.get()));
+  return std::move(new_graph);
+}
+
 Status UpdateArgAndRetvalMetadata(
-    Graph* graph, const string& device_type,
-    std::vector<FunctionArgIndex>* arg_indices, std::vector<int>* ret_indices,
+    Graph* graph, std::vector<FunctionArgIndex>* arg_indices,
+    std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
-    std::vector<AllocatorAttributes>* ret_alloc_attrs) {
+    std::vector<AllocatorAttributes>* ret_alloc_attrs, bool ints_on_device) {
   std::vector<std::pair<Node*, FunctionArgIndex>> arg_nodes;
   std::vector<std::pair<Node*, int>> ret_nodes;
   const AttrValue* attr_value;
@@ -126,10 +205,8 @@ Status UpdateArgAndRetvalMetadata(
     if (arg_alloc_attrs != nullptr) {
       AllocatorAttributes alloc_attr;
       DataType type = attr_value->type();
-      MemoryType mtype = (device_type == "TPU" || device_type == "XLA_CPU" ||
-                          device_type == "XLA_GPU")
-                             ? MTypeFromDTypeIntsOnDevice(type)
-                             : MTypeFromDType(type);
+      MemoryType mtype = ints_on_device ? MTypeFromDTypeIntsOnDevice(type)
+                                        : MTypeFromDType(type);
       if (mtype == HOST_MEMORY) {
         alloc_attr.set_on_host(true);
       }
@@ -143,10 +220,8 @@ Status UpdateArgAndRetvalMetadata(
     if (ret_alloc_attrs) {
       AllocatorAttributes alloc_attr;
       DataType type = attr_value->type();
-      MemoryType mtype = (device_type == "TPU" || device_type == "XLA_CPU" ||
-                          device_type == "XLA_GPU")
-                             ? MTypeFromDTypeIntsOnDevice(type)
-                             : MTypeFromDType(type);
+      MemoryType mtype = ints_on_device ? MTypeFromDTypeIntsOnDevice(type)
+                                        : MTypeFromDType(type);
       if (mtype == HOST_MEMORY) {
         alloc_attr.set_on_host(true);
       }

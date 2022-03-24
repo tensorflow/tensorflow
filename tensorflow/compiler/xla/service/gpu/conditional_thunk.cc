@@ -54,7 +54,7 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (config_.branch_index_is_bool) {
     stream.ThenMemcpy(&pred, branch_index_address, sizeof(bool));
   } else {
-    stream.ThenMemcpy(&branch_index, branch_index_address, sizeof(int32));
+    stream.ThenMemcpy(&branch_index, branch_index_address, sizeof(int32_t));
   }
 
   Status block_status = stream.BlockHostUntilDone();

@@ -25,14 +25,15 @@ namespace {
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct MapParallelLoopsPass : MapParallelLoopsPassBase<MapParallelLoopsPass> {
-  void runOnFunction() override {
-    mlir::greedilyMapParallelSCFToGPU(getFunction().getBody());
+  void runOnOperation() override {
+    mlir::greedilyMapParallelSCFToGPU(getOperation().getBody());
   }
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateMapParallelLoopsPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateMapParallelLoopsPass() {
   return std::make_unique<MapParallelLoopsPass>();
 }
 

@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -55,7 +55,7 @@ Operation* emitCallToPrint(Location loc, StringRef func_name, Value arg,
     callee_func = b->create<FuncOp>(module.getLoc(), func_name, func_type);
     callee_func.setPrivate();
   }
-  return b->create<CallOp>(loc, callee_func, arg);
+  return b->create<func::CallOp>(loc, callee_func, arg);
 }
 
 void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
@@ -76,12 +76,12 @@ void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
     memref_type =
         MemRefType::get(memref_type.getShape(), element_type,
                         memref_type.getLayout(), memref_type.getMemorySpace());
-    memref = b->create<arith::IndexCastOp>(loc, memref, memref_type);
+    memref = b->create<arith::IndexCastOp>(loc, memref_type, memref);
   }
 
   auto unranked_type =
       UnrankedMemRefType::get(element_type, memref_type.getMemorySpaceAsInt());
-  Value unranked_memref = b->create<memref::CastOp>(loc, memref, unranked_type);
+  Value unranked_memref = b->create<memref::CastOp>(loc, unranked_type, memref);
 
   if (element_type.isF32()) {
     emitCallToPrint(loc, "print_memref_f32", unranked_memref, b);
@@ -106,8 +106,8 @@ void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
 // is currently not supported because the data is not located on host.
 struct EmbedMemRefPrintsPass
     : public EmbedMemRefPrintsPassBase<EmbedMemRefPrintsPass> {
-  void runOnFunction() override {
-    FuncOp func = getFunction();
+  void runOnOperation() override {
+    FuncOp func = getOperation();
     if (!func->getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName))
       return;
 
@@ -122,7 +122,7 @@ struct EmbedMemRefPrintsPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateEmbedMemRefPrintsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateEmbedMemRefPrintsPass() {
   return std::make_unique<EmbedMemRefPrintsPass>();
 }
 

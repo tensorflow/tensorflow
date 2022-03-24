@@ -24,8 +24,8 @@ exports_files([
     "captured_function.h",
     "dataset_utils.cc",
     "dataset_utils.h",
-    "file_utils.cc",
-    "file_utils.h",
+    "finalization_utils.cc",
+    "finalization_utils.h",
     "name_utils.cc",
     "name_utils.h",
     "rewrite_utils.cc",
@@ -40,6 +40,8 @@ exports_files([
     "stats_utils.h",
     "unbounded_thread_pool.cc",
     "unbounded_thread_pool.h",
+    "utils.cc",
+    "utils.h",
 ])
 
 cc_library(
@@ -84,6 +86,9 @@ cc_library(
 tf_cc_test(
     name = "compression_utils_test",
     srcs = ["compression_utils_test.cc"],
+    tags = [
+        "requires-mem:24g",
+    ],
     deps = [
         ":compression_utils",
         ":dataset_test_base",
@@ -92,6 +97,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 
@@ -455,7 +461,10 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "file_utils",
-    srcs = ["file_utils.cc"],
-    hdrs = ["file_utils.h"],
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
 )

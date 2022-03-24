@@ -56,6 +56,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import traceback_utils
 
 
 GPU_TEST = "test_gpu" in sys.argv[0]
@@ -1447,6 +1448,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return f()
 
       distribution.run(replica_fn)
+
+  def testPreserveTracebackFiltering(self, distribution):
+    traceback_utils.disable_traceback_filtering()
+    self.assertFalse(traceback_utils.is_traceback_filtering_enabled())
+
+    def f():
+      self.assertFalse(traceback_utils.is_traceback_filtering_enabled())
+
+    distribution.run(f)
 
 
 def _replica_id():

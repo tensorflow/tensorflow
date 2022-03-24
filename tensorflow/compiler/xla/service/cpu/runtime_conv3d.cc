@@ -17,13 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv_impl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF32(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF32(
     const void* run_options_ptr, float* out, float* lhs, float* rhs,
     int64_t input_batch, int64_t input_x, int64_t input_y, int64_t input_z,
     int64_t input_channels, int64_t kernel_x, int64_t kernel_y,
@@ -48,7 +47,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF32(
       rhs_z_dilation, feature_group_count);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF16(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConv3DF16(
     const void* run_options_ptr, Eigen::half* out, Eigen::half* lhs,
     Eigen::half* rhs, int64_t input_batch, int64_t input_x, int64_t input_y,
     int64_t input_z, int64_t input_channels, int64_t kernel_x, int64_t kernel_y,

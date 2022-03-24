@@ -129,7 +129,7 @@ void printWindowAttribute(OpAsmPrinter &p, DenseElementsAttr attribute) {
 }
 }  // namespace
 
-void printWindowAttributes(OpAsmPrinter &p, Operation *op,
+void printWindowAttributes(OpAsmPrinter &p, Operation * /*op*/,
                            llvm::Optional<DenseIntElementsAttr> window_strides,
                            llvm::Optional<DenseIntElementsAttr> padding,
                            llvm::Optional<DenseIntElementsAttr> lhs_dilation,

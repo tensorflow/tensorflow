@@ -53,14 +53,14 @@ class MetricTableReport {
   // Represents an entry in the table.
   struct Entry {
     // Text to show in the entry table for this entry.
-    string text;
+    std::string text;
 
     // Text to show in the category table for this entry.
-    string short_text;
+    std::string short_text;
 
     // Text that represents the category of this entry - entries with the same
     // category are grouped together in the category table.
-    string category_text;
+    std::string category_text;
 
     // The value of the metric for this entry.
     double metric = 0.0;
@@ -70,11 +70,11 @@ class MetricTableReport {
 
   // The default name for the metric is "units", this function allows setting a
   // more meaningful name.
-  void SetMetricName(string metric_name);
+  void SetMetricName(std::string metric_name);
 
   // The default name for referring to entries is "entries", this functions
   // allows setting a more meaningful name.
-  void SetEntryName(string entry_name);
+  void SetEntryName(std::string entry_name);
 
   // By default the size of the table is limited. Calling this function forces
   // all entries to be shown no matter how many there are.
@@ -91,7 +91,7 @@ class MetricTableReport {
   // different from the expectation - the report will include the
   // discrepancy. All metric percentages are for the ratio with respect to the
   // expected sum, not the actual sum.
-  string MakeReport(double expected_metric_sum);
+  std::string MakeReport(double expected_metric_sum);
 
   // As MakeReport(), but writes the report to the INFO log in a way that avoids
   // cutting the report off if it is longer than the maximum line length for a
@@ -112,7 +112,7 @@ class MetricTableReport {
 
   // Represents a set of entries with the same category_text.
   struct Category {
-    string category_text;
+    std::string category_text;
     double metric_sum = 0.0;  // Sum of metric across entries.
     std::vector<const Entry*> entries;
   };
@@ -137,7 +137,7 @@ class MetricTableReport {
   void AppendEntryTable();
 
   // Appends a row of a table to the report.
-  void AppendTableRow(const string& text, const double metric,
+  void AppendTableRow(const std::string& text, const double metric,
                       const double running_metric_sum);
 
   // Returns the discrepancy between the expected sum of the metric of the
@@ -145,18 +145,18 @@ class MetricTableReport {
   double UnaccountedMetric();
 
   // Formats the metric value as a string.
-  string MetricString(double metric);
+  std::string MetricString(double metric);
 
   // Returns a string representing the metric value as a proportion of the
   // expected metric sum.
-  string MetricPercent(double metric);
+  std::string MetricPercent(double metric);
 
   // The entries to make a report about.
   std::vector<Entry> entries_;
 
   double expected_metric_sum_ = 0.0;
-  string metric_name_ = "units";
-  string entry_name_ = "entries";
+  std::string metric_name_ = "units";
+  std::string entry_name_ = "entries";
   bool show_category_table_ = false;
   bool show_entry_table_ = false;
 
@@ -167,7 +167,7 @@ class MetricTableReport {
   double max_metric_proportion_to_show_ = kDefaultMaxMetricProportionToShow;
 
   // The report that is being created.
-  string report_;
+  std::string report_;
 };
 
 }  // namespace xla

@@ -73,7 +73,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
       tf_executor.fetch %outputs_10#0 : tensor<?x2xi64>
     }
-    return %0#0 : tensor<?x2xi64>
+    func.return %0#0 : tensor<?x2xi64>
     // CHECK:      name: "ParseExample/ParseExampleV2"
     // CHECK-NEXT: op: "_Retval"
     // CHECK-NEXT: input: "ParseExample"

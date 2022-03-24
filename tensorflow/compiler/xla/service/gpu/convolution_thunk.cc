@@ -42,7 +42,7 @@ ConvolutionThunk::ConvolutionThunk(
 
 MaybeFusedConvRunner& ConvolutionThunk::GetOrCreateRunner(
     const stream_executor::Stream* stream) {
-  tensorflow::mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   auto it = runner_cache_.find(stream);
   if (it == runner_cache_.end()) {
     it = runner_cache_

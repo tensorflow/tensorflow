@@ -398,14 +398,10 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     TruncateDiv, /*test_name=*/Int8, int8_t, int8_t,
     test::DefaultInput<int8_t>(), test::DefaultInputNonZero<int8_t>(),
     baseline_div, test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     TruncateDiv, /*test_name=*/Uint32, uint32_t, uint32_t,
     test::DefaultInput<uint32_t>(), test::DefaultInputNonZero<uint32_t>(),
     baseline_div, test::OpsTestConfig().ExpectStrictlyEqual())
-#endif
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     TruncateDiv, /*test_name=*/Uint64, uint64_t, uint64_t,
     test::DefaultInput<uint64_t>(), test::DefaultInputNonZero<uint64_t>(),
@@ -628,8 +624,7 @@ T baseline_floor_mod(T lhs, T rhs) {
 }
 
 /// Test the JIT-compiled kernels.
-#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) && \
-    defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     FloorMod,
     /*test_name=*/Int8, int8_t, int8_t, test::DefaultInput<int8_t>(),

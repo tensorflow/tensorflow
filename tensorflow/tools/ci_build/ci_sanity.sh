@@ -438,7 +438,7 @@ cmd_status(){
 # Run bazel build --nobuild to test the validity of the BUILD files
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/... -//tensorflow/tools/toolchains/win/... -//tensorflow/tools/toolchains/win_1803/..."
   BUILD_CMD="bazel build --experimental_cc_shared_library --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
@@ -456,6 +456,10 @@ do_bazel_deps_query() {
   # necessary since the @androidsdk WORKSPACE dependency is commented out by
   # default in TF WORKSPACE file.
   local BUILD_TARGET="${BUILD_TARGET}"' - kind("android_*", //tensorflow/...)'
+
+  # TODO(pcloudy): Remove the following exclusion after upgrading to a Bazel
+  # which contains fix for https://github.com/bazelbuild/bazel/issues/14639
+  local BUILD_TARGET="${BUILD_TARGET}"' - //tensorflow/lite/experimental/acceleration/...'
 
   # We've set the flag noimplicit_deps as a workaround for
   # https://github.com/bazelbuild/bazel/issues/10544

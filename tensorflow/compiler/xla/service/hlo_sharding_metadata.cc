@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -426,14 +430,7 @@ bool ShardingMetadata::Matches(const DomainMetadata& other) const {
              : false;
 }
 
-size_t ShardingMetadata::Hash() const {
-  if (sharding_ != nullptr) {
-    return sharding_->Hash();
-  }
-  return static_cast<size_t>(0x297814aaad196e6dULL);
-}
-
-string ShardingMetadata::ToString() const {
+std::string ShardingMetadata::ToString() const {
   return sharding_ != nullptr ? sharding_->ToString() : "{}";
 }
 
@@ -532,14 +529,6 @@ bool ShardingDomainCreator::DomainCseMapKey::operator==(
     return false;
   }
   return *sharding == *other.sharding;
-}
-
-size_t ShardingDomainCreator::DomainCseMapHasher::operator()(
-    const ShardingDomainCreator::DomainCseMapKey& key) const {
-  return tensorflow::Hash64Combine(
-      std::hash<const HloInstruction*>{}(key.instruction),
-      key.sharding ? key.sharding->Hash()
-                   : static_cast<size_t>(0x297814aaad196e6dULL));
 }
 
 }  // namespace xla

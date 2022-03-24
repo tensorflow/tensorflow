@@ -153,19 +153,52 @@ void TfDriver::LoadModel(const string& bin_file_path) {
 }
 
 void TfDriver::ReshapeTensor(const string& name, const string& csv_values) {
-  ReshapeTensor(input_name_to_id_[name], csv_values);
+  if (!IsValid()) return;
+  int id = input_name_to_id_[name];
+  input_shapes_[id] = Split<int64_t>(csv_values, ",");
+  input_tensors_[input_names_[id]] =
+      CreateTensor(input_types_[id], input_shapes_[id]);
+  ResetTensor(name);
 }
+
 void TfDriver::ResetTensor(const std::string& name) {
-  ResetTensor(input_name_to_id_[name]);
+  if (!IsValid()) return;
+  int id = input_name_to_id_[name];
+  auto tensor = input_tensors_[input_names_[id]];
+  switch (input_types_[id]) {
+    case tensorflow::DT_FLOAT: {
+      FillTensorWithZeros<float>(&tensor);
+      break;
+    }
+    case tensorflow::DT_INT32: {
+      FillTensorWithZeros<int32_t>(&tensor);
+      break;
+    }
+    default:
+      Invalidate(absl::StrCat("Unsupported tensor type ", input_types_[id],
+                              tensorflow::DataType_Name(input_types_[id]),
+                              " in ResetInput"));
+      return;
+  }
 }
 string TfDriver::ReadOutput(const string& name) {
-  return ReadOutput(output_name_to_id_[name]);
+  if (!IsValid()) return "";
+  return ReadOutput(output_tensors_[output_name_to_id_[name]]);
 }
 void TfDriver::Invoke(const std::vector<std::pair<string, string>>& inputs) {
+  if (!IsValid()) return;
   for (const auto& input : inputs) {
-    SetInput(input_name_to_id_[input.first], input.second);
+    auto id = input_name_to_id_[input.first];
+    auto tensor = CreateTensor(input_types_[id], input_shapes_[id]);
+    SetInput(input.second, &tensor);
+    input_tensors_[input_names_[id]] = tensor;
   }
-  Invoke();
+  auto status = session_->Run({input_tensors_.begin(), input_tensors_.end()},
+                              output_names_, {}, &output_tensors_);
+  if (!status.ok()) {
+    Invalidate(absl::StrCat("TensorFlow failed to run graph:",
+                            status.error_message()));
+  }
 }
 
 void TfDriver::SetInput(const string& values_as_string,
@@ -206,40 +239,6 @@ void TfDriver::SetInput(const string& values_as_string,
   }
 }
 
-void TfDriver::SetInput(int id, const string& values_as_string) {
-  if (!IsValid()) return;
-  auto tensor = CreateTensor(input_types_[id], input_shapes_[id]);
-  SetInput(values_as_string, &tensor);
-  input_tensors_[input_names_[id]] = tensor;
-}
-
-void TfDriver::ResetTensor(int id) {
-  if (!IsValid()) return;
-  auto tensor = input_tensors_[input_names_[id]];
-  switch (input_types_[id]) {
-    case tensorflow::DT_FLOAT: {
-      FillTensorWithZeros<float>(&tensor);
-      break;
-    }
-    case tensorflow::DT_INT32: {
-      FillTensorWithZeros<int32_t>(&tensor);
-      break;
-    }
-    default:
-      Invalidate(absl::StrCat("Unsupported tensor type ", input_types_[id],
-                              tensorflow::DataType_Name(input_types_[id]),
-                              " in ResetInput"));
-      return;
-  }
-}
-
-void TfDriver::ReshapeTensor(int id, const string& values_as_string) {
-  input_shapes_[id] = Split<int64_t>(values_as_string, ",");
-  input_tensors_[input_names_[id]] =
-      CreateTensor(input_types_[id], input_shapes_[id]);
-  ResetTensor(id);
-}
-
 string TfDriver::ReadOutput(const tensorflow::Tensor& tensor) {
   switch (tensor.dtype()) {
     case tensorflow::DT_FLOAT:
@@ -261,21 +260,6 @@ string TfDriver::ReadOutput(const tensorflow::Tensor& tensor) {
                               tensorflow::DataType_Name(tensor.dtype()),
                               " in ReadOutput"));
       return "";
-  }
-}
-
-string TfDriver::ReadOutput(int id) {
-  if (!IsValid()) return "";
-  return ReadOutput(output_tensors_[id]);
-}
-
-void TfDriver::Invoke() {
-  if (!IsValid()) return;
-  auto status = session_->Run({input_tensors_.begin(), input_tensors_.end()},
-                              output_names_, {}, &output_tensors_);
-  if (!status.ok()) {
-    Invalidate(absl::StrCat("TensorFlow failed to run graph:",
-                            status.error_message()));
   }
 }
 

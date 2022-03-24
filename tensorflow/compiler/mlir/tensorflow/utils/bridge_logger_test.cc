@@ -50,7 +50,7 @@ TEST(BridgeLoggerFilters, TestPassFilter) {
   mlir::DialectRegistry mlir_registry;
   mlir::RegisterAllTensorFlowDialects(mlir_registry);
   mlir::MLIRContext mlir_context(mlir_registry);
-  mlir::OwningModuleRef mlir_module_with_add;
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_with_add;
   TF_ASSERT_OK(DeserializeMlirModule(module_with_add, &mlir_context,
                                      &mlir_module_with_add));
 
@@ -79,7 +79,7 @@ TEST(BridgeLoggerFilters, TestStringFilter) {
   mlir::DialectRegistry mlir_registry;
   mlir::RegisterAllTensorFlowDialects(mlir_registry);
   mlir::MLIRContext mlir_context(mlir_registry);
-  mlir::OwningModuleRef mlir_module_with_add, mlir_module_with_sub;
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_with_add, mlir_module_with_sub;
   TF_ASSERT_OK(DeserializeMlirModule(module_with_add, &mlir_context,
                                      &mlir_module_with_add));
   TF_ASSERT_OK(DeserializeMlirModule(module_with_sub, &mlir_context,
@@ -119,7 +119,7 @@ TEST(BridgeLoggerFilters, TestBothFilters) {
   mlir::DialectRegistry mlir_registry;
   mlir::RegisterAllTensorFlowDialects(mlir_registry);
   mlir::MLIRContext mlir_context(mlir_registry);
-  mlir::OwningModuleRef mlir_module_with_add;
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_with_add;
   TF_ASSERT_OK(DeserializeMlirModule(module_with_add, &mlir_context,
                                      &mlir_module_with_add));
 

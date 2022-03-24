@@ -18,8 +18,15 @@ limitations under the License.
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 
 namespace mlir {
+namespace xla_framework {
+class XLAFrameworkDialect;
+}
+namespace LLVM {
+class LLVMDialect;
+}
 namespace mhlo {
 class MhloDialect;
 

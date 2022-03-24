@@ -113,6 +113,10 @@ tf_module {
     argspec: "args=[\'devices\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "AnonymousMultiDeviceIteratorV3"
+    argspec: "args=[\'devices\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "AnonymousMutableDenseHashTable"
     argspec: "args=[\'empty_key\', \'deleted_key\', \'value_dtype\', \'value_shape\', \'initial_num_buckets\', \'max_load_factor\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'131072\', \'0.8\', \'None\'], "
   }
@@ -234,6 +238,10 @@ tf_module {
   }
   member_method {
     name: "AssertNextDataset"
+    argspec: "args=[\'input_dataset\', \'transformations\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "AssertPrevDataset"
     argspec: "args=[\'input_dataset\', \'transformations\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
@@ -781,6 +789,10 @@ tf_module {
     argspec: "args=[\'input\', \'communicator\', \'group_assignment\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
+    name: "CollectiveAssignGroupV2"
+    argspec: "args=[\'group_assignment\', \'device_index\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "CollectiveBcastRecv"
     argspec: "args=[\'T\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
@@ -1326,7 +1338,7 @@ tf_module {
   }
   member_method {
     name: "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch"
-    argspec: "args=[\'sample_indices_or_row_lengths\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
+    argspec: "args=[\'sample_indices_or_row_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
     name: "DynamicPartition"
@@ -1394,7 +1406,7 @@ tf_module {
   }
   member_method {
     name: "EnqueueTPUEmbeddingArbitraryTensorBatch"
-    argspec: "args=[\'sample_indices_or_row_lengths\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'None\'], "
+    argspec: "args=[\'sample_indices_or_row_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'None\'], "
   }
   member_method {
     name: "EnqueueTPUEmbeddingIntegerBatch"
@@ -2849,6 +2861,10 @@ tf_module {
     argspec: "args=[\'indices\', \'data\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ParallelFilterDataset"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'predicate\', \'output_types\', \'output_shapes\', \'deterministic\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'\', \'None\'], "
+  }
+  member_method {
     name: "ParallelInterleaveDataset"
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'sloppy\', \'buffer_output_elements\', \'prefetch_input_elements\', \'f\', \'output_types\', \'output_shapes\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
@@ -3295,6 +3311,10 @@ tf_module {
   member_method {
     name: "RandomGammaGrad"
     argspec: "args=[\'alpha\', \'sample\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "RandomIndexShuffle"
+    argspec: "args=[\'index\', \'seed\', \'max_index\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "RandomPoisson"

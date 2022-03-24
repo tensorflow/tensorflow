@@ -174,7 +174,7 @@ class BufferDonationTest : public HloTestBase {
   //   param[(s32,f32[4])] --- get-tuple-element[0] --- less-than
   //
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
-      const string& name) {
+      const std::string& name) {
     auto builder = HloComputation::Builder(name);
     auto const4 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(4)));
@@ -200,7 +200,7 @@ class BufferDonationTest : public HloTestBase {
   //   const1[s32] -----------------------------------------/
   //
   std::unique_ptr<HloComputation> BuildWhileBodyComputation(
-      const string& name) {
+      const std::string& name) {
     auto builder = HloComputation::Builder(name);
     auto const1 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(1)));

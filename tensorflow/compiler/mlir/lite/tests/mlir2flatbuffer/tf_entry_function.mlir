@@ -1,7 +1,7 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 module {
-func @serving_default(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> attributes {tf.entry_function = {inputs = "serving_default_x", outputs = "outputs"}} {
+func.func @serving_default(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> attributes {tf.entry_function = {inputs = "serving_default_x", outputs = "outputs"}} {
 // CHECK:       {
 
 // CHECK-LABEL:   version: 3,
@@ -51,6 +51,6 @@ func @serving_default(%arg0: tensor<3x2xf32>) -> tensor<3x2xf32> attributes {tf.
 // CHECK:       }
   %0 = "tfl.pseudo_const" () {value = dense<[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]> : tensor<3x2xf32>} : () -> tensor<3x2xf32>
   %1 = "tfl.add" (%0, %arg0) {fused_activation_function = "NONE"} : (tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
-  return %1 : tensor<3x2xf32>
+  func.return %1 : tensor<3x2xf32>
 }
 }

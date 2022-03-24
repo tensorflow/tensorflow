@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 

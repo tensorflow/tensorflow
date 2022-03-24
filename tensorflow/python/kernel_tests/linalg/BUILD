@@ -50,6 +50,7 @@ tf_py_test(
     shard_count = 20,
     tags = [
         "no_windows",
+        "nomsan",  # TODO(b/213581489): MSAN false positives from LAPACK use inside NumPy.
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -374,6 +375,7 @@ cuda_py_test(
     srcs = ["linear_operator_kronecker_test.py"],
     shard_count = 10,
     tags = [
+        "no_rocm",
         "noasan",
         "optonly",
     ],
@@ -679,6 +681,8 @@ cuda_py_test(
         "no_windows_gpu",
         "nomsan",
     ],
+    # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -697,6 +701,8 @@ cuda_py_test(
         "no_windows_gpu",
         "nomsan",
     ],
+    # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

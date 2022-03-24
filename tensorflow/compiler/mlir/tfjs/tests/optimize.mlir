@@ -9,7 +9,7 @@ func @prelu_fusion(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %2 = "tf.Relu"(%1) : (tensor<2x3xf32>) -> tensor<2x3xf32>
   %3 = "tf.Mul"(%alpha, %2) : (tensor<3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
   %4 = "tf.AddV2"(%0, %3) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
-  return %4 : tensor<2x3xf32>
+  func.return %4 : tensor<2x3xf32>
 
   // CHECK: %[[RESULT:[0-9].*]] = tfjs.Prelu
 }
@@ -23,7 +23,7 @@ func @prelu_not_fused(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %2 = "tf.Relu"(%1) : (tensor<2x3xf32>) -> tensor<2x3xf32>
   %3 = "tf.Mul"(%alpha, %2) : (tensor<f32>, tensor<2x3xf32>) -> tensor<2x3xf32>
   %4 = "tf.AddV2"(%0, %3) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
-  return %4 : tensor<2x3xf32>
+  func.return %4 : tensor<2x3xf32>
 
   // CHECK: %[[RESULT:[0-9].*]] = "tf.Relu"
 }

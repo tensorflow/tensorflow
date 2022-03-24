@@ -42,12 +42,12 @@ namespace xla {
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
 StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
-                                                         uint64 size,
+                                                         uint64_t size,
                                                          bool retry_on_failure,
                                                          int64_t memory_space) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
-    tensorflow::mutex_lock lock(count_mutex_);
+    absl::MutexLock lock(&count_mutex_);
     allocation_count_++;
     device_allocation_count_[device_ordinal]++;
   }
@@ -58,7 +58,7 @@ StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
 Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
   VLOG(2) << "Deallocate(" << device_ordinal << ")";
   {
-    tensorflow::mutex_lock lock(count_mutex_);
+    absl::MutexLock lock(&count_mutex_);
     deallocation_count_++;
     device_deallocation_count_[device_ordinal]++;
   }
@@ -66,12 +66,12 @@ Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
 }
 
 int64_t TestAllocator::allocation_count() const {
-  tensorflow::mutex_lock lock(count_mutex_);
+  absl::MutexLock lock(&count_mutex_);
   return allocation_count_;
 }
 
 int64_t TestAllocator::allocation_count(int device_ordinal) const {
-  tensorflow::mutex_lock lock(count_mutex_);
+  absl::MutexLock lock(&count_mutex_);
   auto it = device_allocation_count_.find(device_ordinal);
   if (it == device_allocation_count_.end()) {
     return 0;
@@ -81,12 +81,12 @@ int64_t TestAllocator::allocation_count(int device_ordinal) const {
 }
 
 int64_t TestAllocator::deallocation_count() const {
-  tensorflow::mutex_lock lock(count_mutex_);
+  absl::MutexLock lock(&count_mutex_);
   return deallocation_count_;
 }
 
 int64_t TestAllocator::deallocation_count(int device_ordinal) const {
-  tensorflow::mutex_lock lock(count_mutex_);
+  absl::MutexLock lock(&count_mutex_);
   auto it = device_deallocation_count_.find(device_ordinal);
   if (it == device_deallocation_count_.end()) {
     return 0;
@@ -97,8 +97,8 @@ int64_t TestAllocator::deallocation_count(int device_ordinal) const {
 
 /* static */ TestAllocator* LocalClientTestBase::GetOrCreateAllocator(
     se::Platform* platform) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  tensorflow::mutex_lock lock(mu);
+  static absl::Mutex mu(absl::kConstInit);
+  absl::MutexLock lock(&mu);
 
   if (allocator_ == nullptr) {
     allocator_ = new TestAllocator(

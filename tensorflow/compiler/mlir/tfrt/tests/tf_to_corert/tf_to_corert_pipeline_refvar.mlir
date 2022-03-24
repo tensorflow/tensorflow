@@ -14,6 +14,6 @@ module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0"]
       %outputs_0, %control_1 = tf_executor.island wraps "tf.Identity"(%outputs) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<!tf_type.f32ref>) -> tensor<*xf32>
       tf_executor.fetch %outputs_0 : tensor<*xf32>
     }
-    return %0 : tensor<*xf32>
+    func.return %0 : tensor<*xf32>
   }
 }

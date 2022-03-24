@@ -38,7 +38,7 @@ Status RunShapeInferenceOnComputation(
 // accompanying metadata in CompilationResult.
 Status CompileTFFunctionToHlo(
     const FunctionLibraryDefinition& flib_def, int graph_def_version,
-    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     const std::vector<TensorShape>& arg_shapes,
     const GuaranteedConsts& guaranteed_constants, const NameAttrList& function,
     const tpu::TPUCompileMetadataProto& metadata,
@@ -53,7 +53,7 @@ Status CompileTFFunctionToHlo(
 Status GetShardingInfo(
     const tpu::TPUCompileMetadataProto& metadata,
     absl::Span<const TensorShape> arg_shapes,
-    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    const XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes);
 

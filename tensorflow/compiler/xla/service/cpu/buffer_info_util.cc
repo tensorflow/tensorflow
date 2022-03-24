@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
+
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 
 namespace xla {
@@ -40,9 +41,9 @@ std::vector<BufferInfo> CreateBufferInfosFromBufferAssignment(
   return buffer_infos;
 }
 
-std::vector<int32> CreateArgIndexTableFromBufferInfos(
+std::vector<int32_t> CreateArgIndexTableFromBufferInfos(
     absl::Span<const BufferInfo> buffer_infos) {
-  std::vector<int32> result;
+  std::vector<int32_t> result;
   for (int64_t i = 0; i < buffer_infos.size(); i++) {
     if (buffer_infos[i].is_entry_parameter()) {
       if (buffer_infos[i].entry_parameter_number() >= result.size()) {

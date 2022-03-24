@@ -222,7 +222,7 @@ TEST_F(CudnnSupportUtilsTest,
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 4),
               IsOkAndHolds(true));
   EXPECT_THAT(CudnnSupportsOptimizedIntegerConvolution({7, 5}, *conv, 32),
-              IsOkAndHolds(false));  // imma output must also be int8
+              IsOkAndHolds(false));  // imma output must also be int8_t
 
   auto moduleF32InF32Out = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule

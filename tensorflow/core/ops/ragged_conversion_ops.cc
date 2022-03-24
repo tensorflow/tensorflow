@@ -118,6 +118,7 @@ REGISTER_OP("RaggedTensorToVariant")
     .Attr("Tvalues: type")
     .Attr("Tsplits: {int32, int64} = DT_INT64")
     .Attr("batched_input: bool")
+    .SetTypeConstructor(full_type::Unary(TFT_RAGGED, "Tvalues"))
     .SetShapeFn(RaggedTensorToVariantShapeFn);
 
 REGISTER_OP("RaggedTensorFromVariant")

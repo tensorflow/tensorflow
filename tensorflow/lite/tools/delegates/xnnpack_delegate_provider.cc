@@ -61,7 +61,7 @@ TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(
     return evaluation::CreateXNNPACKDelegate(
         params.Get<int32_t>("num_threads"));
   }
-  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
 }
 
 std::pair<TfLiteDelegatePtr, int>

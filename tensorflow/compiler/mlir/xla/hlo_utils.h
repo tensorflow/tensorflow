@@ -33,7 +33,7 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, mlir::Builder builder);
 
 Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
-                                        std::vector<uint8>* output);
+                                        std::vector<uint8_t>* output);
 
 StatusOr<int> GetElementTypeBytes(mlir::Type type);
 

@@ -175,7 +175,7 @@ class Conv2DTransposeTest(test.TestCase):
       err = gradient_checker.compute_gradient_error([x, f], [x_shape, f_shape],
                                                     output, y_shape)
     print("conv2d_transpose gradient err = %g " % err)
-    err_tolerance = 0.0005
+    err_tolerance = 0.0006
     self.assertLess(err, err_tolerance)
 
   def testConv2DTransposeSingleStrideNCHW(self):

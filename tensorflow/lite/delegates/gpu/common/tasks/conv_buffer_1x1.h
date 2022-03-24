@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_BUFFER_1X1_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONV_BUFFER_1X1_H_
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -50,6 +53,7 @@ class ConvBuffer1x1 : public GPUOperation {
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
+    desc.type = DeduceDataTypeFromPrecision(definition_.precision);
     desc.layout = WeightsLayout::kOSpatialIOGroupI4O4;
     desc.output_group_size = conv_params_.block_size.z;
     return desc;
@@ -125,32 +129,18 @@ void ConvBuffer1x1::UploadDataForWinograd4x4To6x6(
 
 template <DataType T>
 void ConvBuffer1x1::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
-  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-
-  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
-  const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);
-
-  const int dst_depth_aligned = AlignByN(dst_depth, conv_params_.block_size.z);
-  const int elements_count =
-      weights.shape.h * weights.shape.w * src_depth * dst_depth_aligned * 4;
+  const auto weights_desc = GetWeightsDescription();
+  const int flt_count =
+      GetTotalElementsCountForLayout(weights_desc, weights.shape);
 
   BufferDescriptor desc;
-  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+  desc.element_type = weights_desc.type;
   desc.element_size = 16;
   desc.memory_type = MemoryType::GLOBAL;
-  desc.size = float4_size * elements_count;
+  desc.size = flt_count * SizeOf(desc.element_type);
   desc.data.resize(desc.size);
 
-  if (f32_weights) {
-    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
-    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
-                                     absl::MakeSpan(ptr, elements_count));
-  } else {
-    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
-    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
-                                     absl::MakeSpan(ptr, elements_count));
-  }
+  RearrangeWeights(weights, weights_desc, absl::MakeSpan(desc.data));
 
   args_.AddObject("weights",
                   absl::make_unique<BufferDescriptor>(std::move(desc)));

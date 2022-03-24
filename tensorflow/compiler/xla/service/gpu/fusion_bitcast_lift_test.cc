@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
+// TODO(b/210165681): The tests in this file are fragile to HLO op names.
+
 namespace xla {
 namespace gpu {
 namespace {
@@ -86,7 +88,7 @@ ENTRY %main {
 ; CHECK-LABEL: ENTRY %main
 ; CHECK-NEXT:    f16[2,14,14,672]{3,2,1,0} parameter(0)
 ; CHECK-NEXT:    bitcast(
-; CHECK-NEXT:    ROOT %fusion.4d.bitcast
+; CHECK-NEXT:    fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -154,7 +156,7 @@ ENTRY %main {
 ; CHECK-NEXT:    f16[2,14,14,672]{3,2,1,0} parameter(0)
 ; CHECK-NEXT:    bitcast(
 ; CHECK-NEXT:    %param_1.1 = f32[] parameter(1)
-; CHECK-NEXT:    ROOT %fusion.4d.bitcast
+; CHECK-NEXT:    fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -211,7 +213,7 @@ ENTRY %main {
 ; CHECK-NEXT:    f16[2,14,14,672]{3,2,1,0} parameter(0)
 ; CHECK-NEXT:    bitcast(
 ; CHECK-NEXT:    %param_1.1 = f32[672]{0} parameter(1)
-; CHECK-NEXT:    ROOT %fusion.4d.bitcast
+; CHECK-NEXT:    fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -367,7 +369,7 @@ ENTRY %main {
 ; CHECK-NEXT:    f16[392,672]{1,0} parameter(0)
 ; CHECK-NEXT:    f32[1]{0} parameter(1)
 ; CHECK-NEXT:    bitcast(
-; CHECK-NEXT:    ROOT %fusion.bitcast
+; CHECK-NEXT:    fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -455,7 +457,7 @@ ENTRY %main {
 ; CHECK-LABEL: ENTRY %main
 ; CHECK-COUNT-3: bitcast(
 ; CHECK-NOT:     bitcast(
-; CHECK:         ROOT %fusion.bitcast
+; CHECK:         fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
@@ -546,7 +548,7 @@ ENTRY %main {
 ; CHECK-LABEL: ENTRY %main
 ; CHECK-COUNT-2: bitcast(
 ; CHECK-NOT:     bitcast(
-; CHECK:         ROOT %fusion.bitcast
+; CHECK:         fusion(
       )");
   EXPECT_TRUE(filecheck_result.status().ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());

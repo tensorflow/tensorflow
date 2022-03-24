@@ -808,14 +808,17 @@ tf_xla_py_test(
     size = "small",
     timeout = "long",
     srcs = ["image_ops_test.py"],
-    disabled_backends = [
-        "gpu",  # Fails on CUDA 11 b/190787813
+    enable_mlir_bridge = False,
+    enabled_backends = [
+        "cpu",
+        "gpu",
     ],
     python_version = "PY3",
     shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
+        "requires-gpu-nvidia",
     ],
     deps = [
         ":xla_test",
@@ -1151,7 +1154,7 @@ tf_xla_py_test(
     name = "reduce_window_test",
     size = "small",
     srcs = ["reduce_window_test.py"],
-    enable_mlir_bridge = False,
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1549,7 +1552,6 @@ tf_xla_py_test(
     size = "small",
     srcs = ["cast_ops_test.py"],
     disabled_backends = ["cpu_ondemand"],
-    enable_mlir_bridge = False,  # TODO(b/200894060): Re-enable on MLIR bridge.
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1832,6 +1834,7 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "requires-gpu-nvidia",
+        "no_rocm",  # ROCmSoftwarePlatform #958
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -1852,6 +1855,7 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "requires-gpu-nvidia",
+        "no_rocm",  # ROCmSoftwarePlatform #958
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
 )
@@ -2015,6 +2019,29 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "xla_custom_call_ops_test",
+    size = "small",
+    srcs = ["xla_custom_call_ops_test.py"],
+    disabled_backends = [
+        "gpu",
+    ],
+    enable_mlir_bridge = False,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "conv_node_name_test",
     size = "medium",
     srcs = ["conv_node_name_test.py"],
@@ -2083,17 +2110,10 @@ tf_xla_py_test(
     name = "repeat_op_test",
     size = "medium",
     srcs = ["repeat_op_test.py"],
-    # Where op doesn't yet support these backends.
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
     enable_mlir_bridge = True,
     shard_count = 5,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "notap",  # TODO(hinsu): Fix the issue, file the bug.
         "optonly",
     ],
     deps = [
@@ -2126,16 +2146,13 @@ tf_xla_py_test(
     name = "where_op_test",
     size = "small",
     srcs = ["where_op_test.py"],
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-        "gpu",
-    ],
     enable_mlir_bridge = False,
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",

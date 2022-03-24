@@ -13,7 +13,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   {
     %0 = "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<!tf_type.resource<tensor<3x1xi32>>>) -> tensor<3x1xi32>
     %1 = "tf.MatMul"(%arg0, %0) {device = "", transpose_a = false, transpose_b = false} : (tensor<1x3xi32>, tensor<3x1xi32>) -> tensor<1x1xi32>
-    return %1 : tensor<1x1xi32>
+    func.return %1 : tensor<1x1xi32>
   }
   func @predict(
     ) -> (tensor<0x!tf_type.string> {tf_saved_model.index_path = ["r"]})
@@ -23,6 +23,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     }
   {
     %0 = "tf.Const"() {dtype = !tf_type.string, value = dense<[]> : tensor<0x!tf_type.string>} : () -> tensor<0x!tf_type.string>
-    return %0 : tensor<0x!tf_type.string>
+    func.return %0 : tensor<0x!tf_type.string>
   }
 }

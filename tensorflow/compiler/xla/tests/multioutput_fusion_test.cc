@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <math.h>
+
 #include <algorithm>
 #include <memory>
 #include <new>
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -213,13 +213,13 @@ XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
   auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
   auto param = LiteralUtil::MakeTupleOwned(
       LiteralUtil::MakeTupleOwned(
-          LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32>(42)),
+          LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32_t>(42)),
           LiteralUtil::CreateR0<float>(1.0)),
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<float>(3.0),
-                                  LiteralUtil::CreateR0<int32>(4)));
+                                  LiteralUtil::CreateR0<int32_t>(4)));
   Literal result = ExecuteNoHloPasses(std::move(module), {&param});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32>(42)), result));
+      LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR0<int32_t>(42)), result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
@@ -295,7 +295,7 @@ const char* const kScalarOps = R"(
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMinor)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[32,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -317,7 +317,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMajor)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[32,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -339,7 +339,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionScalar)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -362,7 +362,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMinorWithExtraOutput)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,32,32]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -385,7 +385,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionMajorWithExtraOutput)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[32,32,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
@@ -408,7 +408,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionScalarWithExtraOutput)) {
-  const string testcase = R"(
+  const std::string testcase = R"(
     HloModule m, is_scheduled=true
 
     Add {
@@ -439,7 +439,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionNonConstInit)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,32,32]{2,1,0} parameter(0)
       init1 = f32[] parameter(1)
@@ -462,7 +462,7 @@ XLA_TEST_F(MultiOutputFusionTest,
 
 XLA_TEST_F(MultiOutputFusionTest,
            DISABLED_ON_CPU(MultiOutputReduceFusionDifferentElementTypes)) {
-  const string testcase = absl::StrCat(kScalarOps, R"(
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce (p0: f16[2,32,32]) -> (f32[2,32], f32[2,32], f16[2,32,32]) {
       p0 = f16[2,32,32]{2,1,0} parameter(0)
       convert = f32[2,32,32]{2,1,0} convert(p0)

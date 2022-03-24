@@ -39,7 +39,7 @@ Status SoftmaxGrad(const Scope& scope, const Operation& op,
   //    = (dL/dy - sum(dL/dy * y)) * y
   auto y = op.output(0);
   auto dyy = Mul(scope, grad_inputs[0], y);
-  auto sum = Reshape(scope, Sum(scope, dyy, {1}), {-1, 1});
+  auto sum = Sum(scope, dyy, /*axis=*/-1, Sum::KeepDims(true));
   auto sub = Sub(scope, grad_inputs[0], sum);
   auto dx = Mul(scope, sub, y);
   grad_outputs->push_back(dx);

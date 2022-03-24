@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/core/api/profiler.h"
@@ -58,12 +59,18 @@ struct ProfileEvent {
   int64_t extra_event_metadata;
 };
 
-// A ring buffer of profile events.
-// This class is not thread safe.
+// A buffer of profile events. In general, the buffer works like a ring buffer.
+// However, when 'allow_dynamic_expansion' is set, a unlimitted number of buffer
+// entries is allowed and more profiling overhead could occur.
+// This class is *not thread safe*.
 class ProfileBuffer {
  public:
-  ProfileBuffer(uint32_t max_num_entries, bool enabled)
-      : enabled_(enabled), current_index_(0), event_buffer_(max_num_entries) {}
+  ProfileBuffer(uint32_t max_num_entries, bool enabled,
+                bool allow_dynamic_expansion = false)
+      : enabled_(enabled),
+        current_index_(0),
+        event_buffer_(max_num_entries),
+        allow_dynamic_expansion_(allow_dynamic_expansion) {}
 
   // Adds an event to the buffer with begin timestamp set to the current
   // timestamp. Returns a handle to event that can be used to call EndEvent. If
@@ -75,11 +82,11 @@ class ProfileBuffer {
       return kInvalidEventHandle;
     }
     uint64_t timestamp = time::NowMicros();
-    int index = current_index_ % event_buffer_.size();
-    if (current_index_ != 0 && index == 0) {
-      fprintf(stderr, "Warning: Dropping ProfileBuffer event.\n");
-      return current_index_;
+    const auto next_index = GetNextEntryIndex();
+    if (next_index.second) {
+      return next_index.first;
     }
+    const int index = next_index.first;
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
     event_buffer_[index].event_metadata = event_metadata1;
@@ -132,11 +139,11 @@ class ProfileBuffer {
     if (!enabled_) {
       return;
     }
-    const int index = current_index_ % event_buffer_.size();
-    if (current_index_ != 0 && index == 0) {
-      fprintf(stderr, "Warning: Dropping ProfileBuffer event.\n");
+    const auto next_index = GetNextEntryIndex();
+    if (next_index.second) {
       return;
     }
+    const int index = next_index.first;
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
     event_buffer_[index].event_metadata = event_metadata1;
@@ -174,9 +181,29 @@ class ProfileBuffer {
   }
 
  private:
+  // Returns a pair of values. The 1st element refers to the next buffer id,
+  // the 2nd element refers to whether the buffer reaches its allowed capacity.
+  std::pair<int, bool> GetNextEntryIndex() {
+    int index = current_index_ % event_buffer_.size();
+    if (current_index_ == 0 || index != 0) {
+      return std::make_pair(index, false);
+    }
+
+    // Current buffer is full
+    if (!allow_dynamic_expansion_) {
+      fprintf(stderr, "Warning: Dropping ProfileBuffer event.\n");
+      return std::make_pair(current_index_, true);
+    } else {
+      fprintf(stderr, "Warning: Doubling internal profiling buffer.\n");
+      event_buffer_.resize(current_index_ * 2);
+      return std::make_pair(current_index_, false);
+    }
+  }
+
   bool enabled_;
   uint32_t current_index_;
   std::vector<ProfileEvent> event_buffer_;
+  const bool allow_dynamic_expansion_;
 };
 
 }  // namespace profiling

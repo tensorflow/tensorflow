@@ -2,7 +2,7 @@ op {
   graph_op_name: "EnqueueTPUEmbeddingArbitraryTensorBatch"
   visibility: HIDDEN
   in_arg {
-    name: "sample_indices_or_row_lengths"
+    name: "sample_indices_or_row_splits"
     description: <<END
 A list of rank 2 Tensors specifying the training example to which the
 corresponding embedding_indices and aggregation_weights values belong.
@@ -10,11 +10,11 @@ If the size of its first dimension is 0, we assume each embedding_indices
 belongs to a different sample. Both int32 and int64 are allowed and will
 be converted to int32 internally.
 
-Or a list of rank 1 Tensors specifying the row lengths for splitting
+Or a list of rank 1 Tensors specifying the row splits for splitting
 embedding_indices and aggregation_weights into rows. It corresponds to
-ids.row_lengths in embedding_lookup(), when ids is a RaggedTensor. When
+ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. When
 enqueuing N-D ragged tensor, only the last dimension is allowed to be ragged.
-the row lengths is 1-D dense tensor. When empty, we assume a dense tensor is
+the row splits is 1-D dense tensor. When empty, we assume a dense tensor is
 passed to the op Both int32 and int64 are allowed and will be converted to
 int32 internally.
 END

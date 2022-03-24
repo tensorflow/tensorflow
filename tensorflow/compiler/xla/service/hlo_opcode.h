@@ -55,6 +55,9 @@ namespace xla {
   V(kAllReduceStart, "all-reduce-start", kHloOpcodeIsVariadic)                 \
   V(kAllReduceDone, "all-reduce-done", 1)                                      \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                             \
+  V(kAsyncStart, "async-start", kHloOpcodeIsVariadic)                          \
+  V(kAsyncUpdate, "async-update", 1)                                           \
+  V(kAsyncDone, "async-done", 1)                                               \
   V(kAtan2, "atan2", 2)                                                        \
   V(kBatchNormGrad, "batch-norm-grad", 5)                                      \
   V(kBatchNormInference, "batch-norm-inference", 5)                            \
@@ -105,6 +108,7 @@ namespace xla {
   V(kLogistic, "logistic", 1)                                                  \
   V(kAnd, "and", 2)                                                            \
   V(kNot, "not", 1)                                                            \
+  V(kOptimizationBarrier, "opt-barrier", 1)                                    \
   V(kOr, "or", 2)                                                              \
   V(kXor, "xor", 2)                                                            \
   V(kMap, "map", kHloOpcodeIsVariadic)                                         \
@@ -170,10 +174,10 @@ enum {
 };
 
 // Returns a string representation of the opcode.
-string HloOpcodeString(HloOpcode opcode);
+std::string HloOpcodeString(HloOpcode opcode);
 
 // Retrieves the opcode enum by name if the opcode exists.
-StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name);
+StatusOr<HloOpcode> StringToHloOpcode(const std::string& opcode_name);
 
 inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {
   return os << HloOpcodeString(opcode);
@@ -188,6 +192,10 @@ bool HloOpcodeIsVariadic(HloOpcode opcode);
 // Returns the arity of opcode. If the opcode is variadic,
 // returns nullopt.
 absl::optional<int> HloOpcodeArity(HloOpcode opcode);
+
+// Returns true if the given opcode is one of kAsyncStart, kAsyncUpdate, or
+// kAsyncDone.
+bool HloOpcodeIsAsync(HloOpcode opcode);
 
 // Returns the number of HloOpcode values.
 inline const uint32_t HloOpcodeCount() {

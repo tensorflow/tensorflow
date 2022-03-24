@@ -6,7 +6,7 @@ module attributes {tf_saved_model.semantics} {
 
 // Test error handling in a simple scenario.
 
-// expected-error @+1 {{'builtin.func' op failed to promote resource variables}}
+// expected-error @+1 {{'func.func' op failed to promote resource variables}}
 func @main(
     %arg0: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @y})
       -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
@@ -17,7 +17,7 @@ func @main(
   "tf.AssignVariableOp"(%arg0, %0) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   %1 = "tf.ReadVariableOp"(%arg0) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
 
-  return %1 : tensor<i32>
+  func.return %1 : tensor<i32>
 }
 
 }
@@ -31,12 +31,12 @@ module attributes {tf_saved_model.semantics} {
 func private @callee(
   %arg0: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
 {
-    return %arg0: tensor<!tf_type.resource<tensor<i32>>>
+    func.return %arg0: tensor<!tf_type.resource<tensor<i32>>>
 }
 
 // Test error handling during recursive processing that involes a call operation.
 
-// expected-error @+1 {{'builtin.func' op failed to promote resource variables}}
+// expected-error @+1 {{'func.func' op failed to promote resource variables}}
 func @main(
     %arg0: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @y})
       -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
@@ -51,7 +51,7 @@ func @main(
   "tf.AssignVariableOp"(%res, %0) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   %1 = "tf.ReadVariableOp"(%arg0) {device = "/device:CPU:0", dtype = i32} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
 
-  return %1 : tensor<i32>
+  func.return %1 : tensor<i32>
 }
 
 }

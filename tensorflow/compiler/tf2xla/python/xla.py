@@ -247,11 +247,11 @@ def conv(lhs,
          rhs_dilation,
          dimension_numbers,
          feature_group_count=1,
-         batch_group_count=1,
          precision_config=None,
          preferred_element_type=None,
          name=None,
-         use_v2=False):
+         use_v2=False,
+         batch_group_count=1):
   """Wraps the XLA ConvGeneralDilated operator.
 
   ConvGeneralDilated is the most general form of XLA convolution and is
@@ -267,11 +267,11 @@ def conv(lhs,
     rhs_dilation: dilation to apply between kernel elements
     dimension_numbers: a `ConvolutionDimensionNumbers` proto.
     feature_group_count: number of feature groups for grouped convolution.
-    batch_group_count: number of batch groups or grouped filters.
     precision_config: a `xla.PrecisionConfig` proto.
     preferred_element_type: the result `dtype`.
     name: an optional name for the operator.
     use_v2: an optional request to use the XlaConvV2 op even if not necessary.
+    batch_group_count: number of batch groups or grouped filters.
 
   Returns:
     A tensor representing the output of the convolution.
@@ -555,6 +555,7 @@ key_value_sort = gen_xla_ops.xla_key_value_sort
 variadic_sort = gen_xla_ops.xla_variadic_sort
 while_loop = gen_xla_ops.xla_while
 dequantize = gen_xla_ops.xla_dequantize
+custom_call = gen_xla_ops.xla_custom_call
 
 
 def gather(operand, start_indices, dimension_numbers, slice_sizes,
@@ -578,3 +579,7 @@ def scatter(operand, scatter_indices, updates, update_computation,
       dimension_numbers=dimension_numbers.SerializeToString(),
       indices_are_sorted=indices_are_sorted,
       name=name)
+
+
+def optimization_barrier(*args):
+  return gen_xla_ops.xla_optimization_barrier(args)

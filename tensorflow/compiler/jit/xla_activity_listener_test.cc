@@ -117,7 +117,8 @@ TEST_F(XlaActivityListenerTest, Test) {
   TF_ASSERT_OK(session->Run(inputs_2x2, output_names, /*target_node_names=*/{},
                             &outputs));
 
-  absl::string_view expected_auto_clustering_activity =
+  XlaAutoClusteringActivity expected_auto_clustering_activity;
+  protobuf::TextFormat::ParseFromString(
       R"(global_jit_level: ON_2
 cpu_global_jit_enabled: true
 summary {
@@ -156,10 +157,10 @@ summary {
     count: 1
   }
 }
-)";
-
+)",
+      &expected_auto_clustering_activity);
   EXPECT_EQ(listener()->auto_clustering_activity().DebugString(),
-            expected_auto_clustering_activity);
+            expected_auto_clustering_activity.DebugString());
 
   EXPECT_EQ(listener()->jit_compilation_activity().cluster_name(), "cluster_0");
   EXPECT_EQ(listener()->jit_compilation_activity().compile_count(), 1);

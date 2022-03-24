@@ -86,6 +86,14 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return n / num_shards_ + (index_ < n % num_shards_ ? 1 : 0);
   }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t n = input_->Cardinality(options);
+    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+      return n;
+    }
+    return n / num_shards_ + (index_ < n % num_shards_ ? 1 : 0);
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return Status::OK();

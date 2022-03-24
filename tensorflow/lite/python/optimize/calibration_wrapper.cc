@@ -92,6 +92,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_BOOL;
     case kTfLiteInt16:
       return TensorType_INT16;
+    case kTfLiteUInt16:
+      return TensorType_UINT16;
     case kTfLiteComplex64:
       return TensorType_COMPLEX64;
     case kTfLiteComplex128:
@@ -553,16 +555,16 @@ PyObject* CalibrationWrapper::Calibrate() {
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             int output_py_type,
                                             bool allow_float,
-                                            int activations_py_type) {
+                                            int activations_py_type,
+                                            int bias_py_type) {
   return QuantizeModel(input_py_type, output_py_type, allow_float,
-                       activations_py_type, /*disable_per_channel=*/false);
+                       activations_py_type, bias_py_type,
+                       /*disable_per_channel=*/false);
 }
 
-PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
-                                            int output_py_type,
-                                            bool allow_float,
-                                            int activations_py_type,
-                                            bool disable_per_channel) {
+PyObject* CalibrationWrapper::QuantizeModel(
+    int input_py_type, int output_py_type, bool allow_float,
+    int activations_py_type, int bias_py_type, bool disable_per_channel) {
   if (NoOpModel(*model_)) {
     return python_utils::ConvertToPyString(model_str_->data(),
                                            model_str_->size());
@@ -572,6 +574,7 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
   TfLiteType activations_type =
       python_utils::TfLiteTypeFromPyType(activations_py_type);
+  TfLiteType bias_type = python_utils::TfLiteTypeFromPyType(bias_py_type);
 
   if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
     PyErr_SetString(PyExc_ValueError,
@@ -586,7 +589,8 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   status = tflite::optimize::QuantizeModelAllOperators(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
       TfLiteTypeToSchemaType(output_type), allow_float,
-      TfLiteTypeToSchemaType(activations_type), disable_per_channel,
+      TfLiteTypeToSchemaType(activations_type),
+      TfLiteTypeToSchemaType(bias_type), disable_per_channel,
       error_reporter_.get());
 
   if (status != kTfLiteOk) {
@@ -618,7 +622,8 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   auto status = tflite::optimize::QuantizeModel(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
       TfLiteTypeToSchemaType(output_type), allow_float, {op_name},
-      TensorType_INT8, error_reporter_.get());
+      /*activations_type=*/TensorType_INT8, /*bias_type=*/TensorType_INT32,
+      error_reporter_.get());
   if (status != kTfLiteOk) {
     error_reporter_->exception();
     return nullptr;

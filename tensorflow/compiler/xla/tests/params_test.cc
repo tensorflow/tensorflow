@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -78,7 +77,7 @@ XLA_TEST_F(ParamsTest, ConstantR1S2F32Param) {
 
 XLA_TEST_F(ParamsTest, ConstantR1U8Param) {
   XlaBuilder builder(TestName());
-  string str("hello world");
+  std::string str("hello world");
   Literal param0_literal = LiteralUtil::CreateR1U8(str);
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(param0_literal).ConsumeValueOrDie();
@@ -291,15 +290,15 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
   XlaBuilder builder(TestName());
 
   std::vector<std::unique_ptr<GlobalData>> param_data_owner;
-  XlaOp sum_handle = ConstantR1<int32>(&builder, {0, 0});
-  int32 target = 0;
+  XlaOp sum_handle = ConstantR1<int32_t>(&builder, {0, 0});
+  int32_t target = 0;
   constexpr int kParamCount = 3000;
   std::vector<XlaOp> params;
   param_data_owner.reserve(kParamCount);
   params.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
     target += i;
-    Literal literal = LiteralUtil::CreateR1<int32>({i, i});
+    Literal literal = LiteralUtil::CreateR1<int32_t>({i, i});
     param_data_owner.push_back(
         std::move(client_->TransferToServer(literal)).ValueOrDie());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
@@ -325,7 +324,8 @@ XLA_TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(
   std::vector<const Literal*> ptrs;
   elements.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
-    elements.push_back(LiteralUtil::CreateR1<int32>({target + i, target + i}));
+    elements.push_back(
+        LiteralUtil::CreateR1<int32_t>({target + i, target + i}));
     ptrs.push_back(&elements.back());
   }
   ComputeAndCompareTuple(&builder, LiteralUtil::MakeTuple(ptrs), param_data);
@@ -360,7 +360,7 @@ XLA_TEST_F(ParamsTest,
   params.reserve(kParamCount);
   parameter_shapes.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
-    Literal literal = LiteralUtil::CreateR1<int32>({i, i});
+    Literal literal = LiteralUtil::CreateR1<int32_t>({i, i});
     param_data_owner.push_back(
         std::move(client_->TransferToServer(literal)).ValueOrDie());
     XlaOp param = Parameter(&builder, i, literal.shape(), "param");
@@ -401,7 +401,7 @@ XLA_TEST_F(ParamsTest,
     updates.reserve(kParamCount + 1);
     for (int i = 0; i < kParamCount; ++i) {
       auto add = Add(GetTupleElement(body_parameter, i),
-                     ConstantR1<int32>(&builder, {1, 1}));
+                     ConstantR1<int32_t>(&builder, {1, 1}));
       updates.push_back(add);
     }
     // Add bool parameter.
@@ -430,7 +430,7 @@ XLA_TEST_F(ParamsTest,
   std::vector<const Literal*> ptrs;
   elements.reserve(kParamCount);
   for (int i = 0; i < kParamCount; ++i) {
-    elements.push_back(LiteralUtil::CreateR1<int32>({i, i}));
+    elements.push_back(LiteralUtil::CreateR1<int32_t>({i, i}));
     ptrs.push_back(&elements.back());
   }
   ComputeAndCompareTuple(&builder, LiteralUtil::MakeTuple(ptrs), param_data);

@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -55,7 +54,7 @@ class DynamicDimensionInference {
       CustomCallInferenceHandler custom_call_handler = nullptr,
       ShapeCheckMode shape_check_mode = ShapeCheckMode::kIgnore);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // If the dimension `dim` of instruction `inst` at `index` has a dynamic size,
   // returns a scalar HloInstruction that represents the runtime size of that

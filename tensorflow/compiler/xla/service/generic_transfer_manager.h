@@ -20,9 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -70,7 +68,8 @@ class GenericTransferManager : public TransferManager {
   // The size in bytes of pointers on this platform.
   const size_t pointer_size_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GenericTransferManager);
+  GenericTransferManager(const GenericTransferManager&) = delete;
+  GenericTransferManager& operator=(const GenericTransferManager&) = delete;
 };
 
 }  // namespace xla

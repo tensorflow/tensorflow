@@ -18,7 +18,7 @@ limitations under the License.
 // tf.If -> tf.IfRegion and tf.While -> tf.WhileRegion
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -62,23 +62,25 @@ YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
   OpBuilder builder(caller_region);
   Block* entry = builder.createBlock(&caller_region);
 
+  auto loc = op->getLoc();
   if (use_region_args) {
-    entry->addArguments(func.getType().getInputs());
+    auto inputs = func.getFunctionType().getInputs();
+    entry->addArguments(inputs, SmallVector<Location>(inputs.size(), loc));
     args = entry->getArguments();
   }
   llvm::SmallVector<Value, 4> casted_args;
   casted_args.reserve(func.getNumArguments());
-  for (const auto& ArgAndType : zip(args, func.getType().getInputs())) {
+  for (const auto& ArgAndType : zip(args, func.getFunctionType().getInputs())) {
     Value arg = std::get<0>(ArgAndType);
     Type expected_type = std::get<1>(ArgAndType);
     if (arg.getType() != expected_type) {
-      arg = builder.create<CastOp>(op->getLoc(), expected_type, arg,
+      arg = builder.create<CastOp>(loc, expected_type, arg,
                                    /*Truncate=*/builder.getBoolAttr(false));
     }
     casted_args.push_back(arg);
   }
-  auto call = builder.create<CallOp>(op->getLoc(), func, casted_args);
-  return builder.create<YieldOp>(op->getLoc(), call.getResults());
+  auto call = builder.create<func::CallOp>(loc, func, casted_args);
+  return builder.create<YieldOp>(loc, call.getResults());
 }
 
 // Converts the condition for an IfOp/WhileOp to a boolean value.

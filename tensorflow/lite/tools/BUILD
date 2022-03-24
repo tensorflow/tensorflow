@@ -416,4 +416,15 @@ py_binary(
     ],
 )
 
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        ":logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+)
+
 tflite_portable_test_suite()

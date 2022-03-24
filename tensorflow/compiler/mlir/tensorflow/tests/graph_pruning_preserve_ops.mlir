@@ -3,7 +3,7 @@
 // Verifies that specified ops, and ops reachable from those, are preserved.
 
 // CHECK-LABEL: func @preserve_unreachable_tpu_replicate_metadata
-func @preserve_unreachable_tpu_replicate_metadata() {
+func.func @preserve_unreachable_tpu_replicate_metadata() {
   tf_executor.graph {
     %0 = tf_executor.ControlTrigger {}
     // CHECK: "tf.NoOp"
@@ -16,7 +16,7 @@ func @preserve_unreachable_tpu_replicate_metadata() {
 }
 
 // CHECK-LABEL: func @preserve_unreachable_tpu_compilation_result
-func @preserve_unreachable_tpu_compilation_result() {
+func.func @preserve_unreachable_tpu_compilation_result() {
   tf_executor.graph {
     %0 = tf_executor.ControlTrigger {}
     // CHECK: "tf.NoOp"
@@ -29,7 +29,7 @@ func @preserve_unreachable_tpu_compilation_result() {
 }
 
 // CHECK-LABEL: func @preserve_unreachable_tpu_replicated_input
-func @preserve_unreachable_tpu_replicated_input(%arg0: tensor<i1>) {
+func.func @preserve_unreachable_tpu_replicated_input(%arg0: tensor<i1>) {
   tf_executor.graph {
     %0 = tf_executor.ControlTrigger {}
     // CHECK: "tf.NoOp"
@@ -44,7 +44,7 @@ func @preserve_unreachable_tpu_replicated_input(%arg0: tensor<i1>) {
 }
 
 // CHECK-LABEL: func @preserve_unreachable_tpu_replicated_output
-func @preserve_unreachable_tpu_replicated_output(%arg0: tensor<i1>) {
+func.func @preserve_unreachable_tpu_replicated_output(%arg0: tensor<i1>) {
   tf_executor.graph {
     %0 = tf_executor.ControlTrigger {}
     // CHECK: "tf.NoOp"
@@ -59,7 +59,7 @@ func @preserve_unreachable_tpu_replicated_output(%arg0: tensor<i1>) {
 }
 
 // CHECK-LABEL: func @preserve_unreachable_custom_op
-func @preserve_unreachable_custom_op(%arg0: tensor<i1>) {
+func.func @preserve_unreachable_custom_op(%arg0: tensor<i1>) {
   tf_executor.graph {
     %0 = tf_executor.ControlTrigger {}
     // CHECK: "tf.NoOp"

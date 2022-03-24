@@ -152,6 +152,15 @@ inline void UpdateStateValues(Node::ModelParameters* parameters) {
   }
 }
 
+// Copies the parameter values from the state values.
+void SyncParameterValues(Node::ModelParameters* parameters) {
+  for (auto& pair : *parameters) {
+    auto& parameter = pair.second;
+    tf_shared_lock l(*parameter->state->mu);
+    parameter->value = parameter->state->value;
+  }
+}
+
 // Recursively produces protos for nodes in a subtree of `output` node and
 // appends them to nodes of the given model.
 Status ModelToProtoHelper(std::shared_ptr<Node> output, ModelProto* model) {
@@ -455,7 +464,7 @@ class AsyncInterleaveMany : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+  double MaximumBufferedBytesHelper() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     double result = 0;
     auto* parameter = gtl::FindOrNull(parameters_, kParallelism);
     if (parameter) {
@@ -565,31 +574,24 @@ class KnownRatio : public Node {
   const double ratio_;
 };
 
-class AsyncKnownRatio : public Node {
+class AsyncRatio : public Node {
  public:
-  AsyncKnownRatio(Node::Args args, double ratio, double memory_ratio,
-                  std::vector<std::shared_ptr<Parameter>> parameters)
+  AsyncRatio(Node::Args args, double ratio, double memory_ratio,
+             std::vector<std::shared_ptr<Parameter>> parameters)
       : Node(args), ratio_(ratio), memory_ratio_(memory_ratio) {
     for (auto& parameter : parameters) {
       parameters_[parameter->name] = std::move(parameter);
     }
   }
 
-  virtual ~AsyncKnownRatio() {}
+  virtual ~AsyncRatio() {}
 
  protected:
-  std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
-      TF_SHARED_LOCKS_REQUIRED(mu_) {
-    std::vector<std::shared_ptr<Parameter>> parameters;
-    for (auto& pair : parameters_) {
-      parameters.push_back(pair.second);
-    }
-    return std::make_shared<AsyncKnownRatio>(
-        Args{id_, name_, std::move(output)}, ratio_, memory_ratio_, parameters);
-  }
+  virtual double Ratio() const { return ratio_; }
+  double MemoryRatio() const { return memory_ratio_; }
 
   // The input time is the sum of inherited input time and parallelism adjusted
-  // self processing time, divided by `ratio_`.
+  // self processing time, divided by `Ratio()`.
   void InputTimeLocked(NodeValues* input_times) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
     double inherited_input_time;
@@ -604,24 +606,25 @@ class AsyncKnownRatio : public Node {
       parallelism = (*parallelism_parameter)->value;
     }
 
-    if (ratio_ == 0.0) {
+    auto ratio = Ratio();
+    if (ratio == 0.0) {
       (*input_times)[long_name()] =
           inherited_input_time + SelfProcessingTimeLocked() / parallelism;
       return;
     }
     double input_time =
         (inherited_input_time + SelfProcessingTimeLocked() / parallelism) /
-        ratio_;
+        ratio;
     (*input_times)[long_name()] = input_time;
   }
 
   // The output time is the sum of parallelism adjusted self processing time and
   // expected wait time from the buffer model estimated using
   // `ComputeWaitTime(producer_time, consumer_time, parallelism, ...)`, where
-  // `producer_time` is the product of `ratio_` and the sum of output times of
-  // inputs, `consumer_time` is the product of `ratio_` and the `input_time`
+  // `producer_time` is the product of `Ratio()` and the sum of output times of
+  // inputs, `consumer_time` is the product of `Ratio()` and the `input_time`
   // specified through `input_times` (since for each element stored in the
-  // buffer, the inputs need to be called `ratio_` times), and if the node has
+  // buffer, the inputs need to be called `Ratio()` times), and if the node has
   // parallelism parameter, then `buffer_size` is derived from `parallelism`.
   //
   // Current implementation assumes that there is at most 1 parameter per node.
@@ -629,22 +632,23 @@ class AsyncKnownRatio : public Node {
                         ParameterGradients* gradients, NodeValues* output_times,
                         NodeValues* output_time_gradients) const override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
+    auto ratio = Ratio();
     double parallelism = 1.0;
     double buffer_size = 0.0;
     auto* parallelism_parameter = gtl::FindOrNull(parameters_, kParallelism);
     auto* buffer_size_parameter = gtl::FindOrNull(parameters_, kBufferSize);
     if (parallelism_parameter) {
       parallelism = (*parallelism_parameter)->value;
-      if (ratio_ == 0) {
+      if (ratio == 0.0) {
         buffer_size = parallelism;
       } else {
         // Currently, MapAndBatch is the only transformation creates
         // AsyncKnownRatio nodes with ratio >= 1. For MapAndBatch, we create
         // `parallelism` threads to apply the function on elements from input
         // dataset, while one element in the buffer actually corresponds to
-        // `ratio_` elements from input dataset. So we adjust the `buffer_size`
-        // by dividing `ratio_`.
-        buffer_size = parallelism / ratio_;
+        // `Ratio()` elements from input dataset. So we adjust the `buffer_size`
+        // by dividing `Ratio()`.
+        buffer_size = parallelism / ratio;
       }
     } else if (buffer_size_parameter) {
       buffer_size = (*buffer_size_parameter)->value;
@@ -653,7 +657,7 @@ class AsyncKnownRatio : public Node {
     double output_time, wait_time, consumer_time, producer_time;
     double input_time = input_times.at(long_name());
 
-    if (ratio_ == 0) {
+    if (ratio == 0.0) {
       consumer_time = input_time;
       producer_time = 0.0L;
       if (gradients) {
@@ -690,8 +694,8 @@ class AsyncKnownRatio : public Node {
       return;
     }
 
-    consumer_time = input_time * ratio_;
-    producer_time = ratio_ * OutputTimeForInputs(*output_times);
+    consumer_time = input_time * ratio;
+    producer_time = ratio * OutputTimeForInputs(*output_times);
     if (gradients) {
       double producer_time_der = 0.0L;
       double consumer_time_der = 0.0L;
@@ -708,7 +712,7 @@ class AsyncKnownRatio : public Node {
         auto* gradient = gtl::FindOrNull(
             *gradients, std::make_pair(pair.first, pair.second->name));
         if (gradient) {
-          *gradient *= (ratio_ * producer_time_der);
+          *gradient *= (ratio * producer_time_der);
         }
       }
 
@@ -716,7 +720,7 @@ class AsyncKnownRatio : public Node {
       if (parallelism_parameter && (*parallelism_parameter)->state->tunable) {
         (*gradients)[std::make_pair(long_name(),
                                     (*parallelism_parameter)->name)] =
-            buffer_size_der / ratio_ -
+            buffer_size_der / ratio -
             (1.0L + consumer_time_der +
              producer_time_der * inputs_time_der_sum) *
                 self_processing_time / Square(parallelism);
@@ -736,7 +740,7 @@ class AsyncKnownRatio : public Node {
   }
 
   // The processing time is the sum of the self processing time and the product
-  // of `ratio_` and the sum of processing times of inputs.
+  // of `Ratio()` and the sum of processing times of inputs.
   void TotalProcessingTimeLocked(NodeValues* processing_times,
                                  NodeValues* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
@@ -744,17 +748,18 @@ class AsyncKnownRatio : public Node {
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
     }
-    if (ratio_ == 0) {
+    auto ratio = Ratio();
+    if (ratio == 0) {
       (*total_processing_times)[long_name()] = self_processing_time;
       return;
     }
     double inputs_processing_time =
-        ratio_ * TotalProcessingTimeForInputs(*total_processing_times);
+        ratio * TotalProcessingTimeForInputs(*total_processing_times);
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
   }
 
-  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+  double MaximumBufferedBytesHelper() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     double result = 0;
     auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
     if (!parameter) {
@@ -773,14 +778,6 @@ class AsyncKnownRatio : public Node {
       }
     }
     return result;
-  }
-
-  Status ToProto(ModelProto::Node* node_proto) const {
-    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
-    node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
-    node_proto->set_ratio(ratio_);
-    node_proto->set_memory_ratio(memory_ratio_);
-    return Status::OK();
   }
 
  private:
@@ -955,6 +952,74 @@ class Unknown : public Node {
   }
 };
 
+class AsyncKnownRatio : public AsyncRatio {
+ public:
+  AsyncKnownRatio(Node::Args args, double ratio, double memory_ratio,
+                  std::vector<std::shared_ptr<Parameter>> parameters)
+      : AsyncRatio(args, ratio, memory_ratio, parameters) {}
+
+  virtual ~AsyncKnownRatio() {}
+
+ protected:
+  std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
+    std::vector<std::shared_ptr<Parameter>> parameters;
+    for (auto& pair : parameters_) {
+      parameters.push_back(pair.second);
+    }
+    return std::make_shared<AsyncKnownRatio>(
+        Args{id_, name_, std::move(output)}, Ratio(), MemoryRatio(),
+        parameters);
+  }
+
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
+    node_proto->set_ratio(Ratio());
+    node_proto->set_memory_ratio(MemoryRatio());
+    return Status::OK();
+  }
+};
+
+class AsyncUnknownRatio : public AsyncRatio {
+ public:
+  AsyncUnknownRatio(Node::Args args,
+                    std::vector<std::shared_ptr<Parameter>> parameters)
+      : AsyncRatio(args, /*ratio=*/0.0, /*memory_ratio=*/0.0, parameters) {}
+
+  virtual ~AsyncUnknownRatio() {}
+
+ protected:
+  double Ratio() const TF_SHARED_LOCKS_REQUIRED(mu_) override {
+    // TODO(wilsin): Consistent with UnknownRatio, current implementation
+    // assumes that the number of input elements consumed per output is the
+    // same
+    // across all inputs.
+    if (num_elements_ == 0 || inputs_.empty() ||
+        inputs_.front()->num_elements() == 0) {
+      return 0.0;
+    }
+    return static_cast<double>(inputs_.front()->num_elements()) /
+           static_cast<double>(num_elements_);
+  }
+
+  std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
+    std::vector<std::shared_ptr<Parameter>> parameters;
+    for (auto& pair : parameters_) {
+      parameters.push_back(pair.second);
+    }
+    return std::make_shared<AsyncUnknownRatio>(
+        Args{id_, name_, std::move(output)}, parameters);
+  }
+
+  Status ToProto(ModelProto::Node* node_proto) const {
+    TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
+    node_proto->set_node_class(NodeClass::ASYNC_UNKNOWN_RATIO);
+    return Status::OK();
+  }
+};
+
 }  // namespace
 
 thread_local int64_t Node::work_start_;
@@ -999,6 +1064,12 @@ std::shared_ptr<Node> MakeSourceNode(Node::Args args) {
 
 std::shared_ptr<Node> MakeUnknownRatioNode(Node::Args args) {
   return std::make_shared<UnknownRatio>(std::move(args));
+}
+
+std::shared_ptr<Node> MakeAsyncUnknownRatioNode(
+    Node::Args args, std::vector<std::shared_ptr<Parameter>> parameters) {
+  return std::make_shared<AsyncUnknownRatio>(std::move(args),
+                                             std::move(parameters));
 }
 
 std::shared_ptr<Node> MakeUnknownNode(Node::Args args) {
@@ -1160,6 +1231,19 @@ Node::ModelParameters Node::CollectTunableParametersLocked() const {
 Node::ModelParameters Node::CollectTunableParameters() const {
   tf_shared_lock l(mu_);
   return CollectTunableParametersLocked();
+}
+
+Node::ModelParameters Node::CollectAllParameters() const {
+  tf_shared_lock l(mu_);
+  Node::ModelParameters parameters;
+  // Collect all parameters from the leaves of the nodes tree to the root.
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
+    tf_shared_lock l(node->mu_);
+    node->CollectAllParametersHelper(&parameters);
+  }
+  CollectAllParametersHelper(&parameters);
+  return parameters;
 }
 
 string Node::DebugString() const {
@@ -1431,6 +1515,13 @@ void Node::CollectTunableParametersHelper(
   }
 }
 
+void Node::CollectAllParametersHelper(Node::ModelParameters* parameters) const
+    TF_SHARED_LOCKS_REQUIRED(mu_) {
+  for (auto& pair : parameters_) {
+    parameters->push_back(std::make_pair(long_name(), pair.second));
+  }
+}
+
 void Node::DebugStringHelper(absl::flat_hash_map<string, string>* debug_strings)
     const TF_SHARED_LOCKS_REQUIRED(mu_) {
   string result;
@@ -1513,14 +1604,14 @@ void Node::TotalMaximumBufferedBytesHelper(Node::NodeValues* total_bytes) const
     return;
   }
 
-  double result = MaximumBufferedBytes();
+  double result = MaximumBufferedBytesHelper();
   for (auto& input : inputs_) {
     result += total_bytes->at(input->long_name());
   }
   total_bytes->insert(std::make_pair(long_name(), result));
 }
 
-double Node::MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+double Node::MaximumBufferedBytesHelper() const TF_SHARED_LOCKS_REQUIRED(mu_) {
   return 0;
 }
 
@@ -1614,13 +1705,20 @@ Status Node::FromProto(ModelProto::Node node_proto,
     case NodeClass::UNKNOWN_RATIO:
       *node = std::make_shared<UnknownRatio>(args);
       break;
+    case NodeClass::ASYNC_UNKNOWN_RATIO:
+      *node = std::make_shared<AsyncUnknownRatio>(
+          args, /*parameters=*/std::vector<std::shared_ptr<Parameter>>());
+      break;
     default:
       *node = std::make_shared<Unknown>(args);
   }
   return FromProtoHelper(node_proto, *node);
 }
 
-Model::Model() : optimization_period_ms_(kOptimizationPeriodMinMs) {
+Model::Model(const BudgetParams& budget_params)
+    : optimization_period_ms_(kOptimizationPeriodMinMs),
+      budget_params_(budget_params),
+      maximum_buffered_bytes_(0) {
   model_gauge_cell_ = metrics::GetTFDataModelGauge(
       strings::StrCat(reinterpret_cast<uint64>(this)));
   model_gauge_cell_->Set([&]() { return DebugString(); });
@@ -1673,34 +1771,47 @@ void Model::FlushMetrics() {
   }
 }
 
-void Model::Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
-                     int64_t ram_budget, double model_input_time,
+void Model::Optimize(AutotuneAlgorithm algorithm, double model_input_time,
                      CancellationManager* cancellation_manager) {
   std::shared_ptr<Node> snapshot;
   {
     tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
   }
+  // TODO(wilsin): Syncing parameter values from their state values is a stopgap
+  // change since the prefetch autotuner runs in a different thread and may
+  // leave the parameter values out of sync. We can't change the parameter value
+  // from the prefetch autotuner, since parameter values must only be accessed
+  // from the autotuner optimization thread.
+  auto parameters = snapshot->CollectAllParameters();
+  SyncParameterValues(&parameters);
+  auto total_maximum_buffered_bytes = TotalMaximumBufferedBytes(snapshot);
   if (!port::JobName().empty()) {
-    RecordAutotuneRamUsage(ram_budget, TotalMaximumBufferedBytes(snapshot));
+    RecordAutotuneRamUsage(budget_params_.autotune_ram_budget,
+                           total_maximum_buffered_bytes);
   }
+  {
+    mutex_lock l(mu_);
+    maximum_buffered_bytes_ = total_maximum_buffered_bytes;
+  }
+
   OptimizationParams optimization_params;
   optimization_params.set_algorithm(algorithm);
-  optimization_params.set_cpu_budget(cpu_budget);
-  optimization_params.set_ram_budget(ram_budget);
+  optimization_params.set_cpu_budget(budget_params_.autotune_cpu_budget);
+  optimization_params.set_ram_budget(budget_params_.autotune_ram_budget);
   optimization_params.set_model_input_time(model_input_time);
   switch (algorithm) {
     case AutotuneAlgorithm::DEFAULT:
+    case AutotuneAlgorithm::MAX_PARALLELISM:
+      OptimizeMaxParallelism(snapshot, optimization_params,
+                             cancellation_manager);
+      break;
     case AutotuneAlgorithm::HILL_CLIMB:
       OptimizeHillClimb(snapshot, optimization_params, cancellation_manager);
       break;
     case AutotuneAlgorithm::GRADIENT_DESCENT:
       OptimizeGradientDescent(snapshot, optimization_params,
                               cancellation_manager);
-      break;
-    case AutotuneAlgorithm::MAX_PARALLELISM:
-      OptimizeMaxParallelism(snapshot, optimization_params,
-                             cancellation_manager);
       break;
     default:
       VLOG(2) << "Autotuning algorithm was not recognized. Aborting "
@@ -1749,9 +1860,20 @@ bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
   return all_max || TotalMaximumBufferedBytes(snapshot) > ram_budget;
 }
 
+bool Model::AllocateBufferedBytes(double delta) {
+  mutex_lock l(mu_);
+  if (budget_params_.autotune_ram_budget <= 0) {
+    return true;
+  }
+  if (maximum_buffered_bytes_ + delta <= budget_params_.autotune_ram_budget) {
+    maximum_buffered_bytes_ += delta;
+    return true;
+  }
+  return false;
+}
+
 // TODO(jsimsa): Add support for tracking and using the model input time.
-Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
-                           int64_t ram_budget,
+Status Model::OptimizeLoop(AutotuneAlgorithm algorithm,
                            CancellationManager* cancellation_manager) {
   std::function<void()> unused;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
@@ -1781,8 +1903,8 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
     }
 
     int64_t start_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
-    Optimize(algorithm, cpu_budget, ram_budget, /*model_input_time=*/0,
-             cancellation_manager);
+    Optimize(algorithm,
+             /*model_input_time=*/0, cancellation_manager);
     int64_t end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     VLOG(2) << "Optimized for " << end_ms - start_ms << " ms.";
 
@@ -1935,7 +2057,9 @@ void Model::OptimizeHillClimb(std::shared_ptr<Node> snapshot,
                                             double buffered_bytes) {
     const bool all_max = AreAllParametersMax(parameters);
     const bool output_time_budget_exceeded =
-        output_time < processing_time / optimization_params.cpu_budget();
+        optimization_params.cpu_budget() > 0
+            ? output_time < processing_time / optimization_params.cpu_budget()
+            : false;
     const bool ram_budget_exceeded =
         buffered_bytes > optimization_params.ram_budget();
     if (all_max) {
@@ -2006,6 +2130,10 @@ double Model::TotalProcessingTime(std::shared_ptr<Node> node) {
 Status Model::ToProto(ModelProto* model_proto) {
   tf_shared_lock l(mu_);
   model_proto->set_id_counter(id_counter_);
+  model_proto->mutable_optimization_params()->set_cpu_budget(
+      budget_params_.autotune_cpu_budget);
+  model_proto->mutable_optimization_params()->set_ram_budget(
+      budget_params_.autotune_ram_budget);
   return ModelToProtoHelper(output_, model_proto);
 }
 
@@ -2015,35 +2143,25 @@ Status Model::FromProto(ModelProto model_proto, std::unique_ptr<Model>* model) {
   TF_RETURN_IF_ERROR(
       ModelFromProtoHelper(model_proto, &restored_model->output_));
   restored_model->id_counter_ = model_proto.id_counter();
+  restored_model->budget_params_.autotune_cpu_budget =
+      model_proto.optimization_params().cpu_budget();
+  restored_model->budget_params_.autotune_ram_budget =
+      model_proto.optimization_params().ram_budget();
   *model = std::move(restored_model);
   return Status::OK();
 }
 
-Status Model::Save(const string& fname, std::shared_ptr<Node> snapshot,
-                   const OptimizationParams& optimization_params) {
+Status Model::Save(const string& fname) {
   ModelProto model_proto;
-  std::unique_ptr<Model> model_snapshot = std::make_unique<Model>();
-  {
-    mutex_lock l(model_snapshot->mu_);
-    model_snapshot->output_ = std::move(snapshot);
-    model_snapshot->id_counter_ = id_counter_;
-  }
-  TF_RETURN_IF_ERROR(model_snapshot->ToProto(&model_proto));
-  OptimizationParams* saved_optimization_params =
-      model_proto.mutable_optimization_params();
-  *saved_optimization_params = optimization_params;
+  TF_RETURN_IF_ERROR(ToProto(&model_proto));
   return WriteBinaryProto(Env::Default(), fname, model_proto);
 }
 
-Status Model::Load(const string& fname, std::unique_ptr<Model>* model,
-                   OptimizationParams* optimization_params) {
+Status Model::Load(const string& fname, std::unique_ptr<Model>* model) {
   ModelProto model_proto;
   TF_RETURN_IF_ERROR(
       ReadTextOrBinaryProto(Env::Default(), fname, &model_proto));
   TF_RETURN_IF_ERROR(FromProto(model_proto, model));
-  const OptimizationParams restored_optimization_params =
-      model_proto.optimization_params();
-  *optimization_params = restored_optimization_params;
   return Status::OK();
 }
 

@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/mlir/tfrt/transforms/set_shape_invariant_in_while_ops.h"
+
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -29,8 +30,12 @@ class SetShapeInvariantInWhileOps
 
     auto shape_invariant = mlir::UnitAttr::get(&getContext());
 
-    func_op.walk(
-        [&](mlir::TF::WhileOp op) { op.shape_invariantAttr(shape_invariant); });
+    func_op.walk([&](mlir::TF::WhileOp op) {
+      // Skip tf.While op on TPU.
+      if (!op->hasAttr("_tpu_replicate")) {
+        op.shape_invariantAttr(shape_invariant);
+      }
+    });
   }
 };
 

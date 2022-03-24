@@ -98,6 +98,11 @@ void RecordTFDataIteratorBusy(uint64 duration_us);
 // first `GetNext()` request and responding to the last `GetNext()` request.
 void RecordTFDataIteratorLifetime(uint64 duration_us);
 
+// Records the time histogram (in microseconds) between `IteratorResource`
+// responding to a `GetNext()` request and receiving the next `GetNext()`
+// request.
+void RecordTFDataIteratorGap(uint64 duration_us);
+
 // Records the number of independent graph changes resulting from the
 // application of a tf.data optimization.
 //
@@ -190,6 +195,17 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs);
 void UpdateTfMlirGraphOptimizationPassStateCounter(
     const std::string& pass_state, const std::string& processing_state);
 
+// Records the activity of the first phase of the mlir bridge using the
+// tf_metadata.tf_mlir_bridge_first_phase_count metric.
+// device_type: tpu, cpu, gpu, etc.
+// bridge_version: v1 compat, v2, etc.
+// fallback_enabled: true if fallback will happen, false if not
+// result: outcome of bridge (success, failure, disabled, invalid_graph, etc.)
+void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
+                                         const std::string& bridge_version,
+                                         bool fallback_enabled,
+                                         const std::string& result);
+
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>
 class ScopedCounter final {
@@ -274,7 +290,6 @@ class ScopedCounter final {
 // passes.
 monitoring::Counter<2>* GetGraphOptimizationCounter();
 
-
 // Updates metrics for time to distribute variables to all TPU hosts.
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
 
@@ -302,6 +317,7 @@ class TestDelta {
   const monitoring::CounterCell* cell_;
   int64 last_value_;
 };
+void UpdateTpuErrorCounter(const string& op, const string& error_type);
 
 }  // namespace metrics
 }  // namespace tensorflow

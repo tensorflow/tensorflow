@@ -247,9 +247,9 @@ UseInterval::UseInterval()
 /// Performs an interval subtraction => A = A - B.
 void UseInterval::intervalSubtract(UseInterval::Vector &a,
                                    const UseInterval::Vector &b) {
-  auto iterB = b.begin();
-  auto endB = b.end();
-  for (auto iterA = a.begin(); iterA != a.end() && iterB != endB;) {
+  const auto *iterB = b.begin();
+  const auto *endB = b.end();
+  for (auto *iterA = a.begin(); iterA != a.end() && iterB != endB;) {
     // iterA is strictly before iterB => increment iterA.
     if (*iterA < *iterB) {
       ++iterA;
@@ -288,9 +288,9 @@ void UseInterval::intervalSubtract(UseInterval::Vector &a,
 /// Performs an interval intersection => A = A ^ B.
 void UseInterval::intervalIntersect(UseInterval::Vector &a,
                                     const UseInterval::Vector &b) {
-  auto iterB = b.begin();
-  auto endB = b.end();
-  for (auto iterA = a.begin(); iterA != a.end();) {
+  const auto *iterB = b.begin();
+  const auto *endB = b.end();
+  for (auto *iterA = a.begin(); iterA != a.end();) {
     // iterB points to the end, therefore the remaining UseIntervals from A must
     // be erased or iterA is strictly before iterB => erase iterA.
     if (iterB == endB || *iterA < *iterB) {
@@ -319,10 +319,10 @@ void UseInterval::intervalIntersect(UseInterval::Vector &a,
 /// Note: All overlapping and contiguous UseIntervals are merged.
 void UseInterval::intervalMerge(UseInterval::Vector &a,
                                 const UseInterval::Vector &b) {
-  auto iterB = b.begin();
-  auto endB = b.end();
+  const auto *iterB = b.begin();
+  const auto *endB = b.end();
   // Iterate over UseInterval::Vector a and b.
-  for (auto iterA = a.begin(); iterA != a.end() && iterB != endB;) {
+  for (auto *iterA = a.begin(); iterA != a.end() && iterB != endB;) {
     // Let A be the UseInterval of iterA and B the UseInterval of iterB.
     // Check if A is before B.
     if (*iterA < *iterB) {
@@ -374,9 +374,9 @@ void UseInterval::mergeAndEraseContiguousIntervals(
   if (std::next(iter) != next) iter = interval.erase(std::next(iter), next);
 }
 
-UserangeAnalysis::UserangeAnalysis(Operation *op,
-                                   const BufferPlacementAllocs &allocs,
-                                   const BufferViewFlowAnalysis &aliases)
+UserangeAnalysis::UserangeAnalysis(
+    Operation *op, const bufferization::BufferPlacementAllocs &allocs,
+    const BufferViewFlowAnalysis &aliases)
     : liveness(op) {
   // Walk over all operations and map them to an ID.
   op->walk([&](Operation *operation) {
@@ -387,7 +387,7 @@ UserangeAnalysis::UserangeAnalysis(Operation *op,
 
   // Compute the use range for every allocValue and its aliases. Merge them
   // and compute an interval. Add all computed intervals to the useIntervalMap.
-  for (const BufferPlacementAllocs::AllocEntry &entry : allocs) {
+  for (const bufferization::BufferPlacementAllocs::AllocEntry &entry : allocs) {
     Value allocValue = std::get<0>(entry);
     const Value::use_range &allocUses = allocValue.getUses();
     size_t dist = std::distance(allocUses.begin(), allocUses.end());
@@ -523,8 +523,8 @@ bool UserangeAnalysis::rangesInterfere(Value itemA, Value itemB) const {
   }
 
   // Iterate over both UseInterval::Vector and check if they interfere.
-  auto iterB = intervalsB.begin();
-  auto endB = intervalsB.end();
+  const auto *iterB = intervalsB.begin();
+  const auto *endB = intervalsB.end();
   for (auto iterA = tmpIntervalA.begin(), endA = tmpIntervalA.end();
        iterA != endA && iterB != endB;) {
     if (*iterA < *iterB)
@@ -603,8 +603,7 @@ void UserangeAnalysis::dump(raw_ostream &os) {
       if (right.getDefiningOp())
         return operationIds[left.getDefiningOp()] <
                operationIds[right.getDefiningOp()];
-      else
-        return true;
+      return true;
     }
     if (right.getDefiningOp()) return false;
     return operationIds[&left.getParentBlock()->front()] <
@@ -612,10 +611,10 @@ void UserangeAnalysis::dump(raw_ostream &os) {
   });
   for (auto value : values) {
     os << "Value: " << value << (value.getDefiningOp() ? "\n" : "");
-    auto rangeIt = useIntervalMap[value].begin();
+    auto *rangeIt = useIntervalMap[value].begin();
     os << "Userange: {(" << rangeIt->start << ", " << rangeIt->end << ")";
     rangeIt++;
-    for (auto e = useIntervalMap[value].end(); rangeIt != e; ++rangeIt) {
+    for (auto *e = useIntervalMap[value].end(); rangeIt != e; ++rangeIt) {
       os << ", (" << rangeIt->start << ", " << rangeIt->end << ")";
     }
     os << "}\n";

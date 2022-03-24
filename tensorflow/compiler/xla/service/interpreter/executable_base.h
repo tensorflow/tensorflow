@@ -49,7 +49,9 @@ class InterpreterExecutableBase : public Executable {
       absl::Span<const Literal> arg_literals) = 0;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(InterpreterExecutableBase);
+  InterpreterExecutableBase(const InterpreterExecutableBase&) = delete;
+  InterpreterExecutableBase& operator=(const InterpreterExecutableBase&) =
+      delete;
 };
 
 }  // namespace interpreter

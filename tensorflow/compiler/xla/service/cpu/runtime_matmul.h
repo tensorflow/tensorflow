@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_H_
 
+#include <stdint.h>
+
 #include <complex>
 
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/core/platform/types.h"
 
 extern "C" {
 
@@ -54,10 +55,9 @@ extern void __xla_cpu_runtime_EigenMatMulC128(
     int64_t k, int32_t transpose_lhs, int32_t transpose_rhs);
 
 extern void __xla_cpu_runtime_EigenMatMulS32(
-    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
-    tensorflow::int32* out, tensorflow::int32* lhs, tensorflow::int32* rhs,
-    int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
-    int32_t transpose_rhs);
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int32_t* out,
+    int32_t* lhs, int32_t* rhs, int64_t m, int64_t n, int64_t k,
+    int32_t transpose_lhs, int32_t transpose_rhs);
 
 }  // extern "C"
 

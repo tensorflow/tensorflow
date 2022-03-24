@@ -1,6 +1,6 @@
 // RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=FunctionalizeControlFlowForXlaPass | FileCheck %s
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     %0 = tf_executor.island wraps "tf._TPUReplicate"() {computation = @foo, Tinputs = [], Tbroadcast_inputs = [], NumVariables = 0, Tguaranteed_constants = [], output_types = []} : () -> () loc("_TPUReplicate")
     tf_executor.fetch
@@ -8,7 +8,7 @@ func @main() {
   return
 }
 
-func @foo() {
+func.func @foo() {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<17> : tensor<i32>} : () -> tensor<i32> loc("x")
     %1:2 = tf_executor.island wraps "tf.Const"() {dtype = "tfdtype$DT_BOOL", value = dense<true> : tensor<i1>} : () -> tensor<i1> loc("predicate")

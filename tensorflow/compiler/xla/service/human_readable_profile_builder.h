@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HUMAN_READABLE_PROFILE_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HUMAN_READABLE_PROFILE_BUILDER_H_
 
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -49,24 +49,25 @@ class HumanReadableProfileBuilder {
              absl::string_view category, int64_t cycles, int64_t flop_count,
              int64_t transcendental_count, int64_t bytes_accessed,
              float optimal_seconds) {
-    op_infos_.push_back({string(op_name), string(short_name), string(category),
-                         cycles, flop_count, transcendental_count,
-                         bytes_accessed, optimal_seconds});
+    op_infos_.push_back({std::string(op_name), std::string(short_name),
+                         std::string(category), cycles, flop_count,
+                         transcendental_count, bytes_accessed,
+                         optimal_seconds});
   }
 
   // Gets the human-readable profile.
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   struct OpInfo {
-    string name;
-    string short_name;
-    string category;
+    std::string name;
+    std::string short_name;
+    std::string category;
     int64_t cycles;
     int64_t flop_count;  // -1 if unknown
     int64_t transcendental_count;
     int64_t bytes_accessed;  // -1 if unknown
-    float optimal_seconds;  // -1 if unknown
+    float optimal_seconds;   // -1 if unknown
   };
 
   double CyclesToSeconds(int64_t cycles) const {
@@ -76,7 +77,7 @@ class HumanReadableProfileBuilder {
     return cycles / clock_rate_ghz_ / 1000.0;
   }
 
-  string computation_name_;
+  std::string computation_name_;
   bool is_entry_computation_;
   int64_t total_cycles_;
   double clock_rate_ghz_;

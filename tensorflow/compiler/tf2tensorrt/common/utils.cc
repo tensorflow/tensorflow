@@ -91,6 +91,12 @@ Status GetTrtBindingIndex(int network_input_index, int profile_index,
 namespace {
 
 void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
+#if defined(PLATFORM_WINDOWS)
+  LOG_WARNING_WITH_PREFIX
+      << "Windows support is provided experimentally. No guarantee is made "
+         "regarding functionality or engineering support. Use at your own "
+         "risk.";
+#endif
   LOG(INFO) << "Linked TensorRT version: "
             << absl::StrJoin(GetLinkedTensorRTVersion(), ".");
   LOG(INFO) << "Loaded TensorRT version: "
@@ -132,4 +138,89 @@ void MaybeInitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
 
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+namespace nvinfer1 {
+std::ostream& operator<<(std::ostream& os,
+                         const nvinfer1::TensorFormat& format) {
+  os << "nvinfer1::TensorFormat::";
+  switch (format) {
+    case nvinfer1::TensorFormat::kLINEAR:
+      os << "kLINEAR";
+      break;
+
+    case nvinfer1::TensorFormat::kCHW2:
+      os << "kCHW2";
+      break;
+
+    case nvinfer1::TensorFormat::kHWC8:
+      os << "kHWC8";
+      break;
+
+    case nvinfer1::TensorFormat::kCHW4:
+      os << "kCHW4";
+      break;
+
+    case nvinfer1::TensorFormat::kCHW16:
+      os << "kCHW16";
+      break;
+
+    case nvinfer1::TensorFormat::kCHW32:
+      os << "kCHW32";
+      break;
+
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+    case nvinfer1::TensorFormat::kDHWC8:
+      os << "kDHWC8";
+      break;
+
+    case nvinfer1::TensorFormat::kCDHW32:
+      os << "kCDHW32";
+      break;
+
+    case nvinfer1::TensorFormat::kHWC:
+      os << "kHWC";
+      break;
+
+    case nvinfer1::TensorFormat::kDLA_LINEAR:
+      os << "kDLA_LINEAR";
+      break;
+
+    case nvinfer1::TensorFormat::kDLA_HWC4:
+      os << "kDLA_HWC4";
+      break;
+
+    case nvinfer1::TensorFormat::kHWC16:
+      os << "kHWC16";
+      break;
+#endif
+
+    default:
+      os << "unknown format";
+  }
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& v) {
+  os << "nvinfer1::DataType::";
+  switch (v) {
+    case nvinfer1::DataType::kFLOAT:
+      os << "kFLOAT";
+      break;
+    case nvinfer1::DataType::kHALF:
+      os << "kHalf";
+      break;
+    case nvinfer1::DataType::kINT8:
+      os << "kINT8";
+      break;
+    case nvinfer1::DataType::kINT32:
+      os << "kINT32";
+      break;
+    case nvinfer1::DataType::kBOOL:
+      os << "kBOOL";
+      break;
+  }
+  return os;
+}
+}  // namespace nvinfer1
+
 #endif

@@ -15,17 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 
+#include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -43,25 +46,37 @@ constexpr char kHeartbeatThread[] = "CoordinationServiceHeartbeatLoop";
 class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
  public:
   CoordinationServiceAgentImpl() = default;
-  ~CoordinationServiceAgentImpl() override { Stop(); }
-  Status Initialize(const WorkerEnv* worker_env, const ServerDef& server_def,
+  ~CoordinationServiceAgentImpl() override {
+    Status s = Shutdown();
+    if (!s.ok()) {
+      LOG(ERROR) << "Agent shutdown failed with status: " << s;
+    }
+  }
+  Status Initialize(Env* env, const ServerDef& server_def,
                     std::unique_ptr<CoordinationClientCache> client_cache,
                     StatusCallback error_fn) override;
-  Status Initialize(const WorkerEnv* worker_env, const std::string& job_name,
-                    int task_id, const CoordinationServiceConfig& configs,
+  Status Initialize(Env* env, const std::string& job_name, int task_id,
+                    const CoordinationServiceConfig& configs,
+                    std::unique_ptr<CoordinationClient> leader_client,
+                    StatusCallback error_fn) override;
+  Status Initialize(Env* env, const CoordinatedTask& task,
+                    const CoordinationServiceConfig& configs,
                     std::unique_ptr<CoordinationClient> leader_client,
                     StatusCallback error_fn) override;
   bool IsInitialized() override;
 
   Status Connect() override;
-  Status WaitForAllTasks() override;
-  const std::vector<DeviceAttributes>& GetClusterDeviceAttributes() override;
-  StatusOr<TaskState> GetTaskStatus(const std::string& job_name,
-                                    const int task_id) override;
+  Status WaitForAllTasks(
+      const CoordinationServiceDeviceInfo& local_devices) override;
+  const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() override;
+  StatusOr<TaskState> GetTaskStatus(const CoordinatedTask& task) override;
   Status ReportError(const Status& error) override;
+  Status Shutdown() override;
   Status Reset() override;
 
   StatusOr<std::string> GetKeyValue(const std::string& key) override;
+  StatusOr<std::string> GetKeyValue(const std::string& key,
+                                    absl::Duration timeout) override;
   void GetKeyValueAsync(const std::string& key,
                         StatusOrValueCallback done) override;
   Status InsertKeyValue(const std::string& key,
@@ -73,18 +88,25 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   Status StartWatchKey(const std::string& key,
                        ChangedKeyValuesCallback on_change) override;
   Status StopWatchKey(const std::string& key) override;
+  Status WaitAtBarrier(const std::string& barrier_id, absl::Duration timeout,
+                       const std::vector<CoordinatedTask>& tasks) override;
+  void WaitAtBarrierAsync(const std::string& barrier_id, absl::Duration timeout,
+                          const std::vector<CoordinatedTask>& tasks,
+                          StatusCallback done) override;
+  Status CancelBarrier(const std::string& barrier_id) override;
 
  protected:
   void SetError(const Status& error) override;
   Status ActivateWatch(const std::string& key,
                        const std::map<std::string, std::string>&) override;
-  void Stop();
+  // Returns an error if agent is not running.
+  Status ValidateRunningAgent();
+  void StopHeartbeat();
 
  private:
-  const WorkerEnv* env_;
-  const int64_t incarnation_id_ = random::New64();
-  std::string job_name_;
-  int task_id_;
+  Env* env_ = nullptr;  // Not owned.
+  const uint64_t incarnation_id_ = random::New64();
+  CoordinatedTask task_;
   CoordinationServiceConfig configs_;
   std::unique_ptr<CoordinationClient> leader_client_;
   StatusCallback error_fn_;
@@ -94,13 +116,14 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
     DISCONNECTED,
     RUNNING,
     ERROR,
+    SHUTDOWN,
   };
   mutable mutex state_mu_;
   State state_ TF_GUARDED_BY(state_mu_) = State::UNINITIALIZED;
   Status status_ TF_GUARDED_BY(state_mu_) = Status::OK();
 
-  uint64 leader_incarnation_;
-  std::vector<DeviceAttributes> cluster_devices_;
+  uint64_t leader_incarnation_ = 0;
+  CoordinationServiceDeviceInfo cluster_devices_;
 
   mutex heartbeat_thread_shutdown_mu_;
   condition_variable heartbeat_thread_cv_;
@@ -111,7 +134,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
 };
 
 Status CoordinationServiceAgentImpl::Initialize(
-    const WorkerEnv* env, const ServerDef& server_def,
+    Env* env, const ServerDef& server_def,
     std::unique_ptr<CoordinationClientCache> client_cache,
     StatusCallback error_fn) {
   CoordinationServiceConfig configs =
@@ -138,28 +161,38 @@ Status CoordinationServiceAgentImpl::Initialize(
 }
 
 Status CoordinationServiceAgentImpl::Initialize(
-    const WorkerEnv* worker_env, const std::string& job_name, int task_id,
+    Env* env, const std::string& job_name, int task_id,
+    const CoordinationServiceConfig& configs,
+    std::unique_ptr<CoordinationClient> leader_client,
+    StatusCallback error_fn) {
+  CoordinatedTask task;
+  task.set_job_name(job_name);
+  task.set_task_id(task_id);
+  return Initialize(env, task, configs, std::move(leader_client), error_fn);
+}
+
+Status CoordinationServiceAgentImpl::Initialize(
+    Env* env, const CoordinatedTask& task,
     const CoordinationServiceConfig& configs,
     std::unique_ptr<CoordinationClient> leader_client,
     StatusCallback error_fn) {
   mutex_lock l(state_mu_);
   if (state_ != State::UNINITIALIZED) {
-    return errors::FailedPrecondition(
-        "Coordination service agent has already been initialized.");
+    return MakeCoordinationError(errors::FailedPrecondition(
+        "Coordination service agent has already been initialized."));
   }
 
-  env_ = worker_env;
-  job_name_ = job_name;
-  task_id_ = task_id;
+  env_ = env;
+  task_ = task;
   configs_ = configs;
   if (configs_.service_leader().empty()) {
-    return errors::InvalidArgument(
-        "CoordinationServiceAgent must be initialized with a valid leader.");
+    return MakeCoordinationError(errors::InvalidArgument(
+        "CoordinationServiceAgent must be initialized with a valid leader."));
   }
   leader_client_ = std::move(leader_client);
   if (leader_client_ == nullptr) {
-    return errors::InvalidArgument(
-        "CoordinationServiceAgent must have a valid leader client.");
+    return MakeCoordinationError(errors::InvalidArgument(
+        "CoordinationServiceAgent must have a valid leader client."));
   }
   error_fn_ = error_fn;
   state_ = State::DISCONNECTED;
@@ -171,11 +204,7 @@ bool CoordinationServiceAgentImpl::IsInitialized() {
   return state_ != State::UNINITIALIZED;
 }
 
-void CoordinationServiceAgentImpl::Stop() {
-  {
-    mutex_lock l(state_mu_);
-    state_ = State::DISCONNECTED;
-  }
+void CoordinationServiceAgentImpl::StopHeartbeat() {
   {
     mutex_lock l(heartbeat_thread_shutdown_mu_);
     shutting_down_ = true;
@@ -188,15 +217,14 @@ Status CoordinationServiceAgentImpl::Connect() {
   {
     mutex_lock l(state_mu_);
     if (state_ != State::DISCONNECTED) {
-      return errors::FailedPrecondition(
-          "Coordination service agent is not in DISCONNECTED state.");
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Coordination service agent is not in DISCONNECTED state."));
     }
   }
-  RegisterWorkerRequest request;
-  request.set_job(job_name_);
-  request.set_task(task_id_);
+  RegisterTaskRequest request;
+  *request.mutable_source_task() = task_;
   request.set_incarnation(incarnation_id_);
-  RegisterWorkerResponse response;
+  RegisterTaskResponse response;
   absl::Notification n;
 
   // Block until the remote service is up and the task is registered.
@@ -206,7 +234,7 @@ Status CoordinationServiceAgentImpl::Connect() {
           ? configs_.cluster_register_timeout_in_ms()
           : kDefaultClusterRegisterTimeoutMs;
   call_opts.SetTimeout(register_timeout);
-  leader_client_->RegisterWorkerAsync(
+  leader_client_->RegisterTaskAsync(
       &call_opts, &request, &response, [&](Status s) {
         if (!s.ok()) {
           SetError(s);
@@ -227,11 +255,10 @@ Status CoordinationServiceAgentImpl::Connect() {
     }
   }
 
-  heartbeat_thread_.reset(env_->env->StartThread(
-      ThreadOptions(), kHeartbeatThread, [this]() -> void {
+  heartbeat_thread_.reset(
+      env_->StartThread(ThreadOptions(), kHeartbeatThread, [this]() -> void {
         HeartbeatRequest request;
-        request.set_job(job_name_);
-        request.set_task(task_id_);
+        *request.mutable_source_task() = task_;
         request.set_incarnation(incarnation_id_);
         HeartbeatResponse response;
         const uint64 heartbeat_interval =
@@ -260,32 +287,24 @@ Status CoordinationServiceAgentImpl::Connect() {
           if (!status.ok()) {
             SetError(status);
           } else if (response.leader_incarnation() != leader_incarnation_) {
-            SetError(
+            SetError(MakeCoordinationError(
                 errors::Aborted("Leader incarnation ID mismatch: the "
-                                "coordination leader has restarted."));
+                                "coordination leader has restarted.")));
           }
         }
       }));
   return Status::OK();
 }
 
-Status CoordinationServiceAgentImpl::WaitForAllTasks() {
-  {
-    mutex_lock l(state_mu_);
-    if (state_ != State::RUNNING) {
-      return errors::FailedPrecondition(
-          "CoordinationServiceAgentImpl::WaitForAllTasks must be called when "
-          "the coordination service agent is in RUNNING state.");
-    }
+Status CoordinationServiceAgentImpl::WaitForAllTasks(
+    const CoordinationServiceDeviceInfo& local_devices) {
+  Status agent_running_status = ValidateRunningAgent();
+  if (!agent_running_status.ok()) {
+    return agent_running_status;
   }
   WaitForAllTasksRequest request;
-  request.set_job(job_name_);
-  request.set_task(task_id_);
-  std::vector<DeviceAttributes> devices;
-  env_->device_mgr->ListDeviceAttributes(&devices);
-  for (auto& d : devices) {
-    request.add_local_device_attributes()->Swap(&d);
-  }
+  *request.mutable_source_task() = task_;
+  *request.mutable_local_device_info() = local_devices;
   WaitForAllTasksResponse response;
   Status status;
   absl::Notification n;
@@ -298,43 +317,40 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks() {
     SetError(status);
     return status;
   }
-  for (const auto& da : response.cluster_device_attributes()) {
-    cluster_devices_.emplace_back(da);
-  }
+  cluster_devices_.MergeFrom(response.cluster_device_info());
   return Status::OK();
 }
 
-const std::vector<DeviceAttributes>&
-CoordinationServiceAgentImpl::GetClusterDeviceAttributes() {
+const CoordinationServiceDeviceInfo&
+CoordinationServiceAgentImpl::GetClusterDeviceInfo() {
   return cluster_devices_;
 }
 
 StatusOr<CoordinationServiceAgentImpl::TaskState>
-CoordinationServiceAgentImpl::GetTaskStatus(const std::string& job_name,
-                                            const int task_id) {
-  return errors::Unimplemented(
-      "CoordinationServiceAgentImpl::GetTaskStatus is not implemented.");
+CoordinationServiceAgentImpl::GetTaskStatus(const CoordinatedTask& task) {
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgentImpl::GetTaskStatus is not implemented."));
 }
 
 Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
   {
     mutex_lock l(state_mu_);
     if (state_ == State::UNINITIALIZED) {
-      return errors::FailedPrecondition(
+      return MakeCoordinationError(errors::FailedPrecondition(
           "Coordination service agent must be initialized first before "
-          "reporting error.");
+          "reporting error."));
     } else if (state_ == State::ERROR) {
-      return errors::FailedPrecondition(
-          "Coordination service agent is already in error state.");
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Coordination service agent is already in error state."));
     }
   }
-  SetError(error);
+  SetError(MakeCoordinationError(error, task_,
+                                 /*is_reported_error=*/true));
   LOG(INFO) << "Reporting error to coordination service: " << error;
   ReportErrorToServiceRequest request;
   request.set_error_code(error.code());
   request.set_error_message(error.error_message());
-  request.set_source_job(job_name_);
-  request.set_source_task(task_id_);
+  *request.mutable_error_origin() = task_;
   ReportErrorToServiceResponse response;
 
   absl::Notification n;
@@ -350,21 +366,104 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
   return Status::OK();
 }
 
+Status CoordinationServiceAgentImpl::Shutdown() {
+  bool may_be_connected = false;
+  {
+    mutex_lock l(state_mu_);
+    may_be_connected = state_ == State::RUNNING || state_ == State::ERROR;
+  }
+
+  Status s = Status::OK();
+
+  // Disconnect agent from service.
+  if (!configs_.agent_destruction_without_shutdown() && may_be_connected) {
+    ShutdownTaskRequest request;
+    *request.mutable_source_task() = task_;
+    ShutdownTaskResponse response;
+
+    Status status;
+    absl::Notification n;
+    leader_client_->ShutdownTaskAsync(&request, &response,
+                                      [&status, &n](Status s) {
+                                        status = s;
+                                        n.Notify();
+                                      });
+    n.WaitForNotification();
+    if (!s.ok()) {
+      LOG(ERROR)
+          << "Failed to disconnect from coordination service with status: " << s
+          << ". Proceeding with agent shutdown anyway.";
+    }
+  }
+
+  // Tear down agent.
+  StopHeartbeat();
+  {
+    mutex_lock l(state_mu_);
+    state_ = State::SHUTDOWN;
+  }
+  return s;
+}
+
 Status CoordinationServiceAgentImpl::Reset() {
-  return errors::Unimplemented(
-      "CoordinationServiceAgentImpl::Reset is not implemented.");
+  {
+    mutex_lock l(state_mu_);
+    if (state_ != State::ERROR) {
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Reset() failed: coordination service agent is not in ERROR state."));
+    }
+  }
+
+  ResetTaskRequest request;
+  *request.mutable_source_task() = task_;
+  ResetTaskResponse response;
+
+  Status status;
+  absl::Notification n;
+  leader_client_->ResetTaskAsync(&request, &response, [&status, &n](Status s) {
+    status = s;
+    n.Notify();
+  });
+  n.WaitForNotification();
+  if (!status.ok()) {
+    return status;
+  }
+
+  // Reset agent state.
+  StopHeartbeat();
+  {
+    mutex_lock l(state_mu_);
+    state_ = State::DISCONNECTED;
+  }
+  {
+    mutex_lock l(heartbeat_thread_shutdown_mu_);
+    shutting_down_ = false;
+  }
+  return status;
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
     const std::string& key) {
-  absl::Notification n;
-  StatusOr<std::string> result;
-  GetKeyValueAsync(key, [&](const StatusOr<std::string>& status_or_value) {
-    result = status_or_value;
-    n.Notify();
-  });
-  n.WaitForNotification();
-  return result;
+  return GetKeyValue(key, /*timeout=*/absl::InfiniteDuration());
+}
+
+StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
+    const std::string& key, absl::Duration timeout) {
+  auto n = std::make_shared<absl::Notification>();
+  auto result = std::make_shared<StatusOr<std::string>>();
+  GetKeyValueAsync(key,
+                   [n, result](const StatusOr<std::string>& status_or_value) {
+                     *result = status_or_value;
+                     n->Notify();
+                   });
+  bool call_completed_before_timeout =
+      n->WaitForNotificationWithTimeout(timeout);
+  if (!call_completed_before_timeout) {
+    return MakeCoordinationError(errors::DeadlineExceeded(absl::Substitute(
+        "GetKeyValue() timed out with key: $0 and duration: $1", key,
+        absl::FormatDuration(timeout))));
+  }
+  return *result;
 }
 
 Status CoordinationServiceAgentImpl::InsertKeyValue(const std::string& key,
@@ -418,20 +517,20 @@ Status CoordinationServiceAgentImpl::DeleteKeyValue(const std::string& key) {
 
 Status CoordinationServiceAgentImpl::UpdateKeyValue(const std::string& key,
                                                     const std::string& value) {
-  return errors::Unimplemented(
-      "CoordinationServviceAgent::UpdateKeyValue is not implemented.");
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::UpdateKeyValue is not implemented."));
 }
 
 Status CoordinationServiceAgentImpl::StartWatchKey(
     const std::string& key,
     CoordinationServiceAgentImpl::ChangedKeyValuesCallback on_change) {
-  return errors::Unimplemented(
-      "CoordinationServviceAgent::StartWatchKey is not implemented.");
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::StartWatchKey is not implemented."));
 }
 
 Status CoordinationServiceAgentImpl::StopWatchKey(const std::string& key) {
-  return errors::Unimplemented(
-      "CoordinationServviceAgent::StopWatchKey is not implemented.");
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::StopWatchKey is not implemented."));
 }
 
 void CoordinationServiceAgentImpl::SetError(const Status& error) {
@@ -445,8 +544,90 @@ void CoordinationServiceAgentImpl::SetError(const Status& error) {
 
 Status CoordinationServiceAgentImpl::ActivateWatch(
     const std::string& key, const std::map<std::string, std::string>& kvs) {
-  return errors::Unimplemented(
-      "CoordinationServviceAgent::ActivateWatch is not implemented.");
+  return MakeCoordinationError(errors::Unimplemented(
+      "CoordinationServiceAgent::ActivateWatch is not implemented."));
+}
+
+Status CoordinationServiceAgentImpl::WaitAtBarrier(
+    const std::string& barrier_id, absl::Duration timeout,
+    const std::vector<CoordinatedTask>& tasks) {
+  Status status;
+  absl::Notification n;
+  WaitAtBarrierAsync(barrier_id, timeout, tasks, [&](Status s) {
+    status = s;
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return status;
+}
+
+void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
+    const std::string& barrier_id, absl::Duration timeout,
+    const std::vector<CoordinatedTask>& tasks, StatusCallback done) {
+  Status agent_running_status = ValidateRunningAgent();
+  if (!agent_running_status.ok()) {
+    done(agent_running_status);
+    return;
+  }
+  auto request = std::make_shared<BarrierRequest>();
+  auto response = std::make_shared<BarrierResponse>();
+  request->set_barrier_id(barrier_id);
+  request->set_barrier_timeout_in_ms(timeout / absl::Milliseconds(1));
+  *request->mutable_source_task() = task_;
+  *request->mutable_tasks() = {tasks.begin(), tasks.end()};
+  leader_client_->BarrierAsync(request.get(), response.get(),
+                               [request, response, done = std::move(done)](
+                                   const Status& s) { done(s); });
+}
+
+Status CoordinationServiceAgentImpl::CancelBarrier(
+    const std::string& barrier_id) {
+  Status agent_running_status = ValidateRunningAgent();
+  if (!agent_running_status.ok()) {
+    return agent_running_status;
+  }
+  CancelBarrierRequest request;
+  CancelBarrierResponse response;
+  request.set_barrier_id(barrier_id);
+  *request.mutable_source_task() = task_;
+
+  Status status;
+  absl::Notification n;
+  leader_client_->CancelBarrierAsync(&request, &response, [&](const Status& s) {
+    status = s;
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return status;
+}
+
+// Returns an error if agent is not running.
+Status CoordinationServiceAgentImpl::ValidateRunningAgent() {
+  mutex_lock l(state_mu_);
+  switch (state_) {
+    case State::RUNNING:
+      return Status::OK();
+
+    case State::UNINITIALIZED:
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Agent must be in RUNNING state. It is currently UNINITIALIZED."));
+
+    case State::DISCONNECTED:
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Agent must be in RUNNING state. It is currently DISCONNECTED."));
+
+    case State::ERROR:
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Agent must be in RUNNING state. It is currently in ERROR."));
+
+    case State::SHUTDOWN:
+      return MakeCoordinationError(errors::FailedPrecondition(
+          "Agent must be in RUNNING state. It is currently in SHUTDOWN."));
+
+    default:
+      return MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
+          "Agent is not in RUNNING state. Current state: ", state_)));
+  }
 }
 
 }  // namespace

@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_
+#ifndef MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H
+#define MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H
 
 #include <vector>
 
 #include "mlir/Analysis/Liveness.h"
+#include "mlir/Dialect/Bufferization/Transforms/BufferUtils.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
-#include "mlir/Transforms/BufferUtils.h"
 
 namespace mlir {
 
@@ -102,7 +102,8 @@ class UserangeAnalysis {
   using UsePosition = std::pair<size_t, Operation *>;
   using UsePositionList = std::vector<UsePosition>;
 
-  UserangeAnalysis(Operation *op, const BufferPlacementAllocs &allocs,
+  UserangeAnalysis(Operation *op,
+                   const bufferization::BufferPlacementAllocs &allocs,
                    const BufferViewFlowAnalysis &aliases);
 
   /// Returns the index of the first operation that uses the given value or an
@@ -201,4 +202,4 @@ class UserangeAnalysis {
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H_
+#endif  // MLIR_HLO_ANALYSIS_USERANGE_ANALYSIS_H

@@ -157,8 +157,12 @@ TEST(WeakPtr, MultiThreadedWeakRef) {
 
     EXPECT_EQ(weakptr.GetNewRef(), nullptr);
   }
-  ASSERT_GT(hit_destructed, 0);
-  ASSERT_LT(hit_destructed, 200);  // 2 threads per iterations.
+  if (hit_destructed == 0) {
+    LOG(WARNING) << "The destructed weakref test branch is not exercised.";
+  }
+  if (hit_destructed == 200) {
+    LOG(WARNING) << "The valid weakref test branch is not exercised.";
+  }
 }
 
 TEST(WeakPtr, NotifyCalled) {

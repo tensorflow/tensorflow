@@ -30,7 +30,7 @@ limitations under the License.
 
 #ifdef __ANDROID__
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_validator_runner_so_for_tests.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_validator_runner_entrypoint.h"
 #endif  // __ANDROID__
 
 namespace tflite {
@@ -73,9 +73,9 @@ MiniBenchmarkTestHelper::MiniBenchmarkTestHelper()
                  g_tflite_acceleration_embedded_runner_len);
 
   std::string validator_runner_so_path = DumpToTempFile(
-      "libvalidator_runner_so_for_tests.so",
-      g_tflite_acceleration_embedded_validator_runner_so_for_tests,
-      g_tflite_acceleration_embedded_validator_runner_so_for_tests_len);
+      "libvalidator_runner_entrypoint.so",
+      g_tflite_acceleration_embedded_validator_runner_entrypoint,
+      g_tflite_acceleration_embedded_validator_runner_entrypoint_len);
   // Load this library here because it contains the validation entry point
   // "Java_org_tensorflow_lite_acceleration_validation_entrypoint" that is then
   // found using dlsym (using RTLD_DEFAULT hence not needing the handle) in the

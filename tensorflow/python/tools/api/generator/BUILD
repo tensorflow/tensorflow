@@ -91,6 +91,7 @@ py_test(
         "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/tools/api/generator:create_python_api",
     ],
 )

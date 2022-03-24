@@ -12,20 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Tensorflow -> CPURT compilation."""
+"""Tests for Tensorflow -> jitrt compilation."""
 
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
 specializations = [
-    tf_cpurt.Specialization.ENABLED,
-    tf_cpurt.Specialization.DISABLED,
-    tf_cpurt.Specialization.ALWAYS,
+    tf_jitrt.Specialization.ENABLED,
+    tf_jitrt.Specialization.DISABLED,
+    tf_jitrt.Specialization.ALWAYS,
 ]
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 class TfSelect(test.TestCase):
@@ -47,12 +47,12 @@ class TfSelect(test.TestCase):
           return %0, %1, %2 : tensor<?xf32>, tensor<?xi1>, tensor<?xf32>
         }"""
 
-      compiled = cpurt.compile(mlir_function, 'test', specialize)
+      compiled = jitrt.compile(mlir_function, 'test', specialize)
 
       d0 = np.random.randint(1, 10)
       arg0 = np.random.uniform(0, 10.0, size=(d0)).astype(np.float32)
 
-      [zeros, less, res] = cpurt.execute(compiled, [arg0])
+      [zeros, less, res] = jitrt.execute(compiled, [arg0])
       np.testing.assert_allclose(zeros, np.zeros_like(arg0), atol=0.0)
       np.testing.assert_allclose(less, np.less(arg0, 0.0), atol=0.0)
       np.testing.assert_allclose(res, np.clip(arg0, 0.0, None), atol=0.0)

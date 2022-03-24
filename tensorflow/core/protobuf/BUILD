@@ -85,7 +85,10 @@ tf_proto_library(
     srcs = ["worker.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
-    visibility = ["//visibility:public"],
+    visibility = if_google(
+        ["//tensorflow:internal"],
+        ["//visibility:public"],
+    ),
 )
 
 tf_proto_library(
@@ -135,7 +138,8 @@ tf_proto_library(
     cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
     create_service = True,
-    protodeps = tf_additional_all_protos(),
+    protodeps = ["//tensorflow/compiler/xla/pjrt/distributed:protocol_proto"] +
+                tf_additional_all_protos(),
 )
 
 tf_proto_library(

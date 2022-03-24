@@ -19,6 +19,6 @@ module {
     %batch_size = "tf.Const"() {value = dense<10> : tensor<i64>} : () -> tensor<i64>
     %drop_remainder = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
     %batch = "tf.BatchDatasetV2"(%range, %batch_size, %drop_remainder) {output_shapes = [#tf_type.shape<>], output_types = [i64], parallel_copy = false, metadata = ""} : (tensor<*x!tf_type.variant>, tensor<i64>, tensor<i1>) -> tensor<*x!tf_type.variant>
-    return %batch : tensor<*x!tf_type.variant>
+    func.return %batch : tensor<*x!tf_type.variant>
   }
 }

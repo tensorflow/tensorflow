@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -227,11 +228,11 @@ void PropagateDevicesToResults(
 
 struct TPUDevicePropagation
     : public TF::TPUDevicePropagationPassBase<TPUDevicePropagation> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void TPUDevicePropagation::runOnFunction() {
-  FuncOp func = getFunction();
+void TPUDevicePropagation::runOnOperation() {
+  FuncOp func = getOperation();
   if (!IsSupportedGraph(func)) return;
 
   llvm::DenseMap<Value, llvm::StringRef> value_to_device;

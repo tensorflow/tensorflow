@@ -99,6 +99,28 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.values, input_val.values)
       self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
+  def testReshapeIntegeroverflow(self):
+    with self.session():
+      with self.assertRaises(errors.InvalidArgumentError):
+        sp_output = sparse_ops.gen_sparse_ops.sparse_reshape(
+            input_indices=[[0, 0]],
+            input_shape=[2**32, 2**31],
+            new_shape=[1, 1],
+            name=None)
+
+        self.evaluate(sp_output)
+
+  def testReshapeNegativeShape(self):
+    with self.session():
+      with self.assertRaises(errors.InvalidArgumentError):
+        sp_output = sparse_ops.gen_sparse_ops.sparse_reshape(
+            input_indices=[[0, 0]],
+            input_shape=[1, -1],
+            new_shape=[1, 1],
+            name=None)
+
+        self.evaluate(sp_output)
+
   @test_util.run_deprecated_v1
   def testFeedSameShape(self):
     with self.session() as sess:

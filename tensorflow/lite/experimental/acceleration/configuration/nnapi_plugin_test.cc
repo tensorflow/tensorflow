@@ -281,6 +281,7 @@ class NNAPIMultiOpPluginTest : public ::testing::Test {
                              /* gpu_settings */ 0,
                              /* hexagon_settings */ 0,
                              /* xnnpack_settings */ 0,
+                             /* coreml_settings */ 0,
                              /* cpu_settings */ 0, max_delegated_partitions));
 
     plugin_ = delegates::DelegatePluginRegistry::CreateByName(

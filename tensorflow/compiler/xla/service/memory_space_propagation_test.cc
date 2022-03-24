@@ -66,7 +66,7 @@ TEST_F(MemorySpacePropagationTest, NoMemorySpace) {
   MemorySpacePropagation memory_space_propagation;
   EXPECT_FALSE(memory_space_propagation.Run(module.get()).ValueOrDie());
   TF_ASSERT_OK_AND_ASSIGN(auto ref, ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_EQ(module->Hash(), ref->Hash());
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
 TEST_F(MemorySpacePropagationTest, NonTupleOutput) {
@@ -127,7 +127,7 @@ TEST_F(MemorySpacePropagationTest, NonTupleOutput) {
   TF_EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
-  EXPECT_EQ(module->Hash(), ref->Hash());
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
 TEST_F(MemorySpacePropagationTest, TupleOutput) {
@@ -196,7 +196,7 @@ TEST_F(MemorySpacePropagationTest, TupleOutput) {
   TF_EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
-  EXPECT_EQ(module->Hash(), ref->Hash());
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
 TEST_F(MemorySpacePropagationTest, NestedInputFusion) {
@@ -270,7 +270,7 @@ TEST_F(MemorySpacePropagationTest, NestedInputFusion) {
   TF_EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
-  EXPECT_EQ(module->Hash(), ref->Hash());
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
 TEST_F(MemorySpacePropagationTest, NestedOutputFusion) {
@@ -344,7 +344,7 @@ TEST_F(MemorySpacePropagationTest, NestedOutputFusion) {
   TF_EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
-  EXPECT_EQ(module->Hash(), ref->Hash());
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
 TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
@@ -407,7 +407,7 @@ TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
   TF_EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
-  EXPECT_EQ(module->Hash(), ref->Hash());
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
 }  // namespace

@@ -59,6 +59,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core/util:version_info",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/core/lib/llvm_rtti",
     ] + if_static(

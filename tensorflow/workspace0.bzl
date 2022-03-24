@@ -3,10 +3,11 @@
 load("//third_party/googleapis:repository_rules.bzl", "config_googleapis")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_toolchains//repositories:repositories.bzl", bazel_toolchains_repositories = "repositories")
+load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
+load("@build_bazel_apple_support//lib:repositories.bzl", "apple_support_dependencies")
 load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("@local_config_android//:android.bzl", "android_workspace")
-load("@rules_cc//cc:repositories.bzl", "rules_cc_toolchains")
 
 def _tf_bind():
     """Bind targets for some external repositories"""
@@ -103,13 +104,26 @@ def workspace():
         ],
     )
 
-    rules_cc_toolchains()
-
     bazel_toolchains_repositories()
 
-    # Use `swift_rules_dependencies` to fetch the toolchains. With the
-    # `git_repository` rules above, the following call will skip redefining them.
+    # Apple rules for Bazel. https://github.com/bazelbuild/rules_apple.
+    # TODO(mihaimaruseac): We add this to fix Kokoro builds.
+    # The rules below call into `rules_proto` but the hash has changed and
+    # Bazel refuses to continue. So, we add our own mirror.
+    http_archive(
+        name = "rules_proto",
+        sha256 = "20b240eba17a36be4b0b22635aca63053913d5c1ee36e16be36499d167a2f533",
+        strip_prefix = "rules_proto-11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
+            "https://github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
+        ],
+    )
+
+    # Now, finally use the rules
+    apple_rules_dependencies()
     swift_rules_dependencies()
+    apple_support_dependencies()
 
     android_workspace()
 

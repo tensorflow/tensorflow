@@ -13,6 +13,6 @@ module {
     %2 = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
     %3 = "tf.Const"() {value = dense<1000> : tensor<i64>} : () -> tensor<i64>
     %4 = "tf.RangeDataset"(%1, %3, %2) {device = "", output_shapes = [#tf_type.shape<>], output_types = [i64], metadata = ""} : (tensor<i64>, tensor<i64>, tensor<i64>) -> tensor<*x!tf_type.variant>
-    return %4 : tensor<*x!tf_type.variant>
+    func.return %4 : tensor<*x!tf_type.variant>
   }
 }

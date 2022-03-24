@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -377,6 +378,15 @@ class Subgraph {
     release_dynamic_tensors_if_unused_ = true;
   }
 
+  /// WARNING: This is an experimental API and subject to change.
+  /// Use dynamic tensor allocation method for large intermediate tensors
+  /// instead of static memory planner. It improves peak memory usage but there
+  /// could be some latency impact. The parameter
+  /// `large_tensors_threshods_in_bytes` is used to determine large tensors.
+  /// This API must be called before `AllocateTensors`.
+  void UseDynamicAllocationForLargeTensors(
+      int large_tensors_threshods_in_bytes);
+
   // WARNING: This is an experimental API and subject to change.
   // Remove unused inputs of the subgraph. It checks usage of inputs and mark it
   // as kTfLiteOptionalTensor if the input is not used in graph execution.
@@ -698,6 +708,10 @@ class Subgraph {
   // tensors if configured.
   void MaybeReleaseDynamicInputs(const TfLiteNode& node, size_t node_index);
 
+  // Reallocates the released large dynamic tensors by the
+  // MaybeReleaseDynamicInputs() method of the previous interpreter invocations.
+  void MaybeAllocateLargeDynamicTensors();
+
   // The state of the Interpreter.
   enum State {
     // The interpreter isn't ready to be invoked.
@@ -860,6 +874,10 @@ class Subgraph {
   // Mapping between tensor index to the last index of the execution plan that
   // uses this tensor.
   std::map<int, int> tensor_to_last_op_index_;
+
+  // List of tensors which are large and have a static shape. The memory of
+  // these tensors should be allocated before the graph execution.
+  std::set<int> large_static_shape_tensors_;
 };
 
 }  // namespace tflite

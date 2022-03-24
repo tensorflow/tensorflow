@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -136,7 +136,8 @@ class GpuKernelToBlobPass
         "false";
     config.set_debug_options(options);
 
-    llvmModule->setDataLayout(xla::gpu::nvptx::kDataLayout);
+    llvmModule->setDataLayout(xla::gpu::nvptx::DataLayout());
+    llvmModule->setTargetTriple(xla::gpu::nvptx::TargetTriple());
 
     // Compile and collect requested cubin and PTX images.
     std::vector<tensorflow::se::CubinOrPTXImage> images;
@@ -172,7 +173,6 @@ class GpuKernelToBlobPass
 
       // Compile PTX code with ptxas if requested and possible and fall back to
       // a compute image, otherwise.
-      bool include_compute_profile = is_compute_profile;
       if (!is_compute_profile) {
         auto gpu_asm = tensorflow::se::CompileGpuAsm(cc_major, cc_minor,
                                                      ptx.c_str(), gpu_asm_opts);
@@ -180,12 +180,18 @@ class GpuKernelToBlobPass
           images.push_back(
               {absl::StrCat("sm_", arch), std::move(gpu_asm.ValueOrDie())});
         } else {
-          LOG(WARNING)
-              << "Failed to compile PTX code, falling back to compute profile.";
-          include_compute_profile = true;
+#ifdef PLATFORM_GOOGLE
+          // Require compilation with ptxas.
+          return gpu_asm;
+#else
+          // Fall back to compilation by driver in OSS.
+          LOG(WARNING) << "Failed to compile generated PTX with ptxas. Falling "
+                          "back to compilation by driver.";
+          is_compute_profile = true;
+#endif
         }
       }
-      if (include_compute_profile) {
+      if (is_compute_profile) {
         std::vector<uint8_t> ptx_bytes;
         ptx_bytes.reserve(ptx.size() + 1);
         std::copy(ptx.begin(), ptx.end(), std::back_inserter(ptx_bytes));

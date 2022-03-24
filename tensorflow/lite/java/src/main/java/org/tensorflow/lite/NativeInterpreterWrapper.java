@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.tensorflow.lite.annotations.UsedByReflection;
 import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
@@ -79,9 +80,10 @@ class NativeInterpreterWrapper implements AutoCloseable {
     // by passing the tflite::Model in to here, and then traversing that?)
     ArrayList<Long> delegateHandles = new ArrayList<Long>();
     this.interpreterHandle =
-        createInterpreter(modelHandle, errorHandle, options.numThreads, delegateHandles);
+        createInterpreter(modelHandle, errorHandle, options.getNumThreads(), delegateHandles);
     this.originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
     addDelegates(options);
+    initDelegatesWithInterpreterFactory();
     delegateHandles.ensureCapacity(delegates.size());
     for (Delegate delegate : delegates) {
       delegateHandles.add(Long.valueOf(delegate.getNativeHandle()));
@@ -90,7 +92,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
       // If there are any delegates enabled, recreate the interpreter with those delegates.
       delete(/* errorHandle= */ 0, /* modelHandle= */ 0, this.interpreterHandle);
       this.interpreterHandle =
-          createInterpreter(modelHandle, errorHandle, options.numThreads, delegateHandles);
+          createInterpreter(modelHandle, errorHandle, options.getNumThreads(), delegateHandles);
     }
     if (options.allowFp16PrecisionForFp32 != null) {
       allowFp16PrecisionForFp32(
@@ -99,7 +101,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
     if (options.allowBufferHandleOutput != null) {
       allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
-    if (options.allowCancellation != null && options.allowCancellation) {
+    if (options.isCancellable()) {
       this.cancellationFlagHandle = createCancellationFlag(interpreterHandle);
     }
     this.inputTensors = new TensorImpl[getInputCount(interpreterHandle)];
@@ -494,21 +496,31 @@ class NativeInterpreterWrapper implements AutoCloseable {
     // First add the flex delegate if necessary. This ensures the graph is fully resolved before
     // applying other delegates.
     if (originalGraphHasUnresolvedFlexOp) {
-      Delegate optionalFlexDelegate = maybeCreateFlexDelegate(options.delegates);
+      Delegate optionalFlexDelegate = maybeCreateFlexDelegate(options.getDelegates());
       if (optionalFlexDelegate != null) {
         ownedDelegates.add((AutoCloseable) optionalFlexDelegate);
         delegates.add(optionalFlexDelegate);
       }
     }
     // Now add the user-supplied delegates.
-    delegates.addAll(options.delegates);
-    if (options.useNNAPI != null && options.useNNAPI.booleanValue()) {
+    delegates.addAll(options.getDelegates());
+    if (options.getUseNNAPI()) {
       NnApiDelegate optionalNnApiDelegate = new NnApiDelegate();
       ownedDelegates.add(optionalNnApiDelegate);
       delegates.add(optionalNnApiDelegate);
     }
     // Finally add the XNNPACK delegate if enabled.
     maybeAddXnnpackDelegate(options);
+  }
+
+  // Complete the initialization of any delegates that require an InterpreterFactoryApi instance.
+  void initDelegatesWithInterpreterFactory() {
+    InterpreterFactoryApi interpreterFactoryApi = new InterpreterFactoryImpl();
+    for (Delegate delegate : delegates) {
+      if (delegate instanceof NnApiDelegate) {
+        ((NnApiDelegate) delegate).initWithInterpreterFactoryApi(interpreterFactoryApi);
+      }
+    }
   }
 
   // Optionally add the XNNPACK delegate.
@@ -524,7 +536,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
     if (applyXNNPACKMode == 1 /*|| applyXNNPACKMode == -1*/) {
       XnnpackDelegate xnnpackDelegate =
           createXNNPACKDelegate(
-              interpreterHandle, errorHandle, applyXNNPACKMode, options.numThreads);
+              interpreterHandle, errorHandle, applyXNNPACKMode, options.getNumThreads());
       delegates.add(xnnpackDelegate);
     }
   }
@@ -567,6 +579,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
 
   private long cancellationFlagHandle = 0;
 
+  @UsedByReflection("nativeinterpreterwrapper_jni.cc")
   private long inferenceDurationNanoseconds = -1;
 
   private ByteBuffer modelByteBuffer;

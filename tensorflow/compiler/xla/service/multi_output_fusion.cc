@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -71,7 +70,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
         const int64_t kUserSliceSize = 128;
 
         const int64_t user_slice_begin =
-            RoundDownToNearest(operand->UserId(instruction), kUserSliceSize);
+            RoundDownTo(operand->UserId(instruction), kUserSliceSize);
 
         const int64_t user_slice_end =
             std::min(static_cast<int64_t>(operand->users().size()),
@@ -307,7 +306,7 @@ bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
 
   // Fusing nodes with 0 users makes no sense and the rest of the implementation
   // doesn't support it either.
-  if (instr1->user_count() == 0 || instr2->user_count() == 0) {
+  if (instr1->IsDead() || instr2->IsDead()) {
     return false;
   }
 

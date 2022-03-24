@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/host_context/device.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -28,12 +29,19 @@ namespace tfd {
 tfrt::AsyncValueRef<KernelFallbackTensor> TransferTensorToDevice(
     const tfrt::ExecutionContext& exec_ctx, const KernelFallbackTensor& tensor,
     const tfrt::Device& src_device, const tfrt::Device& dst_device) {
-  bool is_same_device =
+  const bool is_same_device =
       (&src_device == &dst_device) || (src_device.name() == dst_device.name());
+
+  // Note: source and destination CPU devices are expected to be on the same
+  // host. Currently TFRT doesn't support checking if a CPU is remote CPU,
+  // we may consider adding a remote CPU device type in the future.
+  const bool is_between_cpu_devices =
+      src_device.IsDeviceType(tfrt::CpuDevice::kDeviceType) &&
+      dst_device.IsDeviceType(tfrt::CpuDevice::kDeviceType);
 
   const tensorflow::Tensor* src = tensor.GetTensor();
 
-  if (is_same_device) {
+  if (is_same_device || is_between_cpu_devices) {
     return tfrt::MakeAvailableAsyncValueRef<KernelFallbackTensor>(*src);
   }
 
@@ -63,7 +71,7 @@ tfrt::AsyncValueRef<KernelFallbackTensor> TransferTensorToDevice(
   }
   tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
-    return tfrt::MakeAvailableAsyncValueRef<KernelFallbackTensor>(*src);
+    return tfrt::MakeAvailableAsyncValueRef<KernelFallbackTensor>(dst);
   }
 
   auto result = tfrt::MakeUnconstructedAsyncValueRef<KernelFallbackTensor>();

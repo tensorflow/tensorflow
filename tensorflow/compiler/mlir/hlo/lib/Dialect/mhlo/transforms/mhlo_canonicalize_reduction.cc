@@ -40,7 +40,7 @@ namespace {
 //   ```
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?xf32> {
 //       ...
-//       %2 = "mhlo.reduce"(%arg0, ...) ( {...})
+//       %2 = "mhlo.reduce"(%arg0, ...) ({...})
 //         {dimensions = dense<[0]> : tensor<1xi64>} :
 //         (tensor<?x?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
 //       return %2 : tensor<?x?xf32>
@@ -50,7 +50,7 @@ namespace {
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?xf32> {
 //       // [a, b, c] -> [a, b*c]
 //       %1 = mhlo.dynamic_reshape(%arg0, ...) : (tensor<?x?x?xf32>,
-//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ( {...})
+//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ({...})
 //         {dimensions = dense<[0]> : tensor<1xi64>} :
 //         (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
 //       %3 = "mhlo.dynamic_reshape"(%2, ...) : (tensor<?xf32>, tensor<1xi64>)
@@ -65,7 +65,7 @@ namespace {
 //   ```
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?xf32> {
 //       ...
-//       %2 = "mhlo.reduce"(%arg0, ...) ( {...})
+//       %2 = "mhlo.reduce"(%arg0, ...) ({...})
 //         {dimensions = dense<[2]> : tensor<1xi64>} :
 //         (tensor<?x?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
 //       return %2 : tensor<?x?xf32>
@@ -75,7 +75,7 @@ namespace {
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<?x?xf32> {
 //       // [a, b, c] -> [a*b, c]
 //       %1 = mhlo.dynamic_reshape(%arg0, ...) : (tensor<?x?x?xf32>,
-//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ( {...})
+//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ({...})
 //         {dimensions = dense<[1]> : tensor<1xi64>} :
 //         (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
 //       %3 = "mhlo.dynamic_reshape"(%2, ...) : (tensor<?xf32>, tensor<1xi64>)
@@ -91,7 +91,7 @@ namespace {
 //   ```
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<f32> {
 //       ...
-//       %2 = "mhlo.reduce"(%arg0, ...) ( {...})
+//       %2 = "mhlo.reduce"(%arg0, ...) ({...})
 //         {dimensions = dense<[0,1,2]> : tensor<3xi64>} :
 //         (tensor<?x?x?xf32>, tensor<f32>) -> tensor<f32>
 //       return %2 : tensor<f32>
@@ -101,7 +101,7 @@ namespace {
 //     func @test(%arg0: tensor<?x?x?xf32>) -> tensor<f32> {
 //       // [a, b, c] -> [a*b*c, 1]
 //       %1 = mhlo.dynamic_reshape(%arg0, ...) : (tensor<?x?x?xf32>,
-//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ( {...})
+//       tensor<2xi64>) -> tensor<?x?xf32> %2 = "mhlo.reduce"(%1, ...) ({...})
 //         {dimensions = dense<[0]> : tensor<1xi64>} :
 //         (tensor<?x?xf32>, tensor<f32>) -> tensor<?xf32>
 //       %3 = "mhlo.reshape"(%2, ...) : (tensor<?xf32>, tensor<1xi64>) ->
@@ -114,8 +114,8 @@ struct HloCanonicalizeReductionPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tensor::TensorDialect>();
   }
-  void runOnFunction() override {
-    getFunction().walk([&](ReduceOp op) {
+  void runOnOperation() override {
+    getOperation().walk([&](ReduceOp op) {
       SmallVector<int64_t, 4> dims_to_reduce;
       DenseSet<int64_t> dims_to_reduce_set;
       for (auto dim : op.dimensions().getValues<APInt>()) {
@@ -164,7 +164,7 @@ struct HloCanonicalizeReductionPass
           Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), v);
           nelems = b.create<arith::MulIOp>(
               loc, nelems,
-              b.create<arith::IndexCastOp>(loc, dim_index, shape_scalar_type));
+              b.create<arith::IndexCastOp>(loc, shape_scalar_type, dim_index));
         }
         return nelems;
       };
@@ -230,7 +230,7 @@ struct HloCanonicalizeReductionPass
         for (int64_t i : dims_to_keep) {
           Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), i);
           result_dims.push_back(
-              b.create<arith::IndexCastOp>(loc, dim_index, shape_scalar_type));
+              b.create<arith::IndexCastOp>(loc, shape_scalar_type, dim_index));
         }
         Value result_shape = b.create<tensor::FromElementsOp>(loc, result_dims);
         for (auto&& e : llvm::zip(op.getResults(), new_op.getResults())) {
@@ -248,7 +248,7 @@ struct HloCanonicalizeReductionPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createHloCanonicalizeReductionPass() {
+std::unique_ptr<OperationPass<FuncOp>> createHloCanonicalizeReductionPass() {
   return std::make_unique<HloCanonicalizeReductionPass>();
 }
 

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -177,8 +177,8 @@ class UnfuseBatchNormInferencePattern
 // do not have special support for fused batchnorm to use simpler arithmetic
 // primitives.
 void PopulateUnfuseBatchNormPatterns(MLIRContext* context,
-                                     OwningRewritePatternList* patterns) {
-  patterns->insert<UnfuseBatchNormInferencePattern>(context);
+                                     RewritePatternSet* patterns) {
+  patterns->add<UnfuseBatchNormInferencePattern>(context);
 }
 
 }  // namespace mhlo

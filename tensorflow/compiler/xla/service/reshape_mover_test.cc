@@ -528,7 +528,7 @@ TEST_F(ReshapeMoverTest, MultiplePasses) {
 }
 
 TEST_F(ReshapeMoverTest, SinkTransposeAcrossBroadcastScalar) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
     HloModule TransposeMulInversedTransposeModule
     ENTRY TransposeMulInversedTranspose {
       src0 = f32[20,8]{1,0} parameter(0)
@@ -548,7 +548,7 @@ TEST_F(ReshapeMoverTest, SinkTransposeAcrossBroadcastScalar) {
 }
 
 TEST_F(ReshapeMoverTest, ReshapeWithUsersOutsideCandidatesNotSink) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
     HloModule ReshapeWithUsersOutsideCandidates
     ENTRY ReshapeWithMultipleUsers {
       param0 = f32[20,8]{1,0} parameter(0)
@@ -574,7 +574,7 @@ TEST_F(ReshapeMoverTest, ReshapeWithUsersOutsideCandidatesNotSink) {
 }
 
 TEST_F(ReshapeMoverTest, ReshapeNoUsersOutsideCandidatesSink1) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
     HloModule ReshapeNoUsersOutsideCandidates1
     ENTRY ReshapeWithMultipleUsers1 {
       param0 = f32[20,8]{1,0} parameter(0)
@@ -601,7 +601,7 @@ TEST_F(ReshapeMoverTest, ReshapeNoUsersOutsideCandidatesSink1) {
 }
 
 TEST_F(ReshapeMoverTest, ReshapeNoUsersOutsideCandidatesSink2) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
     HloModule ReshapeNoUsersOutsideCandidates2
     ENTRY ReshapeWithMultipleUsers2 {
       param0 = f32[20,8]{1,0} parameter(0)

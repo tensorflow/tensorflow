@@ -38,6 +38,8 @@ def TFFramework_Dialect : Dialect {
     static constexpr StringRef kTFEntryAttrName = "tf_entry";
     static constexpr size_t kAllocationAlignment = 16;
   }];
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
 def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
@@ -60,10 +62,8 @@ def TFFramework_JITCallableType : DialectType<TFFramework_Dialect, CPred<
 }
 
 // Base class for TF Framework dialect ops.
-class TFFramework_Op<string mnemonic, list<OpTrait> traits = []> :
-    Op<TFFramework_Dialect, mnemonic, traits> {
-  let verifier = "return Verify<$cppClass>(*this);";
-}
+class TFFramework_Op<string mnemonic, list<Trait> traits = []> :
+    Op<TFFramework_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // TFAllocOp
@@ -115,6 +115,8 @@ def TFFramework_TFAllocOp : TFFramework_Op<"alloc", [
   let assemblyFormat = [{
     `(` $ctx (`,` $dyn_sizes^ )? `)` attr-dict `:` type($result)
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -284,6 +286,7 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
     I64ArrayAttr:$unrollFactors,
     I64Attr:$maxSupportedRank,
     BoolAttr:$enableFtz,
+    BoolAttr:$index64Bit,
     BoolAttr:$cpuCodegen
   );
   let results = (outs TFFramework_JITCallableType:$result);

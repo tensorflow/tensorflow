@@ -437,6 +437,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(k, compute_f32(np.arctanh), math_ops.atanh,
                       grad_tol=1e-2)
     self._compareBoth(x, compute_f32(np.vectorize(math.erf)), math_ops.erf)
+    self._compareBoth(x, compute_f32(np.vectorize(math.erfc)), math_ops.erfc)
 
   @test.disable_with_predicate(
       pred=test.is_built_with_rocm, skip_message="On ROCm this test fails")
@@ -532,6 +533,8 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.sinh, math_ops.sinh)
     self._compareCpu(x, np.cosh, math_ops.cosh)
     self._compareCpu(x, np.tanh, math_ops.tanh)
+    self._compareCpu(x, np.arcsin, math_ops.asin)
+    self._compareCpu(x, np.arctan, math_ops.atan)
 
     # Complex64 versions of asinh() and acosh() in libstdc++ only have 6 digits
     # of precision.
@@ -582,6 +585,8 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, self._sigmoid, math_ops.sigmoid)
     self._compareCpu(x, np.sin, math_ops.sin)
     self._compareCpu(x, np.cos, math_ops.cos)
+    self._compareCpu(x, np.arcsin, math_ops.asin)
+    self._compareCpu(x, np.arctan, math_ops.atan)
 
     self._compareBothSparse(x, np.abs, math_ops.abs)
     self._compareBothSparse(x, np.negative, math_ops.negative)

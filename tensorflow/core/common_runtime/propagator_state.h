@@ -527,7 +527,7 @@ inline int64_t PropagatorState::TaggedNode::get_iter_num() const {
 // problem: For example, In usecases that are running close to the RAM limit of
 // a device, reordering ops can cause an increase in memory fragmenenation,
 // causing an OOM.
-// This codepath is enabled using TF_DETERMINISTIC_OPS=1 in executor.cc
+// This codepath is enabled using TF_DETERMINISTIC_ORDER=1 in executor.cc
 class OrderedPropagatorState : public PropagatorState {
   using PropagatorState::PropagatorState;
 

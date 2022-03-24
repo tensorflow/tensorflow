@@ -460,7 +460,7 @@ class SliceTest(test.TestCase):
       # unintended behavior is prevented.
       c = constant_op.constant(5.0)
       with self.assertRaisesRegex(errors_impl.OperatorNotAllowedInGraphError,
-                                  "iterating over `tf.Tensor`"):
+                                  "Iterating over a symbolic `tf.Tensor`"):
         for _ in c:
           pass
 

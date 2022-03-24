@@ -11,7 +11,7 @@ package_group(
     name = "friends",
     packages = [
         # Authorized users go here.
-        "//platforms/xla/tests/gpu/...",
+        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/compiler/xla/service/gpu/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/...",
@@ -59,7 +59,6 @@ cc_library(
         "//tensorflow/core/platform:threadpool_interface",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
-        "//tensorflow/core/tfrt/utils:statusor",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],
@@ -90,7 +89,6 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_interface",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],

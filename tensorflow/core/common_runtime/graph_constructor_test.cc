@@ -3232,7 +3232,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDevice) {
   options.default_device = "/gpu:13";
   ImportGraphDefResults res;
 
-  TF_ASSERT_OK(ImportGraphDef(options, gdef, &graph_, NULL, &res));
+  TF_ASSERT_OK(ImportGraphDef(options, gdef, &graph_, nullptr, &res));
   std::map<string, string> node2dev;
   for (Node* n : graph_.nodes()) {
     node2dev[n->name()] = n->requested_device();

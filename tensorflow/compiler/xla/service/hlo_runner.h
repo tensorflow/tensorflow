@@ -129,7 +129,8 @@ class HloRunner : public HloRunnerInterface {
       std::function<Executable*(int64_t)> executable_provider,
       std::function<int64_t(int64_t)> argument_count_provider,
       std::function<const Literal*(int64_t, int64_t)> argument_provider,
-      const ReplicatedExecuteOptions& options);
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment = nullptr);
 
   // If backend is not created in the constructor, creates and returns the
   // default backend. If creation fails, crashes the program.

@@ -373,8 +373,6 @@ bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
          node.type_string() == "Svd" || node.type_string() == "Qr" ||
          node.type_string() == "MatrixInverse" ||
          node.type_string() == "MatrixSolve" ||
-         node.type_string() == "ResizeNearestNeighbor" ||
-         node.type_string() == "ResizeBilinear" ||
          node.type_string() == "ResizeBilinearGrad";
 }
 
@@ -485,6 +483,14 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (!op_filter_.allow_collective_reduce_v2 &&
       node.type_string() == "CollectiveReduceV2") {
     absl::string_view uncompilable_reason = "Collective op";
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              encapsulating_function, uncompilable_nodes);
+    LogNotCompilable(node, uncompilable_reason);
+    return false;
+  }
+
+  if (!op_filter_.allow_unique_op && node.type_string() == "Unique") {
+    absl::string_view uncompilable_reason = "Unique op";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               encapsulating_function, uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);

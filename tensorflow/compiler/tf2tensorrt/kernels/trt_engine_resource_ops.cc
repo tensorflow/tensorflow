@@ -193,9 +193,12 @@ class SerializeTRTResource : public OpKernel {
 
     // Lookup engine cache resource.
     TRTEngineCacheResource* resource = nullptr;
-    OP_REQUIRES_OK(
-        ctx, ctx->resource_manager()->Lookup(std::string(kTfTrtContainerName),
-                                             resource_name, &resource));
+    OP_REQUIRES(
+        ctx,
+        ctx->resource_manager()
+            ->Lookup(std::string(kTfTrtContainerName), resource_name, &resource)
+            .ok(),
+        errors::NotFound("TRTEngineCacheResource not yet created"));
     core::ScopedUnref unref_me(resource);
 
     // Terminate the calibration if any.

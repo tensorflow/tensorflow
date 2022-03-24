@@ -69,17 +69,7 @@ class TfLiteDriver : public TestRunner {
       override;
   std::vector<string> GetOutputNames() override;
 
-  const std::vector<int>& GetInputs() override { return inputs_; }
-  const std::vector<int>& GetOutputs() override { return outputs_; }
-  void ReshapeTensor(int id, const string& csv_values) override;
   void AllocateTensors() override;
-  void ResetTensor(int id) override;
-  void SetInput(int id, const string& csv_values) override;
-  void SetExpectation(int id, const string& csv_values) override;
-  void SetShapeExpectation(int id, const string& csv_values) override;
-  void Invoke() override;
-  bool CheckResults() override;
-  string ReadOutput(int id) override;
   void SetThreshold(double relative_threshold, double absolute_threshold);
   void SetQuantizationErrorMultiplier(int quantization_error_multiplier);
 
@@ -87,6 +77,9 @@ class TfLiteDriver : public TestRunner {
   Interpreter::TfLiteDelegatePtr delegate_;
 
  private:
+  void SetInput(const string& name, const string& csv_values);
+  void SetExpectation(const string& name, const string& csv_values);
+  void SetShapeExpectation(const string& name, const string& csv_values);
   void DeallocateStringTensor(TfLiteTensor* t) {
     if (t) {
       free(t->data.raw);
@@ -106,8 +99,6 @@ class TfLiteDriver : public TestRunner {
   class DataExpectation;
   class ShapeExpectation;
 
-  std::vector<int> inputs_;
-  std::vector<int> outputs_;
   std::map<string, uint32_t> signature_inputs_;
   std::map<string, uint32_t> signature_outputs_;
   std::unique_ptr<OpResolver> resolver_;

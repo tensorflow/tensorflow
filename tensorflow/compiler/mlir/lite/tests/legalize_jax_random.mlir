@@ -13,7 +13,7 @@ func @tfl_wrapped_jax_random_normal(%arg0: tensor<2xui32>) -> tuple<tensor<3x4xf
   %0 = mhlo.constant dense<0.0> : tensor<12xf32>
   %1 = "mhlo.reshape"(%0) : (tensor<12xf32>) -> tensor<3x4xf32>
   %2 = "mhlo.tuple"(%1) : (tensor<3x4xf32>) -> tuple<tensor<3x4xf32>>
-  return %2 : tuple<tensor<3x4xf32>>
+  func.return %2 : tuple<tensor<3x4xf32>>
 }
 
 
@@ -29,5 +29,5 @@ func @tfl_wrapped_jax_random_uniform(%arg0: tensor<2xui32>) -> tuple<tensor<1x2x
   %0 = mhlo.constant dense<0.0> : tensor<2xf32>
   %1 = "mhlo.reshape"(%0) : (tensor<2xf32>) -> tensor<1x2xf32>
   %2 = "mhlo.tuple"(%1) : (tensor<1x2xf32>) -> tuple<tensor<1x2xf32>>
-  return %2 : tuple<tensor<1x2xf32>>
+  func.return %2 : tuple<tensor<1x2xf32>>
 }

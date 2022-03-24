@@ -162,6 +162,15 @@ class Conv2DTester {
 
   inline bool INT8Weights() const { return int8_weights_; }
 
+  inline Conv2DTester& INT8ChannelWiseWeights() {
+    int8_channel_wise_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8ChannelWiseWeights() const {
+    return int8_channel_wise_weights_;
+  }
+
   inline Conv2DTester& SparseWeights() {
     sparse_weights_ = true;
     return *this;
@@ -228,6 +237,7 @@ class Conv2DTester {
   int32_t dilation_width_ = 1;
   bool fp16_weights_ = false;
   bool int8_weights_ = false;
+  bool int8_channel_wise_weights_ = false;
   bool sparse_weights_ = false;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =

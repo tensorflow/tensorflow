@@ -593,7 +593,7 @@ class FunctionalOpsTest(test.TestCase):
     def run():
       with ops.device("/cpu:0"):
         return functional_ops.remote_call(
-            args=[constant_op.constant([1.])],
+            args=[constant_op.constant([1.])] + _remote_fn.captured_inputs,
             Tout=[dtypes.float32],
             f=_remote_fn,
             target="/cpu:1")[0]
@@ -1028,7 +1028,7 @@ class FunctionalOpsTest(test.TestCase):
     def run():
       with ops.device("/cpu:0"):
         return functional_ops.remote_call(
-            args=[constant_op.constant([1.])],
+            args=[constant_op.constant([1.])] + collective_fn.captured_inputs,
             Tout=[dtypes.float32],
             f=collective_fn,
             target="/cpu:1")

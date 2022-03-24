@@ -338,9 +338,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-// Evaluate cond subgraph and returns the result.
-bool Eval_cond_subgraph(TfLiteContext* context, Subgraph* cond_subgraph,
-                        bool cond_has_dynamic_output_tensors) {
+// Evaluate cond subgraph and set the result.
+TfLiteStatus Eval_cond_subgraph(TfLiteContext* context, Subgraph* cond_subgraph,
+                                bool cond_has_dynamic_output_tensors,
+                                bool* cond_subgraph_output) {
   TF_LITE_ENSURE_OK(context, cond_subgraph->Invoke());
   int cond_subgraph_output_index = cond_subgraph->outputs()[0];
   cond_subgraph->EnsureTensorDataIsReadable(cond_subgraph_output_index);
@@ -349,7 +350,8 @@ bool Eval_cond_subgraph(TfLiteContext* context, Subgraph* cond_subgraph,
     TF_LITE_ENSURE_STATUS(CheckCondOutput(context, cond_output));
   }
 
-  return (cond_output->data.b[0]);
+  *cond_subgraph_output = (cond_output->data.b[0]);
+  return kTfLiteOk;
 }
 
 // Evaluate WHILE op when body subgraph has dynamic outputs.
@@ -410,8 +412,12 @@ TfLiteStatus Eval_dynamic(TfLiteContext* context, TfLiteNode* node) {
 
   while (true) {
     // Step 3. Eval cond subgraph
-    if (!Eval_cond_subgraph(context, cond_subgraph,
-                            op_data->cond_has_dynamic_output_tensors)) {
+    bool cond_subgraph_output;
+    TF_LITE_ENSURE_OK(
+        context, Eval_cond_subgraph(context, cond_subgraph,
+                                    op_data->cond_has_dynamic_output_tensors,
+                                    &cond_subgraph_output));
+    if (!cond_subgraph_output) {
       break;
     }
 
@@ -507,8 +513,12 @@ TfLiteStatus Eval_static(TfLiteContext* context, TfLiteNode* node) {
   bool body_invoked = false;
   while (true) {
     // Step 2. Eval cond subgraph
-    if (!Eval_cond_subgraph(context, cond_subgraph,
-                            op_data->cond_has_dynamic_output_tensors)) {
+    bool cond_subgraph_output;
+    TF_LITE_ENSURE_OK(
+        context, Eval_cond_subgraph(context, cond_subgraph,
+                                    op_data->cond_has_dynamic_output_tensors,
+                                    &cond_subgraph_output));
+    if (!cond_subgraph_output) {
       break;
     }
 

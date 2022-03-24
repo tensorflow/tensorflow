@@ -51,6 +51,7 @@ class ComputeTask {
   void Init(std::unique_ptr<GPUOperation>&& operation);
 
   const OperationDef& GetDefinition() const;
+  const GPUOperation& GetGpuOperation() const { return *operation_; }
   bool IsLinkable() const;
 
   absl::Status AddTask(ComputeTask* task);
@@ -75,10 +76,22 @@ class ComputeTask {
 
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
+  int3 GetWorkGroupSize() const { return operation_->work_group_size_; }
+  void SetWorkGroupSize(const int3& work_group_size);
+
+  const std::string& GetCode() const { return operation_->code_; }
+  const std::map<std::string, std::string>& GetDefines() const {
+    return defines_;
+  }
+
+  absl::Status Init(MetalDevice* device, const std::string& code,
+                    const std::map<std::string, std::string>& defines);
+  absl::Status RestoreDeserialized(MetalDevice* device);
+
  private:
-  absl::Status CompileProgram(MetalDevice* device,
-                              CalculationsPrecision precision,
-                              const std::string& kernel_code);
+  absl::Status CompileProgram(
+      MetalDevice* device, const std::string& code,
+      const std::map<std::string, std::string>& defines);
   void Release();
 
   std::unique_ptr<GPUOperation> operation_;
@@ -89,6 +102,9 @@ class ComputeTask {
   bool need_icb_support_ = false;      // optional
   id<MTLArgumentEncoder> arguments_encoder_ = nullptr;
   id<MTLBuffer> arg_buffer_ = nullptr;
+
+  // for serialization
+  std::map<std::string, std::string> defines_;
 };
 
 }  // namespace metal

@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "llvm/Support/raw_os_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -185,20 +186,20 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
 // Hooks for tf-mlir-translate
 //----------------------------------------------------------------------------/
 
-static mlir::OwningModuleRef HloToMlirHloTranslate(llvm::StringRef input,
-                                                   mlir::MLIRContext* context) {
+static mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslate(
+    llvm::StringRef input, mlir::MLIRContext* context) {
   return xla::HloToMlirHloTranslateFunction(input, context,
                                             import_all_computations);
 }
 
-static mlir::OwningModuleRef HloTextToMlirHloTranslate(
+static mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslate(
     llvm::StringRef input, mlir::MLIRContext* context) {
   return xla::HloTextToMlirHloTranslateFunction(input, context,
                                                 import_all_computations);
 }
 
 static void RegisterInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+  registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                   mlir::mhlo::MhloDialect, mlir::tensor::TensorDialect>();
 }
 

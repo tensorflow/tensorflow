@@ -19,13 +19,13 @@ limitations under the License.
 
 TEST(FftTypeTest, MatchesProto) {
   EXPECT_EQ(::xla::FftType_ARRAYSIZE, 4);
-  EXPECT_EQ(::tensorflow::xla::kFftTypeArraySize, 4);
+  EXPECT_EQ(::xla::internal::FftTypeArraySize(), 4);
   EXPECT_EQ(::xla::FftType::FFT,
-            static_cast<::tensorflow::int32>(::tensorflow::xla::FftType::FFT));
+            static_cast<int32_t>(::xla::internal::FftType::FFT));
   EXPECT_EQ(::xla::FftType::IFFT,
-            static_cast<::tensorflow::int32>(::tensorflow::xla::FftType::IFFT));
+            static_cast<int32_t>(::xla::internal::FftType::IFFT));
   EXPECT_EQ(::xla::FftType::RFFT,
-            static_cast<::tensorflow::int32>(::tensorflow::xla::FftType::RFFT));
-  EXPECT_EQ(::xla::FftType::IRFFT, static_cast<::tensorflow::int32>(
-                                       ::tensorflow::xla::FftType::IRFFT));
+            static_cast<int32_t>(::xla::internal::FftType::RFFT));
+  EXPECT_EQ(::xla::FftType::IRFFT,
+            static_cast<int32_t>(::xla::internal::FftType::IRFFT));
 }

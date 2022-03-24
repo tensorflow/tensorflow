@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/profiling_info.h"
 
 #include <map>
+#include <string>
 
 namespace tflite {
 namespace gpu {
@@ -40,7 +41,22 @@ std::string ProfilingInfo::GetDetailedReport() const {
   for (const auto& dispatch : dispatches) {
     result += "  " + dispatch.label + " - " +
               std::to_string(absl::ToDoubleMilliseconds(dispatch.duration)) +
-              " ms\n";
+              " ms";
+    const double times_per_sec =
+        1000.0 / absl::ToDoubleMilliseconds(dispatch.duration);
+    if (dispatch.read_mem_size && dispatch.write_mem_size) {
+      const uint64_t total_size =
+          dispatch.read_mem_size + dispatch.write_mem_size;
+      const double giga_bytes = total_size / 1024.0 / 1024.0 / 1024.0;
+      const double giga_bytes_per_sec = times_per_sec * giga_bytes;
+      result += ", " + std::to_string(giga_bytes_per_sec) + " Gb/s";
+    }
+    if (dispatch.flops) {
+      const double giga_flops = dispatch.flops / 1000.0 / 1000.0 / 1000.0;
+      const double giga_flops_per_sec = times_per_sec * giga_flops;
+      result += ", " + std::to_string(giga_flops_per_sec) + " Gflops";
+    }
+    result += "\n";
     auto name = dispatch.label.substr(0, dispatch.label.find(' '));
     if (statistics.find(name) != statistics.end()) {
       statistics[name].count++;

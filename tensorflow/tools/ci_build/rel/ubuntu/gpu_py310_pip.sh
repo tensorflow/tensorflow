@@ -18,22 +18,16 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-# Update bazel
-update_bazel_linux
+install_bazelisk
 
 # Export required variables for running pip.sh
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="GPU"
 export TF_PYTHON_VERSION='python3.10'
+
+# Setup virtual environment and install dependencies
+setup_venv_ubuntu ${TF_PYTHON_VERSION}
 export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
-
-# TODO(rameshsampath): Remove this and install in virtualenv
-# Currently pip_new doesn't allow it, will need refactoring
-# Add user install directory to PATH
-export PATH="$HOME/.local/bin:$PATH"
-
-# Installs requirements for bazel build
-install_ubuntu_pip_deps_novenv ${TF_PYTHON_VERSION}
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh

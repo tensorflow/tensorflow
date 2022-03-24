@@ -491,15 +491,24 @@ uint GetTotalElementsCountForLayout(const WeightsDescription& weight_desc,
 uint GetTotalElementsCountForLayout(const WeightsDescription& weight_desc,
                                     const OHWDI& shape);
 
+// Applicable to:
+//   k2DX4I4YIsSpatialIAndXIsOOGroupO4
+//   k2DX4O4YIsSpatialIAndXIsOOGroupI4
+uint2 Get2dResourceSize(const WeightsDescription& weight_desc,
+                        const OHWI& shape);
+// Applicable to:
+//   k2DX4I4YIsSpatialIAndXIsOOGroupO4
+//   k2DX4O4YIsSpatialIAndXIsOOGroupI4
+uint2 Get2dResourceSize(const WeightsDescription& weight_desc,
+                        const OHWDI& shape);
+
 void RearrangeWeights(
     const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
-    const WeightsDescription& dst_weight_desc, DataType dst_type,
-    absl::Span<uint8_t> dst);
+    const WeightsDescription& dst_weight_desc, absl::Span<uint8_t> dst);
 
 void RearrangeWeights(
     const tflite::gpu::Tensor<OHWDI, DataType::FLOAT32>& weights,
-    const WeightsDescription& dst_weight_desc, DataType dst_type,
-    absl::Span<uint8_t> dst);
+    const WeightsDescription& dst_weight_desc, absl::Span<uint8_t> dst);
 
 }  // namespace gpu
 }  // namespace tflite

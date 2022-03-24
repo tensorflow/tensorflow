@@ -68,7 +68,7 @@ class Stats : public CompilationStats {
   bool pass_running_ = false;
   std::string current_pass_;
   // The start time of the currently running pass.
-  uint64 start_micros_;
+  uint64_t start_micros_;
 };
 
 /* static */
@@ -93,7 +93,7 @@ void Stats::EndPass(absl::string_view pass_name) {
   CHECK(pass_running_);
   CHECK_EQ(current_pass_, std::string(pass_name));
   pass_running_ = false;
-  uint64 end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
   double duration_ms = (end_micros - start_micros_) / 1000.0;
   passes_.push_back(PassInfo(current_pass_, duration_ms));
 }

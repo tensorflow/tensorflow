@@ -37,6 +37,7 @@ using tensorflow::DT_INT64;
 using tensorflow::DT_INVALID;
 using tensorflow::DT_QUINT8;
 using tensorflow::DT_STRING;
+using tensorflow::DT_UINT16;
 using tensorflow::DT_UINT32;
 using tensorflow::NodeDef;
 using tensorflow::Status;
@@ -141,6 +142,11 @@ void BuildConstNode(std::initializer_list<int64_t> shape,
     case DT_INT64:
       for (int64_t i = 0; i < num_elements; ++i) {
         t.add_int64_val(i + 1);
+      }
+      break;
+    case DT_UINT16:
+      for (int64_t i = 0; i < num_elements; ++i) {
+        t.add_int_val(i % std::numeric_limits<uint16_t>::max() + 1);
       }
       break;
     case DT_STRING:

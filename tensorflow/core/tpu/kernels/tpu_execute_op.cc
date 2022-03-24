@@ -174,9 +174,8 @@ struct InputBuffers {
     xla::ShapedBuffer shaped_buffer(std::move(host_shape), buffers.shape(),
                                     device_ordinal);
     shaped_buffer.set_buffers(buffers.Map<se::DeviceMemoryBase>(
-        [](xla::MaybeOwningDeviceMemory* buffer) {
-          CHECK(buffer);
-          return buffer->AsDeviceMemoryBase();
+        [](const xla::MaybeOwningDeviceMemory& buffer) {
+          return buffer.AsDeviceMemoryBase();
         }));
     return shaped_buffer;
   }

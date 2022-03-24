@@ -97,7 +97,7 @@ void UnscheduleAlarm(const SlowOperationAlarm* alarm) {
 }  // namespace
 
 SlowOperationAlarm::SlowOperationAlarm(
-    absl::Duration timeout, string msg,
+    absl::Duration timeout, std::string msg,
     std::atomic<int64_t>* counter /*=nullptr*/)
     : deadline_(absl::Now() + timeout),
       msg_(std::move(msg)),

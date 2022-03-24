@@ -27,8 +27,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/finalization_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -144,9 +146,12 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       // incrementally collect the duration of the iterator's lifetime.
       get_next_end_time_us_ = start_time_us;
     }
+    uint64 gap_time_us = 0;
     if (num_get_next_calls_ == 0) {
       get_next_start_time_us_ = start_time_us;
+      gap_time_us = safe_sub(start_time_us, get_next_end_time_us_);
     }
+    metrics::RecordTFDataIteratorGap(gap_time_us);
     num_get_next_calls_++;
   }
   auto iterator_ = captured_state->iterator();
@@ -154,8 +159,8 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
                                    out_tensors, end_of_sequence);
   if (collect_metrics_) {
     const uint64 end_time_us = ctx->env()->NowMicros();
-    metrics::RecordTFDataGetNextDuration(safe_sub(end_time_us, start_time_us));
-    metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
+    AddLatencySample(safe_sub(end_time_us, start_time_us));
+    IncrementThroughput(GetTotalBytes(*out_tensors));
     mutex_lock l(mu_);
     metrics::RecordTFDataIteratorLifetime(
         safe_sub(end_time_us, get_next_end_time_us_));
@@ -190,6 +195,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
                                  IteratorStateReader* reader) {
   const DatasetBase* dataset;
   std::shared_ptr<State> new_state;
+  const DatasetBase* input_dataset;
   {
     tf_shared_lock l(mu_);
     if (!iterator_state_->iterator()) {
@@ -207,6 +213,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
         std::make_shared<State>(iterator_state_->flib_def(),
                                 iterator_state_->pflr(), iterator_state_->flr(),
                                 /*iterator=*/nullptr);
+    input_dataset = iterator_state_->dataset();
   }
   core::ScopedUnref scoped_unref(dataset);
   IteratorContext::Params params(ctx);
@@ -225,7 +232,8 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
   std::unique_ptr<IteratorBase> iterator_base;
   TF_RETURN_IF_ERROR(dataset->MakeIteratorFromCheckpoint(
       IteratorContext(std::move(params)), "Iterator", reader, &iterator_base));
-  new_state->DowncastAndSetIterator(std::move(iterator_base));
+  new_state->DowncastAndSetIteratorAndDataset(std::move(iterator_base),
+                                              input_dataset);
 
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
@@ -233,7 +241,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
 }
 
 Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
-                                                DatasetBase* dataset) {
+                                                const DatasetBase* dataset) {
   std::shared_ptr<State> new_state;
   {
     tf_shared_lock l(mu_);
@@ -261,8 +269,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   std::unique_ptr<IteratorBase> iterator;
   if (ctx->function_library()->device()->device_type() == DEVICE_CPU) {
     DatasetBase* finalized_dataset;
-    TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
-    core::ScopedUnref unref(finalized_dataset);
+    TF_ASSIGN_OR_RETURN(finalized_dataset, GetFinalizedDataset(ctx, dataset));
     TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
         IteratorContext(std::move(params)),
         /*parent=*/nullptr, "Iterator", &iterator));
@@ -276,7 +283,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(
       VerifyShapesCompatible(output_shapes_, iterator->output_shapes()));
 
-  new_state->DowncastAndSetIterator(std::move(iterator));
+  new_state->DowncastAndSetIteratorAndDataset(std::move(iterator), dataset);
 
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
@@ -913,6 +920,10 @@ void RecordElementSize(const std::vector<Tensor> element,
 }
 
 Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
+  VLOG(3) << "IteratorGetNextOp enter. iter_id=" << ctx->frame_iter().iter_id;
+  auto cleanup = gtl::MakeCleanup([ctx] {
+    VLOG(3) << "IteratorGetNextOp exit. iter_id=" << ctx->frame_iter().iter_id;
+  });
   profiler::TraceMe traceme(
       [&] {
         return profiler::TraceMeEncode(
@@ -942,6 +953,12 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
 }
 
 Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
+  VLOG(3) << "IteratorGetNextAsOptionalOp exit. iter_id="
+          << ctx->frame_iter().iter_id;
+  auto cleanup = gtl::MakeCleanup([ctx] {
+    VLOG(3) << "IteratorGetNextAsOptionalOp exit. iter_id="
+            << ctx->frame_iter().iter_id;
+  });
   profiler::TraceMe traceme(
       [&] {
         return profiler::TraceMeEncode(

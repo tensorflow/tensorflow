@@ -21,7 +21,6 @@ import six
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_functional_ops
@@ -952,8 +951,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0x100000003f800000], np.int64),
           expected=np.array([1, 0x100000003f800000], np.uint64))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/195120263): MLIR bridge does not support int8 <-> float bitcast")
   def testBitcastInt8ToFloat(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.float32),

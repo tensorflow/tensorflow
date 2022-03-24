@@ -46,19 +46,19 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       %outputs_22, %control_23 = tf_executor.island wraps "tf.Identity"(%outputs_20) {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
       tf_executor.fetch %outputs_22, %outputs_4, %outputs_16, %outputs_12, %arg0, %outputs_0 : tensor<?x?xf32>, tensor<*xf32>, tensor<?x16384xf32>, tensor<16x112x112x?xf32>, tensor<16x224x224x3xf32>, tensor<*xf32>
     }
-    return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5 : tensor<?x?xf32>, tensor<*xf32>, tensor<?x16384xf32>, tensor<16x112x112x?xf32>, tensor<16x224x224x3xf32>, tensor<*xf32>
+    func.return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5 : tensor<?x?xf32>, tensor<*xf32>, tensor<?x16384xf32>, tensor<16x112x112x?xf32>, tensor<16x224x224x3xf32>, tensor<*xf32>
   }
 
   func @while_cond_lt9(%arg0: tensor<i32>) -> tensor<i1> {
     %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<9> : tensor<i32>} : () -> tensor<i32>
     %1 = "tf.Less"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    return %1 : tensor<i1>
+    func.return %1 : tensor<i1>
   }
 
   func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
     %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<2> : tensor<i32>} : () -> tensor<i32>
     %1 = "tf.Add"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-    return %1 : tensor<i32>
+    func.return %1 : tensor<i32>
   }
 
   // CHECK-LABEL: func @while_test
@@ -70,14 +70,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NEXT: tfrt_fallback_async.const_dense_tensor dense<9> : tensor<i32>
     // CHECK-NEXT: tfrt_fallback_async.executeop key({{.*}}) cost({{.*}}) device("/device:CPU:0") "tf.Less"
     // CHECK-NEXT: [[pred:%.*]] = tfrt_fallback_async.predicate
-    // CHECK-NEXT: tfrt.while [[pred]] @"while_body_add2/tfrt_body"
+    // CHECK-NEXT: tfrt.while [[pred]] @"while_body_add2/tfrt_body_1"
     // CHECK-NEXT: tfrt.merge.chains
     // CHECK-NEXT: tfrt.return
     %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i32>} : () -> tensor<i32>
-    %1 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
-    return %1 : tensor<i32>
+    %1 = "tf.While"(%0) { cond = @while_cond_lt9, body = @while_body_add2, is_stateless = false, parallel_iterations = 1} : (tensor<i32>) -> (tensor<i32>)
+    func.return %1 : tensor<i32>
   }
-  // CHECK: func @"while_body_add2/tfrt_body"
+  // CHECK: func @"while_body_add2/tfrt_body_1"
   // CHECK-NOT: tfrt.call
 
   // CHECK: func @"while_cond_lt9/tfrt_predicate"

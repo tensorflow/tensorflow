@@ -34,15 +34,6 @@ namespace {
 
 using ::testing::ElementsAre;
 
-TEST(ShapeUtilTest, ShapeIndexViewTest) {
-  ShapeIndex index = {1, 2, 3, 4};
-  ShapeIndexView index_view(index, 1);
-  EXPECT_EQ(3, index_view.size());
-  EXPECT_EQ(ShapeIndexView({2, 3, 4}), index_view);
-  EXPECT_EQ(ShapeIndexView({3, 4}), index_view.ConsumeFront());
-  EXPECT_EQ(ShapeIndexView({2, 3}), index_view.ConsumeBack());
-}
-
 TEST(ShapeUtilTest, GetDimensionHelperCanNegativeIndex) {
   Shape matrix = ShapeUtil::MakeShape(F32, {2, 3});
   EXPECT_EQ(3, ShapeUtil::GetDimension(matrix, -1));
@@ -690,13 +681,12 @@ TEST(ShapeUtilTest, ReshapeIsBitcast_3x4_6x2) {
       //
       // The input and the output have the same underlying data only if they
       // are both row-major.
-      EXPECT_EQ(
-          ShapeUtil::ReshapeIsBitcast(
-              ShapeUtil::MakeShapeWithLayout(
-                  F32, {3, 4}, AsInt64Slice(input_layout.minor_to_major())),
-              ShapeUtil::MakeShapeWithLayout(
-                  F32, {6, 2}, AsInt64Slice(output_layout.minor_to_major()))),
-          input_is_row_major && output_is_row_major);
+      EXPECT_EQ(ShapeUtil::ReshapeIsBitcast(
+                    ShapeUtil::MakeShapeWithLayout(
+                        F32, {3, 4}, input_layout.minor_to_major()),
+                    ShapeUtil::MakeShapeWithLayout(
+                        F32, {6, 2}, output_layout.minor_to_major())),
+                input_is_row_major && output_is_row_major);
     }
   }
 }

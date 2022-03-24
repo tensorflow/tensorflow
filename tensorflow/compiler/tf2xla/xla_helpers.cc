@@ -143,17 +143,12 @@ XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn() {
 
 Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
-    const absl::optional<XlaCompilationResult::CollectiveInfo>& collective_info,
+    const XlaCompilationResult::CollectiveInfo& collective_info,
     xla::ExecutableRunOptions& run_options,
     xla::DeviceAssignment& device_assignment,
     xla::gpu::GpuExecutableRunOptions& gpu_options) {
   // TODO(nnigania): workaround for b/199436990
-  static const int kTimeoutSeconds = 300;
-  if (!collective_info) {
-    // An empty device assignment is sufficient for the case where no
-    // collectives are present.
-    return Status::OK();
-  }
+  static const int kTimeoutSeconds = 1000;
   if (ctx->collective_executor() == nullptr) {
     return errors::InvalidArgument(
         "CollectiveExecutor is required but not available");
@@ -163,8 +158,8 @@ Status ResolveDeviceAssignment(
   params->name = "xla-reduction-compilation";
   params->group.device_type =
       DeviceType{static_cast<Device*>(ctx->device())->device_type()};
-  params->group.group_size = collective_info->group_size;
-  params->group.group_key = collective_info->group_key;
+  params->group.group_size = collective_info.group_size;
+  params->group.group_key = collective_info.group_key;
   params->instance.type = REDUCTION_COLLECTIVE;
   params->instance.impl_details.communication_hint = "nccl";
   params->instance.impl_details.timeout_seconds = kTimeoutSeconds;
@@ -185,6 +180,8 @@ Status ResolveDeviceAssignment(
     return errors::InvalidArgument("Timeout reached");
   }
   TF_RETURN_IF_ERROR(st);
+  VLOG(5) << "Using collective params to resolve device assignment: "
+          << params->ToString();
 
   // Identify the physical device associated with each replica.
   device_assignment = xla::DeviceAssignment(params->group.group_size, 1);
@@ -217,6 +214,7 @@ Status ResolveDeviceAssignment(
             << " for replica " << device_idx << " (" << device.name() << ")";
     device_assignment(device_idx, 0) = device.xla_global_id();
   }
+  VLOG(5) << "Generated device assignment: " << device_assignment.ToString();
   if (params->group.device_type == DEVICE_GPU) {
     // For GPU collectives, `xla_global_id`s are arbitrary integers, and XLA
     // requires a mapping from local device IDs to global device IDs.
@@ -233,7 +231,7 @@ Status ResolveDeviceAssignment(
           device_mgr->LookupDevice(device_attributes.name(), &resolved_device);
       if (lookup_status.ok()) {
         // This is a local device, so include it in the mapping.
-        const DeviceBase::GpuDeviceInfo* gpu_device_info =
+        const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
             resolved_device->tensorflow_gpu_device_info();
         global_device_ids[gpu_device_info->stream->parent()->device_ordinal()] =
             device_attributes.xla_global_id();
@@ -244,22 +242,6 @@ Status ResolveDeviceAssignment(
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);
   return Status::OK();
-}
-
-std::string DefinitionLocationMsg(
-    const absl::optional<ManagedStackTrace>& stack_trace) {
-  if (stack_trace) {
-    std::vector<StackFrame> stack_frames =
-        stack_trace->ToStackFrames({}, IsInternalFrameForFilename,
-                                   /*reverse_traversal=*/true,
-                                   /*limit=*/1);
-    if (!stack_frames.empty()) {
-      const StackFrame& last_frame = stack_frames[0];
-      return absl::StrCat(" (defined @ ", last_frame.file_name, ":",
-                          last_frame.line_number, ")");
-    }
-  }
-  return "";
 }
 
 }  // end namespace tensorflow

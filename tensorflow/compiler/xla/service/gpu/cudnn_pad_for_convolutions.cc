@@ -109,7 +109,7 @@ static Status PadConv(HloCustomCallInstruction* conv,
     auto* new_conv_result = add(
         HloInstruction::CreateGetTupleElement(new_result_shape, new_conv, 0));
     auto* empty_temp_buffer =
-        add(HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint8>({})));
+        add(HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint8_t>({})));
     auto* sliced_result = add(HloInstruction::CreateSlice(
         result_shape, new_conv_result, start_indices, end_indices, strides));
     new_conv =
@@ -228,7 +228,7 @@ static StatusOr<bool> TryResolvePaddedShapesForTensorCore(
     new_filter_shape->set_dimensions(dnums.kernel_input_feature_dimension(), 4);
   } else {
     auto pad_dim = [](Shape* s, int64_t dim) {
-      s->set_dimensions(dim, RoundUpToNearest<int64_t>(s->dimensions(dim), 8));
+      s->set_dimensions(dim, RoundUpTo<int64_t>(s->dimensions(dim), 8));
     };
     pad_dim(new_input_shape, dnums.input_feature_dimension());
     pad_dim(new_filter_shape, dnums.kernel_input_feature_dimension());
@@ -351,8 +351,8 @@ StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   {
     auto pad_dim = [&](Shape* s, int64_t dim, int64_t cur_vect_size) {
       CHECK_EQ(pad_to % cur_vect_size, 0);
-      s->set_dimensions(dim, RoundUpToNearest<int64_t>(s->dimensions(dim),
-                                                       pad_to / cur_vect_size));
+      s->set_dimensions(
+          dim, RoundUpTo<int64_t>(s->dimensions(dim), pad_to / cur_vect_size));
     };
 
     switch (kind) {

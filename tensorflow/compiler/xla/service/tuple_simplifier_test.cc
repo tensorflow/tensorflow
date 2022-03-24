@@ -288,5 +288,53 @@ TEST_F(TupleSimplifierTest, CanExcludeEntryComputation) {
   EXPECT_THAT(entry->instruction_count(), 9);
 }
 
+TEST_F(TupleSimplifierTest, NoRootWithSideEffects) {
+  auto module = CreateNewVerifiedModule();
+
+  HloComputation::Builder builder(TestName() + "_1");
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape_, "param"));
+  HloInstruction* gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 0));
+  HloInstruction* gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 1));
+  HloInstruction* gte2 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 2));
+  HloInstruction* after_all =
+      builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(
+      HloInstruction::CreateOutfeed(gte0->shape(), gte0, after_all, "config"));
+
+  builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1, gte2}));
+
+  HloComputation* c0 = module->AddEmbeddedComputation(builder.Build());
+
+  {
+    HloComputation::Builder builder(TestName() + "_Entry");
+    HloInstruction* tuple_param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape_, "param"));
+    builder.AddInstruction(
+        HloInstruction::CreateCall(tuple_shape_, {tuple_param}, c0));
+
+    module->AddEntryComputation(builder.Build());
+  }
+
+  Run(module.get(), /*change_expected=*/false);
+}
+
+TEST_F(TupleSimplifierTest, ShardingLoss) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0), sharding={devices=[2]0,1}
+      t = (s32[10]) tuple(p0)
+      ROOT %gte = s32[10] get-tuple-element(t), index=0, sharding={replicated}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  Run(m.get(), /*change_expected=*/false);
+}
+
 }  // namespace
 }  // namespace xla

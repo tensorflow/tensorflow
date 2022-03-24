@@ -15,15 +15,11 @@
 """A class to store named variables and a scope operator to manage sharing."""
 
 import copy
-import enum  # pylint: disable=g-bad-import-order
+import enum
 import functools
 import sys
 import threading
 import traceback
-
-import six
-from six import iteritems
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.client import session
@@ -56,7 +52,7 @@ _api_usage_gauge = monitoring.BoolGauge(
     "Whether variable_scope.enable_resource_variables() is called.")
 
 
-class _PartitionInfo(object):
+class _PartitionInfo:
   """Holds partition info used by initializer functions."""
 
   __slots__ = ["_full_shape", "_var_offset"]
@@ -75,14 +71,12 @@ class _PartitionInfo(object):
       ValueError: If `full_shape` or `var_offset` differ in length. If
         `var_offset` exceeds `full_shape` in any dimension.
     """
-    if not isinstance(full_shape, collections_abc.Sequence) or isinstance(
-        full_shape, six.string_types):
+    if not isinstance(full_shape, (list, tuple)):
       raise TypeError(
           "`full_shape` must be a sequence (like tuple or list) instead of " +
           type(full_shape).__name__)
 
-    if not isinstance(var_offset, collections_abc.Sequence) or isinstance(
-        var_offset, six.string_types):
+    if not isinstance(var_offset, (list, tuple)):
       raise TypeError(
           "`var_offset` must be a sequence (like tuple or list) instead of " +
           type(var_offset).__name__)
@@ -149,8 +143,7 @@ class _PartitionInfo(object):
       ValueError: If `shape` is not the same length as `self.full_shape`. If
         the variable is partitioned in more than one dimension.
     """
-    if not isinstance(shape, collections_abc.Sequence) or isinstance(
-        shape, six.string_types):
+    if not isinstance(shape, (tuple, list)):
       raise TypeError(
           "`shape` must be a sequence (like tuple or list) instead of " +
           type(shape).__name__)
@@ -301,7 +294,7 @@ def _needs_no_arguments(python_callable):
       tf_inspect.getargspec(python_callable).defaults or [])
 
 
-class _VariableStore(object):
+class _VariableStore:
   """Variable store that carries a number of named Variables.
 
   New variable names and new variables can be created; all stored
@@ -1114,7 +1107,7 @@ def no_regularizer(_):
 
 # TODO(alive): support caching devices and partitioned variables in Eager mode.
 @tf_export(v1=["VariableScope"])
-class VariableScope(object):
+class VariableScope:
   """Variable scope object to carry defaults to provide to `get_variable`.
 
   Many of the arguments we need for `get_variable` in a variable store are most
@@ -1443,9 +1436,15 @@ class _VariableScopeStore(threading.local):
       self.variable_scopes_count[scope_name] = 1
 
   def close_variable_subscopes(self, scope_name):
-    for k in list(self.variable_scopes_count.keys()):
-      if scope_name is None or k.startswith(scope_name + "/"):
+    if scope_name is None:
+      for k in self.variable_scopes_count:
         self.variable_scopes_count[k] = 0
+    else:
+      startswith_check = scope_name + "/"
+      startswith_len = len(startswith_check)
+      for k in self.variable_scopes_count:
+        if k[:startswith_len] == startswith_check:
+          self.variable_scopes_count[k] = 0
 
   def variable_scope_count(self, scope_name):
     return self.variable_scopes_count.get(scope_name, 0)
@@ -1517,7 +1516,7 @@ def with_variable_store(store):
     store_collection[:] = old
 
 
-class EagerVariableStore(object):
+class EagerVariableStore:
   """Wrapper allowing functional layers to be used with eager execution.
 
   When eager execution is enabled Variables get deleted when they go out of
@@ -1578,7 +1577,7 @@ class EagerVariableStore(object):
     """
     # pylint: disable=protected-access
     new_store = EagerVariableStore()
-    for key, var in iteritems(self._store._vars):
+    for key, var in self._store._vars.items():
       # Strip device out of variable name.
       try:
         index = var.name.index(":")
@@ -1939,7 +1938,7 @@ def _get_partitioned_variable(name,
 
 # Named like a function for compatibility with the previous
 # @tf_contextlib.contextmanager definition.
-class _pure_variable_scope(object):  # pylint: disable=invalid-name
+class _pure_variable_scope:  # pylint: disable=invalid-name
   """A context for the variable_scope, see `variable_scope` for docs."""
 
   def __init__(self,
@@ -2141,7 +2140,7 @@ def _get_unique_variable_scope(prefix):
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
 @tf_export(v1=["variable_scope"])  # pylint: disable=invalid-name
-class variable_scope(object):
+class variable_scope:
   """A context manager for defining ops that creates variables (layers).
 
   @compatibility(TF2)
@@ -2471,11 +2470,10 @@ class variable_scope(object):
     # IMPORTANT: Only assign to self._cached_pure_variable_scope and
     # self._current_name_scope after successful __enter__() calls.
     if self._name_or_scope is not None:
-      if not isinstance(self._name_or_scope,
-                        (VariableScope,) + six.string_types):
+      if not isinstance(self._name_or_scope, (VariableScope, str)):
         raise TypeError("VariableScope: name_or_scope must be a string or "
                         "VariableScope.")
-      if isinstance(self._name_or_scope, six.string_types):
+      if isinstance(self._name_or_scope, str):
         name_scope = self._name_or_scope
       else:
         name_scope = self._name_or_scope.name.split("/")[-1]
@@ -2488,7 +2486,7 @@ class variable_scope(object):
           current_name_scope.__exit__(*sys.exc_info())
           raise
         self._current_name_scope = current_name_scope
-        if isinstance(self._name_or_scope, six.string_types):
+        if isinstance(self._name_or_scope, str):
           old_name_scope = current_name_scope_name
         else:
           old_name_scope = self._name_or_scope.original_name_scope

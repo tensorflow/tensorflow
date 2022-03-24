@@ -55,7 +55,7 @@ using se::Stream;
 
 static Status PrepareCopy(Device* device, const DeviceContext* ctx,
                           const Tensor& src, const Tensor* dst,
-                          const DeviceBase::GpuDeviceInfo** dev_info,
+                          const DeviceBase::AcceleratorDeviceInfo** dev_info,
                           se::Stream** stream) {
   if (device == nullptr) {
     return errors::Internal("Unexpected null device.");
@@ -112,7 +112,7 @@ void PluggableDeviceUtil::DeviceToDeviceCopy(
     Device* src, Device* dst, AllocatorAttributes src_alloc_attr,
     AllocatorAttributes dst_alloc_attr, const Tensor* input, Tensor* output,
     int dev_to_dev_stream_index, StatusCallback done) {
-  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(src, send_dev_context, *input, output, &dev_info,
                          &send_stream);
@@ -175,7 +175,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToCPU(
     Device* device, const DeviceContext* device_context,
     const Tensor* device_tensor, Tensor* cpu_tensor, StatusCallback done) {
   VLOG(1) << "CopyPluggableDeviceTensorToCPU";
-  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(device, device_context, *device_tensor, cpu_tensor,
                          &dev_info, &send_stream);
@@ -223,7 +223,7 @@ void PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
     Device* device, Tensor* device_tensor, StatusCallback done,
     bool sync_dst_compute) {
   VLOG(1) << "CopyCPUTensorToPluggableDevice";
-  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* recv_stream = nullptr;
   Status s = PrepareCopy(device, device_context, *cpu_tensor, device_tensor,
                          &dev_info, &recv_stream);
@@ -294,7 +294,7 @@ void PluggableDeviceUtil::CopyPluggableDeviceTensorToSameDevice(
     const Tensor* src_device_tensor, Tensor* dst_device_tensor,
     StatusCallback done) {
   VLOG(1) << "CopyPluggableDeviceTensorToSameDevice";
-  const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
+  const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(device, device_context, *src_device_tensor,
                          dst_device_tensor, &dev_info, &send_stream);

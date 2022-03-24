@@ -37,7 +37,7 @@ using ::testing::_;
 
 // Test that a conditional of simple constants is transformed to a select
 TEST_F(ConditionalToSelectTest, MapConditionalConstants) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule MapConditionalConstants
 
 if {
@@ -80,7 +80,7 @@ ENTRY comp {
 // Test that the condition gets broadcasted for feeding into
 // select when the output is non-scalar.
 TEST_F(ConditionalToSelectTest, MapConditionalNonScalar) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule MapConditionalNonScalar
 
 if {
@@ -135,7 +135,7 @@ ENTRY comp {
 
 // Test that conditionals of tuple type get turned into kTupleSelect
 TEST_F(ConditionalToSelectTest, MapConditionalTuples) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule MapConditionalTuples
 
 if {

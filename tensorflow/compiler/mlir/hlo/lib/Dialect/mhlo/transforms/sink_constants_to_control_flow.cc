@@ -17,7 +17,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -42,8 +42,8 @@ namespace {
 class SinkConstantsToControlFlowPass
     : public SinkConstantsToControlFlowPassBase<
           SinkConstantsToControlFlowPass> {
-  void runOnFunction() override {
-    getFunction().walk([](Operation* op) {
+  void runOnOperation() override {
+    getOperation().walk([](Operation* op) {
       for (Region& region : op->getRegions()) SinkToRegion(&region);
     });
   }
@@ -54,7 +54,7 @@ class SinkConstantsToControlFlowPass
     llvm::DenseMap<Value, Operation*> sunk_constant;
     visitUsedValuesDefinedAbove({*region}, [&](OpOperand* use) {
       Value constant = use->get();
-      auto op = constant.getDefiningOp();
+      auto* op = constant.getDefiningOp();
       if (!op || !op->hasTrait<mlir::OpTrait::ConstantLike>()) return;
       auto map_entry = sunk_constant.try_emplace(constant, nullptr);
       if (!map_entry.second) {

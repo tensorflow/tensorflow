@@ -43,7 +43,7 @@ TfrtSavedModelMLIRImportInput::TfrtSavedModelMLIRImportInput(
       graph_execution_state_(std::move(graph_execution_state)) {}
 
 StatusOr<const tensorflow::Graph*> TfrtSavedModelMLIRImportInput::GetSubGraph(
-    absl::string_view name, const GraphImportConfig& graph_import_config) {
+    absl::string_view name, GraphImportConfig& graph_import_config) {
   LOG(INFO) << "TFRT importing savedmodel signature: " << name;
 
   auto iter = optimized_graphs_.find(name);

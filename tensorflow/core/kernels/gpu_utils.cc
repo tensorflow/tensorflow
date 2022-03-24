@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
@@ -225,6 +226,12 @@ StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
   int idx_no_scratch = -1;
   for (int i = 0; i < results.size(); i++) {
     if (!results[i].has_failure()) {
+      if (OpDeterminismRequired()) {
+        // When determinism is enabled, choose first working algorithm, and
+        // don't choose a no_scratch algorithm.
+        idx = i;
+        break;
+      }
       if (idx == -1 || compare_run_times(results[i], results[idx])) {
         idx = i;
       }

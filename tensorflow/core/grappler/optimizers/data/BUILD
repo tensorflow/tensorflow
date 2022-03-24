@@ -437,6 +437,7 @@ cc_library(
         "make_deterministic.h",
     ],
     deps = [
+        ":split_utils",
         ":function_utils",
         ":graph_utils",
         ":optimizer_base",
@@ -458,14 +459,55 @@ tf_cc_test(
     size = "small",
     srcs = ["make_deterministic_test.cc"],
     deps = [
+        ":function_utils",
         ":graph_test_utils",
         ":graph_utils",
         ":make_deterministic",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "split_utils",
+    srcs = ["split_utils.cc"],
+    hdrs = [
+        "split_utils.h",
+    ],
+    deps = [
+        ":function_utils",
+        ":graph_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:statusor",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "split_utils_test",
+    size = "small",
+    srcs = ["split_utils_test.cc"],
+    deps = [
+        ":function_utils",
+        ":split_utils",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:math",
+        "//tensorflow/core/platform:status_matchers",
     ],
 )
 

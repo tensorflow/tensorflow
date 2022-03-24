@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -64,7 +64,7 @@ struct TestSideEffectAnalysisPass
         op->emitRemark("Successors: ")
             << "{" << join_ids(analysis.DirectControlSuccessors(op)) << "}";
       }
-      if (llvm::isa<ReturnOp>(op)) {
+      if (llvm::isa<func::ReturnOp>(op)) {
         op->emitRemark("Sinks: ")
             << "{" << join_ids(analysis.ControlSinks()) << "}";
       }

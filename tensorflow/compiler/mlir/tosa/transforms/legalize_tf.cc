@@ -42,7 +42,7 @@ namespace {
 class LegalizeTF : public TosaLegalizeTFPassBase<LegalizeTF> {
  public:
   explicit LegalizeTF() {}
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // All the Pat<> lowering mappings.
@@ -1048,12 +1048,8 @@ LogicalResult ConvertTFAllOp::matchAndRewrite(Operation* op,
   if (!matchPattern(tf_all_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_all_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceAllOp(
-      rewriter, op, output_type, tf_all_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_all_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1074,12 +1070,8 @@ LogicalResult ConvertTFAnyOp::matchAndRewrite(Operation* op,
   if (!matchPattern(tf_any_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_any_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceAnyOp(
-      rewriter, op, output_type, tf_any_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_any_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1100,12 +1092,8 @@ LogicalResult ConvertTFMaxOp::matchAndRewrite(Operation* op,
   if (!matchPattern(tf_max_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_max_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceMaxOp(
-      rewriter, op, output_type, tf_max_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_max_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1126,12 +1114,8 @@ LogicalResult ConvertTFMinOp::matchAndRewrite(Operation* op,
   if (!matchPattern(tf_min_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_min_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceMinOp(
-      rewriter, op, output_type, tf_min_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_min_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1152,12 +1136,8 @@ LogicalResult ConvertTFMeanOp::matchAndRewrite(
   if (!matchPattern(tf_mean_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_mean_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceMeanOp(
-      rewriter, op, output_type, tf_mean_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_mean_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1178,12 +1158,8 @@ LogicalResult ConvertTFProdOp::matchAndRewrite(
   if (!matchPattern(tf_prod_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_prod_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceProdOp(
-      rewriter, op, output_type, tf_prod_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_prod_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -1204,12 +1180,8 @@ LogicalResult ConvertTFSumOp::matchAndRewrite(Operation* op,
   if (!matchPattern(tf_sum_op.reduction_indices(), m_Constant(&axes_elems)))
     return failure();
 
-  bool keep_dims = false;
-  auto keep_dims_attr = tf_sum_op.keep_dimsAttr();
-  if (keep_dims_attr) keep_dims = keep_dims_attr.getValue();
-
   llvm::Optional<Value> result = convertReduceSumOp(
-      rewriter, op, output_type, tf_sum_op.input(), axes_elems, keep_dims);
+      rewriter, op, output_type, tf_sum_op.input(), axes_elems);
 
   if (!result) return failure();
 
@@ -2280,10 +2252,10 @@ LogicalResult ConvertTFBatchMatMulV2Op::matchAndRewrite(
   return success();
 }
 
-void LegalizeTF::runOnFunction() {
+void LegalizeTF::runOnOperation() {
   auto* ctx = &getContext();
-  OwningRewritePatternList patterns(ctx);
-  auto func = getFunction();
+  RewritePatternSet patterns(ctx);
+  auto func = getOperation();
   populateLegalizeTFPatterns(ctx, patterns);
 
   if (ApplyPatternsWithShapeResolution(func, std::move(patterns)).failed()) {
@@ -2296,87 +2268,87 @@ void LegalizeTF::runOnFunction() {
 void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   // Add the generated patterns to the list.
   populateWithGenerated(patterns);
-  patterns.insert<ConvertTFMatMulOp>(ctx);
-  patterns.insert<ConvertTFReluOp>(ctx);
-  patterns.insert<ConvertTFRelu6Op>(ctx);
-  patterns.insert<ConvertTFEqualOp>(ctx);
-  patterns.insert<ConvertTFNotEqualOp>(ctx);
-  patterns.insert<ConvertTFGreaterOp>(ctx);
-  patterns.insert<ConvertTFGreaterEqualOp>(ctx);
-  patterns.insert<ConvertTFAddOp>(ctx);
-  patterns.insert<ConvertTFAddV2Op>(ctx);
-  patterns.insert<ConvertTFAddNOp>(ctx);
-  patterns.insert<ConvertTFSubOp>(ctx);
-  patterns.insert<ConvertTFMulOp>(ctx);
-  patterns.insert<ConvertTFSquareOp>(ctx);
-  patterns.insert<ConvertTFSquaredDifferenceOp>(ctx);
-  patterns.insert<ConvertTFRoundOp>(ctx);
-  patterns.insert<ConvertTFFloorDivOp>(ctx);
-  patterns.insert<ConvertTFFloorModOp>(ctx);
-  patterns.insert<ConvertTFAssertOp>(ctx);
-  patterns.insert<ConvertTFMaximumOp>(ctx);
-  patterns.insert<ConvertTFMinimumOp>(ctx);
-  patterns.insert<ConvertTFRealDivOp>(ctx);
-  patterns.insert<ConvertTFArgMaxOp>(ctx);
-  patterns.insert<ConvertTFAvgPoolOp>(ctx);
-  patterns.insert<ConvertTFMaxPoolOp>(ctx);
-  patterns.insert<ConvertTFConcatV2Op>(ctx);
-  patterns.insert<ConvertTFReshapeOp>(ctx);
-  patterns.insert<ConvertTFRankOp>(ctx);
-  patterns.insert<ConvertTFShapeOp>(ctx);
-  patterns.insert<ConvertTFExpandDimsOp>(ctx);
-  patterns.insert<ConvertTFSqueezeOp>(ctx);
-  patterns.insert<ConvertTFFillOp>(ctx);
-  patterns.insert<ConvertTFConv2DOp>(ctx);
-  patterns.insert<ConvertTFDepthwiseConv2dNativeOp>(ctx);
-  patterns.insert<ConvertTFConv2DBackpropInputOp>(ctx);
-  patterns.insert<ConvertTFEluOp>(ctx);
-  patterns.insert<ConvertTFSoftmaxOp>(ctx);
-  patterns.insert<ConvertTFLogSoftmaxOp>(ctx);
-  patterns.insert<ConvertTFAllOp>(ctx);
-  patterns.insert<ConvertTFAnyOp>(ctx);
-  patterns.insert<ConvertTFMaxOp>(ctx);
-  patterns.insert<ConvertTFMinOp>(ctx);
-  patterns.insert<ConvertTFMeanOp>(ctx);
-  patterns.insert<ConvertTFProdOp>(ctx);
-  patterns.insert<ConvertTFSumOp>(ctx);
-  patterns.insert<ConvertTFFusedBatchNormOp>(ctx);
-  patterns.insert<ConvertTFFusedBatchNormV3Op>(ctx);
-  patterns.insert<ConvertTFBiasAddOp>(ctx);
-  patterns.insert<ConvertTFSplitOp>(ctx);
-  patterns.insert<ConvertTFSplitVOp>(ctx);
-  patterns.insert<ConvertTFPackOp>(ctx);
-  patterns.insert<ConvertTFUnpackOp>(ctx);
-  patterns.insert<ConvertTFTransposeOp>(ctx);
-  patterns.insert<ConvertTFTileOp>(ctx);
-  patterns.insert<ConvertTFSliceOp>(ctx);
-  patterns.insert<ConvertTFStridedSliceOp>(ctx);
-  patterns.insert<ConvertTFLessOp>(ctx);
-  patterns.insert<ConvertTFLessEqualOp>(ctx);
-  patterns.insert<ConvertTFPadOp>(ctx);
-  patterns.insert<ConvertTFResizeBilinearOp>(ctx);
-  patterns.insert<ConvertTFResizeNearestNeighborOp>(ctx);
-  patterns.insert<ConvertTFGatherOp>(ctx);
-  patterns.insert<ConvertTFGatherV2Op>(ctx);
-  patterns.insert<ConvertTFGatherNdOp>(ctx);
-  patterns.insert<ConvertTFSelectV2Op>(ctx);
-  patterns.insert<ConvertTFSpaceToDepthOp>(ctx);
-  patterns.insert<ConvertTFDepthToSpaceOp>(ctx);
-  patterns.insert<ConvertTFSpaceToBatchNDOp>(ctx);
-  patterns.insert<ConvertTFBatchToSpaceNDOp>(ctx);
-  patterns.insert<ConvertTFZerosLikeOp>(ctx);
-  patterns.insert<ConvertTFSigmoidOp>(ctx);
-  patterns.insert<ConvertTFTanhOp>(ctx);
-  patterns.insert<ConvertTFLeakyReluOp>(ctx);
-  patterns.insert<ConvertTFNegOp>(ctx);
-  patterns.insert<ConvertTFStopGradientOp>(ctx);
-  patterns.insert<ConvertTFReverseV2Op>(ctx);
-  patterns.insert<ConvertTFFakeQuantWithMinMaxArgsOp>(ctx);
-  patterns.insert<ConvertTFFakeQuantWithMinMaxVarsOp>(ctx);
-  patterns.insert<ConvertTFLeftShiftOp>(ctx);
-  patterns.insert<ConvertTFRightShiftOp>(ctx);
-  patterns.insert<ConvertTFOneHotOp>(ctx);
-  patterns.insert<ConvertTFBatchMatMulV2Op>(ctx);
+  patterns.add<ConvertTFMatMulOp>(ctx);
+  patterns.add<ConvertTFReluOp>(ctx);
+  patterns.add<ConvertTFRelu6Op>(ctx);
+  patterns.add<ConvertTFEqualOp>(ctx);
+  patterns.add<ConvertTFNotEqualOp>(ctx);
+  patterns.add<ConvertTFGreaterOp>(ctx);
+  patterns.add<ConvertTFGreaterEqualOp>(ctx);
+  patterns.add<ConvertTFAddOp>(ctx);
+  patterns.add<ConvertTFAddV2Op>(ctx);
+  patterns.add<ConvertTFAddNOp>(ctx);
+  patterns.add<ConvertTFSubOp>(ctx);
+  patterns.add<ConvertTFMulOp>(ctx);
+  patterns.add<ConvertTFSquareOp>(ctx);
+  patterns.add<ConvertTFSquaredDifferenceOp>(ctx);
+  patterns.add<ConvertTFRoundOp>(ctx);
+  patterns.add<ConvertTFFloorDivOp>(ctx);
+  patterns.add<ConvertTFFloorModOp>(ctx);
+  patterns.add<ConvertTFAssertOp>(ctx);
+  patterns.add<ConvertTFMaximumOp>(ctx);
+  patterns.add<ConvertTFMinimumOp>(ctx);
+  patterns.add<ConvertTFRealDivOp>(ctx);
+  patterns.add<ConvertTFArgMaxOp>(ctx);
+  patterns.add<ConvertTFAvgPoolOp>(ctx);
+  patterns.add<ConvertTFMaxPoolOp>(ctx);
+  patterns.add<ConvertTFConcatV2Op>(ctx);
+  patterns.add<ConvertTFReshapeOp>(ctx);
+  patterns.add<ConvertTFRankOp>(ctx);
+  patterns.add<ConvertTFShapeOp>(ctx);
+  patterns.add<ConvertTFExpandDimsOp>(ctx);
+  patterns.add<ConvertTFSqueezeOp>(ctx);
+  patterns.add<ConvertTFFillOp>(ctx);
+  patterns.add<ConvertTFConv2DOp>(ctx);
+  patterns.add<ConvertTFDepthwiseConv2dNativeOp>(ctx);
+  patterns.add<ConvertTFConv2DBackpropInputOp>(ctx);
+  patterns.add<ConvertTFEluOp>(ctx);
+  patterns.add<ConvertTFSoftmaxOp>(ctx);
+  patterns.add<ConvertTFLogSoftmaxOp>(ctx);
+  patterns.add<ConvertTFAllOp>(ctx);
+  patterns.add<ConvertTFAnyOp>(ctx);
+  patterns.add<ConvertTFMaxOp>(ctx);
+  patterns.add<ConvertTFMinOp>(ctx);
+  patterns.add<ConvertTFMeanOp>(ctx);
+  patterns.add<ConvertTFProdOp>(ctx);
+  patterns.add<ConvertTFSumOp>(ctx);
+  patterns.add<ConvertTFFusedBatchNormOp>(ctx);
+  patterns.add<ConvertTFFusedBatchNormV3Op>(ctx);
+  patterns.add<ConvertTFBiasAddOp>(ctx);
+  patterns.add<ConvertTFSplitOp>(ctx);
+  patterns.add<ConvertTFSplitVOp>(ctx);
+  patterns.add<ConvertTFPackOp>(ctx);
+  patterns.add<ConvertTFUnpackOp>(ctx);
+  patterns.add<ConvertTFTransposeOp>(ctx);
+  patterns.add<ConvertTFTileOp>(ctx);
+  patterns.add<ConvertTFSliceOp>(ctx);
+  patterns.add<ConvertTFStridedSliceOp>(ctx);
+  patterns.add<ConvertTFLessOp>(ctx);
+  patterns.add<ConvertTFLessEqualOp>(ctx);
+  patterns.add<ConvertTFPadOp>(ctx);
+  patterns.add<ConvertTFResizeBilinearOp>(ctx);
+  patterns.add<ConvertTFResizeNearestNeighborOp>(ctx);
+  patterns.add<ConvertTFGatherOp>(ctx);
+  patterns.add<ConvertTFGatherV2Op>(ctx);
+  patterns.add<ConvertTFGatherNdOp>(ctx);
+  patterns.add<ConvertTFSelectV2Op>(ctx);
+  patterns.add<ConvertTFSpaceToDepthOp>(ctx);
+  patterns.add<ConvertTFDepthToSpaceOp>(ctx);
+  patterns.add<ConvertTFSpaceToBatchNDOp>(ctx);
+  patterns.add<ConvertTFBatchToSpaceNDOp>(ctx);
+  patterns.add<ConvertTFZerosLikeOp>(ctx);
+  patterns.add<ConvertTFSigmoidOp>(ctx);
+  patterns.add<ConvertTFTanhOp>(ctx);
+  patterns.add<ConvertTFLeakyReluOp>(ctx);
+  patterns.add<ConvertTFNegOp>(ctx);
+  patterns.add<ConvertTFStopGradientOp>(ctx);
+  patterns.add<ConvertTFReverseV2Op>(ctx);
+  patterns.add<ConvertTFFakeQuantWithMinMaxArgsOp>(ctx);
+  patterns.add<ConvertTFFakeQuantWithMinMaxVarsOp>(ctx);
+  patterns.add<ConvertTFLeftShiftOp>(ctx);
+  patterns.add<ConvertTFRightShiftOp>(ctx);
+  patterns.add<ConvertTFOneHotOp>(ctx);
+  patterns.add<ConvertTFBatchMatMulV2Op>(ctx);
 }
 
 // Creates an instance of the TensorFlow dialect LegalizeTF pass.

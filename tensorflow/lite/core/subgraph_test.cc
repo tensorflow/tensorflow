@@ -60,5 +60,16 @@ TEST(RemoveUnusedInputs, HasUnusedInputs) {
   ASSERT_EQ(subgraph.inputs(), std::vector<int>({-1, -1, 2}));
 }
 
+TEST(RemoveUnusedInputs, BypassInputsWithoutOp) {
+  Interpreter interpreter;
+  auto& subgraph = interpreter.primary_subgraph();
+  subgraph.AddTensors(3);
+  subgraph.SetInputs({0, 1, 2});
+  subgraph.SetOutputs({0, 2});
+
+  ASSERT_EQ(subgraph.RemoveUnusedInputs(), kTfLiteOk);
+  ASSERT_EQ(subgraph.inputs(), std::vector<int>({0, -1, 2}));
+}
+
 }  // namespace
 }  // namespace tflite

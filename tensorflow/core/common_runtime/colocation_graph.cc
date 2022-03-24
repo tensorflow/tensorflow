@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -153,13 +154,8 @@ bool HasHostMemoryOutType(const Node& node) {
   DCHECK(ft.type_id() == TFT_PRODUCT) << ft.DebugString();
 
   for (const auto& arg : ft.args()) {
-    switch (arg.type_id()) {
-      case TFT_DATASET:
-        return true;
-      case TFT_MUTEX_LOCK:
-        return true;
-      default:
-        continue;
+    if (full_type::IsHostMemoryType(arg)) {
+      return true;
     }
   }
 
@@ -415,9 +411,9 @@ Status Member::MergeDeviceNames(const Member& other,
                                        resource_device_name_copy);
 
   // We checked for all errors, now change the devices.
-  assigned_device_name_ = assigned_device_name_copy;
-  resource_device_name_ = resource_device_name_copy;
-  requested_device_name_ = requested_device_name_copy;
+  assigned_device_name_ = std::move(assigned_device_name_copy);
+  resource_device_name_ = std::move(resource_device_name_copy);
+  requested_device_name_ = std::move(requested_device_name_copy);
   return Status::OK();
 }
 
@@ -857,7 +853,8 @@ Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
     }
 
     if (!constrain_to_host.has_value()) {
-      // TODO(mdan): Base this logic on type information and remove the DFS.
+      // Legacy slow path. This covers legacy data types and ops which have not
+      // been upgraded to FullType.
       auto edge_filter = [&](const Edge& edge) -> bool {
         // We already found the underlying data type.
         if (constrain_to_host.has_value()) return false;

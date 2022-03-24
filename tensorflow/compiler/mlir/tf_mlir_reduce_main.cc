@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Reducer/ReductionPatternInterface.h"  // from @llvm-project
 #include "mlir/Tools/mlir-reduce/MlirReduceMain.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
@@ -66,8 +67,10 @@ int main(int argc, char *argv[]) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
   mlir::RegisterAllTensorFlowDialects(registry);
-  registry.addDialectInterface<mlir::TF::TensorFlowDialect,
-                               TFReductionPatternInterface>();
+  registry.addExtension(
+      +[](mlir::MLIRContext *ctx, mlir::TF::TensorFlowDialect *dialect) {
+        dialect->addInterfaces<TFReductionPatternInterface>();
+      });
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();

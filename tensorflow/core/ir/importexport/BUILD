@@ -3,7 +3,10 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
-    default_visibility = [":__subpackages__"],
+    default_visibility = [
+        ":__subpackages__",
+        "//tensorflow/core/ir:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -20,6 +23,7 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
     deps = [
         ":convert_attributes",
@@ -31,6 +35,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:function_def_utils",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
         "//tensorflow/stream_executor/lib",
@@ -53,7 +58,10 @@ cc_library(
     hdrs = [
         "export.h",
     ],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
+    ],
     deps = [
         ":convert_attributes",
         ":convert_tensor",
@@ -63,6 +71,7 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -176,14 +185,18 @@ cc_library(
         ":mangling",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
     ],
 )

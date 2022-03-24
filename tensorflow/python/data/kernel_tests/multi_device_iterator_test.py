@@ -98,6 +98,12 @@ class MultiDeviceIteratorCommonTest(test_base.DatasetTestBase,
     ping.enqueue(0)
     self.assertEqual(1,
                      multi_device_iterator.get_next(self._devices[2]).numpy())
+    # FIXME(b/209534797): Workaround an asan error caused by this test.
+    # Remove the dangling reference from tf.function to ensure queue objects
+    # are not freed before they are flushed.
+    import gc  # pylint: disable=g-import-not-at-top
+    del get_next_device1
+    gc.collect()
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(), cls_combination))

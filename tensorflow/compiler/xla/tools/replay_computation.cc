@@ -45,6 +45,7 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -88,8 +89,8 @@ struct Options {
 
   bool NeedsRealData() const { return !use_fake_data && !compile_only; }
 
-  string fake_infeed_shape;
-  string fake_outfeed_shape;
+  std::string fake_infeed_shape;
+  std::string fake_outfeed_shape;
 
   // generate_fake_infeed == true is a safe default: If the model has 0 or 1
   // infeeds, then it will work like normal.  If the model has more than one
@@ -174,8 +175,8 @@ absl::optional<Shape> GetXfeedShape(bool is_infeed,
   };
 
   absl::optional<Shape> xfeed_shape;
-  string xfeed_name = is_infeed ? "infeed" : "outfeed";
-  string fake_xfeed_shape =
+  std::string xfeed_name = is_infeed ? "infeed" : "outfeed";
+  std::string fake_xfeed_shape =
       is_infeed ? opts.fake_infeed_shape : opts.fake_outfeed_shape;
   bool generate_fake_xfeed =
       is_infeed ? opts.generate_fake_infeed : opts.generate_fake_outfeed;
@@ -255,7 +256,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
         MakeFakeArgumentsOrDie(computation, client, &debug_opts);
     for (const auto& data : global_data_arguments) {
       argument_ptrs.push_back(
-          client->GlobalDataToShapedBuffer(data->handle(), /*device_ordinal=*/0)
+          client->GlobalDataToShapedBuffer(data->handle(), /*replica_number=*/0)
               .ValueOrDie());
     }
   } else {  // use recorded data if available
@@ -356,13 +357,13 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
 
   std::unique_ptr<tensorflow::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
-      string(filename.begin(), filename.end()), &file));
+      std::string(filename.begin(), filename.end()), &file));
   tensorflow::io::RecordReader reader(
       file.get(),
       tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
 
   std::vector<HloSnapshot> snapshots;
-  uint64 offset = 0;
+  uint64_t offset = 0;
   tensorflow::tstring record;
   while (reader.ReadRecord(&offset, &record).ok()) {
     HloSnapshot snapshot;
@@ -381,8 +382,8 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
   return snapshots;
 }
 
-StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(const string& filename,
-                                                      const Options& opts) {
+StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(
+    const std::string& filename, const Options& opts) {
   tensorflow::Env* env = tensorflow::Env::Default();
 
   HloSnapshot snapshot;
@@ -403,7 +404,7 @@ StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(const string& filename,
     return std::vector<HloSnapshot>{std::move(snapshot)};
   }
   fprintf(stderr, "%s: is not HloProto. Trying HLO text.\n", filename.c_str());
-  string contents;
+  std::string contents;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(env, filename, &contents));
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
@@ -437,7 +438,7 @@ StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(const string& filename,
   return InvalidArgument("Could not parse %s.", filename);
 }
 
-StatusOr<std::vector<HloSnapshot>> ParseInputFile(const string& filename,
+StatusOr<std::vector<HloSnapshot>> ParseInputFile(const std::string& filename,
                                                   const Options& opts) {
   std::vector<HloSnapshot> snapshots;
   absl::string_view filename_view = filename;
@@ -563,7 +564,7 @@ int main(int argc, char** argv) {
                        "to compiled and executed."),
   };
   xla::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   if (argc < 2 || !parse_ok) {

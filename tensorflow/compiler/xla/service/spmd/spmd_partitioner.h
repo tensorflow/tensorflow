@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -306,8 +306,8 @@ class PartitionedHlo {
           std::tuple<HloSharding, Window, WindowedInputShardReturnValue>>
           window_reshard_cache;
     };
-    // Use std::unordered_map for pointer stability.
-    std::unordered_map<HloInstruction*, PerHloCache> per_hlo_cache;
+    // Use absl::node_hash_map for pointer stability.
+    absl::node_hash_map<HloInstruction*, PerHloCache> per_hlo_cache;
     // Caches for nested partitioning of grouped sharding. Each string key
     // represents a unique way of grouping devices.
     absl::flat_hash_map<std::string, std::unique_ptr<ReshardCache>>
@@ -457,6 +457,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandleGather(HloInstruction* hlo) override;
   Status HandleGetTupleElement(HloInstruction* hlo) override;
   Status HandleInfeed(HloInstruction* hlo) override;
+  Status HandleOptimizationBarrier(HloInstruction* hlo) override;
   Status HandleOutfeed(HloInstruction* hlo) override;
   Status HandlePad(HloInstruction* hlo) override;
   Status HandleParameter(HloInstruction* hlo) override;

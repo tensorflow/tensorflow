@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/dynamic_annotations.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -31,24 +32,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace {
 void R0F32Add2(float* out, float** in) {
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
   *out = **in + 2.0f;
 }
 
 void R2F32ReduceSum(float* out, float** in) {
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
   float* array = in[0];
   *out = array[0] + array[1] + array[2] + array[3];
 }
 
 void Add1ToValues(float* out, float** in) {
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
   float* array = in[0];
   out[0] = array[0] + 1;
   out[1] = array[1] + 1;
@@ -57,14 +56,14 @@ void Add1ToValues(float* out, float** in) {
 }
 
 void F32TupleSwap(float** out, float** in) {
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(in[0], sizeof(float));
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(in[1], sizeof(float));
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in[0], sizeof(float));
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in[1], sizeof(float));
   *out[0] = *in[1];
   *out[1] = *in[0];
 }
 
 void R0F32Add2Succeed(float* out, float** in, XlaCustomCallStatus*) {
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
   *out = **in + 2.0f;
   // Default state of 'status' is success.
 }

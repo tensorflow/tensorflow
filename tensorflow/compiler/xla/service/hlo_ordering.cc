@@ -351,7 +351,7 @@ bool HloOrdering::UsesBeforeValueDefinition(
           // surrounding loop and then back into the conditional parameter.
           if (!dataflow.ValueIsDefinedAt(
                   use.instruction->operand(use.operand_number), {})) {
-            for (auto value_use : value.uses()) {
+            for (auto value_use : value.GetUses()) {
               VLOG(4) << "def have use:" << value_use << "\n";
               if (value_use.instruction ==
                   value_use.instruction->parent()->root_instruction()) {
@@ -417,7 +417,7 @@ bool HloOrdering::LiveRangeStrictlyBefore(
 
   // All uses of 'a' must be before 'b' is defined.
   std::vector<const HloUse*> uses;
-  for (const HloUse& use : a.uses()) {
+  for (const HloUse& use : a.GetUses()) {
     if (dataflow.DoesNotUseOperandBuffer(a.instruction(), a.index(),
                                          use.instruction)) {
       continue;
@@ -462,8 +462,9 @@ bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
   return a != b && predecessors_.at(a->parent())->IsReachable(a, b);
 }
 
-string PredecessorHloOrdering::ToStringHelper(const string& name) const {
-  std::vector<string> pieces;
+std::string PredecessorHloOrdering::ToStringHelper(
+    const std::string& name) const {
+  std::vector<std::string> pieces;
   pieces.push_back(name);
   for (auto* computation : module_->MakeNonfusionComputations()) {
     pieces.push_back(absl::StrFormat("computation %s:", computation->name()));
@@ -492,7 +493,7 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   }
 }
 
-string DependencyHloOrdering::ToString() const {
+std::string DependencyHloOrdering::ToString() const {
   return ToStringHelper("DependencyHloOrdering");
 }
 
@@ -539,7 +540,7 @@ const HloInstructionSequence* SequentialHloOrdering::SequentialOrder(
              : nullptr;
 }
 
-string SequentialHloOrdering::ToString() const {
+std::string SequentialHloOrdering::ToString() const {
   return absl::StrCat("SequentialHloOrdering\n", schedule_.ToString());
 }
 

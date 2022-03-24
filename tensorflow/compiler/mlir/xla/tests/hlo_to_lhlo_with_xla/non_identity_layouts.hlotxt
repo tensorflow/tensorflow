@@ -9,7 +9,7 @@ ENTRY TestComputation {
   x = f32[3, 2]{1,0} parameter(0)
 
   // CHECK:   %[[VIEW:.*]] = memref.view {{.*}} : memref<24xi8> to memref<3x2xf32>
-  // CHECK: "lmhlo.fusion"() ( {
+  // CHECK: "lmhlo.fusion"() ({
   // CHECK:   %[[VAL2:.*]] = bufferization.to_tensor %[[VIEW]] : memref<3x2xf32>
   // CHECK:   %[[VAL3:.*]] = "mhlo.copy"(%[[VAL2]]) {xla_shape = "f32[3,2]{0,1}"} : (tensor<3x2xf32>) -> tensor<3x2xf32>
   // CHECK:   memref.tensor_store %[[VAL3:.*]], %{{.*}} : memref<3x2xf32, #[[MAP]]>

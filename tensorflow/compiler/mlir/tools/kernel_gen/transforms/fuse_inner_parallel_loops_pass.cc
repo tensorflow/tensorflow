@@ -27,16 +27,17 @@ namespace {
 
 struct FuseInnerParallelLoopsPass
     : FuseInnerParallelLoopsPassBase<FuseInnerParallelLoopsPass> {
-  void runOnFunction() override {
-    getFunction().walk([](mlir::scf::ParallelOp op) {
-      mlir::scf::naivelyFuseParallelOps(op.region());
+  void runOnOperation() override {
+    getOperation().walk([](mlir::scf::ParallelOp op) {
+      mlir::scf::naivelyFuseParallelOps(op.getRegion());
     });
   }
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateFuseInnerParallelLoopsPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateFuseInnerParallelLoopsPass() {
   return std::make_unique<FuseInnerParallelLoopsPass>();
 }
 

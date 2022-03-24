@@ -12,7 +12,7 @@ func @foo0(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<*xi32>
   }
-  return %0 : tensor<*xi32>
+  func.return %0 : tensor<*xi32>
 }
 
 // CHECK: node {

@@ -455,9 +455,8 @@ cc_library(
     name = "lazy_op_runner",
     hdrs = ["lazy_op_runner.h"],
     deps = [
-        ":device_memory",
         ":dnn",
-        ":stream_executor_pimpl",
+        ":stream_header",
     ],
 )
 

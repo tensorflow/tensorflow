@@ -19,8 +19,8 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 
 install_ubuntu_16_python_pip_deps python3.8
-# Update bazel
-update_bazel_linux
+
+install_bazelisk
 
 export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
 

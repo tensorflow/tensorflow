@@ -33,14 +33,14 @@ XlaInterpreterExecutor::XlaInterpreterExecutor(
 
 XlaInterpreterExecutor::~XlaInterpreterExecutor() {}
 
-DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64 size,
+DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64_t size,
                                                   int64_t memory_space) {
   return DeviceMemoryBase(new char[size], size);
 }
 
 void *XlaInterpreterExecutor::GetSubBuffer(DeviceMemoryBase *parent,
-                                           uint64 offset_bytes,
-                                           uint64 /*size_bytes*/) {
+                                           uint64_t offset_bytes,
+                                           uint64_t /*size_bytes*/) {
   return parent + offset_bytes;
 }
 
@@ -50,7 +50,7 @@ void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
 
 bool XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
                                     const DeviceMemoryBase &dev_src,
-                                    uint64 size) {
+                                    uint64_t size) {
   AsExecutorStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
     // Ignore errors.
     port::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
@@ -67,7 +67,7 @@ bool XlaInterpreterExecutor::Memcpy(Stream *stream, void *host_dst,
 }
 
 bool XlaInterpreterExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
-                                    const void *host_src, uint64 size) {
+                                    const void *host_src, uint64_t size) {
   AsExecutorStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
     // Ignore errors.
     port::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
@@ -84,13 +84,13 @@ bool XlaInterpreterExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
 }
 
 port::Status XlaInterpreterExecutor::SynchronousMemcpy(
-    DeviceMemoryBase *dev_dst, const void *host_src, uint64 size) {
+    DeviceMemoryBase *dev_dst, const void *host_src, uint64_t size) {
   memcpy(dev_dst->opaque(), host_src, size);
   return port::Status::OK();
 }
 
 port::Status XlaInterpreterExecutor::SynchronousMemcpy(
-    void *host_dst, const DeviceMemoryBase &dev_src, uint64 size) {
+    void *host_dst, const DeviceMemoryBase &dev_src, uint64_t size) {
   memcpy(host_dst, dev_src.opaque(), size);
   return port::Status::OK();
 }

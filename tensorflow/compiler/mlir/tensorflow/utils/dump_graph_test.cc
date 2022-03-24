@@ -77,8 +77,6 @@ TEST(Dump, TexualIrToFileSuccess) {
 
   string actual;
   TF_ASSERT_OK(ReadFileToString(Env::Default(), ret, &actual));
-  string expected_substr = R"(tf_executor.island)";
-  ExpectHasSubstr(actual, expected_substr);
 }
 
 TEST(Dump, TexualIrWithOptions) {
@@ -93,7 +91,7 @@ TEST(Dump, TexualIrWithOptions) {
   TF_ASSERT_OK(DumpTextualIRToFile(MlirDumpConfig().emit_location_information(),
                                    graph, /*flib_def=*/nullptr, &file));
 
-  string expected_substr = R"(loc(fused["Placeholder:", "A"]))";
+  string expected_substr = R"(loc(#loc))";
   ExpectHasSubstr(actual, expected_substr);
 }
 

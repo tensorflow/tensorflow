@@ -16,9 +16,7 @@ limitations under the License.
 #include <jni.h>
 #include <stdio.h>
 
-#include "tensorflow/lite/core/shims/c/c_api.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
-#include "tensorflow/lite/version.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,22 +25,6 @@ extern "C" {
 JNIEXPORT JNICALL void Java_org_tensorflow_lite_TensorFlowLite_nativeDoNothing(
     JNIEnv* env, jclass /*clazz*/) {
   // Do nothing.
-}
-
-JNIEXPORT jstring JNICALL
-Java_org_tensorflow_lite_TensorFlowLite_nativeRuntimeVersion(JNIEnv* env,
-                                                             jclass /*clazz*/) {
-  if (!tflite::jni::CheckJniInitializedOrThrow(env)) return nullptr;
-
-  return env->NewStringUTF(TfLiteVersion());
-}
-
-JNIEXPORT jstring JNICALL
-Java_org_tensorflow_lite_TensorFlowLite_nativeSchemaVersion(JNIEnv* env,
-                                                            jclass /*clazz*/) {
-  char buf[64];
-  snprintf(buf, sizeof(buf), "%d", TFLITE_SCHEMA_VERSION);
-  return env->NewStringUTF(buf);
 }
 
 #ifdef __cplusplus

@@ -77,7 +77,7 @@ class RewriteXlaHostComputeMlir
     SymbolTable manager(op->getParentOfType<ModuleOp>());
     StringRef host_module = op.host_mlir_module();
     if (!host_module.empty()) {
-      mlir::OwningModuleRef module_for_func;
+      mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
 
       FuncOp func = op.GetHostFunc(&module_for_func);
 
@@ -86,7 +86,7 @@ class RewriteXlaHostComputeMlir
       cloned_func =
           llvm::dyn_cast_or_null<FuncOp>(rewriter.clone(*func.getOperation()));
       manager.insert(cloned_func);
-      rewriter.setInsertionPointToStart(&cloned_func.body().front());
+      rewriter.setInsertionPointToStart(&cloned_func.getBody().front());
       auto result_type =
           RankedTensorType::get({3}, rewriter.getType<TF::StringType>());
       auto dynamic_key =
@@ -102,10 +102,10 @@ class RewriteXlaHostComputeMlir
         std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
       }
 
-      rewriter.setInsertionPoint(cloned_func.body().front().getTerminator());
+      rewriter.setInsertionPoint(cloned_func.getBody().front().getTerminator());
       rewriter.create<TF::_XlaSendFromHostOp>(
           func.getLoc(),
-          cloned_func.body().front().getTerminator()->getOperands(),
+          cloned_func.getBody().front().getTerminator()->getOperands(),
           /*dynamic_key=*/dynamic_key, op.recv_keyAttr(),
           /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
     }
@@ -143,15 +143,15 @@ void UpdateArgAttributes(mlir::FuncOp func) {
             updated_arg, llvm::SmallPtrSet<Operation*, 1>({updated_arg}));
       }
 
-      func.removeArgAttr(i, builder.getIdentifier(kShardingAttr));
+      func.removeArgAttr(i, builder.getStringAttr(kShardingAttr));
     }
   }
 }
 
 LogicalResult RewriteCommunicationOps(ModuleOp module) {
   MLIRContext* ctx = module.getContext();
-  mlir::OwningRewritePatternList patterns(ctx);
-  patterns.insert<RewriteXlaHostComputeMlir>(ctx);
+  mlir::RewritePatternSet patterns(ctx);
+  patterns.add<RewriteXlaHostComputeMlir>(ctx);
   if (failed(mlir::applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
     return module.emitError("failed to apply tf export preparation patterns");
   }

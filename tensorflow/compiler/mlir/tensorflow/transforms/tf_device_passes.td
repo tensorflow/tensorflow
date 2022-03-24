@@ -122,7 +122,7 @@ def AnnotateParameterReplicationPass :
   let constructor = "TFDevice::CreateAnnotateParameterReplicationPass()";
 }
 
-def DeviceAttributeToLaunchPass : FunctionPass<"tf-device-attribute-to-launch"> {
+def DeviceAttributeToLaunchPass : Pass<"tf-device-attribute-to-launch", "mlir::FuncOp"> {
   let summary = "Wraps each TF op which has a non-empty device attribute in a tf_device.launch.";
 
   let description = [{
@@ -191,7 +191,7 @@ def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-com
   let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
 }
 
-def DecomposeResourceOpsPass : FunctionPass<"tf-device-decompose-resource-ops"> {
+def DecomposeResourceOpsPass : Pass<"tf-device-decompose-resource-ops", "mlir::FuncOp"> {
   let summary = "Decompose composite resource variable operations into primitive Read/AssignVariableOp and raw computation.";
 
   let description = [{
@@ -233,7 +233,7 @@ def DecomposeResourceOpsInClusterPass : Pass<"tf-device-decompose-resource-ops-i
   let constructor = "TFDevice::CreateDecomposeResourceOpsInClusterPass()";
 }
 
-def LaunchToDeviceAttributePass : FunctionPass<"tf-launch-to-device-attribute"> {
+def LaunchToDeviceAttributePass : Pass<"tf-launch-to-device-attribute", "mlir::FuncOp"> {
   let summary = "Hoists and annotates device launch inner ops with associated device attribute.";
 
   let description = [{

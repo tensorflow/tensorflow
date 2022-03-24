@@ -41,5 +41,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/platform",
+        "//tensorflow/core/distributed_runtime:worker_env",
     ] + tf_grpc_cc_dependencies(),
 )

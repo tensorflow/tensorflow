@@ -261,8 +261,10 @@ Status ValidateStridedSliceOp(
     TF_RETURN_IF_ERROR(BuildDenseSpec<int32>(sparse_spec, &dense_spec));
   } else if (strides_tensor.dtype() == DT_INT64) {
     TF_RETURN_IF_ERROR(BuildDenseSpec<int64_t>(sparse_spec, &dense_spec));
+  } else if (strides_tensor.dtype() == DT_INT16) {
+    TF_RETURN_IF_ERROR(BuildDenseSpec<int16_t>(sparse_spec, &dense_spec));
   } else {
-    LOG(FATAL) << "begin must be either int32 or int64";
+    LOG(FATAL) << "begin must be either int16, int32 or int64";
   }
 
   // Step 3: Make implicit ranges (non-zero begin_masks and end_masks) explicit

@@ -56,7 +56,7 @@ func @null_context() {
 // CHECK-LABEL: func @is_valid_memref
 func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
   %pred = tf_framework.is_valid_memref(%buf) : memref<?xf32> -> i1
-  return %pred : i1
+  func.return %pred : i1
 }
 
 // CHECK-LABEL: func @jit_compile_wo_ctx
@@ -65,7 +65,7 @@ func @jit_compile_wo_ctx() -> !tf_framework.jit_callable {
   ^bb0(%arg : tensor<2x?xf32>):
     tf_framework.jit_compile_yield %arg : tensor<2x?xf32>
   }
-  return %callable : !tf_framework.jit_callable
+  func.return %callable : !tf_framework.jit_callable
 }
 
 // CHECK-LABEL: func @jit_compile
@@ -75,7 +75,7 @@ func @jit_compile(%ctx : !tf_framework.op_kernel_context)
   ^bb0(%arg : tensor<2x?xf32>):
     tf_framework.jit_compile_yield %arg : tensor<2x?xf32>
   }
-  return %callable : !tf_framework.jit_callable
+  func.return %callable : !tf_framework.jit_callable
 }
 
 // CHECK-LABEL: func @jit_compile_from_str_wo_ctx
@@ -83,8 +83,8 @@ func @jit_compile_from_str_wo_ctx() -> !tf_framework.jit_callable {
   %callable = tf_framework.jit_compile_from_str "placeholder" {
       architectures = ["sm_123", "sm_456"], tileSizes = [1, 2, 3],
       unrollFactors = [4], maxSupportedRank = 3 : i64, enableFtz = false,
-      cpuCodegen = false }
-  return %callable : !tf_framework.jit_callable
+      index64Bit = false, cpuCodegen = false }
+  func.return %callable : !tf_framework.jit_callable
 }
 
 // CHECK-LABEL: func @jit_compile_from_str
@@ -93,8 +93,8 @@ func @jit_compile_from_str(%ctx : !tf_framework.op_kernel_context)
   %callable = tf_framework.jit_compile_from_str %ctx , "placeholder" {
       architectures = ["sm_123", "sm_456"], tileSizes = [1, 2, 3],
       unrollFactors = [4], maxSupportedRank = 3 : i64, enableFtz = false,
-      cpuCodegen = false }
-  return %callable : !tf_framework.jit_callable
+      index64Bit = false, cpuCodegen = false }
+  func.return %callable : !tf_framework.jit_callable
 }
 
 // CHECK-LABEL: func @jit_execute_wo_ctx
@@ -102,7 +102,7 @@ func @jit_execute_wo_ctx(%callable : !tf_framework.jit_callable,
     %arg : tensor<2x?xf32>) -> tensor<2x?xf32> {
   %0 = tf_framework.jit_execute %callable(%arg)
       : tensor<2x?xf32> -> tensor<2x?xf32>
-  return %0 : tensor<2x?xf32>
+  func.return %0 : tensor<2x?xf32>
 }
 
 // CHECK-LABEL: func @jit_execute
@@ -111,5 +111,5 @@ func @jit_execute(%ctx : !tf_framework.op_kernel_context,
     -> tensor<2x?xf32> {
   %0 = tf_framework.jit_execute ctx(%ctx) %callable(%arg)
       : tensor<2x?xf32> -> tensor<2x?xf32>
-  return %0 : tensor<2x?xf32>
+  func.return %0 : tensor<2x?xf32>
 }
