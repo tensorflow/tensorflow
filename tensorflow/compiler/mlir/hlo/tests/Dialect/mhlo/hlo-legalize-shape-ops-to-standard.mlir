@@ -3,7 +3,7 @@
 // CHECK-LABEL: compute_reshape_shape
 // CHECK-SAME: %[[NUM_ELS:.*]]: index
 // CHECK-SAME: %[[TARGET_SHAPE:.*]]: tensor<2xi32>
-func @compute_reshape_shape(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32> {
+func.func @compute_reshape_shape(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32> {
   // CHECK: %[[N1:.*]] = arith.constant -1 : index
   // CHECK: %[[IT:.*]] = arith.index_cast %[[TARGET_SHAPE]] : tensor<2xi32> to tensor<2xindex>
   // CHECK: %[[RANK:.*]] = shape.rank %[[IT]] : tensor<2xindex> -> index
@@ -28,7 +28,7 @@ func @compute_reshape_shape(%arg0: index, %arg1: tensor<2xi32>) -> tensor<2xi32>
 // CHECK-LABEL: cstr_reshapable_op
 // CHECK-SAME: %[[NUM_ELS:.*]]: index
 // CHECK-SAME: %[[TARGET_SHAPE:.*]]: tensor<2xi32>
-func @cstr_reshapable_op(%arg0: index, %arg1: tensor<2xi32>) -> !shape.witness {
+func.func @cstr_reshapable_op(%arg0: index, %arg1: tensor<2xi32>) -> !shape.witness {
   // CHECK-DAG: %[[N1:.*]] = arith.constant -1 : index
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index

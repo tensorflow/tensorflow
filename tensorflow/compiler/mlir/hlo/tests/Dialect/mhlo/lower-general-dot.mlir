@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt -mhlo-test-lower-general-dot -split-input-file %s -o - | FileCheck %s
 
 // CHECK-LABEL: @testDebatch1
-func @testDebatch1(%arg0: tensor<1x1x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<1x1x3xf32> {
+func.func @testDebatch1(%arg0: tensor<1x1x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<1x1x3xf32> {
   // CHECK-DAG: [[R0:%.+]] = "mhlo.reshape"(%arg0) : (tensor<1x1x2xf32>) -> tensor<1x2xf32>
   // CHECK-DAG: [[R1:%.+]] = "mhlo.dot"([[R0]], %arg1) {precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">]} : (tensor<1x2xf32>, tensor<2x3xf32>) -> tensor<1x3xf32>
   // CHECK: [[R2:%.+]] = "mhlo.reshape"([[R1]]) : (tensor<1x3xf32>) -> tensor<1x1x3xf32>
@@ -19,7 +19,7 @@ func @testDebatch1(%arg0: tensor<1x1x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<1
 // -----
 
 // CHECK-LABEL: @testDebatch2
-func @testDebatch2(%arg0: tensor<2x3xf32>, %arg1: tensor<1x1x2xf32>) -> tensor<3x1x1xf32> {
+func.func @testDebatch2(%arg0: tensor<2x3xf32>, %arg1: tensor<1x1x2xf32>) -> tensor<3x1x1xf32> {
   // CHECK-DAG: [[R0:%.+]] = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]> : tensor<2xi64>} : (tensor<2x3xf32>) -> tensor<3x2xf32>
   // CHECK-DAG: [[R1:%.+]] = "mhlo.transpose"(%arg1) {permutation = dense<[2, 0, 1]> : tensor<3xi64>} : (tensor<1x1x2xf32>) -> tensor<2x1x1xf32>
   // CHECK-DAG: [[R2:%.+]] = "mhlo.reshape"([[R1]]) : (tensor<2x1x1xf32>) -> tensor<2x1xf32>
@@ -39,7 +39,7 @@ func @testDebatch2(%arg0: tensor<2x3xf32>, %arg1: tensor<1x1x2xf32>) -> tensor<3
 // -----
 
 // CHECK-LABEL: @testBatchPassthrough
-func @testBatchPassthrough(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf32>) -> tensor<3x2x1xf32> {
+func.func @testBatchPassthrough(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf32>) -> tensor<3x2x1xf32> {
   // CHECK-NEXT: "mhlo.dot_general"(%arg0, %arg1)
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
@@ -56,7 +56,7 @@ func @testBatchPassthrough(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf32>) -
 // -----
 
 // CHECK-LABEL: @testVec
-func @testVec(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> tensor<f32> {
+func.func @testVec(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> tensor<f32> {
   // CHECK-NEXT: [[R0:%.+]] = "mhlo.reshape"(%arg0) : (tensor<32xf32>) -> tensor<1x32xf32>
   // CHECK-NEXT: [[R1:%.+]] = "mhlo.reshape"(%arg1) : (tensor<32xf32>) -> tensor<32x1xf32>
   // CHECK-NEXT: [[M:%.+]] = "mhlo.dot"([[R0]], [[R1]])
@@ -75,7 +75,7 @@ func @testVec(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> tensor<f32> {
 // -----
 
 // CHECK-LABEL: @testMatVec
-func @testMatVec(%arg0: tensor<32x20xf32>, %arg1: tensor<32xf32>) -> tensor<20xf32> {
+func.func @testMatVec(%arg0: tensor<32x20xf32>, %arg1: tensor<32xf32>) -> tensor<20xf32> {
   // CHECK-NEXT: [[T:%.+]] = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0]>
   // CHECK-NEXT: [[R1:%.+]] = "mhlo.reshape"(%arg1) : (tensor<32xf32>) -> tensor<32x1xf32>
   // CHECK-NEXT: [[M:%.+]] = "mhlo.dot"([[T]], [[R1]])
@@ -93,7 +93,7 @@ func @testMatVec(%arg0: tensor<32x20xf32>, %arg1: tensor<32xf32>) -> tensor<20xf
 
 // -----
 
-func @dot_general_to_dot_dynamic(%arg0: tensor<128x4x?x32xf32>, %arg1: tensor<8x?x128x4xf32>) -> tensor<?x32x8x?xf32> {
+func.func @dot_general_to_dot_dynamic(%arg0: tensor<128x4x?x32xf32>, %arg1: tensor<8x?x128x4xf32>) -> tensor<?x32x8x?xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_batching_dimensions = [],
@@ -129,7 +129,7 @@ func @dot_general_to_dot_dynamic(%arg0: tensor<128x4x?x32xf32>, %arg1: tensor<8x
 
 // -----
 
-func @dot_no_rhs_batch(%arg0: tensor<1x512x768xf32>, %arg1: tensor<768x12x64xf32>) -> tensor<1x512x12x64xf32> {
+func.func @dot_no_rhs_batch(%arg0: tensor<1x512x768xf32>, %arg1: tensor<768x12x64xf32>) -> tensor<1x512x12x64xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_contracting_dimensions = [2],

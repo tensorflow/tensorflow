@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: func @dynamic_reshape
 // CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>, %[[SHAPE:.*]]: memref<3xindex>) -> memref<?x?x?xf32>
-func @dynamic_reshape(%lhs: tensor<?x?xf32>, %rhs: tensor<3xindex>) -> tensor<?x?x?xf32> {
+func.func @dynamic_reshape(%lhs: tensor<?x?xf32>, %rhs: tensor<3xindex>) -> tensor<?x?x?xf32> {
   // CHECK-NOT: tensor_load
   // CHECK: %[[DIM0:.*]] = memref.load %[[SHAPE]][%c0]
   // CHECK: %[[DIM1:.*]] = memref.load %[[SHAPE]][%c1]
@@ -20,7 +20,7 @@ func @dynamic_reshape(%lhs: tensor<?x?xf32>, %rhs: tensor<3xindex>) -> tensor<?x
 
 // CHECK-LABEL: func @dynamic_broadcast_in_dim
 // CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>, %[[SHAPE:.*]]: memref<3xindex>) -> memref<?x?x?xf32>
-func @dynamic_broadcast_in_dim(%operand: tensor<?x?xf32>, %shape: tensor<3xindex>) -> tensor<?x?x?xf32> {
+func.func @dynamic_broadcast_in_dim(%operand: tensor<?x?xf32>, %shape: tensor<3xindex>) -> tensor<?x?x?xf32> {
   // CHECK-NOT: tensor_load
   // CHECK: %[[DIM0:.*]] = memref.load %[[SHAPE]][%c0]
   // CHECK: %[[DIM1:.*]] = memref.load %[[SHAPE]][%c1]
@@ -38,7 +38,7 @@ func @dynamic_broadcast_in_dim(%operand: tensor<?x?xf32>, %shape: tensor<3xindex
 
 // CHECK-LABEL: func @dynamic_iota
 // CHECK-SAME: (%[[SHAPE:.*]]: memref<2xindex>) -> memref<5x?xi32>
-func @dynamic_iota(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
+func.func @dynamic_iota(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
   // CHECK-NOT: tensor_load
   // CHECK: %[[DIM0:.*]] = memref.load %[[SHAPE]][%c1]
   // CHECK: %[[OUTPUT:.*]] = memref.alloc(%[[DIM0]])
@@ -52,7 +52,7 @@ func @dynamic_iota(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
 // CHECK-LABEL: func @dynamic_pad
 // CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>, %[[VAL:.*]]: memref<f32>,
 // CHECK-SAME:  %[[LOW:.*]]: memref<2xindex>, %[[HIGH:.*]]: memref<2xindex>, %[[INTER:.*]]: memref<2xindex>) -> memref<?x?xf32>
-func @dynamic_pad(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>, %arg2: tensor<2xindex>, %arg3: tensor<2xindex>, %arg4: tensor<2xindex>) -> tensor<?x?xf32> {
+func.func @dynamic_pad(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>, %arg2: tensor<2xindex>, %arg3: tensor<2xindex>, %arg4: tensor<2xindex>) -> tensor<?x?xf32> {
   // CHECK-NOT: tensor_load
   // CHECK: %[[DIM0:.*]] = memref.dim %[[ARG]], %c0 : memref<?x?xf32>
   // CHECK: %[[TMP1:.*]] = memref.load %[[LOW]][%c0] : memref<2xindex>
@@ -87,7 +87,7 @@ func @dynamic_pad(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>, %arg2: tensor<2xin
 // CHECK-LABEL: func @real_dynamic_slice
 // CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>,
 // CHECK-SAME:  %[[START:.*]]: memref<2xi32>, %[[LIMIT:.*]]: memref<2xi32>, %[[STRIDE:.*]]: memref<2xi32>) -> memref<?x?xf32>
-func @real_dynamic_slice(%arg0: tensor<?x?xf32>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>, %arg3: tensor<2xi32>) -> tensor<?x?xf32> {
+func.func @real_dynamic_slice(%arg0: tensor<?x?xf32>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>, %arg3: tensor<2xi32>) -> tensor<?x?xf32> {
   // CHECK-NOT: tensor_load
   // CHECK: %[[T0:.*]] = memref.load %[[START]][%c0] : memref<2xi32>
   // CHECK: %[[T1:.*]] = memref.load %[[LIMIT]][%c0] : memref<2xi32>
@@ -115,7 +115,7 @@ func @real_dynamic_slice(%arg0: tensor<?x?xf32>, %arg1: tensor<2xi32>, %arg2: te
 
 // CHECK-LABEL: func @row_reduce
 // CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>, %[[VAL:.*]]: memref<f32>) -> memref<?xf32>
-func @row_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+func.func @row_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
   // CHECK-NOT: tensor_load
   // CHECK: %[[DIM0:.*]] = memref.dim %[[ARG]], %c0 : memref<?x?xf32>
   // CHECK: %[[OUT:.*]] = memref.alloc(%[[DIM0]]) : memref<?xf32>
@@ -135,7 +135,7 @@ func @row_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
 
 // CHECK-LABEL: func @column_reduce
 // CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>, %[[VAL:.*]]: memref<f32>) -> memref<?xf32>
-func @column_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+func.func @column_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
   // CHECK-NOT: tensor_load
   // CHECK: %[[DIM1:.*]] = memref.dim %[[ARG]], %c1 : memref<?x?xf32>
   // CHECK: %[[OUT:.*]] = memref.alloc(%[[DIM1]]) : memref<?xf32>
@@ -155,7 +155,7 @@ func @column_reduce(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?xf32>
 
 // CHECK-LABEL: func @transpose
 // CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>) -> memref<?x?xf32>
-func @transpose(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @transpose(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK-NOT: tensor_load
   // CHECK: %[[DIM0:.*]] = memref.dim %[[ARG]], %c0 : memref<?x?xf32>
   // CHECK: %[[DIM1:.*]] = memref.dim %[[ARG]], %c1 : memref<?x?xf32>
@@ -169,7 +169,7 @@ func @transpose(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
 // CHECK-LABEL: func @concatenate
 // CHECK-SAME: (%[[ARG0:.*]]: memref<?x?xi32>, %[[ARG1:.*]]: memref<?x?xi32>, %[[ARG2:.*]]: memref<?x?xi32>) -> memref<?x?xi32>
-func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>) -> tensor<?x?xi32> {
+func.func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>) -> tensor<?x?xi32> {
   // CHECK-NOT: tensor_load
   // CHECK: %[[ARG0_DIM0:.*]] = memref.dim %[[ARG0]], %c0 : memref<?x?xi32>
   // CHECK: %[[ARG0_DIM1:.*]] = memref.dim %[[ARG0]], %c1 : memref<?x?xi32>
@@ -189,7 +189,7 @@ func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?xi32>)
 
 // CHECK-LABEL: func @gather
 // CHECK-SAME: (%[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<?xi32>) -> memref<?x?xf32>
-func @gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>)
+func.func @gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>)
     -> tensor<?x?xf32> {
   // CHECK: %[[ARG1_DIM0:.*]] = memref.dim %[[ARG1]], %c0 : memref<?xi32>
   // CHECK: %[[TMP:.*]] = memref.alloc(%0) : memref<?x7xf32>
@@ -214,7 +214,7 @@ func @gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>)
 
 // CHECK-LABEL: func @dynamic_gather
 // CHECK-SAME: (%[[ARG0:.*]]: memref<?x?xf32>, %[[ARG1:.*]]: memref<?xi32>, %[[ARG2:.*]]: memref<2xi32>) -> memref<?x?xf32>
-func @dynamic_gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>, %slice_sizes: tensor<2xi32>)
+func.func @dynamic_gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>, %slice_sizes: tensor<2xi32>)
     -> tensor<?x?xf32> {
   // CHECK-DAG: %[[SIZE1_i32:.*]] = memref.load %[[ARG2]][%c1] : memref<2xi32>
   // CHECK-DAG: %[[ARG1_DIM0:.*]] = memref.dim %[[ARG1]], %c0 : memref<?xi32>
@@ -238,7 +238,7 @@ func @dynamic_gather(%operand: tensor<?x?xf32>, %idxs: tensor<?xi32>, %slice_siz
 
 // CHECK-LABEL: func @logistic
 // CHECK-SAME: (%[[ARG:.*]]: memref<?x?xf32>) -> memref<?x?xf32>
-func @logistic(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @logistic(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK-NOT: tensor_load
   // CHECK: %[[DIM0:.*]] = memref.dim %[[ARG]], %c0
   // CHECK: %[[DIM1:.*]] = memref.dim %[[ARG]], %c1

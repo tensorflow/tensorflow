@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt -hlo-legalize-to-memref -func-bufferize -canonicalize %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func @dynamic_reshape_from_unranked
-func @dynamic_reshape_from_unranked(
+func.func @dynamic_reshape_from_unranked(
          %operand: tensor<*xf32>, %shape: tensor<1xi32>) -> tensor<?xf32> {
   %reshaped = "mhlo.dynamic_reshape"(%operand, %shape)
       : (tensor<*xf32>, tensor<1xi32>) -> tensor<?xf32>
@@ -14,7 +14,7 @@ func @dynamic_reshape_from_unranked(
 // -----
 
 // CHECK-LABEL: func @dynamic_reshape_to_unranked
-func @dynamic_reshape_to_unranked(
+func.func @dynamic_reshape_to_unranked(
          %operand: tensor<?xf32>, %shape: tensor<?xi32>) -> tensor<*xf32> {
   %reshaped = "mhlo.dynamic_reshape"(%operand, %shape)
       : (tensor<?xf32>, tensor<?xi32>) -> tensor<*xf32>
@@ -27,7 +27,7 @@ func @dynamic_reshape_to_unranked(
 // -----
 
 // CHECK-LABEL: func @reshape_unranked
-func @reshape_unranked(%operand: tensor<*xf32>) -> tensor<f32> {
+func.func @reshape_unranked(%operand: tensor<*xf32>) -> tensor<f32> {
   %reshaped = "mhlo.reshape"(%operand) : (tensor<*xf32>) -> tensor<f32>
   func.return %reshaped : tensor<f32>
 }

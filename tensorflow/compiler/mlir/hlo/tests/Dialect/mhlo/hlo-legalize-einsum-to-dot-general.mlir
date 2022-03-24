@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt -mhlo-legalize-einsum-to-dot-general %s -o - | FileCheck %s
 
-func @einsum_diag(%arg0: tensor<6x6xf32>) -> tensor<6xf32> {
+func.func @einsum_diag(%arg0: tensor<6x6xf32>) -> tensor<6xf32> {
   %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
   %1 = "mhlo.einsum"(%0, %arg0) {einsum_config = ",ii->i"} : (tensor<f32>, tensor<6x6xf32>) -> tensor<6xf32>
   func.return %1 : tensor<6xf32>
@@ -13,7 +13,7 @@ func @einsum_diag(%arg0: tensor<6x6xf32>) -> tensor<6xf32> {
 // CHECK:         %[[CST:.+]] = mhlo.constant dense<{{.*}} : tensor<f32>
 // CHECK:         "mhlo.einsum"
 
-func @einsum_batched_matrix_high_rank_vector_mul(%arg0: tensor<8x2x6xf32>, %arg1: tensor<8x5x3x6xf32>) -> tensor<8x5x3x2xf32> {
+func.func @einsum_batched_matrix_high_rank_vector_mul(%arg0: tensor<8x2x6xf32>, %arg1: tensor<8x5x3x6xf32>) -> tensor<8x5x3x2xf32> {
   %0 = "mhlo.einsum"(%arg0, %arg1) {einsum_config = "bxy,bijy->bijx"} : (tensor<8x2x6xf32>, tensor<8x5x3x6xf32>) -> tensor<8x5x3x2xf32>
   func.return %0 : tensor<8x5x3x2xf32>
 }
@@ -31,7 +31,7 @@ func @einsum_batched_matrix_high_rank_vector_mul(%arg0: tensor<8x2x6xf32>, %arg1
 // CHECK-SAME:      permutation = dense<[0, 2, 3, 1]
 // CHECK-SAME:    : (tensor<8x2x5x3xf32>) -> tensor<8x5x3x2xf32>
 
-func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %0 = "mhlo.einsum"(%arg0, %arg1) {einsum_config = "ij,jk->ik"} : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
@@ -44,7 +44,7 @@ func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> 
 // CHECK-SAME:        rhs_contracting_dimensions = [0]
 // CHECK-SAME:    : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
 
-func @matvec(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
+func.func @matvec(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
   %0 = "mhlo.einsum"(%arg0, %arg1) {einsum_config = "ij,j->i"} : (tensor<?x?xf32>, tensor<?xf32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
 }
@@ -57,7 +57,7 @@ func @matvec(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK-SAME:        rhs_contracting_dimensions = [0]
 // CHECK-SAME:    : (tensor<?x?xf32>, tensor<?xf32>) -> tensor<?xf32>
 
-func @dot(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<f32> {
+func.func @dot(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> tensor<f32> {
   %0 = "mhlo.einsum"(%arg0, %arg1) {einsum_config = "i,i->"} : (tensor<?xf32>, tensor<?xf32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }

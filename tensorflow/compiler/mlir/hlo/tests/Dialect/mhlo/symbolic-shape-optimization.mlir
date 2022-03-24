@@ -2,7 +2,7 @@
 // RUN: FileCheck %s
 
 // CHECK-LABEL: func @reshape_expand_front
-func @reshape_expand_front(%arg0: tensor<?x?xf32>) -> tensor<1x?x?xf32> {
+func.func @reshape_expand_front(%arg0: tensor<?x?xf32>) -> tensor<1x?x?xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
@@ -16,7 +16,7 @@ func @reshape_expand_front(%arg0: tensor<?x?xf32>) -> tensor<1x?x?xf32> {
 }
 
 // CHECK-LABEL: func @reshape_expand_front_static
-func @reshape_expand_front_static(%arg0: tensor<2x?xf32>) -> tensor<1x2x?xf32> {
+func.func @reshape_expand_front_static(%arg0: tensor<2x?xf32>) -> tensor<1x2x?xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %d0 = tensor.dim %arg0, %c0 : tensor<2x?xf32>
@@ -32,7 +32,7 @@ func @reshape_expand_front_static(%arg0: tensor<2x?xf32>) -> tensor<1x2x?xf32> {
 // -----
 
 // CHECK-LABEL: func @reshape_expand_back
-func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
+func.func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
@@ -48,7 +48,7 @@ func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
 // -----
 
 // CHECK-LABEL: func @reshape_expand_scalar
-func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
+func.func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
   %shape = mhlo.constant dense<1> : tensor<2xi32>
   %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<f32>, tensor<2xi32>) -> tensor<?x?xf32>
@@ -60,7 +60,7 @@ func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
 // -----
 
 // CHECK-LABEL: func @reshape_undefined
-func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
+func.func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
   %c1 = arith.constant 1 : index
   %shape = tensor.from_elements %c1, %c1, %c1 : tensor<3xindex>
   %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
@@ -72,7 +72,7 @@ func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
 // -----
 
 // CHECK-LABEL: func @compute_reshape_shape
-func @compute_reshape_shape(%arg0: tensor<?x?xf32>, %arg1: index)
+func.func @compute_reshape_shape(%arg0: tensor<?x?xf32>, %arg1: index)
     -> tensor<2xi32> {
   %shape = shape.shape_of %arg0: tensor<?x?xf32> -> tensor<2xindex>
   %casted = arith.index_cast %shape : tensor<2xindex> to tensor<2xi32>
@@ -87,7 +87,7 @@ func @compute_reshape_shape(%arg0: tensor<?x?xf32>, %arg1: index)
 // -----
 
 // CHECK-LABEL: func @compute_reshape_shape
-func @compute_reshape_shape(%arg0: tensor<2xi32>, %arg1: index)
+func.func @compute_reshape_shape(%arg0: tensor<2xi32>, %arg1: index)
     -> tensor<2xi32> {
   %mul = mhlo.multiply %arg0, %arg0 : tensor<2xi32>
   %crs = mhlo.compute_reshape_shape %arg1, %mul
@@ -99,7 +99,7 @@ func @compute_reshape_shape(%arg0: tensor<2xi32>, %arg1: index)
 // -----
 
 // CHECK-LABEL: @redundant_cstr_reshapable
-func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
+func.func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
     -> !shape.witness {
   // CHECK: %[[WITNESS:.*]] = shape.const_witness true
   // CHECK: return %[[WITNESS]] : !shape.witness
@@ -119,7 +119,7 @@ func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
 // -----
 
 // CHECK-LABEL: @redundant_cstr_reshapable_less_obvious
-func @redundant_cstr_reshapable_less_obvious(%arg0 : tensor<?x4x?x64xf32>)
+func.func @redundant_cstr_reshapable_less_obvious(%arg0 : tensor<?x4x?x64xf32>)
     -> !shape.witness {
   // CHECK: %[[WITNESS:.*]] = shape.const_witness true
   // CHECK: return %[[WITNESS]] : !shape.witness
@@ -141,7 +141,7 @@ func @redundant_cstr_reshapable_less_obvious(%arg0 : tensor<?x4x?x64xf32>)
 // -----
 
 // CHECK-LABEL: @redundant_cstr_reshapable
-func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
+func.func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
     -> !shape.witness {
   // CHECK: %[[WITNESS:.*]] = shape.const_witness true
   // CHECK: return %[[WITNESS]] : !shape.witness
@@ -161,7 +161,7 @@ func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
 // -----
 
 // CHECK-LABEL: @nonredundant_cstr_reshapable
-func @nonredundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
+func.func @nonredundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
     -> !shape.witness {
   // CHECK: %[[WITNESS:.*]] = mhlo.cstr_reshapable %{{.*}}, %{{.*}}
   // CHECK: return %[[WITNESS]] : !shape.witness
@@ -181,7 +181,7 @@ func @nonredundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
 // -----
 
 // CHECK-LABEL: @redundant_cstr_reshapable
-func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
+func.func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
     -> !shape.witness {
   // CHECK: %[[WITNESS:.*]] = shape.const_witness true
   // CHECK: return %[[WITNESS]] : !shape.witness
@@ -204,7 +204,7 @@ func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
 
 // CHECK-LABEL: @dynamic_reshape_to_collapse_shape
 // CHECK-SAME: %[[ARG:.*]]: tensor<1x4x?x64x?x8x1x1xf32>
-func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
+func.func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
     -> tensor<?x?x8xf32> {
   // CHECK: %[[RESULT:.*]] = tensor.collapse_shape %[[ARG]] {{\[}}[0, 1, 2], [3, 4], [5, 6, 7]{{\]}}
   // CHECK: return %[[RESULT]]
@@ -241,7 +241,7 @@ func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
 // CHECK-SAME:      %arg10: tensor<512xf32>,
 // CHECK-SAME:      %arg11: tensor<512xf32>,
 // CHECK-SAME:      %arg12: tensor<512xf32>)
-func @reshape_integration(%arg0: tensor<512x512xf32>,
+func.func @reshape_integration(%arg0: tensor<512x512xf32>,
     %arg1: tensor<?x8x?x64xf32>, %arg2: tensor<4xi32>, %arg3: tensor<512xf32>,
     %arg4: tensor<?x?x512xf32>, %arg5: tensor<512xf32>, %arg6: tensor<512xf32>,
     %arg7: tensor<512x2048xf32>, %arg8: tensor<2048xf32>,
@@ -303,7 +303,7 @@ func @reshape_integration(%arg0: tensor<512x512xf32>,
 
 // TODO(b/217611473)
 // CHECK-LABEL: @shape_expansion
-func @shape_expansion(%13 : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
+func.func @shape_expansion(%13 : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
   // CHECK: "mhlo.dynamic_reshape"
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -318,7 +318,7 @@ func @shape_expansion(%13 : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
 
 // TODO(b/217611473)
 // CHECK-LABEL: @shape_collapse_and_expansion
-func @shape_collapse_and_expansion(%arg : tensor<3x?xi64>)
+func.func @shape_collapse_and_expansion(%arg : tensor<3x?xi64>)
     -> tensor<?x1x1xi64> {
   // CHECK: "mhlo.dynamic_reshape"
   %c1 = arith.constant 1 : index

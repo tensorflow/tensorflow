@@ -2,7 +2,7 @@
 // RUN: -split-input-file %s -o - | FileCheck %s
 
 // CHECK-LABEL: @dynamic_broadcast_i32_shape
-func @dynamic_broadcast_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
+func.func @dynamic_broadcast_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
      -> index {
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: %[[EXTRACT:.*]] = tensor.extract %arg0[%[[C0]]] : tensor<?xi32>
@@ -19,7 +19,7 @@ func @dynamic_broadcast_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
 // -----
 
 // CHECK-LABEL: @dynamic_iota_i32_shape
-func @dynamic_iota_i32_shape(%arg0 : tensor<?xi32>) -> index {
+func.func @dynamic_iota_i32_shape(%arg0 : tensor<?xi32>) -> index {
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: %[[EXTRACT:.*]] = tensor.extract %arg0[%[[C0]]] : tensor<?xi32>
   // CHECK: %[[CAST:.*]] = arith.index_cast %[[EXTRACT]] : i32 to index
@@ -35,7 +35,7 @@ func @dynamic_iota_i32_shape(%arg0 : tensor<?xi32>) -> index {
 // -----
 
 // CHECK-LABEL: @dynamic_reshape_i32_shape
-func @dynamic_reshape_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
+func.func @dynamic_reshape_i32_shape(%arg0 : tensor<?xi32>, %arg1 : tensor<*xf32>)
      -> index {
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: %[[EXTRACT:.*]] = tensor.extract %arg0[%[[C0]]] : tensor<?xi32>

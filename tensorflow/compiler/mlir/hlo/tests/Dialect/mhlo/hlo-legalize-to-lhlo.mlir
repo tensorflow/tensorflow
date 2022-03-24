@@ -3,7 +3,7 @@
 // RUN: | FileCheck %s
 
 // CHECK-LABEL: func @attrs
-func @attrs_copy(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @attrs_copy(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.exponential"(%operand)
       {some_attr_1 = "exp.1", some_attr_2 = dense<1> : tensor<1xi64>}
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
@@ -13,7 +13,7 @@ func @attrs_copy(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
-func @return_func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+func.func @return_func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   func.return %arg0 : tensor<4xf32>
 }
 //      CHECK: (%[[ARG0:.*]]: [[TYPE:.*]]) -> [[TYPE]]
@@ -22,7 +22,7 @@ func @return_func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 // -----
 
 // CHECK-LABEL: func @func_op_long
-func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+func.func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %1 = mhlo.maximum %arg0, %arg1 : tensor<4xf32>
   %2 = mhlo.add %arg0, %1 : tensor<4xf32>
   %3 = mhlo.minimum %arg0, %arg1 : tensor<4xf32>
@@ -50,7 +50,7 @@ func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> 
 // -----
 
 // CHECK-LABEL: func @fusion
-func @fusion(%multiplier: tensor<2x2xf32>, %summand_1: tensor<2x2xf32>,
+func.func @fusion(%multiplier: tensor<2x2xf32>, %summand_1: tensor<2x2xf32>,
              %summand_2: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: (%{{.*}}: {{.*}}, {{.*}}: {{.*}}, {{.*}}: {{.*}})
   // CHECK-NEXT:  %[[ADD_RESULT:.*]] = memref.alloc() : memref<2x2xf32>
@@ -69,7 +69,7 @@ func @fusion(%multiplier: tensor<2x2xf32>, %summand_1: tensor<2x2xf32>,
 // -----
 
 // CHECK-LABEL: func @copy
-func @copy(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @copy(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.copy"(%operand) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // TODO(herhut): An explicit copy should not be removed.
   // TODO-CHECK: "lmhlo.copy"(%{{.*}}, %{{.*}})
@@ -79,7 +79,7 @@ func @copy(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @exp
-func @exp(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @exp(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.exponential"(%operand) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.exponential"(%{{.*}}, %{{.*}})
   func.return %result : tensor<2x2xf32>
@@ -88,7 +88,7 @@ func @exp(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @expm1
-func @expm1(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @expm1(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.exponential_minus_one"(%operand) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.exponential_minus_one"(%{{.*}}, %{{.*}})
   func.return %result : tensor<2x2xf32>
@@ -97,7 +97,7 @@ func @expm1(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @log
-func @log(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @log(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.log"(%operand) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.log"(%{{.*}}, %{{.*}})
   func.return %result : tensor<2x2xf32>
@@ -106,7 +106,7 @@ func @log(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @select
-func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
+func.func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
              %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.select"(%pred, %lhs, %rhs)
       : (tensor<2x2xi1>, tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
@@ -117,7 +117,7 @@ func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
 // -----
 
 // CHECK-LABEL: func @compare
-func @compare(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xi1> {
+func.func @compare(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xi1> {
   %result = "mhlo.compare"(%lhs, %rhs)
       {comparison_direction = #mhlo<"comparison_direction EQ">}
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
@@ -128,7 +128,7 @@ func @compare(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xi1> {
 // -----
 
 // CHECK-LABEL: func @broadcast
-func @broadcast(%operand: tensor<5xf32>) -> tensor<10x5xf32> {
+func.func @broadcast(%operand: tensor<5xf32>) -> tensor<10x5xf32> {
   %result = "mhlo.broadcast_in_dim"(%operand)
       {broadcast_dimensions = dense<1> : tensor<1xi64>}
         : (tensor<5xf32>) -> tensor<10x5xf32>
@@ -139,7 +139,7 @@ func @broadcast(%operand: tensor<5xf32>) -> tensor<10x5xf32> {
 // -----
 
 // CHECK-LABEL: func @complex
-func @complex(%real: tensor<2x2xf32>, %imag: tensor<2x2xf32>)
+func.func @complex(%real: tensor<2x2xf32>, %imag: tensor<2x2xf32>)
     -> tensor<2x2xcomplex<f32>> {
   %result = "mhlo.complex"(%real, %imag)
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>>
@@ -150,7 +150,7 @@ func @complex(%real: tensor<2x2xf32>, %imag: tensor<2x2xf32>)
 // -----
 
 // CHECK-LABEL: func @complex_dyn
-func @complex_dyn(%real: tensor<?xf32>, %imag: tensor<?xf32>)
+func.func @complex_dyn(%real: tensor<?xf32>, %imag: tensor<?xf32>)
     -> tensor<?xcomplex<f32>> {
   %result = "mhlo.complex"(%real, %imag)
       : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xcomplex<f32>>
@@ -161,7 +161,7 @@ func @complex_dyn(%real: tensor<?xf32>, %imag: tensor<?xf32>)
 // -----
 
 // CHECK-LABEL: func @real
-func @real(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
+func.func @real(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
   %result = "mhlo.real"(%operand)
       : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.real"(%{{.*}}, %{{.*}})
@@ -171,7 +171,7 @@ func @real(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @real_dyn
-func @real_dyn(%operand: tensor<?xcomplex<f32>>) -> tensor<?xf32> {
+func.func @real_dyn(%operand: tensor<?xcomplex<f32>>) -> tensor<?xf32> {
   %result = "mhlo.real"(%operand)
       : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
   // CHECK: "lmhlo.real"(%{{.*}}, %{{.*}})
@@ -181,7 +181,7 @@ func @real_dyn(%operand: tensor<?xcomplex<f32>>) -> tensor<?xf32> {
 // -----
 
 // CHECK-LABEL: func @imag
-func @imag(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
+func.func @imag(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
   %result = "mhlo.imag"(%operand)
       : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.imag"(%{{.*}}, %{{.*}})
@@ -191,7 +191,7 @@ func @imag(%operand: tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @gather
-func @gather(%operand: tensor<13x7xf32>, %idxs: tensor<5xi32>)
+func.func @gather(%operand: tensor<13x7xf32>, %idxs: tensor<5xi32>)
     -> tensor<5x7xf32> {
   %result = "mhlo.gather"(%operand, %idxs) {
     dimension_numbers = #mhlo.gather<
@@ -210,7 +210,7 @@ func @gather(%operand: tensor<13x7xf32>, %idxs: tensor<5xi32>)
 // -----
 
 // CHECK-LABEL: func @imag_dyn
-func @imag_dyn(%operand: tensor<?xcomplex<f32>>) -> tensor<?xf32> {
+func.func @imag_dyn(%operand: tensor<?xcomplex<f32>>) -> tensor<?xf32> {
   %result = "mhlo.imag"(%operand)
       : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
   // CHECK: "lmhlo.imag"(%{{.*}}, %{{.*}})
@@ -221,7 +221,7 @@ func @imag_dyn(%operand: tensor<?xcomplex<f32>>) -> tensor<?xf32> {
 
 // CHECK-LABEL: func @iota
 // TODO(herhut): Dummy should not be required here.
-func @iota(%dummy: tensor<?xf32>) -> tensor<10xi32> {
+func.func @iota(%dummy: tensor<?xf32>) -> tensor<10xi32> {
   %result = "mhlo.iota"()
       {iota_dimension = 0 : i64} : () -> tensor<10xi32>
   // CHECK: "lmhlo.iota"(%{{.*}}) {iota_dimension = 0 : i64}
@@ -231,7 +231,7 @@ func @iota(%dummy: tensor<?xf32>) -> tensor<10xi32> {
 // -----
 
 // CHECK-LABEL: func @abs
-func @abs(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @abs(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.abs"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.abs"(%{{.*}}, %{{.*}})
@@ -241,7 +241,7 @@ func @abs(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @and
-func @and(%operand0: tensor<2x2xi32>, %operand1: tensor<2x2xi32>)
+func.func @and(%operand0: tensor<2x2xi32>, %operand1: tensor<2x2xi32>)
     -> tensor<2x2xi32> {
   %result = "mhlo.and"(%operand0, %operand1)
       : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -252,7 +252,7 @@ func @and(%operand0: tensor<2x2xi32>, %operand1: tensor<2x2xi32>)
 // -----
 
 // CHECK-LABEL: func @ceil
-func @ceil(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @ceil(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.ceil"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.ceil"(%{{.*}}, %{{.*}})
@@ -262,7 +262,7 @@ func @ceil(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @convert
-func @convert(%operand: tensor<2x2xf32>) -> tensor<2x2xi32> {
+func.func @convert(%operand: tensor<2x2xf32>) -> tensor<2x2xi32> {
   %result = "mhlo.convert"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xi32>
   // CHECK: "lmhlo.convert"(%{{.*}}, %{{.*}})
@@ -272,7 +272,7 @@ func @convert(%operand: tensor<2x2xf32>) -> tensor<2x2xi32> {
 // -----
 
 // CHECK-LABEL: func @cos
-func @cos(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @cos(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.cosine"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.cosine"(%{{.*}}, %{{.*}})
@@ -282,7 +282,7 @@ func @cos(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @floor
-func @floor(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @floor(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.floor"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.floor"(%{{.*}}, %{{.*}})
@@ -292,7 +292,7 @@ func @floor(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @neg
-func @neg(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @neg(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.negate"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.negate"(%{{.*}}, %{{.*}})
@@ -302,7 +302,7 @@ func @neg(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @not
-func @not(%operand: tensor<2x2xi32>) -> tensor<2x2xi32> {
+func.func @not(%operand: tensor<2x2xi32>) -> tensor<2x2xi32> {
   %result = "mhlo.not"(%operand)
       : (tensor<2x2xi32>) -> tensor<2x2xi32>
   // CHECK: "lmhlo.not"(%{{.*}}, %{{.*}})
@@ -312,7 +312,7 @@ func @not(%operand: tensor<2x2xi32>) -> tensor<2x2xi32> {
 // -----
 
 // CHECK-LABEL: func @or
-func @or(%operand0: tensor<2x2xi32>, %operand1: tensor<2x2xi32>)
+func.func @or(%operand0: tensor<2x2xi32>, %operand1: tensor<2x2xi32>)
     -> tensor<2x2xi32> {
   %result = "mhlo.or"(%operand0, %operand1)
       : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -323,7 +323,7 @@ func @or(%operand0: tensor<2x2xi32>, %operand1: tensor<2x2xi32>)
 // -----
 
 // CHECK-LABEL: func @rsqrt
-func @rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.rsqrt"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.rsqrt"(%{{.*}}, %{{.*}})
@@ -333,7 +333,7 @@ func @rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @sign
-func @sign(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @sign(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.sign"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.sign"(%{{.*}}, %{{.*}})
@@ -343,7 +343,7 @@ func @sign(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @sqrt
-func @sqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @sqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.sqrt"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.sqrt"(%{{.*}}, %{{.*}})
@@ -353,7 +353,7 @@ func @sqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @shift_left
-func @shift_left(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>)
+func.func @shift_left(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>)
     -> tensor<2x2xi32> {
   %result = "mhlo.shift_left"(%lhs, %rhs)
       : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -364,7 +364,7 @@ func @shift_left(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>)
 // -----
 
 // CHECK-LABEL: func @shift_right_arithmetic
-func @shift_right_arithmetic(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>)
+func.func @shift_right_arithmetic(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>)
     -> tensor<2x2xi32> {
   %result = "mhlo.shift_right_arithmetic"(%lhs, %rhs)
       : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -375,7 +375,7 @@ func @shift_right_arithmetic(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>)
 // -----
 
 // CHECK-LABEL: func @shift_right_logical
-func @shift_right_logical(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>)
+func.func @shift_right_logical(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>)
     -> tensor<2x2xi32> {
   %result = "mhlo.shift_right_logical"(%lhs, %rhs)
       : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -386,7 +386,7 @@ func @shift_right_logical(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>)
 // -----
 
 // CHECK-LABEL: func @tanh
-func @tanh(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @tanh(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.tanh"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.tanh"(%{{.*}}, %{{.*}})
@@ -396,7 +396,7 @@ func @tanh(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // -----
 
 // CHECK-LABEL: func @remainder
-func @remainder(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>)
+func.func @remainder(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>)
     -> tensor<2x2xf32> {
   %result = "mhlo.remainder"(%lhs, %rhs)
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
@@ -407,7 +407,7 @@ func @remainder(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>)
 // -----
 
 // CHECK-LABEL: func @xor
-func @xor(%operand0: tensor<2x2xi32>, %operand1: tensor<2x2xi32>)
+func.func @xor(%operand0: tensor<2x2xi32>, %operand1: tensor<2x2xi32>)
     -> tensor<2x2xi32> {
   %result = "mhlo.xor"(%operand0, %operand1)
       : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -419,7 +419,7 @@ func @xor(%operand0: tensor<2x2xi32>, %operand1: tensor<2x2xi32>)
 
 // Dynamic shape binary element-wise operation.
 // CHECK-LABEL: func @add_dyn
-func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %result = "mhlo.add"(%lhs, %rhs)
       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[INPUT:.*]] : tensor<?x?xf32> -> tensor<2xindex>
@@ -437,7 +437,7 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
 // Dynamic shape unary element-wise operation.
 // CHECK-LABEL: func @tanh_dyn
-func @tanh_dyn(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @tanh_dyn(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %result = "mhlo.tanh"(%arg0)
       : (tensor<?x?xf32>) -> tensor<?x?xf32>
   // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[INPUT:.*]] : tensor<?x?xf32> -> tensor<2xindex>
@@ -454,7 +454,7 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // -----
 
 // CHECK-LABEL: func @dot
-func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
+func.func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 // CHECK-SAME: (%[[ARG0:.*]]: [[TYPE:.*]]) -> [[TYPE]]
 // CHECK-NEXT: %[[ALLOC:.*]] = memref.alloc
 //      CHECK: "lmhlo.dot"(%[[ARG0]], %[[ARG0]], %[[ALLOC]]) {
@@ -473,7 +473,7 @@ func @dot(%arg0: tensor<1024x1024xf32>) -> tensor<1024x1024xf32> {
 // -----
 
 // CHECK-LABEL: func @conv
-func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>)
+func.func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>)
     -> tensor<3x5x5x4xf32> {
   %c0 = arith.constant 0 : index
   // CHECK: %[[OUT:.*]] = memref.alloc() : memref<3x5x5x4xf32>
@@ -503,7 +503,7 @@ func @conv(%input: tensor<3x5x5x3xf32>, %filter : tensor<2x2x3x4xf32>)
 // -----
 
 // CHECK-LABEL: func @reduce
-func @reduce(%arg0: tensor<1x8xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
+func.func @reduce(%arg0: tensor<1x8xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc() : memref<1xf32>
   // CHECK:  "lmhlo.reduce"(%{{.+}}, %{{.+}}, %[[OUT]]) ({
   // CHECK:  ^bb0(%[[ARG1:.*]]: memref<f32>, %[[ARG2:.*]]: memref<f32>,
@@ -526,7 +526,7 @@ func @reduce(%arg0: tensor<1x8xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
 // -----
 
 // CHECK-LABEL: func @reduce_multiple_operand
-func @reduce_multiple_operand(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> 
+func.func @reduce_multiple_operand(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> 
   (tensor<1xf32>, tensor<1xi32>) {
   // CHECK: %[[OUT_F:.*]] = memref.alloc() : memref<1xf32>
   // CHECK: %[[OUT_I:.*]] = memref.alloc() : memref<1xi32>
@@ -555,7 +555,7 @@ func @reduce_multiple_operand(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xi32>, %a
 // -----
 
 // CHECK-LABEL: func @reduce_window
-func @reduce_window(%arg0: tensor<1x17x17x64xf32>, %arg1: tensor<f32>) -> tensor<1x8x8x64xf32> {
+func.func @reduce_window(%arg0: tensor<1x17x17x64xf32>, %arg1: tensor<f32>) -> tensor<1x8x8x64xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc() : memref<1x8x8x64xf32>
   // CHECK:  "lmhlo.reduce_window"(%{{.+}}, %{{.+}}, %[[OUT]]) ({
   // CHECK:  ^bb0(%[[ARG1:.*]]: memref<f32>, %[[ARG2:.*]]: memref<f32>,
@@ -578,7 +578,7 @@ func @reduce_window(%arg0: tensor<1x17x17x64xf32>, %arg1: tensor<f32>) -> tensor
 // -----
 
 // CHECK-LABEL: func @reduce_window_multiple_operand
-func @reduce_window_multiple_operand(%arg0: tensor<1x17x17x64xf32>, %arg1: tensor<1x17x17x64xi32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> 
+func.func @reduce_window_multiple_operand(%arg0: tensor<1x17x17x64xf32>, %arg1: tensor<1x17x17x64xi32>, %arg2: tensor<f32>, %arg3: tensor<i32>) -> 
   (tensor<1x8x8x64xf32>, tensor<1x8x8x64xi32>) {
   // CHECK: %[[OUT_F:.*]] = memref.alloc() : memref<1x8x8x64xf32>
   // CHECK: %[[OUT_I:.*]] = memref.alloc() : memref<1x8x8x64xi32>
@@ -607,7 +607,7 @@ func @reduce_window_multiple_operand(%arg0: tensor<1x17x17x64xf32>, %arg1: tenso
 // -----
 
 // CHECK-LABEL: func @transpose
-func @transpose(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @transpose(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %result = "mhlo.transpose"(%operand) {permutation = dense<[1, 0]> : tensor<2xi64>}
               : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.transpose"(%{{.*}}, %{{.*}}) {permutation = dense<[1, 0]> : tensor<2xi64>}
@@ -618,7 +618,7 @@ func @transpose(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // CHECK-LABEL: func @custom_call
 // CHECK-SAME:([[ARG0:%.*]]: memref<2x2xf32>, [[ARG1:%.*]]: memref<2x3xf32>)
-func @custom_call(%arg0: tensor<2x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<4x4xf16> {
+func.func @custom_call(%arg0: tensor<2x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<4x4xf16> {
   // CHECK: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = dense<[2, 1]> : vector<2xi32>}
   %result = "mhlo.custom_call"(%arg0, %arg1)
               {backend_config = "", call_target_name = "foo", has_side_effect = false}
@@ -630,7 +630,7 @@ func @custom_call(%arg0: tensor<2x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<4x4x
 
 // CHECK-LABEL: func @custom_call_multiout
 // CHECK-SAME:([[ARG0:%.*]]: memref<2x2xf32>, [[ARG1:%.*]]: memref<2x3xf32>)
-func @custom_call_multiout(%arg0: tensor<2x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<4x4xf16> {
+func.func @custom_call_multiout(%arg0: tensor<2x2xf32>, %arg1: tensor<2x3xf32>) -> tensor<4x4xf16> {
   // CHECK: "lmhlo.custom_call"([[ARG0]], [[ARG1]], %{{.*}}, %{{.*}}) {backend_config = "", call_target_name = "foo", has_side_effect = false, operand_segment_sizes = dense<2> : vector<2xi32>}
   %temp:2 = "mhlo.custom_call"(%arg0, %arg1)
                    {backend_config = "", call_target_name = "foo", has_side_effect = false}
@@ -642,7 +642,7 @@ func @custom_call_multiout(%arg0: tensor<2x2xf32>, %arg1: tensor<2x3xf32>) -> te
 // -----
 
 // CHECK-LABEL: func @isfinite
-func @isfinite(%arg0: tensor<2x2xf32>) -> tensor<2x2xi1> {
+func.func @isfinite(%arg0: tensor<2x2xf32>) -> tensor<2x2xi1> {
   // CHECK: "lmhlo.is_finite"(%{{.*}}, %{{.*}})
   %result = "mhlo.is_finite"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xi1>
   func.return %result : tensor<2x2xi1>
@@ -651,7 +651,7 @@ func @isfinite(%arg0: tensor<2x2xf32>) -> tensor<2x2xi1> {
 // -----
 
 // CHECK-LABEL: func @zero_inputs
-func @zero_inputs() -> tensor<100x100xf32> {
+func.func @zero_inputs() -> tensor<100x100xf32> {
   // CHECK: "lmhlo.constant"(%{{.*}})
   %0 = mhlo.constant dense<0.000000e+00> : tensor<100x100xf32>
   func.return %0 : tensor<100x100xf32>
@@ -660,7 +660,7 @@ func @zero_inputs() -> tensor<100x100xf32> {
 // -----
 
 // CHECK-LABEL: func @clamp
-func @clamp(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4xf32>) -> tensor<4xf32> {
+func.func @clamp(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: "lmhlo.clamp"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}})
   %0 = "mhlo.clamp"(%lb, %x, %ub) : (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   func.return %0 : tensor<4xf32>
@@ -669,7 +669,7 @@ func @clamp(%lb : tensor<4xf32>, %x : tensor<4xf32>, %ub : tensor<4xf32>) -> ten
 // -----
 
 // CHECK-LABEL: func @clamp_broadcast
-func @clamp_broadcast(%min: tensor<f32>, %value: tensor<4xf32>, %max: tensor<f32>) -> tensor<4xf32> {
+func.func @clamp_broadcast(%min: tensor<f32>, %value: tensor<4xf32>, %max: tensor<f32>) -> tensor<4xf32> {
   // CHECK: "lmhlo.clamp"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (memref<f32>, memref<4xf32>, memref<f32>, memref<4xf32>) -> ()
   %0 = "mhlo.clamp"(%min, %value, %max) : (tensor<f32>, tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
   func.return %0 : tensor<4xf32>

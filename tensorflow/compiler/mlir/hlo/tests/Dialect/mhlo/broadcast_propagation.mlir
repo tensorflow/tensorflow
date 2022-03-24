@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: @single_bcast
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<16x?xf32>, %[[ARG1:.*]]: tensor<16x?xf32>, %[[SHAPE:.*]]: tensor<3xindex>
-func @single_bcast(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
+func.func @single_bcast(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
     %shape : tensor<3xindex>) -> tensor<?x16x?xf32> {
   // CHECK-DAG: %[[BCASTED_ARG0:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[SHAPE]])
   // CHECK-DAG: %[[BCASTED_ARG1:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[SHAPE]])
@@ -26,7 +26,7 @@ func @single_bcast(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
 
 // CHECK-LABEL: @single_bcast_ensure_order
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<16x?xf32>, %[[ARG1:.*]]: tensor<16x?xf32>, %[[SHAPE:.*]]: tensor<3xindex>
-func @single_bcast_ensure_order(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
+func.func @single_bcast_ensure_order(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
     %shape : tensor<3xindex>) -> tensor<?x16x?xf32> {
   // CHECK-DAG: %[[BCASTED_ARG0:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[SHAPE]])
   // CHECK-DAG: %[[BCASTED_ARG1:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[SHAPE]])
@@ -49,7 +49,7 @@ func @single_bcast_ensure_order(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf3
 
 // CHECK-LABEL: @double_bcasts
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<16x?xf32>, %[[ARG1:.*]]: tensor<16x?xf32>, %[[SHAPE0:.*]]: tensor<3xindex>, %[[SHAPE1:.*]]: tensor<3xindex>
-func @double_bcasts(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
+func.func @double_bcasts(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
     %shape0 : tensor<3xindex>, %shape1 : tensor<3xindex>)
     -> (tensor<?x16x?xf32>, tensor<?x16x?xf32>) {
   // CHECK-DAG: %[[BCASTED_ARG00:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[SHAPE0]]) [[BCAST_DIMS0:{broadcast_dimensions = dense<\[1, 2\]> : tensor<2xi64>}]]
@@ -82,7 +82,7 @@ func @double_bcasts(%arg0 : tensor<16x?xf32>, %arg1 : tensor<16x?xf32>,
 
 // CHECK-LABEL: @late_output_dimensions
 // CHECK: %[[ARG0:.*]]: tensor<?x32xf32>, %[[ARG1:.*]]: tensor<?x32xf32>, %[[ARG2:.*]]: tensor<?x?x?xf32>
-func @late_output_dimensions(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
+func.func @late_output_dimensions(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
     %arg2 : tensor<?x?x?xf32>) -> tensor<?x?x32xf32> {
   // CHECK-DAG: %[[SHAPE:.*]] = shape.shape_of %[[ARG2]]
   // CHECK-DAG: %[[BCASTED_ARG0:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[SHAPE]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
@@ -103,7 +103,7 @@ func @late_output_dimensions(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
 
 // CHECK-LABEL: @very_late_output_dimensions
 // CHECK: (%[[ARG0:.*]]: tensor<?x32xf32>, %[[ARG1:.*]]: tensor<?x32xf32>, %[[ARG2:.*]]: tensor<?x?x?xf32>)
-func @very_late_output_dimensions(%arg0 : tensor<?x32xf32>,
+func.func @very_late_output_dimensions(%arg0 : tensor<?x32xf32>,
     %arg1 : tensor<?x32xf32>, %arg2 : tensor<?x?x?xf32>) -> tensor<?x?x32xf32> {
   // CHECK-DAG: %[[S:.*]] = shape.shape_of %[[ARG2:.*]]
   // CHECK-DAG: %[[BCASTED_ARG0:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[S]])
@@ -126,7 +126,7 @@ func @very_late_output_dimensions(%arg0 : tensor<?x32xf32>,
 
 // CHECK-LABEL: @propagate_within_block
 // CHECK: (%[[ARG0:.*]]: tensor<?x32xf32>, %[[ARG1:.*]]: tensor<?x32xf32>, %[[ARG2:.*]]: tensor<?x32xf32>, %[[W:.*]]: !shape.witness, %[[SHAPE:.*]]: tensor<3xindex>)
-func @propagate_within_block(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
+func.func @propagate_within_block(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
     %arg2 : tensor<?x32xf32>, %w : !shape.witness, %shape : tensor<3xindex>)
     -> tensor<?x?x32xf32> {
   // CHECK-DAG: %[[SUB:.*]] = mhlo.subtract %[[ARG0]], %[[ARG1]] : tensor<?x32xf32>
@@ -151,7 +151,7 @@ func @propagate_within_block(%arg0 : tensor<?x32xf32>, %arg1 : tensor<?x32xf32>,
 
 // CHECK-LABEL: @propagate_within_block_2
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x?xf32>, %[[S:.*]]: tensor<3xindex>, %[[W:.*]]: !shape.witness
-func @propagate_within_block_2(%arg : tensor<?x?x?xf32>,
+func.func @propagate_within_block_2(%arg : tensor<?x?x?xf32>,
     %shape: tensor<3xindex>, %w: !shape.witness) -> tensor<?x?x?xf32> {
   // CHECK-DAG: %[[TMP:.*]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[S]])
   // CHECK:     %[[RES:.*]] = shape.assuming %[[W]]
@@ -174,7 +174,7 @@ func @propagate_within_block_2(%arg : tensor<?x?x?xf32>,
 
 // CHECK-LABEL: @propagate_across_bcasts_cst_src
 // CHECK-SAME:  %[[ARG:.*]]: tensor<1xindex>
-func @propagate_across_bcasts_cst_src(%s : tensor<1xindex>) -> tensor<?xi1> {
+func.func @propagate_across_bcasts_cst_src(%s : tensor<1xindex>) -> tensor<?xi1> {
   // CHECK-DAG: %[[C1:.*]] = mhlo.constant dense<true> : tensor<i1>
   // CHECK-DAG: %[[RES:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[C1]], %[[ARG]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<i1>, tensor<1xindex>) -> tensor<?xi1>
   // CHECK:     return %[[RES]]
@@ -192,7 +192,7 @@ func @propagate_across_bcasts_cst_src(%s : tensor<1xindex>) -> tensor<?xi1> {
 
 // CHECK-LABEL: @compose_bcast_dims
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xi1>, %[[S0:.*]]: tensor<3xindex>, %[[S1:.*]]: tensor<4xindex>
-func @compose_bcast_dims(%arg : tensor<?x?xi1>, %s0 : tensor<3xindex>, %s1 : tensor<4xindex>) -> tensor<1x?x1x?xi1> {
+func.func @compose_bcast_dims(%arg : tensor<?x?xi1>, %s0 : tensor<3xindex>, %s1 : tensor<4xindex>) -> tensor<1x?x1x?xi1> {
   // CHECK-DAG: %[[RES:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG]], %[[S1]]) {broadcast_dimensions = dense<[1, 3]> : tensor<2xi64>} : (tensor<?x?xi1>, tensor<4xindex>) -> tensor<1x?x1x?xi1>
   // CHECK:     return %[[RES]]
   %1 = "mhlo.dynamic_broadcast_in_dim"(%arg, %s0)
@@ -208,7 +208,7 @@ func @compose_bcast_dims(%arg : tensor<?x?xi1>, %s0 : tensor<3xindex>, %s1 : ten
 
 // CHECK-LABEL: @propagate_across_bcasts
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x?xf32>, %[[S:.*]]: tensor<3xindex>
-func @propagate_across_bcasts(%arg : tensor<?x?x?xf32>, %shape : tensor<3xindex>) -> tensor<?x?x?xf32> {
+func.func @propagate_across_bcasts(%arg : tensor<?x?x?xf32>, %shape : tensor<3xindex>) -> tensor<?x?x?xf32> {
   // CHECK-DAG: %[[RES:.*]] = "mhlo.dynamic_broadcast_in_dim"(%[[ARG]], %[[S]]) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<?x?x?xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
   // CHECK:     return %[[RES]]
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg, %shape)

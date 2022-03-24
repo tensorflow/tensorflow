@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt -hlo-legalize-to-arithmetic %s | FileCheck %s
 
-func @reshape_unsigned() -> tensor<2xui64> {
+func.func @reshape_unsigned() -> tensor<2xui64> {
   %result = mhlo.xla.rng_get_and_update_state {delta = 1 : i64}
   func.return %result : tensor<2xui64>
 }

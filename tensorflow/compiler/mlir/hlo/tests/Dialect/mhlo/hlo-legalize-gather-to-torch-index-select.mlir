@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt -mhlo-legalize-gather-to-torch-index-select %s -o - | FileCheck %s
 
 // CHECK-LABEL: @gather_to_index_select
-func @gather_to_index_select(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x1xi32>) -> tensor<1x3x4xf32> {
+func.func @gather_to_index_select(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x1xi32>) -> tensor<1x3x4xf32> {
   // CHECK: [[TIS:%.+]] = "mhlo.torch_index_select"(%arg0, %arg1) {
   // CHECK-SAME:   batch_dims = 0 : i64,
   // CHECK-SAME:   dim = 0 : i64
@@ -23,7 +23,7 @@ func @gather_to_index_select(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x1xi32>)
 }
 
 // CHECK-LABEL: @gather_no_lowering_subslice
-func @gather_no_lowering_subslice(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x1xi32>) -> tensor<1x3x3xf32> {
+func.func @gather_no_lowering_subslice(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x1xi32>) -> tensor<1x3x3xf32> {
   // CHECK: "mhlo.gather"
   %0 = "mhlo.gather"(%arg0, %arg1) {
     dimension_numbers = #mhlo.gather<
@@ -39,7 +39,7 @@ func @gather_no_lowering_subslice(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x1x
 }
 
 // CHECK-LABEL: @gather_no_lowering_multidim
-func @gather_no_lowering_multidim(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x2xi32>) -> tensor<1x3x4xf32> {
+func.func @gather_no_lowering_multidim(%arg0 : tensor<5x4xf32>, %arg1 : tensor<1x3x2xi32>) -> tensor<1x3x4xf32> {
   // CHECK: "mhlo.gather"
   %0 = "mhlo.gather"(%arg0, %arg1) {
     dimension_numbers = #mhlo.gather<

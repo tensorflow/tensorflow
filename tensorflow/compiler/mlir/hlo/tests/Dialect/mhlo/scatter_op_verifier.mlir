@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file -allow-unregistered-dialect | FileCheck %s
 
 // CHECK: func @scatter
-func @scatter(%input_tensor: tensor<200x100x300xf32>,
+func.func @scatter(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
   %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
@@ -23,7 +23,7 @@ func @scatter(%input_tensor: tensor<200x100x300xf32>,
 }
 
 // CHECK: func @scatter_with_unranked_inputs
-func @scatter_with_unranked_inputs(%input_tensor: tensor<*xf32>,
+func.func @scatter_with_unranked_inputs(%input_tensor: tensor<*xf32>,
     %scatter_indices: tensor<*xi32>, %updates: tensor<*xf32>) ->
       tensor<*xf32> {
   %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
@@ -46,7 +46,7 @@ func @scatter_with_unranked_inputs(%input_tensor: tensor<*xf32>,
 
 // -----
 
-func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xf32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
   // expected-error @+1 {{operand #1 must be tensor of integer or index values, but got 'tensor<10x2xf32>'}}
@@ -70,7 +70,7 @@ func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter(%input_tensor: tensor<*xf32>,
+func.func @invalid_scatter(%input_tensor: tensor<*xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<*xf32>) ->
       tensor<*xf32> {
   // expected-error @+1 {{expects scatter index leaf dimension to be within [0, rank(scatter_indices) + 1. rank(scatter_indices) is 2 and scatter index leaf dimension is 3.}}
@@ -94,7 +94,7 @@ func @invalid_scatter(%input_tensor: tensor<*xf32>,
 
 // -----
 
-func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
   // expected-error @+1 {{expects scatter index leaf dimension to be within [0, rank(scatter_indices) + 1. rank(scatter_indices) is 2 and scatter index leaf dimension is -1.}}
@@ -118,7 +118,7 @@ func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter(%input_tensor: tensor<*xf32>,
+func.func @invalid_scatter(%input_tensor: tensor<*xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<*xf32> {
   // expected-error @+1 {{expects updates tensor must be of rank 3 ( == rank-of('scatter_indices') - 1 + size-of('update_window_dims'), where 'scatter_indices' is expanded by a trailing 1 dimension if 'index_vector_dim' == rank-of('scatter_indices')), but got 2.}}
@@ -141,7 +141,7 @@ func @invalid_scatter(%input_tensor: tensor<*xf32>,
 
 // -----
 
-func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
   // expected-error @+1 {{expects updates tensor must be of rank 3 ( == rank-of('scatter_indices') - 1 + size-of('update_window_dims'), where 'scatter_indices' is expanded by a trailing 1 dimension if 'index_vector_dim' == rank-of('scatter_indices')), but got 2.}}
@@ -165,7 +165,7 @@ func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
+func.func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
   %base = mhlo.constant dense<0.000000e+00> : tensor<512x1x6400x6400xf32>
   %index = mhlo.constant dense<0> : tensor<1xi32>
   %update = mhlo.constant dense<1.000000e+00> : tensor<512x1x6400x6400xf32>
@@ -189,7 +189,7 @@ func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
 
 // -----
 
-func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
+func.func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
   %base = mhlo.constant dense<0.000000e+00> : tensor<512x1x6400x6400xf32>
   %index = mhlo.constant dense<0> : tensor<1xi32>
   %update = mhlo.constant dense<1.000000e+00> : tensor<512x1x6400x6400xf32>
@@ -213,7 +213,7 @@ func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
 
 // -----
 
-func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
+func.func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
   %base = mhlo.constant dense<0.000000e+00> : tensor<512x1x6400x6400xf32>
   %index = mhlo.constant dense<0> : tensor<1xi32>
   %update = mhlo.constant dense<1.000000e+00> : tensor<512x1x6400x6400xf32>
@@ -237,7 +237,7 @@ func @invalid_scatter_dimensions() ->  tensor<512x1x6400x6400xf32> {
 
 // -----
 
-func @invalid_scatter_dimensions(%input_tensor: tensor<*xf32>,
+func.func @invalid_scatter_dimensions(%input_tensor: tensor<*xf32>,
     %scatter_indices: tensor<*xi32>, %updates: tensor<*xf32>) ->
       tensor<*xf32> {
 
@@ -261,7 +261,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<*xf32>,
 
 // -----
 
-func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 // expected-error @+1 {{Expects inserted_window_dims to not repeat; got: [1, 1].}}
@@ -285,7 +285,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -310,7 +310,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<*xi32>, %updates: tensor<*xf32>) -> tensor<*xf32> {
 
   // expected-error @+1 {{Expects rank-of operand to match size-of('update_window_dims')  + size-of('inserted_window_dims') i.e. 4 but got 3.}}
@@ -333,7 +333,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_dimensions(%input_tensor: tensor<*xf32>,
+func.func @invalid_scatter_dimensions(%input_tensor: tensor<*xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<*xf32>) ->
       tensor<*xf32> {
 
@@ -356,7 +356,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<*xf32>,
   func.return %0 : tensor<*xf32>
 }
 
-func @valid_scatter_dimensions_with_dynamic_index_vector_dim(
+func.func @valid_scatter_dimensions_with_dynamic_index_vector_dim(
     %input_tensor: tensor<*xf32>, %scatter_indices: tensor<10x?xi32>,
     %updates: tensor<*xf32>) -> tensor<*xf32> {
 
@@ -379,7 +379,7 @@ func @valid_scatter_dimensions_with_dynamic_index_vector_dim(
 
 // -----
 
-func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<*xi32>, %updates: tensor<*xf32>) -> tensor<*xf32> {
 
   // expected-error @+1 {{Invalid scatter_dims_to_operand_dims mapping; domain is [0, 3), got: 1->3.}}
@@ -402,7 +402,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -427,7 +427,7 @@ func @invalid_scatter_dimensions(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_update_window_dims(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_update_window_dims(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x301xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -452,7 +452,7 @@ func @invalid_scatter_update_window_dims(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_update_window_dims(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_update_window_dims(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<11x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -477,7 +477,7 @@ func @invalid_scatter_update_window_dims(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_return_type(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_return_type(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100xf32> {
 
@@ -502,7 +502,7 @@ func @invalid_scatter_return_type(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -527,7 +527,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -552,7 +552,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -577,7 +577,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -602,7 +602,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -629,7 +629,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -655,7 +655,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
@@ -680,7 +680,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
+func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xi32>) ->
       tensor<200x100x300xf32> {
 
@@ -705,7 +705,7 @@ func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
 
 // -----
 
-func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xi32>,
+func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xi32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 

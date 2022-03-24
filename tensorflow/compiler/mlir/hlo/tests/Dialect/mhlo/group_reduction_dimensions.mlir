@@ -7,7 +7,7 @@
 
 // CHECK-LABEL: @trailing_reduction
 // CHECK-SAME:  %[[ARG:.*]]: tensor<10x10x3x3xf32>
-func @trailing_reduction(%arg : tensor<10x10x3x3xf32>) -> tensor<10x10xf32> {
+func.func @trailing_reduction(%arg : tensor<10x10x3x3xf32>) -> tensor<10x10xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:     {{\[}}[0, 1], [2, 3]{{\]}}
@@ -28,7 +28,7 @@ func @trailing_reduction(%arg : tensor<10x10x3x3xf32>) -> tensor<10x10xf32> {
 
 // CHECK-LABEL: @leading_reduction
 // CHECK-SAME:  %[[ARG:.*]]: tensor<10x20x30x4x5x6xf32>
-func @leading_reduction(%arg : tensor<10x20x30x4x5x6xf32>)
+func.func @leading_reduction(%arg : tensor<10x20x30x4x5x6xf32>)
     -> tensor<4x5x6xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %arg0
@@ -52,7 +52,7 @@ func @leading_reduction(%arg : tensor<10x20x30x4x5x6xf32>)
 
 // CHECK-LABEL: @unordered_reduction_dimensions
 // CHECK-SAME:  %[[ARG:.*]]: tensor<10x20x30x4x5x6xf32>
-func @unordered_reduction_dimensions(%arg : tensor<10x20x30x4x5x6xf32>)
+func.func @unordered_reduction_dimensions(%arg : tensor<10x20x30x4x5x6xf32>)
     -> tensor<4x5x6xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %arg0
@@ -76,7 +76,7 @@ func @unordered_reduction_dimensions(%arg : tensor<10x20x30x4x5x6xf32>)
 
 // CHECK-LABEL: @reduction_to_rank1
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x?xf32>
-func @reduction_to_rank1(%arg0 : tensor<?x?x?xf32>) -> tensor<?xf32> {
+func.func @reduction_to_rank1(%arg0 : tensor<?x?x?xf32>) -> tensor<?xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:     {{\[}}[0], [1, 2]{{\]}}
@@ -96,7 +96,7 @@ func @reduction_to_rank1(%arg0 : tensor<?x?x?xf32>) -> tensor<?xf32> {
 
 // CHECK-LABEL: @full_reduction
 // CHECK-SAME:  %[[ARG:.*]]: tensor<10x20x30xf32>
-func @full_reduction(%arg : tensor<10x20x30xf32>) -> tensor<f32> {
+func.func @full_reduction(%arg : tensor<10x20x30xf32>) -> tensor<f32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:     {{\[}}[0, 1, 2]{{\]}}
@@ -116,7 +116,7 @@ func @full_reduction(%arg : tensor<10x20x30xf32>) -> tensor<f32> {
 
 // CHECK-LABEL: @inner_reduction
 // CHECK-SAME:  %[[ARG:.*]]: tensor<3x4x5x6x7x8xf32>
-func @inner_reduction(%arg : tensor<3x4x5x6x7x8xf32>) -> tensor<3x4x7x8xf32> {
+func.func @inner_reduction(%arg : tensor<3x4x5x6x7x8xf32>) -> tensor<3x4x7x8xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:     {{\[}}[0, 1], [2, 3], [4, 5]{{\]}}
@@ -144,7 +144,7 @@ func @inner_reduction(%arg : tensor<3x4x5x6x7x8xf32>) -> tensor<3x4x7x8xf32> {
 
 // CHECK-LABEL: @non_consecutive_reduction
 // CHECK-SAME:  %[[ARG:.*]]: tensor<3x4x5x6x7x8xf32>
-func @non_consecutive_reduction(%arg : tensor<3x4x5x6x7x8xf32>)
+func.func @non_consecutive_reduction(%arg : tensor<3x4x5x6x7x8xf32>)
     -> tensor<5x6xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
@@ -174,7 +174,7 @@ func @non_consecutive_reduction(%arg : tensor<3x4x5x6x7x8xf32>)
 
 // CHECK-LABEL: @accept_dynamic_shape
 // CHECK-SAME:  %[[ARG:.*]]: tensor<10x?x3x3xf32>
-func @accept_dynamic_shape(%arg : tensor<10x?x3x3xf32>) -> tensor<10x?xf32> {
+func.func @accept_dynamic_shape(%arg : tensor<10x?x3x3xf32>) -> tensor<10x?xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:     {{\[}}[0, 1], [2, 3]{{\]}}
@@ -195,7 +195,7 @@ func @accept_dynamic_shape(%arg : tensor<10x?x3x3xf32>) -> tensor<10x?xf32> {
 
 // CHECK-LABEL: @more_than_one_dyn_parallel_dim
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x3x3xf32>
-func @more_than_one_dyn_parallel_dim(%arg : tensor<?x?x3x3xf32>)
+func.func @more_than_one_dyn_parallel_dim(%arg : tensor<?x?x3x3xf32>)
     -> tensor<?x?xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK-DAG:  %[[C0_:.*]] = arith.constant 0
@@ -222,7 +222,7 @@ func @more_than_one_dyn_parallel_dim(%arg : tensor<?x?x3x3xf32>)
 
 // CHECK-LABEL: @ignore_if_multiple_operands
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<?x?x3x3xf32>, %[[ARG1:.*]]: tensor<?x?x3x3xf32>
-func @ignore_if_multiple_operands(%arg0: tensor<?x?x3x3xf32>,
+func.func @ignore_if_multiple_operands(%arg0: tensor<?x?x3x3xf32>,
     %arg1: tensor<?x?x3x3xf32>) -> (tensor<?x?xf32>, tensor<?x?xf32>) {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[RESULTS:.*]]:2 = mhlo.reduce(%[[ARG0]] init: %[[C0]]),
@@ -253,7 +253,7 @@ func @ignore_if_multiple_operands(%arg0: tensor<?x?x3x3xf32>,
 
 // CHECK-LABEL: @leading_one_dims
 // CHECK-SAME:  %[[ARG:.*]]: tensor<1x1x10x3x3xf32>
-func @leading_one_dims(%arg : tensor<1x1x10x3x3xf32>) -> tensor<1x3xf32> {
+func.func @leading_one_dims(%arg : tensor<1x1x10x3x3xf32>) -> tensor<1x3xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:     {{\[}}[0, 1, 2, 3], [4]{{\]}}
@@ -276,7 +276,7 @@ func @leading_one_dims(%arg : tensor<1x1x10x3x3xf32>) -> tensor<1x3xf32> {
 
 // CHECK-LABEL: @trailing_one_dims
 // CHECK-SAME:  %[[ARG:.*]]: tensor<10x3x3x1x1xf32>
-func @trailing_one_dims(%arg : tensor<10x3x3x1x1xf32>) -> tensor<10x1x1xf32> {
+func.func @trailing_one_dims(%arg : tensor<10x3x3x1x1xf32>) -> tensor<10x1x1xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:     {{\[}}[0], [1, 2, 3, 4]{{\]}}
@@ -298,7 +298,7 @@ func @trailing_one_dims(%arg : tensor<10x3x3x1x1xf32>) -> tensor<10x1x1xf32> {
 
 // CHECK-LABEL: @inner_one_dims
 // CHECK-SAME:  %[[ARG:.*]]: tensor<10x1x3x1x9xf32>
-func @inner_one_dims(%arg : tensor<10x1x3x1x9xf32>) -> tensor<1x1x9xf32> {
+func.func @inner_one_dims(%arg : tensor<10x1x3x1x9xf32>) -> tensor<1x1x9xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:     {{\[}}[0, 1, 2, 3], [4]{{\]}}
@@ -320,7 +320,7 @@ func @inner_one_dims(%arg : tensor<10x1x3x1x9xf32>) -> tensor<1x1x9xf32> {
 
 // CHECK-LABEL: @all_one_dims
 // CHECK-SAME:  %[[ARG:.*]]: tensor<1x1x1x1x1xf32>
-func @all_one_dims(%arg : tensor<1x1x1x1x1xf32>) -> tensor<1x1x1xf32> {
+func.func @all_one_dims(%arg : tensor<1x1x1x1x1xf32>) -> tensor<1x1x1xf32> {
   // CHECK:      %[[RESULT:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:     {{\[}}[0, 1, 2], [3], [4]{{\]}}
   // CHECK-SAME:     : tensor<1x1x1x1x1xf32> into tensor<1x1x1xf32>
@@ -335,7 +335,7 @@ func @all_one_dims(%arg : tensor<1x1x1x1x1xf32>) -> tensor<1x1x1xf32> {
 
 // CHECK-LABEL: @all_one_dims_full_reduce
 // CHECK-SAME:  %[[ARG:.*]]: tensor<1x1x1x1x1xf32>
-func @all_one_dims_full_reduce(%arg : tensor<1x1x1x1x1xf32>) -> tensor<f32> {
+func.func @all_one_dims_full_reduce(%arg : tensor<1x1x1x1x1xf32>) -> tensor<f32> {
   // CHECK:      %[[RESULT:.*]] = tensor.collapse_shape %[[ARG]] []
   // CHECK-SAME:     : tensor<1x1x1x1x1xf32> into tensor<f32>
   // CHECK:      return %[[RESULT]]
@@ -350,7 +350,7 @@ func @all_one_dims_full_reduce(%arg : tensor<1x1x1x1x1xf32>) -> tensor<f32> {
 
 // CHECK-LABEL: @not_really_a_reduction
 // CHECK-SAME:  %[[ARG:.*]]: tensor<10x5x1x3xf32>
-func @not_really_a_reduction(%arg : tensor<10x5x1x3xf32>)
+func.func @not_really_a_reduction(%arg : tensor<10x5x1x3xf32>)
     -> tensor<10x5x3xf32> {
   // CHECK:      %[[RESULT:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:     {{\[}}[0], [1, 2], [3]{{\]}}
@@ -366,7 +366,7 @@ func @not_really_a_reduction(%arg : tensor<10x5x1x3xf32>)
 
 // CHECK-LABEL: @needs_transpose
 // CHECK-SAME:  %[[ARG:.*]]: tensor<10x11x12x13x14x15x16x17x18x19xf32>
-func @needs_transpose(%arg : tensor<10x11x12x13x14x15x16x17x18x19xf32>)
+func.func @needs_transpose(%arg : tensor<10x11x12x13x14x15x16x17x18x19xf32>)
     -> tensor<10x11x14x15x18x19xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
@@ -426,7 +426,7 @@ func @needs_transpose(%arg : tensor<10x11x12x13x14x15x16x17x18x19xf32>)
 
 // CHECK-LABEL: @needs_transpose_and_dynamic_reshape
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x11x12x13x14x15x16x17x18x?xf32>
-func @needs_transpose_and_dynamic_reshape(
+func.func @needs_transpose_and_dynamic_reshape(
     %arg : tensor<?x11x12x13x14x15x16x17x18x?xf32>)
     -> tensor<?x11x14x15x18x?xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
@@ -471,7 +471,7 @@ func @needs_transpose_and_dynamic_reshape(
 
 // CHECK-LABEL: @transpose_wo_collapse
 // CHECK-SAME:  %[[ARG:.*]]: tensor<2x3x4xf32>
-func @transpose_wo_collapse(%arg : tensor<2x3x4xf32>) -> tensor<3xf32> {
+func.func @transpose_wo_collapse(%arg : tensor<2x3x4xf32>) -> tensor<3xf32> {
   // CHECK-DAG:  %[[C0:.*]] = mhlo.constant dense<0.000000e+00>
   // CHECK:      %[[TED:.*]] = "mhlo.transpose"(%[[ARG]])
   // CHECK-SAME:     {permutation = dense<[0, 2, 1]> : tensor<3xi64>}
@@ -493,7 +493,7 @@ func @transpose_wo_collapse(%arg : tensor<2x3x4xf32>) -> tensor<3xf32> {
 
 // CHECK-LABEL: @requires_scalar_expansion
 // CHECK-SAME:  %[[ARG:.*]]: tensor<1x1x?xi32>
-func @requires_scalar_expansion(%arg0: tensor<1x1x?xi32>) -> tensor<1xi32> {
+func.func @requires_scalar_expansion(%arg0: tensor<1x1x?xi32>) -> tensor<1xi32> {
   // CHECK-DAG:   %[[C0:.*]] = mhlo.constant dense<1>
   // CHECK:       %[[CED:.*]] = tensor.collapse_shape %[[ARG]]
   // CHECK-SAME:      {{\[}}[0, 1, 2]{{\]}}

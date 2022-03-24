@@ -6,7 +6,7 @@
 // CHECK-SAME: %[[OFFSET:[^:[:space:]]+]]
 // CHECK-SAME: %[[MEAN:[^:[:space:]]+]]
 // CHECK-SAME: %[[VARIANCE:[^:[:space:]]+]]
-func @batchNormInference_2D_inner_features(
+func.func @batchNormInference_2D_inner_features(
     %x: tensor<4x256xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>,
     %mean: tensor<256xf32>, %variance: tensor<256xf32>)
     -> (tensor<4x256xf32>) {
@@ -36,7 +36,7 @@ func @batchNormInference_2D_inner_features(
 // CHECK-SAME: %[[X:[^:]+]]
 // CHECK-SAME: %[[SCALE:[^:]+]]
 // CHECK-DAG: %[[SCALE_BCAST:.+]] = "mhlo.broadcast_in_dim"(%[[SCALE]]) {broadcast_dimensions = dense<2> : tensor<1xi64>} : (tensor<256xf32>) -> tensor<3x4x256x6xf32>
-func @batchNormInference_4D_middle_features(
+func.func @batchNormInference_4D_middle_features(
     %x: tensor<3x4x256x6xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>,
     %mean: tensor<256xf32>, %variance: tensor<256xf32>)
     -> (tensor<3x4x256x6xf32>) {
@@ -51,7 +51,7 @@ func @batchNormInference_4D_middle_features(
 // CHECK-LABEL: @batchNormInference_f64
 // Validate that epsilon is properly promoted to f64
 // CHECK-DAG: %[[EPS:.+]] = mhlo.constant dense<1.000000e+00> : tensor<256xf64>
-func @batchNormInference_f64(
+func.func @batchNormInference_f64(
     %x: tensor<4x256xf64>, %scale: tensor<256xf64>, %offset: tensor<256xf64>,
     %mean: tensor<256xf64>, %variance: tensor<256xf64>)
     -> (tensor<4x256xf64>) {
@@ -66,7 +66,7 @@ func @batchNormInference_f64(
 // CHECK-LABEL: @batchNormInference_f16
 // Validate that epsilon is properly promoted to f64
 // CHECK-DAG: %[[EPS:.+]] = mhlo.constant dense<1.000000e+00> : tensor<256xf16>
-func @batchNormInference_f16(
+func.func @batchNormInference_f16(
     %x: tensor<4x256xf16>, %scale: tensor<256xf16>, %offset: tensor<256xf16>,
     %mean: tensor<256xf16>, %variance: tensor<256xf16>)
     -> (tensor<4x256xf16>) {
@@ -79,7 +79,7 @@ func @batchNormInference_f16(
 
 // -----
 // Validate that epsilon is properly promoted to f64
-func @batchNormInference_f16_overflow(
+func.func @batchNormInference_f16_overflow(
     %x: tensor<4x256xf16>, %scale: tensor<256xf16>, %offset: tensor<256xf16>,
     %mean: tensor<256xf16>, %variance: tensor<256xf16>)
     -> (tensor<4x256xf16>) {
@@ -99,7 +99,7 @@ func @batchNormInference_f16_overflow(
 // CHECK-SAME: %[[OFFSET:[^:[:space:]]+]]
 // CHECK-SAME: %[[MEAN:[^:[:space:]]+]]
 // CHECK-SAME: %[[VARIANCE:[^:[:space:]]+]]
-func @batchNormInference_dynamic_shape(
+func.func @batchNormInference_dynamic_shape(
     %x: tensor<?x?x?x?xf32>, %scale: tensor<?xf32>, %offset: tensor<?xf32>,
     %mean: tensor<?xf32>, %variance: tensor<?xf32>)
     -> tensor<?x?x?x?xf32> {

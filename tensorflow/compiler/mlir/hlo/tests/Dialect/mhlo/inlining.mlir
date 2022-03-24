@@ -8,7 +8,7 @@
 
 // CHECK-LABEL: func @callee
 
-func @caller(%arg0: tensor<f32>, %pred: tensor<i1>) -> tensor<f32> {
+func.func @caller(%arg0: tensor<f32>, %pred: tensor<i1>) -> tensor<f32> {
   %0 = "mhlo.while"(%arg0) ({
   ^entry(%unused: tensor<f32>):
     "mhlo.return"(%pred) : (tensor<i1>) -> ()
@@ -21,7 +21,7 @@ func @caller(%arg0: tensor<f32>, %pred: tensor<i1>) -> tensor<f32> {
 }
 
 
-func @callee(%arg0: tensor<f32>) -> tensor<f32> {
+func.func @callee(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "mhlo.exponential"(%arg0) : (tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }

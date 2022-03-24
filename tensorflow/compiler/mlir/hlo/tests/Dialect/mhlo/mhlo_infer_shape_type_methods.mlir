@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: @select
 // CHECK-SAME: (%{{.*}}: tensor<i1>, %[[SHAPED_ARG:.*]]: tensor<2x?xf32>, %{{.*}}: tensor<2x?xf32>
-func @select(%pred : tensor<i1>, %a : tensor<2x?xf32>, %b : tensor<2x?xf32>)
+func.func @select(%pred : tensor<i1>, %a : tensor<2x?xf32>, %b : tensor<2x?xf32>)
     -> tensor<2xindex> {
   // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[SHAPED_ARG]] : tensor<2x?xf32> -> tensor<2xindex>
   // CHECK: return %[[SHAPE]] : tensor<2xindex>
@@ -17,7 +17,7 @@ func @select(%pred : tensor<i1>, %a : tensor<2x?xf32>, %b : tensor<2x?xf32>)
 
 // CHECK-LABEL: @compare
 // CHECK-SAME: (%[[A:.*]]: tensor<2x?xf32>,
-func @compare(%a : tensor<2x?xf32>, %b : tensor<2x?xf32>) -> tensor<2xindex> {
+func.func @compare(%a : tensor<2x?xf32>, %b : tensor<2x?xf32>) -> tensor<2xindex> {
   // CHECK: %[[SHAPE:.*]] = shape.shape_of %[[A]] : tensor<2x?xf32> -> tensor<2xindex>
   // CHECK: return %[[SHAPE]] : tensor<2xindex>
   %0 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction NE">}
@@ -30,7 +30,7 @@ func @compare(%a : tensor<2x?xf32>, %b : tensor<2x?xf32>) -> tensor<2xindex> {
 // -----
 
 // CHECK-LABEL: @select
-func @select(%pred : tensor<i1>, %a : tensor<2x2xf32>, %b : tensor<2x2xf32>)
+func.func @select(%pred : tensor<i1>, %a : tensor<2x2xf32>, %b : tensor<2x2xf32>)
     -> tensor<2x2xindex> {
   %0 = "mhlo.select"(%pred, %a, %b)
       : (tensor<i1>, tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
@@ -43,7 +43,7 @@ func @select(%pred : tensor<i1>, %a : tensor<2x2xf32>, %b : tensor<2x2xf32>)
 // -----
 
 // CHECK-LABEL: @compare
-func @compare(%a : tensor<2x2xf32>, %b : tensor<2x2xf32>) -> tensor<2x2xindex> {
+func.func @compare(%a : tensor<2x2xf32>, %b : tensor<2x2xf32>) -> tensor<2x2xindex> {
   %0 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction NE">}
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
   %1 = "mhlo_test.get_return_type_components"(%0)

@@ -2,7 +2,7 @@
 
 // -----
 
-func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -25,7 +25,7 @@ func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // -----
 
-func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -48,7 +48,7 @@ func @while_with_different_types(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // -----
 
-func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -71,7 +71,7 @@ func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // -----
 
-func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -93,7 +93,7 @@ func @while_with_block_count_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // -----
 
-func @while_with_cond_return_width_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_cond_return_width_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -113,7 +113,7 @@ func @while_with_cond_return_width_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf3
 
 // -----
 
-func @while_with_cond_return_rank_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_cond_return_rank_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -134,7 +134,7 @@ func @while_with_cond_return_rank_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32
 
 // -----
 
-func @while_with_cond_return_type_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_cond_return_type_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -154,7 +154,7 @@ func @while_with_cond_return_type_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32
 
 // -----
 
-func @while_with_body_return_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_body_return_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -175,7 +175,7 @@ func @while_with_body_return_mismatch(%arg0: tensor<3xf32>) -> tensor<3xf32> {
 
 // -----
 
-func @while_with_multiple_operand_in_cond_return(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_with_multiple_operand_in_cond_return(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
@@ -198,7 +198,7 @@ func @while_with_multiple_operand_in_cond_return(%arg0: tensor<3xf32>) -> tensor
 
 // -----
 
-func @while_mismatch_operand_count_with_body_return(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+func.func @while_mismatch_operand_count_with_body_return(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   %cst_0 = arith.constant dense<0> : tensor<1xi32>
   %cst_1 = arith.constant dense<[100, 100]> : tensor<2xi32>
   %cst_2 = arith.constant dense<1.00> : tensor<1xf32>
