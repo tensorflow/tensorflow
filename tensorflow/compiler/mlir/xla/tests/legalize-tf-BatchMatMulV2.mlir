@@ -4,7 +4,7 @@
 // tf.BatchMatMulV2 op legalizations.
 //===----------------------------------------------------------------------===//
 
-func @batchmatmulv2_basic(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
+func.func @batchmatmulv2_basic(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_basic
 // CHECK-SAME:        ([[LHS:%.*]]: tensor<1x4x2xf32>, [[RHS:%.*]]: tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
 // CHECK:           [[LHSSHAPE:%.*]] = shape.shape_of [[LHS]] : tensor<1x4x2xf32>
@@ -25,7 +25,7 @@ func @batchmatmulv2_basic(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) ->
   func.return %0 : tensor<3x4x4xf32>
 }
 
-func @batchmatmulv2_lhs_batch(%arg0: tensor<3x4x2xf32>, %arg1: tensor<2x4xf32>) -> tensor<3x4x4xf32> {
+func.func @batchmatmulv2_lhs_batch(%arg0: tensor<3x4x2xf32>, %arg1: tensor<2x4xf32>) -> tensor<3x4x4xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_lhs_batch
 // CHECK:           "mhlo.dynamic_broadcast_in_dim"({{.*}}, {{.*}}) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
 // CHECK:           "mhlo.dot_general"({{.*}}, {{.*}}) {
@@ -37,7 +37,7 @@ func @batchmatmulv2_lhs_batch(%arg0: tensor<3x4x2xf32>, %arg1: tensor<2x4xf32>) 
   func.return %0 : tensor<3x4x4xf32>
 }
 
-func @batchmatmulv2_rhs_batch(%arg0: tensor<4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
+func.func @batchmatmulv2_rhs_batch(%arg0: tensor<4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_rhs_batch
 // CHECK:           "mhlo.dynamic_broadcast_in_dim"({{.*}}, {{.*}}) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
 // CHECK:           "mhlo.dot_general"({{.*}}, {{.*}}) {
@@ -49,7 +49,7 @@ func @batchmatmulv2_rhs_batch(%arg0: tensor<4x2xf32>, %arg1: tensor<3x2x4xf32>) 
   func.return %0 : tensor<3x4x4xf32>
 }
 
-func @batchmatmulv2_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+func.func @batchmatmulv2_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_dynamic
 // CHECK:           "mhlo.dot_general"({{.*}}, {{.*}}) {
 // CHECK-SAME:  lhs_batching_dimensions = [0]
@@ -60,7 +60,7 @@ func @batchmatmulv2_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) 
   func.return %0 : tensor<?x?x?xf32>
 }
 
-func @batchmatmulv2_adj_real(%arg0: tensor<2x5xf32>, %arg1: tensor<4x2xf32>) -> tensor<5x4xf32> {
+func.func @batchmatmulv2_adj_real(%arg0: tensor<2x5xf32>, %arg1: tensor<4x2xf32>) -> tensor<5x4xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_adj_real
 // CHECK:           "mhlo.dot_general"({{.*}}, {{.*}}) {
 // CHECK-NOT:         lhs_batching_dimensions
@@ -71,7 +71,7 @@ func @batchmatmulv2_adj_real(%arg0: tensor<2x5xf32>, %arg1: tensor<4x2xf32>) -> 
   func.return %0 : tensor<5x4xf32>
 }
 
-func @batchmatmulv2_adj_complex(%arg0: tensor<2x5xcomplex<f32>>, %arg1: tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
+func.func @batchmatmulv2_adj_complex(%arg0: tensor<2x5xcomplex<f32>>, %arg1: tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
 // CHECK-LABEL:   func @batchmatmulv2_adj_complex(
 // CHECK-SAME:                                    [[LHS:%.*]]: tensor<2x5xcomplex<f32>>, [[RHS:%.*]]: tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
 // CHECK:           [[LHSRE:%.*]] = "mhlo.real"([[LHS]])

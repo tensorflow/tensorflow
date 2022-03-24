@@ -4,7 +4,7 @@
 // CHECK-SAME{LITERAL}: tf2xla.collective_info.group_key = 0
 // CHECK-SAME{LITERAL}: tf2xla.collective_info.group_size = 2
 // CHECK-LABEL: func @all_reduce_cross_replica
-func @all_reduce_cross_replica(%input: tensor<f32>) -> tensor<f32> {
+func.func @all_reduce_cross_replica(%input: tensor<f32>) -> tensor<f32> {
   %group_assignment = "tf.Const"() { value = dense<[[0],[1]]> : tensor<2x1xi32> } : () -> tensor<2x1xi32>
   // CHECK: "mhlo.all_reduce"
   // CHECK: mhlo.add
@@ -20,7 +20,7 @@ func @all_reduce_cross_replica(%input: tensor<f32>) -> tensor<f32> {
 // CHECK-SAME{LITERAL}: tf2xla.collective_info.group_key = 0
 // CHECK-SAME{LITERAL}: tf2xla.collective_info.group_size = 2
 // CHECK-LABEL: func @all_reduce_cross_replica_and_partition
-func @all_reduce_cross_replica_and_partition(%input: tensor<f32>) -> tensor<f32> {
+func.func @all_reduce_cross_replica_and_partition(%input: tensor<f32>) -> tensor<f32> {
   %group_assignment = "tf.Const"() { value = dense<[[0],[1]]> : tensor<2x1xi32> } : () -> tensor<2x1xi32>
   // CHECK: "mhlo.all_reduce"
   // CHECK: mhlo.add
@@ -42,7 +42,7 @@ func @all_reduce_cross_replica_and_partition(%input: tensor<f32>) -> tensor<f32>
 // CHECK-SAME{LITERAL}: tf2xla.collective_info.group_key = 1
 // CHECK-SAME{LITERAL}: tf2xla.collective_info.group_size = 2
 // CHECK-LABEL: func @collective_reduce_v2
-func @collective_reduce_v2(%input: tensor<f32>) -> tensor<f32> {
+func.func @collective_reduce_v2(%input: tensor<f32>) -> tensor<f32> {
   %group_key = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
   %group_size = "tf.Const"() { value = dense<2> : tensor<i32> } : () -> tensor<i32>
   %instance_key = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
@@ -66,7 +66,7 @@ func @collective_reduce_v2(%input: tensor<f32>) -> tensor<f32> {
 // CHECK-SAME{LITERAL}: tf2xla.collective_info.group_key = 0
 // CHECK-SAME{LITERAL}: tf2xla.collective_info.group_size = 2
 // CHECK-LABEL: func @collective_assign_group_v2
-func @collective_assign_group_v2(%input: tensor<f32>) -> tensor<f32> {
+func.func @collective_assign_group_v2(%input: tensor<f32>) -> tensor<f32> {
   %rank = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
   %group_assignment = "tf.Const"() { value = dense<[[0, 1]]> : tensor<1x2xi32> } : () -> tensor<1x2xi32>
   %instance_key = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
@@ -83,7 +83,7 @@ func @collective_assign_group_v2(%input: tensor<f32>) -> tensor<f32> {
 
 // -----
 
-func @inconsistent_collective_info(%input: tensor<f32>) -> tensor<f32> {
+func.func @inconsistent_collective_info(%input: tensor<f32>) -> tensor<f32> {
   %group_key = "tf.Const"() { value = dense<11> : tensor<i32> } : () -> tensor<i32>
   %group_size1 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
   %group_size2 = "tf.Const"() { value = dense<2> : tensor<i32> } : () -> tensor<i32>
