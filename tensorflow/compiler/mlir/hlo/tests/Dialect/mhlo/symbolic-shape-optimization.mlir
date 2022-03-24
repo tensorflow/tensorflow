@@ -47,26 +47,184 @@ func.func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
 
 // -----
 
-// CHECK-LABEL: func @reshape_expand_scalar
-func.func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
+// CHECK-LABEL: @reshape_expand_scalar
+// CHECK-SAME:  %[[ARG:.*]]: tensor<f32>
+func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
+  // CHECK-DAG: %[[EXPAND:.*]] = tensor.expand_shape %[[ARG]] [] : tensor<f32> into tensor<1x1xf32>
+  // CHECK-DAG: %[[RES:.*]] = tensor.cast %[[EXPAND]] : tensor<1x1xf32> to tensor<?x?xf32>
+  // CHECK:     return %[[RES]]
   %shape = mhlo.constant dense<1> : tensor<2xi32>
   %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<f32>, tensor<2xi32>) -> tensor<?x?xf32>
-// CHECK: %[[EXPAND:.*]] = tensor.expand_shape %arg0 [] : tensor<f32> into tensor<1x1xf32>
-// CHECK: tensor.cast %[[EXPAND]] : tensor<1x1xf32> to tensor<?x?xf32>
-  func.return %reshape : tensor<?x?xf32>
+  return %reshape : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @reshape_collapse_scalar
+// CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xf32>
+func @reshape_collapse_scalar(%arg0 : tensor<?x?xf32>) -> tensor<f32> {
+  %shape = mhlo.constant dense<1> : tensor<0xi32>
+  // CHECK-DAG: %[[CASTED_ARG:.*]] = tensor.cast %[[ARG]] : tensor<?x?xf32> to tensor<1x1xf32>
+  // CHECK-DAG: %[[COLLAPSED:.*]] = tensor.collapse_shape %[[CASTED_ARG]] [] : tensor<1x1xf32> into tensor<f32>
+  // CHECK:     return %[[COLLAPSED]]
+  %reshape = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?x?xf32>, tensor<0xi32>) -> tensor<f32>
+  return %reshape : tensor<f32>
 }
 
 // -----
 
 // CHECK-LABEL: func @reshape_undefined
-func.func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
+func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
+  // CHECK: mhlo.dynamic_reshape
   %c1 = arith.constant 1 : index
   %shape = tensor.from_elements %c1, %c1, %c1 : tensor<3xindex>
   %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<?xf32>, tensor<3xindex>) -> tensor<1x1x1xf32>
-// CHECK: mhlo.dynamic_reshape
-  func.return %reshape : tensor<1x1x1xf32>
+  return %reshape : tensor<1x1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @shape_expansion
+// CHECK-SAME:  %[[ARG:.*]]: tensor<?x1xi64>
+func @shape_expansion(%arg : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
+  // CHECK-DAG: %[[RES:.*]] = tensor.expand_shape %[[ARG]] {{\[}}[0], [1, 2]{{\]}} : tensor<?x1xi64> into tensor<?x1x1xi64>
+  // CHECK:     return %[[RES]]
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %d0 = tensor.dim %arg, %c0 : tensor<?x1xi64>
+  %shape = tensor.from_elements %d0, %c1, %c1 : tensor<3xindex>
+  %result = "mhlo.dynamic_reshape"(%arg, %shape)
+      : (tensor<?x1xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
+  return %result : tensor<?x1x1xi64>
+}
+
+// -----
+
+// CHECK-LABEL: @shape_collapse_and_expansion
+// CHECK-SAME:  %[[ARG:.*]]: tensor<3x?x1xi64>
+func @shape_collapse_and_expansion(%arg : tensor<3x?x1xi64>)
+    -> tensor<?x1x1xi64> {
+  // CHECK: %[[EED:.*]] = tensor.expand_shape %[[ARG]] {{\[}}[0], [1], [2, 3]{{\]}} : tensor<3x?x1xi64> into tensor<3x?x1x1xi64>
+  // CHECK: %[[CED:.*]] = tensor.collapse_shape %[[EED]] {{\[}}[0, 1], [2], [3]{{\]}} : tensor<3x?x1x1xi64> into tensor<?x1x1xi64>
+  // CHECK: return %[[CED]]
+  %c1 = arith.constant 1 : index
+  %c3 = arith.constant 3 : index
+  %d1 = tensor.dim %arg, %c1 : tensor<3x?x1xi64>
+  %three_d1 = arith.muli %c3, %d1 : index
+  %15 = tensor.from_elements %three_d1, %c1, %c1 : tensor<3xindex>
+  %16 = "mhlo.dynamic_reshape"(%arg, %15)
+      : (tensor<3x?x1xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
+  return %16 : tensor<?x1x1xi64>
+}
+
+// -----
+
+// CHECK-LABEL: @shape_collapse_and_expansion_w_cast
+// CHECK-SAME:  %[[ARG:.*]]: tensor<16x8x?x?xf32>
+func @shape_collapse_and_expansion_w_cast(%arg0: tensor<16x8x?x?xf32>) -> tensor<16x4x?x?xf32> {
+  // CHECK-DAG: %[[EED:.*]] = tensor.expand_shape %[[ARG]] {{\[}}[0], [1, 2], [3], [4]{{\]}} : tensor<16x8x?x?xf32> into tensor<16x4x2x?x?xf32>
+  // CHECK-DAG: %[[CED:.*]] = tensor.collapse_shape %[[EED]] {{\[}}[0], [1], [2], [3, 4]{{\]}} : tensor<16x4x2x?x?xf32> into tensor<16x4x2x?xf32>
+  // CHECK-DAG: %[[RES:.*]] = tensor.cast %[[CED]]
+  // CHECK:     return %[[RES]]
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %c3 = arith.constant 3 : index
+  %c4 = arith.constant 4 : index
+  %c16 = arith.constant 16 : index
+  %1 = tensor.dim %arg0, %c2 : tensor<16x8x?x?xf32>
+  %2 = tensor.dim %arg0, %c3 : tensor<16x8x?x?xf32>
+  %4 = arith.muli %1, %2 : index
+  %5 = tensor.from_elements %c16, %c4, %c2, %4 : tensor<4xindex>
+  %6 = "mhlo.dynamic_reshape"(%arg0, %5)  : (tensor<16x8x?x?xf32>, tensor<4xindex>) -> tensor<16x4x?x?xf32>
+  return %6 : tensor<16x4x?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @dynamic_reshape_to_collapse_shape
+// CHECK-SAME: %[[ARG:.*]]: tensor<1x4x?x64x?x8x1x1xf32>
+func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
+    -> tensor<?x?x8xf32> {
+  // CHECK: %[[RESULT:.*]] = tensor.collapse_shape %[[ARG]] {{\[}}[0, 1, 2], [3, 4], [5, 6, 7]{{\]}}
+  // CHECK: return %[[RESULT]]
+  %c2 = arith.constant 2 : index
+  %c4 = arith.constant 4 : index
+  %c4_i32 = arith.constant 4 : i32
+  %c8_i32 = arith.constant 8 : i32
+  %c64_i32 = arith.constant 64 : i32
+  %d2 = tensor.dim %arg0, %c2 : tensor<1x4x?x64x?x8x1x1xf32>
+  %d4 = tensor.dim %arg0, %c4 : tensor<1x4x?x64x?x8x1x1xf32>
+  %d2_i32 = arith.index_cast %d2 : index to i32
+  %d4_i32 = arith.index_cast %d4 : index to i32
+  %s0 = arith.muli %c4_i32, %d2_i32 : i32
+  %s1 = arith.muli %c64_i32, %d4_i32 : i32
+  %shape = tensor.from_elements %s0, %s1, %c8_i32 : tensor<3xi32>
+  %result = "mhlo.dynamic_reshape"(%arg0, %shape)
+      : (tensor<1x4x?x64x?x8x1x1xf32>, tensor<3xi32>) -> tensor<?x?x8xf32>
+  return %result : tensor<?x?x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @expansion_unit_dims
+// CHECK-SAME:  %[[ARG:.*]]: tensor<1x?x1xi64>
+func @expansion_unit_dims(%arg0: tensor<1x?x1xi64>) -> tensor<1x1x?x1xi64> {
+  // CHECK-DAG: %[[RES:.*]] = tensor.expand_shape %[[ARG]] {{\[}}[0, 1], [2], [3]{{\]}} : tensor<1x?x1xi64> into tensor<1x1x?x1xi64>
+  // CHECK:     return %[[RES]]
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %0 = tensor.dim %arg0, %c1 : tensor<1x?x1xi64>
+  %1 = tensor.from_elements %c1, %c1, %0, %c1 : tensor<4xindex>
+  %2 = "mhlo.dynamic_reshape"(%arg0, %1)
+      : (tensor<1x?x1xi64>, tensor<4xindex>) -> tensor<1x1x?x1xi64>
+  return %2 : tensor<1x1x?x1xi64>
+}
+
+// -----
+
+// CHECK-LABEL: @multiple_reductions_and_reshape
+// CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x?x?xi64>
+func @multiple_reductions_and_reshape(%arg0: tensor<?x?x?x?xi64>) -> tensor<1x1x1x1xi64> {
+  // CHECK: %[[RED0:.*]] = mhlo.reduce(%[[ARG]]
+  // CHECK: %[[RED0_:.*]] = tensor.expand_shape %[[RED0]] {{\[}}[0], [1], [2, 3]{{\]}} : tensor<?x?x?xi64> into tensor<?x?x?x1xi64>
+  // CHECK: %[[RED1:.*]] = mhlo.reduce(%[[RED0_]]
+  // CHECK: %[[RED1_:.*]] = tensor.expand_shape %[[RED1]] {{\[}}[0, 1, 2], [3]{{\]}} : tensor<?x1xi64> into tensor<1x1x?x1xi64>
+  // CHECK: %[[RED2:.*]] = mhlo.reduce(%[[RED1_]]
+  // TODO(b/225204462): This should also become a shape expansion.
+  // CHECK: %[[RED2_:.*]] = "mhlo.reshape"(%[[RED2]]) : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
+  // CHECK: return %[[RED2_]]
+  %0 = mhlo.constant dense<9223372036854775807> : tensor<i64>
+  %c1 = arith.constant 1 : index
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %1 = mhlo.constant dense<1> : tensor<i64>
+  %2 = mhlo.reduce(%arg0 init: %0)
+      applies mhlo.minimum across dimensions = [3]
+      : (tensor<?x?x?x?xi64>, tensor<i64>) -> tensor<?x?x?xi64>
+  %3 = tensor.dim %2, %c0 : tensor<?x?x?xi64>
+  %4 = tensor.dim %2, %c1 : tensor<?x?x?xi64>
+  %5 = tensor.dim %2, %c2 : tensor<?x?x?xi64>
+  %6 = tensor.from_elements %3, %4, %5, %c1 : tensor<4xindex>
+  %7 = "mhlo.dynamic_reshape"(%2, %6)
+      : (tensor<?x?x?xi64>, tensor<4xindex>) -> tensor<?x?x?x1xi64>
+  %8 = mhlo.reduce(%7 init: %0)
+      applies mhlo.minimum across dimensions = [0, 1]
+      : (tensor<?x?x?x1xi64>, tensor<i64>) -> tensor<?x1xi64>
+  %9 = tensor.dim %8, %c0 : tensor<?x1xi64>
+  %10 = tensor.from_elements %c1, %9, %c1 : tensor<3xindex>
+  %11 = "mhlo.dynamic_reshape"(%8, %10)
+      : (tensor<?x1xi64>, tensor<3xindex>) -> tensor<1x?x1xi64>
+  %12 = tensor.dim %11, %c1 : tensor<1x?x1xi64>
+  %13 = tensor.from_elements %c1, %c1, %12, %c1 : tensor<4xindex>
+  %14 = "mhlo.dynamic_reshape"(%8, %13)
+      : (tensor<?x1xi64>, tensor<4xindex>) -> tensor<1x1x?x1xi64>
+  %15 = mhlo.reduce(%14 init: %1)
+      applies mhlo.multiply across dimensions = [0, 1, 2]
+      : (tensor<1x1x?x1xi64>, tensor<i64>) -> tensor<1xi64>
+  %16 = "mhlo.reshape"(%15) : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
+  return %16 : tensor<1x1x1x1xi64>
 }
 
 // -----
@@ -202,31 +360,6 @@ func.func @redundant_cstr_reshapable(%arg0 : tensor<?x8x?x64xf32>)
 
 // -----
 
-// CHECK-LABEL: @dynamic_reshape_to_collapse_shape
-// CHECK-SAME: %[[ARG:.*]]: tensor<1x4x?x64x?x8x1x1xf32>
-func.func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
-    -> tensor<?x?x8xf32> {
-  // CHECK: %[[RESULT:.*]] = tensor.collapse_shape %[[ARG]] {{\[}}[0, 1, 2], [3, 4], [5, 6, 7]{{\]}}
-  // CHECK: return %[[RESULT]]
-  %c2 = arith.constant 2 : index
-  %c4 = arith.constant 4 : index
-  %c4_i32 = arith.constant 4 : i32
-  %c8_i32 = arith.constant 8 : i32
-  %c64_i32 = arith.constant 64 : i32
-  %d2 = tensor.dim %arg0, %c2 : tensor<1x4x?x64x?x8x1x1xf32>
-  %d4 = tensor.dim %arg0, %c4 : tensor<1x4x?x64x?x8x1x1xf32>
-  %d2_i32 = arith.index_cast %d2 : index to i32
-  %d4_i32 = arith.index_cast %d4 : index to i32
-  %s0 = arith.muli %c4_i32, %d2_i32 : i32
-  %s1 = arith.muli %c64_i32, %d4_i32 : i32
-  %shape = tensor.from_elements %s0, %s1, %c8_i32 : tensor<3xi32>
-  %result = "mhlo.dynamic_reshape"(%arg0, %shape)
-      : (tensor<1x4x?x64x?x8x1x1xf32>, tensor<3xi32>) -> tensor<?x?x8xf32>
-  func.return %result : tensor<?x?x8xf32>
-}
-
-// -----
-
 // CHECK-LABEL: func @reshape_integration(
 // CHECK-SAME:      %arg0: tensor<512x512xf32>,
 // CHECK-SAME:      %arg1: tensor<?x8x?x64xf32>,
@@ -297,38 +430,6 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>,
     shape.assuming_yield %21 : tensor<?x512xf32>
   }
   func.return %19 : tensor<?x512xf32>
-}
-
-// -----
-
-// TODO(b/217611473)
-// CHECK-LABEL: @shape_expansion
-func.func @shape_expansion(%13 : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
-  // CHECK: "mhlo.dynamic_reshape"
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-  %14 = tensor.dim %13, %c0 : tensor<?x1xi64>
-  %15 = tensor.from_elements %14, %c1, %c1 : tensor<3xindex>
-  %16 = "mhlo.dynamic_reshape"(%13, %15)
-      : (tensor<?x1xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
-  func.return %16 : tensor<?x1x1xi64>
-}
-
-// -----
-
-// TODO(b/217611473)
-// CHECK-LABEL: @shape_collapse_and_expansion
-func.func @shape_collapse_and_expansion(%arg : tensor<3x?xi64>)
-    -> tensor<?x1x1xi64> {
-  // CHECK: "mhlo.dynamic_reshape"
-  %c1 = arith.constant 1 : index
-  %c3 = arith.constant 3 : index
-  %d1 = tensor.dim %arg, %c1 : tensor<3x?xi64>
-  %three_d1 = arith.muli %c3, %d1 : index
-  %15 = tensor.from_elements %three_d1, %c1, %c1 : tensor<3xindex>
-  %16 = "mhlo.dynamic_reshape"(%arg, %15)
-      : (tensor<3x?xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
-  func.return %16 : tensor<?x1x1xi64>
 }
 
 // -----

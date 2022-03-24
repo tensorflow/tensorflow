@@ -1,8 +1,6 @@
 // RUN: tf-tfrt-opt %s -split-input-file -tf-jitrt-symbolic-shape-optimization \
 // RUN: | FileCheck %s
 
-// -----
-
 // CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0)>
 
 // CHECK:       @optimize_1dx1d_bcast(
