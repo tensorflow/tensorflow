@@ -674,8 +674,12 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     variable_accessed(self)
 
     def read_and_set_handle(no_copy):
-      result = gen_resource_variable_ops.read_variable_op(
-          self.handle, self._dtype, no_copy = no_copy)
+      if no_copy:
+        result = gen_resource_variable_ops.read_variable_without_copy_op(
+          self.handle, self._dtype)
+      else:
+        result = gen_resource_variable_ops.read_variable_op(
+          self.handle, self._dtype)
       _maybe_set_handle_data(self._dtype, self.handle, result)
       return result
 

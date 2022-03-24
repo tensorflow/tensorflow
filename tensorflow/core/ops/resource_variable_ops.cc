@@ -135,7 +135,6 @@ REGISTER_OP("ReadVariableOp")
     .Input("resource: resource")
     .Output("value: dtype")
     .Attr("dtype: type")
-    .Attr("no_copy: bool = false")
     .SetShapeFn(ReadVariableShapeFn);
 
 REGISTER_OP("_ReadVariablesOp")
@@ -144,6 +143,12 @@ REGISTER_OP("_ReadVariablesOp")
     .Output("values: dtypes")
     .Attr("dtypes: list(type)")
     .SetShapeFn(ReadVariablesShapeFn);
+
+REGISTER_OP("ReadVariableWithoutCopyOp")
+    .Input("resource: resource")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .SetShapeFn(ReadVariableShapeFn);
 
 Status ReadGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off

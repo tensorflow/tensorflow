@@ -89,7 +89,11 @@ REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp").Device(DEVICE_CPU),
 
 ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
   OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
-  OP_REQUIRES_OK(c, c->GetAttr("no_copy", &no_copy_));
+}
+
+ReadVariableWithoutCopyOp::ReadVariableWithoutCopyOp(OpKernelConstruction* c)
+    : OpKernel(c) {
+  OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
 }
 
 namespace {
@@ -146,16 +150,6 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
                   "Debug info: container=", handle.container(),
                   ", status error message=", status.error_message()));
 
-  // If no_copy_ is true, prevent a copy of the variable
-  // by setting the access mode to copy-on-write
-  if (no_copy_) {
-    // If the variable is currently in copy-on-read mode, its refcount is 1
-    if (variable->copy_on_read_mode.load()) {
-      // Obtain an exclusive lock on the variable and change the access mode
-      mutex_lock ml(*variable->mu());
-      variable->copy_on_read_mode.store(false);
-    }
-  }
   tf_shared_lock ml(*variable->mu());
   // We're acquiring a reference to the underlying buffer while
   // holding a shared lock to guarantee ordering of reads and
@@ -225,10 +219,50 @@ void ReadVariablesOp::Compute(OpKernelContext* ctx) {
   }
 }
 
+void ReadVariableWithoutCopyOp::Compute(OpKernelContext* ctx) {
+  core::RefCountPtr<Var> variable;
+  const ResourceHandle& handle = HandleFromInput(ctx, 0);
+  const auto status = LookupResource(ctx, handle, &variable);
+  bool mode_conversion = false;
+  OP_REQUIRES(ctx, status.ok(),
+              errors::FailedPrecondition(
+                  "Could not find variable ", handle.name(), ". ",
+                  "This could mean that the variable has been deleted. ",
+                  "In TF1, it can also mean the variable is uninitialized. ",
+                  "Debug info: container=", handle.container(),
+                  ", status error message=", status.error_message()));
+
+  if (variable->copy_on_read_mode.load()) {
+    // If the variable is in copy-on-read mode, obtain an exclusive
+    // lock on the variable before reading it without making a copy
+    mutex_lock ml(*variable->mu());
+    const Tensor* t = variable->tensor();
+    OP_REQUIRES(
+        ctx, dtype_ == t->dtype(),
+        errors::InvalidArgument(
+            "Trying to read variable with wrong dtype. Expected ",
+            DataTypeString(dtype_), " got ", DataTypeString(t->dtype())));
+    ctx->set_output(0, *t);
+  } else {
+    // If the variable is in copy-on-write mode, obtain a shared
+    // lock on the variable before reading it without making a copy
+    tf_shared_lock ml(*variable->mu());
+    const Tensor* t = variable->tensor();
+    OP_REQUIRES(
+        ctx, dtype_ == t->dtype(),
+        errors::InvalidArgument(
+            "Trying to read variable with wrong dtype. Expected ",
+            DataTypeString(dtype_), " got ", DataTypeString(t->dtype())));
+    ctx->set_output(0, *t);
+  }
+}
+
 REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
                         ReadVariableOp);
 REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_CPU),
                         ReadVariablesOp);
+REGISTER_KERNEL_BUILDER(Name("ReadVariableWithoutCopyOp").Device(DEVICE_CPU),
+                        ReadVariableWithoutCopyOp);
 
 REGISTER_KERNEL_BUILDER(
     Name("ReadVariableOp").Device(DEVICE_DEFAULT).HostMemory("resource"),
@@ -236,6 +270,10 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("_ReadVariablesOp").Device(DEVICE_DEFAULT).HostMemory("resources"),
     ReadVariablesOp);
+REGISTER_KERNEL_BUILDER(Name("ReadVariableWithoutCopyOp")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("resource"),
+                        ReadVariableWithoutCopyOp);
 
 VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("container", &container_));

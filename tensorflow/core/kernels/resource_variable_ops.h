@@ -46,7 +46,6 @@ class ReadVariableOp : public OpKernel {
 
  private:
   DataType dtype_;
-  bool no_copy_;
 };
 
 class ReadVariablesOp : public OpKernel {
@@ -57,6 +56,15 @@ class ReadVariablesOp : public OpKernel {
 
  private:
   DataTypeVector dtypes_;
+};
+
+class ReadVariableWithoutCopyOp : public OpKernel {
+ public:
+  explicit ReadVariableWithoutCopyOp(OpKernelConstruction* c);
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  DataType dtype_;
 };
 
 class DestroyResourceOp : public OpKernel {
