@@ -65,7 +65,7 @@ namespace {
 
 ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
                                             OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 2> ops;
+  SmallVector<OpAsmParser::UnresolvedOperand, 2> ops;
   Type type;
   // If the operand list is in-between parentheses, then we have a generic form.
   // (see the fallback in `printOneResultOp`).
