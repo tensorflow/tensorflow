@@ -376,7 +376,7 @@ Status CoordinationServiceAgentImpl::Shutdown() {
   Status s = Status::OK();
 
   // Disconnect agent from service.
-  if (may_be_connected) {
+  if (!configs_.agent_destruction_without_shutdown() && may_be_connected) {
     ShutdownTaskRequest request;
     *request.mutable_source_task() = task_;
     ShutdownTaskResponse response;

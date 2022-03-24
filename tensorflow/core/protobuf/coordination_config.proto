@@ -38,4 +38,9 @@ message CoordinationServiceConfig {
   // set to 0, no barrier is imposed upon shutdown and each worker can
   // disconnect individually.
   int64 shutdown_barrier_timeout_in_ms = 7;
+
+  // If set, agents do not make an explicit Shutdown() call. Service will only
+  // find out about the disconnecte agent via stale heartbeats. Used for
+  // testing.
+  bool agent_destruction_without_shutdown = 8;
 }
