@@ -6016,17 +6016,17 @@ port::Status CudnnSupport::DoPoolForward(
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     ScratchAllocator* workspace_allocator) {
   // Alpha is the scaling factor for input.
-  float alpha_f = 1.0f;
-  double alpha_d = 1.0;
-  void* alpha = element_type == dnn::DataType::kDouble
-                    ? static_cast<void*>(&alpha_d)
-                    : static_cast<void*>(&alpha_f);
+  const float alpha_f = 1.0f;
+  const double alpha_d = 1.0;
+  const void* alpha = element_type == dnn::DataType::kDouble
+                          ? static_cast<const void*>(&alpha_d)
+                          : static_cast<const void*>(&alpha_f);
   // Beta is the scaling factor for output.
-  float beta_f = 0.0f;
-  double beta_d = 0.0;
-  void* beta = element_type == dnn::DataType::kDouble
-                   ? static_cast<void*>(&beta_d)
-                   : static_cast<void*>(&beta_f);
+  const float beta_f = 0.0f;
+  const double beta_d = 0.0;
+  const void* beta = element_type == dnn::DataType::kDouble
+                         ? static_cast<const void*>(&beta_d)
+                         : static_cast<const void*>(&beta_f);
 
   cudnnDataType_t cudnn_input_type =
       ToCudnnDataType(element_type, input_dimensions.layout());
@@ -6054,17 +6054,17 @@ port::Status CudnnSupport::DoPoolBackward(
     DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
     ScratchAllocator* workspace_allocator) {
   // Alpha is the scaling factor for input.
-  float alpha_f = 1.0f;
-  double alpha_d = 1.0;
-  void* alpha = element_type == dnn::DataType::kDouble
-                    ? static_cast<void*>(&alpha_d)
-                    : static_cast<void*>(&alpha_f);
+  const float alpha_f = 1.0f;
+  const double alpha_d = 1.0;
+  const void* alpha = element_type == dnn::DataType::kDouble
+                          ? static_cast<const void*>(&alpha_d)
+                          : static_cast<const void*>(&alpha_f);
   // Beta is the scaling factor for output.
-  float beta_f = 0.0f;
-  double beta_d = 0.0;
-  void* beta = element_type == dnn::DataType::kDouble
-                   ? static_cast<void*>(&beta_d)
-                   : static_cast<void*>(&beta_f);
+  const float beta_f = 0.0f;
+  const double beta_d = 0.0;
+  const void* beta = element_type == dnn::DataType::kDouble
+                         ? static_cast<const void*>(&beta_d)
+                         : static_cast<const void*>(&beta_f);
 
   cudnnDataType_t cudnn_input_type =
       ToCudnnDataType(element_type, input_dimensions.layout());
