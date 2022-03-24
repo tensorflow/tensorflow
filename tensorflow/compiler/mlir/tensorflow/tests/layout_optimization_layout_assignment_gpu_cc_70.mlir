@@ -5,7 +5,7 @@ module attributes {
 } {
 
 // CHECK-LABEL: func @transposeConv2D_3x3_f32
-func @transposeConv2D_3x3_f32(%input: tensor<1x28x28x64xf32>, %filter: tensor<3x3x64x64xf32>) -> tensor<1x26x26x64xf32> {
+func.func @transposeConv2D_3x3_f32(%input: tensor<1x28x28x64xf32>, %filter: tensor<3x3x64x64xf32>) -> tensor<1x26x26x64xf32> {
   // cuDNN prefers NCHW data format for spatial convolutions.
   // CHECK: "tf.Conv2D"(%[[INPUT_TRANSPOSE:[0-9]*]], %arg1)
   // CHECK-SAME: data_format = "NCHW"
@@ -21,7 +21,7 @@ func @transposeConv2D_3x3_f32(%input: tensor<1x28x28x64xf32>, %filter: tensor<3x
 }
 
 // CHECK-LABEL: func @transposeConv2D_1x1_f32
-func @transposeConv2D_1x1_f32(%input: tensor<1x64x28x28xf32>, %filter: tensor<1x1x64x64xf32>) -> tensor<1x64x28x28xf32> {
+func.func @transposeConv2D_1x1_f32(%input: tensor<1x64x28x28xf32>, %filter: tensor<1x1x64x64xf32>) -> tensor<1x64x28x28xf32> {
   // 1x1 convolution can be computed as a GEMM in NHWC data format.
   // CHECK: "tf.Conv2D"(%[[INPUT_TRANSPOSE:[0-9]*]], %arg1)
   // CHECK-SAME: data_format = "NHWC"
@@ -48,7 +48,7 @@ func @transposeConv2D_1x1_f32(%input: tensor<1x64x28x28xf32>, %filter: tensor<1x
 }
 
 // CHECK-LABEL: func @transposeConv2D_3x3_f16
-func @transposeConv2D_3x3_f16(%input: tensor<1x64x28x28xf16>, %filter: tensor<3x3x64x64xf16>) -> tensor<1x64x26x26xf16> {
+func.func @transposeConv2D_3x3_f16(%input: tensor<1x64x28x28xf16>, %filter: tensor<3x3x64x64xf16>) -> tensor<1x64x26x26xf16> {
   // To use Tensor Cores for f16 data type, input must be in NHWC data format.
   // CHECK: "tf.Conv2D"(%[[INPUT_TRANSPOSE:[0-9]*]], %arg1)
   // CHECK-SAME: data_format = "NHWC"
@@ -64,7 +64,7 @@ func @transposeConv2D_3x3_f16(%input: tensor<1x64x28x28xf16>, %filter: tensor<3x
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropFilter_f32
-func @transposeConv2DBackpropFilter_f32(
+func.func @transposeConv2DBackpropFilter_f32(
   %input:        tensor<1x28x28x64xf32>,
   %filter_size:  tensor<4xi32>,
   %out_backprop: tensor<1x28x28x64xf32>
@@ -84,7 +84,7 @@ func @transposeConv2DBackpropFilter_f32(
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropFilter_f16
-func @transposeConv2DBackpropFilter_f16(
+func.func @transposeConv2DBackpropFilter_f16(
   %input:        tensor<1x64x28x28xf16>,
   %filter_size:  tensor<4xi32>,
   %out_backprop: tensor<1x64x28x28xf16>
@@ -104,7 +104,7 @@ func @transposeConv2DBackpropFilter_f16(
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropInput_f32
-func @transposeConv2DBackpropInput_f32(
+func.func @transposeConv2DBackpropInput_f32(
   %input_size:   tensor<4xi32>,
   %filter:       tensor<1x28x28x64xf32>,
   %out_backprop: tensor<1x28x28x64xf32>
@@ -124,7 +124,7 @@ func @transposeConv2DBackpropInput_f32(
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropInput_f16
-func @transposeConv2DBackpropInput_f16(
+func.func @transposeConv2DBackpropInput_f16(
   %input_size:   tensor<4xi32>,
   %filter:       tensor<1x64x28x28xf16>,
   %out_backprop: tensor<1x64x28x28xf16>
@@ -144,7 +144,7 @@ func @transposeConv2DBackpropInput_f16(
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormV3_f32
-func @transposeFusedBatchNormV3_f32(
+func.func @transposeFusedBatchNormV3_f32(
   %arg0: tensor<1x28x28x64xf32>,
   %arg1: tensor<64xf32>
 ) -> tensor<1x28x28x64xf32> {
@@ -169,7 +169,7 @@ func @transposeFusedBatchNormV3_f32(
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormV3_f16
-func @transposeFusedBatchNormV3_f16(
+func.func @transposeFusedBatchNormV3_f16(
   %arg0: tensor<1x64x28x28xf16>,
   %arg1: tensor<64xf32>
 ) -> tensor<1x64x28x28xf16> {
@@ -194,7 +194,7 @@ func @transposeFusedBatchNormV3_f16(
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormGradV3_f32
-func @transposeFusedBatchNormGradV3_f32(
+func.func @transposeFusedBatchNormGradV3_f32(
   %arg0: tensor<1x28x28x64xf32>,
   %arg1: tensor<1x28x28x64xf32>,
   %arg2: tensor<64xf32>
@@ -220,7 +220,7 @@ func @transposeFusedBatchNormGradV3_f32(
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormGradV3_f16
-func @transposeFusedBatchNormGradV3_f16(
+func.func @transposeFusedBatchNormGradV3_f16(
   %arg0: tensor<1x64x28x28xf16>,
   %arg1: tensor<1x64x28x28xf16>,
   %arg2: tensor<64xf32>

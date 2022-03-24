@@ -1,13 +1,13 @@
 // RUN: tf-opt %s | tf-opt | FileCheck %s
 
 // CHECK-LABEL: func private @control_type() -> !tf_executor.control
-func private @control_type() -> !tf_executor.control
+func.func private @control_type() -> !tf_executor.control
 
 // CHECK-LABEL: func private @token_type() -> !tf_executor.token
-func private @token_type() -> !tf_executor.token
+func.func private @token_type() -> !tf_executor.token
 
 // CHECK-LABEL: func @empty_graph
-func @empty_graph() {
+func.func @empty_graph() {
   tf_executor.graph {
   }
   return
@@ -19,7 +19,7 @@ func @empty_graph() {
 }
 
 // CHECK-LABEL: func @graph_with_fetch(%{{.*}}: tensor<*xf32>)
-func @graph_with_fetch(%0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @graph_with_fetch(%0: tensor<*xf32>) -> tensor<*xf32> {
   %result = tf_executor.graph {
     tf_executor.fetch %0 : tensor<*xf32>
   }
@@ -27,7 +27,7 @@ func @graph_with_fetch(%0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @graph_with_fetch_attributes(%{{.*}}: tensor<*xf32>)
-func @graph_with_fetch_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @graph_with_fetch_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %result = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
   } {attr2 = 32 : i64, tf_executor.attr1 = "value1"}
@@ -39,7 +39,7 @@ func @graph_with_fetch_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @simpleIsland(%{{.*}}: tensor<*xf32>)
-func @simpleIsland(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @simpleIsland(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island {
       tf_executor.yield %arg0 : tensor<*xf32>
@@ -54,7 +54,7 @@ func @simpleIsland(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @simpleIsland_with_attributes(%{{.*}}: tensor<*xf32>)
-func @simpleIsland_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @simpleIsland_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island {
       tf_executor.yield %arg0 : tensor<*xf32>  {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
@@ -69,7 +69,7 @@ func @simpleIsland_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @simpleIsland_with_multiple_control_inputs(%{{.*}}: tensor<*xf32>)
-func @simpleIsland_with_multiple_control_inputs(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @simpleIsland_with_multiple_control_inputs(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = tf_executor.graph {
     %1 = tf_executor.island {
       tf_executor.yield
@@ -93,7 +93,7 @@ func @simpleIsland_with_multiple_control_inputs(%arg0: tensor<*xf32>) -> tensor<
 }
 
 // CHECK-LABEL: func @fetchWithControlDep(%{{.*}}: tensor<*xf32>)
-func @fetchWithControlDep(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @fetchWithControlDep(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %result = tf_executor.graph {
     %val, %ctl_id = tf_executor.island {
       %val = arith.addf %arg0, %arg0 : tensor<*xf32>
@@ -106,7 +106,7 @@ func @fetchWithControlDep(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @testAddWithControlDependency(%{{.*}}: tensor<*xf32>)
-func @testAddWithControlDependency(%0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @testAddWithControlDependency(%0: tensor<*xf32>) -> tensor<*xf32> {
   %result = tf_executor.graph {
     // This identity operation is unused, but the control dependency on the
     // island is consumed by the add right after.
@@ -128,7 +128,7 @@ func @testAddWithControlDependency(%0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @switch(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @switch(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @switch(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{.*}}, %{{.*}} : tensor<*xf32>
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
@@ -138,7 +138,7 @@ func @switch(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @switch_with_broadcast(%{{.*}}: tensor<2xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @switch_with_broadcast(%arg0: tensor<2xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @switch_with_broadcast(%arg0: tensor<2xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{.*}}, %{{.*}} : (tensor<2xf32>, tensor<i1>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : (tensor<2xf32>, tensor<i1>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
@@ -148,7 +148,7 @@ func @switch_with_broadcast(%arg0: tensor<2xf32>, %arg1: tensor<i1>) -> tensor<*
 }
 
 // CHECK-LABEL: func @switch_with_broadcast_one_output(%{{.*}}: tensor<2xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @switch_with_broadcast_one_output(%arg0: tensor<2xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @switch_with_broadcast_one_output(%arg0: tensor<2xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{.*}}, %{{.*}} : (tensor<2xf32>, tensor<i1>) -> (tensor<*xf32>, tensor<2xf32>, !tf_executor.control)
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : (tensor<2xf32>, tensor<i1>) -> (tensor<*xf32>, tensor<2xf32>, !tf_executor.control)
@@ -158,7 +158,7 @@ func @switch_with_broadcast_one_output(%arg0: tensor<2xf32>, %arg1: tensor<i1>) 
 }
 
 // CHECK-LABEL: func @switch_with_broadcast_output_only(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @switch_with_broadcast_output_only(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @switch_with_broadcast_output_only(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{.*}}, %{{.*}} : (tensor<*xf32>, tensor<i1>) -> (tensor<*xf32>, tensor<2xf32>, !tf_executor.control)
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : (tensor<*xf32>, tensor<i1>) -> (tensor<*xf32>, tensor<2xf32>, !tf_executor.control)
@@ -168,7 +168,7 @@ func @switch_with_broadcast_output_only(%arg0: tensor<*xf32>, %arg1: tensor<i1>)
 }
 
 // CHECK-LABEL: func @switch_with_attributes(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @switch_with_attributes(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @switch_with_attributes(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{.*}}, %{{.*}} : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
@@ -178,7 +178,7 @@ func @switch_with_attributes(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<
 }
 
 // CHECK-LABEL: func @switch_with_unranked_pred(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<*xi1>) -> tensor<*xf32> {
-func @switch_with_unranked_pred(%arg0: tensor<*xf32>, %arg1: tensor<*xi1>) -> tensor<*xf32> {
+func.func @switch_with_unranked_pred(%arg0: tensor<*xf32>, %arg1: tensor<*xi1>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{.*}}, %{{.*}} : (tensor<*xf32>, tensor<*xi1>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : (tensor<*xf32>, tensor<*xi1>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
@@ -188,7 +188,7 @@ func @switch_with_unranked_pred(%arg0: tensor<*xf32>, %arg1: tensor<*xi1>) -> te
 }
 
 // CHECK-LABEL: func @switch_with_control_inputs(
-func @switch_with_control_inputs(%arg0: tensor<i1>, %arg1: !tf_executor.control, %arg2: !tf_executor.control) -> tensor<i1> {
+func.func @switch_with_control_inputs(%arg0: tensor<i1>, %arg1: !tf_executor.control, %arg2: !tf_executor.control) -> tensor<i1> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{[^%]*}}, %{{[^%]*}}, %{{[^%]*}}, %{{[^%]*}} : tensor<i1>
     %1:3 = tf_executor.Switch %arg0, %arg0, %arg1, %arg2 : tensor<i1>
@@ -198,7 +198,7 @@ func @switch_with_control_inputs(%arg0: tensor<i1>, %arg1: !tf_executor.control,
 }
 
 // CHECK-LABEL: func @switch_with_control_inputs_functional(
-func @switch_with_control_inputs_functional(%arg0: tensor<i1>, %arg1: !tf_executor.control, %arg2: !tf_executor.control) -> tensor<i1> {
+func.func @switch_with_control_inputs_functional(%arg0: tensor<i1>, %arg1: !tf_executor.control, %arg2: !tf_executor.control) -> tensor<i1> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{[^%]*}}, %{{[^%]*}}, %{{[^%]*}}, %{{[^%]*}} : tensor<i1>
     %1:3 = tf_executor.Switch %arg0, %arg0, %arg1, %arg2 : (tensor<i1>, tensor<i1>, !tf_executor.control, !tf_executor.control) -> (tensor<i1>, tensor<i1>, !tf_executor.control)
@@ -208,7 +208,7 @@ func @switch_with_control_inputs_functional(%arg0: tensor<i1>, %arg1: !tf_execut
 }
 
 // CHECK-LABEL: func @switchN(
-func @switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+func.func @switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
 
 // CHECK: tf_executor._SwitchN %{{.*}}, %{{.*}} of 5 : tensor<*xf32>
@@ -223,7 +223,7 @@ func @switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @switch_merge(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @switch_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @switch_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{.*}}, %{{.*}} : tensor<*xf32>
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
@@ -237,7 +237,7 @@ func @switch_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @switch_merge_with_ctl(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @switch_merge_with_ctl(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @switch_merge_with_ctl(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{.*}}, %{{.*}} : tensor<*xf32>
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
@@ -251,7 +251,7 @@ func @switch_merge_with_ctl(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*
 }
 
 // CHECK-LABEL: func @switch_merge_with_attributes(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @switch_merge_with_attributes(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @switch_merge_with_attributes(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Switch %{{.*}}, %{{.*}} : tensor<*xf32>
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
@@ -267,7 +267,7 @@ func @switch_merge_with_attributes(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> t
 // Verify that long form printing is used when operand types do not match the
 // result type and then it can be parsed again correctly.
 // CHECK-LABEL: func @merge_different_operand_types
-func @merge_different_operand_types(%arg0: tensor<*xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+func.func @merge_different_operand_types(%arg0: tensor<*xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %result = tf_executor.graph {
 
 // CHECK: tf_executor.Merge{{.*}}(tensor<*xf32>, tensor<4xf32>) -> (tensor<4xf32>, tensor<i32>, !tf_executor.control)
@@ -280,7 +280,7 @@ func @merge_different_operand_types(%arg0: tensor<*xf32>, %arg1: tensor<4xf32>) 
 // Verify that long form printing is used when there is only one data operand
 // and then it can be parsed again correctly.
 // CHECK-LABEL: func @merge_one_data_operand
-func @merge_one_data_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @merge_one_data_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 
 // CHECK: tf_executor.Merge{{.*}}(tensor<*xf32>) -> (tensor<*xf32>, tensor<i32>, !tf_executor.control)
@@ -291,7 +291,7 @@ func @merge_one_data_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @merge_with_variant_type
-func @merge_with_variant_type(%arg0: tensor<!tf_type.variant>, %arg1: tensor<!tf_type.variant<tensor<4xi32>>>) -> tensor<!tf_type.variant<tensor<8xf32>>> {
+func.func @merge_with_variant_type(%arg0: tensor<!tf_type.variant>, %arg1: tensor<!tf_type.variant<tensor<4xi32>>>) -> tensor<!tf_type.variant<tensor<8xf32>>> {
   %result = tf_executor.graph {
 
 // CHECK: tf_executor.Merge{{.*}}(tensor<!tf_type.variant>, tensor<!tf_type.variant<tensor<4xi32>>>) -> (tensor<!tf_type.variant<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
@@ -302,7 +302,7 @@ func @merge_with_variant_type(%arg0: tensor<!tf_type.variant>, %arg1: tensor<!tf
 }
 
 // CHECK-LABEL: func @merge_with_resource_type
-func @merge_with_resource_type(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource<tensor<4xi32>>>) -> tensor<!tf_type.resource<tensor<8xf32>>> {
+func.func @merge_with_resource_type(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource<tensor<4xi32>>>) -> tensor<!tf_type.resource<tensor<8xf32>>> {
   %result = tf_executor.graph {
 
 // CHECK: tf_executor.Merge{{.*}}(tensor<!tf_type.resource>, tensor<!tf_type.resource<tensor<4xi32>>>) -> (tensor<!tf_type.resource<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
@@ -313,7 +313,7 @@ func @merge_with_resource_type(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!
 }
 
 // CHECK-LABEL: func @merge_with_ref_type
-func @merge_with_ref_type(%arg0: tensor<4x!tf_type.f32ref>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+func.func @merge_with_ref_type(%arg0: tensor<4x!tf_type.f32ref>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   %result = tf_executor.graph {
 
 // CHECK: tf_executor.Merge{{.*}}(tensor<4x!tf_type.f32ref>, tensor<4xf32>) -> (tensor<4xf32>, tensor<i32>, !tf_executor.control)
@@ -324,7 +324,7 @@ func @merge_with_ref_type(%arg0: tensor<4x!tf_type.f32ref>, %arg1: tensor<4xf32>
 }
 
 // CHECK-LABEL: func @merge_with_dynamic_shape
-func @merge_with_dynamic_shape(%arg0: tensor<2xf32>, %arg1: tensor<3xf32>) -> tensor<?xf32> {
+func.func @merge_with_dynamic_shape(%arg0: tensor<2xf32>, %arg1: tensor<3xf32>) -> tensor<?xf32> {
   %result = tf_executor.graph {
 
 // CHECK: tf_executor.Merge{{.*}}(tensor<2xf32>, tensor<3xf32>) -> (tensor<?xf32>, tensor<i32>, !tf_executor.control)
@@ -335,7 +335,7 @@ func @merge_with_dynamic_shape(%arg0: tensor<2xf32>, %arg1: tensor<3xf32>) -> te
 }
 
 // CHECK-LABEL: func @merge_with_unranked_shape
-func @merge_with_unranked_shape(%arg0: tensor<2xf32>, %arg1: tensor<3xf32>) -> tensor<*xf32> {
+func.func @merge_with_unranked_shape(%arg0: tensor<2xf32>, %arg1: tensor<3xf32>) -> tensor<*xf32> {
   %result = tf_executor.graph {
 
 // CHECK: tf_executor.Merge{{.*}}(tensor<2xf32>, tensor<3xf32>) -> (tensor<*xf32>, tensor<i32>, !tf_executor.control)
@@ -346,7 +346,7 @@ func @merge_with_unranked_shape(%arg0: tensor<2xf32>, %arg1: tensor<3xf32>) -> t
 }
 
 // CHECK-LABEL: func @enter(%{{.*}}: tensor<*xf32>, %{{.*}}: i1) -> tensor<*xf32> {
-func @enter(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func.func @enter(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Enter %{{.*}} frame "some/fra\22me" : tensor<*xf32>
     %res:2 = tf_executor.Enter %arg0 frame "some/fra\"me" : tensor<*xf32>
@@ -356,7 +356,7 @@ func @enter(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @enter_broadcast(%{{.*}}: tensor<8xf32>, %{{.*}}: i1) -> tensor<*xf32> {
-func @enter_broadcast(%arg0: tensor<8xf32>, %arg1: i1) -> tensor<*xf32> {
+func.func @enter_broadcast(%arg0: tensor<8xf32>, %arg1: i1) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Enter %{{.*}} frame "some/fra\22me" : (tensor<8xf32>) -> (tensor<*xf32>, !tf_executor.control)
     %res:2 = tf_executor.Enter %arg0 frame "some/fra\"me" : (tensor<8xf32>) -> (tensor<*xf32>, !tf_executor.control)
@@ -366,7 +366,7 @@ func @enter_broadcast(%arg0: tensor<8xf32>, %arg1: i1) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @enter_parallel_iterations(%{{.*}}: tensor<*xf32>, %{{.*}}: i1) -> tensor<*xf32> {
-func @enter_parallel_iterations(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func.func @enter_parallel_iterations(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Enter %{{.*}} frame "some/frame" parallel_iterations 42 : tensor<*xf32>
     %res:2 = tf_executor.Enter %arg0 frame "some/frame" parallel_iterations 42 : tensor<*xf32>
@@ -376,7 +376,7 @@ func @enter_parallel_iterations(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32
 }
 
 // CHECK-LABEL: func @enter_constant(%{{.*}}: tensor<*xf32>, %{{.*}}: i1) -> tensor<*xf32> {
-func @enter_constant(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func.func @enter_constant(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Enter %{{.*}} frame "some/frame" constant : tensor<*xf32>
     %res:2 = tf_executor.Enter %arg0 frame "some/frame" constant : tensor<*xf32>
@@ -386,7 +386,7 @@ func @enter_constant(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @enter_parallel_iterations_constant(%{{.*}}: tensor<*xf32>, %{{.*}}: i1) -> tensor<*xf32> {
-func @enter_parallel_iterations_constant(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func.func @enter_parallel_iterations_constant(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Enter %{{.*}} frame "some/frame" parallel_iterations 42 constant : tensor<*xf32>
     %res:2 = tf_executor.Enter %arg0 frame "some/frame" parallel_iterations 42 constant : tensor<*xf32>
@@ -396,7 +396,7 @@ func @enter_parallel_iterations_constant(%arg0: tensor<*xf32>, %arg1: i1) -> ten
 }
 
 // CHECK-LABEL: func @enter_with_attributes(%{{.*}}: tensor<*xf32>, %{{.*}}: i1) -> tensor<*xf32> {
-func @enter_with_attributes(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func.func @enter_with_attributes(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   %result = tf_executor.graph {
 // CHECK: tf_executor.Enter %{{.*}} frame "some/frame" : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
     %res:2 = tf_executor.Enter %arg0 frame "some/frame" : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
@@ -406,7 +406,7 @@ func @enter_with_attributes(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @enter_control(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @enter_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @enter_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %0 = tf_executor.graph {
     %1:3 = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
 // CHECK: tf_executor.Enter %{{.*}}, %{{.*}}, %{{.*}} frame "some/frame" : tensor<*xf32>
@@ -417,7 +417,7 @@ func @enter_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @enter_control_longform(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @enter_control_longform(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @enter_control_longform(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %0 = tf_executor.graph {
     %1:3 = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
 // CHECK: tf_executor.Enter %{{.*}}, %{{.*}}, %{{.*}} frame "some/frame" : tensor<*xf32>
@@ -428,7 +428,7 @@ func @enter_control_longform(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<
 }
 
 // CHECK-LABEL: func @nextiteration(%{{.*}}: tensor<*xf32>, %{{.*}}: i1) -> tensor<*xf32> {
-func @nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func.func @nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   %0 = tf_executor.graph {
     %1:3 = tf_executor.NextIteration.Source : tensor<*xf32>
     tf_executor.NextIteration.Sink[%1#1] %1#0 : tensor<*xf32>
@@ -440,7 +440,7 @@ func @nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @nextiteration_with_attributes(%{{.*}}: tensor<*xf32>, %{{.*}}: i1) -> tensor<*xf32> {
-func @nextiteration_with_attributes(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func.func @nextiteration_with_attributes(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   %0 = tf_executor.graph {
     %1:3 = tf_executor.NextIteration.Source : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
     tf_executor.NextIteration.Sink[%1#1] %1#0 : tensor<*xf32> {attr4 = 42 : i64, tf_executor.attr_push = "other_value"}
@@ -452,7 +452,7 @@ func @nextiteration_with_attributes(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*
 }
 
 // CHECK-LABEL: func @nextiteration_control(%{{.*}}: tensor<*xf32>, %{{.*}}: tensor<i1>) -> tensor<*xf32> {
-func @nextiteration_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func.func @nextiteration_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
   %0 = tf_executor.graph {
     %1:3 = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
     %2:2 = tf_executor.Enter %arg0, %1#2, %1#2 frame "some/frame" : tensor<*xf32>
@@ -466,7 +466,7 @@ func @nextiteration_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*
 }
 
 // CHECK-LABEL: func @exit(%{{.*}}: tensor<*xf32>) -> tensor<*xf32> {
-func @exit(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @exit(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = tf_executor.graph {
 // CHECK: tf_executor.Exit %{{.*}} : tensor<*xf32>
     %1:2 = tf_executor.Exit %arg0 : tensor<*xf32>
@@ -476,7 +476,7 @@ func @exit(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @exit_with_attributes(%{{.*}}: tensor<*xf32>) -> tensor<*xf32> {
-func @exit_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @exit_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = tf_executor.graph {
 // CHECK: tf_executor.Exit %{{.*}} : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
     %1:2 = tf_executor.Exit %arg0 : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
@@ -486,7 +486,7 @@ func @exit_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-LABEL: func @exit_with_control(%{{.*}}: tensor<*xf32>, %{{.*}}: !tf_executor.control) -> tensor<*xf32> {
-func @exit_with_control(%arg0: tensor<*xf32>, %arg1: !tf_executor.control) -> tensor<*xf32> {
+func.func @exit_with_control(%arg0: tensor<*xf32>, %arg1: !tf_executor.control) -> tensor<*xf32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.Exit %arg0, %arg1 : tensor<*xf32>
     %2:2 = tf_executor.Exit %arg0, %1#1 : tensor<*xf32>
@@ -496,7 +496,7 @@ func @exit_with_control(%arg0: tensor<*xf32>, %arg1: !tf_executor.control) -> te
 }
 
 // CHECK-LABEL: func @control_trigger(%{{.*}}: !tf_executor.control, %{{.*}}: !tf_executor.control) {
-func @control_trigger(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+func.func @control_trigger(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
   tf_executor.graph {
 // CHECK: tf_executor.ControlTrigger %{{.*}}, %{{.*}}
     %0 = tf_executor.ControlTrigger %arg0, %arg1
@@ -505,7 +505,7 @@ func @control_trigger(%arg0: !tf_executor.control, %arg1: !tf_executor.control) 
 }
 
 // CHECK-LABEL: func @control_trigger_with_attributes(%{{.*}}: !tf_executor.control, %{{.*}}: !tf_executor.control) {
-func @control_trigger_with_attributes(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+func.func @control_trigger_with_attributes(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
   tf_executor.graph {
 // CHECK: tf_executor.ControlTrigger %{{.*}}, %{{.*}} {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
     %0 = tf_executor.ControlTrigger %arg0, %arg1 {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
@@ -514,7 +514,7 @@ func @control_trigger_with_attributes(%arg0: !tf_executor.control, %arg1: !tf_ex
 }
 
 // CHECK-LABEL: func @loop_cond(%{{.*}}: tensor<i1>, %{{.*}}: !tf_executor.control) -> tensor<i1> {
-func @loop_cond(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+func.func @loop_cond(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
   %0 = tf_executor.graph {
 // CHECK: tf_executor.LoopCond %{{.*}} : tensor<i1>
     %1:2 = tf_executor.LoopCond %arg0 : tensor<i1>
@@ -524,7 +524,7 @@ func @loop_cond(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
 }
 
 // CHECK-LABEL: func @loop_cond_with_attributes(%{{.*}}: tensor<i1>, %{{.*}}: !tf_executor.control) -> tensor<i1> {
-func @loop_cond_with_attributes(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+func.func @loop_cond_with_attributes(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
   %0 = tf_executor.graph {
 // CHECK: tf_executor.LoopCond %{{.*}} : tensor<i1> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
     %1:2 = tf_executor.LoopCond %arg0 : tensor<i1>  {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
@@ -534,7 +534,7 @@ func @loop_cond_with_attributes(%arg0: tensor<i1>, %arg1: !tf_executor.control) 
 }
 
 // CHECK-LABEL: func @loop_cond_with_control(%{{.*}}: tensor<i1>, %{{.*}}: !tf_executor.control) -> tensor<i1> {
-func @loop_cond_with_control(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+func.func @loop_cond_with_control(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
   %0 = tf_executor.graph {
 // CHECK: tf_executor.LoopCond %{{.*}}, %{{.*}} : tensor<i1>
     %1:2 = tf_executor.LoopCond %arg0, %arg1 : tensor<i1>
@@ -544,7 +544,7 @@ func @loop_cond_with_control(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> 
 }
 
 // CHECK-LABEL: func @loop_cond_with_control_broadcast(%{{.*}}: tensor<i1>, %{{.*}}: !tf_executor.control) -> tensor<*xi1> {
-func @loop_cond_with_control_broadcast(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<*xi1> {
+func.func @loop_cond_with_control_broadcast(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<*xi1> {
   %0 = tf_executor.graph {
 // CHECK: tf_executor.LoopCond %{{.*}}, %{{.*}} : (tensor<i1>, !tf_executor.control) -> (tensor<*xi1>, !tf_executor.control)
     %1:2 = tf_executor.LoopCond %arg0, %arg1 : (tensor<i1>, !tf_executor.control) -> (tensor<*xi1>, !tf_executor.control)

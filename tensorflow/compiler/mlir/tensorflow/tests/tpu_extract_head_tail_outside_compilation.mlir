@@ -4,7 +4,7 @@
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @head_single_outside_compiled_op
-  func @head_single_outside_compiled_op(%arg0: tensor<i32>) {
+  func.func @head_single_outside_compiled_op(%arg0: tensor<i32>) {
     // CHECK:      "tf_device.launch"
     // CHECK-NEXT:   "tf.A"
     // CHECK-NOT:    _xla_outside_compilation
@@ -25,7 +25,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @head_single_outside_compiled_op_no_operands
-  func @head_single_outside_compiled_op_no_operands() {
+  func.func @head_single_outside_compiled_op_no_operands() {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
     // CHECK-NOT:    _xla_outside_compilation
@@ -46,7 +46,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @head_operand_op_outside_cluster
-  func @head_operand_op_outside_cluster() {
+  func.func @head_operand_op_outside_cluster() {
     // CHECK:      %[[A_OUT:.*]] = "tf.A"
     %a = "tf.A"() : () -> tensor<i32>
     // CHECK-NEXT: %[[LAUNCH_OUT:.*]] = "tf_device.launch"
@@ -69,7 +69,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @head_aliased_output
-  func @head_aliased_output() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
+  func.func @head_aliased_output() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
     // CHECK-NOT:    _xla_outside_compilation
@@ -96,7 +96,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @head_all_cluster_op
-  func @head_all_cluster_op(%arg0: tensor<i32>) -> tensor<i32> {
+  func.func @head_all_cluster_op(%arg0: tensor<i32>) -> tensor<i32> {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
     // CHECK-NOT:    _xla_outside_compilation
@@ -120,7 +120,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @head_multiple_outside_compiled_ops
-  func @head_multiple_outside_compiled_ops(%arg0: tensor<i32>) {
+  func.func @head_multiple_outside_compiled_ops(%arg0: tensor<i32>) {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
     // CHECK-NOT:    _xla_outside_compilation
@@ -145,7 +145,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @head_replicated_outside_compilation
-  func @head_replicated_outside_compilation(%arg0: tensor<i32>, %arg1: tensor<i32>) {
+  func.func @head_replicated_outside_compilation(%arg0: tensor<i32>, %arg1: tensor<i32>) {
     // CHECK:      tf_device.replicate([%arg0, %arg1] as %[[RI:.*]]: tensor<i32>)
     //
     // CHECK-NEXT:   %[[LAUNCH_OUT:.*]] = "tf_device.launch"()
@@ -169,7 +169,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @head_while_op
-  func @head_while_op(%arg0: tensor<i32>) {
+  func.func @head_while_op(%arg0: tensor<i32>) {
     // CHECK:      %[[LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
     // CHECK-NOT:    _xla_outside_compilation
@@ -203,7 +203,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @tail_single_outside_compiled_op
-  func @tail_single_outside_compiled_op() {
+  func.func @tail_single_outside_compiled_op() {
     // CHECK:      %[[CLUSTER_OUT:.*]] = "tf_device.cluster"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
     // CHECK-NEXT:   "tf.NoOp"
@@ -229,7 +229,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @tail_single_outside_compiled_op_user
-  func @tail_single_outside_compiled_op_user() -> tensor<i32> {
+  func.func @tail_single_outside_compiled_op_user() -> tensor<i32> {
     // CHECK:      %[[CLUSTER_OUT:.*]] = "tf_device.cluster"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
     // CHECK-NEXT:   "tf.NoOp"
@@ -256,7 +256,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @tail_multiple_outside_compiled_ops
-  func @tail_multiple_outside_compiled_ops(%arg0: tensor<i32>) {
+  func.func @tail_multiple_outside_compiled_ops(%arg0: tensor<i32>) {
     // CHECK:      %[[CLUSTER_OUT:.*]]:2 = "tf_device.cluster"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
     // CHECK-NEXT:   %[[B_OUT:.*]] = "tf.B"
@@ -285,7 +285,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @tail_multiple_nested_outside_compiled_ops
-  func @tail_multiple_nested_outside_compiled_ops(%arg0: tensor<i32>) {
+  func.func @tail_multiple_nested_outside_compiled_ops(%arg0: tensor<i32>) {
     // CHECK:      %[[CLUSTER_OUT:.*]]:3 = "tf_device.cluster"
     // CHECK-NEXT:   %[[CONST_OUT:.*]] = "tf.Const"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
@@ -323,7 +323,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @tail_aliased_output
-  func @tail_aliased_output() -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) {
+  func.func @tail_aliased_output() -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) {
     // CHECK-NEXT: %[[A_OUT:.*]] = "tf.A"
     %a = "tf.A"() : () -> tensor<i32>
     // CHECK-NEXT: %[[B_OUT:.*]] = "tf.B"
@@ -354,7 +354,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @tail_replicated_outside_compilation
-  func @tail_replicated_outside_compilation(%arg0: tensor<i32>, %arg1: tensor<i32>) {
+  func.func @tail_replicated_outside_compilation(%arg0: tensor<i32>, %arg1: tensor<i32>) {
     // CHECK:      tf_device.replicate([%arg0, %arg1] as %[[RI:.*]]: tensor<i32>)
     //
     // CHECK:        %[[CLUSTER_OUT:.*]] = "tf_device.cluster"
@@ -383,7 +383,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @head_tail_no_extraction_middle_outside_compiled_ops
-  func @head_tail_no_extraction_middle_outside_compiled_ops(%arg0: tensor<i32>) {
+  func.func @head_tail_no_extraction_middle_outside_compiled_ops(%arg0: tensor<i32>) {
     // CHECK-NOT:  "tf_device.launch"
     // CHECK:      "tf_device.cluster"
     // CHECK-NEXT:   "tf.Identity"
@@ -400,7 +400,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @head_tail_simple_extraction
-  func @head_tail_simple_extraction(%arg0: tensor<i32>) -> tensor<i32> {
+  func.func @head_tail_simple_extraction(%arg0: tensor<i32>) -> tensor<i32> {
     // CHECK:      %[[HEAD_LAUNCH_OUT:.*]] = "tf_device.launch"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"(%arg0)
     // CHECK-NOT:      _xla_outside_compilation
@@ -432,7 +432,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @head_tail_replicated_outside_compilation
-  func @head_tail_replicated_outside_compilation(%arg0: tensor<i32>, %arg1: tensor<i32>) {
+  func.func @head_tail_replicated_outside_compilation(%arg0: tensor<i32>, %arg1: tensor<i32>) {
     // CHECK:      tf_device.replicate([%arg0, %arg1] as %[[RI:.*]]: tensor<i32>)
     //
     // CHECK-NEXT:   %[[HEAD_LAUNCH_OUT:.*]] = "tf_device.launch"()
@@ -472,7 +472,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @side_effect_middle
-  func @side_effect_middle() {
+  func.func @side_effect_middle() {
     // CHECK:      "tf_device.cluster"
     // CHECK-NEXT:   "tf.A"
     // CHECK-NEXT:   "tf.B"
@@ -488,7 +488,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @side_effect_head_no_operand
-  func @side_effect_head_no_operand() {
+  func.func @side_effect_head_no_operand() {
     // CHECK:      %[[HEAD_LAUNCH_OUT:.*]] = "tf_device.launch"()
     // CHECK-NEXT:   "tf.B"
     // CHECK-NEXT:   %[[C_OUT:.*]] = "tf.C"
@@ -511,7 +511,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @side_effect_tail_no_operand
-  func @side_effect_tail_no_operand() {
+  func.func @side_effect_tail_no_operand() {
     // CHECK:      %[[CLUSTER_OUT:.*]] = "tf_device.cluster"
     // CHECK-NEXT:   %[[A_OUT:.*]] = "tf.A"
     // CHECK-NEXT:   "tf.Const"
@@ -536,7 +536,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // predecessors are ignored.
 
   // CHECK-LABEL: func @embedding_head_extraction
-  func @embedding_head_extraction(%arg0: tensor<!tf_type.string>) {
+  func.func @embedding_head_extraction(%arg0: tensor<!tf_type.string>) {
     // CHECK:      "tf_device.launch"()
     // CHECK-NEXT:   "tf.EnqueueTPUEmbeddingRaggedTensorBatch"
     // CHECK-NEXT:   "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"
@@ -558,7 +558,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Test side effecting op after embedding op can be head extracted.
 
   // CHECK-LABEL: func @op_after_embedding_head_extraction
-  func @op_after_embedding_head_extraction() {
+  func.func @op_after_embedding_head_extraction() {
     // CHECK:      "tf_device.launch"()
     // CHECK-NEXT:   "tf.A"
     // CHECK-NEXT:   tf_device.return
@@ -580,7 +580,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Test side effecting op before embedding op can be tail extracted.
 
   // CHECK-LABEL: func @op_before_embedding_tail_extraction
-  func @op_before_embedding_tail_extraction() {
+  func.func @op_before_embedding_tail_extraction() {
     // CHECK:      "tf_device.cluster"
     // CHECK-NEXT:   "tf.UnknownOp"
     // CHECK-NEXT:   "tf.RecvTPUEmbeddingActivations"

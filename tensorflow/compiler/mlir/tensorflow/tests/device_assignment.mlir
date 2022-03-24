@@ -1,7 +1,7 @@
 // RUN: tf-opt -tf-simple-device-assignment='default-device=gpu' %s | FileCheck %s
 
 // CHECK-LABEL: func @device_test
-func @device_test(%arg0: tensor<3x1xf32>) -> (tensor<3x3xf32>) {
+func.func @device_test(%arg0: tensor<3x1xf32>) -> (tensor<3x3xf32>) {
 
   // CHECK: device = "gpu"
   %0 = "tf.Const"() {value = dense<[[1.0, 2.0, 3.0]]> : tensor<1x3xf32>} : () -> tensor<1x3xf32>

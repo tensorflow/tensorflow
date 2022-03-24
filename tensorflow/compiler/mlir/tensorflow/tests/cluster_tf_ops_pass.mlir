@@ -11,7 +11,7 @@
 // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:CPU:0"
 // CHECK-NEXT:   %[[RESULT_1:.*]] = tf_device.remote_run "/job:worker/replica:0/task:1" @[[MAIN_PARTITION_0:.*]](%[[ARG_1]])
 // CHECK-NEXT:   return %[[RESULT_0]], %[[RESULT_1]]
-func @main(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}, %arg1: tensor<i32> {tf.device = "/job:worker/replica:0/task:1/device:CPU:0"}) -> (tensor<i32>, tensor<i32>) {
+func.func @main(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}, %arg1: tensor<i32> {tf.device = "/job:worker/replica:0/task:1/device:CPU:0"}) -> (tensor<i32>, tensor<i32>) {
   %1 = "tf.While"(%arg0) {cond = @while_cond, body = @while_body, is_stateless = false, shape_invariant, device="/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<i32>) -> (tensor<i32>)
 
   %2 = "tf.AddV2"(%arg1, %arg1) {device = "/job:worker/replica:0/task:1/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
@@ -29,7 +29,7 @@ func @main(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/devi
 // CHECK-NEXT:   %[[RESULT_1:.*]] = "tf.Less"(%[[ARG_0]], %[[RESULT_0]])
 // CHECK-SAME:  device = "/job:localhost/replica:0/task:0/device:CPU:0"
 // CHECK-NEXT:   return %[[RESULT_1]] : tensor<i1>
-func @while_cond(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) -> tensor<i1> {
+func.func @while_cond(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) -> tensor<i1> {
   %0 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Less"(%arg0, %0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   func.return %1 : tensor<i1>
@@ -50,7 +50,7 @@ func @while_cond(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:
 // CHECK-NEXT:   tf_device.send %[[RESULT_2]]
 // CHECK-NEXT:   tf_device.remote_run "/job:worker/replica:0/task:2" @[[BODY_PARTITION_1:.*]]() : () -> ()
 // TODO(tf-runtime): Allow while body having remote inputs and outputs.
-func @while_body(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) -> (tensor<i32>) {
+func.func @while_body(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) -> (tensor<i32>) {
   %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
   %1 = "tf.AddV2"(%arg0, %0) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
   %2 = "tf.Const"() { value = dense<16> : tensor<i32> } : () -> tensor<i32>

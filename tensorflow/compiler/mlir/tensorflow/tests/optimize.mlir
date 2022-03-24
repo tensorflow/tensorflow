@@ -1,7 +1,7 @@
 // RUN: tf-opt -tf-optimize %s -o %t && FileCheck %s < %t
 
 // CHECK-LABEL: convbiasaddmul
-func @convbiasaddmul(%arg: tensor<256x32x32x3xf32>) -> tensor<256x8x7x16xf32> {
+func.func @convbiasaddmul(%arg: tensor<256x32x32x3xf32>) -> tensor<256x8x7x16xf32> {
   %filter = arith.constant dense<2.0> : tensor<3x3x3x16xf32>
   %bias = arith.constant dense<3.0> : tensor<16xf32>
   %value = arith.constant dense<4.0> : tensor<16xf32>
@@ -18,7 +18,7 @@ func @convbiasaddmul(%arg: tensor<256x32x32x3xf32>) -> tensor<256x8x7x16xf32> {
 }
 
 // CHECK-LABEL: convaddv2mul
-func @convaddv2mul(%arg: tensor<256x32x32x3xf32>) -> tensor<256x8x7x16xf32> {
+func.func @convaddv2mul(%arg: tensor<256x32x32x3xf32>) -> tensor<256x8x7x16xf32> {
   %filter = arith.constant dense<2.0> : tensor<3x3x3x16xf32>
   %bias = arith.constant dense<3.0> : tensor<16xf32>
   %value = arith.constant dense<4.0> : tensor<16xf32>
@@ -35,7 +35,7 @@ func @convaddv2mul(%arg: tensor<256x32x32x3xf32>) -> tensor<256x8x7x16xf32> {
 }
 
 // CHECK-LABEL: fold_cast_fft_to_rfft
-func @fold_cast_fft_to_rfft(%arg0: tensor<10x20x30xf32>) -> tensor<10x20x30xcomplex<f32>> {
+func.func @fold_cast_fft_to_rfft(%arg0: tensor<10x20x30xf32>) -> tensor<10x20x30xcomplex<f32>> {
   %0 = "tf.Cast"(%arg0) : (tensor<10x20x30xf32>) -> tensor<10x20x30xcomplex<f32>>
   %1 = "tf.FFT"(%0) : (tensor<10x20x30xcomplex<f32>>) -> tensor<10x20x30xcomplex<f32>>
   func.return %1: tensor<10x20x30xcomplex<f32>>
@@ -45,7 +45,7 @@ func @fold_cast_fft_to_rfft(%arg0: tensor<10x20x30xf32>) -> tensor<10x20x30xcomp
 }
 
 // CHECK-LABEL: not_fold_cast_fft_to_rfft
-func @not_fold_cast_fft_to_rfft(%arg0: tensor<10x20x30xcomplex<f64>>) -> tensor<10x20x30xcomplex<f32>> {
+func.func @not_fold_cast_fft_to_rfft(%arg0: tensor<10x20x30xcomplex<f64>>) -> tensor<10x20x30xcomplex<f32>> {
   %0 = "tf.Cast"(%arg0) : (tensor<10x20x30xcomplex<f64>>) -> tensor<10x20x30xcomplex<f32>>
   %1 = "tf.FFT"(%0) : (tensor<10x20x30xcomplex<f32>>) -> tensor<10x20x30xcomplex<f32>>
   func.return %1: tensor<10x20x30xcomplex<f32>>

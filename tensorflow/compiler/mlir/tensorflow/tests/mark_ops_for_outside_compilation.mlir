@@ -1,6 +1,6 @@
 // RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-mark-ops-for-outside-compilation | FILECHECK_OPTS="" FileCheck %s
 
-func @unsupported_op_missing_soft_placement_attribute() -> tensor<i32> {
+func.func @unsupported_op_missing_soft_placement_attribute() -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
     // expected-error@+1 {{'tf.UnsupportedOp' op isn't compilable for TPU device}}
     %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -12,7 +12,7 @@ func @unsupported_op_missing_soft_placement_attribute() -> tensor<i32> {
 
 // -----
 
-func @unsupported_op_soft_placement_false() -> tensor<i32> {
+func.func @unsupported_op_soft_placement_false() -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
     // expected-error@+1 {{'tf.UnsupportedOp' op isn't compilable for TPU device}}
     %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -25,7 +25,7 @@ func @unsupported_op_soft_placement_false() -> tensor<i32> {
 // -----
 
 // CHECK-LABEL: func @assert_op_string_operand
-func @assert_op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
+func.func @assert_op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
     // CHECK: "tf.Assert"
     // CHECK-NOT: _xla_outside_compilation
@@ -43,7 +43,7 @@ func @assert_op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
 }
 
 // CHECK-LABEL: func @unsupported_op
-func @unsupported_op() -> tensor<i32> {
+func.func @unsupported_op() -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
     // CHECK: "tf.UnsupportedOp"
     // CHECK-SAME: _xla_outside_compilation
@@ -57,7 +57,7 @@ func @unsupported_op() -> tensor<i32> {
 }
 
 // CHECK-LABEL: func @tf2xla_fallback_op
-func @tf2xla_fallback_op() -> tensor<f32> {
+func.func @tf2xla_fallback_op() -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
     // CHECK: "tf.UnsupportedOp"
     // CHECK-SAME: _xla_outside_compilation
@@ -75,7 +75,7 @@ func @tf2xla_fallback_op() -> tensor<f32> {
 }
 
 // CHECK-LABEL: func @ignore_embedding_ops
-func @ignore_embedding_ops() -> () {
+func.func @ignore_embedding_ops() -> () {
   "tf_device.cluster"() ({
     // CHECK: "tf.RecvTPUEmbeddingActivations"
     // CHECK-NOT: _xla_outside_compilation
@@ -89,7 +89,7 @@ func @ignore_embedding_ops() -> () {
 }
 
 // CHECK-LABEL: func @ignore_stack_ops
-func @ignore_stack_ops(%arg0: tensor<i32>) -> () {
+func.func @ignore_stack_ops(%arg0: tensor<i32>) -> () {
   "tf_device.cluster"() ({
     // CHECK: "tf.StackV2"
     // CHECK-NOT: _xla_outside_compilation
@@ -100,7 +100,7 @@ func @ignore_stack_ops(%arg0: tensor<i32>) -> () {
 }
 
 // CHECK-LABEL: func @ignore_const_foldable_ops
-func @ignore_const_foldable_ops(%arg0: tensor<i32>) -> () {
+func.func @ignore_const_foldable_ops(%arg0: tensor<i32>) -> () {
   "tf_device.cluster"() ({
     %s0 = "tf.Const"() {value = dense<[501, 1, 32, 1280]> : tensor<4xi32>} : () -> tensor<4xi32>
     %s1 = "tf.Const"() {value = dense<[  1, 1,  1, 1280]> : tensor<4xi32>} : () -> tensor<4xi32>
@@ -114,7 +114,7 @@ func @ignore_const_foldable_ops(%arg0: tensor<i32>) -> () {
 }
 
 // CHECK-LABEL: func @op_string_result
-func @op_string_result() -> tensor<i32> {
+func.func @op_string_result() -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
     // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
     // CHECK-NOT: _xla_outside_compilation
@@ -131,7 +131,7 @@ func @op_string_result() -> tensor<i32> {
   func.return %0 : tensor<i32>
 }
 // CHECK-LABEL: func @op_string_operand
-func @op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
+func.func @op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
     // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
     // CHECK-NOT: _xla_outside_compilation
@@ -149,7 +149,7 @@ func @op_string_operand(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
 }
 
 // CHECK-LABEL: func @op_string_operand_string_result
-func @op_string_operand_string_result(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
+func.func @op_string_operand_string_result(%arg0: tensor<!tf_type.string>) -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
     // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
     // CHECK-NOT: _xla_outside_compilation
@@ -170,7 +170,7 @@ func @op_string_operand_string_result(%arg0: tensor<!tf_type.string>) -> tensor<
 // compilation.
 
 // CHECK-LABEL: func @ops_inside_tf_if_outside_compiled
-func @ops_inside_tf_if_outside_compiled(%arg0: tensor<i1>, %arg1: tensor<!tf_type.string>) -> tensor<f32> {
+func.func @ops_inside_tf_if_outside_compiled(%arg0: tensor<i1>, %arg1: tensor<!tf_type.string>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
     // CHECK:      "tf.Const"() {value = dense<1> : tensor<i32>}
     // CHECK-NOT:  _xla_outside_compilation
@@ -195,7 +195,7 @@ func @ops_inside_tf_if_outside_compiled(%arg0: tensor<i1>, %arg1: tensor<!tf_typ
 // marked for outside compilation.
 
 // CHECK-LABEL: func @if_region_string_op
-func @if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32> {
+func.func @if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
     // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
     // CHECK-NOT: _xla_outside_compilation
@@ -224,7 +224,7 @@ func @if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32
 // are marked for outside compilation.
 
 // CHECK-LABEL: func @nested_if_region_string_op
-func @nested_if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32> {
+func.func @nested_if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
     // CHECK: "tf.Const"() {value = dense<1> : tensor<i32>}
     // CHECK-NOT: _xla_outside_compilation
@@ -265,7 +265,7 @@ func @nested_if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> ten
 // compilation.
 
 // CHECK-LABEL: func @ops_inside_while_outside_compiled
-func @ops_inside_while_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<!tf_type.string>) -> tensor<f32> {
+func.func @ops_inside_while_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<!tf_type.string>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
     // CHECK:     "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
     // CHECK-NOT: _xla_outside_compilation
@@ -296,7 +296,7 @@ func @ops_inside_while_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<!tf_ty
 // Test that an unsupported op within a  tf.WhileRegion is marked for outside compilation.
 
 // CHECK-LABEL: func @while_region_unsupported_op
-func @while_region_unsupported_op(%arg0: tensor<i32>, %arg1: tensor<!tf_type.string>) -> tensor<f32> {
+func.func @while_region_unsupported_op(%arg0: tensor<i32>, %arg1: tensor<!tf_type.string>) -> tensor<f32> {
   %0 = "tf_device.cluster"() ({
     // CHECK: "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
     // CHECK-NOT: _xla_outside_compilation
@@ -331,7 +331,7 @@ func @while_region_unsupported_op(%arg0: tensor<i32>, %arg1: tensor<!tf_type.str
 // for outside compilation.
 
 // CHECK-LABEL: func @check_op_with_variant_string_subtypes_outside_compiled
-func @check_op_with_variant_string_subtypes_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<3xi32>) -> () {
+func.func @check_op_with_variant_string_subtypes_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<3xi32>) -> () {
   "tf_device.cluster"() ({
     // CHECK:      "tf.TensorListReserve"
     // CHECK-SAME: _xla_outside_compilation
@@ -344,7 +344,7 @@ func @check_op_with_variant_string_subtypes_outside_compiled(%arg0: tensor<i32>,
   return
 }
 // CHECK-LABEL: func @check_op_with_resource_string_subtypes_outside_compiled
-func @check_op_with_resource_string_subtypes_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<!tf_type.resource<tensor<!tf_type.string>>>) -> () {
+func.func @check_op_with_resource_string_subtypes_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<!tf_type.resource<tensor<!tf_type.string>>>) -> () {
   "tf_device.cluster"() ({
     // CHECK:      "tf.VarHandleOp"
     // CHECK-SAME: _xla_outside_compilation
@@ -355,7 +355,7 @@ func @check_op_with_resource_string_subtypes_outside_compiled(%arg0: tensor<i32>
 }
 
 // CHECK-LABEL: func @single_variant_input
-func @single_variant_input() {
+func.func @single_variant_input() {
   // CHECK: "tf.EmptyTensorList"
   // CHECK-SAME: _xla_outside_compilation
   "tf_device.cluster"() ({
@@ -369,7 +369,7 @@ func @single_variant_input() {
 }
 
 // CHECK-LABEL: func @chained_variant_input
-func @chained_variant_input() {
+func.func @chained_variant_input() {
   // CHECK: "tf.EmptyTensorList"
   // CHECK-SAME: _xla_outside_compilation
   // CHECK: "tf.Identity"
@@ -386,7 +386,7 @@ func @chained_variant_input() {
 }
 
 // CHECK-LABEL: func @single_variant_output
-func @single_variant_output() {
+func.func @single_variant_output() {
   // CHECK: "tf.Identity"
   // CHECK-SAME: _xla_outside_compilation
   "tf_device.cluster"() ({
@@ -400,7 +400,7 @@ func @single_variant_output() {
 }
 
 // CHECK-LABEL: func @chained_variant_output
-func @chained_variant_output() {
+func.func @chained_variant_output() {
   // CHECK: "tf.Identity"
   // CHECK-SAME: _xla_outside_compilation
   // CHECK: "tf.Identity"
@@ -417,7 +417,7 @@ func @chained_variant_output() {
 }
 
 // CHECK-LABEL: func @variant_input_output
-func @variant_input_output() {
+func.func @variant_input_output() {
   // CHECK: "tf.EmptyTensorList"
   // CHECK-SAME: _xla_outside_compilation
   // CHECK: "tf.Identity"
@@ -435,7 +435,7 @@ func @variant_input_output() {
 }
 
 // CHECK-LABEL: func @variant_input_output_already_marked
-func @variant_input_output_already_marked() {
+func.func @variant_input_output_already_marked() {
   // CHECK: "tf.opA"
   // CHECK-SAME: _xla_outside_compilation = "0"
   // CHECK: "tf.opB"
@@ -449,7 +449,7 @@ func @variant_input_output_already_marked() {
 }
 
 // CHECK-LABEL: func @variant_input_nested
-func @variant_input_nested(%arg0 : tensor<*x!tf_type.resource>) {
+func.func @variant_input_nested(%arg0 : tensor<*x!tf_type.resource>) {
   // CHECK:        "tf.EmptyTensorList"
   // CHECK-SAME:   _xla_outside_compilation
   // CHECK:        "tf.opD"
@@ -474,7 +474,7 @@ func @variant_input_nested(%arg0 : tensor<*x!tf_type.resource>) {
 }
 
 // CHECK-LABEL: func @variant_output_nested
-func @variant_output_nested(%arg0 : tensor<*x!tf_type.resource>) {
+func.func @variant_output_nested(%arg0 : tensor<*x!tf_type.resource>) {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.C"
@@ -500,7 +500,7 @@ func @variant_output_nested(%arg0 : tensor<*x!tf_type.resource>) {
 }
 
 // CHECK-LABEL: func @variant_output_terminator
-func @variant_output_terminator(%arg0 : tensor<*x!tf_type.resource>) {
+func.func @variant_output_terminator(%arg0 : tensor<*x!tf_type.resource>) {
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.EmptyTensorList"
   // CHECK:        "tf.EmptyTensorList"
@@ -526,7 +526,7 @@ func @variant_output_terminator(%arg0 : tensor<*x!tf_type.resource>) {
 }
 
 // CHECK-LABEL: func @variant_block_arg
-func @variant_block_arg(tensor<!tf_type.variant<tensor<f32>>>) -> () {
+func.func @variant_block_arg(tensor<!tf_type.variant<tensor<f32>>>) -> () {
   // CHECK-NOT:    _xla_outside_compilation
   // CHECK:        "tf.EmptyTensorList"
   // CHECK-SAME:   _xla_outside_compilation

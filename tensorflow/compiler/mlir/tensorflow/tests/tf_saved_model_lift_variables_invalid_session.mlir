@@ -4,7 +4,7 @@
 // expected-error @+1 {{'builtin.module' op no session provided}}
 module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
-  func @serving_default(%arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf.resource_name = "dense/kernel"}, %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf.resource_name = "dense/bias"}) -> (tensor<100x50xf32> {tf_saved_model.index_path = ["dense_2"]})
+  func.func @serving_default(%arg0: tensor<!tf_type.resource<tensor<100x50xf32>>> {tf.resource_name = "dense/kernel"}, %arg1: tensor<!tf_type.resource<tensor<50xf32>>> {tf.resource_name = "dense/bias"}) -> (tensor<100x50xf32> {tf_saved_model.index_path = ["dense_2"]})
   attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "dense_2/Add:0"}, tf_saved_model.exported_names = ["serving_default"]} {
     %0 = "tf.VarHandleOp"() {_class = ["loc:@dense/kernel"], allowed_devices = [], container = "", device = "", shared_name = "dense/kernel"} : () -> tensor<!tf_type.resource<tensor<100x50xf32>>>
     %1 = "tf.ReadVariableOp"(%0) {device = ""} : (tensor<!tf_type.resource<tensor<100x50xf32>>>) -> tensor<100x50xf32>
@@ -21,7 +21,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
 module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
 	// CHECK-LABEL: @serving_default
-  func @serving_default() -> (tensor<100x50xf32> {tf_saved_model.index_path = ["dense_2"]})
+  func.func @serving_default() -> (tensor<100x50xf32> {tf_saved_model.index_path = ["dense_2"]})
   attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "dense_2/Add:0"}, tf_saved_model.exported_names = ["serving_default"]} {
     %0 = "tf.VarHandleOp"() {_class = ["loc:@dense/kernel"], allowed_devices = [], container = "", device = "", shared_name = "dense/kernel"} : () -> tensor<!tf_type.resource<tensor<100x50xf32>>>
     %1 = "tf.ReadVariableOp"(%0) {device = ""} : (tensor<!tf_type.resource<tensor<100x50xf32>>>) -> tensor<100x50xf32>

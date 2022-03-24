@@ -4,7 +4,7 @@
 
 // CHECK-LABEL: func @single_launch
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-func @single_launch(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+func.func @single_launch(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island {
       // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
@@ -36,7 +36,7 @@ func @single_launch(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 
 // CHECK-LABEL: func @multiple_launches
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-func @multiple_launches(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+func.func @multiple_launches(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island {
       // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
@@ -83,7 +83,7 @@ func @multiple_launches(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 
 // CHECK-LABEL: func @launch_operands
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-func @launch_operands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+func.func @launch_operands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island wraps
       // CHECK: %[[LAUNCH_OUTPUT:[a-z0-9]*]], %{{.*}} = {{.*}} "tf_device.launch_func"() {device = "/device:test_device:0", func = @[[LAUNCH:.*]]}
@@ -107,7 +107,7 @@ func @launch_operands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 // Tests launch attributes are copied over to launch_func.
 
 // CHECK-LABEL: func @launch_attrs
-func @launch_attrs() -> tensor<?xi32> {
+func.func @launch_attrs() -> tensor<?xi32> {
   %0 = "tf_device.launch"() ({
     %1 = "tf.A"() : () -> tensor<?xi32>
     tf_device.return %1 : tensor<?xi32>

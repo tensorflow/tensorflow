@@ -4,7 +4,7 @@
 // RUN:   | FileCheck %s
 
 // CHECK-LABEL: func @propagate_constraints
-func @propagate_constraints(%arg0 : tensor<?x?xf32>)
+func.func @propagate_constraints(%arg0 : tensor<?x?xf32>)
     -> (tensor<?x?xf32> { tf.constraint = "value"  }) {
   // expected-remark@below {{operand #0 constrained to: rank}}
   %0 = "test.OpA"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
@@ -15,7 +15,7 @@ func @propagate_constraints(%arg0 : tensor<?x?xf32>)
 }
 
 // CHECK-LABEL: func @failed_to_propagate_constraints
-func @failed_to_propagate_constraints(%arg0 : tensor<?x?xf32>)
+func.func @failed_to_propagate_constraints(%arg0 : tensor<?x?xf32>)
     -> (tensor<?x?xf32> { tf.constraint = "value"  }) {
   // expected-error@below {{failed to propagate results constraints: 0:value}}
   %0 = "test.OpC"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>

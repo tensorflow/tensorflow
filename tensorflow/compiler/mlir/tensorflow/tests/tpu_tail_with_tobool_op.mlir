@@ -14,13 +14,13 @@
 // CHECK-NOT: tf._XlaSendFromHost
 
 module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"], tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 741 : i32}}  {
-  func private @if_then_branch(%arg0: tensor<*xi1>, %arg1: tensor<*xi64>, %arg2: tensor<*xi64>) -> tensor<*xi1> {
+  func.func private @if_then_branch(%arg0: tensor<*xi1>, %arg1: tensor<*xi64>, %arg2: tensor<*xi64>) -> tensor<*xi1> {
     func.return %arg0 : tensor<*xi1>
   }
-  func private @if_else_branch(%arg0: tensor<*xi1>, %arg1: tensor<*xi64>, %arg2: tensor<*xi64>) -> tensor<*xi1> {
+  func.func private @if_else_branch(%arg0: tensor<*xi1>, %arg1: tensor<*xi64>, %arg2: tensor<*xi64>) -> tensor<*xi1> {
     func.return %arg0 : tensor<*xi1>
   }
-  func @"tpu_subgraph"(%arg0: tensor<*xi64>) -> tensor<*xi1> {
+  func.func @"tpu_subgraph"(%arg0: tensor<*xi64>) -> tensor<*xi1> {
     %cst = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
     %cst_0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
     %cst_1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>

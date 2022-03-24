@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -tf-parallel-execute-to-islands | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: func @testEmptyRegions
-func @testEmptyRegions() {
+func.func @testEmptyRegions() {
   tf_executor.graph {
     tf_executor.island() {
       "tf_device.parallel_execute"() ({
@@ -25,7 +25,7 @@ func @testEmptyRegions() {
 
 // CHECK-LABEL: func @testDataOperandsAndResults
 // CHECK-SAME: ([[ARG_0:%.+]]: tensor<i1>)
-func @testDataOperandsAndResults(%arg0 : tensor<i1>) {
+func.func @testDataOperandsAndResults(%arg0 : tensor<i1>) {
   %0:2 = tf_executor.graph {
     %1:2 = tf_executor.island {
       %2 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
@@ -59,7 +59,7 @@ func @testDataOperandsAndResults(%arg0 : tensor<i1>) {
 
 
 // CHECK-LABEL: func @testControlOperands
-func @testControlOperands() {
+func.func @testControlOperands() {
   %0:2 = tf_executor.graph {
     %1 = tf_executor.island {
       tf_executor.yield
@@ -90,7 +90,7 @@ func @testControlOperands() {
 
 
 // CHECK-LABEL: func @testControlResults
-func @testControlResults() {
+func.func @testControlResults() {
   tf_executor.graph {
     %0:3 = tf_executor.island {
       %1:2 = "tf_device.parallel_execute"() ({
@@ -122,7 +122,7 @@ func @testControlResults() {
 
 
 // CHECK-LABEL: func @testSomeRegionNoUsers
-func @testSomeRegionNoUsers() {
+func.func @testSomeRegionNoUsers() {
   %0 = tf_executor.graph {
     %1:3 = tf_executor.island {
       %2:2 = "tf_device.parallel_execute"() ({

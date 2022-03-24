@@ -6,7 +6,7 @@
 // function.
 
 // CHECK-LABEL: func @propagate_in_function
-func @propagate_in_function(
+func.func @propagate_in_function(
   %arg0: !tf_res {tf.device = "/TPU:0"},
   %arg1: !tf_res {tf.device = "/TPU:1"}) {
   tf_executor.graph {
@@ -42,7 +42,7 @@ func @propagate_in_function(
 // Tesets that the pass can propagate through tf.If's branches.
 
 // CHECK-LABEL: func @propagate_if_op
-func @propagate_if_op(
+func.func @propagate_if_op(
   %arg0: !tf_res {tf.device = "/TPU:0"},
   %arg1: tensor<i1>) {
   tf_executor.graph {
@@ -70,7 +70,7 @@ func @propagate_if_op(
 }
 
 // CHECK-LABEL: func @if_then
-func @if_then(
+func.func @if_then(
   %arg0: !tf_res,
   %arg1: !tf_res) {
   tf_executor.graph {
@@ -92,7 +92,7 @@ func @if_then(
 }
 
 // CHECK-LABEL: func @if_else
-func @if_else(
+func.func @if_else(
   %arg0: !tf_res,
   %arg1: !tf_res) {
   tf_executor.graph {
@@ -115,7 +115,7 @@ func @if_else(
 
 // Tesets that the pass can propagate through tf.While's branches.
 // CHECK-LABEL: func @propagate_while_op
-func @propagate_while_op(
+func.func @propagate_while_op(
   %arg0: !tf_res {tf.device = "/TPU:0"},
   %arg1: tensor<i32>) {
   tf_executor.graph {
@@ -144,7 +144,7 @@ func @propagate_while_op(
 }
 
 // CHECK-LABEL: func @while_body
-func @while_body(
+func.func @while_body(
   %arg0: tensor<i32>,
   %arg1: !tf_res,
   %arg2: !tf_res) ->
@@ -175,7 +175,7 @@ func @while_body(
 }
 
 // CHECK-LABEL: func @while_cond
-func @while_cond(
+func.func @while_cond(
   %arg0: tensor<i32>,
   %arg1: !tf_res,
   %arg2: !tf_res) -> tensor<32xf32> {
@@ -201,7 +201,7 @@ func @while_cond(
 // Tesets that the pass reports error on conflicting assignments from multiple
 // callers.
 
-func @error_on_conflict_multiple_callers(
+func.func @error_on_conflict_multiple_callers(
   %arg0: !tf_res {tf.device = "/TPU:0"},
   %arg1: tensor<i1>) {
   tf_executor.graph {
@@ -229,7 +229,7 @@ func @error_on_conflict_multiple_callers(
   return
 }
 
-func @if_then_and_else(
+func.func @if_then_and_else(
   %arg0: !tf_res,
   %arg1: !tf_res) {
   tf_executor.graph {
@@ -252,7 +252,7 @@ func @if_then_and_else(
 
 // CHECK-LABEL: func @test_function
 // CHECK-SAME: {tf.device = "/TPU:0"}
-func @test_function(%arg0: !tf_res) {
+func.func @test_function(%arg0: !tf_res) {
   // CHECK: "tf.Identity"
   // CHECK-SAME: {device = "/TPU:0"}
   %id0 = "tf.Identity"(%arg0) : (!tf_res) -> !tf_res
@@ -264,7 +264,7 @@ func @test_function(%arg0: !tf_res) {
 }
 
 // CHECK-LABEL: func @propagate_through_calls
-func @propagate_through_calls(
+func.func @propagate_through_calls(
   %arg0: !tf_res {tf.device = "/TPU:0"},
   %arg1: !tf_res {tf.device = "/TPU:1"}) {
   tf_executor.graph {
@@ -297,7 +297,7 @@ func @propagate_through_calls(
 
 // Test propagation through IfRegion (with non-inlined calls)
 // CHECK-LABEL: func @propagate_if_region
-func @propagate_if_region(
+func.func @propagate_if_region(
   %arg0: !tf_res {tf.device = "/TPU:0"},
   %arg1: tensor<i1>) {
   tf_executor.graph {
@@ -327,7 +327,7 @@ func @propagate_if_region(
 
 // CHECK-LABEL: func @ifregion_then
 // CHECK-SAME: (%arg0: {{.+}} {tf.device = "/TPU:0"}, %arg1: {{.+}} {tf.device = "/TPU:1"}
-func @ifregion_then(
+func.func @ifregion_then(
   %arg0: !tf_res,
   %arg1: !tf_res) {
   tf_executor.graph {
@@ -350,7 +350,7 @@ func @ifregion_then(
 
 // CHECK-LABEL: func @ifregion_else
 // CHECK-SAME: (%arg0: {{.+}} {tf.device = "/TPU:0"}, %arg1: {{.+}} {tf.device = "/TPU:1"}
-func @ifregion_else(
+func.func @ifregion_else(
   %arg0: !tf_res,
   %arg1: !tf_res) {
   tf_executor.graph {
@@ -373,7 +373,7 @@ func @ifregion_else(
 
 // Test progagation through IfRegion (inlined calls)
 // CHECK-LABEL: func @propagate_if_region_inlined
-func @propagate_if_region_inlined(
+func.func @propagate_if_region_inlined(
   %arg0: !tf_res {tf.device = "/TPU:0"},
   %arg1: tensor<i1>) {
   tf_executor.graph {
@@ -427,7 +427,7 @@ func @propagate_if_region_inlined(
 
 // Test propagation through WhileRegion (inlined calls)
 // CHECK-LABEL: func @propagate_while_region_inlined
-func @propagate_while_region_inlined(
+func.func @propagate_while_region_inlined(
   %arg0: !tf_res {tf.device = "/TPU:0"},
   %arg1: tensor<i32>) {
   tf_executor.graph {
@@ -472,7 +472,7 @@ func @propagate_while_region_inlined(
 
 // Test propagation through WhileRegion (non-inlined calls)
 // CHECK-LABEL: func @propagate_while_region
-func @propagate_while_region(
+func.func @propagate_while_region(
   %arg0: !tf_res {tf.device = "/TPU:0"},
   %arg1: tensor<i32>) {
   tf_executor.graph {
@@ -502,7 +502,7 @@ func @propagate_while_region(
 }
 
 // CHECK-LABEL: func @whileregion_body
-func @whileregion_body(%arg0: tensor<i32>, %arg1: !tf_res, %arg2: !tf_res) -> (tensor<i32>, !tf_res, !tf_res) {
+func.func @whileregion_body(%arg0: tensor<i32>, %arg1: !tf_res, %arg2: !tf_res) -> (tensor<i32>, !tf_res, !tf_res) {
   %graph:3 = tf_executor.graph {
     // CHECK: tf_executor.island
     %island:4 = tf_executor.island {
@@ -520,7 +520,7 @@ func @whileregion_body(%arg0: tensor<i32>, %arg1: !tf_res, %arg2: !tf_res) -> (t
 }
 
 // CHECK-LABEL: func @whileregion_cond
-func @whileregion_cond(%arg0: tensor<i32>, %arg1: !tf_res, %arg2: !tf_res) -> tensor<i1> {
+func.func @whileregion_cond(%arg0: tensor<i32>, %arg1: !tf_res, %arg2: !tf_res) -> tensor<i1> {
   %graph = tf_executor.graph {
     // CHECK: tf_executor.island
     %island:2 = tf_executor.island {

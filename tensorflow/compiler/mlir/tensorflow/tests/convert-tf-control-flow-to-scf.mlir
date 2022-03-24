@@ -1,11 +1,11 @@
 // RUN: tf-opt -convert-tf-control-flow-to-scf %s | FileCheck %s
 
 // `tf.IfRegion` which returns values gets converted to `scf.if`.
-func private @test_if_then1(tensor<4xf32>) -> tensor<4xf32>
-func private @test_if_else1(tensor<4xf32>) -> tensor<4xf32>
+func.func private @test_if_then1(tensor<4xf32>) -> tensor<4xf32>
+func.func private @test_if_else1(tensor<4xf32>) -> tensor<4xf32>
 // CHECK-LABEL: func @test_supported_lowering_of_tf_if_region1
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<i1>, %[[ARG1:.*]]: tensor<4xf32>)
-func @test_supported_lowering_of_tf_if_region1(%arg0: tensor<i1>, %arg1: tensor<4xf32>) -> (tensor<*xf32>, tensor<4xf32>) {
+func.func @test_supported_lowering_of_tf_if_region1(%arg0: tensor<i1>, %arg1: tensor<4xf32>) -> (tensor<*xf32>, tensor<4xf32>) {
   %res:2 = "tf.IfRegion"(%arg0) ({
     %call = call @test_if_then1(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
     %add = "tf.AddV2"(%call, %call) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
@@ -31,11 +31,11 @@ func @test_supported_lowering_of_tf_if_region1(%arg0: tensor<i1>, %arg1: tensor<
 }
 
 // `tf.IfRegion` which doesn't return values gets converted to `scf.if`.
-func private @test_if_then2(tensor<4xf32>) -> ()
-func private @test_if_else2(tensor<4xf32>) -> ()
+func.func private @test_if_then2(tensor<4xf32>) -> ()
+func.func private @test_if_else2(tensor<4xf32>) -> ()
 // CHECK-LABEL: func @test_supported_lowering_of_tf_if_region2
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<i1>, %[[ARG1:.*]]: tensor<4xf32>)
-func @test_supported_lowering_of_tf_if_region2(%arg0: tensor<i1>, %arg1: tensor<4xf32>) -> () {
+func.func @test_supported_lowering_of_tf_if_region2(%arg0: tensor<i1>, %arg1: tensor<4xf32>) -> () {
   "tf.IfRegion"(%arg0) ({
     func.call @test_if_then2(%arg1) : (tensor<4xf32>) -> ()
     "tf.Yield"() : () -> ()
@@ -57,7 +57,7 @@ func @test_supported_lowering_of_tf_if_region2(%arg0: tensor<i1>, %arg1: tensor<
 // `tf.WhileRegion` gets converted to `scf.while`.
 // CHECK-LABEL: func @test_supported_lowering_of_tf_while_region
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<*xf32>)
-func @test_supported_lowering_of_tf_while_region(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<*xf32>) -> (tensor<f32>){
+func.func @test_supported_lowering_of_tf_while_region(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<*xf32>) -> (tensor<f32>){
   %0:2 = "tf.WhileRegion"(%arg0, %arg2) ({
   ^bb0(%arg3: tensor<f32>, %arg4: tensor<*xf32>):
     %1 = "tf.Identity"(%arg3) : (tensor<f32>) -> tensor<f32>

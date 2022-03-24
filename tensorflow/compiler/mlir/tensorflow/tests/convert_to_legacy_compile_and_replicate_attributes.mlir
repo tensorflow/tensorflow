@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-convert-to-legacy-compile-and-replicate-attributes | FileCheck %s
 
 // CHECK-LABEL: func @convert_to_legacy_attribute
-func @convert_to_legacy_attribute(%arg0: tensor<*xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<*xf32> attributes {tf._disable_call_shape_inference = true, tf.signature.is_stateful} {
+func.func @convert_to_legacy_attribute(%arg0: tensor<*xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<*xf32> attributes {tf._disable_call_shape_inference = true, tf.signature.is_stateful} {
   // CHECK-NOT: _replication_info =
   %0 = tf_executor.graph {
     %outputs, %control = tf_executor.island wraps "tf.GuaranteeConst"(%arg1) {T = f32, device = ""} : (tensor<f32>) -> tensor<f32>
@@ -25,7 +25,7 @@ func @convert_to_legacy_attribute(%arg0: tensor<*xf32>, %arg1: tensor<f32>, %arg
 
 // -----
 
-func @convert_to_legacy_attributes_failure(%arg0: tensor<*xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<*xf32> attributes {tf._disable_call_shape_inference = true, tf.signature.is_stateful} {
+func.func @convert_to_legacy_attributes_failure(%arg0: tensor<*xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<*xf32> attributes {tf._disable_call_shape_inference = true, tf.signature.is_stateful} {
   %0 = tf_executor.graph {
     %outputs, %control = tf_executor.island wraps "tf.GuaranteeConst"(%arg1) {T = f32, device = ""} : (tensor<f32>) -> tensor<f32>
     %outputs_0, %control_1 = tf_executor.island wraps "tf.GuaranteeConst"(%arg2) {T = f32, device = ""} : (tensor<f32>) -> tensor<f32>

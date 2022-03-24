@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -test-tf-lower-tf | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: dequantize
-func @dequantize(%arg0: tensor<2x3x!tf_type.qint8>, %min_range: tensor<f32>, %max_range: tensor<f32>) -> tensor<2x3xf32> {
+func.func @dequantize(%arg0: tensor<2x3x!tf_type.qint8>, %min_range: tensor<f32>, %max_range: tensor<f32>) -> tensor<2x3xf32> {
   // CHECK-DAG: %[[HALF_RANGE:.*]] = "tf.Const"() {value = dense<1.280000e+02> : tensor<f32>}
   // CHECK-DAG: %[[C255:.*]] = "tf.Const"() {value = dense<2.550000e+02> : tensor<f32>}
   // CHECK-DAG: %[[CAST:.*]] = "tf.Cast"(%arg0) {Truncate = false}
@@ -17,7 +17,7 @@ func @dequantize(%arg0: tensor<2x3x!tf_type.qint8>, %min_range: tensor<f32>, %ma
 }
 
 // CHECK-LABEL: dequantize_quint8
-func @dequantize_quint8(%arg0: tensor<2x3x!tf_type.quint8>, %min_range: tensor<f32>, %max_range: tensor<f32>) -> tensor<2x3xf32> {
+func.func @dequantize_quint8(%arg0: tensor<2x3x!tf_type.quint8>, %min_range: tensor<f32>, %max_range: tensor<f32>) -> tensor<2x3xf32> {
   // CHECK-NEXT: %[[C255:.*]] = "tf.Const"() {value = dense<2.550000e+02> : tensor<f32>}
   // CHECK-NEXT: %[[CAST:.*]] = "tf.Cast"(%arg0) {Truncate = false}
   // CHECK-NEXT: %[[DRANGE:.*]] = "tf.Sub"(%arg2, %arg1)
@@ -31,7 +31,7 @@ func @dequantize_quint8(%arg0: tensor<2x3x!tf_type.quint8>, %min_range: tensor<f
 }
 
 // CHECK-LABEL: dequantize_to_bf16
-func @dequantize_to_bf16(%arg0: tensor<2x3x!tf_type.qint8>, %min_range: tensor<f32>, %max_range: tensor<f32>) -> tensor<2x3xbf16> {
+func.func @dequantize_to_bf16(%arg0: tensor<2x3x!tf_type.qint8>, %min_range: tensor<f32>, %max_range: tensor<f32>) -> tensor<2x3xbf16> {
   // CHECK-DAG: %[[HALF_RANGE:.*]] = "tf.Const"() {value = dense<1.280000e+02> : tensor<f32>}
   // CHECK-DAG: %[[C255:.*]] = "tf.Const"() {value = dense<2.550000e+02> : tensor<f32>}
   // CHECK-DAG: %[[CAST:.*]] = "tf.Cast"(%arg0) {Truncate = false}

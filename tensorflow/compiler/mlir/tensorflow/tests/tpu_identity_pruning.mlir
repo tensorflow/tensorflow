@@ -4,7 +4,7 @@
 
 // CHECK-LABEL: func @testIdentity
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<i32>)
-func @testIdentity(%arg0: tensor<i32>) {
+func.func @testIdentity(%arg0: tensor<i32>) {
   // CHECK-NOT:  "tf.Identity"
   // CHECK:      "tf_device.cluster"
   // CHECK-NEXT: tf_device.return [[ARG0]]
@@ -19,7 +19,7 @@ func @testIdentity(%arg0: tensor<i32>) {
 
 // CHECK-LABEL: func @testIdentityN
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<i32>, [[ARG1:%.*]]: tensor<f32>)
-func @testIdentityN(%arg0: tensor<i32>, %arg1: tensor<f32>) {
+func.func @testIdentityN(%arg0: tensor<i32>, %arg1: tensor<f32>) {
   // CHECK-NOT:  "tf.IdentityN"
   // CHECK:      "tf_device.cluster"
   // CHECK-NEXT: tf_device.return [[ARG0]], [[ARG1]]
@@ -34,7 +34,7 @@ func @testIdentityN(%arg0: tensor<i32>, %arg1: tensor<f32>) {
 
 // CHECK-LABEL: func @testTransitiveIdentity
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<i32>)
-func @testTransitiveIdentity(%arg0: tensor<i32>) {
+func.func @testTransitiveIdentity(%arg0: tensor<i32>) {
   // CHECK:      "tf_device.cluster"
   // CHECK:      "tf.PartitionedCall"([[ARG0]])
   // CHECK-SAME: f = @callee0
@@ -47,7 +47,7 @@ func @testTransitiveIdentity(%arg0: tensor<i32>) {
 
 // CHECK-LABEL: func @callee0
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<i32>)
-func @callee0(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @callee0(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK-NOT:  "tf.Identity"
   // CHECK:      "tf.PartitionedCall"([[ARG0]])
   // CHECK-SAME: f = @callee1
@@ -58,7 +58,7 @@ func @callee0(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK-LABEL: func @callee1
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<i32>)
-func @callee1(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @callee1(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK-NOT:  "tf.Identity"
   // CHECK:      return [[ARG0]]
   %0 = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
@@ -69,7 +69,7 @@ func @callee1(%arg0: tensor<i32>) -> tensor<i32> {
 
 // CHECK-LABEL: func @testIdentityOutsideCluster
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<i32>)
-func @testIdentityOutsideCluster(%arg0: tensor<i32>) {
+func.func @testIdentityOutsideCluster(%arg0: tensor<i32>) {
   // CHECK:      [[IDENTITY:%.*]] = "tf.Identity"([[ARG0]])
   // CHECK:      [[CLUSTER:%.*]] = "tf_device.cluster"
   // CHECK-NEXT: tf_device.return [[IDENTITY]]
@@ -85,7 +85,7 @@ func @testIdentityOutsideCluster(%arg0: tensor<i32>) {
 
 // CHECK-LABEL: func @callee2
 // CHECK-SAME: ([[ARG0:%.*]]: tensor<i32>)
-func @callee2(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @callee2(%arg0: tensor<i32>) -> tensor<i32> {
   // CHECK:      [[IDENTITY:%.*]] = "tf.Identity"([[ARG0]])
   %0 = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
   // CHECK:      return [[IDENTITY]]

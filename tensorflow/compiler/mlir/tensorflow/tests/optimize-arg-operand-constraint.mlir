@@ -3,7 +3,7 @@
 // Check passing an argument into DefinedByConv2D constraint does not crash.
 
 // CHECK-LABEL: func @main
-func @main(%arg0: tensor<1xf32>) -> tensor<1xf32>
+func.func @main(%arg0: tensor<1xf32>) -> tensor<1xf32>
 attributes  {tf.entry_function = {inputs = "input", outputs = "output_node"}} {
   %0 = arith.constant dense<2.000000e+00> : tensor<f32>
   %1 = arith.constant dense<1.000000e+00> : tensor<f32>

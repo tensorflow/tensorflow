@@ -5,7 +5,7 @@ module attributes {
 } {
 
 // CHECK-LABEL: func @transposeConv2D_3x3_f16
-func @transposeConv2D_3x3_f16(%input: tensor<1x28x28x64xf16>, %filter: tensor<3x3x64x64xf16>) -> tensor<1x26x26x64xf16> {
+func.func @transposeConv2D_3x3_f16(%input: tensor<1x28x28x64xf16>, %filter: tensor<3x3x64x64xf16>) -> tensor<1x26x26x64xf16> {
   // cuDNN prefers NCHW data format for spatial convolutions in f16 before
   // compute capability 7.0 (NVIDIA Tensor Cores).
 
@@ -23,7 +23,7 @@ func @transposeConv2D_3x3_f16(%input: tensor<1x28x28x64xf16>, %filter: tensor<3x
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropFilter_f16
-func @transposeConv2DBackpropFilter_f16(
+func.func @transposeConv2DBackpropFilter_f16(
   %input:        tensor<1x28x28x64xf16>,
   %filter_size:  tensor<4xi32>,
   %out_backprop: tensor<1x28x28x64xf16>
@@ -43,7 +43,7 @@ func @transposeConv2DBackpropFilter_f16(
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropInput_f16
-func @transposeConv2DBackpropInput_f16(
+func.func @transposeConv2DBackpropInput_f16(
   %input_size:   tensor<4xi32>,
   %filter:       tensor<1x28x28x64xf16>,
   %out_backprop: tensor<1x28x28x64xf16>
@@ -63,7 +63,7 @@ func @transposeConv2DBackpropInput_f16(
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormV3_f32
-func @transposeFusedBatchNormV3_f32(
+func.func @transposeFusedBatchNormV3_f32(
   %arg0: tensor<1x28x28x64xf32>,
   %arg1: tensor<64xf32>
 ) -> tensor<1x28x28x64xf32> {
@@ -88,7 +88,7 @@ func @transposeFusedBatchNormV3_f32(
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormV3_f16
-func @transposeFusedBatchNormV3_f16(
+func.func @transposeFusedBatchNormV3_f16(
   %arg0: tensor<1x28x28x64xf16>,
   %arg1: tensor<64xf32>
 ) -> tensor<1x28x28x64xf16> {
@@ -113,7 +113,7 @@ func @transposeFusedBatchNormV3_f16(
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormGradV3_f32
-func @transposeFusedBatchNormGradV3_f32(
+func.func @transposeFusedBatchNormGradV3_f32(
   %arg0: tensor<1x28x28x64xf32>,
   %arg1: tensor<1x28x28x64xf32>,
   %arg2: tensor<64xf32>
@@ -139,7 +139,7 @@ func @transposeFusedBatchNormGradV3_f32(
 }
 
 // CHECK-LABEL: func @transposeFusedBatchNormGradV3_f16
-func @transposeFusedBatchNormGradV3_f16(
+func.func @transposeFusedBatchNormGradV3_f16(
   %arg0: tensor<1x28x28x64xf16>,
   %arg1: tensor<1x28x28x64xf16>,
   %arg2: tensor<64xf32>

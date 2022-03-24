@@ -2,7 +2,7 @@
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
   // CHECK-LABEL: func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32>
-  func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<*xi32> {
+  func.func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<*xi32> {
     // CHECK: %[[RESULT:.*]] = "tf.AddV2"
     // CHECK-SAME: (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
     // CHECK: return %[[RESULT]] : tensor<1xi32>
@@ -13,7 +13,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @simple_chain
-  func @simple_chain(%arg0: tensor<1xf32>) -> tensor<*xf32> {
+  func.func @simple_chain(%arg0: tensor<1xf32>) -> tensor<*xf32> {
     // CHECK: %[[MUL:.*]] = "tf.Mul"{{.*}} (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
     // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[MUL]]) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
     // CHECK: return %[[ADD]] : tensor<1xf32>
@@ -23,7 +23,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @simple_chain_with_broadcast
-  func @simple_chain_with_broadcast(%arg0: tensor<1xf32>, %arg1: tensor<10xf32>) -> tensor<*xf32> {
+  func.func @simple_chain_with_broadcast(%arg0: tensor<1xf32>, %arg1: tensor<10xf32>) -> tensor<*xf32> {
     // CHECK: %[[MUL:.*]] = "tf.Mul"{{.*}} (tensor<1xf32>, tensor<10xf32>) -> tensor<10xf32>
     // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[MUL]]) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
     // CHECK: %[[CAST:.*]] = "tf.Cast"(%[[ADD]]) {{.*}} : (tensor<10xf32>) -> tensor<*xf32>
@@ -36,7 +36,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @unknown_op
-  func @unknown_op(%arg0: tensor<1xf32>) -> tensor<*xf32> {
+  func.func @unknown_op(%arg0: tensor<1xf32>) -> tensor<*xf32> {
     // CHECK: %[[MUL:.*]] = "tf.Mul"{{.*}} (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
     // CHECK: %[[UNKNOWN:.*]] = "tf.Unknown"(%[[MUL]], %[[MUL]]) : (tensor<1xf32>, tensor<1xf32>) -> tensor<*xf32>
     // CHECK: return %[[UNKNOWN]] : tensor<*xf32>
@@ -46,7 +46,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<?xf32>
-  func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
+  func.func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     cf.br ^bb1
   ^bb1:
   // CHECK: %[[IDENTITY:.*]] = "tf.Identity"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
@@ -59,7 +59,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // Tests the case where an inference opportunity relies on folding.
 
   // CHECK-LABEL: func @simple_folding
-  func @simple_folding(%arg0: tensor<1x1x1x1xi32>, %arg1: tensor<1x1x1x1xf32>) -> tensor<?x?x?x?xf32> {
+  func.func @simple_folding(%arg0: tensor<1x1x1x1xi32>, %arg1: tensor<1x1x1x1xf32>) -> tensor<?x?x?x?xf32> {
     // CHECK: %[[SHAPE:.*]] = "tf.Shape"
     // CHECK: %[[CONV:.*]] = "tf.Conv2DBackpropInput"(%[[SHAPE]]
     // CHECK-SAME: (tensor<4xi32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
@@ -73,7 +73,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // Tests where tf.Const's value needs to be refined.
 
-  func @const_refine() -> tensor<*xi32> {
+  func.func @const_refine() -> tensor<*xi32> {
     %0 = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<*xi32>
     // CHECK: "tf.Const"
     // CHECK-SAME: -> tensor<2xi32>
@@ -83,7 +83,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // Tests the case where an op's shape function returns non-fully-defined shapes.
 
   // CHECK-LABEL: func @op_non_fully_defined_shape_fn
-  func @op_non_fully_defined_shape_fn(%arg0: tensor<*xi32>, %arg1: tensor<0xi32>) -> tensor<?xi32> {
+  func.func @op_non_fully_defined_shape_fn(%arg0: tensor<*xi32>, %arg1: tensor<0xi32>) -> tensor<?xi32> {
     // CHECK: tf.BroadcastGradientArgs
     // CHECK-SAME: (tensor<*xi32>, tensor<0xi32>) -> (tensor<?xi32>, tensor<?xi32>)
     %2:2 = "tf.BroadcastGradientArgs"(%arg0, %arg1) {T = "tfdtype$DT_INT32", name = "BroadcastGradientArgs"} : (tensor<*xi32>, tensor<0xi32>) -> (tensor<?xi32>, tensor<?xi32>)
@@ -91,7 +91,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @shape_from_const_input
-  func @shape_from_const_input(%arg0: tensor<3x3x32x64xf32>, %arg1: tensor<200x24x24x64xf32>) -> tensor<?x?x?x?xf32> {
+  func.func @shape_from_const_input(%arg0: tensor<3x3x32x64xf32>, %arg1: tensor<200x24x24x64xf32>) -> tensor<?x?x?x?xf32> {
     %0 = "tf.Const"() {value = dense<[200, 26, 26, 32]> : tensor<4xi32>} : () -> tensor<4xi32>
     // CHECK: tf.Conv2DBackpropInput
     // CHECK-SAME: (tensor<4xi32>, tensor<3x3x32x64xf32>, tensor<200x24x24x64xf32>) -> tensor<200x26x26x32xf32>
@@ -101,14 +101,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @shape_from_if_to_branch_functions_to_results
   // CHECK-SAME: (%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
-  func @shape_from_if_to_branch_functions_to_results(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<*xf32> {
+  func.func @shape_from_if_to_branch_functions_to_results(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<*xf32> {
     %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], else_branch = @if_else_branch, is_stateless = true, name = "if", then_branch = @if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<*xf32>
     func.return %0 : tensor<*xf32>
   }
 
   // CHECK-LABEL: func @if_then_branch
   // CHECK-SAME: (%arg0: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
-  func @if_then_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  func.func @if_then_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: return
     // CHECK-SAME: tensor<1x2x3xf32>
     func.return %arg0 : tensor<*xf32>
@@ -116,7 +116,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @if_else_branch
   // CHECK-SAME: (%arg0: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
-  func @if_else_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  func.func @if_else_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Identity"(%arg0) : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
     %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
     // CHECK: return
@@ -127,7 +127,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // Verify shape propagation from function arg -> if region body -> if region output -> function return type
   // CHECK-LABEL: shape_from_if_to_region_bodies_to_output
   // CHECK-SAME: -> tensor<1x2x3xf32>
-  func @shape_from_if_to_region_bodies_to_output(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<*xf32> {
+  func.func @shape_from_if_to_region_bodies_to_output(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<*xf32> {
     %unshaped = "tf.Cast"(%arg1) : (tensor<1x2x3xf32>) -> tensor<*xf32>
     %0 = "tf.IfRegion"(%arg0) ({
       // CHECK: "tf.Add"{{.+}}(tensor<1x2x3xf32>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
@@ -146,7 +146,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @shape_from_while_to_cond_body_functions
-  func @shape_from_while_to_cond_body_functions(%arg0: tensor<4xf32>, %arg1: tensor<!tf_type.resource<tensor<4xf32>>>, %arg2: tensor<!tf_type.resource<tensor<*xf32>>>) -> tensor<4xf32> {
+  func.func @shape_from_while_to_cond_body_functions(%arg0: tensor<4xf32>, %arg1: tensor<!tf_type.resource<tensor<4xf32>>>, %arg2: tensor<!tf_type.resource<tensor<*xf32>>>) -> tensor<4xf32> {
     // CHECK: "tf.While"
     // CHECK-SAME: (tensor<4xf32>, tensor<!tf_type.resource<tensor<4xf32>>>, tensor<!tf_type.resource<tensor<*xf32>>>) -> (tensor<4xf32>, tensor<!tf_type.resource<tensor<4xf32>>>, tensor<!tf_type.resource<tensor<*xf32>>>)
     %0:3 = "tf.While"(%arg0, %arg1, %arg2) {cond = @while_cond_func, body = @while_body_func, is_stateless = true} : (tensor<4xf32>, tensor<!tf_type.resource<tensor<4xf32>>>, tensor<!tf_type.resource<tensor<*xf32>>>) -> (tensor<4xf32>, tensor<*x!tf_type.resource>, tensor<!tf_type.resource<tensor<*xf32>>>)
@@ -155,7 +155,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @while_cond_func
   // CHECK-SAME: (%arg0: tensor<4xf32>, %arg1: tensor<!tf_type.resource<tensor<4xf32>>>, %arg2: tensor<!tf_type.resource<tensor<*xf32>>>) -> tensor<i1>
-  func @while_cond_func(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<!tf_type.resource<tensor<*xf32>>>) -> tensor<i1> {
+  func.func @while_cond_func(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<!tf_type.resource<tensor<*xf32>>>) -> tensor<i1> {
     %0 = "tf.Const"() {value = dense<[1.000000e-04,2.000000e-04,3.000000e-04,4.000000e-04]> : tensor<4xf32>} : () -> tensor<4xf32>
     %1 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
     // CHECK: tf.Equal
@@ -167,7 +167,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @while_body_func
-  func @while_body_func(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<!tf_type.resource<tensor<*xf32>>>) -> (tensor<*xf32>, tensor<*x!tf_type.resource>, tensor<!tf_type.resource<tensor<*xf32>>>) {
+  func.func @while_body_func(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<!tf_type.resource<tensor<*xf32>>>) -> (tensor<*xf32>, tensor<*x!tf_type.resource>, tensor<!tf_type.resource<tensor<*xf32>>>) {
     %0 = "tf.Const"() {value = dense<1.000000e-04> : tensor<f32>} : () -> tensor<f32>
     // CHECK: tf.AddV2
     // CHECK-SAME: (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
@@ -193,7 +193,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // Verify shape propagation from function arg -> while region cond/body -> while region output -> function return type
   // CHECK-LABEL: func @shape_from_while_operands_to_cond_body_to_while_results
   // CHECK-SAME: -> tensor<1x2x3xf32>
-  func @shape_from_while_operands_to_cond_body_to_while_results(%arg0: tensor<i32>, %arg1: tensor<1x2x3xf32>) ->  tensor<*xf32> {
+  func.func @shape_from_while_operands_to_cond_body_to_while_results(%arg0: tensor<i32>, %arg1: tensor<1x2x3xf32>) ->  tensor<*xf32> {
     %unshaped = "tf.Cast"(%arg1) : (tensor<1x2x3xf32>) -> tensor<*xf32>
     // CHECK: "tf.WhileRegion"
     %0:2 = "tf.WhileRegion"(%arg0, %unshaped) ({
@@ -220,7 +220,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @shape_from_case_to_branch_functions(
   // CHECK-SAME:    %[[ARG_0:.*]]: tensor<i32>,
   // CHECK-SAME:    %[[ARG_1:.*]]: tensor<!tf_type.resource<tensor<1x2x3xf32>>>
-  func @shape_from_case_to_branch_functions(%arg0: tensor<i32>, %arg1: tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32> {
+  func.func @shape_from_case_to_branch_functions(%arg0: tensor<i32>, %arg1: tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32> {
     // CHECK: %[[CASE:.*]] = "tf.Case"(%[[ARG_0]], %[[ARG_1]])
     %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch_0, @branch_1], is_stateless = false} : (tensor<i32>, tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
     // CHECK:           return %[[CASE]] : tensor<1x2x3xf32>
@@ -228,7 +228,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
   // CHECK-LABEL: func @branch_0
   // CHECK-SAME:    %[[ARG_0:.*]]: tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
-  func @branch_0(%arg0: tensor<!tf_type.resource>) -> tensor<*xf32> {
+  func.func @branch_0(%arg0: tensor<!tf_type.resource>) -> tensor<*xf32> {
     // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[ARG_0]]) : (tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
     %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> (tensor<*xf32>)
     // CHECK: return %[[READ]] : tensor<1x2x3xf32>
@@ -236,28 +236,28 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
   // CHECK-LABEL: func @branch_1
   // CHECK-SAME:    %[[ARG_0:.*]]: tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
-  func @branch_1(%arg0: tensor<!tf_type.resource>) -> tensor<*xf32> {
+  func.func @branch_1(%arg0: tensor<!tf_type.resource>) -> tensor<*xf32> {
     // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[ARG_0]]) : (tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
     %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> (tensor<*xf32>)
     // CHECK: return %[[READ]] : tensor<1x2x3xf32>
     func.return %0 : tensor<*xf32>
   }
 
-  func @partitioned_call(%arg0: tensor<i32>) -> tensor<*xi32> {
+  func.func @partitioned_call(%arg0: tensor<i32>) -> tensor<*xi32> {
     %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @partitioned_call_func} : (tensor<i32>) -> (tensor<*xi32>)
     func.return %0 : tensor<*xi32>
   }
 
   // CHECK-LABEL: func @partitioned_call_func
   // CHECK-SAME: (%arg0: tensor<i32>) -> tensor<i32>
-  func @partitioned_call_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  func.func @partitioned_call_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
     // CHECK: return
     // CHECK-SAME: tensor<i32>
     func.return %arg0 : tensor<*xi32>
   }
 
   // CHECK-LABEL: func @invalid_function_reused_by_control_flows
-  func @invalid_function_reused_by_control_flows(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>, %arg2: tensor<3xf32>) -> (tensor<1x2x3xf32>, tensor<3xf32>) {
+  func.func @invalid_function_reused_by_control_flows(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>, %arg2: tensor<3xf32>) -> (tensor<1x2x3xf32>, tensor<3xf32>) {
     %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
     %1 = "tf.If"(%arg0, %arg2) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<3xf32>) -> tensor<3xf32>
     func.return %0, %1 : tensor<1x2x3xf32>, tensor<3xf32>
@@ -266,7 +266,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @reused_if_then_branch
   // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
   // expected-warning @+1 {{expected control flow function @reused_if_then_branch to have exactly 1 use}}
-  func @reused_if_then_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  func.func @reused_if_then_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: return
     // CHECK-SAME: tensor<*xf32>
     func.return %arg0 : tensor<*xf32>
@@ -275,7 +275,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @reused_if_else_branch
   // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
   // expected-warning @+1 {{expected control flow function @reused_if_else_branch to have exactly 1 use}}
-  func @reused_if_else_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  func.func @reused_if_else_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Identity"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
     %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
     // CHECK: return
@@ -286,7 +286,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @with_graph_and_islands
   // CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf_type.resource<tensor<4xf32>>>
   // CHECK-SAME: -> tensor<4xf32>
-  func @with_graph_and_islands(%arg0: tensor<!tf_type.resource<tensor<4xf32>>>) -> tensor<*xf32> {
+  func.func @with_graph_and_islands(%arg0: tensor<!tf_type.resource<tensor<4xf32>>>) -> tensor<*xf32> {
     %graph = tf_executor.graph {
       %island:2 = tf_executor.island {
         // CHECK: %[[ID_0:.*]] = "tf.IdentityN"(%[[ARG_0]])
@@ -308,7 +308,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @next_iteration_user
-  func @next_iteration_user(%arg0: tensor<32x?x256x4xf32>) -> tensor<?x?x?xf32> {
+  func.func @next_iteration_user(%arg0: tensor<32x?x256x4xf32>) -> tensor<?x?x?xf32> {
     %0 = tf_executor.graph {
       // CHECK: tf_executor.NextIteration.Source
       // CHECK-SAME: : tensor<32x?x4xf32>
@@ -333,7 +333,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // Check that supported tf_executor ops can receive data from ops on which
   // shape inference has inferred the result types, without throwing any errors.
   // CHECK-LABEL: func @supported_tf_executor_users
-  func @supported_tf_executor_users(%arg0: tensor<32x?x256x4xf32>, %arg1: tensor<?x?x?xf32>, %arg2: tensor<i1>, %arg3: tensor<i32>) -> tensor<?x?x?xf32> {
+  func.func @supported_tf_executor_users(%arg0: tensor<32x?x256x4xf32>, %arg1: tensor<?x?x?xf32>, %arg2: tensor<i1>, %arg3: tensor<i32>) -> tensor<?x?x?xf32> {
     %0 = tf_executor.graph {
       %island:3 = tf_executor.island {
         %dims = "tf.Const"() {value = dense<[32, -1, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -366,14 +366,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // Tests that tensor.cast result shapes are refined.
   // CHECK-LABEL: func @tensor_cast_refine_return
-  func @tensor_cast_refine_return(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
+  func.func @tensor_cast_refine_return(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
     // CHECK-NOT: tensor.cast
     %0 = tensor.cast %arg0 : tensor<4xi32> to tensor<*xi32>
     func.return %0 : tensor<*xi32>
   }
 
   // CHECK-LABEL: func @tensor_cast_refine_user
-  func @tensor_cast_refine_user(%arg0: tensor<1x?xf32>, %arg1: tensor<?x1xf32>) -> tensor<*xf32> {
+  func.func @tensor_cast_refine_user(%arg0: tensor<1x?xf32>, %arg1: tensor<?x1xf32>) -> tensor<*xf32> {
     // CHECK: tensor.cast %{{.*}} : tensor<1x?xf32> to tensor<1x?xf32>
     %0 = tensor.cast %arg0 : tensor<1x?xf32> to tensor<*xf32>
     // CHECK: tensor.cast %{{.*}} : tensor<?x1xf32> to tensor<?x1xf32>
@@ -386,7 +386,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @while_variant
   // CHECK-SAME: -> tensor<!tf_type.variant<tensor<16x1xf32>>>
-  func @while_variant(%arg0: tensor<!tf_type.variant<tensor<16x1xf32>>>) -> tensor<!tf_type.variant> {
+  func.func @while_variant(%arg0: tensor<!tf_type.variant<tensor<16x1xf32>>>) -> tensor<!tf_type.variant> {
     // CHECK: tf.While
     // CHECK-SAME: -> tensor<!tf_type.variant<tensor<16x1xf32>>>
     %0 = "tf.While"(%arg0) {cond = @variant_cond_func, body = @variant_body_func, is_stateless = true} : (tensor<!tf_type.variant<tensor<16x1xf32>>>) -> tensor<!tf_type.variant>
@@ -399,19 +399,19 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %2 : tensor<!tf_type.variant>
   }
   // CHECK-LABEL: func @variant_cond_func
-  func @variant_cond_func(%arg0: tensor<!tf_type.variant<tensor<16x1xf32>>>) -> tensor<i1> {
+  func.func @variant_cond_func(%arg0: tensor<!tf_type.variant<tensor<16x1xf32>>>) -> tensor<i1> {
     %0 = "tf._SomeOp"() : () -> tensor<i1>
     func.return %0 : tensor<i1>
   }
   // CHECK-LABEL: func @variant_body_func
-  func @variant_body_func(%arg0: tensor<!tf_type.variant<tensor<16x1xf32>>>) -> tensor<!tf_type.variant<tensor<16x1xf32>>> {
+  func.func @variant_body_func(%arg0: tensor<!tf_type.variant<tensor<16x1xf32>>>) -> tensor<!tf_type.variant<tensor<16x1xf32>>> {
     func.return %arg0 : tensor<!tf_type.variant<tensor<16x1xf32>>>
   }
 
   // Test propagation from called functions to the call site.
   // CHECK-LABEL: func @stateful_partitioned_call(
   // CHECK-SAME: -> tensor<20xi32>
-  func @stateful_partitioned_call(%arg0: tensor<20xi32>, %arg1: tensor<?xi32>) -> tensor<*xi32> {
+  func.func @stateful_partitioned_call(%arg0: tensor<20xi32>, %arg1: tensor<?xi32>) -> tensor<*xi32> {
     // CHECK: tf.PartitionedCall
     // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
     %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @partitioned_called_func} : (tensor<20xi32>) -> tensor<*xi32>
@@ -423,18 +423,18 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %2 = "tf.TPUPartitionedCall"(%arg0, %arg1) {autotuner_thresh = 0 : i64, f = @tpu_partitioned_call_func} : (tensor<20xi32>, tensor<?xi32>) -> tensor<*xi32>
     func.return %0 : tensor<*xi32>
   }
-  func @partitioned_called_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+  func.func @partitioned_called_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     func.return %arg0 : tensor<?xi32>
   }
-  func @stateful_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+  func.func @stateful_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     func.return %arg0 : tensor<?xi32>
   }
-  func @tpu_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+  func.func @tpu_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     func.return %arg0 : tensor<?xi32>
   }
 
   // Test propagation involving const values across caller and callee.
-  func @partitioned_call_const(%arg0 : tensor<6xf32>) -> tensor<*xf32> {
+  func.func @partitioned_call_const(%arg0 : tensor<6xf32>) -> tensor<*xf32> {
     %0 = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
     %1 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @partitioned_call_func_const} : (tensor<2xi32>) -> (tensor<2xi32>)
     // CHECK: "tf.Reshape"
@@ -444,28 +444,28 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @partitioned_call_func_const
-  func @partitioned_call_func_const(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @partitioned_call_func_const(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     func.return %arg0 : tensor<2xi32>
   }
 
   // Test iteratively updating call site if a func.call is used.
   // CHECK-LABEL: func @call_partitioned_call2(
   // CHECK-SAME: -> tensor<1xi32>
-  func @call_partitioned_call2() -> tensor<*xi32> {
+  func.func @call_partitioned_call2() -> tensor<*xi32> {
     // CHECK: () -> tensor<1xi32>
     %0 = call @partitioned_called_func2() : () -> tensor<*xi32>
     func.return %0 : tensor<*xi32>
   }
   // CHECK-LABEL: func @partitioned_called_func2(
   // CHECK-SAME: -> tensor<1xi32>
-  func @partitioned_called_func2() -> (tensor<*xi32>) {
+  func.func @partitioned_called_func2() -> (tensor<*xi32>) {
     %0 = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
     %1 = tensor.cast %0 : tensor<1xi32> to tensor<*xi32>
     func.return %1 : tensor<*xi32>
   }
 
   // CHECK-LABEL: func @tensor_list_refine
-  func @tensor_list_refine() {
+  func.func @tensor_list_refine() {
     tf_executor.graph {
       %control = tf_executor.island {
         %0 = "tf.Const"() {device = "", value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
@@ -490,7 +490,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: single_mutation_same_element_shape
-  func @single_mutation_same_element_shape() {
+  func.func @single_mutation_same_element_shape() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %elem = "tf._SomeOp"() : () -> tensor<16x1xf32>
@@ -504,7 +504,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: single_mutation_multiple_element_shape
-  func @single_mutation_multiple_element_shape() {
+  func.func @single_mutation_multiple_element_shape() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
@@ -518,7 +518,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: single_mutation_dynamic_element_shape
-  func @single_mutation_dynamic_element_shape() {
+  func.func @single_mutation_dynamic_element_shape() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
@@ -532,7 +532,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: multiple_mutation_same_element_shape
-  func @multiple_mutation_same_element_shape() {
+  func.func @multiple_mutation_same_element_shape() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
@@ -547,7 +547,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: multiple_mutation_multiple_element_shape
-  func @multiple_mutation_multiple_element_shape() {
+  func.func @multiple_mutation_multiple_element_shape() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
@@ -563,7 +563,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: multiple_mutation_dynamic_element_shape
-  func @multiple_mutation_dynamic_element_shape() {
+  func.func @multiple_mutation_dynamic_element_shape() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %elem_0 = "tf._SomeOp"() : () -> tensor<16x1xf32>
@@ -579,7 +579,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: infer_subtype_from_scatter
-  func @infer_subtype_from_scatter() {
+  func.func @infer_subtype_from_scatter() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %tensors = "tf._SomeOp"() : () -> tensor<3x16x1xf32>
@@ -592,7 +592,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: tensorlist_from_tensor
-  func @tensorlist_from_tensor() {
+  func.func @tensorlist_from_tensor() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %tensors = "tf._SomeOp"() : () -> tensor<10x16x1xf32>
     // CHECK: TensorListFromTensor
@@ -602,7 +602,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: infer_subtype_from_write_while
-  func @infer_subtype_from_write_while() {
+  func.func @infer_subtype_from_write_while() {
     %zero = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
     %one = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
@@ -625,7 +625,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: tensor_list_if_region_yield_multiple_elem_shape
-  func @tensor_list_if_region_yield_multiple_elem_shape(%arg0: tensor<i1>) -> () {
+  func.func @tensor_list_if_region_yield_multiple_elem_shape(%arg0: tensor<i1>) -> () {
     %zero = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
     %one = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
@@ -648,7 +648,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: while_result_multiple_element_shape
-  func @while_result_multiple_element_shape() {
+  func.func @while_result_multiple_element_shape() {
     %zero = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
     %one = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
@@ -673,7 +673,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: do_not_refine_tensorlist_with_unknown_user
-  func @do_not_refine_tensorlist_with_unknown_user() {
+  func.func @do_not_refine_tensorlist_with_unknown_user() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
     %elem = "tf._SomeOp"() : () -> tensor<16x1xf32>
@@ -686,7 +686,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: replace_tensor_list_element_shape
-  func @replace_tensor_list_element_shape() {
+  func.func @replace_tensor_list_element_shape() {
     // CHECK: %[[ELEMENT_SHAPE:.*]] = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>}
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
@@ -704,7 +704,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: do_not_unrefine_fully_defined_subtypes
-  func @do_not_unrefine_fully_defined_subtypes() {
+  func.func @do_not_unrefine_fully_defined_subtypes() {
     %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
     %size = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
     // CHECK: "tf.TensorListReserve"
@@ -714,7 +714,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: dont_update_for_ref
-  func @dont_update_for_ref() -> () {
+  func.func @dont_update_for_ref() -> () {
     // CHECK: () -> tensor<4x!tf_type.f32ref>
     %11 = "tf.VariableV2"() {container = "", device = "", shape = #tf_type.shape<4>, shared_name = ""} : () -> tensor<4x!tf_type.f32ref>
     // CHECK: (tensor<4x!tf_type.f32ref>) -> tensor<4xf32>
@@ -725,7 +725,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: operand_as_shape
-  func @operand_as_shape(%18: tensor<i32>, %39: tensor<1x4x4x32xf32>) -> () {
+  func.func @operand_as_shape(%18: tensor<i32>, %39: tensor<1x4x4x32xf32>) -> () {
     %cst_5 = arith.constant dense<512> : tensor<i32>
     %19 = "tf.Pack"(%18, %cst_5) {N = 2 : i64, T = i32, axis = 0 : i64, device = ""} : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
     // CHECK: -> tensor<1x512xf32>
@@ -734,7 +734,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: const_fold
-  func @const_fold() -> () {
+  func.func @const_fold() -> () {
     // CHECK: tf.Const
     // CHECK-SAME: () -> tensor<4xi32>
     %0 = "tf.Const"() {value = dense<[200, 26, 26, 32]> : tensor<4xi32>} : () -> tensor<*xi32>
@@ -749,7 +749,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: cast_at_end(%arg0:
   // CHECK-SAME: tensor<16x194x199x4xui8>, tensor<16x194x199x4xi8>, tensor<*xi8>, tensor<*xi8>
-  func @cast_at_end(%arg0: tensor<16x194x199x4xf32>, %arg1: tensor<16x194x199x4xi8>, %arg2: tensor<*xf32>) -> (tensor<*xui8>, tensor<*xi8>, tensor<*xi8>, tensor<*xi8>) {
+  func.func @cast_at_end(%arg0: tensor<16x194x199x4xf32>, %arg1: tensor<16x194x199x4xi8>, %arg2: tensor<*xf32>) -> (tensor<*xui8>, tensor<*xi8>, tensor<*xi8>, tensor<*xi8>) {
     %27 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<16x194x199x4xf32>) -> tensor<*xui8>
     %28 = "tf.Cast"(%arg0) {Truncate = false, device = ""} : (tensor<16x194x199x4xf32>) -> tensor<*xi8>
     %29 = "tf.Cast"(%arg2) {Truncate = false, device = ""} : (tensor<*xf32>) -> tensor<*xi8>
@@ -768,7 +768,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: infer_device_launch
-  func @infer_device_launch(%arg0: tensor<1x8x2xi32>) -> (tensor<*xf32>, tensor<*xf32>) {
+  func.func @infer_device_launch(%arg0: tensor<1x8x2xi32>) -> (tensor<*xf32>, tensor<*xf32>) {
     %0 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
     %1 = "tf_device.launch"() ({
       %2 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x8x2xi32>) -> tensor<1x8x2xf32>
@@ -783,7 +783,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: infer_device_cluster
-  func @infer_device_cluster(%arg0: tensor<1x8x2xi32>) -> (tensor<*xf32>, tensor<*xf32>) {
+  func.func @infer_device_cluster(%arg0: tensor<1x8x2xi32>) -> (tensor<*xf32>, tensor<*xf32>) {
     %0 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
     %1 = "tf_device.cluster"() ({
       %2 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x8x2xi32>) -> tensor<1x8x2xf32>
@@ -798,7 +798,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @tensor_cast_dont_infer
-  func @tensor_cast_dont_infer(%arg0: tensor<?xi32>) -> tensor<1xi32> {
+  func.func @tensor_cast_dont_infer(%arg0: tensor<?xi32>) -> tensor<1xi32> {
    // CHECK: %[[RESULT:.*]] = tensor.cast
    // CHECK-SAME: tensor<?xi32> to tensor<1xi32>
    // CHECK: return %[[RESULT]] : tensor<1xi32>
@@ -807,7 +807,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @tensor_cast_partial_infer
-  func @tensor_cast_partial_infer(%arg0: tensor<?x10xi32>) -> tensor<10x?xi32> {
+  func.func @tensor_cast_partial_infer(%arg0: tensor<?x10xi32>) -> tensor<10x?xi32> {
    // CHECK: return {{.*}} : tensor<10x10xi32>
     %2 = tensor.cast %arg0 : tensor<?x10xi32> to tensor<10x?xi32>
     func.return %2 : tensor<10x?xi32>
@@ -816,7 +816,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: operand_pack_unranked
   // Verify fix: this only verifies that shape inference runs and completes on
   // this input, rather than refining any shapes.
-  func @operand_pack_unranked(%arg0: tensor<*xf32>) -> () {
+  func.func @operand_pack_unranked(%arg0: tensor<*xf32>) -> () {
    // CHECK: tf.Pack
    %outputs_0 = "tf.Pack"(%arg0) {axis = 0 : i64, device = ""} : (tensor<*xf32>) -> tensor<*xf32>
    %outputs_2 = "tf.TensorSliceDataset"(%outputs_0) {device = "", output_shapes = [#tf_type.shape<>], metadata=""} : (tensor<*xf32>) -> tensor<!tf_type.variant>
@@ -825,19 +825,19 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // Test resource result subtypes are propagated to call op results.
   // CHECK-LABEL: func @pcall_resource_result
-  func @pcall_resource_result(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) {
+  func.func @pcall_resource_result(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) {
     // CHECK: "tf.StatefulPartitionedCall"
     // CHECK-SAME: (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource<tensor<f32>>>
     %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_resource_result_func} : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource>
     return
   }
-  func @pcall_resource_result_func(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource<tensor<f32>>> {
+  func.func @pcall_resource_result_func(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource<tensor<f32>>> {
     func.return %arg0 : tensor<*x!tf_type.resource<tensor<f32>>>
   }
 
   // Check that the fold for tf.Size does not crash with unranked output type.
   // CHECK-LABEL: func @unranked_tf_size
-  func @unranked_tf_size() -> tensor<*xi32> {
+  func.func @unranked_tf_size() -> tensor<*xi32> {
     %0 = "tf.Const"() {value = dense<[-1, 26]> : tensor<2xi32>} : () -> tensor<2xi32>
     %add = "tf.AddV2"(%0, %0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<*xi32>
     // CHECK: "tf.Size"
@@ -848,7 +848,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // Test no tf.Cast ops are inserted when refining tf_executor.graph results.
   // CHECK-LABEL: func @call_in_graph({{%.+}}: tensor<i32>) -> tensor<i32>
-  func @call_in_graph(%arg0: tensor<i32>) -> tensor<*xi32> {
+  func.func @call_in_graph(%arg0: tensor<i32>) -> tensor<*xi32> {
     // CHECK-NOT: tf.Cast
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island wraps "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @call_in_graph_func} : (tensor<i32>) -> tensor<*xi32>
@@ -858,7 +858,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @call_in_graph_func({{%.+}}: tensor<i32>) -> tensor<i32>
-  func @call_in_graph_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  func.func @call_in_graph_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
     // CHECK-NOT: tf.Cast
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
@@ -872,7 +872,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @while_shape_invariant_propagate
   // CHECK-SAME: ({{%.+}}: tensor<4xf32>, {{%.+}}: tensor<!tf_type.resource<tensor<4xf32>>>, {{%.+}}: tensor<!tf_type.resource<tensor<8xf32>>>, {{%.+}}: tensor<1xi32>)
   // CHECK-SAME: -> (tensor<*xf32>, tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<!tf_type.resource<tensor<8xf32>>>, tensor<?xi32>, tensor<*xf32>, tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<!tf_type.resource<tensor<8xf32>>>, tensor<?xi32>)
-  func @while_shape_invariant_propagate(%arg0: tensor<4xf32>, %arg1: tensor<!tf_type.resource<tensor<4xf32>>>, %arg2: tensor<!tf_type.resource<tensor<8xf32>>>, %arg3: tensor<1xi32>) -> (tensor<*xf32>, tensor<*x!tf_type.resource>, tensor<!tf_type.resource>, tensor<?xi32>, tensor<*xf32>, tensor<*x!tf_type.resource>, tensor<!tf_type.resource>, tensor<?xi32>) {
+  func.func @while_shape_invariant_propagate(%arg0: tensor<4xf32>, %arg1: tensor<!tf_type.resource<tensor<4xf32>>>, %arg2: tensor<!tf_type.resource<tensor<8xf32>>>, %arg3: tensor<1xi32>) -> (tensor<*xf32>, tensor<*x!tf_type.resource>, tensor<!tf_type.resource>, tensor<?xi32>, tensor<*xf32>, tensor<*x!tf_type.resource>, tensor<!tf_type.resource>, tensor<?xi32>) {
     // CHECK: "tf.While"
     // CHECK-SAME: (tensor<4xf32>, tensor<!tf_type.resource<tensor<4xf32>>>, tensor<!tf_type.resource<tensor<8xf32>>>, tensor<1xi32>)
     // CHECK-SAME: -> (tensor<*xf32>, tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<!tf_type.resource<tensor<8xf32>>>, tensor<?xi32>)
@@ -902,7 +902,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @while_shape_invariant_cond_func_propagate
   // CHECK-SAME: ({{%.+}}: tensor<*xf32>, {{%.+}}: tensor<*x!tf_type.resource<tensor<4xf32>>>, {{%.+}}: tensor<!tf_type.resource<tensor<8xf32>>>, {{%.+}}: tensor<?xi32>)
   // CHECK-SAME: -> tensor<i1>
-  func @while_shape_invariant_cond_func_propagate(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<!tf_type.resource>, %arg3: tensor<?xi32>) -> tensor<i1> {
+  func.func @while_shape_invariant_cond_func_propagate(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<!tf_type.resource>, %arg3: tensor<?xi32>) -> tensor<i1> {
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     func.return %0 : tensor<i1>
   }
@@ -910,7 +910,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @while_shape_invariant_body_func_propagate
   // CHECK-SAME: ({{%.+}}: tensor<*xf32>, {{%.+}}: tensor<*x!tf_type.resource<tensor<4xf32>>>, {{%.+}}: tensor<!tf_type.resource<tensor<8xf32>>>, {{%.+}}: tensor<?xi32>)
   // CHECK-SAME: -> (tensor<*xf32>, tensor<*x!tf_type.resource<tensor<4xf32>>>, tensor<!tf_type.resource<tensor<8xf32>>>, tensor<?xi32>)
-  func @while_shape_invariant_body_func_propagate(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<!tf_type.resource>, %arg3: tensor<?xi32>) -> (tensor<*xf32>, tensor<*x!tf_type.resource>, tensor<!tf_type.resource>, tensor<?xi32>) {
+  func.func @while_shape_invariant_body_func_propagate(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<!tf_type.resource>, %arg3: tensor<?xi32>) -> (tensor<*xf32>, tensor<*x!tf_type.resource>, tensor<!tf_type.resource>, tensor<?xi32>) {
     %0 = "tf.SomeOp"(%arg3) : (tensor<?xi32>) -> tensor<?xi32>
     func.return %arg0, %arg1, %arg2, %0 : tensor<*xf32>, tensor<*x!tf_type.resource>, tensor<!tf_type.resource>, tensor<?xi32>
   }
@@ -920,7 +920,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @while_shape_invariant_different_dims
   // CHECK-SAME: ({{%.+}}: tensor<1x2x3xf32>)
   // CHECK-SAME: -> (tensor<1x8x3xf32>, tensor<1x8x3xf32>)
-  func @while_shape_invariant_different_dims(%arg0: tensor<1x2x3xf32>) -> (tensor<1x8x3xf32>, tensor<1x8x3xf32>) {
+  func.func @while_shape_invariant_different_dims(%arg0: tensor<1x2x3xf32>) -> (tensor<1x8x3xf32>, tensor<1x8x3xf32>) {
     // CHECK: "tf.While"
     // CHECK-SAME: (tensor<1x2x3xf32>)
     // CHECK-SAME: -> tensor<1x8x3xf32>
@@ -950,7 +950,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @while_shape_invariant_cond_func_different_dims
   // CHECK-SAME: ({{%.+}}: tensor<1x?x3xf32>)
   // CHECK-SAME: -> tensor<i1>
-  func @while_shape_invariant_cond_func_different_dims(%arg0: tensor<*xf32>) -> tensor<i1> {
+  func.func @while_shape_invariant_cond_func_different_dims(%arg0: tensor<*xf32>) -> tensor<i1> {
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     func.return %0 : tensor<i1>
   }
@@ -958,7 +958,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @while_shape_invariant_body_func_different_dims
   // CHECK-SAME: ({{%.+}}: tensor<1x?x3xf32>)
   // CHECK-SAME: -> tensor<1x?x3xf32>
-  func @while_shape_invariant_body_func_different_dims(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  func.func @while_shape_invariant_body_func_different_dims(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
     func.return %0 : tensor<*xf32>
   }
@@ -968,7 +968,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @while_shape_invariant_body_result_propagate
   // CHECK-SAME: ({{%.+}}: tensor<*x!tf_type.resource<tensor<f32>>>)
   // CHECK-SAME: -> (tensor<*x!tf_type.resource<tensor<f32>>>, tensor<*x!tf_type.resource<tensor<f32>>>)
-  func @while_shape_invariant_body_result_propagate(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) -> (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>) {
+  func.func @while_shape_invariant_body_result_propagate(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) -> (tensor<*x!tf_type.resource>, tensor<*x!tf_type.resource>) {
     // CHECK: "tf.While"
     // CHECK-SAME: (tensor<*x!tf_type.resource<tensor<f32>>>)
     // CHECK-SAME: -> tensor<*x!tf_type.resource<tensor<f32>>>
@@ -998,7 +998,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @while_shape_invariant_cond_func_body_result_propagate
   // CHECK-SAME: ({{%.+}}: tensor<*x!tf_type.resource<tensor<f32>>>)
   // CHECK-SAME: -> tensor<i1>
-  func @while_shape_invariant_cond_func_body_result_propagate(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<i1> {
+  func.func @while_shape_invariant_cond_func_body_result_propagate(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<i1> {
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     func.return %0 : tensor<i1>
   }
@@ -1006,13 +1006,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: func @while_shape_invariant_body_func_body_result_propagate
   // CHECK-SAME: ({{%.+}}: tensor<*x!tf_type.resource<tensor<f32>>>)
   // CHECK-SAME: -> tensor<*x!tf_type.resource<tensor<f32>>>
-  func @while_shape_invariant_body_func_body_result_propagate(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource<tensor<f32>>> {
+  func.func @while_shape_invariant_body_func_body_result_propagate(%arg0: tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource<tensor<f32>>> {
     %0 = "tf.Identity"(%arg0) : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<*x!tf_type.resource<tensor<f32>>>
     func.return %0 : tensor<*x!tf_type.resource<tensor<f32>>>
   }
 
   // CHECK-LABEL: func @InferFromValueFolding
-  func @InferFromValueFolding(%arg0 : tensor<f32>) -> tensor<*xf32> {
+  func.func @InferFromValueFolding(%arg0 : tensor<f32>) -> tensor<*xf32> {
     %cst1 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
     %mul = "tf.Mul"(%arg0, %arg0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     // Folding will infer that: Pow(%mul, 1.0) -> %mul
@@ -1026,7 +1026,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // Same as above, but don't infer when the type is "less" static.
   // CHECK-LABEL: func @DontInferFromValueFolding
-  func @DontInferFromValueFolding(%arg0 : tensor<*xf32>) -> tensor<f32> {
+  func.func @DontInferFromValueFolding(%arg0 : tensor<*xf32>) -> tensor<f32> {
     %cst1 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
     %mul = "tf.Mul"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     // Folding will infer that: Pow(%mul, 1.0) -> %mul
@@ -1043,14 +1043,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // have the same operand types.
 
   // CHECK-LABEL: func @multi_caller1
-  func @multi_caller1(%arg0: tensor<i32>) -> tensor<*xi32> {
+  func.func @multi_caller1(%arg0: tensor<i32>) -> tensor<*xi32> {
     // CHECK: tf.PartitionedCall
     // CHECK-SAME:  -> tensor<i32>
     %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @multi_caller_callee} : (tensor<i32>) -> (tensor<*xi32>)
     func.return %0 : tensor<*xi32>
   }
   // CHECK-LABEL: func @multi_caller2
-  func @multi_caller2(%arg0: tensor<i32>) -> tensor<*xi32> {
+  func.func @multi_caller2(%arg0: tensor<i32>) -> tensor<*xi32> {
     // CHECK: tf.PartitionedCall
     // CHECK-SAME:  -> tensor<i32>
     %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @multi_caller_callee} : (tensor<i32>) -> (tensor<*xi32>)
@@ -1059,7 +1059,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func private @multi_caller_callee
   // CHECK-SAME: (%arg0: tensor<i32>) -> tensor<i32>
-  func private @multi_caller_callee(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  func.func private @multi_caller_callee(%arg0: tensor<*xi32>) -> tensor<*xi32> {
     // CHECK: return
     // CHECK-SAME: tensor<i32>
     func.return %arg0 : tensor<*xi32>
@@ -1069,7 +1069,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // filter does not have fully static shape.
 
   // CHECK-LABEL: func @conv2d_unranked_input_and_filter
-  func @conv2d_unranked_input_and_filter(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  func.func @conv2d_unranked_input_and_filter(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<?x?x?x?xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
@@ -1077,7 +1077,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @conv2d_unranked_filter
-  func @conv2d_unranked_filter(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  func.func @conv2d_unranked_filter(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<256x?x?x?xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<*xf32>) -> tensor<*xf32>
@@ -1085,7 +1085,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @conv2d_unranked_filter_and_dynamic_batch
-  func @conv2d_unranked_filter_and_dynamic_batch(%arg0: tensor<?x32x32x3xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  func.func @conv2d_unranked_filter_and_dynamic_batch(%arg0: tensor<?x32x32x3xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<?x?x?x?xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x32x32x3xf32>, tensor<*xf32>) -> tensor<*xf32>
@@ -1093,7 +1093,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @conv2d_unranked_input
-  func @conv2d_unranked_input(%arg0: tensor<*xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+  func.func @conv2d_unranked_input(%arg0: tensor<*xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<?x?x?x16xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
@@ -1101,7 +1101,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @conv2d_unranked_input_and_dynamic_channel
-  func @conv2d_unranked_input_and_dynamic_channel(%arg0: tensor<*xf32>, %arg1: tensor<3x3x3x?xf32>) -> tensor<*xf32> {
+  func.func @conv2d_unranked_input_and_dynamic_channel(%arg0: tensor<*xf32>, %arg1: tensor<3x3x3x?xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<?x?x?x?xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<3x3x3x?xf32>) -> tensor<*xf32>
@@ -1109,7 +1109,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @conv2d_dynamic_batch
-  func @conv2d_dynamic_batch(%arg0: tensor<?x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+  func.func @conv2d_dynamic_batch(%arg0: tensor<?x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<?x32x32x16xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
@@ -1117,7 +1117,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @conv2d_dynamic_channel
-  func @conv2d_dynamic_channel(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x?xf32>) -> tensor<*xf32> {
+  func.func @conv2d_dynamic_channel(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x?xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<256x32x32x?xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x?xf32>) -> tensor<*xf32>
@@ -1125,7 +1125,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @conv2d_fully_dynamic_spatial_dim
-  func @conv2d_fully_dynamic_spatial_dim(%arg0: tensor<256x?x?x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+  func.func @conv2d_fully_dynamic_spatial_dim(%arg0: tensor<256x?x?x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<256x?x?x16xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x?x?x3xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
@@ -1133,7 +1133,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @conv2d_partially_dynamic_spatial_dim
-  func @conv2d_partially_dynamic_spatial_dim(%arg0: tensor<256x?x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+  func.func @conv2d_partially_dynamic_spatial_dim(%arg0: tensor<256x?x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<256x?x32x16xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x?x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
@@ -1141,7 +1141,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @conv2d_dynamic_batch_and_partially_dynamic_spatial_dim
-  func @conv2d_dynamic_batch_and_partially_dynamic_spatial_dim(%arg0: tensor<?x?x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+  func.func @conv2d_dynamic_batch_and_partially_dynamic_spatial_dim(%arg0: tensor<?x?x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<?x?x32x16xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x?x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
@@ -1149,7 +1149,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @conv2d_dynamic_batch_and_fully_dynamic_spatial_dim
-  func @conv2d_dynamic_batch_and_fully_dynamic_spatial_dim(%arg0: tensor<?x?x?x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
+  func.func @conv2d_dynamic_batch_and_fully_dynamic_spatial_dim(%arg0: tensor<?x?x?x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Conv2D"
     // CHECK-SAME: -> tensor<?x?x?x16xf32>
     %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<?x?x?x3xf32>, tensor<3x3x3x16xf32>) -> tensor<*xf32>
@@ -1157,7 +1157,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: check_walking_identity
-  func @check_walking_identity(%arg0 : tensor<1x192x256x128xf32>) {
+  func.func @check_walking_identity(%arg0 : tensor<1x192x256x128xf32>) {
     %0 = "tf.Const"() {value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
     %1 = "tf.Const"() {value = dense<2> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
     %2 = "tf.Identity"(%1) {device = ""} : (tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -1167,7 +1167,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: check_subtyperefinement
-  func @check_subtyperefinement(%arg0 : tensor<1x192x256x128xf32>, %arg1 :  tensor<i32>, %arg2 :  tensor<!tf_type.variant>) {
+  func.func @check_subtyperefinement(%arg0 : tensor<1x192x256x128xf32>, %arg1 :  tensor<i32>, %arg2 :  tensor<!tf_type.variant>) {
   // CHECK: TensorListReserve
   // CHECK-SAME: -> tensor<!tf_type.variant<tensor<!tf_type.variant>>>
     %0 = "tf.TensorListReserve"(%arg1, %arg1) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*x!tf_type.variant>>>
@@ -1175,11 +1175,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return
   }
 
-  func private @quant_fn(%arg0: tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> () {
+  func.func private @quant_fn(%arg0: tensor<*x!quant.uniform<u8:f32, 0.007:128>>) -> () {
     return
   }
   // CHECK-LABEL: unppack_const_quant() -> tensor<!quant.uniform<u8:f32, 7.000000e-03:128>>
-  func @unppack_const_quant() -> (tensor<*x!quant.uniform<u8:f32, 0.007:128>>) {
+  func.func @unppack_const_quant() -> (tensor<*x!quant.uniform<u8:f32, 0.007:128>>) {
     %cst = arith.constant dense<5> : tensor<2xi8>
     %0 = "quant.scast"(%cst) : (tensor<2xi8>) -> tensor<2x!quant.uniform<u8:f32, 0.007:128>>
     // CHECK: (tensor<*x!quant.uniform<u8:f32, 7.000000e-03:128>>, tensor<!quant.uniform<u8:f32, 7.000000e-03:128>>)
@@ -1190,7 +1190,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @xla_host_compute_mlir_empty_module
-  func @xla_host_compute_mlir_empty_module(%arg0: tensor<2xf32>) -> tensor<*xf32> {
+  func.func @xla_host_compute_mlir_empty_module(%arg0: tensor<2xf32>) -> tensor<*xf32> {
     // CHECK: "tf._XlaHostComputeMlir"
     // CHECK-SAME: -> tensor<*xf32>
     %0 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv", send_key = "host_compute_channel_send", tpu_core = 0, host_mlir_module = ""} : (tensor<2xf32>) -> tensor<*xf32>
@@ -1198,7 +1198,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: func @xla_host_compute_mlir_shape_inferred
-  func @xla_host_compute_mlir_shape_inferred(%arg0: tensor<2xf32>) -> tensor<*xf32> {
+  func.func @xla_host_compute_mlir_shape_inferred(%arg0: tensor<2xf32>) -> tensor<*xf32> {
     // CHECK: "tf._XlaHostComputeMlir"
     // CHECK-SAME: -> tensor<2xf32>
     // CHECK: return
@@ -1207,7 +1207,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<*xf32>
   }
 
-  func @test_xla_select_and_scatter(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
+  func.func @test_xla_select_and_scatter(%arg0: tensor<4x5x1x1xbf16>, %arg1: tensor<2x2x1x1xbf16>, %arg2: tensor<bf16>) -> tensor<?x?x?x?xbf16> {
     %cst = "tf.Const"() {value = dense<0> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
     %cst_0 = "tf.Const"() {value = dense<[2, 2, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
     %cst_1 = "tf.Const"() {value = dense<[2, 3, 1, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
@@ -1225,12 +1225,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-NEXT:    return %0 : tensor<i1>
   // CHECK-NEXT:  }
 
-  func private @add_scatter(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
+  func.func private @add_scatter(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
     %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
     func.return %0 : tensor<*xbf16>
   }
 
-  func private @ge_select(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xi1> {
+  func.func private @ge_select(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xi1> {
     %0 = "tf.GreaterEqual"(%arg0, %arg1) {device = ""} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xi1>
     func.return %0 : tensor<*xi1>
   }
@@ -1238,14 +1238,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // Test that ref shapes are also refined but element type retained for
   // passthrough ops.
   // CHECK-LABEL: func @identity_ref
-  func @identity_ref(%arg0: tensor<312x500x!tf_type.f32ref>) {
+  func.func @identity_ref(%arg0: tensor<312x500x!tf_type.f32ref>) {
     // CHECK: (tensor<312x500x!tf_type.f32ref>) -> tensor<312x500xf32>
     %15 = "tf.Identity"(%arg0) : (tensor<312x500x!tf_type.f32ref>) -> tensor<*xf32>
     return
   }
 
   // CHECK-LABEL: func @xla_reduce_window
-  func @xla_reduce_window(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  func.func @xla_reduce_window(%arg0: tensor<7xf32>, %arg1: tensor<f32>) -> tensor<?xf32> {
     %cst = "tf.Const"() {value = dense<0> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
     %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
     %cst_1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
@@ -1260,14 +1260,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-NEXT:   %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK-NEXT:   return %0 : tensor<f32>
   // CHECK-NEXT: }
-  func private @sum_reducer3(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  func.func private @sum_reducer3(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
     %0 = "tf.AddV2"(%arg0, %arg1) {device = ""} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     func.return %0 : tensor<*xf32>
   }
 
 
   // CHECK-LABEL: @fill_with_shape_op
-  func @fill_with_shape_op(%arg0: tensor<3x2xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>) {
+  func.func @fill_with_shape_op(%arg0: tensor<3x2xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>) {
     // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%{{.*}}) : (tensor<3x2xi32>) -> tensor<2xi32>
     // CHECK: %[[FILL:.*]] = "tf.Fill"(%[[SHAPE]], %{{.*}}) : (tensor<2xi32>, tensor<i32>) -> tensor<3x2xi32>
     // CHECK: return %[[FILL]] : tensor<3x2xi32>
@@ -1278,7 +1278,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // Verifies that very large splat constants are not materialized as Tensors.
   // CHECK-LABEL: @giant_tensor_input
-  func @giant_tensor_input() -> (tensor<*xf32>) {
+  func.func @giant_tensor_input() -> (tensor<*xf32>) {
     %input = "tf.Const"() {value = dense<1.000000e+00> : tensor<1024x1024x1024x1024xf32>} : () -> tensor<1024x1024x1024x1024xf32>
     %zero = "tf.Const"() {value = dense<0> : tensor<4xi32>} : () -> tensor<4xi32>
     %one = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
@@ -1290,7 +1290,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // Verifies handling of cases involving multiple iteration of feeding inputs.
   // CHECK-LABEL: @const_input_required
-  func @const_input_required(%arg0: tensor<10xf64>) -> tensor<?xf64> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2,_arg3", outputs = "_retval0"}} {
+  func.func @const_input_required(%arg0: tensor<10xf64>) -> tensor<?xf64> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2,_arg3", outputs = "_retval0"}} {
     %cst = "tf.Const"() {value = dense<6> : tensor<1xi32>} : () -> tensor<1xi32>
     %cst_0 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
     %0 = "tf.StridedSlice"(%arg0, %cst_0, %cst, %cst_0) {_XlaHasReferenceVars = false, begin_mask = 0 : i64, device = "/job:localhost/replica:0/task:0/device:XLA_CPU:0", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<10xf64>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<?xf64>
@@ -1299,7 +1299,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: set_dynamic_dimension_size_static_dim
-  func @set_dynamic_dimension_size_static_dim(%input: tensor<4x5xf32>, %size: tensor<i32>) -> tensor<*xf32> {
+  func.func @set_dynamic_dimension_size_static_dim(%input: tensor<4x5xf32>, %size: tensor<i32>) -> tensor<*xf32> {
     %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
 
     // CHECK: (tensor<4x5xf32>, tensor<i32>, tensor<i32>) -> tensor<?x5xf32>
@@ -1308,7 +1308,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: set_dynamic_dimension_size_dynamic_dim
-  func @set_dynamic_dimension_size_dynamic_dim(%input: tensor<4x5xf32>, %dimension: tensor<i32>, %size: tensor<i32>) -> tensor<*xf32> {
+  func.func @set_dynamic_dimension_size_dynamic_dim(%input: tensor<4x5xf32>, %dimension: tensor<i32>, %size: tensor<i32>) -> tensor<*xf32> {
 
     // CHECK: (tensor<4x5xf32>, tensor<i32>, tensor<i32>) -> tensor<?x?xf32>
     %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4x5xf32>, tensor<i32>, tensor<i32>) -> tensor<*xf32>
@@ -1316,7 +1316,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: set_dynamic_dimension_size_dynamic_input
-  func @set_dynamic_dimension_size_dynamic_input(%input: tensor<*xf32>, %size: tensor<i32>) -> tensor<*xf32> {
+  func.func @set_dynamic_dimension_size_dynamic_input(%input: tensor<*xf32>, %size: tensor<i32>) -> tensor<*xf32> {
     %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
 
     // CHECK: (tensor<*xf32>, tensor<i32>, tensor<i32>) -> tensor<*xf32>
@@ -1325,7 +1325,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: passthrough_mapdataset
-  func @passthrough_mapdataset(
+  func.func @passthrough_mapdataset(
       %arg0 : tensor<!tf_type.variant>,
       %arg1 : tensor<!tf_type.resource>,
       %arg2 : tensor<i64>,
@@ -1359,7 +1359,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-SAME: %arg8: tensor<64xi32>, %arg9: tensor<64xi32>
   // CHECK-SAME: %arg12: tensor<10xi32>)
   // CHECK-SAME: -> (tensor<64xi32>, tensor<69xi32>, tensor<10xi32>)
-  func private @__inference_Dataset_map_lambda_96150(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>, %arg2: tensor<?xi32>, %arg3: tensor<?xi64>, %arg4: tensor<i32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i64>, %arg8: tensor<?xi32>, %arg9: tensor<?xi32>, %arg10: tensor<i32>, %arg11: tensor<f32>, %arg12: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) {
+  func.func private @__inference_Dataset_map_lambda_96150(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>, %arg2: tensor<?xi32>, %arg3: tensor<?xi64>, %arg4: tensor<i32>, %arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i64>, %arg8: tensor<?xi32>, %arg9: tensor<?xi32>, %arg10: tensor<i32>, %arg11: tensor<f32>, %arg12: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) {
     %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<?xi32>) -> tensor<*xi32>
     %1 = "tf.Identity"(%arg1) {device = ""} : (tensor<?xi32>) -> tensor<*xi32>
     %2 = "tf.Identity"(%arg12) {device = ""} : (tensor<*xi32>) -> tensor<*xi32>
@@ -1367,7 +1367,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: passthrough_takewhiledataset
-  func @passthrough_takewhiledataset(%arg0 : tensor<!tf_type.variant>,
+  func.func @passthrough_takewhiledataset(%arg0 : tensor<!tf_type.variant>,
   %arg1 : tensor<!tf_type.resource<tensor<i1>>>, %arg2 : tensor<!tf_type.resource<tensor<i64>>>,
   %arg3 : tensor<!tf_type.resource<tensor<i32>>>, %arg4 : tensor<!tf_type.resource<tensor<i32>>>,
   %arg5 : tensor<!tf_type.resource<tensor<i32>>>, %arg6 : tensor<!tf_type.resource<tensor<i1>>>) {
@@ -1380,13 +1380,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK: @__inference_Dataset_take_while_predicate_7400(%arg0: tensor<!tf_type.string> {tf._user_specified_name = "args_0"}, %arg1: tensor<!tf_type.resource<tensor<i1>>>, %arg2: tensor<!tf_type.resource<tensor<i64>>>, %arg3: tensor<i64>, %arg4: tensor<!tf_type.resource<tensor<i32>>>, %arg5: tensor<!tf_type.resource<tensor<i32>>>, %arg6: tensor<!tf_type.resource<tensor<i32>>>, %arg7: tensor<!tf_type.resource<tensor<i1>>>, %arg8: tensor<i64>) -> tensor<i1> attributes {tf._tf_data_function = true, tf.signature.is_stateful}
-  func private @__inference_Dataset_take_while_predicate_7400(%arg0: tensor<!tf_type.string> {tf._user_specified_name = "args_0"}, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<*x!tf_type.resource>, %arg3: tensor<i64>, %arg4: tensor<*x!tf_type.resource>, %arg5: tensor<*x!tf_type.resource>, %arg6: tensor<*x!tf_type.resource>, %arg7: tensor<*x!tf_type.resource>, %arg8: tensor<i64>) -> tensor<i1> attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+  func.func private @__inference_Dataset_take_while_predicate_7400(%arg0: tensor<!tf_type.string> {tf._user_specified_name = "args_0"}, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<*x!tf_type.resource>, %arg3: tensor<i64>, %arg4: tensor<*x!tf_type.resource>, %arg5: tensor<*x!tf_type.resource>, %arg6: tensor<*x!tf_type.resource>, %arg7: tensor<*x!tf_type.resource>, %arg8: tensor<i64>) -> tensor<i1> attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
     %cst = arith.constant dense<true> : tensor<i1>
     func.return %cst : tensor<i1>
   }
 
   // CHECK-LABEL: passthrough_reducedataset
-  func @passthrough_reducedataset(
+  func.func @passthrough_reducedataset(
       %arg0 : tensor<!tf_type.resource<tensor<4096xf32>>>,
       %arg1 : tensor<*x!tf_type.variant>,
       %arg2 : tensor<!tf_type.resource<tensor<4096x128xf32>>>,
@@ -1445,13 +1445,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-SAME: %arg33: tensor<!tf_type.resource<tensor<640xf32>>>
   // CHECK-SAME: %arg34: tensor<!tf_type.resource<tensor<640xf32>>>
   // CHECK-SAME: %arg35: tensor<!tf_type.resource<tensor<4096xf32>>>)
-  func private @__reduce_func(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}, %arg1: tensor<i32> {tf._user_specified_name = "args_1"}, %arg2: tensor<i32> {tf._user_specified_name = "args_2"}, %arg3: tensor<i32> {tf._user_specified_name = "args_3"}, %arg4: tensor<?x!tf_type.string> {tf._user_specified_name = "args_4"}, %arg5: tensor<?x!tf_type.string> {tf._user_specified_name = "args_5"}, %arg6: tensor<?x!tf_type.string> {tf._user_specified_name = "args_6"}, %arg7: tensor<?x?x512xf32> {tf._user_specified_name = "args_7"}, %arg8: tensor<?x?xf32> {tf._user_specified_name = "args_8"}, %arg9: tensor<?x300xi32> {tf._user_specified_name = "args_9"}, %arg10: tensor<?x300xi32> {tf._user_specified_name = "args_10"}, %arg11: tensor<?x300xf32> {tf._user_specified_name = "args_11"}, %arg12: tensor<?x300xf32> {tf._user_specified_name = "args_12"}, %arg13: tensor<?x!tf_type.string> {tf._user_specified_name = "args_13"}, %arg14: tensor<?x!tf_type.string> {tf._user_specified_name = "args_14"}, %arg15: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg16: tensor<!tf_type.resource<tensor<i64>>>, %arg17: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg18: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg19: tensor<!tf_type.resource<tensor<?xf32>>>, %arg20: tensor<!tf_type.resource<tensor<?xf32>>>, %arg21: tensor<!tf_type.resource<tensor<?xf32>>>, %arg22: tensor<!tf_type.resource<tensor<?xf32>>>, %arg23: tensor<!tf_type.resource<tensor<512x?xf32>>>, %arg24: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg25: tensor<!tf_type.resource<tensor<?xf32>>>, %arg26: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg27: tensor<f32> {tf._class = ["loc:@md/rnnt_step_decoder/rnnt_decoder/joint/w_b_y/var"]}, %arg28: tensor<!tf_type.resource<tensor<?xf32>>>, %arg29: tensor<!tf_type.resource<tensor<?xf32>>>, %arg30: tensor<!tf_type.resource<tensor<512xf32>>>, %arg31: tensor<!tf_type.resource<tensor<?xf32>>>, %arg32: tensor<!tf_type.resource<tensor<?xf32>>>, %arg33: tensor<!tf_type.resource<tensor<?xf32>>>, %arg34: tensor<!tf_type.resource<tensor<?xf32>>>, %arg35: tensor<!tf_type.resource<tensor<?xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+  func.func private @__reduce_func(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}, %arg1: tensor<i32> {tf._user_specified_name = "args_1"}, %arg2: tensor<i32> {tf._user_specified_name = "args_2"}, %arg3: tensor<i32> {tf._user_specified_name = "args_3"}, %arg4: tensor<?x!tf_type.string> {tf._user_specified_name = "args_4"}, %arg5: tensor<?x!tf_type.string> {tf._user_specified_name = "args_5"}, %arg6: tensor<?x!tf_type.string> {tf._user_specified_name = "args_6"}, %arg7: tensor<?x?x512xf32> {tf._user_specified_name = "args_7"}, %arg8: tensor<?x?xf32> {tf._user_specified_name = "args_8"}, %arg9: tensor<?x300xi32> {tf._user_specified_name = "args_9"}, %arg10: tensor<?x300xi32> {tf._user_specified_name = "args_10"}, %arg11: tensor<?x300xf32> {tf._user_specified_name = "args_11"}, %arg12: tensor<?x300xf32> {tf._user_specified_name = "args_12"}, %arg13: tensor<?x!tf_type.string> {tf._user_specified_name = "args_13"}, %arg14: tensor<?x!tf_type.string> {tf._user_specified_name = "args_14"}, %arg15: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg16: tensor<!tf_type.resource<tensor<i64>>>, %arg17: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg18: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg19: tensor<!tf_type.resource<tensor<?xf32>>>, %arg20: tensor<!tf_type.resource<tensor<?xf32>>>, %arg21: tensor<!tf_type.resource<tensor<?xf32>>>, %arg22: tensor<!tf_type.resource<tensor<?xf32>>>, %arg23: tensor<!tf_type.resource<tensor<512x?xf32>>>, %arg24: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg25: tensor<!tf_type.resource<tensor<?xf32>>>, %arg26: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg27: tensor<f32> {tf._class = ["loc:@md/rnnt_step_decoder/rnnt_decoder/joint/w_b_y/var"]}, %arg28: tensor<!tf_type.resource<tensor<?xf32>>>, %arg29: tensor<!tf_type.resource<tensor<?xf32>>>, %arg30: tensor<!tf_type.resource<tensor<512xf32>>>, %arg31: tensor<!tf_type.resource<tensor<?xf32>>>, %arg32: tensor<!tf_type.resource<tensor<?xf32>>>, %arg33: tensor<!tf_type.resource<tensor<?xf32>>>, %arg34: tensor<!tf_type.resource<tensor<?xf32>>>, %arg35: tensor<!tf_type.resource<tensor<?xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
     %0:6 = "tf.JustPretend"() : () -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>)
     func.return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5: tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>
   }
 
   // CHECK-LABEL: passthrough_reducedataset_scalar_result
-  func @passthrough_reducedataset_scalar_result(
+  func.func @passthrough_reducedataset_scalar_result(
       %arg0 : tensor<!tf_type.resource<tensor<4096xf32>>>,
       %arg1 : tensor<*x!tf_type.variant>,
       %arg2 : tensor<!tf_type.resource<tensor<4096x128xf32>>>,
@@ -1512,13 +1512,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-SAME: %arg33: tensor<!tf_type.resource<tensor<640xf32>>>
   // CHECK-SAME: %arg34: tensor<!tf_type.resource<tensor<640xf32>>>
   // CHECK-SAME: %arg35: tensor<!tf_type.resource<tensor<4096xf32>>>)
-  func private @__reduce_func_1(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}, %arg1: tensor<i32> {tf._user_specified_name = "args_1"}, %arg2: tensor<i32> {tf._user_specified_name = "args_2"}, %arg3: tensor<i32> {tf._user_specified_name = "args_3"}, %arg4: tensor<?x!tf_type.string> {tf._user_specified_name = "args_4"}, %arg5: tensor<?x!tf_type.string> {tf._user_specified_name = "args_5"}, %arg6: tensor<?x!tf_type.string> {tf._user_specified_name = "args_6"}, %arg7: tensor<?x?x512xf32> {tf._user_specified_name = "args_7"}, %arg8: tensor<?x?xf32> {tf._user_specified_name = "args_8"}, %arg9: tensor<?x300xi32> {tf._user_specified_name = "args_9"}, %arg10: tensor<?x300xi32> {tf._user_specified_name = "args_10"}, %arg11: tensor<?x300xf32> {tf._user_specified_name = "args_11"}, %arg12: tensor<?x300xf32> {tf._user_specified_name = "args_12"}, %arg13: tensor<?x!tf_type.string> {tf._user_specified_name = "args_13"}, %arg14: tensor<?x!tf_type.string> {tf._user_specified_name = "args_14"}, %arg15: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg16: tensor<!tf_type.resource<tensor<i64>>>, %arg17: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg18: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg19: tensor<!tf_type.resource<tensor<?xf32>>>, %arg20: tensor<!tf_type.resource<tensor<?xf32>>>, %arg21: tensor<!tf_type.resource<tensor<?xf32>>>, %arg22: tensor<!tf_type.resource<tensor<?xf32>>>, %arg23: tensor<!tf_type.resource<tensor<512x?xf32>>>, %arg24: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg25: tensor<!tf_type.resource<tensor<?xf32>>>, %arg26: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg27: tensor<f32> {tf._class = ["loc:@md/rnnt_step_decoder/rnnt_decoder/joint/w_b_y/var"]}, %arg28: tensor<!tf_type.resource<tensor<?xf32>>>, %arg29: tensor<!tf_type.resource<tensor<?xf32>>>, %arg30: tensor<!tf_type.resource<tensor<512xf32>>>, %arg31: tensor<!tf_type.resource<tensor<?xf32>>>, %arg32: tensor<!tf_type.resource<tensor<?xf32>>>, %arg33: tensor<!tf_type.resource<tensor<?xf32>>>, %arg34: tensor<!tf_type.resource<tensor<?xf32>>>, %arg35: tensor<!tf_type.resource<tensor<?xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+  func.func private @__reduce_func_1(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}, %arg1: tensor<i32> {tf._user_specified_name = "args_1"}, %arg2: tensor<i32> {tf._user_specified_name = "args_2"}, %arg3: tensor<i32> {tf._user_specified_name = "args_3"}, %arg4: tensor<?x!tf_type.string> {tf._user_specified_name = "args_4"}, %arg5: tensor<?x!tf_type.string> {tf._user_specified_name = "args_5"}, %arg6: tensor<?x!tf_type.string> {tf._user_specified_name = "args_6"}, %arg7: tensor<?x?x512xf32> {tf._user_specified_name = "args_7"}, %arg8: tensor<?x?xf32> {tf._user_specified_name = "args_8"}, %arg9: tensor<?x300xi32> {tf._user_specified_name = "args_9"}, %arg10: tensor<?x300xi32> {tf._user_specified_name = "args_10"}, %arg11: tensor<?x300xf32> {tf._user_specified_name = "args_11"}, %arg12: tensor<?x300xf32> {tf._user_specified_name = "args_12"}, %arg13: tensor<?x!tf_type.string> {tf._user_specified_name = "args_13"}, %arg14: tensor<?x!tf_type.string> {tf._user_specified_name = "args_14"}, %arg15: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg16: tensor<!tf_type.resource<tensor<i64>>>, %arg17: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg18: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg19: tensor<!tf_type.resource<tensor<?xf32>>>, %arg20: tensor<!tf_type.resource<tensor<?xf32>>>, %arg21: tensor<!tf_type.resource<tensor<?xf32>>>, %arg22: tensor<!tf_type.resource<tensor<?xf32>>>, %arg23: tensor<!tf_type.resource<tensor<512x?xf32>>>, %arg24: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg25: tensor<!tf_type.resource<tensor<?xf32>>>, %arg26: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg27: tensor<f32> {tf._class = ["loc:@md/rnnt_step_decoder/rnnt_decoder/joint/w_b_y/var"]}, %arg28: tensor<!tf_type.resource<tensor<?xf32>>>, %arg29: tensor<!tf_type.resource<tensor<?xf32>>>, %arg30: tensor<!tf_type.resource<tensor<512xf32>>>, %arg31: tensor<!tf_type.resource<tensor<?xf32>>>, %arg32: tensor<!tf_type.resource<tensor<?xf32>>>, %arg33: tensor<!tf_type.resource<tensor<?xf32>>>, %arg34: tensor<!tf_type.resource<tensor<?xf32>>>, %arg35: tensor<!tf_type.resource<tensor<?xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
     %0:6 = "tf.JustPretend"() : () -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>)
     func.return %0#0, %0#1, %0#2, %0#3: tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
   }
 
   // CHECK-LABEL: passthrough_reducedataset_with_identity
-  func @passthrough_reducedataset_with_identity(
+  func.func @passthrough_reducedataset_with_identity(
       %arg0 : tensor<!tf_type.resource<tensor<4096xf32>>>,
       %arg1 : tensor<*x!tf_type.variant>,
       %arg2 : tensor<!tf_type.resource<tensor<4096x128xf32>>>,
@@ -1576,13 +1576,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-SAME: %arg33: tensor<!tf_type.resource<tensor<640xf32>>>
   // CHECK-SAME: %arg34: tensor<!tf_type.resource<tensor<640xf32>>>
   // CHECK-SAME: %arg35: tensor<!tf_type.resource<tensor<4096xf32>>>)
-  func private @__reduce_func_2(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}, %arg1: tensor<i32> {tf._user_specified_name = "args_1"}, %arg2: tensor<i32> {tf._user_specified_name = "args_2"}, %arg3: tensor<i32> {tf._user_specified_name = "args_3"}, %arg4: tensor<?x!tf_type.string> {tf._user_specified_name = "args_4"}, %arg5: tensor<?x!tf_type.string> {tf._user_specified_name = "args_5"}, %arg6: tensor<?x!tf_type.string> {tf._user_specified_name = "args_6"}, %arg7: tensor<?x?x512xf32> {tf._user_specified_name = "args_7"}, %arg8: tensor<?x?xf32> {tf._user_specified_name = "args_8"}, %arg9: tensor<?x300xi32> {tf._user_specified_name = "args_9"}, %arg10: tensor<?x300xi32> {tf._user_specified_name = "args_10"}, %arg11: tensor<?x300xf32> {tf._user_specified_name = "args_11"}, %arg12: tensor<?x300xf32> {tf._user_specified_name = "args_12"}, %arg13: tensor<?x!tf_type.string> {tf._user_specified_name = "args_13"}, %arg14: tensor<?x!tf_type.string> {tf._user_specified_name = "args_14"}, %arg15: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg16: tensor<!tf_type.resource<tensor<i64>>>, %arg17: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg18: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg19: tensor<!tf_type.resource<tensor<?xf32>>>, %arg20: tensor<!tf_type.resource<tensor<?xf32>>>, %arg21: tensor<!tf_type.resource<tensor<?xf32>>>, %arg22: tensor<!tf_type.resource<tensor<?xf32>>>, %arg23: tensor<!tf_type.resource<tensor<512x?xf32>>>, %arg24: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg25: tensor<!tf_type.resource<tensor<?xf32>>>, %arg26: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg27: tensor<f32> {tf._class = ["loc:@md/rnnt_step_decoder/rnnt_decoder/joint/w_b_y/var"]}, %arg28: tensor<!tf_type.resource<tensor<?xf32>>>, %arg29: tensor<!tf_type.resource<tensor<?xf32>>>, %arg30: tensor<!tf_type.resource<tensor<512xf32>>>, %arg31: tensor<!tf_type.resource<tensor<?xf32>>>, %arg32: tensor<!tf_type.resource<tensor<?xf32>>>, %arg33: tensor<!tf_type.resource<tensor<?xf32>>>, %arg34: tensor<!tf_type.resource<tensor<?xf32>>>, %arg35: tensor<!tf_type.resource<tensor<?xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+  func.func private @__reduce_func_2(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}, %arg1: tensor<i32> {tf._user_specified_name = "args_1"}, %arg2: tensor<i32> {tf._user_specified_name = "args_2"}, %arg3: tensor<i32> {tf._user_specified_name = "args_3"}, %arg4: tensor<?x!tf_type.string> {tf._user_specified_name = "args_4"}, %arg5: tensor<?x!tf_type.string> {tf._user_specified_name = "args_5"}, %arg6: tensor<?x!tf_type.string> {tf._user_specified_name = "args_6"}, %arg7: tensor<?x?x512xf32> {tf._user_specified_name = "args_7"}, %arg8: tensor<?x?xf32> {tf._user_specified_name = "args_8"}, %arg9: tensor<?x300xi32> {tf._user_specified_name = "args_9"}, %arg10: tensor<?x300xi32> {tf._user_specified_name = "args_10"}, %arg11: tensor<?x300xf32> {tf._user_specified_name = "args_11"}, %arg12: tensor<?x300xf32> {tf._user_specified_name = "args_12"}, %arg13: tensor<?x!tf_type.string> {tf._user_specified_name = "args_13"}, %arg14: tensor<?x!tf_type.string> {tf._user_specified_name = "args_14"}, %arg15: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg16: tensor<!tf_type.resource<tensor<i64>>>, %arg17: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg18: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg19: tensor<!tf_type.resource<tensor<?xf32>>>, %arg20: tensor<!tf_type.resource<tensor<?xf32>>>, %arg21: tensor<!tf_type.resource<tensor<?xf32>>>, %arg22: tensor<!tf_type.resource<tensor<?xf32>>>, %arg23: tensor<!tf_type.resource<tensor<512x?xf32>>>, %arg24: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg25: tensor<!tf_type.resource<tensor<?xf32>>>, %arg26: tensor<!tf_type.resource<tensor<?x?xf32>>>, %arg27: tensor<f32> {tf._class = ["loc:@md/rnnt_step_decoder/rnnt_decoder/joint/w_b_y/var"]}, %arg28: tensor<!tf_type.resource<tensor<?xf32>>>, %arg29: tensor<!tf_type.resource<tensor<?xf32>>>, %arg30: tensor<!tf_type.resource<tensor<512xf32>>>, %arg31: tensor<!tf_type.resource<tensor<?xf32>>>, %arg32: tensor<!tf_type.resource<tensor<?xf32>>>, %arg33: tensor<!tf_type.resource<tensor<?xf32>>>, %arg34: tensor<!tf_type.resource<tensor<?xf32>>>, %arg35: tensor<!tf_type.resource<tensor<?xf32>>>) -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
     %0:6 = "tf.JustPretend"() : () -> (tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>)
     func.return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5: tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>
   }
 
   // CHECK-LABEL: infer_output_type_for_restore
-  func @infer_output_type_for_restore(%arg0: tensor<!tf_type.string>) -> (tensor<!tf_type.resource<tensor<192x2680xf32>>>, tensor<!tf_type.resource<tensor<128xf32>>>) {
+  func.func @infer_output_type_for_restore(%arg0: tensor<!tf_type.string>) -> (tensor<!tf_type.resource<tensor<192x2680xf32>>>, tensor<!tf_type.resource<tensor<128xf32>>>) {
     %cst = arith.constant dense<"client/1"> : tensor<1x!tf_type.string>
     %cst_0 = arith.constant dense<"train/0"> : tensor<1x!tf_type.string>
     %cst_1 = arith.constant dense<""> : tensor<1x!tf_type.string>
@@ -1598,7 +1598,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: infer_var_handle_op_from_assign
-  func @infer_var_handle_op_from_assigns() -> tensor<1xi8> {
+  func.func @infer_var_handle_op_from_assigns() -> tensor<1xi8> {
     %cst = arith.constant dense<1> : tensor<1xi8>
     %0 = "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<*xi8>>>
     // CHECK: "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<1xi8>>>
@@ -1607,7 +1607,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: infer_var_handle_op_from_read
-  func @infer_var_handle_op_from_read() -> tensor<1xi8> {
+  func.func @infer_var_handle_op_from_read() -> tensor<1xi8> {
     %cst = arith.constant dense<1> : tensor<1xi8>
     %0 = "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<*xi8>>>
     // CHECK: "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<1xi8>>>
@@ -1616,7 +1616,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK-LABEL: do_not_infer_var_handle_op_when_custom_op_uses_it
-  func @do_not_infer_var_handle_op_when_custom_op_uses_it() -> tensor<1xi8> {
+  func.func @do_not_infer_var_handle_op_when_custom_op_uses_it() -> tensor<1xi8> {
     %cst = arith.constant dense<1> : tensor<1xi8>
     %0 = "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<*xi8>>>
     // CHECK: "tf.VarHandleOp"() {container = "", shared_name = "bar"} : () -> tensor<!tf_type.resource<tensor<*xi8>>>
@@ -1626,7 +1626,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: testXlaConvOpInvalidFeatureGroupCount
-  func @testXlaConvOpInvalidFeatureGroupCount(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
+  func.func @testXlaConvOpInvalidFeatureGroupCount(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1638,7 +1638,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: testXlaConvOpInvalidInputTensorShapeDim
-  func @testXlaConvOpInvalidInputTensorShapeDim(%lhs: tensor<8x4xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
+  func.func @testXlaConvOpInvalidInputTensorShapeDim(%lhs: tensor<8x4xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1650,7 +1650,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: testXlaConvOpInvalidKernelTensorShapeDim
-  func @testXlaConvOpInvalidKernelTensorShapeDim(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
+  func.func @testXlaConvOpInvalidKernelTensorShapeDim(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1662,7 +1662,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: testXlaConvOpInconsistentInputAndKernelTensorShapeDim
-  func @testXlaConvOpInconsistentInputAndKernelTensorShapeDim(%lhs: tensor<8x4x16x16xf32>, %rhs: tensor<3x4x4x16x16xf32>) -> (tensor<?x?x?x?x?xf32>) {
+  func.func @testXlaConvOpInconsistentInputAndKernelTensorShapeDim(%lhs: tensor<8x4x16x16xf32>, %rhs: tensor<3x4x4x16x16xf32>) -> (tensor<?x?x?x?x?xf32>) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1674,7 +1674,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: testXlaConvOpInvalidRelationForLhsInputfeaturesAndRhsInputFeatures
-  func @testXlaConvOpInvalidRelationForLhsInputfeaturesAndRhsInputFeatures(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<3x4x4x16x16xf32>) -> (tensor<?x?x?x?x?xf32>) {
+  func.func @testXlaConvOpInvalidRelationForLhsInputfeaturesAndRhsInputFeatures(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<3x4x4x16x16xf32>) -> (tensor<?x?x?x?x?xf32>) {
     %feature_group_count = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1686,7 +1686,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 }
 
   // CHECK_LABEL: func @testXlaConvOpInvalidRhsOutputfeaturesAndFeatureGroupCounts
-  func @testXlaConvOpInvalidRhsOutputfeaturesAndFeatureGroupCounts(%lhs: tensor<8x4x16x16x32xf32>, %rhs: tensor<3x4x4x16x9xf32>) -> (tensor<?x?x?x?x?xf32>) {
+  func.func @testXlaConvOpInvalidRhsOutputfeaturesAndFeatureGroupCounts(%lhs: tensor<8x4x16x16x32xf32>, %rhs: tensor<3x4x4x16x9xf32>) -> (tensor<?x?x?x?x?xf32>) {
     %feature_group_count = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1698,7 +1698,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: testXlaConvDynamicInputShape
-  func @testXlaConvDynamicInputShape(%lhs: tensor<8x?x?x?x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<8x4x14x14x16xf32> ) {
+  func.func @testXlaConvDynamicInputShape(%lhs: tensor<8x?x?x?x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<8x4x14x14x16xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1710,7 +1710,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: XlaConvDynamicKernelShape
-  func @testXlaConvDynamicKernelShape(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<?x?x?x16x16xf32>) -> (tensor<8x4x14x14x16xf32> ) {
+  func.func @testXlaConvDynamicKernelShape(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<?x?x?x16x16xf32>) -> (tensor<8x4x14x14x16xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1722,7 +1722,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: testXlaConvUnrankedInputAndOutput
-  func @testXlaConvUnrankedInputAndOutput(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2,_arg3,_arg4,_arg5,_arg6", outputs = "_retval0"}} {
+  func.func @testXlaConvUnrankedInputAndOutput(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2,_arg3,_arg4,_arg5,_arg6", outputs = "_retval0"}} {
     %cst = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
     %cst_0 = "tf.Const"() {value = dense<[[2, 1]]> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
     %cst_1 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
@@ -1736,7 +1736,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: testXlaConvStaticOutputShape
-  func @testXlaConvStaticOutputShape(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<8x4x14x14x16xf32> ) {
+  func.func @testXlaConvStaticOutputShape(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<8x4x14x14x16xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1748,7 +1748,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: testXlaConvDynamicOutputShape
-  func @testXlaConvDynamicOutputShape(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
+  func.func @testXlaConvDynamicOutputShape(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1760,7 +1760,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   // CHECK_LABEL: testXlaConvDynamicOutputShapeInt64Strides
-  func @testXlaConvDynamicOutputShapeInt64Strides(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
+  func.func @testXlaConvDynamicOutputShapeInt64Strides(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16x16xf32>) -> (tensor<?x?x?x?x?xf32> ) {
     %feature_group_count = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
     %lhs_dilation = "tf.Const"() {value = dense<[4, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>

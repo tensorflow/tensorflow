@@ -2,7 +2,7 @@
 
 module {
 // CHECK-LABEL: fuse_pmap_and_batch
-func @fuse_pmap_and_batch() -> tensor<!tf_type.variant> attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "BatchDatasetV2"}} {
+func.func @fuse_pmap_and_batch() -> tensor<!tf_type.variant> attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "BatchDatasetV2"}} {
   %0 = "tf.Const"() {value = dense<5> : tensor<i64>} : () -> tensor<i64>
   %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
   %2 = "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -25,7 +25,7 @@ func @fuse_pmap_and_batch() -> tensor<!tf_type.variant> attributes {tf.entry_fun
   func.return %6 : tensor<!tf_type.variant>
 }
 
-func @"__inference_Dataset_map_<lambda>_80"(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+func.func @"__inference_Dataset_map_<lambda>_80"(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Mul"(%arg0, %0) {device = ""} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
   %2 = "tf.Identity"(%1) {device = ""} : (tensor<*xi32>) -> tensor<*xi32>

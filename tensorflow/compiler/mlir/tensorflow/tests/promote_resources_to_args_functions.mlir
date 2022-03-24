@@ -4,7 +4,7 @@ module {
 
   // One resource, one read. The initial value of the resource is read.
   // CHECK-LABEL: func @add_and_pack(%arg0: tensor<i1>, %arg1: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
-  func @add_and_pack(%arg0: tensor<i1>) -> tensor<2xf32> {
+  func.func @add_and_pack(%arg0: tensor<i1>) -> tensor<2xf32> {
     // CHECK-NOT: "tf.VarHandleOp"
     // CHECK-NOT: "tf.ReadVariableOp"
     // CHECK: %[[CONST:.*]] = "tf.Const"()
@@ -21,7 +21,7 @@ module {
 
   // One resource, one read. _is_initialized is true, should be promoted.
   // CHECK-LABEL: func @read(%arg0: tensor<f32> {tf.resource_name = "x"}) -> tensor<f32>
-  func @read() -> tensor<f32> {
+  func.func @read() -> tensor<f32> {
     // CHECK-NOT: "tf.VarHandleOp"
     // CHECK-NOT: "tf.ReadVariableOp"
     // CHECK: return %arg0

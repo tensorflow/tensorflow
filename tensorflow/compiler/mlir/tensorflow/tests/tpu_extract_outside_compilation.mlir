@@ -2,7 +2,7 @@
 
 // Tests that outside compilation and model parallelism together fail.
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  func @outside_compilation_model_parallelism_fail() -> tensor<2xi32> {
+  func.func @outside_compilation_model_parallelism_fail() -> tensor<2xi32> {
     // expected-error@+1 {{outside compilation is not supported with model parallelism}}
     %0 = "tf_device.cluster"() ({
       %1 = "tf.A"() : () -> tensor<2xi32>
@@ -19,7 +19,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests that TPU cluster with no outside compilation does not generate parallel_execute.
 
   // CHECK-LABEL: func @no_outside_compilation
-  func @no_outside_compilation() -> tensor<2xi32> {
+  func.func @no_outside_compilation() -> tensor<2xi32> {
     // CHECK-NOT: "tf_device.parallel_execute"
     %0 = "tf_device.cluster"() ({
       %1 = "tf.A"() : () -> tensor<2xi32>
@@ -30,7 +30,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @attribute_outside_of_cluster
-  func @attribute_outside_of_cluster() -> tensor<2xi32> {
+  func.func @attribute_outside_of_cluster() -> tensor<2xi32> {
     // CHECK-NOT: _xla_outside_compilation
     %0 = "tf_device.cluster"() ({
       %1 = "tf.A"() : () -> tensor<2xi32>
@@ -44,7 +44,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with no input or output dependencies.
 
   // CHECK-LABEL: func @nodep_single_outside_compilation
-  func @nodep_single_outside_compilation() -> () {
+  func.func @nodep_single_outside_compilation() -> () {
      // CHECK: "tf_device.parallel_execute"
      // CHECK-NEXT: "tf_device.launch"
      // CHECK-NEXT: "tf.B"
@@ -66,7 +66,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with multiple ops and no input or output dependecies.
 
   // CHECK-LABEL: func @nodep_single_cluster_multiple_ops_outside_compilation
-  func @nodep_single_cluster_multiple_ops_outside_compilation() -> () {
+  func.func @nodep_single_cluster_multiple_ops_outside_compilation() -> () {
      // CHECK: "tf_device.parallel_execute"
      // CHECK-NEXT: "tf_device.launch"
      // CHECK-NEXT: "tf.B"
@@ -91,7 +91,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a multiple outside compiled clusters with no input or output dependecies.
 
   // CHECK-LABEL: func @nodep_multiple_outside_compilation
-  func @nodep_multiple_outside_compilation() -> () {
+  func.func @nodep_multiple_outside_compilation() -> () {
      // CHECK:      "tf_device.parallel_execute"
      // CHECK:      "tf_device.launch"
      // CHECK:        "tf.B"
@@ -112,7 +112,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with single TPU cluster return.
 
   // CHECK-LABEL: func @single_tpu_return_single_outside_compilation
-  func @single_tpu_return_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @single_tpu_return_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -140,7 +140,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with multiple TPU cluster return.
 
   // CHECK-LABEL: func @multiple_tpu_return_single_outside_compilation
-  func @multiple_tpu_return_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<3xf32> {
+  func.func @multiple_tpu_return_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<3xf32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:4 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:2  = "tf_device.parallel_execute"
@@ -165,7 +165,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with single device->host input.
 
   // CHECK-LABEL: func @single_outside_compiled_input_single_outside_compilation
-  func @single_outside_compiled_input_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @single_outside_compiled_input_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -197,7 +197,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // in TPU cluster.
 
   // CHECK-LABEL: func @single_outside_compiled_input_from_outside_device_cluster
-  func @single_outside_compiled_input_from_outside_device_cluster(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @single_outside_compiled_input_from_outside_device_cluster(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK-NEXT:   %[[A_OUTPUT:[0-9]*]] = "tf.A"
@@ -222,7 +222,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with single host->device output.
 
   // CHECK-LABEL: func @single_outside_compiled_output_single_outside_compilation_not_replicated
-  func @single_outside_compiled_output_single_outside_compilation_not_replicated(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @single_outside_compiled_output_single_outside_compilation_not_replicated(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
     // CHECK-NEXT:     "tf_device.launch"
     // CHECK:            %[[PROGRAM_OUTPUT:[a-z_0-9]*]] = "tf._TPUCompileMlirPlaceholderProgramKey"
@@ -248,7 +248,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @single_outside_compiled_output_single_outside_compilation_replicated
-  func @single_outside_compiled_output_single_outside_compilation_replicated(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @single_outside_compiled_output_single_outside_compilation_replicated(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -280,7 +280,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster host output returned by TPU cluster.
 
   // CHECK-LABEL: func @return_host_output_outside_compilation
-  func @return_host_output_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @return_host_output_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -314,7 +314,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with single input/output.
 
   // CHECK-LABEL: func @single_outside_compiled_input_output_single_outside_compilation
-  func @single_outside_compiled_input_output_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @single_outside_compiled_input_output_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -347,7 +347,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // that are not outside compiled.
 
   // CHECK-LABEL: func @single_outside_compiled_output_used_for_another_host_op
-  func @single_outside_compiled_output_used_for_another_host_op(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @single_outside_compiled_output_used_for_another_host_op(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[A_OUTPUT:[0-9]*]] = "tf.A"
@@ -382,7 +382,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with multiple input/output.
 
   // CHECK-LABEL: func @multiple_outside_compiled_input_output_single_outside_compilation
-  func @multiple_outside_compiled_input_output_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @multiple_outside_compiled_input_output_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -418,7 +418,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a multiple outside compiled clusters with input/output.
 
   // CHECK-LABEL: func @outside_compiled_input_output_multiple_outside_compilation
-  func @outside_compiled_input_output_multiple_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_input_output_multiple_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -457,7 +457,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with arg input and single device->host input.
 
   // CHECK-LABEL: func @mixed_input_single_outside_compilation
-  func @mixed_input_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @mixed_input_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -487,7 +487,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a multiple outside compiled clusters with single device->host input.
 
   // CHECK-LABEL: func @single_outside_compiled_input_multiple_outside_compilation
-  func @single_outside_compiled_input_multiple_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @single_outside_compiled_input_multiple_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -524,7 +524,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with multiple device->host inputs.
 
   // CHECK-LABEL: func @multiple_outside_compiled_inputs_single_outside_compilation
-  func @multiple_outside_compiled_inputs_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @multiple_outside_compiled_inputs_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -563,7 +563,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // parallel_execute.
 
   // CHECK-LABEL: func @remapped_results
-  func @remapped_results(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @remapped_results(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:   %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:2 = "tf_device.parallel_execute"
@@ -583,7 +583,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster inside a tf.IfRegion op.
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_tf_if
-  func @outside_compiled_ops_inside_tf_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_ops_inside_tf_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -638,7 +638,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster inside a tf.IfRegion op with dynamic shape.
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_tf_if_dynamic_shape
-  func @outside_compiled_ops_inside_tf_if_dynamic_shape(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_ops_inside_tf_if_dynamic_shape(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -693,7 +693,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Ensures that separate send/recvs are added for values that are used by ops inside of multiple IfRegions.
 
   // CHECK-LABEL: func @outside_compiled_ops_multiple_tf_if
-  func @outside_compiled_ops_multiple_tf_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_ops_multiple_tf_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
     // CHECK-DAG:       %[[PROGRAM_OUTPUT:.+]] = "tf._TPUCompileMlirPlaceholderProgramKey"
@@ -748,7 +748,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // of tf.IfRegion op is outside compiled
 
   // CHECK-LABEL: func @outside_compiled_tf_if
-  func @outside_compiled_tf_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_tf_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:      %[[A_OUT:[0-9]*]] = "tf.A"
     // CHECK:      %[[F_OUT:[0-9]*]] = "tf.F"
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -800,7 +800,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // tf.IfRegion op
 
   // CHECK-LABEL: func @outside_compiled_tf_if_nested
-  func @outside_compiled_tf_if_nested(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_tf_if_nested(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:      %[[A_OUT:[0-9]*]] = "tf.A"
     // CHECK:      %[[F_OUT:[0-9]*]] = "tf.F"
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -874,7 +874,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // op with return values.
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_tf_if_with_return_values
-  func @outside_compiled_ops_inside_tf_if_with_return_values(
+  func.func @outside_compiled_ops_inside_tf_if_with_return_values(
     %arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
@@ -931,7 +931,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster inside a tf.IfRegion op without external inputs/outputs
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_tf_if_without_input_outputs
-  func @outside_compiled_ops_inside_tf_if_without_input_outputs(
+  func.func @outside_compiled_ops_inside_tf_if_without_input_outputs(
     %arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -978,7 +978,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // tf.IfRegion op.
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_nested_if
-  func @outside_compiled_ops_inside_nested_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_ops_inside_nested_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -1048,7 +1048,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster inside a tf.WhileRegion op body.
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_tf_while_body
-  func @outside_compiled_ops_inside_tf_while_body(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_ops_inside_tf_while_body(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -1104,7 +1104,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster inside a tf.WhileRegion op cond.
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_tf_while_cond
-  func @outside_compiled_ops_inside_tf_while_cond(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_ops_inside_tf_while_cond(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -1161,7 +1161,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster inside a tf.WhileRegion op cond and body.
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_tf_while_cond_body
-  func @outside_compiled_ops_inside_tf_while_cond_body(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_ops_inside_tf_while_cond_body(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -1222,7 +1222,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // nested in a tf.WhileRegion.
 
   // CHECK-LABEL: func @outside_compiled_ops_inside_tf_while_if
-  func @outside_compiled_ops_inside_tf_while_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_ops_inside_tf_while_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -1287,7 +1287,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // of tf.IfRegion op is outside compiled with a nested tf.WhileRegion op.
 
   // CHECK-LABEL: func @outside_compiled_tf_if_nested_while
-  func @outside_compiled_tf_if_nested_while(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_tf_if_nested_while(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     // CHECK:      %[[A_OUT:[0-9]*]] = "tf.A"
     // CHECK:      %[[F_OUT:[0-9]*]] = "tf.F"
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -1355,7 +1355,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // tf.WhileRegion op is outside compiled with a nested tf.IfRegion.
 
   // CHECK-LABEL: func @outside_compiled_ops_tf_while_nested_if
-  func @outside_compiled_ops_tf_while_nested_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_ops_tf_while_nested_if(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -1409,7 +1409,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // inside multiple regions of nested tf.IfRegion and tf.WhileRegion.
 
   // CHECK-LABEL: func @outside_compiled_ops_with_multiple_region_single_cluster
-  func @outside_compiled_ops_with_multiple_region_single_cluster(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @outside_compiled_ops_with_multiple_region_single_cluster(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
 
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
@@ -1472,7 +1472,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // from the host are moved after the host compute op so that dominance is not
   // violated. tf.C op in this case.
   // CHECK-LABEL: func @device_op_dominance
-  func @device_op_dominance() -> () {
+  func.func @device_op_dominance() -> () {
     // CHECK: tf.B
     // CHECK: tf._XlaSendFromHost
     // CHECK: tf._XlaRecvAtHost
@@ -1498,7 +1498,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // moved after the host compute op. tf.E op in this case.
 
   // CHECK-LABEL: func @device_op_dominance_with_indirect_dependency
-  func @device_op_dominance_with_indirect_dependency() -> () {
+  func.func @device_op_dominance_with_indirect_dependency() -> () {
     // CHECK: tf.B
     // CHECK: tf._XlaRecvAtHost
     // CHECK: tf.F
@@ -1526,7 +1526,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests dynamically shaped input to outside compilation.
 
   // CHECK-LABEL: func @dynamically_shaped_input
-  func @dynamically_shaped_input() -> () {
+  func.func @dynamically_shaped_input() -> () {
     // CHECK:          "tf_device.launch"
     // CHECK:            %[[RECV_OUTPUT:[0-9]*]] = "tf._XlaRecvAtHost"
     // CHECK:            "tf.B"(%[[RECV_OUTPUT]])
@@ -1546,7 +1546,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests dynamically shaped output from outside compilation.
 
   // CHECK-LABEL: func @dynamically_shaped_output
-  func @dynamically_shaped_output() -> () {
+  func.func @dynamically_shaped_output() -> () {
     // CHECK:          "tf_device.launch"
     // CHECK:            %[[B_OUTPUT:[0-9]*]] = "tf.B"()
     // CHECK:            "tf._XlaSendFromHost"(%[[B_OUTPUT]]
@@ -1565,7 +1565,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests extraction of a single outside compiled cluster with arg input and single dynamic shape device->host input.
 
   // CHECK-LABEL: func @mixed_dynamic_input_single_outside_compilation
-  func @mixed_dynamic_input_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @mixed_dynamic_input_single_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -1592,7 +1592,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   }
 
   // CHECK-LABEL: func @dynamic_input_chained_ops_outside_compilation
-  func @dynamic_input_chained_ops_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @dynamic_input_chained_ops_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -1625,7 +1625,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
    //  if any outputs of outside compilation cluster are dynamically shaped.
 
   // CHECK-LABEL: func @dynamic_input_all_captured_outside_compilation
-  func @dynamic_input_all_captured_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @dynamic_input_all_captured_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -1665,7 +1665,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   //  sent back to the host.
 
   // CHECK-LABEL: func @dynamic_input_all_captured_mixed_shapes_outside_compilation
-  func @dynamic_input_all_captured_mixed_shapes_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @dynamic_input_all_captured_mixed_shapes_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -1705,7 +1705,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   //  is in between two other outside compiled ops with some dynamic shapes.
 
   // CHECK-LABEL: func @static_shapes_sandwiched_outside_compilation
-  func @static_shapes_sandwiched_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @static_shapes_sandwiched_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
@@ -1755,7 +1755,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   //  for the second outside compiled op, all of the inputs are explicitly provided.
 
   // CHECK-LABEL: func @static_output_dynamic_input_outside_compilation
-  func @static_output_dynamic_input_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  func.func @static_output_dynamic_input_outside_compilation(%arg0: tensor<2xi32>) -> tensor<2xi32> {
     %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:        %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"

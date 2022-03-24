@@ -1,6 +1,6 @@
 // RUN: tf-opt -tf-executor-to-functional-conversion %s -split-input-file -verify-diagnostics | FileCheck %s
 
-func @unsupported_op() {
+func.func @unsupported_op() {
   tf_executor.graph {
     // expected-error@+1 {{'tf_executor.ControlTrigger' op is not supported for lifting out of tf_executor.graph, expected tf_executor.island}}
     %control = tf_executor.ControlTrigger {}
@@ -13,7 +13,7 @@ func @unsupported_op() {
 
 // CHECK-LABEL: func @empty_graph
 // CHECK-NEXT: return
-func @empty_graph() {
+func.func @empty_graph() {
   tf_executor.graph {
     tf_executor.fetch
   }
@@ -22,7 +22,7 @@ func @empty_graph() {
 
 // CHECK-LABEL: func @empty_island
 // CHECK-NEXT: return
-func @empty_island() {
+func.func @empty_island() {
   tf_executor.graph {
     %control = tf_executor.island {
       tf_executor.yield
@@ -35,7 +35,7 @@ func @empty_island() {
 // CHECK-LABEL: func @island_forwarding_result
 // CHECK-SAME: ([[ARG_0:%.*]]: tensor<i32>)
 // CHECK-NEXT: return [[ARG_0]]
-func @island_forwarding_result(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @island_forwarding_result(%arg0: tensor<i32>) -> tensor<i32> {
   %graph_result = tf_executor.graph {
     %output, %control = tf_executor.island {
       tf_executor.yield %arg0 : tensor<i32>
@@ -50,7 +50,7 @@ func @island_forwarding_result(%arg0: tensor<i32>) -> tensor<i32> {
 // CHECK-NEXT: [[A:%.*]] = "tf.opA"([[ARG_0]])
 // CHECK-NEXT: [[B:%.*]] = "tf.opB"([[A]])
 // CHECK-NEXT: return [[B]]
-func @transitive_data_dependencies(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @transitive_data_dependencies(%arg0: tensor<i32>) -> tensor<i32> {
   %graph_result = tf_executor.graph {
     %output0, %control0 = tf_executor.island {
       %a = "tf.opA"(%arg0) : (tensor<i32>) -> tensor<i32>
@@ -70,7 +70,7 @@ func @transitive_data_dependencies(%arg0: tensor<i32>) -> tensor<i32> {
 // CHECK-NEXT: "tf.opA"([[ARG_0]])
 // CHECK-NEXT: [[B:%.*]] = "tf.opB"([[ARG_0]])
 // CHECK-NEXT: return [[B]]
-func @transitive_control_dependencies(%arg0: tensor<i32>) -> tensor<i32> {
+func.func @transitive_control_dependencies(%arg0: tensor<i32>) -> tensor<i32> {
   %graph_result = tf_executor.graph {
     %output0, %control0 = tf_executor.island {
       %a = "tf.opA"(%arg0) : (tensor<i32>) -> tensor<i32>
@@ -92,7 +92,7 @@ func @transitive_control_dependencies(%arg0: tensor<i32>) -> tensor<i32> {
 // CHECK-NEXT: [[C:%.*]] = "tf.opC"([[A]])
 // CHECK-NEXT: [[D:%.*]] = "tf.opD"([[C]])
 // CHECK-NEXT: return [[B]], [[D]]
-func @multiple_inner_ops(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+func.func @multiple_inner_ops(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
   %graph_result:2 = tf_executor.graph {
     %output0_0, %output0_1, %control0 = tf_executor.island {
       %a = "tf.opA"(%arg0) : (tensor<i32>) -> tensor<i32>

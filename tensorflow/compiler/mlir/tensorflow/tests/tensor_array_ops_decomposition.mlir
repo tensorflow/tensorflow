@@ -3,7 +3,7 @@
 // Test read and write on a tensor list.
 
 // CHECK-LABEL: func @main
-func @main() -> tensor<3xf32> {
+func.func @main() -> tensor<3xf32> {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[BUFFER:.*]] = "tf.BroadcastTo"
   // CHECK-SAME: -> tensor<5x3xf32>
@@ -36,7 +36,7 @@ func @main() -> tensor<3xf32> {
 // Test inferring shape from the first write.
 
 // CHECK-LABEL: func @main
-func @main() -> tensor<i32> {
+func.func @main() -> tensor<i32> {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[BUFFER:.*]] = "tf.BroadcastTo"
   // CHECK-SAME: -> tensor<5x3xf32>
@@ -57,7 +57,7 @@ func @main() -> tensor<i32> {
 // Test inferring shape from the first scatter.
 
 // CHECK-LABEL: func @main
-func @main() -> tensor<i32> {
+func.func @main() -> tensor<i32> {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
@@ -73,7 +73,7 @@ func @main() -> tensor<i32> {
 // Test inferring shape from the result type of gather.
 
 // CHECK-LABEL: func @main
-func @main() -> tensor<2x3xf32> {
+func.func @main() -> tensor<2x3xf32> {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
@@ -87,7 +87,7 @@ func @main() -> tensor<2x3xf32> {
 // Test inferring shape from the element_shape attribute of gather.
 
 // CHECK-LABEL: func @main
-func @main() -> tensor<*xf32> {
+func.func @main() -> tensor<*xf32> {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
@@ -102,7 +102,7 @@ func @main() -> tensor<*xf32> {
 // Test tensor array concat and split.
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func.func @main() -> () {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   // CHECK: "tf.AssignVariableOp"
@@ -126,7 +126,7 @@ func @main() -> () {
 // Test tensor array gather and scatter on contiguous indices.
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func.func @main() -> () {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   // CHECK: "tf.AssignVariableOp"
@@ -148,7 +148,7 @@ func @main() -> () {
 // Test tensor array gather and scatter on non-contiguous indices.
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func.func @main() -> () {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   // CHECK: "tf.AssignVariableOp"
@@ -194,7 +194,7 @@ func @main() -> () {
 // Test tensor array grads.
 
 // CHECK-LABEL: func @main
-func @main() {
+func.func @main() {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   // CHECK: "tf.AssignVariableOp"(%[[VAR]],
@@ -239,7 +239,7 @@ func @main() {
 // gradient defined inside. The gradient creation should be moved outside.
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func.func @main() -> () {
   // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -256,7 +256,7 @@ func @main() -> () {
   return
 }
 // CHECK: func @while_body(%[[BARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[BARG1:.*]]: tensor<i32>, %[[BARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
-func @while_body(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> (tensor<!tf_type.resource>, tensor<i32>) {
+func.func @while_body(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> (tensor<!tf_type.resource>, tensor<i32>) {
   // CHECK: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[BARG1]], %[[CONST1]])
@@ -276,7 +276,7 @@ func @while_body(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> (tenso
   func.return %arg0, %sub : tensor<!tf_type.resource>, tensor<i32>
 }
 // CHECK: func @while_cond(%[[CARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[CARG1:.*]]: tensor<i32>, %[[CARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
-func @while_cond(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
+func.func @while_cond(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
   // CHECK-NEXT: return %[[CARG1]]
   func.return %arg1 : tensor<i32>
 }
@@ -287,7 +287,7 @@ func @while_cond(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor
 // defined inside. The gradient creation should be moved outside.
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func.func @main() -> () {
   // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -314,7 +314,7 @@ func @main() -> () {
   return
 }
 // CHECK: func @then_branch(%[[TARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[TARG1:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[TARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
-func @then_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+func.func @then_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %elem = "tf._SomeOp"() : () -> tensor<3xf32>
   %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
@@ -327,7 +327,7 @@ func @then_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
   func.return %arg0 : tensor<!tf_type.resource>
 }
 // CHECK: func @else_branch(%[[EARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[EARG1:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[EARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
-func @else_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+func.func @else_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   // CHECK: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %elem = "tf._SomeOp"() : () -> tensor<3xf32>
@@ -347,7 +347,7 @@ func @else_branch(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
 // its gradient defined inside.
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func.func @main() -> () {
   // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>}
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -395,7 +395,7 @@ func @main() -> () {
 
 // CHECK-LABEL: func @main
 // CHECK-SAME:  %[[PRED:.*]]: tensor<i1>
-func @main(%arg0: tensor<i1>) -> () {
+func.func @main(%arg0: tensor<i1>) -> () {
   %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.TensorArrayV3
   // CHECK: %[[TA_BUFFER:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<10x3xf32>>>
@@ -435,7 +435,7 @@ func @main(%arg0: tensor<i1>) -> () {
 // moved outside.
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func.func @main() -> () {
   // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -461,7 +461,7 @@ func @main() -> () {
 }
 // CHECK-LABEL: func @callee
 // CHECK-SAME: (%[[OCARG0:.*]]: tensor<!tf_type.resource>) -> tensor<!tf_type.resource>
-func @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+func.func @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %elem = "tf._SomeOp"() : () -> tensor<3xf32>
   %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
@@ -485,7 +485,7 @@ func @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
 // Tests (Stateful)PartitionedCall op with private callee function.
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func.func @main() -> () {
   // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -510,7 +510,7 @@ func @main() -> () {
   return
 }
 // CHECK: func private @callee(%[[CARG0:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[CARG1:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[CARG2:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>)
-func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+func.func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   // CHECK: %[[READ1:.*]] = "tf.ReadVariableOp"(%[[CARG1]]) : (tensor<!tf_type.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
   // CHECK: %[[UPDATE1:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ1]],
   // CHECK: "tf.AssignVariableOp"(%[[CARG1]], %[[UPDATE1]])
@@ -533,12 +533,12 @@ func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resour
 // Tests PartitionedCall op with no signature change on callee.
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func.func @main() -> () {
   %call = "tf.PartitionedCall"() {f = @callee, config = "", config_proto = "", executor_type = ""} : () -> tensor<i32>
   return
 }
 // CHECK: func private @callee() -> tensor<i32>
-func @callee() -> tensor<i32> {
+func.func @callee() -> tensor<i32> {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5xf32>>>
   // CHECK: "tf.AssignVariableOp"
@@ -552,12 +552,12 @@ func @callee() -> tensor<i32> {
 // -----
 
 // CHECK-LABEL: func @main
-func @main() -> () {
+func.func @main() -> () {
   // CHECK: "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> tensor<*xf32>
   %call = "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> (tensor<*xf32>)
   return
 }
-func private @callee() -> (tensor<*xf32>) {
+func.func private @callee() -> (tensor<*xf32>) {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[LOCAL_VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource<tensor<*xf32>>>, tensor<f32>)
@@ -580,7 +580,7 @@ func private @callee() -> (tensor<*xf32>) {
 // variable should be inserted before the PartitionedCall op.
 
 // CHECK-LABEL:   func @main()
-func @main() -> () {
+func.func @main() -> () {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<5x3xf32>>>
@@ -598,7 +598,7 @@ func @main() -> () {
 
 // CHECK-LABEL: func private @callee
 // CHECK-SAME:  %[[VAR:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>, %[[GVAR:.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>>
-func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+func.func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %elem = "tf._SomeOp"() : () -> tensor<3xf32>
   %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
@@ -632,7 +632,7 @@ func private @callee(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resour
 
 // Test the pass reports failure on unknown size.
 
-func @main(%arg0: tensor<i32>) -> () {
+func.func @main(%arg0: tensor<i32>) -> () {
   // expected-error @+1 {{unknown max element count}}
   %ta:2 = "tf.TensorArrayV3"(%arg0) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   return
@@ -642,7 +642,7 @@ func @main(%arg0: tensor<i32>) -> () {
 
 // Test the pass reports failure on unknown shape.
 
-func @main(%arg0: tensor<i32>) -> () {
+func.func @main(%arg0: tensor<i32>) -> () {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // expected-error @+1 {{unknown element shape}}
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
@@ -653,7 +653,7 @@ func @main(%arg0: tensor<i32>) -> () {
 
 // Tests that the pass reports error on ambiguous tensor array.
 
-func @main(%arg0: tensor<i1>) -> () {
+func.func @main(%arg0: tensor<i1>) -> () {
   %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   %ta0:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   %ta1:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
@@ -664,10 +664,10 @@ func @main(%arg0: tensor<i1>) -> () {
   %read = "tf.TensorArrayReadV3"(%if_op, %index, %ta0#1) : (tensor<!tf_type.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
   return
 }
-func @if_then(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+func.func @if_then(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   func.return %arg0 : tensor<!tf_type.resource>
 }
-func @if_else(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+func.func @if_else(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
   func.return %arg1 : tensor<!tf_type.resource>
 }
 
@@ -675,7 +675,7 @@ func @if_else(%arg0: tensor<!tf_type.resource>, %arg1: tensor<!tf_type.resource>
 
 // Tests that the pass returns meaningful error message when region based
 // control flow op has resource arguments.
-func @main() -> () {
+func.func @main() -> () {
   %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   // expected-error @+1 {{found unexpected type 'tensor<!tf_type.resource<tensor<10x3xf32>>>' of operand #0, resource type operands are expected to have been canonicalized away for region based control flow ops}}
@@ -698,7 +698,7 @@ func @main() -> () {
 // Tests that the pass returns meaningful error message when region based
 // control flow op has resource returns.
 
-func @main(%arg0: tensor<i1>) -> (tensor<3xf32>) {
+func.func @main(%arg0: tensor<i1>) -> (tensor<3xf32>) {
   %size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf_type.shape<3>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf_type.resource>, tensor<f32>)
   // expected-error @+1 {{found unexpected type 'tensor<!tf_type.resource>' of result #1, resource type results are expected to have been canonicalized away for region based control flow ops}}

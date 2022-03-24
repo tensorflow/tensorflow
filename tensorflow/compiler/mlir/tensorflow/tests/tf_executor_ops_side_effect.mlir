@@ -6,7 +6,7 @@
 // CHECK: tf_executor.NextIteration.Source
 // CHECK: tf_executor.NextIteration.Sink
 // CHECK: tf_executor.NextIteration.Sink
-func @main() -> (tensor<1xi32>, tensor<1xi32>) {
+func.func @main() -> (tensor<1xi32>, tensor<1xi32>) {
   %0, %1 = tf_executor.graph {
     %output_1, %token_1, %control_1 = tf_executor.NextIteration.Source : tensor<1xi32> {T = i32, device = ""}
     %output_2, %token_2, %control_2 = tf_executor.NextIteration.Source : tensor<1xi32> {T = i32, device = ""}

@@ -4,7 +4,7 @@
 
 // CHECK-LABEL: func @single_launch_func
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xf32>)
-func @single_launch_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @single_launch_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island {
       // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
@@ -23,7 +23,7 @@ func @single_launch_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-func @_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %arg0 : tensor<?xf32>
 }
 
@@ -33,7 +33,7 @@ func @_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // CHECK-LABEL: func @multi_launch_func
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xf32>)
-func @multi_launch_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @multi_launch_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island {
       // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
@@ -57,6 +57,6 @@ func @multi_launch_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %0 : tensor<?xf32>
 }
 
-func @_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   func.return %arg0 : tensor<?xf32>
 }

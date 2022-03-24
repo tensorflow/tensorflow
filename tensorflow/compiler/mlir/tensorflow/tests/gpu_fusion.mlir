@@ -3,7 +3,7 @@
 // Test the op-fusion pass specific to the GPU target.
 
 // CHECK-LABEL: func @FusedBatchNormRelu
-func @FusedBatchNormRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
+func.func @FusedBatchNormRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
 // CHECK-NEXT: %[[Y:[a-z0-9]*]], {{.*}}_FusedBatchNormEx
 // CHECK-NEXT: return %[[Y]]
   %y:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
@@ -12,7 +12,7 @@ func @FusedBatchNormRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2
 }
 
 // CHECK-LABEL: func @FusedBatchNormAddRelu
-func @FusedBatchNormAddRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
+func.func @FusedBatchNormAddRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
 // CHECK-NEXT: %[[Y:[a-z0-9]*]], {{.*}}_FusedBatchNormEx
 // CHECK-NEXT: return %[[Y]]
   %y:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
@@ -22,7 +22,7 @@ func @FusedBatchNormAddRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %a
 }
 
 // CHECK-LABEL: func @FusedBatchNormAddReluTwoUses
-func @FusedBatchNormAddReluTwoUses(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>) {
+func.func @FusedBatchNormAddReluTwoUses(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>) {
 // Since the tf.AddV2 op has two uses, we have a _FusedBatchNormEx without the
 // Relu activation and we only fuse the add.
 // CHECK-NEXT: %[[Y:[a-z0-9]*]], {{.*}}_FusedBatchNormEx
@@ -35,7 +35,7 @@ func @FusedBatchNormAddReluTwoUses(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf
 }
 
 // CHECK-LABEL: func @TrainingFusedBatchNormRelu
-func @TrainingFusedBatchNormRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
+func.func @TrainingFusedBatchNormRelu(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
   // We don't fuse in training right now
 // CHECK-NEXT: %[[Y:[a-z0-9]*]], {{.*}}FusedBatchNorm
 // CHECK-NEXT: %[[relu:[a-z0-9]*]] ={{.*}}Relu"(%[[Y]]

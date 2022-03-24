@@ -1,7 +1,7 @@
 // RUN: tf-opt -tf-rewrite-tpu-embedding-ops %s | FileCheck %s
 
 // CHECK-LABEL: func @recv_tpu_embedding_activations
-func @recv_tpu_embedding_activations() -> (tensor<512x256xf32>) {
+func.func @recv_tpu_embedding_activations() -> (tensor<512x256xf32>) {
   // CHECK: %[[DATA:.*]] = "tf._RecvTPUEmbeddingDeduplicationData"() {config = {{.*}}} : () -> tensor<!tf_type.variant>
   // CHECK: %[[RESULT:.*]] = "tf._RecvTPUEmbeddingActivations"(%[[DATA]]) {config = {{.*}}} : (tensor<!tf_type.variant>) -> tensor<512x256xf32>
   // CHECK: return %[[RESULT]]
@@ -13,7 +13,7 @@ func @recv_tpu_embedding_activations() -> (tensor<512x256xf32>) {
 }
 
 // CHECK-LABEL: func @send_tpu_embedding_gradients
-func @send_tpu_embedding_gradients(%arg0: tensor<512x256xf32>) -> () {
+func.func @send_tpu_embedding_gradients(%arg0: tensor<512x256xf32>) -> () {
   // CHECK: %[[DATA:.*]] = "tf._RecvTPUEmbeddingDeduplicationData"() {config = {{.*}}} : () -> tensor<!tf_type.variant>
   // CHECK: "tf._SendTPUEmbeddingGradients"(%arg0, %[[DATA]]) {config = {{.*}}, operand_segment_sizes = dense<[1, 0, 1]> : vector<3xi32>} : (tensor<512x256xf32>, tensor<!tf_type.variant>) -> ()
   // CHECK-NOT: tf.SendTPUEmbeddingGradients
@@ -24,7 +24,7 @@ func @send_tpu_embedding_gradients(%arg0: tensor<512x256xf32>) -> () {
 }
 
 // CHECK-LABEL: func @recv_send_ops
-func @recv_send_ops() -> () {
+func.func @recv_send_ops() -> () {
   // CHECK: %[[DATA:.*]] = "tf._RecvTPUEmbeddingDeduplicationData"()
   // CHECK: %[[ACTIVATIONS:.*]] = "tf._RecvTPUEmbeddingActivations"(%[[DATA]])
   // CHECK: "tf._SendTPUEmbeddingGradients"(%[[ACTIVATIONS]], %[[DATA]])
@@ -35,14 +35,14 @@ func @recv_send_ops() -> () {
 }
 
 // CHECK-LABEL: func @no_embedding_ops
-func @no_embedding_ops(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
+func.func @no_embedding_ops(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
   // CHECK: tf.Add
   %0 = "tf.Add"(%arg0, %arg0) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   func.return %0 : tensor<2x2xf32>
 }
 
 // CHECK-LABEL: func @nested_embedding_op
-func @nested_embedding_op(%arg0: tensor<i1>, %arg1: tensor<512x256xf32>) -> (tensor<512x256xf32>) {
+func.func @nested_embedding_op(%arg0: tensor<i1>, %arg1: tensor<512x256xf32>) -> (tensor<512x256xf32>) {
   %1 = "tf.IfRegion"(%arg0) ({
     // CHECK: "tf._RecvTPUEmbeddingDeduplicationData"
     // CHECK: "tf._RecvTPUEmbeddingActivations"
@@ -56,7 +56,7 @@ func @nested_embedding_op(%arg0: tensor<i1>, %arg1: tensor<512x256xf32>) -> (ten
 }
 
 // CHECK-LABEL: func @doubly_nested_embedding_op
-func @doubly_nested_embedding_op(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<512x256xf32>) -> (tensor<512x256xf32>) {
+func.func @doubly_nested_embedding_op(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<512x256xf32>) -> (tensor<512x256xf32>) {
   %2 = "tf.IfRegion"(%arg0) ({
     %1 = "tf.IfRegion"(%arg1) ({
       // CHECK: "tf._RecvTPUEmbeddingDeduplicationData"

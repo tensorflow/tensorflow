@@ -1,7 +1,7 @@
 // RUN: tf-reduce %s -reduction-tree='traversal-mode=0 test=%S/reducer/unsupported-op-test.sh' | FileCheck %s
 
 // CHECK: @target_function
-func @target_function() -> tensor<i32> {
+func.func @target_function() -> tensor<i32> {
   %0 = "tf_device.cluster"() ({
     // CHECK: tf.UnsupportedOp
     %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
