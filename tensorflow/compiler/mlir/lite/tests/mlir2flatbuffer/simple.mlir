@@ -1,7 +1,7 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - -strip-debug-info | flatbuffer_to_string - | FileCheck %s --check-prefix=STRIP
 
-func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
+func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
   attributes {tf.entry_function = {inputs = "input", outputs = "SameNameAsOutput"}} {
 ^bb0(%arg0: tensor<3x2xi32>):
 // CHECK: {

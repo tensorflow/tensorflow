@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<3x!quant.uniform<i8:f32, 1.0>>) -> tensor<3x!quant.uniform<i8:f32, 1.0>> {
+func.func @main(tensor<3x!quant.uniform<i8:f32, 1.0>>) -> tensor<3x!quant.uniform<i8:f32, 1.0>> {
 ^bb0(%arg0: tensor<3x!quant.uniform<i8:f32, 1.0>>):
   // CHECK:      {
   // CHECK-NEXT:  version: 3,

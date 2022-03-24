@@ -34,7 +34,7 @@
 // CHECK:   } ]
 // CHECK: }
 
-func @main() -> tensor<*xi32> {
+func.func @main() -> tensor<*xi32> {
 	// Tests that the below type attribute is convertible into the corresponding custom option in flatbuffer.
   %0 = "tf.SomeOperation"() {dtype = i32 } : () -> tensor<*xi32>
   func.return %0 : tensor<*xi32>

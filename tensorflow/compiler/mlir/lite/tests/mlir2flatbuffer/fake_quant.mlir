@@ -1,7 +1,7 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate -tflite-flatbuffer-to-mlir - -o - | FileCheck --check-prefix=IMPORT %s
 
-func @main(tensor<4xf32>) -> tensor<4xf32> {
+func.func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):
 // CHECK: {
 // CHECK-NEXT:   version: 3,

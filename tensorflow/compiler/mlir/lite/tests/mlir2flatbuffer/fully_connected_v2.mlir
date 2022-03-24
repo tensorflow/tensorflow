@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
+func.func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
 ^bb0(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>):
   // CHECK:      {
   // CHECK-NEXT:  version: 3,
