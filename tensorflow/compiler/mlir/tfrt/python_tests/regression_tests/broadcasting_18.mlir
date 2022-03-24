@@ -11,5 +11,5 @@ func.func @test(%V__0: tensor<?x?xf32> { python_test_attrs.static_type = tensor<
   %9 = "tf.Acosh"(%8) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %10 = "tf.Abs"(%V__2) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
   %11 = "tf.Xlog1py"(%9, %10) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return %11 : tensor<?x?x?xf32>
+  func.return %11 : tensor<?x?x?xf32>
 }

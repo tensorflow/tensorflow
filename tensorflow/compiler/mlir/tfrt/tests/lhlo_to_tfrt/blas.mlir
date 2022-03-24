@@ -9,7 +9,7 @@
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>) {
+func.func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -54,7 +54,7 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @gemm_batch(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>) {
+func.func @gemm_batch(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -103,7 +103,7 @@ func @gemm_batch(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
+func.func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
                 %bias: memref<5x5xf32>, %output:memref<5x5xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
@@ -153,7 +153,7 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @triangular_solve(%a: memref<2x2xf32>, %b: memref<2x2xf32>, %output: memref<2x2xf32>) {
+func.func @triangular_solve(%a: memref<2x2xf32>, %b: memref<2x2xf32>, %output: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 

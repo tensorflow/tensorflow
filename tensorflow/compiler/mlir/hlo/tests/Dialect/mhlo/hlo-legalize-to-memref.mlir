@@ -3,14 +3,14 @@
 // CHECK: #[[MAP:.*]] = affine_map<(d0, d1, d2)[s0, s1, s2] -> (d0 * s0 + d1 * s1 + d2 * s2)>
 
 // CHECK-LABEL: func @dyn_broadcast
-func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
+func.func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
   // CHECK-SAME: %[[ARG:.*]]: tensor<?x?xf32>
   %c1 = arith.constant 1 : i64
   %shape = tensor.from_elements %c1, %c1, %c1 : tensor<3xi64>
   %result = "mhlo.dynamic_broadcast_in_dim"(%operand, %shape) {
     broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
   } : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %result : tensor<?x?x?xf32>
+  func.return %result : tensor<?x?x?xf32>
 }
 
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
@@ -35,13 +35,13 @@ func @dyn_broadcast(%operand: tensor<?x?xf32>) -> tensor<?x?x?xf32> {
 // -----
 
 // CHECK-LABEL: func @dyn_broadcast_unsigned
-func @dyn_broadcast_unsigned(%operand: tensor<?x?xi32>, %shape: tensor<3xi64>) -> tensor<?x?x?xi32> {
+func.func @dyn_broadcast_unsigned(%operand: tensor<?x?xi32>, %shape: tensor<3xi64>) -> tensor<?x?x?xi32> {
   // CHECK-SAME: %[[ARG:.*]]: tensor<?x?xi32>, %[[SHAPE:.*]]: tensor<3xi64>
   %c1 = arith.constant 1 : i64
   %result = "mhlo.dynamic_broadcast_in_dim"(%operand, %shape) {
     broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>
   } : (tensor<?x?xi32>, tensor<3xi64>) -> tensor<?x?x?xi32>
-  return %result : tensor<?x?x?xi32>
+  func.return %result : tensor<?x?x?xi32>
 }
 
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
@@ -77,11 +77,11 @@ func @dyn_broadcast_unsigned(%operand: tensor<?x?xi32>, %shape: tensor<3xi64>) -
 // -----
 
 // CHECK-LABEL: func @dyn_reshape_unsigned
-func @dyn_reshape_unsigned(%operand: tensor<?x?xi32>, %shape: tensor<3xi64>) -> tensor<?x?x?xi32> {
+func.func @dyn_reshape_unsigned(%operand: tensor<?x?xi32>, %shape: tensor<3xi64>) -> tensor<?x?x?xi32> {
   // CHECK-SAME: %[[ARG:.*]]: tensor<?x?xi32>, %[[SHAPE:.*]]: tensor<3xi64>
   %c1 = arith.constant 1 : i64
   %result = "mhlo.dynamic_reshape"(%operand, %shape) : (tensor<?x?xi32>, tensor<3xi64>) -> tensor<?x?x?xi32>
-  return %result : tensor<?x?x?xi32>
+  func.return %result : tensor<?x?x?xi32>
 }
 
 // CHECK-DAG: %[[OPERAND:.*]] = bufferization.to_memref %[[ARG]]
@@ -94,10 +94,10 @@ func @dyn_reshape_unsigned(%operand: tensor<?x?xi32>, %shape: tensor<3xi64>) -> 
 // -----
 
 // CHECK-LABEL: func @reshape_unsigned
-func @reshape_unsigned(%operand: tensor<*xi32>) -> tensor<4x3xi32> {
+func.func @reshape_unsigned(%operand: tensor<*xi32>) -> tensor<4x3xi32> {
   // CHECK-SAME: %[[ARG:.*]]: tensor<*xi32>
   %result = "mhlo.reshape"(%operand) : (tensor<*xi32>) -> tensor<4x3xi32>
-  return %result : tensor<4x3xi32>
+  func.return %result : tensor<4x3xi32>
 }
 
 // CHECK: %[[OPERAND:.*]] = bufferization.to_memref %[[ARG]]

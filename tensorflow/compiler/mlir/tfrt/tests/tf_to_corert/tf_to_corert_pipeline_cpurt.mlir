@@ -31,7 +31,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
                           {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
       tf_executor.fetch %outs: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
@@ -72,7 +72,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
                             {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
       tf_executor.fetch %outs2: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
@@ -109,7 +109,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
                        : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
       tf_executor.fetch %out: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
@@ -146,7 +146,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
                        : (tensor<?x?xf32>, tensor<?xi32>) -> tensor<?x?xf32>
       tf_executor.fetch %out: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
@@ -183,6 +183,6 @@ module attributes {tf.versions = {producer = 462 : i32}} {
         : (tensor<?x?x!tf_type.string>, tensor<2xi32>) -> tensor<?x?x!tf_type.string>
       tf_executor.fetch %out: tensor<?x?x!tf_type.string>
     }
-    return %0 : tensor<?x?x!tf_type.string>
+    func.return %0 : tensor<?x?x!tf_type.string>
   }
 }

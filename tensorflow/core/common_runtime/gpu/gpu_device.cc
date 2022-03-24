@@ -492,7 +492,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   TF_RETURN_IF_ERROR(
       GpuIdManager::TfToPlatformDeviceId(tf_device_id_, &platform_device_id));
   gpu_device_info_->gpu_id = platform_device_id.value();
-  set_tensorflow_gpu_device_info(gpu_device_info_);
+  set_tensorflow_accelerator_device_info(gpu_device_info_);
 
   // Whether and how the GPU device uses its own threadpool.
   // This option is experimental. Once we confirm the best setting, we

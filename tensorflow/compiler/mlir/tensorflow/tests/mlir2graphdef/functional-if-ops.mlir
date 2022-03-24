@@ -7,7 +7,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<4xf32>, %arg3: 
     %outputs_6, %control_7 = tf_executor.island wraps "tf.If"(%outputs_2, %arg2, %arg3) {else_branch = @cond_false, is_stateless = true, then_branch = @cond_true} : (tensor<i1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("StatelessIf")
     tf_executor.fetch %outputs_4, %outputs_6 : tensor<4xf32>, tensor<4xf32>
   }
-  return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
+  func.return %0#0, %0#1 : tensor<4xf32>, tensor<4xf32>
 }
 
 func @cond_true(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
@@ -15,7 +15,7 @@ func @cond_true(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
     %outputs, %control = tf_executor.island wraps "tf.Add"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     tf_executor.fetch %outputs : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 func @cond_false(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
@@ -23,7 +23,7 @@ func @cond_false(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
     %outputs, %control = tf_executor.island wraps "tf.Mul"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     tf_executor.fetch %outputs : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 // Verify that If op is mapped to TensorFlow StatelessIf op if the is_stateless

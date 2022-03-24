@@ -446,7 +446,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
                               error_regex):
     original = DynamicRaggedShape.from_lengths(lengths)
     with self.assertRaisesRegex(error_type, error_regex):
-      original.with_inner_rank(new_dense_rank)
+      original._with_inner_rank(new_dense_rank)
 
   @parameterized.parameters([
       dict(
@@ -1235,7 +1235,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
   def testWithDenseRank(self, lengths, dense_rank, lengths_e):
     # Makes little sense with from_lengths/_with_num_row_partitions.
     original = DynamicRaggedShape.from_lengths(lengths)
-    actual = original.with_inner_rank(dense_rank)
+    actual = original._with_inner_rank(dense_rank)
     self.assertAllEqual(actual.inner_rank, dense_rank)
     self.assertAllEqual(actual.static_lengths(), lengths_e)
 
@@ -2683,7 +2683,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
           input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
       def foo(x):
         rts = DynamicRaggedShape._from_inner_shape(x)
-        rts.with_inner_rank(1)
+        rts._with_inner_rank(1)
 
       foo([3, 7, 5])
 

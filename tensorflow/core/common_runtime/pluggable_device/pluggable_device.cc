@@ -188,7 +188,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
   TF_RETURN_IF_ERROR(DeviceIdManager::TfToPlatformDeviceId(
       DeviceType(device_type()), tf_device_id_, &platform_device_id));
   pluggable_device_info_->gpu_id = platform_device_id.value();
-  set_tensorflow_gpu_device_info(pluggable_device_info_);
+  set_tensorflow_accelerator_device_info(pluggable_device_info_);
 
   // Whether and how the PluggableDevice uses its own threadpool.
   // This option is experimental. Once we confirm the best setting, we

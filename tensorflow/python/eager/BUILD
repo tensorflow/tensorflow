@@ -1256,10 +1256,9 @@ cuda_py_test(
     ],
 )
 
-py_binary(
+py_library(
     name = "gradient_input_output_exclusions",
     srcs = ["gradient_input_output_exclusions.py"],
-    python_version = "PY3",
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",

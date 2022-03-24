@@ -28,7 +28,7 @@
 // CHECK-NEXT:    "func.return"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
 // CHECK-NEXT: sym_name = "island_one_op_all_locs_same"
 
-func @island_one_op_all_locs_same(%arg0: tensor<f32>) -> tensor<f32> {
+func.func @island_one_op_all_locs_same(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "tf_executor.graph"() ({
     %1:2 = "tf_executor.island"() ({
       %2 = "tf.Identity"(%arg0) : (tensor<f32>) -> tensor<f32> loc("identity@some_function")
@@ -55,7 +55,7 @@ func @island_one_op_all_locs_same(%arg0: tensor<f32>) -> tensor<f32> {
 // CHECK-NEXT:    "func.return"(%{{.*}}) : (tensor<f32>) -> () loc(unknown)
 // CHECK-NEXT: sym_name = "island_one_op_all_locs_NOT_same"
 
-func @island_one_op_all_locs_NOT_same(%arg0: tensor<f32>) -> tensor<f32> {
+func.func @island_one_op_all_locs_NOT_same(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "tf_executor.graph"() ({
     %1:2 = "tf_executor.island"() ({
       %2 = "tf.Identity"(%arg0) : (tensor<f32>) -> tensor<f32> loc("identity@some_function")

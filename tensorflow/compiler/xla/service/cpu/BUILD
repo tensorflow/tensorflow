@@ -185,7 +185,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:AffineToStandardTransforms",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ArithmeticToLLVM",
         "@llvm-project//mlir:ArithmeticTransforms",

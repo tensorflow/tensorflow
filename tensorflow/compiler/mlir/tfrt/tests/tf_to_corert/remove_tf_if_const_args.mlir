@@ -2,14 +2,14 @@
 
 func @then(%x: tensor<i32>, %y: tensor<i32>) -> (tensor<i32>) {
   %0 = "tf.AddV2"(%x, %y) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 func @else(%x: tensor<i32>, %y: tensor<i32>) -> (tensor<i32>) {
   %0 = "tf.Const"() {value = dense<1> : tensor<i32> } : () -> tensor<i32>
   %1 = "tf.AddV2"(%x, %0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   %2 = "tf.AddV2"(%y, %1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %2 : tensor<i32>
+  func.return %2 : tensor<i32>
 }
 
 // CHECK-LABEL: func private @then_removed_const_args_0
@@ -36,7 +36,7 @@ func @remove_const_args(%x: tensor<i32>, %cond: tensor<i1>) -> (tensor<i32>) {
   // CHECK-SAME: {else_branch = @else_removed_const_args_0, is_stateless = false, then_branch = @then_removed_const_args_0}
   // CHECK-NEXT: return [[res]]
   %1 = "tf.If"(%cond, %x, %0) {else_branch = @else, then_branch = @then, is_stateless = false} : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %1 : tensor<i32>
+  func.return %1 : tensor<i32>
 }
 
 // CHECK-LABEL: func @multiple_uses
@@ -45,5 +45,5 @@ func @multiple_uses(%x: tensor<i32>, %cond: tensor<i1>) -> (tensor<i32>) {
   // CHECK: [[res:%.*]] = "tf.If"
   // CHECK-SAME: {else_branch = @else_removed_const_args_1, is_stateless = false, then_branch = @then_removed_const_args_1}
   %1 = "tf.If"(%cond, %0, %x) {else_branch = @else, then_branch = @then, is_stateless = false} : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-  return %1 : tensor<i32>
+  func.return %1 : tensor<i32>
 }

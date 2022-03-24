@@ -19,5 +19,5 @@ func.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<5x
   %17 = "tf.Softplus"(%16) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
   %18 = "tf.ClipByValue"(%15, %V__0, %17) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %19 = "tf.Inv"(%18) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
-  return %19 : tensor<?xf32>
+  func.return %19 : tensor<?xf32>
 }

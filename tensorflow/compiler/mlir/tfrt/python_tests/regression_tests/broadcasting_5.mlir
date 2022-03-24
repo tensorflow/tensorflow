@@ -14,5 +14,5 @@ func.func @test(%V__0: tensor<?xf32> { python_test_attrs.static_type = tensor<5x
   %12 = "tf.Rint"(%11) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
   %13 = "tf.DivNoNan"(%7, %12) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %14 = "tf.Cosh"(%13) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?xf32>) -> tensor<?xf32>
-  return %14 : tensor<?xf32>
+  func.return %14 : tensor<?xf32>
 }

@@ -117,6 +117,16 @@ def initialize_rbe_configs():
     )
 
     tensorflow_rbe_config(
+        name = "ubuntu20.04-gcc9_manylinux2014-rocm",
+        compiler = "/dt9/usr/bin/gcc",
+        compiler_prefix = "/usr/bin",
+        rocm_version = "5.0",  # Any version will do.
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.7", "3.8", "3.9"],
+        python_install_path = "/usr/local",
+    )
+
+    tensorflow_rbe_config(
         name = "ubuntu18.04-clang_manylinux2010-cuda11.1-cudnn8-tensorrt7.2",
         compiler = "/clang_r969a51ff363263a3b5f2df55eba6b4d392bf30c0/bin/clang",
         cuda_version = "11.1",

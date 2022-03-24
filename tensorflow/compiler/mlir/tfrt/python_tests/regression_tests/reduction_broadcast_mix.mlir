@@ -6,5 +6,5 @@ func.func @test(%V__0 : tensor<1x?xf32> { python_test_attrs.static_type = tensor
   %3 = "tf.Acosh"(%2) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xf32>) -> tensor<?x?x?x?xf32>
   %dims4 = "tf.Const"() { value = dense<[0, 1, 2]> : tensor<3xi32>, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : () -> tensor<3xi32>
   %4 = "tf.Max"(%3, %dims4) { keep_dims = true, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?x?xf32>
-  return %4 : tensor<?x?x?x?xf32>
+  func.return %4 : tensor<?x?x?x?xf32>
 }

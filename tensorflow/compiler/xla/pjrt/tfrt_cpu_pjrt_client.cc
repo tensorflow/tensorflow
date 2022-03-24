@@ -717,9 +717,6 @@ class ScopedHoldAsExternalReference : public PjRtBuffer::ExternalReference {
 
 StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
 TfrtCpuBuffer::AcquireExternalReference() {
-  // Before allow caller to zero-copy read the buffer content via the
-  // ExternalReference, we must ensure buffer is defined and ready.
-  TF_RETURN_IF_ERROR(GetReadyFuture().Await());
   ScopedHold hold = GetBufferWithExternalReference();
   Status hold_status = hold.status();
   if (!hold_status.ok()) return hold_status;
@@ -749,10 +746,6 @@ TfrtCpuBuffer::ReleaseDeviceMemoryOwnership(
     return InvalidArgument(
         "ReleaseDeviceMemoryOwnership allowed only for non-tuple");
   }
-
-  // Must wait for buffer to be defined and ready to be read.
-  TF_RETURN_IF_ERROR(GetReadyFuture().Await());
-
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
       Release(wait_for_operations_to_complete));

@@ -4,5 +4,5 @@ func.func @test(%V__0 : tensor<?x?x?x?xi64> { python_test_attrs.static_type = te
   %1 = "tf.BroadcastTo"(%0, %V__1) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xi64>, tensor<4xi32>) -> tensor<?x?x?x?xi64>
   %2 = "tf.Const"() { value = dense<[]> : tensor<0xi32>, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : () -> tensor<0xi32>
   %3 = "tf.Reshape"(%1, %2) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xi64>, tensor<0xi32>) -> tensor<i64>
-  return %3 : tensor<i64>
+  func.return %3 : tensor<i64>
 }

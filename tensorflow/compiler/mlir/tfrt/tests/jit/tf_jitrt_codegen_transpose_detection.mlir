@@ -18,7 +18,7 @@ func @transpose_2d(%arg0: tensor<?x?xf32>)
   ^bb0(%arg1: f32, %arg2: f32):
     linalg.yield %arg1 : f32
   } -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  func.return %3 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_2d(
@@ -44,7 +44,7 @@ func @identity(%arg0: tensor<?x?xf32>)
   ^bb0(%arg1: f32, %arg2: f32):
     linalg.yield %arg1 : f32
   } -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  func.return %3 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @identity(
@@ -67,7 +67,7 @@ func @transpose_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32>{
     %add = arith.addf %arg1, %arg1 : f32
     linalg.yield %add : f32
   } -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  func.return %3 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_add(

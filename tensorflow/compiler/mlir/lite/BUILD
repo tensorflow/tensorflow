@@ -36,6 +36,7 @@ package_group(
 td_library(
     name = "tensorflow_lite_ops_td_files",
     srcs = [
+        "ir/tfl_op_enums.td",
         "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
         "ir/tfl_structs.td",
@@ -130,9 +131,45 @@ gentbl_cc_library(
             ["-gen-op-interface-defs"],
             "ir/tfl_ops_interface.cc.inc",
         ),
+        (
+            ["-gen-dialect-decls"],
+            "ir/tfl_ops_dialect.h.inc",
+        ),
+        (
+            ["-gen-dialect-defs"],
+            "ir/tfl_ops_dialect.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tfl_op_interfaces.td",
+    deps = [
+        ":tensorflow_lite_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "tensorflow_lite_op_enums_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
+    tbl_outs = [
+        (
+            ["-gen-enum-decls"],
+            "ir/tfl_ops_enums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "ir/tfl_ops_enums.cc.inc",
+        ),
+        (
+            ["-gen-attrdef-decls"],
+            "ir/tfl_ops_attrdefs.h.inc",
+        ),
+        (
+            ["-gen-attrdef-defs"],
+            "ir/tfl_ops_attrdefs.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/tfl_op_enums.td",
     deps = [
         ":tensorflow_lite_ops_td_files",
     ],
@@ -257,6 +294,11 @@ cc_library(
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
+        "ir/tfl_ops_attrdefs.h.inc",
+        "ir/tfl_ops_dialect.cc.inc",
+        "ir/tfl_ops_dialect.h.inc",
+        "ir/tfl_ops_enums.cc.inc",
+        "ir/tfl_ops_enums.h.inc",
         "ir/tfl_ops_interface.cc.inc",
         "ir/tfl_ops_interface.h.inc",
         "ir/tfl_structs.cc.inc",
@@ -272,6 +314,8 @@ cc_library(
     ],
     deps = [
         ":cost_estimators",
+        ":tensorflow_lite_op_enums_inc_gen",
+        ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops_inc_gen",
         ":tensorflow_lite_structs_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",

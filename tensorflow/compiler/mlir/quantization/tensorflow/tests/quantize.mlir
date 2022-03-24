@@ -14,7 +14,7 @@
 
 // RUN: tf-quant-opt %s -split-input-file -quant-lift-quantizable-spots-as-functions -quant-quantize -verify-each=false | FileCheck %s
 
-func private @conv(%input: tensor<1x3x4x3xf32> {tf._user_specified_name = "input_tensor"}) -> tensor<*xf32> attributes {tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<1x3x4x3>]} {
+func.func private @conv(%input: tensor<1x3x4x3xf32> {tf._user_specified_name = "input_tensor"}) -> tensor<*xf32> attributes {tf._construction_context = "kEagerRuntime", tf._input_shapes = [#tf_type.shape<1x3x4x3>]} {
   %weight = arith.constant opaque<"elided_large_const", "0xDEADBEEF"> : tensor<2x3x3x2xf32>
   %bias = arith.constant dense<[7.11401462, 7.05456924]> : tensor<2xf32>
 
@@ -30,7 +30,7 @@ func private @conv(%input: tensor<1x3x4x3xf32> {tf._user_specified_name = "input
   %q_res = "quant.qcast"(%res) : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>
   %dq_res = "quant.dcast"(%q_res) : (tensor<*x!quant.uniform<i8:f32, 0.023529411764705882:-128>>) -> tensor<*xf32>
 
-  return %dq_res : tensor<*xf32>
+  func.return %dq_res : tensor<*xf32>
 }
 
 // CHECK: [[bias:%.+]] = "arith.constant"() {value = dense<[7.11401462, 7.05456924]> : tensor<2xf32>} : () -> tensor<2xf32>
@@ -45,7 +45,7 @@ func private @conv(%input: tensor<1x3x4x3xf32> {tf._user_specified_name = "input
 // -----
 
 // CHECK-LABEL: same_scale_test
-func @same_scale_test(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @same_scale_test(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %cst = arith.constant dense<[-1, 144]> : tensor<2xi32>
   %0 = "quant.qcast"(%arg0) : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 5.000000e-02:-10>>
   %1 = "quant.dcast"(%0) : (tensor<*x!quant.uniform<i8:f32, 5.000000e-02:-10>>) -> tensor<*xf32>
@@ -55,7 +55,7 @@ func @same_scale_test(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %5 = "tf.Reshape"(%4, %cst) {device = ""} : (tensor<*xf32>, tensor<2xi32>) -> tensor<*xf32>
   %6 = "quant.qcast"(%5) {volatile} : (tensor<*xf32>) -> tensor<*x!quant.uniform<i8:f32, 5.000000e-02:-10>>
   %7 = "quant.dcast"(%6) : (tensor<*x!quant.uniform<i8:f32, 5.000000e-02:-10>>) -> tensor<*xf32>
-  return %7 : tensor<*xf32>
+  func.return %7 : tensor<*xf32>
 }
 
 // CHECK: %[[q:.*]] = "quant.qcast"(%arg0)

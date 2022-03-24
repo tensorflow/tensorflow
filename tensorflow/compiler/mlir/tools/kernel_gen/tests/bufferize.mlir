@@ -13,7 +13,7 @@ func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
   // CHECK: return %[[RESULT]]
   %c0 = arith.constant 0 : index
   %result = tensor.extract %arg[%c0] : tensor<?xf32>
-  return %result : f32
+  func.return %result : f32
 }
 
 // CHECK-LABEL: @tensor.from_elements
@@ -34,7 +34,7 @@ func @tensor.from_elements(%a : f32) -> f32 {
   %tfe = tensor.from_elements %a, %b, %c : tensor<3xf32>
   %c0 = arith.constant 0 : index
   %result = tensor.extract %tfe[%c0] : tensor<3xf32>
-  return %result : f32
+  func.return %result : f32
 }
 
 // CHECK-LABEL: @tensor.generate
@@ -58,7 +58,7 @@ func @tensor.generate(%arg : tensor<*xf32>) -> index {
   } : tensor<?xindex>
   %c0 = arith.constant 0 : index
   %result = tensor.extract %tfe[%c0] : tensor<?xindex>
-  return %result : index
+  func.return %result : index
 }
 
 // CHECK-LABEL: @assuming
@@ -75,7 +75,7 @@ func @assuming(%witness: !shape.witness, %arg : memref<?xf32>)
     %result = bufferization.to_tensor %arg : memref<?xf32>
     shape.assuming_yield %result : tensor<?xf32>
   }
-  return %assuming_result : tensor<?xf32>
+  func.return %assuming_result : tensor<?xf32>
 }
 
 // -----
@@ -88,7 +88,7 @@ func @const() -> tensor<3xf32> {
   // CHECK:  %[[RESULT:.*]] = memref.get_global @[[BUFFER]] : memref<3xf32>
   // CHECK:  return %[[RESULT]] : memref<3xf32>
   %result = arith.constant dense<[4.0, 5.0, 6.0]> : tensor<3xf32>
-  return %result : tensor<3xf32>
+  func.return %result : tensor<3xf32>
 }
 
 // -----
@@ -101,7 +101,7 @@ func @const_splat() -> tensor<3xf32> {
   // CHECK:  %[[RESULT:.*]] = memref.get_global @[[BUFFER]] : memref<3xf32>
   // CHECK:  return %[[RESULT]] : memref<3xf32>
   %result = arith.constant dense<4.0> : tensor<3xf32>
-  return %result : tensor<3xf32>
+  func.return %result : tensor<3xf32>
 }
 
 // -----
@@ -237,7 +237,7 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
   %0, %1 = chlo.minimum_broadcast_shapes %lhs, %rhs :
       tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
   // CHECK-NEXT: return %[[FINAL_RESULT_LHS]], %[[FINAL_RESULT_RHS]] : memref<?xindex>, memref<?xindex>
-  return %0, %1 : tensor<?xindex>, tensor<?xindex>
+  func.return %0, %1 : tensor<?xindex>, tensor<?xindex>
 }
 
 // CHECK-LABEL: @tensor_reshape
@@ -245,7 +245,7 @@ func @minimum_broadcast_shapes(%lhs: tensor<?xindex>, %rhs: tensor<?xindex>) -> 
 func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
   // CHECK: memref.collapse_shape %[[T]] {{.*}} : memref<1x2x2xf32> into memref<4xf32>
   %result = tensor.collapse_shape %t [[0, 1, 2]] : tensor<1x2x2xf32> into tensor<4xf32>
-  return %result : tensor<4xf32>
+  func.return %result : tensor<4xf32>
 }
 
 // CHECK-LABEL: @slice
@@ -253,7 +253,7 @@ func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
 func @slice(%t : tensor<3xi32>) -> tensor<1xi32> {
   // CHECK: memref.subview %[[T]][0] [1] [1] : memref<3xi32> to memref<1xi32>
   %result = tensor.extract_slice %t[0] [1] [1] : tensor<3xi32> to tensor<1xi32>
-  return %result : tensor<1xi32>
+  func.return %result : tensor<1xi32>
 }
 
 // CHECK-LABEL: @jit_execute
@@ -263,13 +263,13 @@ func @jit_execute(%f : !tf_framework.jit_callable, %arg : tensor<*xf32>)
   // CHECK: %[[RES:.*]] = tf_framework.jit_execute %[[F]](%[[ARG]]) : memref<*xf32> -> memref<*xf32>
   // CHECK: return %[[RES]] : memref<*xf32>
   %0 = tf_framework.jit_execute %f(%arg) : tensor<*xf32> -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
 func @dynamic_broadcast_return(%t : tensor<?x?xf32>, %shape : tensor<2xi32>) -> tensor<?x?xf32> {
   // CHECK: memref.copy
   %bcast = "mhlo.dynamic_broadcast_in_dim"(%t, %shape) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
-  return %bcast : tensor<?x?xf32>
+  func.return %bcast : tensor<?x?xf32>
 }
 
 
@@ -284,5 +284,5 @@ func @arith_select(%c : tensor<i1>, %lhs: tensor<1xf32>, %rhs: tensor<1xf32>)
   // CHECK-SAME:             : memref<1xf32>
   %cond = tensor.extract %c[] : tensor<i1>
   %result = arith.select %cond, %lhs, %rhs : tensor<1xf32>
-  return %result : tensor<1xf32>
+  func.return %result : tensor<1xf32>
 }

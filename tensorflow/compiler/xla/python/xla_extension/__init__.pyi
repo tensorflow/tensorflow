@@ -225,6 +225,13 @@ class DebugOptions:
   xla_llvm_disable_expensive_passes: bool
   xla_test_all_input_layouts: bool
 
+class CompiledMemoryStats:
+  generated_code_size_in_bytes: int
+  argument_size_in_bytes: int
+  output_size_in_bytes: int
+  alias_size_in_bytes: int
+  temp_size_in_bytes: int
+
 class ExecutableBuildOptions:
   def __init__(self) -> None: ...
   def __repr__(self) -> str: ...

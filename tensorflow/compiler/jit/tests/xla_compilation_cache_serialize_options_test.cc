@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-TEST_F(XlaCompilationCacheSerializeTest, PersistentCacheLooseSignatureTest) {
+TEST_F(XlaCompilationCacheSerializeTest, PersistentCacheOptionsTest) {
   GraphDef graph = GetTestGraph({-1, 4});
 
   // Warmup the persistent cache(s) with multiple runs. 4 is a magic number to
@@ -37,8 +37,15 @@ TEST_F(XlaCompilationCacheSerializeTest, PersistentCacheLooseSignatureTest) {
   // cluster numbering.
   testing::ResetClusterSequenceNumber();
 
-  TF_ASSERT_OK(
-      AlterPersistentCacheEntryHloModuleNames(tensorflow::testing::TmpDir()));
+  auto status =
+      AlterPersistentCacheEntryHloModuleNames(tensorflow::testing::TmpDir());
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(absl::StrContains(
+      status.error_message(),
+      "Did not find any persistent XLA compilation cache entries to alter."));
+
+  TF_ASSERT_OK(AlterPersistentCacheEntryHloModuleNames(
+      tensorflow::testing::TmpDir(), "my_test_prefix"));
 
   // Run again and these should all hit in the persistent cache despite having
   // altered the persistent cache entries' HLO modules (disabled strict
@@ -61,6 +68,8 @@ int main(int argc, char** argv) {
       ->tf_xla_persistent_cache_directory = tensorflow::testing::TmpDir();
   tensorflow::GetMarkForCompilationPassFlags()
       ->tf_xla_disable_strict_signature_checks = true;
+  tensorflow::GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix =
+      "my_test_prefix";
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

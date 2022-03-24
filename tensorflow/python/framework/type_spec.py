@@ -184,6 +184,11 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
     return self._deserialize(serialized_supertype) if has_supertype else None
 
+  # TODO(b/223659753): Return the actual Tensor-based value instead of spec.
+  def _placeholder_value(self) -> "TypeSpec":
+    """Value used for tracing a function signature with this TraceType."""
+    return self
+
   # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):
     """Returns true if `spec_or_value` is compatible with this TypeSpec.

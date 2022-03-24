@@ -33,7 +33,7 @@ func @foo_grad(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %graph = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<*xf32>
   }
-  return %graph : tensor<*xf32>
+  func.return %graph : tensor<*xf32>
 }
 
 func @foo(%arg0: tensor<*xf32>) -> tensor<*xf32>
@@ -41,5 +41,5 @@ func @foo(%arg0: tensor<*xf32>) -> tensor<*xf32>
   %graph = tf_executor.graph {
     tf_executor.fetch %arg0 : tensor<*xf32>
   }
-  return %graph : tensor<*xf32>
+  func.return %graph : tensor<*xf32>
 }

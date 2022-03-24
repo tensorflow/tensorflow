@@ -33,6 +33,6 @@ func @main(%operand:tensor<3x3xi32>, %indices: tensor<2xi32>, %updates: tensor<2
          >,
          indices_are_sorted = false,
          unique_indices = false} : (tensor<3x3xi32>, tensor<2xi32>, tensor<2x3xi32>) -> tensor<3x3xi32>
-  return %result : tensor<3x3xi32>
+  func.return %result : tensor<3x3xi32>
 }
 

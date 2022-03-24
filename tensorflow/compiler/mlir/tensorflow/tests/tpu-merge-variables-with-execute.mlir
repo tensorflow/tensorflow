@@ -6,7 +6,7 @@
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf_type.resource<tensor<32xf32>>>
 // CHECK-SAME: %[[ARG_1:.*]]: tensor<*x!tf_type.resource<tensor<64xf32>>>
 // CHECK-SAME: %[[ARG_2:.*]]: tensor<*x!tf_type.resource<tensor<16xf32>>>
-func @merge_same_device_variables(
+func.func @merge_same_device_variables(
   %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<*x!tf_type.resource<tensor<64xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg2: tensor<*x!tf_type.resource<tensor<16xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"}) {
@@ -53,7 +53,7 @@ func @merge_same_device_variables(
 // CHECK-LABEL: func @merge_replicated_variables
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf_type.resource<tensor<32xf32>>>, %[[ARG_1:.*]]: tensor<*x!tf_type.resource<tensor<32xf32>>>,
 // CHECK-SAME: %[[ARG_2:.*]]: tensor<*x!tf_type.resource<tensor<32xf32>>>
-func @merge_replicated_variables(
+func.func @merge_replicated_variables(
   %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg2: tensor<*x!tf_type.resource<tensor<32xf32>>>) {
@@ -103,7 +103,7 @@ func @merge_replicated_variables(
 // CHECK-SAME: %[[ARG_4:.*]]: tensor<*x!tf_type.resource<tensor<8xf32>>>
 // CHECK-SAME: %[[ARG_5:.*]]: tensor<*x!tf_type.resource<tensor<2xf32>>>
 // CHECK-SAME: %[[ARG_6:.*]]: tensor<2xf32>
-func @interfering_accesses(
+func.func @interfering_accesses(
   %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<*x!tf_type.resource<tensor<64xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg2: tensor<32xf32>,
@@ -151,7 +151,7 @@ func @interfering_accesses(
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[ARG_4]], %[[EXE]]#1)
   "tf.AssignVariableOp"(%arg4, %execute#2) : (tensor<*x!tf_type.resource<tensor<8xf32>>>, tensor<8xf32>) -> ()
   // CHECK-NEXT: return %[[READ_3]]
-  return %read3 : tensor<8xf32>
+  func.return %read3 : tensor<8xf32>
 }
 
 // -----
@@ -170,7 +170,7 @@ func @interfering_accesses(
 // CHECK-SAME: %[[ARG_5:[a-z0-9]+]]: tensor<2xf32>
 // CHECK-SAME: %[[ARG_6:[a-z0-9]+]]: tensor<*x!tf_type.resource<tensor<32xf32>>>
 // CHECK-SAME: %[[ARG_7:[a-z0-9]+]]: tensor<*x!tf_type.resource<tensor<2xf32>>>
-func @non_interfering_accesses(
+func.func @non_interfering_accesses(
   %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<*x!tf_type.resource<tensor<64xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg2: tensor<32xf32>,
@@ -217,7 +217,7 @@ func @non_interfering_accesses(
   "tf.AssignVariableOp"(%arg1, %execute#1) : (tensor<*x!tf_type.resource<tensor<64xf32>>>, tensor<64xf32>) -> ()
   "tf.AssignVariableOp"(%arg0, %execute#0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
   // CHECK-NEXT: return %[[READ]]
-  return %read3 : tensor<8xf32>
+  func.return %read3 : tensor<8xf32>
 }
 
 // -----
@@ -228,7 +228,7 @@ func @non_interfering_accesses(
 // CHECK-LABEL: func @do_not_merge_multi_read
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf_type.resource<tensor<32xf32>>>
 // CHECK-SAME: %[[ARG_1:.*]]: tensor<!tf_type.string>
-func @do_not_merge_multi_read(
+func.func @do_not_merge_multi_read(
   %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<!tf_type.string>) {
   // CHECK-NEXT: %[[READ_0:.*]] = "tf.ReadVariableOp"(%[[ARG_0]])
@@ -259,7 +259,7 @@ func @do_not_merge_multi_read(
 // CHECK-LABEL: func @do_not_merge_multi_assign
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf_type.resource<tensor<32xf32>>>
 // CHECK-SAME: %[[ARG_1:.*]]: tensor<!tf_type.string>
-func @do_not_merge_multi_assign(
+func.func @do_not_merge_multi_assign(
   %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<!tf_type.string>) {
   // CHECK-NEXT: %[[READ_0:.*]] = "tf.ReadVariableOp"(%[[ARG_0]])
@@ -291,7 +291,7 @@ func @do_not_merge_multi_assign(
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf_type.resource<tensor<32xf32>>>
 // CHECK-SAME: %[[ARG_1:.*]]: tensor<*x!tf_type.resource<tensor<64xf32>>>
 // CHECK-SAME: %[[ARG_2:.*]]: tensor<!tf_type.string>
-func @parallel_execute(
+func.func @parallel_execute(
   %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<*x!tf_type.resource<tensor<64xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"},
   %arg2: tensor<!tf_type.string>) {
@@ -337,7 +337,7 @@ func @parallel_execute(
 // CHECK-SAME: %[[ARG_2:[a-z0-9]+]]: tensor<*x!tf_type.resource<tensor<64xf32>>>
 // CHECK-SAME: %[[ARG_3:[a-z0-9]+]]: tensor<*x!tf_type.resource<tensor<64xf32>>>
 // CHECK-SAME: %[[ARG_4:[a-z0-9]+]]: tensor<!tf_type.string>
-func @replicated_parallel_execute(
+func.func @replicated_parallel_execute(
   %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg1: tensor<*x!tf_type.resource<tensor<32xf32>>>,
   %arg2: tensor<*x!tf_type.resource<tensor<64xf32>>>,
@@ -382,7 +382,7 @@ func @replicated_parallel_execute(
 
 // Tests that resource variables not hoisted are flagged.
 
-func @missing_read_write(
+func.func @missing_read_write(
   %arg0: tensor<*x!tf_type.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
   %arg1: tensor<!tf_type.string>) {
   %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<32xf32>>>) -> tensor<32xf32>

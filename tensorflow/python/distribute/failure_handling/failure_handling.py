@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,7 +33,6 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 
-_PREEMPTION_KEY = 'TERMINATED_WORKER'
 _RUN_COUNT_KEY = 'RUN_TO_CHECKPOINT'
 _ACKNOWLEDGE_KEY = 'RECEIVED_SIGNAL'
 _ITERATION_VARIABLE = 'checkpointed_runs'
@@ -188,6 +186,7 @@ class CoordinatedCheckpointManager(object):
         name='PeerTerminationWatcher-%s' % self._id_in_cluster,
         daemon=True)
     self._cluster_wise_termination_watcher_thread.start()
+    logging.info('Start watcher for peer\'s signal.')
 
     self._poll_gce_signal_thread = None
     self._platform_device = gce_util.detect_platform()
@@ -223,24 +222,10 @@ class CoordinatedCheckpointManager(object):
         self._signal_receipt_time = time.time()
         break
       time.sleep(1)
-    try:
-      context.context().set_config_key_value(_PREEMPTION_KEY,
-                                             self._id_in_cluster)
-      logging.info('Member %s has received termination notice.',
-                   self._id_in_cluster)
-      self._received_own_sigterm.set()
 
-    # This is to handle the case that a worker has received termination
-    # notice but hasn't come to the next step to set the step key. Other
-    # workers might receive a termination notice too, and attempt to set the
-    # config key again, which causes this error. This can be safely ignored
-    # since checkpoint should be saved as early as the earliest call is made.
-    except errors.AlreadyExistsError:
-      logging.info('Member %s has received termination notice. But some other '
-                   'worker has received it as well! Leaving'
-                   ' it to them to decide when to checkpoint. ',
-                   self._id_in_cluster)
-      return
+    logging.info('Member %s has received termination notice.',
+                 self._id_in_cluster)
+    self._received_own_sigterm.set()
 
   def _stop_poll_gce_signal_thread(self):
     if self._poll_gce_signal_thread:
@@ -255,7 +240,7 @@ class CoordinatedCheckpointManager(object):
       try:
         if self._cluster_wise_termination_watcher_thread.is_alive():
 
-          context.context().set_config_key_value(_PREEMPTION_KEY,
+          context.context().set_config_key_value(_RUN_COUNT_KEY,
                                                  _STOP_WATCHING_CLUSTER_VALUE)
       except:  # pylint: disable=bare-except
         # We'll ignore any error in the process of setting this key. There
@@ -383,8 +368,13 @@ class CoordinatedCheckpointManager(object):
 
     return result
 
-  def _save_checkpoint(self):
-    """Saves the checkpoint."""
+  def _save_checkpoint_and_exit(self):
+    """Saves the checkpoint and exit program."""
+    logging.info('Starting checkpoint and exit')
+    self._checkpointed_runs.assign(self.total_runs)
+
+    start_time = time.monotonic()
+
     self._write_checkpoint_manager.save()
     # All workers need to participate in saving a checkpoint to avoid
     # deadlock. They need to write to different paths so that they would not
@@ -396,6 +386,15 @@ class CoordinatedCheckpointManager(object):
         task_id=self._cluster_resolver.task_id):
       gfile.DeleteRecursively(
           os.path.dirname(self._write_checkpoint_manager.directory))
+
+    end_time = time.monotonic()
+
+    logging.info('Checkpoint finished at path %s',
+                 self._write_checkpoint_manager.directory)
+    logging.info('Checkpoint time: %f', end_time - start_time)
+    self._stop_poll_gce_signal_thread()
+    self._stop_cluster_wise_termination_watcher_thread()
+    sys.exit(self._exit_code)
 
   def _checkpoint_if_preempted(self):
     """Checkpoint if any worker has received a preemption signal.
@@ -423,52 +422,76 @@ class CoordinatedCheckpointManager(object):
       run_count_key = context.context().get_config_key_value(_RUN_COUNT_KEY)
 
       if run_count_key == str(self._run_counter):
-        logging.info('Starting checkpoint and exit')
+        self._save_checkpoint_and_exit()
 
-        self._checkpointed_runs.assign(self.total_runs)
-
-        start_time = time.monotonic()
-        self._save_checkpoint()
-        end_time = time.monotonic()
-        logging.info('Checkpoint finished at path %s',
-                     self._write_checkpoint_manager.directory)
-        logging.info('Checkpoint time: %f', end_time - start_time)
-        self._stop_poll_gce_signal_thread()
-        self._stop_cluster_wise_termination_watcher_thread()
-        sys.exit(self._exit_code)
-
-    elif (self._received_own_sigterm.is_set() and
-          (context.context().get_config_key_value(_PREEMPTION_KEY)
-           == self._id_in_cluster)):
-
-      logging.info('Termination caught in main thread on preempted worker')
+    elif self._received_own_sigterm.is_set():
 
       step_to_save_at = str(self._run_counter + 1)
-      context.context().set_config_key_value(_RUN_COUNT_KEY, step_to_save_at)
-      logging.info('%s set to %s', _RUN_COUNT_KEY, step_to_save_at)
 
-      n_workers = multi_worker_util.worker_count(
-          self._cluster_resolver.cluster_spec(),
-          self._cluster_resolver.task_type)
-      for i in range(n_workers):
-        context.context().get_config_key_value(f'{_ACKNOWLEDGE_KEY}_{i}')
-        logging.info('Sigterm acknowledgement from replica %d received', i)
+      try:
+        context.context().set_config_key_value(_RUN_COUNT_KEY, step_to_save_at)
+        logging.info('Termination caught in main thread on preempted worker')
+
+        logging.info('%s set to %s', _RUN_COUNT_KEY, step_to_save_at)
+
+        n_workers = multi_worker_util.worker_count(
+            self._cluster_resolver.cluster_spec(),
+            self._cluster_resolver.task_type)
+        for i in range(n_workers):
+          context.context().get_config_key_value(f'{_ACKNOWLEDGE_KEY}_{i}')
+          logging.info('Sigterm acknowledgement from replica %d received', i)
+
+      # This is to handle the case that some other worker receives termination
+      # notice as well, and it has made a step key available right before this
+      # worker attempts to set it. In this case, it incurs a config key
+      # AlreadyExistsError.
+      # With MultiWorkerMirroredStrategy, every step contains collective ops
+      # (all-reduce, all-gather, etc.) that require the participation of all
+      # workers, which forms a synchronization point. Thus the max difference in
+      # the training progresses made by the workers is less than one complete
+      # step (e.g., one worker is finishing up the post-collective ops part of
+      # step N, and another is doing the pre-collective ops part of step N+1.)
+      #
+      # We can safely ignore this AlreadyExistsError. Say both worker-a and
+      # worker-b have received preemption notice, and worker-b encounters an
+      # AlreadyExistsError here because worker-a has already uploaded a value as
+      # the last step to finish before saving a checkpoint. Assume worker-b has
+      # finished step N and attempt to set the last step as N+1. If the training
+      # progress made by worker-a is ahead of that of worker-b, then worker-a
+      # must be running step N+1 due to the mechanism mentioned above and has
+      # set the last step as step N+1. If worker-a is behind worker-b, then it
+      # cannot possibly have set the last step as step N (not to mention a step
+      # number less than N). Because worker-a would only do so before executing
+      # step N. Consider that when a worker resolves and sets the last step to
+      # finish, it waits until receiving acknowledgment from all workers before
+      # continuing to train the next step. And thus, in this case, worker-b
+      # would never have finished step N, which requires the participation of
+      # worker-a. In either case, we can safely ignore the error and revisit the
+      # checkpoint and exit option after finishing the current step, step N+1.
+      # At that time, it will be re-direct to the earlier branch.
+      except errors.AlreadyExistsError:
+        logging.info(
+            'Member %s has received termination notice. But some other'
+            ' worker has received it as well! Leaving'
+            ' it to them to decide when to checkpoint. ', self._id_in_cluster)
+
+        return
 
   def _sigterm_handler_fn(self, signum, frame):
     """Upload the to-be-preempted worker's id to coordination service."""
     del signum, frame
-    logging.info('Member %s has received preemption signal.',
+    logging.info('Member %s has received termination signal.',
                  self._id_in_cluster)
-    context.context().set_config_key_value(_PREEMPTION_KEY, self._id_in_cluster)
     self._received_own_sigterm.set()
 
   def _wait_for_signal(self):
     """Watch out for peer preemption signal and step-to-save and acknowledge."""
-    preemption_key = context.context().get_config_key_value(_PREEMPTION_KEY)
+    step_key = context.context().get_config_key_value(_RUN_COUNT_KEY)
 
-    if preemption_key != _STOP_WATCHING_CLUSTER_VALUE:
-      context.context().get_config_key_value(_RUN_COUNT_KEY)
-
+    # get_config_key_value does not return until it gets some result. Thus at
+    # the time to clean up, we upload a _STOP_WATCHING_CLUSTER_VALUE as the
+    # value so we can join the thread executing _wait_for_signal.
+    if step_key != _STOP_WATCHING_CLUSTER_VALUE:
       # This must be set before we set the ack key below, otherwise its value in
       # _checkpoint_if_preempted may be outdated.
       self._received_sigterm_and_step.set()
@@ -477,4 +500,3 @@ class CoordinatedCheckpointManager(object):
       context.context().set_config_key_value(ack_key, '1')
       logging.info('CoordinatedCheckpointManager._wait_for_signal: %s set, '
                    'preemption awareness acknowledged', ack_key)
-

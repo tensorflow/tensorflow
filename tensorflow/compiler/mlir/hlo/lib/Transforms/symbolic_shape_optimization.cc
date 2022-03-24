@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <utility>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
@@ -37,8 +40,86 @@ using SymbolicExpr = ShapeComponentAnalysis::SymbolicExpr;
 
 namespace {
 
+LogicalResult AnalyzeDynamicBroadcastInDimExpandingBehavior(
+    ShapeComponentAnalysis &analysis, Value value, Value shape,
+    llvm::SmallSetVector<int64_t, 4> *known_expanding_dims,
+    llvm::SmallSetVector<int64_t, 4> *known_nonexpanding_dims) {
+  // Require successful analysis of shapes.
+  auto shape_in = analysis.GetShapeInfo(value);
+  auto shape_out = analysis.GetValueInfo(shape);
+  if (!shape_in || !shape_out) return failure();
+
+  // Analyze per argument dimension.
+  size_t rank_in = shape_in->size();
+  size_t rank_out = shape_out->size();
+  assert(rank_in <= rank_out);
+  size_t dim_out_offset = rank_out - rank_in;
+
+  for (size_t i = 0; i < rank_in; ++i) {
+    SymbolicExpr dim_in = (*shape_in)[i];
+    SymbolicExpr dim_out = (*shape_out)[dim_out_offset + i];
+    if (dim_in.isConstant(1) && dim_out.isKnownNotOne())
+      known_expanding_dims->insert(i);
+    if (dim_in == dim_out || dim_out.isConstant(1))
+      known_nonexpanding_dims->insert(i);
+  }
+  return success();
+}
+
+// Analyze `mhlo.dynamic_broadcast_in_dim` op and populate attributes for
+// statically known expanding and non-expanding dimensions.
+struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
+    : public mlir::OpRewritePattern<mhlo::DynamicBroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicBroadcastInDimOp op,
+      mlir::PatternRewriter &rewriter) const override {
+    // Analyze shapes and identify expanding and non-expanding dims.
+    ShapeComponentAnalysis analysis;
+    llvm::SmallSetVector<int64_t, 4> known_expanding_dims,
+        known_nonexpanding_dims;
+    if (failed(AnalyzeDynamicBroadcastInDimExpandingBehavior(
+            analysis, op.operand(), op.output_dimensions(),
+            &known_expanding_dims, &known_nonexpanding_dims))) {
+      return failure();
+    }
+
+    // Collect possibly already annotated info.
+    auto insert_all = [](llvm::SmallSetVector<int64_t, 4> &dst,
+                         Optional<DenseIntElementsAttr> src) {
+      if (!src) return;
+      for (auto it : *src) dst.insert(it.getLimitedValue());
+    };
+    insert_all(known_expanding_dims, op.known_expanding_dimensions());
+    insert_all(known_nonexpanding_dims, op.known_nonexpanding_dimensions());
+
+    // Fail pattern application if there is nothing new to annotate.
+    auto is_equal = [](llvm::SmallSetVector<int64_t, 4> &set,
+                       DenseIntElementsAttr attr) {
+      return set.size() == attr.size() && llvm::all_of(attr, [&](auto it) {
+               return set.count(it.getLimitedValue());
+             });
+    };
+    if (op.known_expanding_dimensions() && op.known_nonexpanding_dimensions() &&
+        is_equal(known_expanding_dims, *op.known_expanding_dimensions()) &&
+        is_equal(known_nonexpanding_dims,
+                 *op.known_nonexpanding_dimensions())) {
+      return failure();
+    }
+
+    // Annotate op in place.
+    rewriter.startRootUpdate(op);
+    op.known_expanding_dimensionsAttr(
+        rewriter.getI64TensorAttr(known_expanding_dims.takeVector()));
+    op.known_nonexpanding_dimensionsAttr(
+        rewriter.getI64TensorAttr(known_nonexpanding_dims.takeVector()));
+    rewriter.finalizeRootUpdate(op);
+    return success();
+  }
+};
+
 // Returns true if `reshape` only adds `1` dimensions.
-bool isExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
+bool IsExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
                    mhlo::DynamicReshapeOp reshape) {
   auto output_shape =
       shapeComponentAnalysis.GetValueInfo(reshape.output_shape());
@@ -66,7 +147,7 @@ struct ReshapeToExpandShape final
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
     ShapeComponentAnalysis shapeComponentAnalysis;
-    if (!isExpandShape(shapeComponentAnalysis, op)) return failure();
+    if (!IsExpandShape(shapeComponentAnalysis, op)) return failure();
     auto output_shape = shapeComponentAnalysis.GetValueInfo(op.output_shape());
     SmallVector<ReassociationExprs> reassociations(output_shape->size());
     auto old_result_type = op.getResult().getType().cast<ShapedType>();
@@ -106,7 +187,7 @@ struct ReshapeToExpandShape final
 // contain a `-1` dimension.
 struct RemoveComputeReshapeShape final
     : public OpRewritePattern<mhlo::ComputeReshapeShapeOp> {
-  RemoveComputeReshapeShape(MLIRContext *ctx) : OpRewritePattern(ctx) {}
+  using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::ComputeReshapeShapeOp op,
                                 PatternRewriter &rewriter) const override {
     ShapeComponentAnalysis shapeComponentAnalysis;
@@ -124,16 +205,13 @@ struct RemoveComputeReshapeShape final
   }
 };
 
-bool IsSimpleProduct(
-    AffineExpr expr,
-    llvm::function_ref<void(AffineConstantExpr)> cbkConstantFactor,
-    llvm::function_ref<void(AffineSymbolExpr)> cbkSymbolicFactor) {
+bool IsProduct(AffineExpr expr,
+               llvm::function_ref<void(AffineConstantExpr)> cbkConstantFactor,
+               llvm::function_ref<void(AffineSymbolExpr)> cbkSymbolicFactor) {
   auto binExpr = expr.dyn_cast<AffineBinaryOpExpr>();
   if (binExpr && binExpr.getKind() == AffineExprKind::Mul) {
-    return IsSimpleProduct(binExpr.getLHS(), cbkConstantFactor,
-                           cbkSymbolicFactor) &&
-           IsSimpleProduct(binExpr.getRHS(), cbkConstantFactor,
-                           cbkSymbolicFactor);
+    return IsProduct(binExpr.getLHS(), cbkConstantFactor, cbkSymbolicFactor) &&
+           IsProduct(binExpr.getRHS(), cbkConstantFactor, cbkSymbolicFactor);
   }
   if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
     cbkSymbolicFactor(symExpr);
@@ -146,10 +224,10 @@ bool IsSimpleProduct(
   return false;
 }
 
-bool IsSimpleProduct(const SymbolicExpr &symbolicExpr,
-                     llvm::function_ref<void(int64_t)> cbkConstantFactor,
-                     llvm::function_ref<void(Symbol)> cbkSymbolicFactor) {
-  return IsSimpleProduct(
+bool IsSymbolicProduct(const SymbolicExpr &symbolicExpr,
+                       llvm::function_ref<void(int64_t)> cbkConstantFactor,
+                       llvm::function_ref<void(Symbol)> cbkSymbolicFactor) {
+  return IsProduct(
       symbolicExpr.expr,
       [&](AffineConstantExpr cexpr) { cbkConstantFactor(cexpr.getValue()); },
       [&](AffineSymbolExpr sexpr) {
@@ -157,16 +235,26 @@ bool IsSimpleProduct(const SymbolicExpr &symbolicExpr,
       });
 }
 
-bool IsSimpleProduct(const SymbolicExpr &symbolicExpr, int64_t *concreteProduct,
-                     SmallVectorImpl<Symbol> *symbolicFactors) {
-  return IsSimpleProduct(
-      symbolicExpr, [&](int64_t c) { *concreteProduct *= c; },
-      [&](Symbol s) { symbolicFactors->push_back(s); });
+// Represents a product of symbolic and concrete factors. This will allow us to
+// prove product equalities symbolically.
+struct SymbolicProduct {
+  // Product of all concrete factors.
+  int64_t concrete = 1;
+  // List all symbolic factors as they can not be aggregated.
+  llvm::SmallVector<Symbol> symbolic;
+  bool empty() { return concrete == 1 && symbolic.empty(); }
+};
+
+bool IsSymbolicProduct(const SymbolicExpr &symbolicExpr,
+                       SymbolicProduct *product) {
+  return IsSymbolicProduct(
+      symbolicExpr, [&](int64_t c) { product->concrete *= c; },
+      [&](Symbol s) { product->symbolic.push_back(s); });
 }
 
 struct RemoveRedundantCstrReshapable final
     : public OpRewritePattern<mhlo::CstrReshapableOp> {
-  RemoveRedundantCstrReshapable(MLIRContext *ctx) : OpRewritePattern(ctx) {}
+  using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::CstrReshapableOp op,
                                 PatternRewriter &rewriter) const override {
     // Get shape analysis info for the number of elements.
@@ -197,13 +285,11 @@ struct RemoveRedundantCstrReshapable final
 
     // We can only handle simple products with constants and symbols. Find all
     // the factors based on the number of elements.
-    int64_t concreteProductNumElems = 1;
-    SmallVector<Symbol> remainingSymbolicFactorsNumElems;
-    if (!IsSimpleProduct(numElements, &concreteProductNumElems,
-                         &remainingSymbolicFactorsNumElems)) {
+    SymbolicProduct numElementsRemainingFactors;
+    if (!IsSymbolicProduct(numElements, &numElementsRemainingFactors)) {
       return failure();
     }
-    assert(concreteProductNumElems >= 1 &&
+    assert(numElementsRemainingFactors.concrete >= 1 &&
            "number of elements cannot entail negative or zero factors");
 
     // Find all factors based on the dynamic shape.
@@ -215,7 +301,7 @@ struct RemoveRedundantCstrReshapable final
     int64_t concreteProductDynShape = 1;
     for (const auto &dim : *dynShapeDims) {
       SmallVector<Symbol> partialSymbolicFactorsDynShape;
-      if (!IsSimpleProduct(
+      if (!IsSymbolicProduct(
               dim,
               [&](int64_t c) {
                 if (c != -1) concreteProductDynShape *= c;
@@ -224,9 +310,10 @@ struct RemoveRedundantCstrReshapable final
         return failure();
       }
       for (const Symbol &symDynShape : partialSymbolicFactorsDynShape) {
-        auto *it = llvm::find(remainingSymbolicFactorsNumElems, symDynShape);
-        if (it == remainingSymbolicFactorsNumElems.end()) return failure();
-        remainingSymbolicFactorsNumElems.erase(it);
+        auto *it =
+            llvm::find(numElementsRemainingFactors.symbolic, symDynShape);
+        if (it == numElementsRemainingFactors.symbolic.end()) return failure();
+        numElementsRemainingFactors.symbolic.erase(it);
       }
     }
     assert(concreteProductDynShape >= 1 &&
@@ -235,15 +322,16 @@ struct RemoveRedundantCstrReshapable final
     // A wildcard dimension can subsume the remaining symbolic factors and
     // potentially also a concrete factor.
     if (unique_wildcard_dimension) {
-      if (concreteProductNumElems % concreteProductDynShape != 0)
+      if (numElementsRemainingFactors.concrete % concreteProductDynShape != 0)
         return failure();
       rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
       return success();
     }
 
     // W/o a wildcard, the symbolic and concrete products must be equal.
-    bool isReshapable = remainingSymbolicFactorsNumElems.empty() &&
-                        concreteProductNumElems == concreteProductDynShape;
+    bool isReshapable =
+        numElementsRemainingFactors.symbolic.empty() &&
+        numElementsRemainingFactors.concrete == concreteProductDynShape;
     rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, isReshapable);
     return success();
   }
@@ -251,8 +339,7 @@ struct RemoveRedundantCstrReshapable final
 
 struct TurnDynamicReshapeIntoCollapseShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
-  explicit TurnDynamicReshapeIntoCollapseShape(MLIRContext *ctx)
-      : OpRewritePattern(ctx) {}
+  using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
     auto input_type = op.operand().getType().dyn_cast<RankedTensorType>();
@@ -279,42 +366,42 @@ struct TurnDynamicReshapeIntoCollapseShape final
 
       // Find the concrete/symbolic factors for the current dimension of the
       // target shape.
-      int64_t remainingConcreteProductShapeDim = 1;
-      SmallVector<Symbol> remainingSymbolicFactorsShapeDim;
-      if (!IsSimpleProduct(shapeDim, &remainingConcreteProductShapeDim,
-                           &remainingSymbolicFactorsShapeDim)) {
+      SymbolicProduct remainingFactorsShapeDim;
+      if (!IsSymbolicProduct(shapeDim, &remainingFactorsShapeDim)) {
         return failure();
       }
 
       // Consume (and collapse) as many of the operand dimensions as needed to
       // match the target dimension. This is monotonic.
-      while (remainingConcreteProductShapeDim != 1 ||
-             !remainingSymbolicFactorsShapeDim.empty()) {
+      while (!remainingFactorsShapeDim.empty()) {
         // Fail if there are no more operand dimensions to consume.
         if (i >= argShapeInfo->size()) return failure();
 
         // Find the concrete/symbolic factors for the next dimension of the
         // operand shape.
-        int64_t concreteProductArgShapeDim = 1;
-        SmallVector<Symbol> symbolicFactorsArgShapeDim;
-        if (!IsSimpleProduct((*argShapeInfo)[i], &concreteProductArgShapeDim,
-                             &symbolicFactorsArgShapeDim)) {
+        SymbolicProduct remainingFactorsArgShapeDim;
+        if (!IsSymbolicProduct((*argShapeInfo)[i],
+                               &remainingFactorsArgShapeDim)) {
           return failure();
         }
 
         // Eliminate the common concrete factors. Fail if we cannot consume a
         // concrete factor of the operand shape.
-        if (remainingConcreteProductShapeDim % concreteProductArgShapeDim != 0)
+        if (remainingFactorsShapeDim.concrete %
+                remainingFactorsArgShapeDim.concrete !=
+            0)
           return failure();
-        remainingConcreteProductShapeDim /= concreteProductArgShapeDim;
+        remainingFactorsShapeDim.concrete /=
+            remainingFactorsArgShapeDim.concrete;
 
         // Eliminate the common symbolic factors. Fail if we cannot consume a
         // symbolic factor of the operand shape.
-        for (const Symbol &symArgShapeDim : symbolicFactorsArgShapeDim) {
+        for (const Symbol &symArgShapeDim :
+             remainingFactorsArgShapeDim.symbolic) {
           auto *it =
-              llvm::find(remainingSymbolicFactorsShapeDim, symArgShapeDim);
-          if (it == remainingSymbolicFactorsShapeDim.end()) return failure();
-          remainingSymbolicFactorsShapeDim.erase(it);
+              llvm::find(remainingFactorsShapeDim.symbolic, symArgShapeDim);
+          if (it == remainingFactorsShapeDim.symbolic.end()) return failure();
+          remainingFactorsShapeDim.symbolic.erase(it);
         }
 
         // If all the concrete/symbolic factors were consumable, collapse this
@@ -341,6 +428,54 @@ struct TurnDynamicReshapeIntoCollapseShape final
   }
 };
 
+// Returns true if all of bcasted_shapes can be broadcasted with output_shape.
+bool IsKnownBroadcastable(ShapeComponentAnalysis &analysis,
+                          ValueRange bcasted_shapes, Value output_shape) {
+  auto output_shape_dims = analysis.GetValueInfo(output_shape);
+  if (!output_shape_dims) return false;
+  for (Value shape : bcasted_shapes) {
+    auto shape_dims = analysis.GetValueInfo(shape);
+    if (!shape_dims) return false;
+    // Iterate backwards over the smallest input shape.
+    for (auto zip : llvm::zip(llvm::reverse(*output_shape_dims),
+                              llvm::reverse(*shape_dims))) {
+      const auto &first = std::get<0>(zip);
+      const auto &second = std::get<1>(zip);
+      // TODO(ezhulenev): What to do with dimensions statically known to be
+      // zero?
+      // Numpy can only broadcast [0] with [1], however Tensorflow can broadcast
+      // [0] with any dimension size, and produces dimension of size [0].
+      // Currently we'll conservatively return failure and will not proceed with
+      // a rewrite.
+      if (first.isConstant(0) || second.isConstant(0)) return false;
+      // If either shape has a static one dimension the broadcast will always
+      // succeed.
+      if (first.isConstant(1) || second.isConstant(1)) continue;
+      // Otherwise dims have to be equal.
+      if (first != second) return false;
+    }
+  }
+  return true;
+}
+
+// Rewrite `shape.cstr_broadcastable` with constant witness if can prove that
+// shapes are broadcastable from a symbolic analysis.
+struct CstrBroadcastableOpLowering
+    : public OpRewritePattern<shape::CstrBroadcastableOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(shape::CstrBroadcastableOp op,
+                                PatternRewriter &rewriter) const override {
+    ShapeComponentAnalysis shape_component_analysis;
+    if (!IsKnownBroadcastable(shape_component_analysis, op.getShapes(),
+                              op.getShapes().front())) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
+    return success();
+  }
+};
+
 class SymbolicShapeOptimizationPass final
     : public SymbolicShapeOptimizationBase<SymbolicShapeOptimizationPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -353,6 +488,8 @@ class SymbolicShapeOptimizationPass final
 
     // clang-format off
     patterns.insert<
+        AnnotateExpandingDimensionsInDynamicBroadcastInDim,
+        CstrBroadcastableOpLowering,
         RemoveComputeReshapeShape,
         RemoveRedundantCstrReshapable,
         ReshapeToExpandShape,

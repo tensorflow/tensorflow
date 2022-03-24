@@ -146,7 +146,7 @@ ParseResult ExecuteOpSeq::parse(OpAsmParser &parser, OperationState &result) {
 ParseResult ExecuteOpWithAllocator::parse(OpAsmParser &parser,
                                           OperationState &result) {
   auto &builder = parser.getBuilder();
-  llvm::SmallVector<mlir::OpAsmParser::OperandType, 1> allocator;
+  llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand, 1> allocator;
   if (parser.parseOperandList(allocator,
                               /*requiredOperandCount=*/1,
                               mlir::OpAsmParser::Delimiter::Paren))
@@ -171,7 +171,8 @@ ParseResult ExecuteOpWithAllocator::parse(OpAsmParser &parser,
 ParseResult ExecuteOpSeqWithAllocator::parse(OpAsmParser &parser,
                                              OperationState &result) {
   auto &builder = parser.getBuilder();
-  llvm::SmallVector<mlir::OpAsmParser::OperandType, 2> chain_and_allocator;
+  llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand, 2>
+      chain_and_allocator;
   if (parser.parseOperandList(chain_and_allocator,
                               /*requiredOperandCount=*/2,
                               mlir::OpAsmParser::Delimiter::Paren))
@@ -211,8 +212,8 @@ ParseResult BatchFunctionOp::parse(OpAsmParser &parser,
   auto tensorhandle_type = builder.getType<corert::TensorHandleType>();
 
   FlatSymbolRefAttr f;
-  SmallVector<OpAsmParser::OperandType, 4> in_chains;
-  SmallVector<OpAsmParser::OperandType, 4> operands;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> in_chains;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
   NamedAttrList op_attrs;
   auto loc = parser.getNameLoc();
 

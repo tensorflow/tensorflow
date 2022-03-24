@@ -5,5 +5,5 @@ func.func @test(%V__0 : tensor<?x?x?x?xi64> { python_test_attrs.static_type = te
   %1 = "tf.Min"(%0, %dims1) { keep_dims = true, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xi64>, tensor<2xi32>) -> tensor<?x?x?x?xi64>
   %dims2 = "tf.Const"() { value = dense<[0, 1, 2]> : tensor<3xi32>, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : () -> tensor<3xi32>
   %2 = "tf.Prod"(%1, %dims2) { keep_dims = true, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xi64>, tensor<3xi32>) -> tensor<?x?x?x?xi64>
-  return %2 : tensor<?x?x?x?xi64>
+  func.return %2 : tensor<?x?x?x?xi64>
 }

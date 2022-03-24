@@ -94,6 +94,9 @@ struct MarkForCompilationPassFlags {
   // signatures checked strictly. This should generally not be disabled except
   // for debugging. Defaults to false.
   bool tf_xla_disable_strict_signature_checks;
+
+  // Specifies the persistance cache prefix. Default is "xla_compile_cache"
+  string tf_xla_persistent_cache_prefix;
 };
 
 // Flags associated with the XLA bridge's xla_device module.

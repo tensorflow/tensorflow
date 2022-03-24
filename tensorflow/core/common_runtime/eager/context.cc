@@ -654,6 +654,11 @@ EagerContext::~EagerContext() {
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
                     "Servers don't support clean shutdown.";
     if (server_->worker_env()->session_mgr != nullptr) {
+      // Tear down coordination service and agent.
+      Status s = server_->SetCoordinationServiceAgentInstance(nullptr);
+      if (!s.ok()) {
+        LOG(ERROR) << "Failed to remove access to coordination agent: " << s;
+      }
       server_->worker_env()->session_mgr->TeardownCoordinationServiceAndAgent();
     }
     server_.release();

@@ -2,7 +2,7 @@
 
 func @fill(%tensor : tensor<64xf32>, %value : f32) -> tensor<64xf32> {
   %0 = linalg.fill ins(%value : f32) outs(%tensor : tensor<64xf32>) -> tensor<64xf32>
-  return %0 : tensor<64xf32>
+  func.return %0 : tensor<64xf32>
 }
 // CHECK-LABEL: func @fill(
 // CHECK-SAME:      %[[TNSR:.*]]: tensor<64xf32>, %[[VAL:.*]]: f32)

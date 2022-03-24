@@ -10,7 +10,7 @@ attributes {tf.entry_function = {inputs = "foo,bar", outputs = "Add"}} {
     %4:2 = tf_executor.island wraps "tf.Add"(%arg0, %3) {T = "tfdtype$DT_INT32", device = ""} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32> loc("Add")
     tf_executor.fetch %4#0 : tensor<10xi32>
   }
-  return %graph : tensor<10xi32>
+  func.return %graph : tensor<10xi32>
 }
 
 // CHECK: name: "foo"

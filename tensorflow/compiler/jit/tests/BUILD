@@ -88,7 +88,6 @@ tf_cc_test(
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "notap",  # TODO(b/2261155290: Re-enable when it is fixed.
         "requires-gpu-nvidia",
         "xla",
     ],
@@ -101,9 +100,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "xla_compilation_cache_loose_signature_test",
+    name = "xla_compilation_cache_serialize_options_test",
     srcs = [
-        "xla_compilation_cache_loose_signature_test.cc",
+        "xla_compilation_cache_serialize_options_test.cc",
     ],
     env = {
         "XLA_FLAGS": "--xla_gpu_bef_executable",
@@ -111,7 +110,6 @@ tf_cc_test(
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
-        "notap",  # TODO(b/2261155290: Re-enable when it is fixed.
         "requires-gpu-nvidia",
         "xla",
     ],

@@ -17,7 +17,7 @@ func @basic(
   // CHECK: {{%.*}} = corert.executeop({{%.*}}) "tf.MatMul"
   // CHECK-SAME: {T = f32, device = "/device:CPU:0", transpose_a = false, transpose_b = false}
   %2 = "tf.MatMul"(%arg0, %1) {T = f32, _output_shapes = ["tfshape$dim { size: 3 } dim { size: 3 }"], device = "/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
-  return %2 : tensor<3x3xf32>
+  func.return %2 : tensor<3x3xf32>
 }
 
 // CHECK-LABEL: func @string_type
@@ -25,7 +25,7 @@ func @string_type(%arg: tensor<1x2x!tf_type.string>) -> tensor<?x6x!tf_type.stri
   %multiples = "tf.Const"() { device = "/device:CPU:0", value = dense<[7,3]> : tensor<2xi32> } : () -> tensor<2xi32>
   // CHECK: T = !corert.string
   %output = "tf.Tile"(%arg, %multiples) { device = "/device:CPU:0" } : (tensor<1x2x!tf_type.string>, tensor<2xi32>) -> tensor<?x6x!tf_type.string>
-  return %output : tensor<?x6x!tf_type.string>
+  func.return %output : tensor<?x6x!tf_type.string>
 }
 
 // CHECK-LABEL: func @shape

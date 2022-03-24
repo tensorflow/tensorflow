@@ -13,13 +13,13 @@ module attributes {tf.versions = {producer = 179 : i32}} {
     %2 = "tf.PartitionedCall"(%1) {config = "", config_proto = "", executor_type = "", f = @get_shape} : (tensor<?x?xf32>) -> (tensor<?xi64>)
 
     // CHECK: return %[[RESULT]]
-    return %2 : tensor<?xi64>
+    func.return %2 : tensor<?xi64>
   }
 
   // CHECK-LABEL: func @get_shape
   func @get_shape(%arg0 : tensor<*xi64>) -> tensor<?xi64> {
     %0 = "tf.Shape"(%arg0) : (tensor<*xi64>) -> tensor<?xi64>
-    return %0 : tensor<?xi64>
+    func.return %0 : tensor<?xi64>
   }
 
 }

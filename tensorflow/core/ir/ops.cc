@@ -264,7 +264,7 @@ static ParseResult ParseCustomTfOp(OpAsmParser &parser,
                                    OperationState &result) {
   MLIRContext *context = parser.getBuilder().getContext();
   // Parse optional argument list
-  SmallVector<OpAsmParser::OperandType, 4> op_infos;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> op_infos;
   if (parser.parseOperandList(op_infos, AsmParser::Delimiter::OptionalParen))
     return failure();
   unsigned numNonControlOperands = op_infos.size();
@@ -482,7 +482,7 @@ LogicalResult GraphFuncOp::verify() {
 }
 
 ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType> entry_args;
+  SmallVector<OpAsmParser::UnresolvedOperand> entry_args;
   SmallVector<Attribute> arg_attrs;
   SmallVector<Attribute> result_attrs;
   SmallVector<Type> arg_types;
@@ -535,7 +535,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
     // implementation of:
     //   TFGraphOpAsmInterface::getAsmBlockArgumentNames()
     // at the top of this file.
-    OpAsmParser::OperandType control_operand = entry_args.back();
+    OpAsmParser::UnresolvedOperand control_operand = entry_args.back();
     control_operand_names.push_back((control_operand.name + ".ctl").str());
     control_operand.name = control_operand_names.back();
     entry_args.push_back(control_operand);
@@ -747,13 +747,13 @@ ParseResult ReturnOp::parse(OpAsmParser &parser, OperationState &result) {
   // ReturnOp has the same assembly format as generic TFG ops except that the
   // control result attributes are embedded with the control operands:
   // [%ctl {tfg.name = "foo"}, %ctl_0 {tfg.name = "bar"}]
-  SmallVector<OpAsmParser::OperandType> operands;
+  SmallVector<OpAsmParser::UnresolvedOperand> operands;
   if (parser.parseOperandList(operands, AsmParser::Delimiter::OptionalParen))
     return failure();
 
   SmallVector<Attribute> control_ret_attrs;
   if (succeeded(parser.parseOptionalLSquare())) {
-    OpAsmParser::OperandType operand;
+    OpAsmParser::UnresolvedOperand operand;
     do {
       NamedAttrList attrs;
       OptionalParseResult parse_result = parser.parseOptionalOperand(operand);

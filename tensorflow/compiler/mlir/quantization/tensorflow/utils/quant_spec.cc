@@ -30,7 +30,9 @@ std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op) {
           TF::ConcatV2Op,
           TF::IdentityOp,
           TF::MaxPoolOp,
-          TF::ReshapeOp
+          TF::PadV2Op,
+          TF::ReshapeOp,
+          TF::SqueezeOp
           // go/keep-sorted end
           // clang-format on
           >(op)) {

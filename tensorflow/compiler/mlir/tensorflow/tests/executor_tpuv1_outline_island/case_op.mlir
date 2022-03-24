@@ -22,26 +22,26 @@ module {
       tf_executor.fetch %output : tensor<i32>
 
     }
-    return %0 : tensor<i32>
+    func.return %0 : tensor<i32>
   }
   func @branch_0(%arg0: tensor<i32>) -> tensor<i32> {
     %0 = "tf.some_op"(%arg0) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i32>
-    return %0 : tensor<i32>
+    func.return %0 : tensor<i32>
   }
   func @branch_1(%arg0: tensor<i32>) -> tensor<i32> {
     %0 = "tf.some_op"(%arg0) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i32>
-    return %0 : tensor<i32>
+    func.return %0 : tensor<i32>
   }
   func @branch_2(%arg0: tensor<i32>) -> tensor<i32> {
     %0 = "tf.some_op"(%arg0) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i32>
-    return %0 : tensor<i32>
+    func.return %0 : tensor<i32>
   }
   func @branch_3(%arg0: tensor<i32>) -> tensor<i32> {
     %0 = "tf.some_op"(%arg0) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i32>
-    return %0 : tensor<i32>
+    func.return %0 : tensor<i32>
   }
   func @branch_4(%arg0: tensor<i32>) -> tensor<i32> {
     %0 = "tf.some_op"(%arg0) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i32>
-    return %0 : tensor<i32>
+    func.return %0 : tensor<i32>
   }
 }

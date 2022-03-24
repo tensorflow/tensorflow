@@ -740,8 +740,8 @@ bool CompareComputationsByContent(const HloComputation* a,
   if (a->instruction_count() != b->instruction_count()) {
     return a->instruction_count() < b->instruction_count();
   }
-  return a->ToString(HloPrintOptions::Fingerprint()) <
-         b->ToString(HloPrintOptions::Fingerprint());
+  return a->ToString(HloPrintOptions::ModuleFingerprint()) <
+         b->ToString(HloPrintOptions::ModuleFingerprint());
 }
 
 uint64_t GetFingerprint(
@@ -752,7 +752,7 @@ uint64_t GetFingerprint(
     return it->second;
   } else {
     const uint64_t fingerprint = tensorflow::Fingerprint64(
-        computation->ToString(HloPrintOptions::Fingerprint()));
+        computation->ToString(HloPrintOptions::ModuleFingerprint()));
     fingerprint_map[computation] = fingerprint;
     return fingerprint;
   }

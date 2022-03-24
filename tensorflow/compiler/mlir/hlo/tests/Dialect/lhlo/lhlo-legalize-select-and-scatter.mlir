@@ -6,7 +6,7 @@
 // here we disable verification with `verify-each=0` to check the output IR.
 // RUN: mlir-hlo-opt %s -lhlo-legalize-to-parallel-loops -canonicalize --verify-each=0 | FileCheck %s
 
-func @select_and_scatter(%arg: memref<112x112xf32>,
+func.func @select_and_scatter(%arg: memref<112x112xf32>,
                          %src: memref<56x56xf32>,
                          %init: memref<f32>,
                          %result: memref<112x112xf32>) {
@@ -82,7 +82,7 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // If ARG ivs are in the padding area, then 'select' function does not have to
 // be applied, current selected ivs (SEL_I, SEL_J) and value (SEL_VAL) are
 // returned in that case.
-// CHECK:  %[[IF_INBOUNDS_RES:.*]]:4
+// CHECK:  %[[IF_INBOUNDS_RES:.*]]:3
 // CHECK-SAME:  = "scf.if"(%[[INBOUNDS_1]]) ({
 
 
@@ -125,19 +125,6 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
     // ivs and element without computing Select function.
     // CHECK:   "scf.yield"(%[[ARG_I]], %[[ARG_J]], %[[ARG_ELEM]])
     // CHECK: }
-
-  // INBOUNDS-THEN-BODY yield.
-  // CHECK:   "scf.yield"(%[[IF_INIT_RES:.*]]#0, %[[IF_INIT_RES]]#1, %[[IF_INIT_RES]]#2, %[[CTRUE]])
-  // CHECK: }
-
-  // INBOUNDS-ELSE-REGION, i.e. if INBOUNDS == FALSE
-  // We are in the pad area, return current iter_args.
-  // CHECK:  "scf.yield"(%[[SEL_I]], %[[SEL_J]], %[[SEL_VAL]], %[[SEL_INIT]])
-  // CHECK: }
-
-// Window loop w.r.t. second dim yield.
-// CHECK:   "scf.yield"(%[[IF_INBOUNDS_RES:.*]]#0, %[[IF_INBOUNDS_RES]]#1, %[[IF_INBOUNDS_RES]]#2, %[[IF_INBOUNDS_RES]]#3)
-// CHECK: }
 
 // Window loop w.r.t. first dim yield.
 // CHECK:   "scf.yield"(%[[SEL_RES_J:.*]]#0, %[[SEL_RES_J]]#1, %[[SEL_RES_J]]#2, %[[SEL_RES_J]]#3)

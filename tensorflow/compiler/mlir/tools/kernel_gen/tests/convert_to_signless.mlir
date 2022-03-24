@@ -11,5 +11,5 @@ func @Uint16ToInt16(%arg0: memref<*xui16>) -> memref<ui16> {
   %5 = builtin.unrealized_conversion_cast %4 : tensor<ui16> to tensor<i16>
   %6 = bufferization.to_memref %5 : memref<i16>
   %7 = builtin.unrealized_conversion_cast %6 : memref<i16> to memref<ui16>
-  return %7 : memref<ui16>
+  func.return %7 : memref<ui16>
 }

@@ -2036,7 +2036,7 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
   for (int i = 0; i < dim_size; i++) {
     const auto dim_metadata =
         s_attr.dim_metadata()[i].dyn_cast<mlir::TFL::DimensionMetadataAttr>();
-    if (dim_metadata.format().getValue() == "DENSE") {
+    if (dim_metadata.format().getValue() == mlir::TFL::DimensionType::DENSE) {
       fb_dim_metadata[i] =
           tflite::CreateDimensionMetadata(builder_, tflite::DimensionType_DENSE,
                                           dim_metadata.dense_size().getInt());

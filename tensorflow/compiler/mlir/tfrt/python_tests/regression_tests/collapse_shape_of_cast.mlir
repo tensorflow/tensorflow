@@ -7,5 +7,5 @@ func.func @test(%V__0 : tensor<?x?x?xi64> { python_test_attrs.static_type = tens
   %3 = "tf.Transpose"(%2, %dims3) { device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xi64>, tensor<4xi32>) -> tensor<?x?x?x?xi64>
   %dims4 = "tf.Const"() { value = dense<[0, 1, 2]> : tensor<3xi32>, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : () -> tensor<3xi32>
   %4 = "tf.Sum"(%3, %dims4) { keep_dims = false, device = "/job:localhost/replica:0/task:0/device:CPU:0" } : (tensor<?x?x?x?xi64>, tensor<3xi32>) -> tensor<?xi64>
-  return %4 : tensor<?xi64>
+  func.return %4 : tensor<?xi64>
 }

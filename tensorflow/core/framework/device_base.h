@@ -161,7 +161,7 @@ class DeviceBase {
   };
 
   // Does not take ownership.
-  void set_tensorflow_gpu_device_info(AcceleratorDeviceInfo* g) {
+  void set_tensorflow_accelerator_device_info(AcceleratorDeviceInfo* g) {
     gpu_device_info_ = g;
   }
 
