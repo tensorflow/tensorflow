@@ -6,7 +6,7 @@ attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
     %2:2 = tf_executor.island wraps "tf.Add"(%arg0, %arg1) {T = "tfdtype$DT_INT32", device = ""} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32> loc("Add")
     tf_executor.fetch %2 : tensor<10xi32>
   }
-  return %graph : tensor<10xi32>
+  func.return %graph : tensor<10xi32>
 }
 
 // CHECK:      node {

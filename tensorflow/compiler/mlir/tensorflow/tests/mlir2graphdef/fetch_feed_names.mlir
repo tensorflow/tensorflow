@@ -13,7 +13,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
       %outputs_6, %control_7 = tf_executor.island wraps "tf.BiasAdd"(%outputs_4, %outputs_0) {data_format = "NHWC", device = ""} : (tensor<*xf32>, tensor<16xf32>) -> tensor<*xf32>
       tf_executor.fetch %outputs_6 : tensor<*xf32>
     }
-    return %0 : tensor<*xf32>
+    func.return %0 : tensor<*xf32>
   }
   func private @__inference_call_440(%arg0: tensor<?x28x28x3xf32> {tf._user_specified_name = "inputs"}) -> tensor<*xf32> attributes {tf._input_shapes = [#tf_type.shape<?x28x28x3>], tf.signature.is_stateful} {
     %0 = tf_executor.graph {
@@ -24,7 +24,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
       %outputs_6, %control_7 = tf_executor.island wraps "tf.Identity"(%outputs_4) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
       tf_executor.fetch %outputs_6 : tensor<*xf32>
     }
-    return %0 : tensor<*xf32>
+    func.return %0 : tensor<*xf32>
   }
 }
 

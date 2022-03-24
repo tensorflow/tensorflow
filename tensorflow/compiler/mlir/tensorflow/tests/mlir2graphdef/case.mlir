@@ -19,7 +19,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
       %outputs_0, %control_1 = tf_executor.island wraps "tf.AddV2"(%arg0, %outputs) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<*xi32>
       tf_executor.fetch %outputs_0 : tensor<*xi32>
     }
-    return %0 : tensor<*xi32>
+    func.return %0 : tensor<*xi32>
   }
 
   func private @indexed_case_branch1_50(%arg0: tensor<i32>) -> tensor<*xi32> {
@@ -28,7 +28,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
       %outputs_0, %control_1 = tf_executor.island wraps "tf.AddV2"(%arg0, %outputs) {device = ""} : (tensor<i32>, tensor<i32>) -> tensor<*xi32>
       tf_executor.fetch %outputs_0 : tensor<*xi32>
     }
-    return %0 : tensor<*xi32>
+    func.return %0 : tensor<*xi32>
   }
 }
 

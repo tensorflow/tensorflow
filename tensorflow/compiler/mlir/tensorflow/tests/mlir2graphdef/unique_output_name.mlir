@@ -6,7 +6,7 @@ module attributes {tf.versions = {producer = 946 : i32}, tf_saved_model.semantic
       %outputs:2, %control = tf_executor.island wraps "tf.MaxPoolWithArgmax"(%arg0) {T = f32, Targmax = i32, include_batch_in_index = false, ksize = [1, 2, 2, 1], padding = "SAME", strides = [1, 2, 2, 1]} : (tensor<2x4x2x2xf32>) -> (tensor<2x2x1x2xf32>, tensor<2x2x1x2xi32>)
       tf_executor.fetch %outputs#1, %outputs#0 : tensor<2x2x1x2xi32>, tensor<2x2x1x2xf32>
     }
-    return %0#0, %0#1 : tensor<2x2x1x2xi32>, tensor<2x2x1x2xf32>
+    func.return %0#0, %0#1 : tensor<2x2x1x2xi32>, tensor<2x2x1x2xf32>
   }
 }
 

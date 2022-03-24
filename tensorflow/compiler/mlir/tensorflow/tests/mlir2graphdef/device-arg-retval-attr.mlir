@@ -10,7 +10,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       %1:3 = tf_executor.island wraps "tf.IdentityN"(%arg0, %arg1) {T = ["tfdtype$DT_FLOAT", "tfdtype$DT_INT32"], device = "", name = "identity"} : (tensor<*xf32>, tensor<2x4x6x8xi32>) -> (tensor<*xf32>, tensor<2x4x6x8xi32>)
       tf_executor.fetch %1#0, %1#1 : tensor<*xf32>, tensor<2x4x6x8xi32>
     }
-    return %0#0, %0#1 : tensor<*xf32>, tensor<2x4x6x8xi32>
+    func.return %0#0, %0#1 : tensor<*xf32>, tensor<2x4x6x8xi32>
   }
 }
 

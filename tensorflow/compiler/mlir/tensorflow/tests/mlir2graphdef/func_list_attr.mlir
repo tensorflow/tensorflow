@@ -54,7 +54,7 @@ func @foo() -> tensor<10xf32> {
     %1:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", value = dense<1.000000e+00> : tensor<10xf32>} : () -> tensor<10xf32> loc("const_1")
     tf_executor.fetch %1#0 : tensor<10xf32>
   }
-  return %0 : tensor<10xf32>
+  func.return %0 : tensor<10xf32>
 }
 
 // CHECK-DAG: name: "bar"
@@ -63,5 +63,5 @@ func @bar() -> tensor<10xf32> {
     %1:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", value = dense<2.000000e+00> : tensor<10xf32>} : () -> tensor<10xf32> loc("const_2")
     tf_executor.fetch %1#0 : tensor<10xf32>
   }
-  return %0 : tensor<10xf32>
+  func.return %0 : tensor<10xf32>
 }

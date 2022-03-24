@@ -5,7 +5,7 @@ func @main(%arg0: tensor<*x!tf_type.resource<tensor<8x1xf32>>>) -> tensor<8x1xf3
      %outputs, %control = tf_executor.island wraps "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<8x1xf32>>>) -> tensor<8x1xf32>
      tf_executor.fetch %outputs : tensor<8x1xf32>
   }
-  return %0 : tensor<8x1xf32>
+  func.return %0 : tensor<8x1xf32>
 }
 
 // Check that we generate _handle_dtypes and _handle_shapes for the resource

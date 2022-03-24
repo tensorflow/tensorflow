@@ -8,7 +8,7 @@ func @main() -> (tensor<1x2xf16>, tensor<2xf16>) {
     %3:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = bf16, value = dense<0.000000e+00> : tensor<bf16>} : () -> tensor<bf16> loc("const4")
     tf_executor.fetch %0#0, %1#0 : tensor<1x2xf16>, tensor<2xf16>
   }
-  return %graph#0, %graph#1 : tensor<1x2xf16>, tensor<2xf16>
+  func.return %graph#0, %graph#1 : tensor<1x2xf16>, tensor<2xf16>
 }
 
 // CHECK: node {
