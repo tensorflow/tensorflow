@@ -65,10 +65,8 @@ tf_py_test(
     name = "gce_failure_handler_test",
     srcs = ["gce_failure_handler_test.py"],
     tags = [
-        "no_oss",  # TODO(b/226154233): Flaky test
         "noasan",  # TODO(b/226154233): Flaky test
         "nomsan",  # TODO(b/226154233): Flaky test
-        "notap",  # TODO(b/226154233): Flaky test
     ],
     deps = [
         ":failure_handling_lib",
