@@ -249,6 +249,17 @@ def _tf_tensor_array_len(s):
 def _tf_tensor_list_len(s):
   return list_ops.tensor_list_length(s)
 
+def _tf_is_scalar(s):
+  shape = array_ops.shape(s)
+
+  assert shape.shape, 'shape tensor of zero size? {}'.format(shape)
+
+  if shape.shape[0] == 0:
+    return True
+  else:
+    raise ValueError(
+        'len requires a non-scalar tensor, got one of shape {}'.format(shape))
+
 
 def _tf_tensor_len(s):
   """Overload of len_ for Tensor arguments."""
@@ -322,23 +333,28 @@ def print_(*objects, **kwargs):
   else:
     _py_print(*objects, **kwargs)
 
-def max_(s1, s2=UNSPECIFIED):
-  if any(tensor_util.is_tf_type(s) for s in (s1,s2)):
-    return _tf_max(s1, s2)
-  return _py_max(s1, s2)
+def _py_print(*objects, **kwargs):
+  print(*objects, **kwargs)
 
-def _tf_max(s1, s2):
-  if s2 is UNSPECIFIED:
-    return math_ops.reduce_max(s1)
-  else:
-    # TODO (bhack) How much things we need to handle here?
-    return constant_op.constant(True)
+def max_(*args, **kwargs):
+  if any(tensor_util.is_tf_type(s) for s in args):
+    return _tf_max(*args, **kwargs)
+  return _py_max(*args, **kwargs)
 
-def _py_max(s1, s2):
-  if s2 is UNSPECIFIED:
-    return max(s1)
+def _tf_max(*args, **kwargs):
+  if len(kwargs):
+    kwargs_tuple = tuple(set(kwargs.keys()))
+    raise ValueError('These keyword arguments are ' 
+                     'currently not supported: {}'.format(kwargs_tuple))
+  elif len(args) == 1:
+    return  math_ops.reduce_max(*args, axis=0)
   else:
-    return max(s1, s2)
+    if all(_tf_is_scalar(arg) for arg in args):
+      s= array_ops.concat([args], axis=0)
+      return math_ops.reduce_max(s, axis=0)
+
+def _py_max(*args, **kwargs):
+  return max(*args, **kwargs)
 
 def _tf_py_func_print(objects, kwargs):
   """Overload of print_ as a py_func implementation."""
