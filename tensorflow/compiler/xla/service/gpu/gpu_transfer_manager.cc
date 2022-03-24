@@ -73,7 +73,7 @@ GpuTransferManager::GpuTransferManager(se::Platform::Id id,
       continue;
     }
     char* pinned_chunk = reinterpret_cast<char*>(
-        (*executor)->HostMemoryAllocate(kPinnedBufferBytes));
+        (*executor)->HostMemoryAllocate(kPinnedChunkBytes));
     static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
                   "assumption of loop below");
     for (char* buf = pinned_chunk; buf < pinned_chunk + kPinnedChunkBytes;
@@ -140,9 +140,9 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
         return Status::OK();
       }));
 
-  // Check out pinned memory for each buffer we want to copy.  If by some
-  // there aren't enough pinned buffers available, or if one of our buffers is
-  // so big it doesn't fit, allocate an entry for it in fallback_buffers.
+  // Check out pinned memory for each buffer we want to copy.  If there aren't
+  // enough pinned buffers available, or if one of our buffers is so big it
+  // doesn't fit, allocate an entry for it in fallback_buffers.
   const int device_id = stream->parent()->device_ordinal();
   std::vector<int32_t*> h2d_memcpy_dsts;
   std::vector<void*> checked_out_buffers;
