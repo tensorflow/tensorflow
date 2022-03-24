@@ -7484,7 +7484,8 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertUnpack) {
 
   Status run_status =
       trt_mode_ == TrtTestMode::kDynamicShape
-          ? errors::InvalidArgument("must have statically defined dimensions")
+          ? errors::InvalidArgument("The argument `strided_slice_spec` is "
+              "`absl::nullopt` with `dynamic_input_size_indices` non empty.")
           : Status::OK();
 
   std::vector<UnpackTestParams> params = {
