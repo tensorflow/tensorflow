@@ -59,7 +59,7 @@ func @control_input(%arg0 : tensor<i1>) -> tensor<f32> {
 
     tf_executor.fetch %2#0 : tensor<f32>
   }
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // Check that we fuse entirely when the attribute matches.

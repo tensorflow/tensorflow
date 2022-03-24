@@ -63,7 +63,7 @@ func @test_cheap_ops_0(%arg: tensor<?x!tf_type.string>) -> (tensor<?x8xf32>) {
     // expected-remark@+1 {{Cost: 10}}
     %44 = "tf.ConcatV2"(%36, %37, %38, %39, %40, %41, %42, %43, %10) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x8xf32>
     // expected-remark@+1 {{Cost: 1}}
-    return %44 : tensor<?x8xf32>
+    func.return %44 : tensor<?x8xf32>
 }
 
 // CHECK-LABEL: test_cheap_ops_1
@@ -99,7 +99,7 @@ func @test_cheap_ops_1(%arg: tensor<?x8x?x?xf32>) -> (tensor<4xi32>, tensor<?x8x
     // expected-remark@+1 {{Cost: 1}}
     %14 = "tf.Reshape"(%7, %13) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<?x8x?x?xf32>, tensor<4xi32>) -> tensor<?x8x?x?xf32>
     // expected-remark@+1 {{Cost: 8}}
-    return %11, %14 : tensor<4xi32>, tensor<?x8x?x?xf32>
+    func.return %11, %14 : tensor<4xi32>, tensor<?x8x?x?xf32>
 }
 
 // CHECK-LABEL: test_expensive_ops
@@ -112,7 +112,7 @@ func @test_expensive_ops(%arg: tensor<?x512xf32>) -> tensor<?x512xf32> {
     // expected-remark@+1 {{Cost: 262657}}
     %2 = "tf.MatMul"(%arg, %1) {device = "/job:localhost/replica:0/task:0/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<?x512xf32>, tensor<512x512xf32>) -> tensor<?x512xf32>
     // expected-remark@+1 {{Cost: 512}}
-    return %2 : tensor<?x512xf32>
+    func.return %2 : tensor<?x512xf32>
 }
 
 // CHECK-LABEL: test_dynamic_shape
@@ -127,7 +127,7 @@ func @test_dynamic_shape(%key: tensor<?x!tf_type.string>, %value: tensor<8xi64>)
     // expected-remark@+1 {{Cost: 17}}
     %2 = "tf.NotEqual"(%1, %value) {device = "/job:localhost/replica:0/task:0/device:CPU:0", incompatible_shape_error = true} : (tensor<*xi64>, tensor<8xi64>) -> tensor<*xi1>
     // expected-remark@+1 {{Cost: 8}}
-    return %2 : tensor<*xi1>
+    func.return %2 : tensor<*xi1>
 }
 
 // CHECK-LABEL: test_gather
@@ -137,7 +137,7 @@ func @test_gather(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> (tenso
     // expected-remark@+1 {{Cost: 300}}
     %1 = "tf.GatherV2"(%arg0, %arg1, %0) : (tensor<1x2x20xf32>, tensor<3x5xi32>, tensor<1xi32>) -> tensor<1x3x5x20xf32>
     // expected-remark@+1 {{Cost: 40}}
-    return %1 : tensor<1x3x5x20xf32>
+    func.return %1 : tensor<1x3x5x20xf32>
 }
 
 // CHECK-LABEL: test_sparse_segment_sum
@@ -147,5 +147,5 @@ func @test_sparse_segment_sum(%indices: tensor<3xi64>, %segment_ids: tensor<3xi6
     // expected-remark@+1 {{Cost: 28}}
     %1 = "tf.SparseSegmentSum"(%data, %indices, %segment_ids) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<476x28xf32>, tensor<3xi64>, tensor<3xi64>) -> tensor<?x28xf32>
     // expected-remark@+1 {{Cost: 3}}
-    return %1 : tensor<?x28xf32>
+    func.return %1 : tensor<?x28xf32>
 }

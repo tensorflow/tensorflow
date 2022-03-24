@@ -19,7 +19,7 @@ func.func @forward_extract_op(%arg0: memref<?x?xf32>, %arg1: memref<3xindex>) ->
   %3 = tensor.extract %0[%c2] : tensor<3xindex>
   %4 = memref.alloc(%1, %2, %3) : memref<?x?x?xf32>
   "lmhlo.dynamic_broadcast_in_dim"(%arg0, %arg1, %4) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (memref<?x?xf32>, memref<3xindex>, memref<?x?x?xf32>) -> ()
-  return %4 : memref<?x?x?xf32>
+  func.return %4 : memref<?x?x?xf32>
 }
 
 // -----
@@ -32,5 +32,5 @@ func.func @forward_shape_of_op(%arg0: memref<?x?xf32>) -> tensor<2xindex> {
   // CHECK: shape.shape_of %[[ARG]] : memref<?x?xf32> -> tensor<2xindex>
   %0 = bufferization.to_tensor %arg0 : memref<?x?xf32>
   %1 = shape.shape_of %0 : tensor<?x?xf32> -> tensor<2xindex>
-  return %1 : tensor<2xindex>
+  func.return %1 : tensor<2xindex>
 }

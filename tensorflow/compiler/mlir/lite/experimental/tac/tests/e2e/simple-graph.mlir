@@ -6,7 +6,7 @@ func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>, %ar
   %1 = "tfl.mul"(%0, %arg2) {fused_activation_function = "RELU6"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
   %2 = "tfl.add"(%arg0, %arg3) {fused_activation_function = "RELU6"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
   %3 = "tfl.pack"(%1, %2) {axis = 0 : i32, values_count = 2 : i32} : (tensor<1xf32>, tensor<1xf32>) -> tensor<2x1xf32>
-  return %3 : tensor<2x1xf32>
+  func.return %3 : tensor<2x1xf32>
 }
 
 // CHECK:  [[VAL_0:%.*]] = "tfl.reshape"(%1, %cst) {tac.device = "GPU",  tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<4xi32>) -> tensor<1x1x1x1xf32>

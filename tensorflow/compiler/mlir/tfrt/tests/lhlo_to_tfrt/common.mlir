@@ -143,5 +143,5 @@ func.func @return(%memref: memref<4x4xf32>) -> memref<4x4xf32> {
 
   // CHECK-NOT: cast
   // CHECK: tfrt.return {{.*}}, %arg2 : !tfrt.chain, !tfrt_gpu.buffer
-  return %memref : memref<4x4xf32>
+  func.return %memref : memref<4x4xf32>
 }

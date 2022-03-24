@@ -217,7 +217,7 @@ func.func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
     linalg.yield %out : f32
   }
   memref.dealloc %temp_result : memref<6x6xf32>
-  return %result : memref<6x6xf32>
+  func.return %result : memref<6x6xf32>
 }
 
 // CHECK-LABEL: func @fusion
@@ -269,7 +269,7 @@ func.func @view_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
   }
   %2 = memref.reshape %1(%arg1)
       : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
-  return %2 : memref<*xf32>
+  func.return %2 : memref<*xf32>
 }
 
 // CHECK-LABEL: func @view_result
@@ -329,7 +329,7 @@ func.func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2:
         : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
     scf.yield %2 : memref<*xf32>
   }
-  return %3 : memref<*xf32>
+  func.return %3 : memref<*xf32>
 }
 
 // CHECK-LABEL: func @branching_result
@@ -392,7 +392,7 @@ func.func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
   %2 = bufferization.to_tensor %1 : memref<32xf32>
   %3 = tensor.cast %2 : tensor<32xf32> to tensor<?xf32>
   %4 = bufferization.to_memref %3 : memref<?xf32>
-  return %4 : memref<?xf32>
+  func.return %4 : memref<?xf32>
 }
 
 // CHECK-LABEL: func @tensor_ops
