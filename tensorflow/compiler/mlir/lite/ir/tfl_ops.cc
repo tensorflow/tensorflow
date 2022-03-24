@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
@@ -403,11 +404,14 @@ struct TensorFlowLiteDialectFoldInterface : public DialectFoldInterface {
   }
 };
 
-TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
-    : Dialect(/*name=*/"tfl", context, TypeID::get<TensorFlowLiteDialect>()) {
+void TFLDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_attrdefs.cc.inc"
       >();
   addInterfaces<TensorFlowLiteInlinerInterface,
                 TensorFlowLiteDialectFoldInterface>();
@@ -3814,6 +3818,10 @@ bool NoValueOp::isBuildableWith(Attribute value, Type type) {
 }  // namespace TFL
 }  // namespace mlir
 
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_dialect.cc.inc"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_enums.cc.inc"
+#define GET_ATTRDEF_CLASSES
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops_attrdefs.cc.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
 
@@ -3822,9 +3830,8 @@ namespace TFL {
 
 #include "tensorflow/compiler/mlir/lite/runtime_verifiers.inc"
 
-Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
-                                                      Attribute value,
-                                                      Type type, Location loc) {
+Operation *TFLDialect::materializeConstant(OpBuilder &builder, Attribute value,
+                                           Type type, Location loc) {
   // If this is an opaque elements attribute or the result type doesn't match
   // the attribute type, then generate a tfl.pseudo_const.
   if (value.isa<OpaqueElementsAttr>() ||
