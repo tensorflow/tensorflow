@@ -1588,7 +1588,46 @@ func.func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>, %cst: tensor<ui32>)
 
 // -----
 
-func.func @dot_matmul(%arg0: tensor<2x3xf32>,
+// CHECK: #[[ARG_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6) -> (0, 0, d3, d4, 0, d6)>
+// CHECK: #[[RES_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4, d5, d6) -> (d0, d1, d2, d3, d4, d5, d6)>
+
+// CHECK-LABEL: @dynamic_broadcast_in_dim
+// CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x?x?x1x42xf32>, %[[SHAPE:.*]]: tensor<7xindex>
+func @dynamic_broadcast_in_dim(%arg: tensor<?x?x?x?x1x42xf32>,
+    %shape: tensor<7xindex>) -> tensor<?x?x?x?x?x?x?xf32> {
+  // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG:  %[[C2:.*]] = arith.constant 2
+  // CHECK-DAG:  %[[C3:.*]] = arith.constant 3
+  // CHECK-DAG:  %[[C4:.*]] = arith.constant 4
+  // CHECK-DAG:  %[[C5:.*]] = arith.constant 5
+  // CHECK-DAG:  %[[C6:.*]] = arith.constant 6
+  // CHECK-DAG:  %[[DIM0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]]
+  // CHECK-DAG:  %[[DIM1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]]
+  // CHECK-DAG:  %[[DIM2:.*]] = tensor.extract %[[SHAPE]][%[[C2]]]
+  // CHECK-DAG:  %[[DIM3:.*]] = tensor.extract %[[SHAPE]][%[[C3]]]
+  // CHECK-DAG:  %[[DIM4:.*]] = tensor.extract %[[SHAPE]][%[[C4]]]
+  // CHECK-DAG:  %[[DIM5:.*]] = tensor.extract %[[SHAPE]][%[[C5]]]
+  // CHECK-DAG:  %[[DIM6:.*]] = tensor.extract %[[SHAPE]][%[[C6]]]
+  // CHECK-DAG:  %[[INIT:.*]] = linalg.init_tensor [%[[DIM0]], %[[DIM1]], %[[DIM2]], %[[DIM3]], %[[DIM4]], %[[DIM5]], %[[DIM6]]] : tensor<?x?x?x?x?x?x?xf32>
+  // CHECK:      %[[RES:.*]] = linalg.generic {
+  // CHECK-SAME:     indexing_maps = [#[[ARG_MAP]], #[[RES_MAP]]],
+  // CHECK-SAME:     iterator_types = ["parallel", "parallel", "parallel", "parallel", "parallel", "parallel", "parallel"]}
+  // CHECK-SAME:     ins(%[[ARG]] : tensor<?x?x?x?x1x42xf32>) outs(%[[INIT]] : tensor<?x?x?x?x?x?x?xf32>) {
+  // CHECK:      ^bb0(%[[ARG_:.*]]: f32, %{{.*}}: f32):
+  // CHECK:        linalg.yield %[[ARG_]]
+  // CHECK:      return %[[RES]]
+  %result = "mhlo.dynamic_broadcast_in_dim"(%arg, %shape) {
+      broadcast_dimensions = dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>,
+      known_expanding_dimensions = dense<[0, 1]> : tensor<2xi64>,
+      known_nonexpanding_dimensions = dense<[2, 3]> : tensor<2xi64> }
+      : (tensor<?x?x?x?x1x42xf32>, tensor<7xindex>) -> tensor<?x?x?x?x?x?x?xf32>
+  return %result : tensor<?x?x?x?x?x?x?xf32>
+}
+
+// -----
+
+func @dot_matmul(%arg0: tensor<2x3xf32>,
                  %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) {someattr}
            : (tensor<2x3xf32>, tensor<3x?xf32>) -> tensor<2x?xf32>
