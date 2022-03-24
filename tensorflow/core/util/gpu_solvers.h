@@ -134,11 +134,7 @@ rocblas_operation RocblasAdjointOp() {
                                         : rocblas_operation_transpose;
 }
 
-// *** Temporary hack to fix build failure ***
-// Please revert commit, once underlying issue is fixed
-// See commit message for details
-// #if TF_ROCM_VERSION >= 40500
-#if 0
+#if TF_ROCM_VERSION >= 40500
 using gpuSolverOp_t = hipsolverOperation_t;
 using gpuSolverFill_t = hipsolverFillMode_t;
 using gpuSolverSide_t = hipsolverSideMode_t;
