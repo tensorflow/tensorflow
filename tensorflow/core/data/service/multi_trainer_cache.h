@@ -209,7 +209,11 @@ MultiTrainerCache<ElementType>::Get(const std::string& trainer_id)
     }
 
     if (should_extend_cache) {
-      TF_RETURN_IF_ERROR(ExtendCache());
+      Status s = ExtendCache();
+      mutex_lock l(mu_);
+      extending_cache_ = false;
+      cv_.notify_all();
+      TF_RETURN_IF_ERROR(s);
     }
   }
 }
@@ -249,16 +253,9 @@ size_t MultiTrainerCache<ElementType>::GetElementIndex(
 
 template <class ElementType>
 Status MultiTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
-  StatusOr<ElementType> element = cachable_sequence_->GetNext();
-  if (!element.ok()) {
-    mutex_lock l(mu_);
-    extending_cache_ = false;
-    cv_.notify_all();
-    return element.status();
-  }
-
+  TF_ASSIGN_OR_RETURN(ElementType element, cachable_sequence_->GetNext());
   size_t new_element_size_bytes =
-      cachable_sequence_->GetElementSizeBytes(*element);
+      cachable_sequence_->GetElementSizeBytes(element);
   if (new_element_size_bytes > max_cache_size_bytes_) {
     return errors::InvalidArgument(
         "tf.data service element size is larger than cache size in bytes. Got ",
@@ -269,10 +266,8 @@ Status MultiTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(status_);
   FreeSpace(new_element_size_bytes);
-  cache_.push_back(std::make_shared<ElementType>(std::move(*element)));
+  cache_.push_back(std::make_shared<ElementType>(std::move(element)));
   cache_size_bytes_ += new_element_size_bytes;
-  extending_cache_ = false;
-  cv_.notify_all();
   return Status::OK();
 }
 
