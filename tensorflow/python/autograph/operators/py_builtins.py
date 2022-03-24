@@ -322,10 +322,23 @@ def print_(*objects, **kwargs):
   else:
     _py_print(*objects, **kwargs)
 
+def max_(s1, s2=UNSPECIFIED):
+  if any(tensor_util.is_tf_type(s) for s in (s1,s2)):
+    return _tf_max(s1, s2)
+  return _py_max(s1, s2)
 
-def _py_print(*objects, **kwargs):
-  print(*objects, **kwargs)
+def _tf_max(s1, s2):
+  if s2 is UNSPECIFIED:
+    return math_ops.reduce_max(s1)
+  else:
+    # TODO (bhack) How much things we need to handle here?
+    return constant_op.constant(True)
 
+def _py_max(s1, s2):
+  if s2 is UNSPECIFIED:
+    return max(s1)
+  else:
+    return max(s1, s2)
 
 def _tf_py_func_print(objects, kwargs):
   """Overload of print_ as a py_func implementation."""
