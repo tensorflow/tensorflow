@@ -66,6 +66,7 @@ visibility = [
     "//third_party/py/tensorflow_gnn:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//third_party/py/tensorflow_privacy:__subpackages__",
+    "//third_party/reverb:__subpackages__",
 ]
 
 package(
