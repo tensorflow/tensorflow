@@ -79,10 +79,6 @@ void MapToLabels(const string& subscript, Labels* labels,
   }
 }
 
-// Parses and validates the equation and the input shapes. Single character
-// labels are integerized and we populate input and output label subscripts
-// and corresponding counts. Also create the mapping from (named) labels to
-// their EinsumDimensionType.
 Status ParseEinsumEquation(const string& equation, OperandLabels* input_labels,
                            Labels* output_labels,
                            std::vector<EinsumDimensionType>* label_types,
@@ -94,8 +90,7 @@ Status ParseEinsumEquation(const string& equation, OperandLabels* input_labels,
   string output_str;
   TF_RETURN_IF_ERROR(ValidateEinsumEquation(equation, &input_str, &output_str));
 
-  // Temporary map from single character labels to (consecutive) integer
-  // labels.
+  // Temporary map from single character labels to (consecutive) integer labels.
   absl::flat_hash_map<char, int> label_mapping;
   int num_inputs = input_str.size();
   input_labels->resize(num_inputs);

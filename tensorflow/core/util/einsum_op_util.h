@@ -33,9 +33,8 @@ constexpr int kEllipsisLabel = -1;
 // subscripts.
 enum EinsumDimensionType {
   // Batch dimensions are those present in two inputs as well as the output.
-  // They are part of the batch dimensions during Tensor contraction.
-  // Such dimensions may be broadcasting dimensions (those mapping to
-  // ellipsis)
+  // They are part of the batch dimensions during Tensor contraction. Such
+  // dimensions may be broadcasting dimensions (those mapping to ellipsis)
   // or explicit batch dimensions corresponding to named axis labels.
   kBroadcasting = 0,
   kBatch = 1,
@@ -55,6 +54,10 @@ Status ValidateEinsumEquation(const string& equation,
                               gtl::InlinedVector<string, 2>* input_subscripts,
                               string* output_subscript);
 
+// Parses and validates the equation and the input shapes. Single character
+// labels are integerized and we populate input and output label subscripts
+// and corresponding counts. Also create the mapping from (named) labels to
+// their EinsumDimensionType.
 Status ParseEinsumEquation(const string& equation, OperandLabels* input_labels,
                            Labels* output_labels,
                            std::vector<EinsumDimensionType>* label_types,
