@@ -3,7 +3,7 @@
 // including constants retaining their shape
 // and the module including the TFLite version.
 
-func @main(tensor<3x2xi32>) -> tensor<3x2xi32> {
+func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32> {
 ^bb0(%arg0: tensor<3x2xi32>):
   // CHECK: module attributes {tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32}
 
