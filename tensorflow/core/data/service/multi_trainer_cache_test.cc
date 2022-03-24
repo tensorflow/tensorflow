@@ -48,27 +48,37 @@ using ::testing::HasSubstr;
 using ::testing::Pointee;
 using ::testing::UnorderedElementsAreArray;
 
-class InfiniteRange {
+class InfiniteRange : public CachableSequence<int64_t> {
  public:
-  StatusOr<int64_t> operator()() { return next_++; }
+  StatusOr<int64_t> GetNext() override { return next_++; }
+  size_t GetElementSizeBytes(const int64_t& element) const override {
+    return sizeof(element);
+  }
 
  private:
   // No need to guard this variable because only one thread can write the cache.
   int64_t next_ = 0;
 };
 
-class TensorDataset {
+class TensorDataset : public CachableSequence<Tensor> {
  public:
-  StatusOr<Tensor> operator()() const { return Tensor("Test Tensor"); }
+  StatusOr<Tensor> GetNext() override { return Tensor("Test Tensor"); }
+  size_t GetElementSizeBytes(const Tensor& element) const override {
+    return element.TotalBytes();
+  }
 };
 
-class SlowDataset {
+class SlowDataset : public CachableSequence<Tensor> {
  public:
   explicit SlowDataset(absl::Duration delay) : delay_(delay) {}
 
-  StatusOr<Tensor> operator()() {
+  StatusOr<Tensor> GetNext() override {
     Env::Default()->SleepForMicroseconds(absl::ToInt64Microseconds(delay_));
     return Tensor("Test Tensor");
+  }
+
+  size_t GetElementSizeBytes(const Tensor& element) const override {
+    return element.TotalBytes();
   }
 
  private:
@@ -76,12 +86,12 @@ class SlowDataset {
 };
 
 template <class T>
-class ElementOrErrorDataset {
+class ElementOrErrorDataset : public CachableSequence<T> {
  public:
   explicit ElementOrErrorDataset(const std::vector<StatusOr<T>>& elements)
       : elements_(elements) {}
 
-  StatusOr<T> operator()() {
+  StatusOr<T> GetNext() override {
     if (next_ >= elements_.size()) {
       return errors::OutOfRange("Out of range.");
     }
@@ -89,20 +99,26 @@ class ElementOrErrorDataset {
     return elements_[next_++];
   }
 
+  size_t GetElementSizeBytes(const T& element) const override {
+    return sizeof(element);
+  }
+
  private:
   const std::vector<StatusOr<T>> elements_;
   int64_t next_ = 0;
 };
 
-template <class T>
-struct SizeofFn {
-  size_t operator()(const T& x) const { return sizeof(x); }
-};
+template <>
+size_t ElementOrErrorDataset<std::string>::GetElementSizeBytes(
+    const std::string& element) const {
+  return element.size();
+}
 
 template <>
-struct SizeofFn<Tensor> {
-  size_t operator()(const Tensor& x) const { return x.TotalBytes(); }
-};
+size_t ElementOrErrorDataset<Tensor>::GetElementSizeBytes(
+    const Tensor& element) const {
+  return element.TotalBytes();
+}
 
 std::vector<int64_t> GetRange(const size_t range) {
   std::vector<int64_t> result;
@@ -124,7 +140,7 @@ bool SequenceIsIncreasing(const std::vector<int64_t> sequence) {
 TEST(MultiTrainerCacheTest, GetFromOneTrainer) {
   const size_t num_elements = 10;
   MultiTrainerCache<int64_t> cache(
-      /*max_cache_size_bytes=*/1024, InfiniteRange(), SizeofFn<int64_t>());
+      /*max_cache_size_bytes=*/1024, absl::make_unique<InfiniteRange>());
   for (size_t i = 0; i < num_elements; ++i) {
     EXPECT_THAT(cache.Get("Trainer ID"), IsOkAndHolds(Pointee(i)));
   }
@@ -135,7 +151,7 @@ TEST(MultiTrainerCacheTest, GetFromMultipleTrainers) {
   const size_t num_trainers = 10;
 
   MultiTrainerCache<int64_t> cache(
-      /*max_cache_size_bytes=*/1024, InfiniteRange(), SizeofFn<int64_t>());
+      /*max_cache_size_bytes=*/1024, absl::make_unique<InfiniteRange>());
   for (size_t i = 0; i < num_elements; ++i) {
     // All the readers get the same element in one step.
     for (size_t j = 0; j < num_trainers; ++j) {
@@ -147,8 +163,8 @@ TEST(MultiTrainerCacheTest, GetFromMultipleTrainers) {
 
 TEST(MultiTrainerCacheTest, SlowTrainersSkipData) {
   MultiTrainerCache<int64_t> cache(
-      /*max_cache_size_bytes=*/5 * sizeof(int64_t), InfiniteRange(),
-      SizeofFn<int64_t>());
+      /*max_cache_size_bytes=*/5 * sizeof(int64_t),
+      absl::make_unique<InfiniteRange>());
   EXPECT_THAT(cache.Get("Fast trainer 1"), IsOkAndHolds(Pointee(0)));
   EXPECT_THAT(cache.Get("Fast trainer 2"), IsOkAndHolds(Pointee(0)));
   EXPECT_THAT(cache.Get("Slow trainer 1"), IsOkAndHolds(Pointee(0)));
@@ -175,8 +191,8 @@ TEST(MultiTrainerCacheTest, SlowTrainersSkipData) {
 
 TEST(MultiTrainerCacheTest, NewTrainersStartLate) {
   MultiTrainerCache<int64_t> cache(
-      /*max_cache_size_bytes=*/5 * sizeof(int64_t), InfiniteRange(),
-      SizeofFn<int64_t>());
+      /*max_cache_size_bytes=*/5 * sizeof(int64_t),
+      absl::make_unique<InfiniteRange>());
   for (int i = 0; i < 100; ++i) {
     EXPECT_THAT(cache.Get("Old trainer"), IsOkAndHolds(Pointee(i)));
   }
@@ -191,8 +207,8 @@ TEST(MultiTrainerCacheTest, NewTrainersStartLate) {
 TEST(MultiTrainerCacheTest, AlternateTrainerExtendsCache) {
   // The cache size is smaller than one int64_t.
   MultiTrainerCache<int64_t> cache(
-      /*max_cache_size_bytes=*/sizeof(int64_t), InfiniteRange(),
-      SizeofFn<int64_t>());
+      /*max_cache_size_bytes=*/sizeof(int64_t),
+      absl::make_unique<InfiniteRange>());
   EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(0)));
   EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(1)));
   EXPECT_THAT(cache.Get("Trainer 1"), IsOkAndHolds(Pointee(2)));
@@ -222,8 +238,8 @@ TEST(MultiTrainerCacheTest, ConcurrentReaders) {
   size_t num_trainers = 10;
   size_t num_elements_to_read = 200;
   MultiTrainerCache<int64_t> cache(
-      /*max_cache_size_bytes=*/3 * sizeof(int64_t), InfiniteRange(),
-      SizeofFn<int64_t>());
+      /*max_cache_size_bytes=*/3 * sizeof(int64_t),
+      absl::make_unique<InfiniteRange>());
 
   std::vector<std::vector<int64_t>> results;
   std::vector<std::unique_ptr<Thread>> reader_threads;
@@ -262,8 +278,8 @@ TEST(MultiTrainerCacheTest, ConcurrentReadersFromOneTrainer) {
   size_t num_trainers = 10;
   size_t num_elements_to_read = 100;
   MultiTrainerCache<int64_t> cache(
-      /*max_cache_size_bytes=*/3 * sizeof(int64_t), InfiniteRange(),
-      SizeofFn<int64_t>());
+      /*max_cache_size_bytes=*/3 * sizeof(int64_t),
+      absl::make_unique<InfiniteRange>());
 
   mutex mu;
   std::vector<int64_t> results;  // Guarded by `mu`.
@@ -296,7 +312,7 @@ TEST(MultiTrainerCacheTest, ConcurrentReadersFromOneTrainer) {
 TEST(MultiTrainerCacheTest, Cancel) {
   size_t num_trainers = 10;
   MultiTrainerCache<Tensor> cache(
-      /*max_cache_size_bytes=*/1000, TensorDataset(), SizeofFn<Tensor>());
+      /*max_cache_size_bytes=*/1000, absl::make_unique<TensorDataset>());
   EXPECT_FALSE(cache.IsCancelled());
 
   mutex mu;
@@ -334,17 +350,17 @@ TEST(MultiTrainerCacheTest, Cancel) {
 }
 
 TEST(MultiTrainerCacheTest, Errors) {
-  ElementOrErrorDataset<std::string> dataset(std::vector<StatusOr<std::string>>{
-      std::string("First element"),
-      errors::Cancelled("Cancelled"),
-      std::string("Second element"),
-      errors::InvalidArgument("InvalidArgument"),
-      std::string("Third element"),
-      errors::Unavailable("Unavailable"),
-  });
+  auto elements = absl::make_unique<ElementOrErrorDataset<std::string>>(
+      std::vector<StatusOr<std::string>>{
+          std::string("First element"),
+          errors::Cancelled("Cancelled"),
+          std::string("Second element"),
+          errors::InvalidArgument("InvalidArgument"),
+          std::string("Third element"),
+          errors::Unavailable("Unavailable"),
+      });
   MultiTrainerCache<std::string> cache(
-      /*max_cache_size_bytes=*/1000, dataset,
-      [](const std::string& s) { return s.capacity(); });
+      /*max_cache_size_bytes=*/1000, std::move(elements));
 
   EXPECT_THAT(cache.Get("Trainer ID"),
               IsOkAndHolds(Pointee(std::string("First element"))));
@@ -367,8 +383,8 @@ TEST(MultiTrainerCacheTest, Errors) {
 
 TEST(MultiTrainerCacheTest, CacheSizeIsTooSmall) {
   // The cache size is smaller than one int64_t.
-  MultiTrainerCache<int64_t> cache(
-      /*max_cache_size_bytes=*/1, InfiniteRange(), SizeofFn<int64_t>());
+  MultiTrainerCache<Tensor> cache(
+      /*max_cache_size_bytes=*/1, absl::make_unique<TensorDataset>());
   EXPECT_THAT(cache.Get("Trainer ID"),
               StatusIs(error::INVALID_ARGUMENT,
                        HasSubstr("tf.data service element size is larger than "
@@ -377,7 +393,7 @@ TEST(MultiTrainerCacheTest, CacheSizeIsTooSmall) {
 
 TEST(MultiTrainerCacheTest, TrainerIDMustBeNonEmpty) {
   MultiTrainerCache<Tensor> cache(
-      /*max_cache_size_bytes=*/1000, TensorDataset(), SizeofFn<Tensor>());
+      /*max_cache_size_bytes=*/1000, absl::make_unique<TensorDataset>());
   EXPECT_THAT(
       cache.Get(""),
       StatusIs(

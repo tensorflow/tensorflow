@@ -676,7 +676,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:standalone",
-        "@com_google_absl//absl/functional:bind_front",
     ],
 )
 

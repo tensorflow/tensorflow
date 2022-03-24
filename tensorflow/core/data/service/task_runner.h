@@ -137,10 +137,19 @@ class CachingTaskRunner : public TaskRunner {
   void Cancel() override;
 
  private:
-  // Function that `cache_` calls to automatically populate the cache.
-  StatusOr<GetElementResult> GetElementFn();
-  // Function that `cache_` uses to estimate the cache size in bytes.
-  static size_t GetElementSizeBytesFn(const GetElementResult& element);
+  // The `GetElementResultSequence` generates a sequence of elements from the
+  // `FirstComeFirstServedTaskRunner`. It is used for the `MultiTrainerCache` to
+  // generate cached elements.
+  class GetElementResultSequence : public CachableSequence<GetElementResult> {
+   public:
+    explicit GetElementResultSequence(
+        FirstComeFirstServedTaskRunner& fcfs_task_runner);
+    StatusOr<GetElementResult> GetNext() override;
+    size_t GetElementSizeBytes(const GetElementResult& element) const override;
+
+   private:
+    FirstComeFirstServedTaskRunner& fcfs_task_runner_;
+  };
 
   FirstComeFirstServedTaskRunner fcfs_task_runner_;
   MultiTrainerCache<GetElementResult> cache_;

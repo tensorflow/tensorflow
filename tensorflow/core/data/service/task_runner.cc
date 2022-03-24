@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/functional/bind_front.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/logging_utils.h"
@@ -150,8 +149,7 @@ CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
                                      size_t max_cache_size_bytes)
     : fcfs_task_runner_(std::move(iterator)),
       cache_(max_cache_size_bytes,
-             absl::bind_front(&CachingTaskRunner::GetElementFn, this),
-             &CachingTaskRunner::GetElementSizeBytesFn) {
+             absl::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
   LOG(INFO) << "Initialized tf.data service multi-trainer cache with "
             << FormatBytes(max_cache_size_bytes) << " of memory.";
 }
@@ -166,14 +164,19 @@ Status CachingTaskRunner::GetNext(const GetElementRequest& req,
   return Status::OK();
 }
 
-StatusOr<GetElementResult> CachingTaskRunner::GetElementFn() {
+CachingTaskRunner::GetElementResultSequence::GetElementResultSequence(
+    FirstComeFirstServedTaskRunner& fcfs_task_runner)
+    : fcfs_task_runner_(fcfs_task_runner) {}
+
+StatusOr<GetElementResult>
+CachingTaskRunner::GetElementResultSequence::GetNext() {
   GetElementResult result;
   TF_RETURN_IF_ERROR(fcfs_task_runner_.GetNext(result));
   return result;
 }
 
-size_t CachingTaskRunner::GetElementSizeBytesFn(
-    const GetElementResult& element) {
+size_t CachingTaskRunner::GetElementResultSequence::GetElementSizeBytes(
+    const GetElementResult& element) const {
   return element.EstimatedMemoryUsageBytes();
 }
 

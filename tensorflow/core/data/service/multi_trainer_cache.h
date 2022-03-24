@@ -46,32 +46,61 @@ namespace data {
 // collected when the cache becomes full. Consequently, trainers read from a
 // sliding window through the dataset and may not read the full dataset.
 //
-// This class is thread-safe.
+// The `MultiTrainerCache` class is thread-safe.
 //
 // Example usage:
 //
-//   // Assumes `get_next_fn` returns 1, 2, 3, ...
+//   // `InfiniteRange` returns 1, 2, 3, ... in the `GetNext` calls.
+//   class InfiniteRange : public CachableSequence<int64_t> {
+//    public:
+//     StatusOr<int64_t> GetNext() override {
+//       return next_++;
+//     }
+//
+//     size_t GetElementSizeBytes(const int64_t& element) const override {
+//       return sizeof(element);
+//     }
+//
+//    private:
+//     int64_t next_ = 1;
+//   };
+//
 //   MultiTrainerCache<int64_t> cache(
 //       /*max_cache_size_bytes=*/10 * (size_t{1} << 30),  // 10GB
-//       get_next_fn, get_element_size_bytes_fn);
+//       absl::make_unique<InfiniteRange>());
 //
-//   std::shared_ptr<const int64_t> next;
+//   std::shared_ptr<int64_t> next;
 //   TF_ASSIGN_OR_RETURN(next, cache.Get("Trainer 1"));  // Returns 1
 //   TF_ASSIGN_OR_RETURN(next, cache.Get("Trainer 2"));  // Returns 1
 //   TF_ASSIGN_OR_RETURN(next, cache.Get("Trainer 1"));  // Returns 2
 //   TF_ASSIGN_OR_RETURN(next, cache.Get("Trainer 2"));  // Returns 2
+
+// To use the cache, the user needs to define a `CachableSequence` to generate
+// an infinite sequence of data. It should implement a `GetNext` method to
+// produce elements, and a `GetElementSizeBytes` method to estimate the element
+// size in bytes.
+template <class ElementType>
+class CachableSequence {
+ public:
+  virtual ~CachableSequence() = default;
+
+  // Returns the next element to be cached.
+  virtual StatusOr<ElementType> GetNext() = 0;
+
+  // Returns the estimated size of the element in bytes.
+  virtual size_t GetElementSizeBytes(const ElementType&) const = 0;
+};
+
+// Sliding-window cache shared across concurrent trainers.
 template <class ElementType>
 class MultiTrainerCache {
  public:
-  using GetElementFn = std::function<StatusOr<ElementType>()>;
-  using GetElementSizeBytesFn = std::function<size_t(const ElementType&)>;
-
   // Creates a `MultiTrainerCache` with `max_cache_size_bytes` of memory budget.
   // The cache should be able to hold at least one element, i.e.:
   // REQUIRES: max_cache_size_bytes >= max(get_element_size(*))
-  // TODO(b/221104308): Use an interface to encapsulate the function inputs.
-  explicit MultiTrainerCache(size_t max_cache_size_bytes, GetElementFn get_next,
-                             GetElementSizeBytesFn get_element_size);
+  explicit MultiTrainerCache(
+      size_t max_cache_size_bytes,
+      std::unique_ptr<CachableSequence<ElementType>> cachable_sequence);
   virtual ~MultiTrainerCache() = default;
 
   // Gets the next element for `trainer`. A `trainer_id` identifies the trainer
@@ -111,8 +140,9 @@ class MultiTrainerCache {
 
   // Maximum cache size in bytes.
   const size_t max_cache_size_bytes_;
-  const GetElementFn get_next_;
-  const GetElementSizeBytesFn get_element_size_bytes_;
+
+  // The element stream over which the sliding window cache operates.
+  std::unique_ptr<CachableSequence<ElementType>> cachable_sequence_;
 
   mutable mutex mu_;
   mutable condition_variable cv_;
@@ -138,11 +168,10 @@ class MultiTrainerCache {
 
 template <class ElementType>
 MultiTrainerCache<ElementType>::MultiTrainerCache(
-    size_t max_cache_size_bytes, GetElementFn get_next,
-    GetElementSizeBytesFn get_element_size_bytes)
+    size_t max_cache_size_bytes,
+    std::unique_ptr<CachableSequence<ElementType>> cachable_sequence)
     : max_cache_size_bytes_(max_cache_size_bytes),
-      get_next_(std::move(get_next)),
-      get_element_size_bytes_(std::move(get_element_size_bytes)) {
+      cachable_sequence_(std::move(cachable_sequence)) {
   DCHECK_GT(max_cache_size_bytes, 0)
       << "MultiTrainerCache size must be greater than 0.";
   VLOG(2) << "Initialized tf.data service multi-trainer cache with "
@@ -220,7 +249,7 @@ size_t MultiTrainerCache<ElementType>::GetElementIndex(
 
 template <class ElementType>
 Status MultiTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
-  StatusOr<ElementType> element = get_next_();
+  StatusOr<ElementType> element = cachable_sequence_->GetNext();
   if (!element.ok()) {
     mutex_lock l(mu_);
     extending_cache_ = false;
@@ -228,7 +257,8 @@ Status MultiTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
     return element.status();
   }
 
-  const size_t new_element_size_bytes = get_element_size_bytes_(*element);
+  size_t new_element_size_bytes =
+      cachable_sequence_->GetElementSizeBytes(*element);
   if (new_element_size_bytes > max_cache_size_bytes_) {
     return errors::InvalidArgument(
         "tf.data service element size is larger than cache size in bytes. Got ",
@@ -252,7 +282,8 @@ void MultiTrainerCache<ElementType>::FreeSpace(size_t new_element_size_bytes)
   size_t num_elements_discarded = 0;
   while (!cache_.empty() &&
          cache_size_bytes_ + new_element_size_bytes > max_cache_size_bytes_) {
-    size_t free_bytes = get_element_size_bytes_(*cache_.front());
+    size_t free_bytes =
+        cachable_sequence_->GetElementSizeBytes(*cache_.front());
     cache_.pop_front();
     cache_size_bytes_ -= free_bytes;
     ++cache_start_index_;
