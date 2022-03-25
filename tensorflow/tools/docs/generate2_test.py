@@ -21,13 +21,14 @@ import types
 from unittest import mock
 
 import tensorflow as tf
+from tensorflow import estimator as tf_estimator
 
 from tensorflow.python.platform import googletest
 from tensorflow.tools.docs import generate2
 
 # Make a mock tensorflow package that won't take too long to test.
 fake_tf = types.ModuleType('FakeTensorFlow')
-fake_tf.estimator = tf.estimator
+fake_tf.estimator = tf_estimator
 fake_tf.keras = tf.keras
 fake_tf.nn = tf.nn
 fake_tf.summary = tf.summary
