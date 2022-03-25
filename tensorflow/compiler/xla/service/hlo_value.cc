@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -73,18 +74,6 @@ HloValue::HloValue(HloValue::Id id, HloInstruction* instruction,
     : BufferValue(instruction, index, id), is_phi_(is_phi) {
   // The defining position is always the first element in the positions_ vector.
   positions_.push_back(HloPosition{instruction, index});
-}
-
-bool HloValue::operator==(const HloValue& other) const {
-  bool equal = defining_instruction() == other.defining_instruction() &&
-               defining_index() == other.defining_index();
-  // If the values are equal they must both be phi (or non phi).
-  CHECK(!(equal && is_phi() != other.is_phi()));
-  return equal;
-}
-
-bool HloValue::operator!=(const HloValue& other) const {
-  return !(*this == other);
 }
 
 std::string HloValue::ToShortString() const {
@@ -166,14 +155,12 @@ void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
   }
 
   positions_.insert(positions_.end(), positions.begin(), positions.end());
-  for (const HloPosition& position : positions_) {
-    // Update liveout status of this HloValue.
-    const HloModule& module = *position.instruction->parent()->parent();
-    if (position.instruction ==
-        module.entry_computation()->root_instruction()) {
-      live_out_of_module_ = true;
-    }
-  }
+  // Update liveout status of this HloValue.
+  live_out_of_module_ |=
+      absl::c_any_of(positions_, [](const HloPosition& position) {
+        return position.instruction->IsRoot() &&
+               position.instruction->parent()->IsEntryComputation();
+      });
 }
 
 void HloValue::ComputeUses(std::vector<HloUse>& uses) const {
@@ -216,10 +203,20 @@ std::ostream& operator<<(std::ostream& out, const HloValue& value) {
   return out;
 }
 
+HloValueSet::HloValueSet(absl::Span<const HloValue* const> values)
+    : values_(values.begin(), values.end()) {
+  SortAndUniquifyValues();
+}
+
+HloValueSet::HloValueSet(const absl::flat_hash_set<const HloValue*>& values)
+    : values_(values.begin(), values.end()) {
+  // Values are already unique, so only need to sort.
+  absl::c_sort(values_, HloValue::IdLessThan);
+}
+
 void HloValueSet::SortAndUniquifyValues() {
   absl::c_sort(values_, HloValue::IdLessThan);
-  values_.erase(std::unique(values_.begin(), values_.end(), HloValue::IdEqual),
-                values_.end());
+  values_.erase(std::unique(values_.begin(), values_.end()), values_.end());
 }
 
 std::string HloValueSet::ToString() const {

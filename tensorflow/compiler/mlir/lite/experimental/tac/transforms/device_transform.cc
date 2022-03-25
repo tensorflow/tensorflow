@@ -115,7 +115,7 @@ void ConvertQuantizedOpToFloat(mlir::FuncOp func, OpBuilder* builder) {
     state.attributes = op->getAttrs();
     state.successors = op->getSuccessors();
     builder->setInsertionPoint(op);
-    Operation* new_op = builder->createOperation(state);
+    Operation* new_op = builder->create(state);
 
     // Insert quantize ops for every outputs and rewrite.
     for (int i = 0; i < op->getNumResults(); ++i) {

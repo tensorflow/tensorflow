@@ -35,18 +35,26 @@ class HloControlFlowFlattening : public HloModulePass {
  public:
   // While execution count specifies how many times the while loops in the
   // transformed graph will execute.
-  explicit HloControlFlowFlattening(
-      int while_execution_count,
-      int max_outer_loop_count = std::numeric_limits<int>::max(),
-      int max_loop_count = DefaultMaxGetLoopBound(),
-      bool remove_infeed_outfeed = true, bool flatten_while_loop = true,
-      bool remove_comm = true)
-      : while_execution_count_(while_execution_count),
-        max_outer_loop_count_(max_outer_loop_count),
-        max_loop_count_(max_loop_count),
-        remove_infeed_outfeed_(remove_infeed_outfeed),
-        flatten_while_loop_(flatten_while_loop),
-        remove_comm_(remove_comm) {}
+  // If remove_comm = true, remove all communication operations.
+  // If remove_host_transfer = true, remove the host-transfer send and recv
+  // operations.
+  struct Options {
+    int while_execution_count = 1;
+    int max_outer_loop_count = std::numeric_limits<int>::max();
+    int max_loop_count = DefaultMaxGetLoopBound();
+    bool remove_infeed_outfeed = true;
+    bool flatten_while_loop = true;
+    bool remove_comm = true;
+    bool remove_host_transfer = false;
+  };
+  explicit HloControlFlowFlattening(const Options& options)
+      : while_execution_count_(options.while_execution_count),
+        max_outer_loop_count_(options.max_outer_loop_count),
+        max_loop_count_(options.max_loop_count),
+        remove_infeed_outfeed_(options.remove_infeed_outfeed),
+        flatten_while_loop_(options.flatten_while_loop),
+        remove_comm_(options.remove_comm),
+        remove_host_transfer_(options.remove_host_transfer) {}
   ~HloControlFlowFlattening() override = default;
   absl::string_view name() const override { return "control-flow-flattening"; }
   StatusOr<bool> Run(HloModule* module) override;
@@ -80,6 +88,7 @@ class HloControlFlowFlattening : public HloModulePass {
   bool remove_infeed_outfeed_;
   bool flatten_while_loop_;
   bool remove_comm_;
+  bool remove_host_transfer_;
 };
 
 // Retrieves the original loop bound. If fail, return a default value. If bounds

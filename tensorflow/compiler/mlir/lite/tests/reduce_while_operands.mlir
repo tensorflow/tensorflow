@@ -63,5 +63,5 @@ func @increase_3rd_operand_3_times() -> tensor<i32> {
       "tfl.yield"(%2, %3, %4) : (tensor<f32>, tensor<f32>, tensor<i32>) -> ()
     }
   ) : (tensor<f32>, tensor<f32>, tensor<i32>) -> (tensor<f32>, tensor<f32>, tensor<i32>)
-  return %0#2 : tensor<i32>
+  func.return %0#2 : tensor<i32>
 }

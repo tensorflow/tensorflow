@@ -38,21 +38,25 @@ def TFL_Dialect : Dialect {
 
   let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 
+  let useDefaultAttributePrinterParser = 1;
+
   let extraClassDeclaration = [{
     ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
                                                 OperationState &result);
 
     void printOneResultOp(Operation *op, OpAsmPrinter &p);
+
+    // Registered hook to materialize a constant operation from a given
+    // attribute value with the desired resultant type.
+    Operation *materializeConstant(OpBuilder &builder, Attribute value,
+                                   Type type, Location loc) override;
+
+    Attribute parseAttribute(DialectAsmParser &parser,
+                             Type type) const override;
+
+    void printAttribute(Attribute attr, DialectAsmPrinter &os) const override;
   }];
 }
-
-// Attributes used for encoding sparse tensors.
-// Please find detailed explanation of these parameters in the TFLite schema.
-def TFL_DT_Dense : StrEnumAttrCase<"DENSE", 0>;
-def TFL_DT_SparseCSR : StrEnumAttrCase<"SPARSE_CSR", 1>;
-
-def TFL_DimensionTypeAttr : StrEnumAttr<
-    "DimensionType", "dimension type", [TFL_DT_Dense, TFL_DT_SparseCSR]>;
 
 //===----------------------------------------------------------------------===//
 // TFL op interface for stateful operands.

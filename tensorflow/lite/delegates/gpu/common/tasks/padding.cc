@@ -60,7 +60,7 @@ std::string GetPaddingCode(const OperationDef& op_def,
        "Z >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  FLT4 result = INIT_FLT4(0.0);\n";
+  c += "  args.src_tensor::type result = args.src_tensor::zero_value;\n";
   c += "  int s_x = X - args.prepended_x;\n";
   c += "  int s_y = Y - args.prepended_y;\n";
   if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {

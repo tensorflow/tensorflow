@@ -74,7 +74,7 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
     auto func_names = mlir::tf_saved_model::GetExportedNames(func);
     if (func_names.empty()) return mlir::WalkResult::advance();
 
-    auto func_type = func.getType();
+    auto func_type = func.getFunctionType();
 
     // Here we walk through each arguments and find out the input/output names,
     // and input devices, variables used by this function.

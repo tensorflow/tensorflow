@@ -465,8 +465,9 @@ Status ConditionEinsumOperand(TRTNetworkBuilder* builder,
                               const EinsumDescriptor& desc) {
   bool need_reshape = (desc.f != 1 || desc.c != 1);
   bool need_transpose = !desc.permute.empty();
-  LOG(INFO) << "Condition operand. Need reshape " << need_reshape
-            << " nned transpose " << need_transpose;
+
+  VLOG(2) << "Condition operand. Need reshape: " << need_reshape
+          << ". Need transpose: " << need_transpose;
 
   if ((*operand)->is_weights()) {
     StatusOr<TRT_TensorOrWeights> result =

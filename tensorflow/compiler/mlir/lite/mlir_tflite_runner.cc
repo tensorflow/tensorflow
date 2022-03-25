@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
   // TODO(jpienaar): Expand to support inputs.
   mlir::FuncOp main = module->lookupSymbol<mlir::FuncOp>("main");
   QCHECK(main) << "No 'main' function specified.";
-  if (main.getType().getNumInputs() != 0)
+  if (main.getFunctionType().getNumInputs() != 0)
     LOG(QFATAL) << "NYI: Only nullary functions supported.";
 
   // Convert to flatbuffer.
@@ -143,7 +143,8 @@ int main(int argc, char** argv) {
 
   // Print the resulting outputs.
   // TODO(jpienaar): Allow specifying output stream/file.
-  QCHECK(interpreter->outputs().size() == main.getType().getNumResults());
+  QCHECK(interpreter->outputs().size() ==
+         main.getFunctionType().getNumResults());
   for (int index : interpreter->outputs()) {
     const auto& out = *interpreter->tensor(index);
     // Print name if named.

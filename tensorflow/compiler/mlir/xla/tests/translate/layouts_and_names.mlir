@@ -3,7 +3,7 @@
 // Checks exporting layouts
 
 // CHECK:  HloModule
-func @main(%arg0: tensor<128x224x224x4xf16>, %arg1: tensor<64x7x7x4xf16>) -> tensor<128x64x112x112xf16> {
+func.func @main(%arg0: tensor<128x224x224x4xf16>, %arg1: tensor<64x7x7x4xf16>) -> tensor<128x64x112x112xf16> {
   // CHECK: %convolution.{{.*}} = f16[128,64,112,112]{1,3,2,0} convolution{{.*}}op_name="root.42"
   %0 = "mhlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
@@ -22,7 +22,7 @@ func @main(%arg0: tensor<128x224x224x4xf16>, %arg1: tensor<64x7x7x4xf16>) -> ten
     lhs_dilations = dense<1> : tensor<2xi64>,
     xla_shape = "f16[128,64,112,112]{1,3,2,0}",
     padding = dense<3> : tensor<2x2xi64>,
-    precision_config = [ "DEFAULT", "DEFAULT" ],
+    precision_config = [ #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT"> ],
     rhs_dilations = dense<1> : tensor<2xi64>,
     window_strides = dense<2> : tensor<2xi64>
   } : (tensor<128x224x224x4xf16>, tensor<64x7x7x4xf16>)-> tensor<128x64x112x112xf16> loc("root.42")
@@ -30,18 +30,18 @@ func @main(%arg0: tensor<128x224x224x4xf16>, %arg1: tensor<64x7x7x4xf16>) -> ten
   // CHECK: s32[1,1]{0,1} constant({ {42} })
   %cst_1 = "arith.constant"() {value = dense<[[42]]> : tensor<1x1xi32>, xla_shape = "s32[1,1]{0,1}"} : () -> tensor<1x1xi32>
 
-  return %0 : tensor<128x64x112x112xf16>
+  func.return %0 : tensor<128x64x112x112xf16>
 }
 
 // -----
 
 // CHECK:  HloModule
-func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token> {
+func.func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token> {
   %0:3 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[0, 1], [0]]} : (!mhlo.token) -> (tensor<3x3xi32>, tensor<i1>, !mhlo.token)
   %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3x3xi32>, tensor<i1>) -> tuple<tensor<3x3xi32>, tensor<i1>>
   %2 = "mhlo.tuple"(%1, %0#2) : (tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
 
-  return %2 : tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
+  func.return %2 : tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
 }
 
 // CHECK:  ENTRY
@@ -55,11 +55,11 @@ func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhl
 // -----
 
 // CHECK:  HloModule
-func @main(%arg0: !mhlo.token) -> tuple<tensor<3x3xi32>, !mhlo.token> {
+func.func @main(%arg0: !mhlo.token) -> tuple<tensor<3x3xi32>, !mhlo.token> {
   %0:2 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[0,1]]} : (!mhlo.token) -> (tensor<3x3xi32>, !mhlo.token)
   %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3x3xi32>, !mhlo.token) -> tuple<tensor<3x3xi32>, !mhlo.token>
 
-  return %1 : tuple<tensor<3x3xi32>, !mhlo.token>
+  func.return %1 : tuple<tensor<3x3xi32>, !mhlo.token>
 }
 
 // CHECK:  ENTRY
@@ -74,9 +74,9 @@ func @main(%arg0: !mhlo.token) -> tuple<tensor<3x3xi32>, !mhlo.token> {
 
 // CHECK:  HloModule
 
-func @main(%arg0: !mhlo.token) -> !mhlo.token {
+func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout = [], xla_shape = "((), token[])"} : (!mhlo.token) -> !mhlo.token
-  return %0 : !mhlo.token
+  func.return %0 : !mhlo.token
 }
 
 // CHECK:  ENTRY

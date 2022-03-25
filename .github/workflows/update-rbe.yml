@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
+
+# This Workflow updates tensorflow/tools/toolchains/remote_config/configs.bzl
+# to reference the most recent versions of the SIG Build Docker images.
 name: Update RBE Configs
 on:
   workflow_dispatch:
@@ -28,8 +31,17 @@ jobs:
     - name: Update the RBE Configs
       run: |
         function map() {
-          digest=$(curl -s "https://gcr.io/v2/tensorflow-sigs/build/manifests/$2" | jq -r .config.digest)
-          sed -i"" "s/\(\"$1\".*build@\)sha256:.*\(\",\)/\1$digest\2/" tensorflow/tools/toolchains/remote_config/configs.bzl 
+          # The "digest" that allows us to pull an image is not the digest as
+          # returned by the API, but a sha256sum of the entire chunk of image
+          # metadata. gcr.io helpfully includes it in the header of the response
+          # as docker-content-digest: sha256:[digest]. Note we use egrep to
+          # match exactly sha256:<hash> because curl may include a ^M symbol at
+          # the end of the line.
+          # See https://cloud.google.com/architecture/using-container-images#exploring_image_manifests_digests_and_tags
+          digest=$(curl -s --head "https://gcr.io/v2/tensorflow-sigs/build/manifests/$2" | egrep -o "sha256:[[:alnum:]]*")
+          # Find the line matching the regex "sigbuild-r2.9" (with quotes) and
+          # replace just the digest portion in it
+          sed -i"" "/\"$1\"/ s/sha256:[[:alnum:]]*/$digest/g" tensorflow/tools/toolchains/remote_config/configs.bzl
         }
         # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
         # This is a mapping of name_container_map keys under sigbuild_tf_configs
@@ -47,5 +59,7 @@ jobs:
         token: ${{ secrets.JENKINS_TOKEN }}
         reviewers: angerson,mihaimaruseac
         body: |
-          Automated PR created once per week to get the latest Docker images.
-          See https://github.com/tensorflow/tensorflow/blob/master/.github/workflows/update-rbe.yml
+          This PR was created by a GitHub Actions workflow to update all the SIG Build-based RBE containers to the most recent containers. See:
+
+          - https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
+          - https://github.com/tensorflow/tensorflow/blob/master/.github/workflows/update-rbe.yml

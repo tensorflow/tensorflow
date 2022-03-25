@@ -2113,10 +2113,12 @@ def TF_CollectiveAssignGroupV2Op : TF_Op<"CollectiveAssignGroupV2", [NoSideEffec
 
   let arguments = (ins
     TF_Int32Tensor:$group_assignment,
-    TF_Int32Tensor:$device_index
+    TF_Int32Tensor:$device_index,
+    TF_Int32Tensor:$base_key
   );
 
   let results = (outs
+    TF_Int32Tensor:$group_size,
     TF_Int32Tensor:$group_key
   );
 }

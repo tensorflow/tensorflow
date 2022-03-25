@@ -15,8 +15,19 @@ pytype_strict_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":default_types",
+        ":util",
         "//tensorflow/python/types",
     ],
+)
+
+pytype_strict_library(
+    name = "util",
+    srcs = [
+        "util.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [],
 )
 
 py_strict_test(
@@ -63,5 +74,6 @@ py_strict_test(
     deps = [
         ":default_types",
         "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -469,6 +469,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       # parallelism or asynchrony.
       options = options_lib.Options()
       options.autotune.enabled = False
+      options.experimental_optimization.filter_parallelization = False
       options.experimental_optimization.map_and_batch_fusion = False
       options.experimental_optimization.map_parallelization = False
       dataset = _OptionsDataset(self, options)
@@ -4714,10 +4715,16 @@ class ConcatenateDataset(DatasetV2):
     self._input_dataset = input_dataset
     self._dataset_to_concatenate = dataset_to_concatenate
 
+    def common_supertype(a, b):
+      result = a.most_specific_common_supertype([b])
+      if result is None:
+        raise TypeError(f"No common supertype of {a} and {b}.")
+      return result
+
     try:
       self._structure = tf_nest.map_structure(
-          lambda ts1, ts2: ts1.most_specific_compatible_type(ts2),
-          input_dataset.element_spec, dataset_to_concatenate.element_spec)
+          common_supertype, input_dataset.element_spec,
+          dataset_to_concatenate.element_spec)
     except (TypeError, ValueError) as e:
       raise TypeError(
           f"Incompatible dataset elements:\n"
@@ -6226,10 +6233,15 @@ class _DirectedInterleaveDataset(DatasetV2):
 
     spec = self._data_inputs[0].element_spec
     for i, data_input in enumerate(self._data_inputs[1:]):
+      def common_supertype(a, b):
+        result = a.most_specific_common_supertype([b])
+        if result is None:
+          raise TypeError(f"No common supertype of {a} and {b}.")
+        return result
+
       try:
-        spec = nest.map_structure(
-            lambda x, y: x.most_specific_compatible_type(y),
-            spec, data_input.element_spec)
+        spec = nest.map_structure(common_supertype, spec,
+                                  data_input.element_spec)
       except (TypeError, ValueError) as e:
         raise TypeError(f"Invalid `datasets`. `datasets` must have compatible "
                         f"element specs.\n Dataset 0 "

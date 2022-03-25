@@ -8,7 +8,7 @@
 // CHECK:   }
 // CHECK: }
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     %dim:2 = tf_executor.island wraps "tf.Const"() {dtype = "tftype$DT_INT32", value = dense<0> : tensor<i32>} : () -> tensor<i32>
     %input:2 = tf_executor.island wraps "tf.Const"() {dtype = "tftype$DT_INT32", value = dense<1.0> : tensor<4x6xf32>} : () -> tensor<4x6xf32>

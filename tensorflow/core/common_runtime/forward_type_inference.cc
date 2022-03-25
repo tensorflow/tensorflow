@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/full_type_util.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -102,7 +103,10 @@ Status ForwardTypeInferencePass::Run(
       }
     }
 
-    const auto& infer_ret = reg->fwd_type_fn(input_types);
+    // TODO(b/224775462): Populate with types from function references.
+    TypeRefMap type_vars;
+
+    const auto& infer_ret = reg->fwd_type_fn(input_types, type_vars);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         infer_ret.status(), "while inferring type of node '", n->name(), "'");
     const auto& infer_type = *infer_ret;

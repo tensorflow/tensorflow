@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/utils.h"
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
@@ -50,16 +52,8 @@ constexpr absl::string_view kGroupKeyAttrName =
     "tf2xla.collective_info.group_key";
 
 class LegalizeTFCollective
-    : public PassWrapper<LegalizeTFCollective, OperationPass<ModuleOp>> {
+    : public LegalizeTFCollectiveBase<LegalizeTFCollective> {
  public:
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mhlo::MhloDialect>();
-  }
-  StringRef getArgument() const final { return "xla-legalize-tf-collective"; }
-  StringRef getDescription() const final {
-    return "Legalize TF/XLA collective ops (TensorFlow dialect) to the HLO "
-           "dialect";
-  }
   void runOnOperation() override;
 };
 
@@ -229,20 +223,47 @@ LogicalResult ConvertTfCollectiveReduceV2(OpBuilder& builder,
       all_reduce.merge_op(), all_reduce);
 }
 
-#include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf_collective.inc"
+// Rewrites CollectiveAssignGroupV2 + CollectiveReduceV2 to XLAAllreduce with
+// group_assignment.
+class RewriteCollectiveAssignGroupV2CollectiveReduceV2
+    : public OpRewritePattern<TF::CollectiveReduceV2Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::CollectiveReduceV2Op op,
+                                PatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+    Value group_size = op.group_size();
+    Value group_key = op.group_key();
+    auto assign_group_op =
+        group_size.getDefiningOp<TF::CollectiveAssignGroupV2Op>();
 
-LogicalResult ConvertTfCollective(Operation* op) {
+    if (!assign_group_op) {
+      return failure();
+    }
+
+    if (assign_group_op !=
+        group_key.getDefiningOp<TF::CollectiveAssignGroupV2Op>()) {
+      return op->emitOpError() << "group_size and group_key are not from the "
+                                  "same CollectiveAssignGroupV2Op";
+    }
+
+    Value all_reduce = rewriter.create<TF::XlaAllReduceOp>(
+        loc, op.getType(), op.input(), assign_group_op.group_assignment(),
+        op.merge_op(), "CrossReplicaAndPartition");
+    rewriter.replaceOp(op, {all_reduce});
+    return success();
+  }
+};
+
+LogicalResult ConvertTfAssignGroup(Operation* op) {
   MLIRContext* context = op->getContext();
   RewritePatternSet patterns(context);
   patterns.insert<RewriteCollectiveAssignGroupV2CollectiveReduceV2>(context);
-  if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns)))) {
-    return failure();
-  }
-  return success();
+  return applyPatternsAndFoldGreedily(op, std::move(patterns));
 }
 
 void LegalizeTFCollective::runOnOperation() {
-  if (failed(ConvertTfCollective(getOperation()))) {
+  if (failed(ConvertTfAssignGroup(getOperation()))) {
     signalPassFailure();
     return;
   }
@@ -272,8 +293,6 @@ void LegalizeTFCollective::runOnOperation() {
   });
   if (result.wasInterrupted()) signalPassFailure();
 }
-
-static PassRegistration<LegalizeTFCollective> pass;
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass() {

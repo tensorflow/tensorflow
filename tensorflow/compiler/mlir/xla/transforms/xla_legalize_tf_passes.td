@@ -96,3 +96,10 @@ def LegalizeTfTypesPass : Pass<"xla-legalize-tf-types"> {
 
   let constructor = "::mlir::mhlo::CreateLegalizeTfTypesPass()";
 }
+
+def LegalizeTFCollective : Pass<"xla-legalize-tf-collective", "ModuleOp"> {
+  let summary = "Legalize TF/XLA collective ops (TensorFlow dialect) to the HLO dialect";
+
+  let constructor = "mlir::mhlo::CreateLegalizeTFCollectivePass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}

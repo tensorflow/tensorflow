@@ -344,16 +344,17 @@ inline Value MapMhloOpToStdScalarOp<mhlo::CbrtOp>(Location loc,
 }
 
 template <typename PredicateType>
-inline Optional<PredicateType> getCmpPredicate(StringRef, bool) {
+inline Optional<PredicateType> getCmpPredicate(mhlo::ComparisonDirection,
+                                               bool) {
   return llvm::None;
 }
 
 template <>
 inline Optional<arith::CmpFPredicate> getCmpPredicate<arith::CmpFPredicate>(
-    StringRef comparison_direction, bool is_signed) {
+    mhlo::ComparisonDirection comparison_direction, bool is_signed) {
   assert(is_signed && "cannot have an unsigned float!");
   return llvm::StringSwitch<Optional<arith::CmpFPredicate>>(
-             comparison_direction)
+             stringifyComparisonDirection(comparison_direction))
       .Case("EQ", arith::CmpFPredicate::OEQ)
       .Case("NE", arith::CmpFPredicate::UNE)
       .Case("GE", arith::CmpFPredicate::OGE)
@@ -365,9 +366,9 @@ inline Optional<arith::CmpFPredicate> getCmpPredicate<arith::CmpFPredicate>(
 
 template <>
 inline Optional<arith::CmpIPredicate> getCmpPredicate<arith::CmpIPredicate>(
-    StringRef comparison_direction, bool is_signed) {
+    mhlo::ComparisonDirection comparison_direction, bool is_signed) {
   return llvm::StringSwitch<Optional<arith::CmpIPredicate>>(
-             comparison_direction)
+             stringifyComparisonDirection(comparison_direction))
       .Case("EQ", arith::CmpIPredicate::eq)
       .Case("NE", arith::CmpIPredicate::ne)
       .Case("GE",
@@ -383,7 +384,7 @@ inline Optional<arith::CmpIPredicate> getCmpPredicate<arith::CmpIPredicate>(
 
 template <typename CompareOpTy>
 inline Value MapCompareOpToStdScalarOp(Location loc,
-                                       StringRef comparison_direction,
+                                       ComparisonDirection comparison_direction,
                                        ArrayRef<Type> /*result_types*/,
                                        ArrayRef<Type> arg_types,
                                        ValueRange args, OpBuilder* b) {
@@ -408,10 +409,10 @@ inline Value MapCompareOpToStdScalarOp(Location loc,
   }
   if (auto complex_type = element_type.dyn_cast<ComplexType>()) {
     if (complex_type.getElementType().isa<FloatType>()) {
-      if (comparison_direction == "EQ") {
+      if (comparison_direction == ComparisonDirection::EQ) {
         return b->create<complex::EqualOp>(loc, lhs, rhs);
       }
-      if (comparison_direction == "NE") {
+      if (comparison_direction == ComparisonDirection::NE) {
         return b->create<complex::NotEqualOp>(loc, lhs, rhs);
       }
     }
@@ -596,7 +597,8 @@ inline Value MapMhloOpToStdScalarOp<mhlo::IsFiniteOp>(
 /// linalg.generic op) for compare-select style operations like min/max.
 template <typename... Args>
 struct CompareSelectOpToStdScalarOp {
-  static Value map(Location /*loc*/, StringRef /*comparison_direction*/,
+  static Value map(Location /*loc*/,
+                   ComparisonDirection /*comparison_direction*/,
                    ArrayRef<Type> /*result_types*/,
                    ArrayRef<Type> /*arg_types*/, ValueRange /*args*/,
                    OpBuilder* /*b*/) {
@@ -610,7 +612,7 @@ template <typename SupportedType, typename StdCompareOp, typename Predicate,
           typename... Args>
 struct CompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
                                     Args...> {
-  static Value map(Location loc, StringRef comparison_direction,
+  static Value map(Location loc, ComparisonDirection comparison_direction,
                    ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
                    ValueRange args, OpBuilder* b) {
     Type element_type = getElementTypeOrSelf(arg_types.front());
@@ -928,7 +930,7 @@ struct MhloOpToStdScalarOp {
   // Implementation for lmhlo::CompareOp.
   template <typename MhloOpTy, typename = std::enable_if_t<std::is_same<
                                    MhloOpTy, mhlo::CompareOp>::value>>
-  static Value map(Location loc, StringRef comparison_direction,
+  static Value map(Location loc, ComparisonDirection comparison_direction,
                    ArrayRef<Type> result_types, ArrayRef<Type> arg_types,
                    ValueRange args, OpBuilder* b) {
     return impl::MapCompareOpToStdScalarOp<mhlo::CompareOp>(

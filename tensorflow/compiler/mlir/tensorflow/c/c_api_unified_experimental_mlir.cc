@@ -554,7 +554,7 @@ Status MlirAbstractOp::Execute(absl::Span<AbstractTensorHandle*> retvals,
 
 Operation* MlirFunctionContext::CreateOperationFromState(
     const OperationState& state) {
-  return builder_.createOperation(state);
+  return builder_.create(state);
 }
 
 Status MlirFunctionContext::AddParameter(

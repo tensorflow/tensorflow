@@ -184,7 +184,15 @@ StatusOr<std::unique_ptr<tensorflow::Graph>> CreatePrunedGraph(
     DumpGraphDefToFile("before_eliminate_ref_variables_graph_def", graph_def);
   }
 
+  // Ref variables in V1 Control flow prevent it from being functionalized. So
+  // we eliminate them first.
   TF_RETURN_IF_ERROR(EliminateRefVariablesFromV1ControlFlow(graph_def));
+
+  // The "_input_shapes" attributes will be not be correct after function
+  // optimizer in grappler, we need to remove them. Note that "_input_shapes" is
+  // not used except as a debug hint (somehow this debug hint is used by MLIR
+  // graphdef importer, which is not expected).
+  RemoveInputShapesInFunctions(graph_def);
 
   auto pruned_graph =
       std::make_unique<tensorflow::Graph>(tensorflow::OpRegistry::Global());
@@ -550,6 +558,13 @@ Status EliminateRefVariablesFromV1ControlFlow(tensorflow::GraphDef& graph_def) {
 
   graph_def.mutable_node()->Swap(updated_graph_def.mutable_node());
   return Status::OK();
+}
+
+void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def) {
+  for (tensorflow::FunctionDef& function_def :
+       *graph_def.mutable_library()->mutable_function()) {
+    function_def.mutable_attr()->erase("_input_shapes");
+  }
 }
 
 namespace {

@@ -39,8 +39,17 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "quant_spec",
+    srcs = ["quant_spec.cc"],
+    hdrs = ["quant_spec.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
     ],
 )

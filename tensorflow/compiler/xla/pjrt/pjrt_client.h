@@ -311,11 +311,15 @@ class PjRtClient {
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const = 0;
 
-  // Return a device-specific default device assignment for multi-slice system.
+  // Returns a device-specific default device assignment for multi-slice system.
+  // If num_replicas_per_slice is not defined (nullopt) then we assume that
+  // all the partitions live entirely on a single slice and that all cross slice
+  // communication happens across replicas assuming then that
+  // num_replicas_per_slice is going to be "num_replicas / num_slices".
   // TODO(zhangqiaorjc): Convert this to pure virtual and push down.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_replicas_per_slice, int num_partitions,
-      const MultiSliceConfig* multi_slice_config) const {
+      int num_replicas, absl::optional<int> num_replicas_per_slice,
+      int num_partitions, const MultiSliceConfig* multi_slice_config) const {
     return Unimplemented("Multi slice device assignment is not supported.");
   }
 
@@ -827,6 +831,20 @@ struct ExecuteOptions {
   const MultiSliceConfig* multi_slice_config = nullptr;
 };
 
+// Static device memory usage for a compiled program.
+// The on-device memory needed to run an executable is at least
+//   generated_code_size_in_bytes
+//   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
+//   + temp_size_in_bytes.
+struct CompiledMemoryStats {
+  int32_t generated_code_size_in_bytes = 0;
+  int32_t argument_size_in_bytes = 0;
+  int32_t output_size_in_bytes = 0;
+  // How much argument is reused for output.
+  int32_t alias_size_in_bytes = 0;
+  int32_t temp_size_in_bytes = 0;
+};
+
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. If any input/output alias has been specified in
 // the computation, the parameter containing the input buffer will be donated
@@ -845,6 +863,12 @@ class PjRtExecutable {
   virtual int num_partitions() const = 0;
 
   virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
+
+  // Return memory stats that allow callers to estimate device memory usage
+  // when running this executable.
+  virtual StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+    return Unimplemented("Retrieving CompiledMemoryStats is not supported.");
+  }
 
   virtual const DeviceAssignment& device_assignment() const = 0;
 
@@ -872,30 +896,107 @@ class PjRtExecutable {
   // Executes on devices addressable by the client. Requires executable has a
   // device_assignment and all devices in the device_assignment are addressable
   // by the client.
+  //
   // `argument_handles` is `[num_devices, num_args]`.
+  //
+  // If returned_futures.has_value():
+  //   if Execute does not return an error status:
+  //     *returned_futures will be resized to be the same length as the return
+  //     vector, and each future will become ready once the corresponding device
+  //     execute has completed.
+  //   else:
+  //     *returned_futures is undefined.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-  Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-          const ExecuteOptions& options) = 0;
+  Execute(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options,
+      absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures) = 0;
+  // Convenience wrapper for Execute that never returns futures.
+  StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options) {
+    absl::optional<std::vector<PjRtFuture<Status>>> returned_futures;
+    return Execute(std::move(argument_handles), options, returned_futures);
+  }
 
   // Execute the assigned replica/partition on a given `device`. Requires
   // executable has a device_assignment, `device` is present in the
   // device_assignment and addressable by the client.
+  //
+  // If fill_future is true:
+  //   if ExecuteSharded does not return an error status:
+  //     returned_future will be filled with a future that will become ready
+  //     once the execution has completed.
+  //    else:
+  //     returned_future will not be modified.
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) = 0;
+      const ExecuteOptions& options,
+      absl::optional<PjRtFuture<Status>>& returned_future,
+      bool fill_future) = 0;
+  // Convenience wrapper for ExecuteSharded that always returns a future.
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      absl::optional<PjRtFuture<Status>>& returned_future) {
+    return ExecuteSharded(std::move(argument_handles), device, options,
+                          returned_future, /*fill_future=*/true);
+  }
+  // Convenience wrapper for ExecuteSharded that never returns a future.
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options) {
+    absl::optional<PjRtFuture<Status>> returned_future;
+    return ExecuteSharded(std::move(argument_handles), device, options,
+                          returned_future, /*fill_future=*/false);
+  }
 
   // Execute on a given `device`. Requires `device` to be addressable by client.
   // Requires executable has exactly 1 replica and 1 partition and no
   // device_assignment (thus portable).
+  //
+  // If fill_future is true:
+  //   if ExecutePortable does not return an error status:
+  //     returned_future will be filled with a future that will become ready
+  //     once the execution has completed.
+  //    else:
+  //     returned_future will not be modified.
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) = 0;
+      const ExecuteOptions& options,
+      absl::optional<PjRtFuture<Status>>& returned_future,
+      bool fill_future) = 0;
+  // Convenience wrapper for ExecutePortable that always returns a future.
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      absl::optional<PjRtFuture<Status>>& returned_future) {
+    return ExecutePortable(std::move(argument_handles), device, options,
+                           returned_future, /*fill_future=*/true);
+  }
+  // Convenience wrapper for ExecutePortable that never returns a future.
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options) {
+    absl::optional<PjRtFuture<Status>> returned_future;
+    return ExecutePortable(std::move(argument_handles), device, options,
+                           returned_future, /*fill_future=*/false);
+  }
 
   // Asynchronously free resources after the last execution completes.
   virtual void Delete() = 0;
 
   // True if on-device resources associated with the executable are freed.
   virtual bool IsDeleted() = 0;
+
+ protected:
+  // Value returned internally from routines that enqueue an execution,
+  // combining the result buffers with a future that becomes ready when the
+  // execution completes.
+  struct Result {
+    absl::optional<PjRtFuture<Status>> future;
+    std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  };
 };
 
 }  // namespace xla

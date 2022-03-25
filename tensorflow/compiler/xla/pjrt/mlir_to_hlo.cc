@@ -75,7 +75,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   context.loadDialect<mlir::mhlo::MhloDialect>();
   context.loadDialect<mlir::chlo::HloClientDialect>();
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  module = mlir::parseSourceString(
+  module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
       &context);
   if (!module) {

@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -46,6 +47,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 #include "tensorflow/compiler/mlir/tfrt/analysis/tensor_array_side_effect_analysis.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_jitrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_clustering.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -56,8 +59,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
 #include "tfrt/jitrt/opdefs/jitrt_ops.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/tfrt_base.h"  // from @tf_runtime
@@ -83,7 +84,7 @@ constexpr char kHostAttr[] = "host";
 constexpr char kDeviceTypeTpu[] = "TPU";
 
 void getDependentConversionDialects(mlir::DialectRegistry &registry) {
-  registry.insert<tfrt::corert::CoreRTDialect,
+  registry.insert<tfrt::corert::CoreRTDialect, mlir::func::FuncDialect,
                   tfrt::fallback_async::FallbackAsyncDialect,
                   tfrt::compiler::TFRTDialect, tfrt::dist::DistributedDialect,
                   tf_jitrt::JitRuntimeDialect>();
@@ -654,7 +655,7 @@ class TFRTFuncOpSignatureConversion
   LogicalResult matchAndRewrite(
       mlir::FuncOp func_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    mlir::FunctionType type = func_op.getType();
+    mlir::FunctionType type = func_op.getFunctionType();
 
     // Convert the original function arguments.
     mlir::TypeConverter::SignatureConversion converted_signature(
@@ -1222,8 +1223,8 @@ class TFRTWhileOpConversion
 
     // Insert a call op to call the pred function for the first iteration.
     auto call_pred_fn = rewriter.create<tfrt::compiler::CallOp>(
-        op.getLoc(), pred_fn.getType().getResults(), pred_fn.getSymName(),
-        pred_args);
+        op.getLoc(), pred_fn.getFunctionType().getResults(),
+        pred_fn.getSymName(), pred_args);
 
     auto pred_chain = call_pred_fn.getResult(0);
     auto first_iteration_bool_cond = call_pred_fn.getResult(1);
@@ -1411,7 +1412,7 @@ mlir::FuncOp TFRTWhileOpConversion::GetWhileBodyFunction(
   // cond function and the predicate kernel that converts the tensor to boolean
   // value.
   auto call_pred_fn = rewriter.create<tfrt::compiler::CallOp>(
-      op.getLoc(), pred_fn.getType().getResults(), pred_fn.getSymName(),
+      op.getLoc(), pred_fn.getFunctionType().getResults(), pred_fn.getSymName(),
       call_original_body_fn.getResults());
 
   auto pred_chain = call_pred_fn.getResult(0);
@@ -1487,13 +1488,13 @@ void SetUpTFToTFRTConversionLegality(mlir::ConversionTarget *target,
   target->addIllegalDialect<tfrt::jitrt::JitRuntimeDialect>();
   target->addDynamicallyLegalOp<mlir::FuncOp>([func_type_converter,
                                                chain_type](FuncOp op) {
-    auto func_type = op.getType();
+    auto func_type = op.getFunctionType();
     if (func_type.getNumInputs() == 0 || func_type.getInput(0) != chain_type)
       return false;
     if (func_type.getNumResults() == 0 || func_type.getResult(0) != chain_type)
       return false;
 
-    return func_type_converter->isSignatureLegal(op.getType()) &&
+    return func_type_converter->isSignatureLegal(op.getFunctionType()) &&
            func_type_converter->isLegal(&op.getBody());
   });
 }

@@ -10,7 +10,7 @@ func @transpose_2d(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %1 = "tf.Transpose"(%arg0, %0)
        {device = "/job:localhost/replica:0/task:0/device:CPU:0"}
        : (tensor<?x?xf32>, tensor<2xi64>) -> tensor<?x?xf32>
-  return %1 : tensor<?x?xf32>
+  func.return %1 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_2d
@@ -61,7 +61,7 @@ func @transpose_3d_021(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
     : () -> tensor<3xi64>
   %1 = "tf.Transpose"(%arg0, %0)
     : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d
@@ -113,7 +113,7 @@ func @transpose_3d_201(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
     : () -> tensor<3xi64>
   %1 = "tf.Transpose"(%arg0, %0)
     : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d_201
@@ -165,7 +165,7 @@ func @transpose_3d_210(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
     : () -> tensor<3xi64>
   %1 = "tf.Transpose"(%arg0, %0)
     : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d_210
@@ -217,7 +217,7 @@ func @transpose_3d_120(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
     : () -> tensor<3xi64>
   %1 = "tf.Transpose"(%arg0, %0)
     : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d_120
@@ -269,7 +269,7 @@ func @transpose_3d_102(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
     : () -> tensor<3xi64>
   %1 = "tf.Transpose"(%arg0, %0)
     : (tensor<?x?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_3d_102

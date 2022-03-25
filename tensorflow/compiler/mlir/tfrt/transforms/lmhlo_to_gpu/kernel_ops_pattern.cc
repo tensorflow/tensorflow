@@ -195,7 +195,8 @@ Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, func_op->getContext(),
+      gpu_device_info, cuda_compute_capability,
+      stream_executor::RocmComputeCapability("gfx000"), func_op->getContext(),
       llvm_module);
 
   ir_emitter_context.set_allocations(allocations);

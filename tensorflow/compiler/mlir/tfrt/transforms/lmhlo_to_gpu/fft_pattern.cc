@@ -82,8 +82,10 @@ struct FftRewritePattern
 
     bool double_precision = input_shape.element_type() == xla::F64 ||
                             input_shape.element_type() == xla::C128;
-    auto type = GetFftType(adaptor.fft_type(), double_precision);
-    auto direction = GetFftDirection(adaptor.fft_type());
+    auto type = GetFftType(mlir::mhlo::stringifyFftType(adaptor.fft_type()),
+                           double_precision);
+    auto direction =
+        GetFftDirection(mlir::mhlo::stringifyFftType(adaptor.fft_type()));
     if (!type || !direction) {
       auto error = joinErrors(type.takeError(), direction.takeError());
       return rewriter.notifyMatchFailure(op, llvm::toString(std::move(error)));

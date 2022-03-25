@@ -6,14 +6,14 @@
 // here we disable verification with `verify-each=0` to check the output IR.
 // RUN: mlir-hlo-opt %s -lhlo-legalize-to-parallel-loops -canonicalize --verify-each=0 | FileCheck %s
 
-func @select_and_scatter(%arg: memref<112x112xf32>,
+func.func @select_and_scatter(%arg: memref<112x112xf32>,
                          %src: memref<56x56xf32>,
                          %init: memref<f32>,
                          %result: memref<112x112xf32>) {
   "lmhlo.select_and_scatter"(%arg, %src, %init, %result) ({
     // select
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %pred: memref<i1>):
-      "lmhlo.compare"(%lhs, %rhs, %pred) {comparison_direction = "GE"} :
+      "lmhlo.compare"(%lhs, %rhs, %pred) {comparison_direction = #mhlo<"comparison_direction GE">} :
           (memref<f32>, memref<f32>, memref<i1>) -> ()
       "lmhlo.terminator"() : () -> ()
   }, {
@@ -31,79 +31,65 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
        memref<f32>, memref<112x112xf32>) -> ()
   "lmhlo.terminator"() : () -> ()
 }
-// CHECK-LABEL: func @select_and_scatter(
-// CHECK-SAME:   [[ARG_BUF:%.*]]: memref<112x112xf32>,
-// CHECK-SAME:   [[SRC_BUF:%.*]]: memref<56x56xf32>,
-// CHECK-SAME:   [[INIT_BUF:%.*]]: memref<f32>,
-// CHECK-SAME:   [[RESULT_BUF:%.*]]: memref<112x112xf32>) {
+// CHECK-LABEL: func.func
+// CHECK: ^bb0(%[[ARG_BUF:.*]]: memref<112x112xf32>, %[[SRC_BUF:.*]]: memref<56x56xf32>, %[[INIT_BUF:.*]]: memref<f32>, %[[RESULT_BUF:.*]]: memref<112x112xf32>):
 
 // Constants.
-// CHECK-DAG:  [[C56:%.*]] = arith.constant 56 : index
-// CHECK-DAG:  [[C0:%.*]] = arith.constant 0 : index
-// CHECK-DAG:  [[C1:%.*]] = arith.constant 1 : index
-// CHECK-DAG:  [[C0_F32:%.*]] = arith.constant 0.000000e+00 : f32
-// CHECK-DAG:  [[CFALSE:%.*]] = arith.constant false
-// CHECK-DAG:  [[C3:%.*]] = arith.constant 3 : index
-// CHECK-DAG:  [[C2:%.*]] = arith.constant 2 : index
-// CHECK-DAG:  [[C112:%.*]] = arith.constant 112 : index
-// CHECK-DAG:  [[CTRUE:%.*]] = arith.constant true
+// CHECK-DAG: %[[C0_F32:.*]] = "arith.constant"() {value = 0.000000e+00 : f32}
+// CHECK-DAG: %[[C0:.*]] = "arith.constant"() {value = 0 : index}
+// CHECK-DAG: %[[C1:.*]] = "arith.constant"() {value = 1 : index}
+// CHECK-DAG: %[[C2:.*]] = "arith.constant"() {value = 2 : index}
+// CHECK-DAG: %[[C3:.*]] = "arith.constant"() {value = 3 : index}
+// CHECK-DAG: %[[C56:.*]] = "arith.constant"() {value = 56 : index}
+// CHECK-DAG: %[[C112:.*]] = "arith.constant"() {value = 112 : index}
+// CHECK-DAG: %[[CFALSE:.*]] = "arith.constant"() {value = false}
+// CHECK-DAG: %[[CTRUE:.*]] = "arith.constant"() {value = true}
 
 // Parallel loop to initialize the output buffer.
-// CHECK:    [[INIT:%.*]] = memref.load [[INIT_BUF]][] : memref<f32>
-// CHECK:    scf.parallel ([[I:%.*]], [[J:%.*]]) = ([[C0]], [[C0]])
-// CHECK-SAME:          to ([[C112]], [[C112]]) step ([[C1]], [[C1]]) {
-// CHECK:      memref.store [[INIT]], [[RESULT_BUF]]{{\[}}[[I]], [[J]]]
-// CHECK:      scf.yield
-// CHECK:    }
+// CHECK: %[[INIT:.*]] = "memref.load"(%[[INIT_BUF]]) : (memref<f32>) -> f32
+// CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C112]], %[[C112]], %[[C1]], %[[C1]]) ({
+// CHECK: ^bb0(%[[I:.*]]: index, %[[J:.*]]: index):
+// CHECK:   "memref.store"(%[[INIT]], %[[RESULT_BUF]], %[[I]], %[[J]])
+// CHECK:   "scf.yield"() : () -> ()
+// CHECK: })
 
 // Parallel loop over source buffer to compute scattered values.
-// CHECK:    scf.parallel ([[II:%.*]], [[JJ:%.*]]) = ([[C0]], [[C0]])
-// CHECK-SAME:          to ([[C56]], [[C56]]) step ([[C1]], [[C1]]) {
+// CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C56]], %[[C56]], %[[C1]], %[[C1]]) ({
+// CHECK: ^bb0(%[[II:.*]]: index, %[[JJ:.*]]: index):
 
 // Window loop w.r.t. first dim.
-// CHECK:      [[SEL_RES_I:%.*]]:4
-// CHECK-SAME:   = scf.for [[WIN_I:%.*]] = [[C0]] to [[C3]] step [[C1]]
-// CHECK-SAME:     iter_args(
-// CHECK-SAME:       [[SEL_I_0:%.*]] = [[C0]], [[SEL_J_0:%.*]] = [[C0]],
-// CHECK-SAME:       [[SEL_VAL_0:%.*]] = [[C0_F32]],
-// CHECK-SAME:       [[SEL_INIT_0:%.*]] = [[CFALSE]]
-// CHECK-SAME:     ) -> (index, index, f32, i1) {
+// CHECK:   %[[SEL_RES_I:.*]]:4 = "scf.for"(%[[C0]], %[[C3]], %[[C1]], %[[C0]], %[[C0]], %[[C0_F32]], %[[CFALSE]]) ({
+// CHECK:      ^bb0(%[[WIN_I:.*]]: index, %[[SEL_I_0:.*]]: index, %[[SEL_J_0:.*]]: index, %[[SEL_VAL_0:.*]]: f32, %[[SEL_INIT_0:.*]]: i1):
 
 // Window loop w.r.t. second dim.
-// CHECK:      [[SEL_RES_J:%.*]]:4
-// CHECK-SAME:   = scf.for [[WIN_J:%.*]] = [[C0]] to [[C3]] step [[C1]]
-// CHECK-SAME:     iter_args(
-// CHECK-SAME:       [[SEL_I:%.*]] = [[SEL_I_0]], [[SEL_J:%.*]] = [[SEL_J_0]],
-// CHECK-SAME:       [[SEL_VAL:%.*]] = [[SEL_VAL_0]],
-// CHECK-SAME:       [[SEL_INIT:%.*]] = [[SEL_INIT_0]]
-// CHECK-SAME:     ) -> (index, index, f32, i1) {
+// CHECK: %[[SEL_RES_J:.*]]:4 = "scf.for"(%[[C0]], %[[C3]], %[[C1]], %[[SEL_I_0]], %[[SEL_J_0]], %[[SEL_VAL_0]], %[[SEL_INIT_0]]) ({
+// CHECK: ^bb0(%[[WIN_J:.*]]: index, %[[SEL_I:.*]]: index, %[[SEL_J:.*]]: index, %[[SEL_VAL:.*]]: f32, %[[SEL_INIT:.*]]: i1):
 
 // Compute index I of the ARG buffer and check whether it is in padding area.
-// CHECK:  [[START_I:%.*]] = arith.muli [[II]], [[C2]] : index
-// CHECK:  [[ARG_I:%.*]] = arith.addi [[START_I]], [[WIN_I]] : index
-// CHECK:  [[ARG_I_FITS:%.*]] = arith.cmpi ult, [[ARG_I]], [[C112]] : index
+// CHECK: %[[START_I:.*]] = "arith.muli"(%[[II]], %[[C2]])
+// CHECK: %[[ARG_I:.*]] = "arith.addi"(%[[START_I]], %[[WIN_I]])
+// CHECK: %[[ARG_I_FITS:.*]] = "arith.cmpi"(%[[ARG_I]], %[[C112]])
 
 // Compute index J of the ARG buffer and check whether it is in padding area.
-// CHECK:  [[START_J:%.*]] = arith.muli [[JJ]], [[C2]] : index
-// CHECK:  [[ARG_J:%.*]] = arith.addi [[START_J]], [[WIN_J]] : index
-// CHECK:  [[ARG_J_FITS:%.*]] = arith.cmpi ult, [[ARG_J]], [[C112]] : index
+// CHECK: %[[START_J:.*]] = "arith.muli"(%[[JJ]], %[[C2]])
+// CHECK: %[[ARG_J:.*]] = "arith.addi"(%[[START_J]], %[[WIN_J]])
+// CHECK: %[[ARG_J_FITS:.*]] = "arith.cmpi"(%[[ARG_J]], %[[C112]])
 
 // Update `INBOUNDS`, i.e. whether or not ARG indices are inside the boundaries
 // of the buffer or they are in the padding area.
-// CHECK:  [[INBOUNDS_1:%.*]] = arith.andi [[ARG_I_FITS]], [[ARG_J_FITS]] : i1
+// CHECK: %[[INBOUNDS_1:.*]] = "arith.andi"(%[[ARG_I_FITS]], %[[ARG_J_FITS]])
 
 // If ARG ivs are in the padding area, then 'select' function does not have to
 // be applied, current selected ivs (SEL_I, SEL_J) and value (SEL_VAL) are
 // returned in that case.
-// CHECK:  [[IF_INBOUNDS_RES:%.*]]:4
-// CHECK-SAME:  = scf.if [[INBOUNDS_1]] -> (index, index, f32, i1) {
+// CHECK:  %[[IF_INBOUNDS_RES:.*]]:3
+// CHECK-SAME:  = "scf.if"(%[[INBOUNDS_1]]) ({
 
 
   // INBOUNDS-THEN-BODY, i.e. if INBOUNDS == true
 
-  // CHECK: [[ARG_ELEM:%.*]] = memref.load [[ARG_BUF]]{{\[}}[[ARG_I]], [[ARG_J]]]
-  // CHECK: [[IF_INIT_RES:%.*]]:3
-  // CHECK-SAME:  = scf.if [[SEL_INIT]] -> (index, index, f32) {
+  // CHECK: %[[ARG_ELEM:.*]] = "memref.load"(%[[ARG_BUF]], %[[ARG_I]], %[[ARG_J]])
+  // CHECK: %[[IF_INIT_RES:.*]]:3 = "scf.if"(%[[SEL_INIT]]) ({
 
     // INIT-THEN-BODY, i.e. INBOUNDS == true and INIT = true
 
@@ -114,78 +100,59 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 
     // Allocate buffers for ARG element, current selected value to adapt LHLO
     // code.
-    // CHECK:  [[ARG_ELEM_BUF:%.*]] = memref.alloc() : memref<f32>
-    // CHECK:  [[SEL_VAL_BUF:%.*]] = memref.alloc() : memref<f32>
-    // CHECK:  [[PRED_BUF:%.*]] = memref.alloc() : memref<i1>
-    // CHECK:  memref.store [[ARG_ELEM]], [[ARG_ELEM_BUF]][] : memref<f32>
-    // CHECK:  memref.store [[SEL_VAL]], [[SEL_VAL_BUF]][] : memref<f32>
+    // CHECK: %[[ARG_ELEM_BUF:.*]] = "memref.alloc"() {{.*}} -> memref<f32>
+    // CHECK: %[[SEL_VAL_BUF:.*]] = "memref.alloc"() {{.*}} -> memref<f32>
+    // CHECK: %[[PRED_BUF:.*]] = "memref.alloc"() {{.*}} -> memref<i1>
+    // CHECK: "memref.store"(%[[ARG_ELEM]], %[[ARG_ELEM_BUF]])
+    // CHECK: "memref.store"(%[[SEL_VAL]], %[[SEL_VAL_BUF]])
 
     // Compute PRED.
     // CHECK:  "lmhlo.compare"(
-    // CHECK-SAME:     [[ARG_ELEM_BUF]], [[SEL_VAL_BUF]], [[PRED_BUF]])
-    // CHECK:      [[PRED:%.*]] = memref.load [[PRED_BUF]][] : memref<i1>
+    // CHECK-SAME:     %[[ARG_ELEM_BUF]], %[[SEL_VAL_BUF]], %[[PRED_BUF]])
+    // CHECK:  %[[PRED:.*]] = "memref.load"(%[[PRED_BUF]]) : (memref<i1>) -> i1
 
 
     // Depending on PRED, return ARG ivs & elem or current select ivs and value.
-    // CHECK:  [[IF_PRED_RES0:%.*]] = arith.select [[PRED]], [[ARG_I]], [[SEL_I]]
-    // CHECK:  [[IF_PRED_RES1:%.*]] = arith.select [[PRED]], [[ARG_J]], [[SEL_J]]
-    // CHECK:  [[IF_PRED_RES2:%.*]] = arith.select [[PRED]], [[ARG_ELEM]], [[SEL_VAL]]
+    // CHECK: %[[IF_PRED_RES0:.*]] = "arith.select"(%[[PRED]], %[[ARG_I]], %[[SEL_I]])
+    // CHECK: %[[IF_PRED_RES1:.*]] = "arith.select"(%[[PRED]], %[[ARG_J]], %[[SEL_J]])
+    // CHECK: %[[IF_PRED_RES2:.*]] = "arith.select"(%[[PRED]], %[[ARG_ELEM]], %[[SEL_VAL]])
 
     // INIT-THEN-BODY yield.
-    // CHECK:  scf.yield [[IF_PRED_RES0]], [[IF_PRED_RES1]],
-    // CHECK-SAME:        [[IF_PRED_RES2]]
+    // CHECK:    "scf.yield"(%[[IF_PRED_RES0]], %[[IF_PRED_RES1]], %[[IF_PRED_RES2]])
+    // CHECK: }
 
     // INIT-ELSE-BODY, i.e. if INBOUNDS == TRUE and INIT == FALSE, returns ARG
     // ivs and element without computing Select function.
-    // CHECK:  scf.yield [[ARG_I]], [[ARG_J]], [[ARG_ELEM]]
-    // CHECK-SAME:        : index, index, f32
-    // CHECK:  }
-
-  // INBOUNDS-THEN-BODY yield.
-  // CHECK:  scf.yield [[IF_INIT_RES]]#0, [[IF_INIT_RES]]#1, [[IF_INIT_RES]]#2
-  // CHECK-SAME:        : index, index, f32
-  // CHECK:  }
-
-  // INBOUNDS-ELSE-REGION, i.e. if INBOUNDS == FALSE
-  // We are in the pad area, return current iter_args.
-  // CHECK:  scf.yield [[SEL_I]], [[SEL_J]], [[SEL_VAL]],
-  // CHECK-SAME:  [[SEL_INIT]] : index, index, f32, i1
-  // CHECK:  }
-
-// Window loop w.r.t. second dim yield.
-// CHECK:  scf.yield [[IF_INBOUNDS_RES]]#0, [[IF_INBOUNDS_RES]]#1,
-// CHECK-SAME:        [[IF_INBOUNDS_RES]]#2, [[IF_INBOUNDS_RES]]#3
-// CHECK:  }
+    // CHECK:   "scf.yield"(%[[ARG_I]], %[[ARG_J]], %[[ARG_ELEM]])
+    // CHECK: }
 
 // Window loop w.r.t. first dim yield.
-// CHECK:    scf.yield [[SEL_RES_J]]#0, [[SEL_RES_J]]#1, [[SEL_RES_J]]#2,
-// CHECK-SAME:          [[SEL_RES_J]]#3 : index, index, f32, i1
-// CHECK:  }
+// CHECK:   "scf.yield"(%[[SEL_RES_J:.*]]#0, %[[SEL_RES_J]]#1, %[[SEL_RES_J]]#2, %[[SEL_RES_J]]#3)
+// CHECK: }
 
 // Use selected ivs to load element from the SRC buffer.
-// CHECK: [[SRC_ELEM:%.*]] = memref.load [[SRC_BUF]]{{\[}}[[II]], [[JJ]]]
+// CHECK: %[[SRC_ELEM:.*]] = "memref.load"(%[[SRC_BUF]], %[[II]], %[[JJ]]) : (memref<56x56xf32>, index, index) -> f32
 
 // Update of RESULT[SELECTED_I, SELECTED_J] should be done atomically, because
 // it may happen that several other threads select the same IVs if the windows
 // overlap.
-// CHECK: generic_atomic_rmw [[RESULT_BUF]]{{\[}}[[SEL_RES_I]]#0,
-// CHECK-SAME:                 [[SEL_RES_I]]#1] : memref<112x112xf32>
-// CHECK: ^bb0([[CUR_RES:%.*]]: f32):
+// CHECK: "memref.generic_atomic_rmw"(%[[RESULT_BUF]], %[[SEL_RES_I:.*]]#0, %[[SEL_RES_I]]#1) ({
+// CHECK: ^bb0(%[[CUR_RES:.*]]: f32):
 
 // Allocate buffers for ARG element, current selected value to adapt LHLO code.
-// CHECK:  [[SRC_ELEM_BUF:%.*]] = memref.alloc() : memref<f32>
-// CHECK:  [[CUR_RES_BUF:%.*]] = memref.alloc() : memref<f32>
-// CHECK:  [[RES_BUF:%.*]] = memref.alloc() : memref<f32>
-// CHECK:  memref.store [[SRC_ELEM]], [[SRC_ELEM_BUF]][] : memref<f32>
-// CHECK:  memref.store [[CUR_RES]], [[CUR_RES_BUF]][] : memref<f32>
+// CHECK: %[[SRC_ELEM_BUF:.*]] = "memref.alloc"() {{.*}} : () -> memref<f32>
+// CHECK: %[[CUR_RES_BUF:.*]] = "memref.alloc"() {{.*}} : () -> memref<f32>
+// CHECK: %[[RES_BUF:.*]] = "memref.alloc"() {{.*}} : () -> memref<f32>
+// CHECK: "memref.store"(%[[SRC_ELEM]], %[[SRC_ELEM_BUF]]) : (f32, memref<f32>) -> ()
+// CHECK: "memref.store"(%[[CUR_RES]], %[[CUR_RES_BUF]]) : (f32, memref<f32>) -> ()
 
 // Compute scatter value.
-// CHECK:  "lmhlo.add"([[SRC_ELEM_BUF]], [[CUR_RES_BUF]], [[RES_BUF]]) :
-// CHECK-SAME: (memref<f32>, memref<f32>, memref<f32>) -> ()
-// CHECK:  [[RES:%.*]] = memref.load [[RES_BUF]][] : memref<f32>
+// CHECK: "lmhlo.add"(%[[SRC_ELEM_BUF]], %[[CUR_RES_BUF]], %[[RES_BUF]])
+// CHECK: %[[RES:.*]] = "memref.load"(%[[RES_BUF]]) : (memref<f32>) -> f32
+
 
 // Atomic RMW terminator that returns updated value.
-// CHECK:  atomic_yield [[RES]] : f32
+// CHECK: "memref.atomic_yield"(%[[RES]]) : (f32) -> ()
 
 // Parallel loop over source buffer yield
-// CHECK:  scf.yield
+// CHECK: "scf.yield"() : () -> ()

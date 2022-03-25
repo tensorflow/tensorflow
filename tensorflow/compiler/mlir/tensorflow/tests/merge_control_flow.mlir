@@ -3,7 +3,7 @@
 // Check that IfRegions with different predicates are not merged.
 
 // CHECK-LABEL: func @different_predicate_no_merge
-func @different_predicate_no_merge() {
+func.func @different_predicate_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
@@ -30,7 +30,7 @@ func @different_predicate_no_merge() {
 // Check that IfRegions with same predicates but different block are not merged.
 
 // CHECK-LABEL: func @different_block_no_merge
-func @different_block_no_merge() {
+func.func @different_block_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
@@ -66,7 +66,7 @@ func @different_block_no_merge() {
 // Check that IfRegions with same predicates and no returns are merged.
 
 // CHECK-LABEL: func @same_predicate_no_returns_merged
-func @same_predicate_no_returns_merged() {
+func.func @same_predicate_no_returns_merged() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:         _else_func_name = "elseFunc1"
@@ -95,7 +95,7 @@ func @same_predicate_no_returns_merged() {
 // Check that IfRegions with same predicate intermediate data dependency are not merged.
 
 // CHECK-LABEL: func @same_predicate_intermediate_dependency_no_merge
-func @same_predicate_intermediate_dependency_no_merge() {
+func.func @same_predicate_intermediate_dependency_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
@@ -124,7 +124,7 @@ func @same_predicate_intermediate_dependency_no_merge() {
 // Check that IfRegions with same predicate intermediate side effect dependency are not merged.
 
 // CHECK-LABEL: func @same_predicate_side_effect_dependency_no_merge
-func @same_predicate_side_effect_dependency_no_merge() {
+func.func @same_predicate_side_effect_dependency_no_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.IfRegion"
@@ -152,7 +152,7 @@ func @same_predicate_side_effect_dependency_no_merge() {
 // Check that merged IfRegions correctly set is_stateless attribute.
 
 // CHECK-LABEL: func @same_predicate_stateless_merge
-func @same_predicate_stateless_merge() {
+func.func @same_predicate_stateless_merge() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        is_stateless = false
@@ -180,7 +180,7 @@ func @same_predicate_stateless_merge() {
 // Check that IfRegions with same predicates and returns are merged.
 
 // CHECK-LABEL: func @same_predicate_returns_merged
-func @same_predicate_returns_merged() {
+func.func @same_predicate_returns_merged() {
   // CHECK:      tf_device.cluster
   // CHECK:        %[[IF_OUTPUT:[0-9]*]]:2 = "tf.IfRegion"
   // CHECK:          %[[A_OUTPUT:[0-9]*]] = "tf.A"
@@ -216,7 +216,7 @@ func @same_predicate_returns_merged() {
 // Check that IfRegions with same predicates and unused returns.
 
 // CHECK-LABEL: func @same_predicate_returns_unused
-func @same_predicate_returns_unused() {
+func.func @same_predicate_returns_unused() {
   // CHECK:      tf_device.cluster
   // CHECK:        %[[IF_OUTPUT:[0-9]*]] = "tf.IfRegion"
   // CHECK:          %[[A_OUTPUT:[0-9]*]] = "tf.A"
@@ -251,7 +251,7 @@ func @same_predicate_returns_unused() {
 }
 
 // CHECK-LABEL: func @same_predicate_dependency
-func @same_predicate_dependency() {
+func.func @same_predicate_dependency() {
   // CHECK:      tf_device.cluster
   // CHECK:        %[[IF_OUTPUT:[0-9]*]] = "tf.IfRegion"
   // CHECK:          %[[A_OUTPUT:[0-9]*]] = "tf.A"
@@ -288,7 +288,7 @@ func @same_predicate_dependency() {
 // Checks that results from first IfRegion are moved after merged IfRegion op as needed.
 
 // CHECK-LABEL: func @same_predicate_results_moved
-func @same_predicate_results_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
+func.func @same_predicate_results_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
   // CHECK:      tf_device.cluster
   // CHECK:        %[[IF_OUTPUT:[0-9]*]]:2 = "tf.IfRegion"
   // CHECK:          %[[A_OUTPUT:[0-9]*]] = "tf.A"
@@ -330,7 +330,7 @@ func @same_predicate_results_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>
 // Checks that side effect successor of op in first IfRegion are moved after merged IfRegion op as needed.
 
 // CHECK-LABEL: func @same_predicate_side_effect_moved
-func @same_predicate_side_effect_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
+func.func @same_predicate_side_effect_moved(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
   // CHECK:      tf_device.cluster
   // CHECK:        %[[IF_OUTPUT:[0-9]*]]:2 = "tf.IfRegion"
   // CHECK:         "tf.A"
@@ -370,7 +370,7 @@ func @same_predicate_side_effect_moved(%arg0: tensor<!tf_type.resource<tensor<f3
 // Check that 3 IfRegions with same predicates and no intermediate dependencies are merged.
 
 // CHECK-LABEL: func @same_predicate_3_ifregions
-func @same_predicate_3_ifregions() {
+func.func @same_predicate_3_ifregions() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK-NOT:    "tf.IfRegion"
@@ -403,7 +403,7 @@ func @same_predicate_3_ifregions() {
 // can be merged but not 1st IfRegion.
 
 // CHECK-LABEL: func @same_predicate_3_ifregions_only_merge2
-func @same_predicate_3_ifregions_only_merge2() {
+func.func @same_predicate_3_ifregions_only_merge2() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:          "tf.A"
@@ -446,7 +446,7 @@ func @same_predicate_3_ifregions_only_merge2() {
 // newly merged IfRegion.
 
 // CHECK-LABEL: func @same_predicate_3_ifregions_reorder
-func @same_predicate_3_ifregions_reorder() {
+func.func @same_predicate_3_ifregions_reorder() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:          "tf.A"
@@ -486,7 +486,7 @@ func @same_predicate_3_ifregions_reorder() {
 // can't be merged due to an intermediate dep in the 2nd IfRegion.
 
 // CHECK-LABEL: func @same_predicate_3_ifregions_intermediate_dep
-func @same_predicate_3_ifregions_intermediate_dep() {
+func.func @same_predicate_3_ifregions_intermediate_dep() {
   // CHECK-COUNT-3:        "tf.IfRegion"
   "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
@@ -520,7 +520,7 @@ func @same_predicate_3_ifregions_intermediate_dep() {
 // can't be merged due to an intermediate side effecting IfRegion.
 
 // CHECK-LABEL: func @same_predicate_3_ifregions_intermediate_side_effect
-func @same_predicate_3_ifregions_intermediate_side_effect() {
+func.func @same_predicate_3_ifregions_intermediate_side_effect() {
   // CHECK-COUNT-3:   "tf.IfRegion"
   "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
@@ -554,7 +554,7 @@ func @same_predicate_3_ifregions_intermediate_side_effect() {
 // can be merged and ensure that side effect analysis is regenerated.
 
 // CHECK-LABEL: func @side_effect_analysis_updated
-func @side_effect_analysis_updated() {
+func.func @side_effect_analysis_updated() {
   // CHECK-COUNT-3:   "tf.IfRegion"
   "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
@@ -594,7 +594,7 @@ func @side_effect_analysis_updated() {
 // Check that 2 IfRegions can be merged when the first IfRegion contains multiple side effecting ops.
 
 // CHECK-LABEL: func @same_predicate_2_ifregions_multiple_side_effect_ops
-func @same_predicate_2_ifregions_multiple_side_effect_ops() {
+func.func @same_predicate_2_ifregions_multiple_side_effect_ops() {
   // CHECK:       "tf.IfRegion"
   // CHECK-NOT:   "tf.IfRegion"
   "tf_device.cluster"() ({
@@ -623,7 +623,7 @@ func @same_predicate_2_ifregions_multiple_side_effect_ops() {
 // reasonably efficient.
 
 // CHECK-LABEL: func @moved_ops_with_many_dependencies
-func @moved_ops_with_many_dependencies() {
+func.func @moved_ops_with_many_dependencies() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK-NOT:    "tf.IfRegion"
@@ -686,7 +686,7 @@ func @moved_ops_with_many_dependencies() {
 // the same predicate are merged. There are no dependencies between IfRegions.
 
 // CHECK-LABEL: func @three_if_regions_with_same_predicate_merged
-func @three_if_regions_with_same_predicate_merged() {
+func.func @three_if_regions_with_same_predicate_merged() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.A"
@@ -751,7 +751,7 @@ func @three_if_regions_with_same_predicate_merged() {
 // merged at the same block level. There are no dependencies between IfRegions.
 
 // CHECK-LABEL: func @nested_IfRegions_with_same_predicate_same_block_level_merged
-func @nested_IfRegions_with_same_predicate_same_block_level_merged() {
+func.func @nested_IfRegions_with_same_predicate_same_block_level_merged() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:        "tf.A"
@@ -804,7 +804,7 @@ func @nested_IfRegions_with_same_predicate_same_block_level_merged() {
 // control dependency or data dependency, both of the groups can be merged
 
 // CHECK-LABEL: func @two_overlapped_if_groups_with_no_dependency_merged
-func @two_overlapped_if_groups_with_no_dependency_merged() {
+func.func @two_overlapped_if_groups_with_no_dependency_merged() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
   // CHECK:          "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
@@ -895,7 +895,7 @@ func @two_overlapped_if_groups_with_no_dependency_merged() {
   // CHECK:          "tf.Const"() {value = dense<4.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK;          "tf.Const"() {value = dense<6.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK-NOT:    "tf.IfRegion"
-func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_region_group() {
+func.func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_region_group() {
   "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
@@ -971,7 +971,7 @@ func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_region_gr
   // CHECK         "tf.Const"() {value = dense<8.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK         "tf.Const"() {value = dense<1.200000e+01> : tensor<f32>} : () -> tensor<f32>
   // CHECK-NOT:    "tf.IfRegion"
-func @two_overlapped_if_groups_with_dependency_merged_v1() {
+func.func @two_overlapped_if_groups_with_dependency_merged_v1() {
   "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
@@ -1047,7 +1047,7 @@ func @two_overlapped_if_groups_with_dependency_merged_v1() {
    // CHECK        "tf.Add"(%0, %cst_2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
    // CHECK        "tf.Const"() {value = dense<1.000000e+01> : tensor<f32>} : () -> tensor<f32>
   // CHECK-NOT:    "tf.IfRegion"
-func @two_overlapped_if_groups_with_dependency_merged_v2() {
+func.func @two_overlapped_if_groups_with_dependency_merged_v2() {
   "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
     %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
@@ -1104,7 +1104,7 @@ func @two_overlapped_if_groups_with_dependency_merged_v2() {
 // the same predicate are merged. There are no dependencies between IfRegions.
 
 // CHECK-LABEL: func @three_if_regions_with_same_predicate_and_correct_return_indices_merged_v1
-func @three_if_regions_with_same_predicate_and_correct_return_indices_merged_v1() {
+func.func @three_if_regions_with_same_predicate_and_correct_return_indices_merged_v1() {
   //CHECK  "tf_device.cluster"
   //CHECK  "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
   //CHECK  "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
@@ -1152,7 +1152,7 @@ func @three_if_regions_with_same_predicate_and_correct_return_indices_merged_v1(
 // Check that merged IfRegion will not contain unused return variables
 
 // CHECK-LABEL: func @three_if_regions_with_same_predicate_and_correct_return_indices_merged_v2
-func @three_if_regions_with_same_predicate_and_correct_return_indices_merged_v2() {
+func.func @three_if_regions_with_same_predicate_and_correct_return_indices_merged_v2() {
   //CHECK  "tf_device.cluster"
   //CHECK  "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
   //CHECK  "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
@@ -1192,6 +1192,53 @@ func @three_if_regions_with_same_predicate_and_correct_return_indices_merged_v2(
       }, {
       %9 = "tf.Const"() {value = dense<6.0> : tensor<f32>} : () -> tensor<f32>
       %10 = "tf.Add"(%2, %9) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
+      "tf.Yield"(%10) : (tensor<f32>) -> ()
+     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}
+
+// Check that merged IfRegion will not contain unused return variables
+
+// CHECK-LABEL: func @one_use_between_two_IfRegions_groups
+  //CHECK tf_device.cluster
+  //CHECK "tf.IfRegion"
+  //CHECK-NOT "tf.Add"
+  //CHECK "tf.IfRegion"
+  //CHECK "tf.Add"
+  //CHECK-NOT "tf.IfRegion"
+func.func @one_use_between_two_IfRegions_groups() {
+  "tf_device.cluster"() ({
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+    %2 = "tf.IfRegion"(%0) ({
+      %3 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%3) : (tensor<f32>) -> ()
+      }, {
+      %3 = "tf.Const"() {value = dense<2.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%3) : (tensor<f32>) -> ()
+     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %4 = "tf.IfRegion"(%1) ({
+      %5 = "tf.Const"() {value = dense<3.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%5) : (tensor<f32>) -> ()
+      }, {
+      %5 = "tf.Const"() {value = dense<4.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%5) : (tensor<f32>) -> ()
+     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %6 = "tf.Add"(%2, %4) : (tensor<f32>, tensor<f32>) -> (tensor<f32>)
+    %7 = "tf.IfRegion"(%1) ({
+      %8 = "tf.Const"() {value = dense<5.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%8) : (tensor<f32>) -> ()
+      }, {
+      %8 = "tf.Const"() {value = dense<6.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%8) : (tensor<f32>) -> ()
+     }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
+    %9 = "tf.IfRegion"(%0) ({
+      %10 = "tf.Const"() {value = dense<7.0> : tensor<f32>} : () -> tensor<f32>
+      "tf.Yield"(%10) : (tensor<f32>) -> ()
+      }, {
+      %10 = "tf.Const"() {value = dense<8.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%10) : (tensor<f32>) -> ()
      }) {is_stateless = true} : (tensor<i1>) -> (tensor<f32>)
     tf_device.return

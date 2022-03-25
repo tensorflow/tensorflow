@@ -11,7 +11,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-SAME: %[[ARG1:.*]]: tensor<*x!tf_type.resource<tensor<f32>>> {tf.device = "/device:TPU:1"},
   // CHECK-SAME: %[[ARG2:.*]]: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:0"},
   // CHECK-SAME: %[[ARG3:.*]]: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:1"})
-  func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
+  func.func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
              %arg1: !tf_res_f32 {tf.device = "/device:TPU:1"},
              %arg2: !tf_res_md_f32 {tf.device = "/device:TPU:0"},
              %arg3: !tf_res_md_f32 {tf.device = "/device:TPU:1"}) {
@@ -102,7 +102,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: func @main
   // CHECK-NOT: TPUReshardVariables
-  func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
+  func.func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
              %arg1: !tf_res_f32 {tf.device = "/device:TPU:1"},
              %arg2: !tf_res_md_f32 {tf.device = "/device:TPU:0"},
              %arg3: !tf_res_md_f32 {tf.device = "/device:TPU:1"},
@@ -168,7 +168,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   // CHECK-LABEL: func @main
   // CHECK-NOT: TPUReshardVariables
-  func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
+  func.func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
              %arg1: !tf_res_f32 {tf.device = "/device:TPU:1"},
              %arg2: !tf_res_md_f32 {tf.device = "/device:TPU:0"},
              %arg3: !tf_res_md_f32 {tf.device = "/device:TPU:1"}) {
@@ -233,7 +233,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-SAME: %[[ARG0:.*]]: tensor<*x!tf_type.resource<tensor<f32>>> {tf.device = "/device:TPU:0"},
   // CHECK-SAME: %[[ARG1:.*]]: tensor<*x!tf_type.resource<tensor<f32>>> {tf.device = "/device:TPU:1"},
   // CHECK-SAME: %[[ARG2:.*]]: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:COMPOSITE:0"})
-  func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
+  func.func @main(%arg0: !tf_res_f32 {tf.device = "/device:TPU:0"},
              %arg1: !tf_res_f32 {tf.device = "/device:TPU:1"},
              %arg2: !tf_res_md_f32 {tf.device = "/device:COMPOSITE:0"}) {
     %0 = "tf.Const"() {value = dense<100> : tensor<i32>} : () -> tensor<i32>

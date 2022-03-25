@@ -33,10 +33,8 @@ using FusionNodeIndexingEvaluationTest = HloTestBase;
 // different index values.
 class InstructionFusionForTesting : public InstructionFusion {
  public:
-  explicit InstructionFusionForTesting(HloModule* module)
-      : InstructionFusion(InstructionFusion::IsExpensive) {
-    computation_ = module->entry_computation();
-  }
+  explicit InstructionFusionForTesting()
+      : InstructionFusion(InstructionFusion::IsExpensive) {}
 
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override {
@@ -55,9 +53,9 @@ class InstructionFusionForTesting : public InstructionFusion {
     return new_producer;
   }
 
-  HloInstruction* Fuse(HloInstruction* producer,
-                       HloInstruction* consumer) override {
-    return InstructionFusion::Fuse(producer, consumer);
+  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
+                       HloComputation* computation) override {
+    return InstructionFusion::Fuse(producer, consumer, computation);
   }
 
   int64_t EvaluateEmittedInstructions(const HloInstruction* producer,
@@ -90,7 +88,7 @@ TEST_F(FusionNodeIndexingEvaluationTest, FuseTwoInstructions) {
                     .ValueOrDie();
   HloInstruction* sub = module->entry_computation()->root_instruction();
   HloInstruction* add = sub->mutable_operand(0);
-  InstructionFusionForTesting(module.get()).Fuse(add, sub);
+  InstructionFusionForTesting().Fuse(add, sub, module->entry_computation());
 }
 
 TEST_F(FusionNodeIndexingEvaluationTest, FuseThreeInstructions) {
@@ -104,12 +102,13 @@ TEST_F(FusionNodeIndexingEvaluationTest, FuseThreeInstructions) {
   })")
                     .ValueOrDie();
   HloInstruction* sub = module->entry_computation()->root_instruction();
-  InstructionFusionForTesting instruction_fusion(module.get());
+  InstructionFusionForTesting instruction_fusion;
   HloInstruction* slice1 = sub->mutable_operand(0);
   HloInstruction* slice2 = sub->mutable_operand(1);
-  auto fusion = instruction_fusion.Fuse(slice1, sub);
+  auto fusion =
+      instruction_fusion.Fuse(slice1, sub, module->entry_computation());
   EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(slice2, fusion), 1);
-  instruction_fusion.Fuse(slice2, fusion);
+  instruction_fusion.Fuse(slice2, fusion, module->entry_computation());
 }
 
 TEST_F(FusionNodeIndexingEvaluationTest, ExponentialDuplicationPattern) {
@@ -144,37 +143,38 @@ TEST_F(FusionNodeIndexingEvaluationTest, ExponentialDuplicationPattern) {
   // twice because they get passed both different index vectors from add1. add0
   // then gets emitted 4 times.
   HloInstruction* add2 = module->entry_computation()->root_instruction();
-  InstructionFusionForTesting instruction_fusion(module.get());
+  InstructionFusionForTesting instruction_fusion;
   HloInstruction* slice2_0 = add2->mutable_operand(0);
   HloInstruction* slice2_1 = add2->mutable_operand(1);
-  auto fusion = instruction_fusion.Fuse(slice2_0, add2);
+  auto fusion =
+      instruction_fusion.Fuse(slice2_0, add2, module->entry_computation());
   // So far we have fused add2 and slice2.0. So when we also fuse slice2.1, we
   // expect to emit it 1 time.
   EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(slice2_1, fusion),
             1);
-  instruction_fusion.Fuse(slice2_1, fusion);
+  instruction_fusion.Fuse(slice2_1, fusion, module->entry_computation());
   HloInstruction* add1 = fusion->mutable_operand(0);
   EXPECT_EQ(add1->opcode(), HloOpcode::kAdd);
   // If we fuse add1 into 'fusion', it needs to be emitted twice.
   EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(add1, fusion), 2);
-  instruction_fusion.Fuse(add1, fusion);
+  instruction_fusion.Fuse(add1, fusion, module->entry_computation());
   HloInstruction* slice1_0 = fusion->mutable_operand(0);
   EXPECT_EQ(slice1_0->opcode(), HloOpcode::kSlice);
   // If we fuse slice1.0 into 'fusion', it needs to be emitted twice.
   EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(slice1_0, fusion),
             2);
-  instruction_fusion.Fuse(slice1_0, fusion);
+  instruction_fusion.Fuse(slice1_0, fusion, module->entry_computation());
   HloInstruction* slice1_1 = fusion->mutable_operand(0);
   EXPECT_EQ(slice1_1->opcode(), HloOpcode::kSlice);
   // If we fuse slice1.1 into 'fusion', it needs to be emitted twice.
   EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(slice1_1, fusion),
             2);
-  instruction_fusion.Fuse(slice1_1, fusion);
+  instruction_fusion.Fuse(slice1_1, fusion, module->entry_computation());
   HloInstruction* add0 = fusion->mutable_operand(0);
   EXPECT_EQ(add0->opcode(), HloOpcode::kAdd);
   // If we fuse add0 into 'fusion', it needs to be emitted four times.
   EXPECT_EQ(instruction_fusion.EvaluateEmittedInstructions(add0, fusion), 4);
-  instruction_fusion.Fuse(add0, fusion);
+  instruction_fusion.Fuse(add0, fusion, module->entry_computation());
 }
 
 TEST_F(FusionNodeIndexingEvaluationTest, RecomputeCache) {
@@ -200,7 +200,7 @@ ENTRY entry_computation {
 })")
                     .ValueOrDie();
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  InstructionFusionForTesting instruction_fusion(module.get());
+  InstructionFusionForTesting instruction_fusion;
   HloInstruction* add0 = fusion->mutable_operand(0);
   EXPECT_EQ(add0->opcode(), HloOpcode::kAdd);
   // Here, the cache for the fusion node needs to be recomputed. Make sure we

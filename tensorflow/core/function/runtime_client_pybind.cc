@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/function/runtime_client.h"
@@ -51,5 +52,7 @@ PYBIND11_MODULE(runtime_client_pybind, m) {
              tensorflow::FunctionDef proto;
              proto.ParseFromString(def);
              return r.CreateFunction(proto);
-           });
+           })
+      .def("TransformFunction",
+           &tensorflow::core::function::Runtime::TransformFunction);
 }

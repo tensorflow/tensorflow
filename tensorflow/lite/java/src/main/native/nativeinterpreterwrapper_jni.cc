@@ -94,7 +94,8 @@ class JNIFlatBufferVerifier : public tflite::TfLiteVerifier {
   bool Verify(const char* data, int length,
               tflite::ErrorReporter* reporter) override {
     if (!VerifyModel(data, length)) {
-      reporter->Report("The model is not a valid Flatbuffer file");
+      TF_LITE_REPORT_ERROR(reporter,
+                           "The model is not a valid Flatbuffer file");
       return false;
     }
     return true;
@@ -571,16 +572,20 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     jobject jdelegate_handle =
         env->CallObjectMethod(delegate_handle_list, list_get_method, i);
     if (jdelegate_handle == nullptr) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: null Delegate handle");
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: null object in Delegate handle list");
+      }
       return 0;
     }
     // Java: long delegate_handle = jdelegate_handle.longValue();
     jlong delegate_handle =
         env->CallLongMethod(jdelegate_handle, long_value_method);
     if (delegate_handle == 0) {
-      ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: Found invalid handle");
+      if (!env->ExceptionCheck()) {
+        ThrowException(env, tflite::jni::kIllegalArgumentException,
+                       "Internal error: Found invalid handle");
+      }
       return 0;
     }
     auto delegate = reinterpret_cast<TfLiteOpaqueDelegate*>(delegate_handle);

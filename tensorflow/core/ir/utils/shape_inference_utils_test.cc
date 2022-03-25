@@ -65,7 +65,7 @@ class ShapeInferenceTest : public ::testing::Test {
 
   ShapeInferenceTest() {
     context_.getOrLoadDialect<tfg::TFGraphDialect>();
-    module_ = mlir::parseSourceString(code, &context_);
+    module_ = mlir::parseSourceString<mlir::ModuleOp>(code, &context_);
     assert(module_);
   }
 

@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_OPDEFS_TF_JITRT_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_OPDEFS_TF_JITRT_OPS_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
 #include "tfrt/compiler/opdefs/tfrt_op_interfaces.h"  // from @tf_runtime
 #include "tfrt/compiler/opdefs/tfrt_traits.h"  // from @tf_runtime
 

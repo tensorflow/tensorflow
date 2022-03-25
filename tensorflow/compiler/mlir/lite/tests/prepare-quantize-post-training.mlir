@@ -28,7 +28,7 @@ func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf32> {
         tensor<1x20xf32>, tensor<1x20xf32>,
         none, none, none, none) -> tensor<1x28x20xf32>
     %1 = "quant.stats"(%0) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<1x28x20xf32>) -> tensor<1x28x20xf32>
-    return %1 : tensor<1x28x20xf32>
+    func.return %1 : tensor<1x28x20xf32>
 // CHECK-DAG: %[[none:.*]] = "tfl.no_value"() {value} : () -> none
 // CHECK-DAG: %[[cell_input:.*]] = arith.constant dense<1.000000e+00> : tensor<1x20xf32>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[cell_input]]) {qtype = tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>} : (tensor<1x20xf32>) -> tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>
@@ -86,7 +86,7 @@ func @QuantizeWithoutNorm(%arg0: tensor<1x1x5xf32>) -> tensor<*xf32> attributes 
         tensor<1x4xf32>, tensor<1x2xf32>,
         none, none, none, none) -> tensor<*xf32>
   %24 = "quant.stats"(%23) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
-  return %24 : tensor<*xf32>
+  func.return %24 : tensor<*xf32>
 
 // CHECK-DAG: %[[input_0:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x1x5x!quant.uniform<i8:f32, 0.010588235481112611:-15>>) -> tensor<1x1x5xf32>
 // CHECK-DAG: %[[input_1:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32, 0.011122002376346137>>) -> tensor<2x5xf32>
@@ -164,7 +164,7 @@ func @QuantizeLstmCifg(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes {tf.e
         tensor<1x4xf32>, tensor<1x2xf32>,
         none, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> tensor<*xf32>
   %24 = "quant.stats"(%23) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
-  return %24 : tensor<*xf32>
+  func.return %24 : tensor<*xf32>
 
 // CHECK: %[[none:.*]] = "tfl.no_value"() {value} : () -> none
 // CHECK-DAG: %[[input_0:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x5x!quant.uniform<i8:f32, 0.010588235481112611:-15>>) -> tensor<1x5xf32>
@@ -250,7 +250,7 @@ func @QuantizeUnidirectionalLstmFull(%arg0: tensor<1x1x5xf32>) -> tensor<*xf32> 
         tensor<1x4xf32>, tensor<1x2xf32>,
         tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> tensor<*xf32>
   %24 = "quant.stats"(%23) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
-  return %24 : tensor<*xf32>
+  func.return %24 : tensor<*xf32>
 
 // CHECK-DAG: %[[input_0:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x1x5x!quant.uniform<i8:f32, 0.010588235481112611:-15>>) -> tensor<1x1x5xf32>
 // CHECK-DAG: %[[input_1:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32, 0.011122002376346137>>) -> tensor<2x5xf32>
@@ -342,7 +342,7 @@ func @QuantizeLstmFull(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes {tf.e
         tensor<1x4xf32>, tensor<1x2xf32>,
         tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>) -> tensor<*xf32>
   %24 = "quant.stats"(%23) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
-  return %24 : tensor<*xf32>
+  func.return %24 : tensor<*xf32>
 
 // CHECK-DAG: %[[input_0:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x5x!quant.uniform<i8:f32, 0.010588235481112611:-15>>) -> tensor<1x5xf32>
 // CHECK-DAG: %[[input_1:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32, 0.011122002376346137>>) -> tensor<2x5xf32>
@@ -391,7 +391,7 @@ func @QuantizeSVDF(%arg0: tensor<1x3xf32>) -> tensor<1x2xf32>  {
   %5 = "quant.stats"(%4) {layerStats = dense<[-56.2916565, 122.922478]> : tensor<2xf32>} : (tensor<1x4xf32>) -> tensor<1x4xf32>
   %6 = "tfl.svdf"(%0, %1, %2, %3, %5) {fused_activation_function = "RELU", rank = 1 : i32} : (tensor<1x3xf32>, tensor<2x3xf32>, tensor<2x1xf32>, tensor<2xf32>, tensor<1x4xf32>) -> tensor<1x2xf32>
   %7 = "quant.stats"(%6) {layerStats = dense<[0.000000e+00, 33.0349121]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
-  return %7 : tensor<1x2xf32>
+  func.return %7 : tensor<1x2xf32>
 
 // CHECK-DAG: %[[input_0:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x3x!quant.uniform<i8:f32, 0.053529410268746171:-128>>)
 // CHECK-DAG: %[[input_1:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x3x!quant.uniform<i8<-127:127>:f32, 0.0091712061814435818>>)
@@ -409,7 +409,7 @@ func @QuantizeSVDF(%arg0: tensor<1x3xf32>) -> tensor<1x2xf32>  {
 // Legacy mode re-calculates zero point when it's changed due to subtle difference in scale.
 func @ZeroPointLegacy(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32>  {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[-1.0, 1.20779215]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
-  return %0 : tensor<1x2xf32>
+  func.return %0 : tensor<1x2xf32>
 // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<1x2x!quant.uniform<i8:f32, 0.0086580084819419707:-12>>)
 // Legacy: %1 = "tfl.dequantize"(%0) : (tensor<1x2x!quant.uniform<i8:f32, 0.0086580086499452591:-13>>)
 }

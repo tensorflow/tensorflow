@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: func @multiple_uses
 // CHECK-SAME:  ({{.+}}: tensor<i1>, [[ARG1:%.+]]: tensor<!tf_type.resource>)
-func @multiple_uses(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) -> tensor<i1> {
+func.func @multiple_uses(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) -> tensor<i1> {
   // CHECK:      [[PARALLEL_EXECUTE:%.+]]:2 = "tf_device.parallel_execute"
   %0:2 = "tf_device.parallel_execute"() ({
     tf_device.return %arg0 : tensor<i1>
@@ -13,12 +13,12 @@ func @multiple_uses(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) -> tens
   // CHECK-NEXT: "tf.AssignVariableOp"([[ARG1]], [[PARALLEL_EXECUTE]]#0)
   "tf.AssignVariableOp"(%arg1, %0#0) : (tensor<!tf_type.resource>, tensor<i1>) -> ()
   // CHECK-NEXT: return [[PARALLEL_EXECUTE]]#0
-  return %0#0 : tensor<i1>
+  func.return %0#0 : tensor<i1>
 }
 
 // CHECK-LABEL: func @not_assign_var
 // CHECK-SAME:  ({{.+}}: tensor<i1>, [[ARG1:%.+]]: tensor<!tf_type.resource>)
-func @not_assign_var(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) {
+func.func @not_assign_var(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) {
   // CHECK:      [[PARALLEL_EXECUTE:%.+]]:2 = "tf_device.parallel_execute"
   %0:2 = "tf_device.parallel_execute"() ({
     tf_device.return %arg0 : tensor<i1>
@@ -33,7 +33,7 @@ func @not_assign_var(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) {
 
 // CHECK-LABEL: func @resource_handle_output
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<i1>, {{.+}}: tensor<!tf_type.resource>)
-func @resource_handle_output(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) {
+func.func @resource_handle_output(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) {
   // CHECK:      [[PARALLEL_EXECUTE:%.+]]:2 = "tf_device.parallel_execute"
   %0:2 = "tf_device.parallel_execute"() ({
     tf_device.return %arg1 : tensor<!tf_type.resource>
@@ -47,7 +47,7 @@ func @resource_handle_output(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>
 }
 
 // CHECK-LABEL: func @resource_handle_and_value_output
-func @resource_handle_and_value_output(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) {
+func.func @resource_handle_and_value_output(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) {
   // CHECK: [[PARALLEL_EXECUTE:%.+]]:2 = "tf_device.parallel_execute"
   %0:2 = "tf_device.parallel_execute"() ({
     tf_device.return %arg0, %arg1 : tensor<i1>, tensor<!tf_type.resource>
@@ -60,7 +60,7 @@ func @resource_handle_and_value_output(%arg0: tensor<i1>, %arg1: tensor<!tf_type
 }
 
 // CHECK-LABEL: func @resource_handle_after_parallel_execute
-func @resource_handle_after_parallel_execute(%arg0: tensor<i1>) {
+func.func @resource_handle_after_parallel_execute(%arg0: tensor<i1>) {
   // CHECK:      [[PARALLEL_EXECUTE:%.+]]:2 = "tf_device.parallel_execute"
   %0:2 = "tf_device.parallel_execute"() ({
     tf_device.return %arg0 : tensor<i1>
@@ -77,7 +77,7 @@ func @resource_handle_after_parallel_execute(%arg0: tensor<i1>) {
 
 // CHECK-LABEL: func @replace_single_output
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<i1>, [[ARG1:%.+]]: tensor<i1>, [[ARG2:%.+]]: tensor<i1>, [[ARG3:%.+]]: tensor<!tf_type.resource>)
-func @replace_single_output(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>, %arg3: tensor<!tf_type.resource>) {
+func.func @replace_single_output(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>, %arg3: tensor<!tf_type.resource>) {
   // CHECK:      {{%.+}}:2 = "tf_device.parallel_execute"
   %0:3 = "tf_device.parallel_execute"() ({
     // CHECK-NEXT: "tf.AssignVariableOp"([[ARG3]], [[ARG1]])
@@ -96,7 +96,7 @@ func @replace_single_output(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<
 
 // CHECK-LABEL: func @replace_multiple_outputs
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<i1>, [[ARG1:%.+]]: tensor<i32>, [[ARG2:%.+]]: tensor<i64>, [[ARG3:%.+]]: tensor<f32>, [[ARG4:%.+]]: tensor<f64>, [[ARG5:%.+]]: tensor<!tf_type.resource>, [[ARG6:%.+]]: tensor<!tf_type.resource>)
-func @replace_multiple_outputs(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i64>, %arg3: tensor<f32>, %arg4: tensor<f64>, %arg5: tensor<!tf_type.resource>, %arg6: tensor<!tf_type.resource>) {
+func.func @replace_multiple_outputs(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i64>, %arg3: tensor<f32>, %arg4: tensor<f64>, %arg5: tensor<!tf_type.resource>, %arg6: tensor<!tf_type.resource>) {
   // CHECK:      {{%.+}}:3 = "tf_device.parallel_execute"
   %0:5 = "tf_device.parallel_execute"() ({
     // CHECK-NEXT: "tf.AssignVariableOp"([[ARG5]], [[ARG1]])
@@ -117,7 +117,7 @@ func @replace_multiple_outputs(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: ten
 
 // CHECK-LABEL: func @replace_multiple_outputs_regions
 // CHECK-SAME:  ([[ARG0:%.+]]: tensor<i1>, [[ARG1:%.+]]: tensor<i32>, [[ARG2:%.+]]: tensor<i64>, [[ARG3:%.+]]: tensor<bf16>, [[ARG4:%.+]]: tensor<f32>, [[ARG5:%.+]]: tensor<f64>, [[ARG6:%.+]]: tensor<!tf_type.resource>, [[ARG7:%.+]]: tensor<!tf_type.resource>)
-func @replace_multiple_outputs_regions(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i64>, %arg3: tensor<bf16>, %arg4: tensor<f32>, %arg5: tensor<f64>, %arg6: tensor<!tf_type.resource>, %arg7: tensor<!tf_type.resource>) {
+func.func @replace_multiple_outputs_regions(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i64>, %arg3: tensor<bf16>, %arg4: tensor<f32>, %arg5: tensor<f64>, %arg6: tensor<!tf_type.resource>, %arg7: tensor<!tf_type.resource>) {
   // CHECK:      {{%.+}}:4 = "tf_device.parallel_execute"
   %0:6 = "tf_device.parallel_execute"() ({
     // CHECK-NEXT: "tf.AssignVariableOp"([[ARG6]], [[ARG1]])

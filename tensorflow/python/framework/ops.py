@@ -27,6 +27,7 @@ import six
 from six.moves import map  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
@@ -2692,6 +2693,24 @@ class Operation(object):
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
       raise ValueError(e.message)
+
+  def experimental_set_type(self, type_proto):
+    """Sets the corresponding node's `experimental_type` field.
+
+    See the description of `NodeDef.experimental_type` for more info.
+
+    Args:
+      type_proto: A FullTypeDef proto message. The root type_if of this object
+        must be `TFT_PRODUCT`, even for ops which only have a singlre return
+        value.
+    """
+    if (type_proto.type_id
+        not in (full_type_pb2.TFT_UNSET, full_type_pb2.TFT_PRODUCT)):
+      raise ValueError("error setting the type of ", self.name,
+                       ": expected TFT_UNSET or TFT_PRODUCT, got ",
+                       type_proto.type_id)
+    pywrap_tf_session.SetFullType(
+        self._graph._c_graph, self._c_op, type_proto.SerializeToString())  # pylint:disable=protected-access
 
   def run(self, feed_dict=None, session=None):
     """Runs this operation in a `Session`.

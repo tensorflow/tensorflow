@@ -239,6 +239,8 @@ upper_tabs:
       - heading: "Vision"
       - title: "Image classification"
         path: /lite/examples/image_classification/overview
+      - title: "Video classification"
+        path: /lite/examples/video_classification/overview
       - title: "Object detection"
         path: /lite/examples/object_detection/overview
       - title: "Pose estimation"

@@ -39,6 +39,10 @@ class PluggableDeviceSimpleAllocator : public Allocator {
   string Name() override { return "Simple allocator"; }
   absl::optional<AllocatorStats> GetStats() override;
 
+  AllocatorMemoryType GetMemoryType() const override {
+    return sub_allocator_->GetMemoryType();
+  }
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PluggableDeviceSimpleAllocator);
   std::unique_ptr<SubAllocator> sub_allocator_;

@@ -5265,18 +5265,18 @@ func CollectiveAllToAllV3(scope *Scope, input tf.Output, communicator tf.Output,
 }
 
 // Assign group keys based on group assignment.
-func CollectiveAssignGroupV2(scope *Scope, group_assignment tf.Output, device_index tf.Output) (group_key tf.Output) {
+func CollectiveAssignGroupV2(scope *Scope, group_assignment tf.Output, device_index tf.Output, base_key tf.Output) (group_size tf.Output, group_key tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "CollectiveAssignGroupV2",
 		Input: []tf.Input{
-			group_assignment, device_index,
+			group_assignment, device_index, base_key,
 		},
 	}
 	op := scope.AddOperation(opspec)
-	return op.Output(0)
+	return op.Output(0), op.Output(1)
 }
 
 // CollectiveBcastRecvAttr is an optional argument to CollectiveBcastRecv.

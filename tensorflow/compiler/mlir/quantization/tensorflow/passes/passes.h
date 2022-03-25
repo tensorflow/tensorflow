@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_PASSES_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
@@ -28,7 +29,7 @@ namespace quant {
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertMainFunctionPass();
 
 // Converts FakeQuant ops to quant.qcast and quant.dcast (QDQ) pairs.
-std::unique_ptr<OperationPass<FuncOp>> CreateConvertFakeQuantToQdqPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertFakeQuantToQdqPass();
 
 // Lifts the quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
@@ -36,7 +37,7 @@ CreateLiftQuantizableSpotsAsFunctionsPass();
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertCustomAggregationOpToQuantStatsPass();
 
 // Issues IDs of custom aggregation ops for preparing the calibration procedure.
@@ -47,7 +48,8 @@ CreateIssueIDsOfCustomAggregationOpsPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass();
 
 // Inserts custom aggregation operators for the calibration procedure.
-std::unique_ptr<OperationPass<FuncOp>> CreateInsertCustomAggregationOpsPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateInsertCustomAggregationOpsPass();
 
 // Replaces composite functions with quantized composite functions. After this
 // pass runs, functions in the given graph will be replaced with their quantized
@@ -59,15 +61,15 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass();
 // emit illegal IR with unsupported quantized input and output types. The
 // pass following immediately after this one will be responsible for legalizing
 // input and output types by unwrapping quantization parameters.
-std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass();
 
 // Creates an instance of the PrepareQuantize pass, which will perfrom similar
 // transformations as TFL::PrepareQuantizePass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass();
 
 // Creates an instance of the PostQuantize pass, which will remove unnecessary
 // ops from the final quantized graph.
-std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass();
 
 }  // namespace quant
 }  // namespace mlir

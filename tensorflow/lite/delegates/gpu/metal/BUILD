@@ -150,6 +150,7 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
+    features = ["-layering_check"],
     sdk_frameworks = ["Metal"],
     deps = [
         ":compute_task",

@@ -118,6 +118,7 @@ tensorflow/tools/toolchains/BUILD:
 tensorflow/tools/toolchains/clang6/BUILD:
 tensorflow/tools/toolchains/cpus/py/BUILD:
 tensorflow/tools/toolchains/cpus/py3/BUILD:
+tensorflow/tools/toolchains/embedded/arm-linux/BUILD:
 tensorflow/tools/toolchains/java/BUILD:
 tensorflow/tools/toolchains/remote/BUILD:
 tensorflow/tools/toolchains/remote_config/BUILD:

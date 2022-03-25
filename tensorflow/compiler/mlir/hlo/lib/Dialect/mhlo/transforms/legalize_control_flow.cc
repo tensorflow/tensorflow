@@ -143,13 +143,12 @@ struct CaseOpPattern : public OpConversionPattern<mhlo::CaseOp> {
         {outer_builder.getI32IntegerAttr(current_idx).cast<mlir::Attribute>()});
     Value current_idx_val = outer_builder.create<mhlo::ConstOp>(
         loc, idx_value.getType(), const_attr);
-    auto eq_comparison = outer_builder.getStringAttr("EQ");
 
     auto scf_if = outer_builder.create<scf::IfOp>(
         loc, op.getResultTypes(),
-        extractTensorValue(outer_builder,
-                           outer_builder.create<mhlo::CompareOp>(
-                               loc, idx_value, current_idx_val, eq_comparison)),
+        extractTensorValue(outer_builder, outer_builder.create<mhlo::CompareOp>(
+                                              loc, idx_value, current_idx_val,
+                                              ComparisonDirection::EQ)),
         /*withElseRegion=*/true);
     inlineMhloRegionIntoSCFRegion(outer_builder, op.branches()[current_idx],
                                   scf_if.getThenRegion());

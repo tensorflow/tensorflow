@@ -1,7 +1,7 @@
 // RUN: kernel-gen-opt %s --parallel-loops-to-sequential | FileCheck %s
 
 // CHECK-LABEL: @parallel_loop
-func @parallel_loop(%lb_0 : index, %lb_1 : index,
+func.func @parallel_loop(%lb_0 : index, %lb_1 : index,
                      %ub_0 : index, %ub_1 : index,
                      %s_0 : index, %s_1 : index,
                      %buf: memref<?x?xindex>) {

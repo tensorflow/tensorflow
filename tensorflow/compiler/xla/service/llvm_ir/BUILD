@@ -53,6 +53,7 @@ tf_cc_test(
     srcs = ["alias_analysis_test.cc"],
     deps = [
         ":alias_analysis",
+        "//tensorflow/compiler/xla/service:custom_call_status_public_headers",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",

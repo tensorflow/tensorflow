@@ -2,14 +2,14 @@
 
 // Tests that outside compilation and model parallelism together fail.
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  func @outside_compilation_model_parallelism_fail() -> tensor<2xi32> {
+  func.func @outside_compilation_model_parallelism_fail() -> tensor<2xi32> {
     // expected-error@+1 {{outside compilation is not supported with model parallelism}}
     %0 = "tf_device.cluster"() ({
       %1 = "tf.A"() : () -> tensor<2xi32>
       %2 = "tf.B"(%1) {_xla_outside_compilation = "cluster1"} : (tensor<2xi32>) -> tensor<2xi32>
       tf_device.return %2 : tensor<2xi32>
     }) {num_cores_per_replica = 2, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
-    return %0 : tensor<2xi32>
+    func.return %0 : tensor<2xi32>
   }
 }
 
@@ -23,20 +23,20 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
   // CHECK-LABEL: func @no_outside_compilation
   // CHECK-NOT: "tf_device.launch"
-  func @no_outside_compilation() -> tensor<?xi32> {
+  func.func @no_outside_compilation() -> tensor<?xi32> {
     %0 = "tf_device.cluster"() ({
       %1 = "tf.A"() : () -> tensor<?xi32>
       %2 = "tf.B"(%1) : (tensor<?xi32>) -> tensor<?xi32>
       tf_device.return %2 : tensor<?xi32>
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 
 
   // Tests the launch wrap of a single outside compiled cluster with no input or output dependencies.
 
   // CHECK-LABEL: func @nodep_single_outside_compilation
-  func @nodep_single_outside_compilation() -> () {
+  func.func @nodep_single_outside_compilation() -> () {
     // CHECK:      "tf.A"
     // CHECK:      "tf_device.launch"
     // CHECK-NEXT:   "tf.B"
@@ -56,7 +56,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests the launch wrap of a single outside compiled cluster with data parallelism.
 
   // CHECK-LABEL: func @single_outside_compilation_with_replicate
-  func @single_outside_compilation_with_replicate(%arg0: tensor<?xi32>) -> () {
+  func.func @single_outside_compilation_with_replicate(%arg0: tensor<?xi32>) -> () {
     // CHECK:      "tf.A"
     // CHECK:      tf_device.replicate
     // CHECK-NEXT:   "tf_device.cluster"
@@ -83,7 +83,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Tests launch wrap of a single outside compiled cluster with input/output.
 
   // CHECK-LABEL: func @single_outside_compilation_input_output
-  func @single_outside_compilation_input_output(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func.func @single_outside_compilation_input_output(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:          "tf_device.cluster"
@@ -102,13 +102,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<?xi32>
     }
 
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 
   // Tests launch wrap of multiple outside compiled cluster with input/output.
 
   // CHECK-LABEL: func @multiple_outside_compilation_input_output
-  func @multiple_outside_compilation_input_output(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func.func @multiple_outside_compilation_input_output(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK:      %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK:          "tf_device.cluster"
@@ -137,12 +137,12 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return %2 : tensor<?xi32>
     }
 
-    return %1 : tensor<?xi32>
+    func.return %1 : tensor<?xi32>
   }
 
   // Tests the launch wrap of an outside compiled op that's called from a tf_device.cluster.
 
-  func @called_outside_compilation() -> () {
+  func.func @called_outside_compilation() -> () {
     "tf_device.cluster"() ({
       "tf.PartitionedCall"() {f = @called_outside_compilation_callee} : () -> ()
       tf_device.return
@@ -150,7 +150,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   // CHECK-LABEL: func @called_outside_compilation_callee
-  func @called_outside_compilation_callee() -> () {
+  func.func @called_outside_compilation_callee() -> () {
     // CHECK:      "tf.A"
     // CHECK:      "tf_device.launch"
     // CHECK-NEXT:   "tf.B"
@@ -166,7 +166,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // Test that the same outside compiled function cannot be called from two
   // different TPU clusters.
 
-  func @called_outside_compilation_bad() -> () {
+  func.func @called_outside_compilation_bad() -> () {
     "tf_device.cluster"() ({
       "tf.PartitionedCall"() {f = @called_outside_compilation_bad_callee} : () -> ()
       tf_device.return
@@ -178,7 +178,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     return
   }
   // expected-error@+1 {{The same function is reachable from multiple TPU Clusters.}}
-  func @called_outside_compilation_bad_callee() -> () {
+  func.func @called_outside_compilation_bad_callee() -> () {
     "tf.A"() : () -> ()
     "tf.B"() {_xla_outside_compilation = "cluster1"} : () -> ()
     "tf.C"() : () -> ()

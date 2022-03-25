@@ -89,6 +89,13 @@ class ExecutableBuildOptions {
   bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
   ExecutableBuildOptions& set_use_spmd_partitioning(bool use_spmd_partitioning);
 
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning() const {
+    return use_auto_spmd_partitioning_;
+  }
+  ExecutableBuildOptions& set_use_auto_spmd_partitioning(
+      bool use_auto_spmd_partitioning);
+
   bool deduplicate_hlo() const { return deduplicate_hlo_; }
   ExecutableBuildOptions& set_deduplicate_hlo(bool deduplicate_hlo);
 
@@ -158,6 +165,7 @@ class ExecutableBuildOptions {
   int num_replicas_ = 1;
   int num_partitions_ = 1;
   bool use_spmd_partitioning_ = false;
+  bool use_auto_spmd_partitioning_ = false;
   bool deduplicate_hlo_ = false;
   bool broadcast_replicated_params_ = false;
   absl::optional<DeviceAssignment> device_assignment_;

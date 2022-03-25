@@ -147,6 +147,11 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       CreateSymbolicShapeOptimizationPass(/*constraints_only=*/true));
 
+  // Analyze shapes and try to simplify the IR as early as possible.
+  pm.addNestedPass<FuncOp>(mlir::createSymbolicShapeOptimizationPass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+
   // Move up broadcasting operations to allow for more fusion opportunities.
   // Add the broadcast propagation pass first, because it can help to avoid
   // exponential complexity from the EarlyBroadcastInDimOp pattern which is used
@@ -165,7 +170,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
 
   // Also, try to simplify reshape operations.
-  pm.addNestedPass<FuncOp>(mlir::createReshapeSimplifierPass());
+  pm.addNestedPass<FuncOp>(mlir::createSymbolicShapeOptimizationPass());
 
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());

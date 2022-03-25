@@ -588,17 +588,26 @@ class TfrtCpuExecutable final : public PjRtExecutable {
         cpu_executable_->shared_module()};
   }
 
+  using PjRtExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options,
+      absl::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
+      override;
 
+  using PjRtExecutable::ExecuteSharded;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options,
+      absl::optional<PjRtFuture<Status>>& returned_future,
+      bool fill_future) override;
 
+  using PjRtExecutable::ExecutePortable;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options,
+      absl::optional<PjRtFuture<Status>>& returned_future,
+      bool fill_future) override;
 
   void Delete() override;
 
@@ -617,11 +626,11 @@ class TfrtCpuExecutable final : public PjRtExecutable {
       absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>
           input_buffers) const;
 
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
+  StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
       tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
-      TfrtCpuDevice* device = nullptr);
+      bool fill_future, TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;
 

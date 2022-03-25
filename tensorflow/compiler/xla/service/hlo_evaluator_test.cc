@@ -4594,6 +4594,23 @@ TEST_F(HloEvaluatorTest, CopyStartCopyDone) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, AsyncOps) {
+  const absl::string_view hlo_text = R"(
+  HloModule test
+  ENTRY AsyncOps {
+    init = f32[] constant(42.0)
+    async-start = ((f32[]), f32[], u32[]) negate-start(init)
+    async-update = ((f32[]), f32[], u32[]) negate-update(async-start)
+    ROOT async-done = f32[] negate-done(async-update)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR0<float>(-42.0f);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_F(HloEvaluatorTest, MapBF16) {
   const absl::string_view hlo_text = R"(
   HloModule test

@@ -12,7 +12,7 @@ func @PruneUnusedCustomOp(%arg0: tensor<1x1x1x1xf32>) -> tensor<*xf32> attribute
   %custom_1 = "tfl.custom"(%arg0, %dq_w) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<1024x1x1x1xf32>) -> tensor<*xf32>
   %custom_2 = "tfl.custom"(%arg0, %dq_w) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<1024x1x1x1xf32>) -> tensor<*xf32>
   %custom_3 = "tfl.custom"(%arg0, %dq_w) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<1024x1x1x1xf32>) -> tensor<*xf32>
-  return %custom_3 : tensor<*xf32>
+  func.return %custom_3 : tensor<*xf32>
 
 // CHECK: %[[q_w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<1024x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>, value = dense<127> : tensor<1024x1x1x1xi8>} : () -> tensor<1024x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
 // CHECK: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w:.*]]) : (tensor<1024x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<1024x1x1x1xf32>
@@ -27,7 +27,7 @@ func @NotPruneUnusedCustomOp(%arg0: tensor<1x1x1x1xf32>) -> tensor<*xf32> attrib
   %custom_1 = "tfl.custom"(%arg0, %dq_w) {custom_code = "CustomTestOp2", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<1024x1x1x1xf32>) -> tensor<*xf32>
   %custom_2 = "tfl.custom"(%arg0, %dq_w) {custom_code = "CustomTestOp2", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<1024x1x1x1xf32>) -> tensor<*xf32>
   %custom_3 = "tfl.custom"(%arg0, %dq_w) {custom_code = "CustomTestOp2", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<1024x1x1x1xf32>) -> tensor<*xf32>
-  return %custom_3 : tensor<*xf32>
+  func.return %custom_3 : tensor<*xf32>
 
 // CHECK: %[[q_w:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<1024x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>, value = dense<127> : tensor<1024x1x1x1xi8>} : () -> tensor<1024x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
 // CHECK: %[[dq_w:.*]] = "tfl.dequantize"(%[[q_w:.*]]) : (tensor<1024x1x1x1x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<1024x1x1x1xf32>
@@ -45,7 +45,7 @@ func @PruneQuantizedCustomOp(%arg0: tensor<1x1x1x1xf32>) -> tensor<*xf32> attrib
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 2.550000e+02]> : tensor<2xf32>} : (tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
   %w = arith.constant dense<127.0> : tensor<1024x1x1x1xf32>
   %custom = "tfl.custom"(%0, %w) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<1024x1x1x1xf32>) -> tensor<*xf32>
-  return %custom : tensor<*xf32>
+  func.return %custom : tensor<*xf32>
 
 // CHECK: %[[w:.*]] = arith.constant dense<1.270000e+02> : tensor<1024x1x1x1xf32>
 // CHECK: %[[custom:.*]] = "tfl.custom"(%arg0, %[[w:.*]]) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>}
@@ -77,7 +77,7 @@ func @QuantizeCustomOp(%arg0: tensor<1x1x1x1xf32>) -> (tensor<*xf32>, tensor<*xf
   %custom_1 = "tfl.custom"(%0, %w_1, %w_2, %b) {custom_code = "CustomTestOp", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
   %custom_2 = "tfl.custom"(%0, %w_1, %w_2, %b) {custom_code = "CustomTestOp2", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
   %custom_3 = "tfl.custom"(%0, %w_1, %w_2, %b) {custom_code = "CustomTestOp3", custom_option = opaque<"tfl", "0x"> : tensor<0xi8>} : (tensor<1x1x1x1xf32>, tensor<4096x1x1x1xf32>, tensor<128x1x1x1xf32>, tensor<2048x1x1x1xf32>) -> tensor<*xf32>
-  return %custom_1, %custom_2, %custom_3 : tensor<*xf32>, tensor<*xf32>, tensor<*xf32>
+  func.return %custom_1, %custom_2, %custom_3 : tensor<*xf32>, tensor<*xf32>, tensor<*xf32>
 
 // CHECK: %[[w_1:.*]] = arith.constant dense<1.270000e+02> : tensor<4096x1x1x1xf32>
 // CHECK: %[[w_2:.*]] = arith.constant dense<1.270000e+02> : tensor<128x1x1x1xf32>

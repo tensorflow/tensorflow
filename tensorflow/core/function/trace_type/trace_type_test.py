@@ -52,6 +52,10 @@ class TestAttrsClass:
     self.a = a
     self.b = b
 
+  def __eq__(self, other):
+    return isinstance(
+        other, TestAttrsClass) and self.a == other.a and self.b == other.b
+
 
 class DummyGenericClass:
   """Helps test memory leaks for GenericType."""
@@ -247,6 +251,13 @@ class CacheKeyGenerationTest(test.TestCase, parameterized.TestCase):
         TypeError,
         r'could not be represented through the generic tracing type'):
       make_function_signature_with_context(obj)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testGetPlaceholderValue(self):
+    composite_value = [1, 2, (3, [4, 5]), {6: [7]}, TestAttrsClass(8, (10, 11))]
+    composite_type = make_function_signature_with_context(composite_value)
+    placeholder_value = composite_type._placeholder_value()
+    self.assertEqual(composite_value, placeholder_value)
 
 
 class CacheKeyMemoryTest(test.TestCase):

@@ -22,6 +22,10 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
+constexpr llvm::StringRef kCompileDeviceTypeAttr = "_xla_compile_device_type";
+constexpr llvm::StringRef kReplicationInfoAttr = "_replication_info";
+constexpr llvm::StringRef kTPUReplicateAttr = "_tpu_replicate";
+
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>
 void CopyAttributes(Operation *from, Operation *to, Predicate P) {
@@ -63,6 +67,8 @@ bool GetValueAsConstant(Value val, AttrT &attr) {
   }
   return matchPattern(val, m_Constant(&attr));
 }
+
+LogicalResult HasValidCompilationAndReplicationAttributes(Operation &op);
 
 }  // namespace TF
 }  // namespace mlir
