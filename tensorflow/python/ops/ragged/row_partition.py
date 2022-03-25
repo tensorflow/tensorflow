@@ -719,7 +719,7 @@ class RowPartition(composite_tensor.CompositeTensor):
 
     return partition
 
-  def with_dependencies(self, dependencies):
+  def _with_dependencies(self, dependencies):
     """Returns a new RowPartition equal to self with control dependencies.
 
     Specifically, self._row_splits is gated by the given control dependencies.

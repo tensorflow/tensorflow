@@ -176,7 +176,7 @@ class DynamicRaggedShape(extension_type.ExtensionType):
       self._inner_shape = control_flow_ops.with_dependencies(
           checks, self._inner_shape, name="inner_shape_validated")
       self._row_partitions = [
-          rp.with_dependencies(checks) for rp in self._row_partitions
+          rp._with_dependencies(checks) for rp in self._row_partitions  # pylint: disable=protected-access
       ]
 
   @classmethod
@@ -2171,7 +2171,7 @@ def _broadcast_dynamic_shape_next_layer(
       check_valid = [
           check_ops.assert_equal(c_1a.row_splits(), c_1b.row_splits())
       ]
-      return (c_1a.with_dependencies(check_valid),
+      return (c_1a._with_dependencies(check_valid),  # pylint: disable=protected-access
               ac_1.with_dependencies(check_valid),
               bc_1.with_dependencies(check_valid))
 
