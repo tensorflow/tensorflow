@@ -227,7 +227,7 @@ your app project code:
     TensorFlow Lite, you should remove the existing TensorFlow Lite *runtime
     library* dependencies (entries with `org.tensorflow:**tensorflow-lite**:\*`)
     from your build.gradle file so that you can reduce your app size.
-4.  Identify all occurences of `new Interpreter` object creation in your code,
+4.  Identify all occurrences of `new Interpreter` object creation in your code,
     and modify it so that it uses the InterpreterApi.create() call. This new API
     is asynchronous, which means in most cases it's not a drop-in replacement,
     and you must register a listener for when the call completes. Refer to the

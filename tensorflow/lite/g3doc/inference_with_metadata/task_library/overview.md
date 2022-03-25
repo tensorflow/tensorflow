@@ -42,7 +42,7 @@ we continue enabling more and more use cases.
 *   **Natural Language (NL) APIs**
 
     *   [NLClassifier](nl_classifier.md)
-    *   [BertNLCLassifier](bert_nl_classifier.md)
+    *   [BertNLClassifier](bert_nl_classifier.md)
     *   [BertQuestionAnswerer](bert_question_answerer.md)
 
 *   **Audio APIs**
@@ -133,7 +133,7 @@ deps = [
 
 Note: the `gpu_plugin` target is a separate one from the
 [GPU delegate target](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
-`gpu_plugin` wraps the GPU delegate target, and can provide safty guard, i.e.
+`gpu_plugin` wraps the GPU delegate target, and can provide safety guard, i.e.
 fallback to TFLite CPU path on delegation errors.
 
 Other delegate options include:
