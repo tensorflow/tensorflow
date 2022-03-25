@@ -1,6 +1,6 @@
 // RUN: kernel-gen-opt %s --embed-memref-prints | FileCheck %s
 
-func @print_memrefs(
+func.func @print_memrefs(
     %ctx: !tf_framework.op_kernel_context, %input: memref<*xf16>)
     -> memref<*xf16> attributes {tf_entry} {
   %c0 = arith.constant 0 : index

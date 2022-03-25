@@ -2,7 +2,7 @@
 // RUN: tfjs-opt %s -tfjs-optimize | FileCheck %s
 
 // CHECK-LABEL: prelu_fusion
-func @prelu_fusion(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+func.func @prelu_fusion(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %alpha = arith.constant dense<-0.2> : tensor<3xf32>
   %0 = "tf.Relu"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
   %1 = "tf.Neg"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
@@ -16,7 +16,7 @@ func @prelu_fusion(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
 
 // CHECK-LABEL: prelu_not_fused
 // Rank of alpha should be one less than input for PReLU, which is not the case.
-func @prelu_not_fused(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+func.func @prelu_not_fused(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %alpha = arith.constant dense<-0.2> : tensor<f32>
   %0 = "tf.Relu"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
   %1 = "tf.Neg"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>

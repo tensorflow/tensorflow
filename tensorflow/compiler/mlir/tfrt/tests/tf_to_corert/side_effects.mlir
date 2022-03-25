@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: func @assign_variable
 // CHECK-SAME: ([[in_chain:%.*]]: !tfrt.chain) -> !tfrt.chain
-func @assign_variable() {
+func.func @assign_variable() {
   // CHECK: [[ch1:%.*]], %results = tfrt_fallback_async.executeop.seq([[in_chain]]) key(0) cost({{.*}}) device("/device:CPU:0") "tf.VarHandleOp"
   // CHECK-NEXT: [[ch2:%.*]] = tfrt_fallback_async.executeop.seq([[in_chain]]) key(1) cost({{.*}}) device("/device:CPU:0") "tf.AssignVariableOp"
   // CHECK-NEXT: [[out_ch:%.*]] = tfrt.merge.chains [[ch1]], [[ch2]]

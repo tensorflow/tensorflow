@@ -5,7 +5,7 @@ module attributes {tf_saved_model.semantics} {
 // Test fusing _TPUCompileMlirOp and TPUExecuteOp into TPUCompileMlirAndExecuteOp.
 
 // CHECK-LABEL: func private @test_fuse_tpu_ops
-func private @test_fuse_tpu_ops(%arg0: tensor<*xi32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<*xi32> {
+func.func private @test_fuse_tpu_ops(%arg0: tensor<*xi32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<*xi32> {
   // CHECK-NOT: tf._TPUCompileMlirOp
   // CHECK-NOT: tf.TPUCompileSucceededAssert
   // CHECK-NOT: tf.TPUExecuteOp
@@ -32,7 +32,7 @@ module attributes {tf_saved_model.semantics} {
 // Test models using Outside Compilation
 
 // CHECK-LABEL: func private @test_outside_compilation
-func private @test_outside_compilation(%arg0: tensor<*xi32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<*xi32> {
+func.func private @test_outside_compilation(%arg0: tensor<*xi32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<*xi32> {
   // CHECK-NOT: tf._TPUCompileMlirOp
   // CHECK-NOT: tf.TPUCompileSucceededAssert
   // CHECK-NOT: tf.TPUExecuteOp
@@ -60,7 +60,7 @@ module attributes {tf_saved_model.semantics} {
 // Test models with dynamic bounds ops.
 
 // CHECK-LABEL: func private @test_fuse_dynamic_dimension_ops
-func private @test_fuse_dynamic_dimension_ops(%arg0: tensor<?x?xi32>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<2xi32>, %arg3: tensor<?xi32>, %arg4: tensor<?xi32>) -> tensor<*xi32> {
+func.func private @test_fuse_dynamic_dimension_ops(%arg0: tensor<?x?xi32>, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<2xi32>, %arg3: tensor<?xi32>, %arg4: tensor<?xi32>) -> tensor<*xi32> {
   // CHECK-NOT: tf._TPUCompileMlirOp
   // CHECK-NOT: tf.TPUCompileSucceededAssert
   // CHECK-NOT: tf.TPUExecuteOp

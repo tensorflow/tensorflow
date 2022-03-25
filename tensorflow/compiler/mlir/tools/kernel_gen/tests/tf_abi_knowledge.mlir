@@ -7,7 +7,7 @@
 // CHECK-LABEL: module attributes {gpu.container_module}
 module attributes {gpu.container_module} {
   // CHECK-LABEL: func @abs
-  func @abs(%ctx: !tf_framework.op_kernel_context, %arg0: memref<*xf32>, %size: index)
+  func.func @abs(%ctx: !tf_framework.op_kernel_context, %arg0: memref<*xf32>, %size: index)
       attributes {tf_entry} {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
@@ -76,7 +76,7 @@ module attributes {gpu.container_module} {
 // CHECK-LABEL: module attributes {gpu.container_module}
 module attributes {gpu.container_module} {
   // CHECK-LABEL: func @add_same_shape
-  func @add_same_shape(%arg0: !tf_framework.op_kernel_context, %arg1: memref<*xf32>, %arg2: memref<*xf32>, %size: index)
+  func.func @add_same_shape(%arg0: !tf_framework.op_kernel_context, %arg1: memref<*xf32>, %arg2: memref<*xf32>, %size: index)
       attributes {tf_entry} {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
@@ -163,7 +163,7 @@ module attributes {gpu.container_module} {
 // CHECK-LABEL: module attributes {gpu.container_module}
 module attributes {gpu.container_module} {
   // CHECK-LABEL: func @add_same_shape
-  func @add_same_shape(%arg0: !tf_framework.op_kernel_context, %arg1: memref<*xf32>, %arg2: memref<*xf32>, %size0: index, %size1: index, %stride0: index, %stride1: index)
+  func.func @add_same_shape(%arg0: !tf_framework.op_kernel_context, %arg1: memref<*xf32>, %arg2: memref<*xf32>, %size0: index, %size1: index, %stride0: index, %stride1: index)
       attributes {tf_entry} {
     %c1 = arith.constant 1 : index
     %216 = memref.reinterpret_cast %arg1 to offset: [0], sizes: [%size1, %size0], strides: [%size0, %c1]: memref<*xf32> to memref<?x?xf32>
@@ -271,7 +271,7 @@ module attributes {gpu.container_module} {
 // CHECK-LABEL: module attributes {gpu.container_module}
 module attributes {gpu.container_module} {
   // CHECK-LABEL: func @add_one_scalar
-  func @add_one_scalar(%arg0: !tf_framework.op_kernel_context, %arg1: memref<*xf32>, %arg2: memref<*xf32>, %size: index)
+  func.func @add_one_scalar(%arg0: !tf_framework.op_kernel_context, %arg1: memref<*xf32>, %arg2: memref<*xf32>, %size: index)
       attributes {tf_entry} {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index

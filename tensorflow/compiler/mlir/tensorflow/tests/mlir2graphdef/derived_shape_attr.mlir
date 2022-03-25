@@ -15,7 +15,7 @@
 // CHECK: dim
 // CHECK: size: 10
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<10xi32>} : () -> tensor<10xi32>
     %1:2 = tf_executor.island wraps "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<i32>} : () -> tensor<i32>

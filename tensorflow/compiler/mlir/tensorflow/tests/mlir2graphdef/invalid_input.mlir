@@ -2,7 +2,7 @@
 
 // Tests function with multiple blocks.
 
-func @main() {
+func.func @main() {
   ^bb:
     cf.br ^bb1
   ^bb1:
@@ -15,7 +15,7 @@ func @main() {
 
 // Tests invalid functions for exporting to Graph/GraphDef.
 
-func @main() {
+func.func @main() {
   return
 }
 
@@ -23,7 +23,7 @@ func @main() {
 
 // -----
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     tf_executor.fetch
   }
@@ -37,7 +37,7 @@ func @main() {
 
 // -----
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     %0 = tf_executor.island {
       tf_executor.yield
@@ -51,7 +51,7 @@ func @main() {
 
 // -----
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     %0 = tf_executor.island {
       %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -67,7 +67,7 @@ func @main() {
 
 // -----
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     %0 = tf_executor.island {
       %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -82,7 +82,7 @@ func @main() {
 
 // -----
 
-func @main(%arg0: tensor<i32>, %arg1: tensor<i32>) {
+func.func @main(%arg0: tensor<i32>, %arg1: tensor<i32>) {
   tf_executor.graph {
     %0:3 = tf_executor.island {
       %1:2 = "tf.IdentityN"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)

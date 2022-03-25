@@ -29,7 +29,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 // CHECK-NEXT: [[o6_th:%.*]] = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle [[o6]]
 // CHECK-NEXT: [[o3_th:%.*]] = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle [[o3]]
 // CHECK-NEXT: tfrt.return [[out_chain]], [[o9_th]], [[o5_th]], [[o8_th]], [[o6_th]], [[arg1_th]], [[o3_th]] : !tfrt.chain, !corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle, !corert.tensorhandle
-  func @__forward_call_369(%arg0: tensor<16x224x224x3xf32> {tf._user_specified_name = "inputs"}, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<*x!tf_type.resource>, %arg3: tensor<*x!tf_type.resource>, %arg4: tensor<*x!tf_type.resource>) -> (tensor<?x?xf32>, tensor<*xf32>, tensor<?x16384xf32>, tensor<16x112x112x?xf32>, tensor<16x224x224x3xf32>, tensor<*xf32>) attributes {tf.entry_function = {control_outputs = "", inputs = "inputs_0,conv1_conv2d_readvariableop_resource,conv1_biasadd_readvariableop_resource,fc1000_matmul_readvariableop_resource,fc1000_biasadd_readvariableop_resource", outputs = "identity_RetVal,fc1000_matmul_readvariableop_RetVal,flatten_reshape_RetVal,relu_RetVal,inputs_RetVal,conv1_conv2d_readvariableop_RetVal"}} {
+  func.func @__forward_call_369(%arg0: tensor<16x224x224x3xf32> {tf._user_specified_name = "inputs"}, %arg1: tensor<*x!tf_type.resource>, %arg2: tensor<*x!tf_type.resource>, %arg3: tensor<*x!tf_type.resource>, %arg4: tensor<*x!tf_type.resource>) -> (tensor<?x?xf32>, tensor<*xf32>, tensor<?x16384xf32>, tensor<16x112x112x?xf32>, tensor<16x224x224x3xf32>, tensor<*xf32>) attributes {tf.entry_function = {control_outputs = "", inputs = "inputs_0,conv1_conv2d_readvariableop_resource,conv1_biasadd_readvariableop_resource,fc1000_matmul_readvariableop_resource,fc1000_biasadd_readvariableop_resource", outputs = "identity_RetVal,fc1000_matmul_readvariableop_RetVal,flatten_reshape_RetVal,relu_RetVal,inputs_RetVal,conv1_conv2d_readvariableop_RetVal"}} {
     %0:6 = tf_executor.graph {
       %outputs, %control = tf_executor.island wraps "tf.ReadVariableOp"(%arg2) {device = ""} : (tensor<*x!tf_type.resource>) -> tensor<*xf32>
       %outputs_0, %control_1 = tf_executor.island wraps "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<*x!tf_type.resource>) -> tensor<*xf32>
@@ -49,13 +49,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5 : tensor<?x?xf32>, tensor<*xf32>, tensor<?x16384xf32>, tensor<16x112x112x?xf32>, tensor<16x224x224x3xf32>, tensor<*xf32>
   }
 
-  func @while_cond_lt9(%arg0: tensor<i32>) -> tensor<i1> {
+  func.func @while_cond_lt9(%arg0: tensor<i32>) -> tensor<i1> {
     %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<9> : tensor<i32>} : () -> tensor<i32>
     %1 = "tf.Less"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     func.return %1 : tensor<i1>
   }
 
-  func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
+  func.func @while_body_add2(%arg0: tensor<i32>) -> tensor<i32> {
     %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<2> : tensor<i32>} : () -> tensor<i32>
     %1 = "tf.Add"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
     func.return %1 : tensor<i32>
@@ -63,7 +63,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @while_test
   // CHECK-SAME: ([[ARG0:%.+]]: !tfrt.chain) -> (!tfrt.chain, !corert.tensorhandle)
-  func @while_test() -> (tensor<i32>) {
+  func.func @while_test() -> (tensor<i32>) {
     // The predicate function should be inlined.
     // CHECK: corert.const_dense_tensor dense<0> : tensor<i32>
     // CHECK-NEXT: tfrt_fallback_async.const_dense_tensor dense<0> : tensor<i32>

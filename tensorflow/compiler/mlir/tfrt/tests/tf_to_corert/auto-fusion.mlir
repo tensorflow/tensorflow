@@ -4,7 +4,7 @@
 // CHECK-LABEL: func @single_op_cluster
 // CHECK: %[[ARG0:.*]]: !tfrt.chain
 // CHECK: %[[ARG1:.*]]: !corert.tensorhandle
-func @single_op_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @single_op_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: %[[ARG:.*]] = tfrt_fallback_async.corert_tensorhandle_to_fallback_tensor
   // CHECK-SAME:          %[[ARG1]]
   // CHECK-SAME:          device = "/job:localhost/replica:0/task:0/device:CPU:0"
@@ -29,7 +29,7 @@ func @single_op_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // -----
 
 // CHECK-LABEL: func @one_compiled_cluster
-func @one_compiled_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @one_compiled_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: %[[RES:.*]] = tf_jitrt.fallback.execute @kernel::@compute
   // CHECK-NOT: Rsqrt
   // CHECK-NOT: Tanh
@@ -51,7 +51,7 @@ func @one_compiled_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // -----
 
 // CHECK-LABEL: func @two_compiled_clusters
-func @two_compiled_clusters(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @two_compiled_clusters(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: tf_jitrt.fallback.execute @kernel::@compute
   %0 = "tf.Rsqrt"(%arg0) {T = f32, device="/device:CPU:0"} : (tensor<?xf32>) -> tensor<?xf32>
   // CHECK: tfrt_fallback_async.executeop {{.*}} "tf.Sqrt"

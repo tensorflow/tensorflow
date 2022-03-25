@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main() {
+func.func @main() {
   // CHECK:      name: "while/Merge"
   // CHECK-NEXT: op: "Merge"
   // CHECK-NEXT: input: "while/Enter"

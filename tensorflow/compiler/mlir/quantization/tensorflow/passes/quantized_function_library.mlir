@@ -16,7 +16,7 @@
 
 module {
   // TODO(b/220993213): factor out common logic.
-  func private @quantized_conv2d_fn(%input : tensor<*xi8>,
+  func.func private @quantized_conv2d_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
@@ -51,7 +51,7 @@ module {
     func.return %14 : tensor<*xi8>
   }
 
-  func private @quantized_conv2d_relu_fn(%input : tensor<*xi8>,
+  func.func private @quantized_conv2d_relu_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
@@ -87,7 +87,7 @@ module {
     func.return %14 : tensor<*xi8>
   }
 
-  func private @quantized_conv2d_relu6_fn(%input : tensor<*xi8>,
+  func.func private @quantized_conv2d_relu6_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
@@ -130,7 +130,7 @@ module {
   }
 
   // TODO(b/215620570): remove after all biases are handled as i32
-  func private @quantized_conv2d_relu6_f32_bias_fn(%input : tensor<*xi8>,
+  func.func private @quantized_conv2d_relu6_f32_bias_fn(%input : tensor<*xi8>,
     %filter : tensor<*xi8>, %bias : tensor<*xf32>,
     %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
     %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
@@ -149,7 +149,7 @@ module {
   }
 
   // TODO(b/220993213): factor out common logic.
-  func private @quantized_matmul_fn(%input : tensor<*xi8>,
+  func.func private @quantized_matmul_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
@@ -183,7 +183,7 @@ module {
     func.return %14 : tensor<*xi8>
   }
 
-  func private @quantized_matmul_relu_fn(%input : tensor<*xi8>,
+  func.func private @quantized_matmul_relu_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
@@ -218,7 +218,7 @@ module {
     func.return %14 : tensor<*xi8>
   }
 
-  func private @quantized_matmul_relu6_fn(%input : tensor<*xi8>,
+  func.func private @quantized_matmul_relu6_fn(%input : tensor<*xi8>,
                          %weight : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
@@ -260,7 +260,7 @@ module {
   }
 
   // Note: following functions won't handle per-channel quantization for now.
-  func private @quantize_i8(%input : tensor<*xf32>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xi8> {
+  func.func private @quantize_i8(%input : tensor<*xf32>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xi8> {
     %div = "tf.Div"(%input, %scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %round = "tf.Round"(%div) : (tensor<*xf32>) -> tensor<*xf32>
     %cast = "tf.Cast"(%round) : (tensor<*xf32>) -> tensor<*xi32>
@@ -269,7 +269,7 @@ module {
     func.return %i8 : tensor<*xi8>
   }
 
-  func private @dequantize_i8(%input : tensor<*xi8>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xf32> {
+  func.func private @dequantize_i8(%input : tensor<*xi8>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xf32> {
     %input_i32 = "tf.Cast"(%input) : (tensor<*xi8>) -> tensor<*xi32>
     %output = "tf.Sub"(%input_i32, %zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
     %cast = "tf.Cast"(%output) : (tensor<*xi32>) -> tensor<*xf32>
