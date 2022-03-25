@@ -99,12 +99,13 @@ class PForTest(PForTestCase):
 
   def test_nested_defun(self):        
     def loop_fn(a):
-      range(array_ops.constant(5))
-      return 1 + 1
+      for x in range(array_ops.constant(5)):
+        x = x + 1
+      return x
     @def_function.function
     def f():
       return self._test_loop_fn(loop_fn,2)
-    self.assert(2, f())
+    self.assertEqual(5, f())
 
   def test_parallel_iterations(self):
     for parallel_iterations in [2, 3, 8, 10]:
