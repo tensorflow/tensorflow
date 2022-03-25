@@ -543,7 +543,7 @@ Value GraphImporter::GetOperand(const Edge& edge) {
   state.addAttribute("name", builder_.getStringAttr(input_node.name()));
   state.types.resize(input_node.num_outputs() + 1, placeholder_ty);
   state.types.back() = control_ty;
-  inst = builder_.createOperation(state);
+  inst = builder_.create(state);
   return getResult();
 }
 
@@ -616,7 +616,7 @@ Status GraphImporter::ConvertNode(const Node& node) {
   }
 
   // Register the mapping between the TF node and the newly created operation.
-  Operation* operation = builder_.createOperation(result);
+  Operation* operation = builder_.create(result);
   Operation*& cached_operation = node_values_[node.id()];
   if (cached_operation) {
     // A placeholder was inserted for this op earlier to break a cycle in the

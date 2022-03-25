@@ -166,7 +166,7 @@ StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
   op_state.addOperands(func.getArguments());
   op_state.addTypes(output_tys);
   op_state.addAttributes(attrs);
-  mlir::Operation* tf_op = op_builder.createOperation(op_state);
+  mlir::Operation* tf_op = op_builder.create(op_state);
   op_builder.create<mlir::func::ReturnOp>(loc, tf_op->getResults());
 
   // Run the decompose passes on the module

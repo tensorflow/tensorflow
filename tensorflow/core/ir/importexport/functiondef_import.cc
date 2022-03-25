@@ -122,7 +122,7 @@ class ValueMapManager {
                          builder_.getStringAttr(node_name));
       state.types.push_back(placeholder_ty_);
       state.types.push_back(control_ty_);
-      Operation* placeholder = builder_.createOperation(state);
+      Operation* placeholder = builder_.create(state);
       base_operation.push_back(placeholder->getResult(1));
       base_operation.push_back(placeholder->getResult(0));
     }
@@ -195,7 +195,7 @@ Status ImportNodes(ValueMapManager value_manager,
       state.addAttribute(fulltype_attr, type);
     }
 
-    Operation* op = builder.createOperation(state);
+    Operation* op = builder.create(state);
 
     StringRef node_name = node.name();
     {

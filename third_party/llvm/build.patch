@@ -1,0 +1,12 @@
+diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+index 58c9fdbf0c68..8db4e0554b60 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -1367,6 +1367,7 @@ cc_library(
+         "include/llvm-c/Transforms/Coroutines.h",
+         "include/llvm/Transforms/Coroutines.h",
+         "include/llvm/Transforms/Coroutines/CoroCleanup.h",
++        "include/llvm/Transforms/Coroutines/CoroConditionalWrapper.h",
+         "include/llvm/Transforms/Coroutines/CoroEarly.h",
+         "include/llvm/Transforms/Coroutines/CoroElide.h",
+         "include/llvm/Transforms/Coroutines/CoroSplit.h",

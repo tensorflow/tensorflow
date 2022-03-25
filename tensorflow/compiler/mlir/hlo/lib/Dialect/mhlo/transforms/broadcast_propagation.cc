@@ -305,8 +305,7 @@ DenseMap<BroadcastIntent, Value> RealizeBroadcastIntents(
     OperationState new_producer_op_state(
         producer_op->getLoc(), producer_op->getName().getStringRef(),
         bcasted_operands, it.result_type, producer_op->getAttrs());
-    Operation *new_producer_op =
-        rewriter.createOperation(new_producer_op_state);
+    Operation *new_producer_op = rewriter.create(new_producer_op_state);
     assert(new_producer_op->getNumResults() == 1 &&
            "expect exactly one result");
     realizations[it] = new_producer_op->getResults().front();

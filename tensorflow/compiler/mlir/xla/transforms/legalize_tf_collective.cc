@@ -223,20 +223,47 @@ LogicalResult ConvertTfCollectiveReduceV2(OpBuilder& builder,
       all_reduce.merge_op(), all_reduce);
 }
 
-#include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf_collective.inc"
+// Rewrites CollectiveAssignGroupV2 + CollectiveReduceV2 to XLAAllreduce with
+// group_assignment.
+class RewriteCollectiveAssignGroupV2CollectiveReduceV2
+    : public OpRewritePattern<TF::CollectiveReduceV2Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TF::CollectiveReduceV2Op op,
+                                PatternRewriter& rewriter) const override {
+    Location loc = op.getLoc();
+    Value group_size = op.group_size();
+    Value group_key = op.group_key();
+    auto assign_group_op =
+        group_size.getDefiningOp<TF::CollectiveAssignGroupV2Op>();
 
-LogicalResult ConvertTfCollective(Operation* op) {
+    if (!assign_group_op) {
+      return failure();
+    }
+
+    if (assign_group_op !=
+        group_key.getDefiningOp<TF::CollectiveAssignGroupV2Op>()) {
+      return op->emitOpError() << "group_size and group_key are not from the "
+                                  "same CollectiveAssignGroupV2Op";
+    }
+
+    Value all_reduce = rewriter.create<TF::XlaAllReduceOp>(
+        loc, op.getType(), op.input(), assign_group_op.group_assignment(),
+        op.merge_op(), "CrossReplicaAndPartition");
+    rewriter.replaceOp(op, {all_reduce});
+    return success();
+  }
+};
+
+LogicalResult ConvertTfAssignGroup(Operation* op) {
   MLIRContext* context = op->getContext();
   RewritePatternSet patterns(context);
   patterns.insert<RewriteCollectiveAssignGroupV2CollectiveReduceV2>(context);
-  if (failed(applyPatternsAndFoldGreedily(op, std::move(patterns)))) {
-    return failure();
-  }
-  return success();
+  return applyPatternsAndFoldGreedily(op, std::move(patterns));
 }
 
 void LegalizeTFCollective::runOnOperation() {
-  if (failed(ConvertTfCollective(getOperation()))) {
+  if (failed(ConvertTfAssignGroup(getOperation()))) {
     signalPassFailure();
     return;
   }

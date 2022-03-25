@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 
 GrpcCoordinationServiceImpl::GrpcCoordinationServiceImpl(
     thread::ThreadPool* compute_pool, ::grpc::ServerBuilder* server_builder)
-    : compute_pool_(*compute_pool) {
+    : compute_pool_(*compute_pool), shutdown_(false) {
   server_builder->RegisterService(&service_);
   cq_ = server_builder->AddCompletionQueue();
 }
@@ -29,6 +30,10 @@ GrpcCoordinationServiceImpl::GrpcCoordinationServiceImpl(
 void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
 #define ENQUEUE_REQUEST(method)                                                \
   do {                                                                         \
+    tf_shared_lock l(shutdown_mu_);                                            \
+    if (shutdown_) {                                                           \
+      continue;                                                                \
+    }                                                                          \
     Call<GrpcCoordinationServiceImpl, grpc::CoordinationService::AsyncService, \
          method##Request, method##Response>::                                  \
         EnqueueRequest(                                                        \
@@ -71,6 +76,8 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
 }
 
 void GrpcCoordinationServiceImpl::Shutdown() {
+  mutex_lock l(shutdown_mu_);
+  shutdown_ = true;
   // This enqueues a special event (with a null tag) that causes the completion
   // queue to be shut down on the polling thread.
   shutdown_alarm_ = std::make_unique<::grpc::Alarm>(

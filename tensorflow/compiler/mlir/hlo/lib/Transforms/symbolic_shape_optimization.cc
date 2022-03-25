@@ -17,10 +17,12 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Analysis/shape_component_analysis.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Transforms/PassDetail.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -54,7 +57,6 @@ LogicalResult AnalyzeDynamicBroadcastInDimExpandingBehavior(
   size_t rank_out = shape_out->size();
   assert(rank_in <= rank_out);
   size_t dim_out_offset = rank_out - rank_in;
-
   for (size_t i = 0; i < rank_in; ++i) {
     SymbolicExpr dim_in = (*shape_in)[i];
     SymbolicExpr dim_out = (*shape_out)[dim_out_offset + i];
@@ -114,71 +116,6 @@ struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
     op.known_nonexpanding_dimensionsAttr(
         rewriter.getI64TensorAttr(known_nonexpanding_dims.takeVector()));
     rewriter.finalizeRootUpdate(op);
-    return success();
-  }
-};
-
-// Returns true if `reshape` only adds `1` dimensions.
-bool IsExpandShape(ShapeComponentAnalysis &shapeComponentAnalysis,
-                   mhlo::DynamicReshapeOp reshape) {
-  auto output_shape =
-      shapeComponentAnalysis.GetValueInfo(reshape.output_shape());
-  auto operand_shape = shapeComponentAnalysis.GetShapeInfo(reshape.operand());
-  if (!output_shape || !operand_shape ||
-      output_shape->size() <= operand_shape->size())
-    return false;
-  int inputDim = 0;
-  // Check if the reshape only inserts 1 dimensions and everything else is the
-  // same.
-  for (const auto &dim : *output_shape) {
-    if (dim.isConstant(1)) continue;
-    if (inputDim >= operand_shape->size() || dim != (*operand_shape)[inputDim])
-      return false;
-    ++inputDim;
-  }
-  return inputDim == operand_shape->size();
-}
-
-// Rewrite dynamic reshapes that only insert one dimensions into
-// tensor.expand_shape.
-struct ReshapeToExpandShape final
-    : public OpRewritePattern<mhlo::DynamicReshapeOp> {
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
-                                PatternRewriter &rewriter) const override {
-    ShapeComponentAnalysis shapeComponentAnalysis;
-    if (!IsExpandShape(shapeComponentAnalysis, op)) return failure();
-    auto output_shape = shapeComponentAnalysis.GetValueInfo(op.output_shape());
-    SmallVector<ReassociationExprs> reassociations(output_shape->size());
-    auto old_result_type = op.getResult().getType().cast<ShapedType>();
-    auto output_dimensions = llvm::to_vector<>(old_result_type.getShape());
-    auto *it = reassociations.begin();
-    int64_t runningIndex = 0;
-    for (const auto &dim : *output_shape) {
-      it->push_back(rewriter.getAffineDimExpr(runningIndex++));
-      if (dim.isConstant(1)) {
-        output_dimensions[runningIndex - 1] = 1;
-      } else {
-        ++it;
-      }
-    }
-    // If the last dimension was a 1 expand it from the penultimate dim.
-    if (it != reassociations.begin() && output_shape->back().isConstant(1))
-      std::prev(it)->append(*it);
-    reassociations.erase(it, reassociations.end());
-
-    // mhlo.dynamic_reshape is more lenient about the type. Add the static
-    // knowledge we have about 1 dims.
-    auto new_result_type = RankedTensorType::get(
-        output_dimensions, old_result_type.getElementType());
-    Location loc = op.getLoc();
-    Value expanded_shape = rewriter.create<tensor::ExpandShapeOp>(
-        loc, new_result_type, op.operand(), reassociations);
-    if (old_result_type != new_result_type) {
-      expanded_shape =
-          rewriter.create<tensor::CastOp>(loc, old_result_type, expanded_shape);
-    }
-    rewriter.replaceOp(op, expanded_shape);
     return success();
   }
 };
@@ -304,7 +241,7 @@ struct RemoveRedundantCstrReshapable final
       if (!IsSymbolicProduct(
               dim,
               [&](int64_t c) {
-                if (c != -1) concreteProductDynShape *= c;
+                if (c != ShapedType::kDynamicSize) concreteProductDynShape *= c;
               },
               [&](Symbol s) { partialSymbolicFactorsDynShape.push_back(s); })) {
         return failure();
@@ -337,94 +274,377 @@ struct RemoveRedundantCstrReshapable final
   }
 };
 
-struct TurnDynamicReshapeIntoCollapseShape final
+LogicalResult MaterializeReshapeAsScalarExpand(RankedTensorType operand_ty,
+                                               RankedTensorType result_ty,
+                                               mhlo::DynamicReshapeOp op,
+                                               PatternRewriter &rewriter) {
+  assert(operand_ty.getRank() == 0 && "expect scalar operand");
+  auto loc = op.getLoc();
+  SmallVector<int64_t> unit_dims(result_ty.getRank(), 1);
+  auto expanded_ty =
+      RankedTensorType::get(unit_dims, result_ty.getElementType());
+  Value expanded_scalar = rewriter.create<tensor::ExpandShapeOp>(
+      loc, expanded_ty, op.operand(), ArrayRef<ReassociationIndices>{});
+  if (expanded_scalar.getType() != result_ty) {
+    expanded_scalar =
+        rewriter.create<tensor::CastOp>(loc, result_ty, expanded_scalar);
+  }
+  rewriter.replaceOp(op, expanded_scalar);
+  return success();
+}
+
+LogicalResult MaterializeReshapeAsScalarCollapse(RankedTensorType operand_ty,
+                                                 RankedTensorType result_ty,
+                                                 mhlo::DynamicReshapeOp op,
+                                                 PatternRewriter &rewriter) {
+  assert(result_ty.getRank() == 0 && "expect scalar result");
+  auto loc = op.getLoc();
+  Value operand = op.operand();
+  SmallVector<int64_t> unit_dims(operand_ty.getRank(), 1);
+  auto casted_operand_ty =
+      RankedTensorType::get(unit_dims, operand_ty.getElementType());
+  if (operand.getType() != casted_operand_ty) {
+    operand = rewriter.create<tensor::CastOp>(loc, casted_operand_ty, operand);
+  }
+  Value collapsed_scalar = rewriter.create<tensor::CollapseShapeOp>(
+      loc, operand, ArrayRef<ReassociationIndices>{});
+  rewriter.replaceOp(op, collapsed_scalar);
+  return success();
+}
+
+enum class DimensionGroupKind {
+  kNone,
+  kExpanding,
+  kCollapsing,
+};
+
+struct DimensionGroup {
+  int64_t size = 0;
+  DimensionGroupKind kind = DimensionGroupKind::kNone;
+};
+
+SymbolicProduct EliminateCommonFactors(SymbolicProduct &a, SymbolicProduct &b) {
+  SymbolicProduct gcd;
+
+  // Eliminate common concrete factors.
+  gcd.concrete = llvm::GreatestCommonDivisor64(a.concrete, b.concrete);
+  a.concrete /= gcd.concrete;
+  b.concrete /= gcd.concrete;
+
+  // Eliminate common symbolic factors.
+  int64_t i = 0;
+  while (i < a.symbolic.size()) {
+    auto it = llvm::find(b.symbolic, a.symbolic[i]);
+    if (it != b.symbolic.end()) {
+      gcd.symbolic.push_back(*it);
+      std::swap(a.symbolic[i], a.symbolic.back());
+      a.symbolic.pop_back();
+      b.symbolic.erase(it);
+    } else {
+      i++;
+    }
+  }
+
+  return gcd;
+}
+
+bool IsUnpairedUnitDimension(
+    ArrayRef<ShapeComponentAnalysis::SymbolicExpr>::iterator it,
+    ArrayRef<ShapeComponentAnalysis::SymbolicExpr>::iterator end,
+    ArrayRef<ShapeComponentAnalysis::SymbolicExpr>::iterator other_it,
+    ArrayRef<ShapeComponentAnalysis::SymbolicExpr>::iterator other_end) {
+  return it != end && it->isConstant(1) &&
+         !(other_it != other_end && other_it->isConstant(1));
+}
+
+int64_t GetShapedTypyDimSize(const SymbolicProduct &sym_product) {
+  return sym_product.symbolic.empty() ? sym_product.concrete
+                                      : ShapedType::kDynamicSize;
+}
+
+// Iterate over the operand's and the result's shape dimensions and find
+// dimension groups that are collapsing, expanding, or untouched:
+//   - Collapsing: Multiple dimensions of the operand shape can be collapsed
+//     into a single dimension of the result shape. We must prove that the
+//     product of the operand shape's dimensions is equal to the corresponding
+//     result dimension.
+//   - Expanding: A single dimension of the operand shape can be expanded into
+//     multiple dimensions of the result shape. We must prove that the product
+//     of the result shape's dimensions is equal to the corresponding operand
+//     dimension. This case is limited to at most one dynamic dimension per
+//     expansion group as otherwise not supported by the `expand_shape` op.
+//   - Untouched: There is a 1:1 correspondance between an operand and a result
+//     shape dimension.
+//
+// We can determine the optimal dimension groups greedily by consuming operand
+// and result dimensions from left to right. If the leading operand dimension is
+// a strict divisor of the leading result dimension, collapsing is required. In
+// this case, we keep consuming the operand dimensions until the products are
+// equal. If the leading result dimension is a strict divisor of the leading
+// operand dimension, expanding is required. In this case, we keep consuming the
+// result dimensions until the products are equal. Trailing unit dimensions may
+// be inlcuded in the dimension group. This is useful iff they are "unpaired",
+// in which case they would only limit us in the subsequent iteration.
+//
+LogicalResult FindExpandingAndCollapsingDimensionGroups(
+    ArrayRef<SymbolicExpr> operand_shape_info,
+    ArrayRef<SymbolicExpr> result_shape_info,
+    SmallVector<DimensionGroup> *dimension_groups,
+    SmallVector<int64_t> *expanded_interm_shape) {
+  auto operand_shape_it = operand_shape_info.begin();
+  auto operand_shape_end = operand_shape_info.end();
+  auto result_shape_it = result_shape_info.begin();
+  auto result_shape_end = result_shape_info.end();
+
+  // Crucial iteration state.
+  SymbolicProduct remaining_operand_shape_factors;
+  SymbolicProduct remaining_result_shape_factors;
+  auto any_remaining_factors = [&]() {
+    return !remaining_operand_shape_factors.empty() ||
+           !remaining_result_shape_factors.empty();
+  };
+
+  while (operand_shape_it != operand_shape_end &&
+         result_shape_it != result_shape_end) {
+    assert(!any_remaining_factors() &&
+           "expect no remaining factors from previous iteration");
+    DimensionGroup &dim_group = dimension_groups->emplace_back();
+
+    // Consume at least one operand and result dimension.
+    {
+      if (!IsSymbolicProduct(*operand_shape_it++,
+                             &remaining_operand_shape_factors) ||
+          !IsSymbolicProduct(*result_shape_it++,
+                             &remaining_result_shape_factors)) {
+        return failure();
+      }
+      dim_group.size++;
+      SymbolicProduct gcd = EliminateCommonFactors(
+          remaining_operand_shape_factors, remaining_result_shape_factors);
+      expanded_interm_shape->push_back(GetShapedTypyDimSize(gcd));
+    }
+
+    // Fail if there are unresolvable, contradicting factors remaining.
+    if (!remaining_operand_shape_factors.empty() &&
+        !remaining_result_shape_factors.empty()) {
+      return failure();
+    }
+
+    // Collapsing: Create a collapsing dimension group.
+    bool requires_collapsing =
+        remaining_operand_shape_factors.empty() &&
+        (!remaining_result_shape_factors.empty() ||
+         IsUnpairedUnitDimension(operand_shape_it, operand_shape_end,
+                                 result_shape_it, result_shape_end));
+    if (requires_collapsing) {
+      dim_group.kind = DimensionGroupKind::kCollapsing;
+
+      // Consume operand shape dimensions until their product matches the
+      // corresponding result dimension (or fail if unresolvable/contradicting
+      // factors are found).
+      while (operand_shape_it != operand_shape_end &&
+             remaining_operand_shape_factors.empty() &&
+             !remaining_result_shape_factors.empty()) {
+        if (!IsSymbolicProduct(*operand_shape_it++,
+                               &remaining_operand_shape_factors)) {
+          return failure();
+        }
+        dim_group.size++;
+        SymbolicProduct gcd = EliminateCommonFactors(
+            remaining_operand_shape_factors, remaining_result_shape_factors);
+        expanded_interm_shape->push_back(GetShapedTypyDimSize(gcd));
+      }
+      if (any_remaining_factors()) return failure();
+
+      // Consume trailing, unpaired unit dimensions.
+      while (IsUnpairedUnitDimension(operand_shape_it, operand_shape_end,
+                                     result_shape_it, result_shape_end)) {
+        operand_shape_it++;
+        dim_group.size++;
+        expanded_interm_shape->push_back(1);
+      }
+
+      continue;
+    }
+
+    // Expanding: Create an expanding dimension group.
+    bool requires_expanding =
+        remaining_result_shape_factors.empty() &&
+        (!remaining_operand_shape_factors.empty() ||
+         IsUnpairedUnitDimension(result_shape_it, result_shape_end,
+                                 operand_shape_it, operand_shape_end));
+    if (requires_expanding) {
+      dim_group.kind = DimensionGroupKind::kExpanding;
+      int64_t num_dynamic_dims = 0;
+
+      // Consume result shape dimensions until their product matches the
+      // corresponding operand dimension (or fail if unresolvable/contradicting
+      // factors are found).
+      while (result_shape_it != result_shape_end &&
+             remaining_result_shape_factors.empty() &&
+             !remaining_operand_shape_factors.empty()) {
+        if (!IsSymbolicProduct(*result_shape_it++,
+                               &remaining_result_shape_factors)) {
+          return failure();
+        }
+        dim_group.size++;
+        SymbolicProduct gcd = EliminateCommonFactors(
+            remaining_operand_shape_factors, remaining_result_shape_factors);
+        int64_t ty_dim_size = GetShapedTypyDimSize(gcd);
+
+        // Allow no more than one dynamic dimension per expansion group.
+        if (ty_dim_size == ShapedType::kDynamicSize) {
+          num_dynamic_dims++;
+          if (num_dynamic_dims > 1) return failure();
+        }
+        expanded_interm_shape->push_back(ty_dim_size);
+      }
+      if (any_remaining_factors()) return failure();
+
+      // Consume trailing, unpaired unit dimensions.
+      while (IsUnpairedUnitDimension(result_shape_it, result_shape_end,
+                                     operand_shape_it, operand_shape_end)) {
+        result_shape_it++;
+        dim_group.size++;
+        expanded_interm_shape->push_back(1);
+      }
+
+      continue;
+    }
+
+    // Untouched: 1:1 mapping between operand and result shape dimension. This
+    // is neither expanding nor collapsing.
+    assert(!requires_collapsing && !requires_expanding && "expect id case");
+    assert(dim_group.size == 1 && dim_group.kind == DimensionGroupKind::kNone &&
+           "expect simple dimension group");
+  }
+
+  // Fail if there are remaining dimensions that could not be consumed.
+  assert(!any_remaining_factors() && "expect no remaining factors");
+  if (operand_shape_it != operand_shape_end ||
+      result_shape_it != result_shape_end) {
+    return failure();
+  }
+
+  return success();
+}
+
+SmallVector<int64_t> ConcretizeOperandShape(
+    ArrayRef<int64_t> operand_shape,
+    ArrayRef<SymbolicExpr> operand_shape_info) {
+  SmallVector<int64_t> result;
+  for (auto it : llvm::zip(operand_shape, operand_shape_info)) {
+    auto dim_size = std::get<0>(it);
+    auto s_expr = std::get<1>(it);
+    if (auto cexpr = s_expr.expr.dyn_cast<AffineConstantExpr>()) {
+      int64_t also_dim_size = cexpr.getValue();
+      assert((ShapedType::isDynamic(dim_size) || dim_size == also_dim_size) &&
+             "expect shape analysis result to be compatible with type");
+      result.push_back(also_dim_size);
+      continue;
+    }
+    result.push_back(dim_size);
+  }
+  return result;
+}
+
+llvm::Optional<SmallVector<ReassociationIndices>> RequiresReassociationOfKind(
+    DimensionGroupKind kind, const SmallVector<DimensionGroup> &dim_groups) {
+  SmallVector<ReassociationIndices> reassociation;
+  reassociation.reserve(dim_groups.size());
+  bool is_strictly_reassociating = false;
+  int64_t i = 0;
+  for (const DimensionGroup &g : dim_groups) {
+    if (g.kind == kind) {
+      is_strictly_reassociating = true;
+      reassociation.push_back(
+          llvm::to_vector(llvm::seq<int64_t>(i, i + g.size)));
+      i += g.size;
+      continue;
+    }
+    for (int64_t j = 0; j < g.size; j++) reassociation.push_back({i++});
+  }
+
+  // Return the reassociation if expansion is required.
+  if (is_strictly_reassociating) return reassociation;
+  return llvm::None;
+}
+
+LogicalResult MaterializeReshapeAsExpandAndCollapse(
+    ShapeComponentAnalysis &shape_analysis, RankedTensorType operand_ty,
+    RankedTensorType result_ty, mhlo::DynamicReshapeOp op,
+    PatternRewriter &rewriter) {
+  // Require sucessful shape analysis for operand and result shape.
+  auto operand_shape_info = shape_analysis.GetShapeInfo(op.operand());
+  if (!operand_shape_info) return failure();
+  auto result_shape_info = shape_analysis.GetValueInfo(op.output_shape());
+  if (!result_shape_info) return failure();
+
+  // Identify dimension groups and the intermediate expanded type.
+  SmallVector<DimensionGroup> dimension_groups;
+  SmallVector<int64_t> expanded_interm_shape;
+  if (failed(FindExpandingAndCollapsingDimensionGroups(
+          *operand_shape_info, *result_shape_info, &dimension_groups,
+          &expanded_interm_shape))) {
+    return failure();
+  }
+
+  // Materialize cast, expand, collapse, and cast, as needed.
+  auto loc = op.getLoc();
+  Value interm = op.operand();
+  auto casted_operand_ty = RankedTensorType::get(
+      ConcretizeOperandShape(operand_ty.getShape(), *operand_shape_info),
+      operand_ty.getElementType());
+  if (operand_ty != casted_operand_ty) {
+    interm = rewriter.create<tensor::CastOp>(loc, casted_operand_ty, interm);
+  }
+  if (auto reassociation = RequiresReassociationOfKind(
+          DimensionGroupKind::kExpanding, dimension_groups)) {
+    interm = rewriter.create<tensor::ExpandShapeOp>(
+        loc,
+        RankedTensorType::get(expanded_interm_shape,
+                              operand_ty.getElementType()),
+        interm, *reassociation);
+  }
+  if (auto reassociation = RequiresReassociationOfKind(
+          DimensionGroupKind::kCollapsing, dimension_groups)) {
+    interm =
+        rewriter.create<tensor::CollapseShapeOp>(loc, interm, *reassociation);
+  }
+  if (interm.getType() != result_ty) {
+    interm = rewriter.create<tensor::CastOp>(loc, result_ty, interm);
+  }
+  rewriter.replaceOp(op, interm);
+  return success();
+}
+
+// Tries to express `dynamic_reshape` ops through `expand_shape` and
+// `collapse_shape` ops.
+struct DynamicReshapeToExpandAndCollapseShape final
     : public OpRewritePattern<mhlo::DynamicReshapeOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
-    auto input_type = op.operand().getType().dyn_cast<RankedTensorType>();
-    auto output_type = op.getType().dyn_cast<RankedTensorType>();
-    if (!input_type || !output_type ||
-        input_type.getRank() <= output_type.getRank())
-      return failure();
+    auto operand_ty = op.operand().getType().dyn_cast<RankedTensorType>();
+    if (!operand_ty) return failure();
+    auto result_ty = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_ty) return failure();
 
-    // Require sucessful shape analysis for operand and shape.
-    ShapeComponentAnalysis shapeComponentAnalysis;
-    auto argShapeInfo = shapeComponentAnalysis.GetShapeInfo(op.operand());
-    if (!argShapeInfo) return failure();
-    auto shapeInfo = shapeComponentAnalysis.GetValueInfo(op.output_shape());
-    if (!shapeInfo) return failure();
-
-    // The next dimension of the operand shape to look at.
-    int i = 0;
-
-    // For each dimension of the target shape, consume the matching dimensions
-    // of the operand shape and build the reassociation map on the fly.
-    SmallVector<ReassociationIndices> reassociation_map;
-    for (const auto &shapeDim : *shapeInfo) {
-      reassociation_map.push_back({});
-
-      // Find the concrete/symbolic factors for the current dimension of the
-      // target shape.
-      SymbolicProduct remainingFactorsShapeDim;
-      if (!IsSymbolicProduct(shapeDim, &remainingFactorsShapeDim)) {
-        return failure();
-      }
-
-      // Consume (and collapse) as many of the operand dimensions as needed to
-      // match the target dimension. This is monotonic.
-      while (!remainingFactorsShapeDim.empty()) {
-        // Fail if there are no more operand dimensions to consume.
-        if (i >= argShapeInfo->size()) return failure();
-
-        // Find the concrete/symbolic factors for the next dimension of the
-        // operand shape.
-        SymbolicProduct remainingFactorsArgShapeDim;
-        if (!IsSymbolicProduct((*argShapeInfo)[i],
-                               &remainingFactorsArgShapeDim)) {
-          return failure();
-        }
-
-        // Eliminate the common concrete factors. Fail if we cannot consume a
-        // concrete factor of the operand shape.
-        if (remainingFactorsShapeDim.concrete %
-                remainingFactorsArgShapeDim.concrete !=
-            0)
-          return failure();
-        remainingFactorsShapeDim.concrete /=
-            remainingFactorsArgShapeDim.concrete;
-
-        // Eliminate the common symbolic factors. Fail if we cannot consume a
-        // symbolic factor of the operand shape.
-        for (const Symbol &symArgShapeDim :
-             remainingFactorsArgShapeDim.symbolic) {
-          auto *it =
-              llvm::find(remainingFactorsShapeDim.symbolic, symArgShapeDim);
-          if (it == remainingFactorsShapeDim.symbolic.end()) return failure();
-          remainingFactorsShapeDim.symbolic.erase(it);
-        }
-
-        // If all the concrete/symbolic factors were consumable, collapse this
-        // dimension (and continue if needed).
-        reassociation_map.back().push_back(i++);
-      }
-
-      // Consume trailing 1 dimensions.
-      while (i < argShapeInfo->size() && (*argShapeInfo)[i].isConstant(1))
-        reassociation_map.back().push_back(i++);
-
-      // This is effectively a shape expansion that we cannot handle yet.
-      // TODO(b/217611473): Implement shape expansion cases.
-      if (reassociation_map.back().empty()) return failure();
+    // Handle degenerate scalar expand case.
+    if (operand_ty.getRank() == 0) {
+      return MaterializeReshapeAsScalarExpand(operand_ty, result_ty, op,
+                                              rewriter);
     }
 
-    // Fail if not all of the operand shape could be consumed.
-    if (i < argShapeInfo->size()) return failure();
+    // Handle degenerate scalar collapse case.
+    if (result_ty.getRank() == 0) {
+      return MaterializeReshapeAsScalarCollapse(operand_ty, result_ty, op,
+                                                rewriter);
+    }
 
-    // Replace reshape op with its equivalent collapse shape op.
-    rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(op, op.operand(),
-                                                         reassociation_map);
-    return success();
+    ShapeComponentAnalysis shape_analysis;
+    return MaterializeReshapeAsExpandAndCollapse(shape_analysis, operand_ty,
+                                                 result_ty, op, rewriter);
   }
 };
 
@@ -470,7 +690,6 @@ struct CstrBroadcastableOpLowering
                               op.getShapes().front())) {
       return failure();
     }
-
     rewriter.replaceOpWithNewOp<shape::ConstWitnessOp>(op, true);
     return success();
   }
@@ -490,10 +709,9 @@ class SymbolicShapeOptimizationPass final
     patterns.insert<
         AnnotateExpandingDimensionsInDynamicBroadcastInDim,
         CstrBroadcastableOpLowering,
+        DynamicReshapeToExpandAndCollapseShape,
         RemoveComputeReshapeShape,
-        RemoveRedundantCstrReshapable,
-        ReshapeToExpandShape,
-        TurnDynamicReshapeIntoCollapseShape>(ctx);
+        RemoveRedundantCstrReshapable>(ctx);
     // clang-format on
     shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
 

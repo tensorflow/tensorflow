@@ -434,7 +434,10 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     self._dtype = dtypes.as_dtype(dtype)
     self._handle = handle
     self._unique_id = unique_id
-    self._handle_name = handle_name + ":0"
+    if handle_name is None:
+      self._handle_name = "Variable:0"
+    else:
+      self._handle_name = handle_name + ":0"
     self._constraint = constraint
     self._cached_shape_as_list = None
     self._validate_shape = validate_shape
@@ -2330,23 +2333,62 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   value_type = property(lambda self: BaseResourceVariable)
 
-  def __init__(self, shape, dtype=dtypes.float32,
-               name=None, trainable=True):
-    super(VariableSpec, self).__init__(shape, dtype=dtype, name=name)
+  def __init__(self,
+               shape,
+               dtype=dtypes.float32,
+               trainable=True):
+    super(VariableSpec, self).__init__(shape, dtype=dtype)
     self.trainable = trainable
 
+  def is_compatible_with(self, spec_or_value):
+    return (isinstance(spec_or_value, (type(self), self.value_type)) and
+            self.shape.is_compatible_with(spec_or_value.shape) and
+            self.dtype == spec_or_value.dtype and
+            self.trainable == spec_or_value.trainable)
+
+  @classmethod
+  def from_value(cls, value):
+    return cls(
+        value.shape,
+        dtype=value.dtype,
+        trainable=value.trainable)
+
   def _to_components(self, value):
-    raise NotImplementedError
+    return value.handle
 
   def _from_components(self, components):
-    raise NotImplementedError
+    return BaseResourceVariable(
+        trainable=self.trainable,
+        shape=self.shape,
+        dtype=self.dtype,
+        handle=components)
+
+  @property
+  def _component_specs(self):
+    return tensor_spec.TensorSpec(self.shape, dtypes.resource)
 
   def _from_compatible_tensor_list(self, tensor_list):
     assert len(tensor_list) == 1
     return tensor_list[0]
 
+  def _serialize(self):
+    return self.shape, self.dtype, self.trainable
+
   def __tf_tracing_type__(self, signature_context):
     return signature_context.make_reference_type(self, id(self))
+
+  def __repr__(self):
+    return (f"{type(self).__name__}(shape={self.shape}, dtype={self.dtype}, "
+            f"trainable={self.trainable})")
+
+  def __hash__(self):
+    return hash((self.shape, self.dtype, self.trainable))
+
+  def __eq__(self, other):
+    return (type(self) is type(other) and
+            self.shape == other.shape and
+            self.dtype == other.dtype and
+            self.trainable == other.trainable)
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 

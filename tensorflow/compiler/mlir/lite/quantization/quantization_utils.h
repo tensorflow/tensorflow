@@ -541,7 +541,7 @@ class QuantizationPattern : public RewritePattern {
       for (int i = 0; i < quantizing_op->getNumRegions(); ++i) {
         new_state.addRegion();
       }
-      Operation* quantized_op = rewriter.createOperation(new_state);
+      Operation* quantized_op = rewriter.create(new_state);
       if (quantizing_op->getNumRegions() != 0) {
         for (const auto& indexed_regions :
              llvm::enumerate(quantizing_op->getRegions())) {
@@ -771,7 +771,7 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
     OperationState new_state(def->getLoc(), def->getName().getStringRef(),
                              def->getOperands(), new_output_types,
                              def->getAttrs());
-    Operation* new_op = rewriter.createOperation(new_state);
+    Operation* new_op = rewriter.create(new_state);
 
     rewriter.replaceOp(def, new_op->getResults());
     return success();

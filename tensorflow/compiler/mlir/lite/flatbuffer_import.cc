@@ -924,7 +924,7 @@ StatusOr<Operation*> ConvertOp(
                                                          func_names, builder));
   op_state.addAttributes(function_ref_attrs);
 
-  return builder.createOperation(op_state);
+  return builder.create(op_state);
 }
 
 // Returns indices of the given tensors in the subgraph. Returns error if a

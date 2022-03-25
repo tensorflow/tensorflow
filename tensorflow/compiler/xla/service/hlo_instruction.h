@@ -122,9 +122,12 @@ class HloPrintOptions {
         .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
+        // Compact option won't print name of operand_k, where k > a threshold.
+        // Canonical (and Fingerprint) must include all operands.
         .set_compact_operands(false)
         .set_print_operand_names(false)
         .set_print_operand_shape(true)
+        // No index annotations as they are only for ease of human inspection.
         .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
@@ -133,31 +136,16 @@ class HloPrintOptions {
   }
 
   // Options to produce a fingerprint of an HLO instruction.
-  // This option is primarily based on the Canonical option with some
-  // important changes commented below.
+  // Based on Canonical() with some important changes commented below.
   static HloPrintOptions Fingerprint() {
-    return HloPrintOptions()
-        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
-        .set_print_metadata(false)
-        .set_print_backend_config(false)
+    return Canonical()
         // Exclude because they do not affect HLO optimizations.
         .set_print_infeed_outfeed_config(false)
         // Exclude floating point constant literals that are not all zeros, all
         // ones, or integers because they may be randomly initialized weights,
         // which may be changed across different runs.
         .set_print_only_essential_constants(true)
-        // Compact option won't print name of operand_k, where k > a threshold.
-        // Fingerprint must consider canonicalized names of all operands.
-        .set_compact_operands(false)
-        .set_print_operand_names(false)
-        // Must capture operand shapes for op level.
-        .set_print_operand_shape(true)
-        .set_print_operand_index_annotation_interval(0)
-        .set_print_program_shape(false)
-        .set_print_percent(false)
-        .set_print_control_dependencies(false)
-        .set_canonicalize_instruction_names(true)
-        // Ignore "id" in "name.id" (afer period) because it can be
+        // Remove "id" in "name.id" (after period) because it can be
         // non-deterministic. This mainly affects computations' names because
         // canonicalized instructions' names are in "tmp_id" format.
         .set_print_ids(false)
@@ -166,11 +154,12 @@ class HloPrintOptions {
   }
 
   // Options to produce a fingerprint of an HLO module and computation.
-  // It is faster than Fingerprint() option.
+  // Shorter (and therefore faster) than Fingerprint().
   static HloPrintOptions ModuleFingerprint() {
-    // For faster ToString(). This information can be inferred from
-    // output shapes and canonicalized names when we have an entire computation.
-    return Fingerprint().set_print_operand_shape(false);
+    return Fingerprint()
+        // Operand shapes can be inferred from output shapes and canonicalized
+        // names when we have an entire computation.
+        .set_print_operand_shape(false);
   }
 
   // If true, large constants will be printed out.

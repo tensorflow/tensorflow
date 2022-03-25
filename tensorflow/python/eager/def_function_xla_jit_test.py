@@ -198,10 +198,10 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       @def_function.function(jit_compile=True)
       def fn(x):
-        group_key = collective_ops.assign_group_v2(
-            group_assignment=[[0]], device_index=0)
+        group_size, group_key = collective_ops.assign_group_v2(
+            group_assignment=[[0]], device_index=0, base_key=1000)
         t0 = collective_ops.all_reduce_v2(
-            t=x, group_size=1, group_key=group_key, instance_key=1)
+            t=x, group_size=group_size, group_key=group_key, instance_key=1)
         return t0
 
       inputs = constant_op.constant([1.0, 2.0, 3.0])
