@@ -2576,7 +2576,20 @@ void MklLayoutRewritePass::CopyAttrsAllCheckConstFilter(const Node* orig_node,
   // Check and set filter attribute.
   Node* filter_node = nullptr;
   TF_CHECK_OK(orig_node->input_node(1, &filter_node));
-  nb->Attr("is_filter_const", filter_node->IsConstant());
+
+  bool is_filter_const = false;
+  if (HasNodeAttr(orig_node->def(), "is_filter_const")) {
+    GetNodeAttr(orig_node->def(), "is_filter_const", &is_filter_const);
+  }
+
+  // In case that (1) orig_node does not have attribute 'is_filter_const',
+  // or (2) it has the attribute but with the false value, then we set the
+  // attribute for 'nb' with a value based on filter_node being const or not.
+  // If is_filter_const == true, then there is no need to call nb->Attr() as
+  // CopyAttrsAll() has already copied the attribute from orig_node to nb.
+  if (!is_filter_const) {
+    nb->Attr("is_filter_const", filter_node->IsConstant());
+  } 
 }
 
 void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
@@ -2587,21 +2600,7 @@ void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
   // Check and set filter attribute.
   Node* filter_node = nullptr;
   TF_CHECK_OK(orig_node->input_node(1, &filter_node));
-
-  bool is_filter_const = false;
-  if (HasNodeAttr(orig_node->def(), "is_filter_const")) {
-    GetNodeAttr(orig_node->def(), "is_filter_const", &is_filter_const);
-  }
-
-  if (!is_filter_const) {
-    // In case that (1) orig_node does not have attribute 'is_filter_const',
-    // or (2) it has the attribute but with the false value, then we set the
-    // attribute for 'nb' with a value based on filter_node being const or not.
-    nb->Attr("is_filter_const", filter_node->IsConstant());
-  } else {
-    // orig_node has attribute 'is_filter_const' with a true value.
-    nb->Attr("is_filter_const", true);
-  }
+  nb->Attr("is_filter_const", filter_node->IsConstant());
 }
 
 void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
