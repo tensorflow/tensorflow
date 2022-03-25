@@ -205,10 +205,6 @@ Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
   } else {
     c->set_output(0, c->Scalar());
   }
-  if (batched && num_splits == 0) {
-    return errors::InvalidArgument(
-        "ragged_rank=0 is not currently supported when batched_input=true.");
-  }
   return Status::OK();
 }
 
