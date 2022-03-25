@@ -300,6 +300,9 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // latter pass to converge faster as it does not have to spend time folding
   // away dead ops.
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
+  // Encapsulate StatefulPartitionedCallOp within a cluster so that the
+  // composite resource ops can be decomposed.
+  pm.addPass(TFDevice::CreateXlaClusterFormationPass());
   // Place DecomposeResourceOpsPass.
   pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
   // Run another shape inference pass because resource decomposition might have
@@ -309,6 +312,8 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
+  // Inline the StatefulPartitionedCallOp op based in the parent region.
+  pm.addPass(TFDevice::CreateXlaInlineDeviceOpsPass());
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster

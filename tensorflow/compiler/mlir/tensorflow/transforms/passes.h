@@ -392,6 +392,13 @@ CreateLaunchToDeviceAttributePass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateHostLaunchToOutsideCompiledPass();
 
+// Create a pass that encapsulates StatefulPartitionedCallOp within a cluster.
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaClusterFormationPass();
+
+// Create a pass that inlines the StatefulPartitionedCallOp op based in the
+// parent region.
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
+
 }  // namespace TFDevice
 
 namespace TFTPU {
