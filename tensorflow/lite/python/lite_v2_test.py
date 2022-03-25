@@ -2180,6 +2180,45 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
+  @test_util.run_v2_only
+  def testKerasFullyConnectedOutputShape3D(self):
+    """Create a simple FullyConnected Model with an output of three dimensions."""
+    input_tensor = tf.keras.layers.Input(
+        batch_size=1,
+        shape=[8, 4],
+        name='input_tensor',
+        dtype=tf.float32)
+    out = tf.keras.layers.Dense(16)(input_tensor)
+    model = tf.keras.Model(input_tensor, out)
+
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy'])
+
+    # Export the keras model to saved model.
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'fully_connected_output_3d')
+    model.save(saved_model_dir, save_format='tf', include_optimizer=False)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [np.random.randn(8, 4).astype(np.float32)]
+
+    converter.representative_dataset = calibration_gen
+    converter.inference_input_type = dtypes.int8
+    converter.inference_output_type = dtypes.int8
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    output_details = interpreter.get_output_details()
+
+    self.assertLen(output_details[0]['shape_signature'], 3)
+
   def _createUnknownInputShapeModel(self):
     """Create a simple SavedModel with unknown input."""
     saved_model_dir = os.path.join(self.get_temp_dir(), 'unknown_input_shape')
