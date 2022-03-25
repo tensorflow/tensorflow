@@ -174,7 +174,7 @@ struct I1ToI8GenericConversionPattern : public ConversionPattern {
       rewriter.applySignatureConversion(new_region, signature_conv);
     }
 
-    Operation *new_op = rewriter.createOperation(new_op_state);
+    Operation *new_op = rewriter.create(new_op_state);
     rewriter.replaceOp(op, new_op->getResults());
     return mlir::success();
   }

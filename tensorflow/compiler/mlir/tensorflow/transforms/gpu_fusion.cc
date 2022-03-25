@@ -99,7 +99,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
     if (side_input) state.operands.push_back(side_input);
     state.addTypes(batch_norm.getResultTypes());
     state.addAttributes(batch_norm->getAttrs());
-    Operation *op = rewriter.createOperation(state);
+    Operation *op = rewriter.create(state);
     rewriter.replaceOp(batch_norm, op->getResults());
 
     // Depending on the case, we may fuse the add, the relu, or both.

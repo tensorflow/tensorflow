@@ -381,7 +381,7 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
   rewriter.setInsertionPointAfter(call_op);
   std::string tf_op_name = GetTFOpName(call_op.callee());
   OperationState new_state(loc, tf_op_name, inputs, output_types, attr_list);
-  Operation* new_op = rewriter.createOperation(new_state);
+  Operation* new_op = rewriter.create(new_state);
   if (materialize_derived_attrs_) {
     for (const auto& attr : derived_attrs) {
       // Add or update the derived attribute with the value. Skip the fixed

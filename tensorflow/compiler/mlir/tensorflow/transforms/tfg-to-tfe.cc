@@ -451,7 +451,7 @@ class ConvertGeneralOp : public ConversionPattern {
       OperationState state =
           OperationState(loc, tf_op_name, inner_op_operands, new_types, attrs,
                          op->getSuccessors(), new_regions);
-      inner_op = rewriter.createOperation(state);
+      inner_op = rewriter.create(state);
     } else {
       bool disable_call_shape_inference = false;
       if (op->hasAttr("_disable_call_shape_inference")) {

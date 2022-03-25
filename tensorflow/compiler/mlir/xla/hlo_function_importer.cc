@@ -1445,7 +1445,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         result.attributes.push_back(attr);
       }
 
-      return func_builder->createOperation(result);
+      return func_builder->create(result);
     }
   }
 }

@@ -777,7 +777,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
   state.addTypes(new_result_types);
   state.addAttributes(op->getAttrs());
 
-  auto *new_op = builder.createOperation(state);
+  auto *new_op = builder.create(state);
 
   // Replace all uses of `op`, and recursively replace those promoted uses.
   for (unsigned i = 0, j = 0, e = op->getNumResults(); i < e; ++i) {

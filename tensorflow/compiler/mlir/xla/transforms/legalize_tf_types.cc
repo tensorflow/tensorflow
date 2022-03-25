@@ -141,7 +141,7 @@ class TfTypePattern : public ConversionPattern {
       if (failed(rewriter.convertRegionTypes(&new_region, *getTypeConverter())))
         return failure();
     }
-    rewriter.replaceOp(op, rewriter.createOperation(state)->getResults());
+    rewriter.replaceOp(op, rewriter.create(state)->getResults());
 
     return success();
   }
