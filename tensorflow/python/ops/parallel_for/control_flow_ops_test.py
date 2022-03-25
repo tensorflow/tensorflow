@@ -97,14 +97,14 @@ class PForTest(PForTestCase):
       self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=False)
     self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=True)
 
-  def test_defun(self):        
+  def test_nested_defun(self):        
     def loop_fn(a):
       range(array_ops.constant(5))
-      return 1 
+      return 1 + 1
     @def_function.function
     def f():
       return self._test_loop_fn(loop_fn,2)
-    self.assertAllEqual(1, f()))
+    self.assertAllEqual(2, f()))
 
   def test_parallel_iterations(self):
     for parallel_iterations in [2, 3, 8, 10]:
