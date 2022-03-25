@@ -38,19 +38,18 @@ template <typename Scalar>
 struct leakyrelu_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
   explicit leakyrelu_op(float val = 0.2f) EIGEN_NO_THROW {
-    alpha_ = Scalar(val);
+    m_alpha = Scalar(val);
   }
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& x) const {
-    return x > Scalar(0) ? x : x * Scalar(alpha_);
+    return x > Scalar(0) ? x : x * Scalar(m_alpha);
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
-    Packet alpha = pset1<Packet>(alpha_);
+    Packet alpha = pset1<Packet>(m_alpha);
     return pselect(pcmp_le(x, pzero(x)), pmul(x,alpha), x);
   }
-  private:
-  Scalar alpha_;
+  Scalar m_alpha;
 };
 
 template <typename Scalar>
