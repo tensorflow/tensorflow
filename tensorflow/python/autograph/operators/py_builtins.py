@@ -258,7 +258,8 @@ def _tf_tensor_is_scalar(s):
     return True
   else:
     raise ValueError(
-        'len requires a non-scalar tensor, got one of shape {}'.format(shape))
+        'Currently we requires a scalar tensor, '
+        'got one of shape {}'.format(shape))
 
 
 def _tf_tensor_len(s):
@@ -347,7 +348,8 @@ def _tf_max(*args, **kwargs):
     raise ValueError('These keyword arguments are ' 
                      'currently not supported: {}'.format(kwargs_tuple))
   elif len(args) == 1:
-    # TODO (bhack) Do we want constain the input Tensor to rank==1 ?
+    # TODO (bhack) Do we want the input Tensor to be rank==1 or scalar?
+    # if not something like [[1, 2][3,4]] it will give an unexpected result
     return  math_ops.reduce_max(*args, axis=0)
   else:
     if all(_tf_tensor_is_scalar(arg) for arg in args):
