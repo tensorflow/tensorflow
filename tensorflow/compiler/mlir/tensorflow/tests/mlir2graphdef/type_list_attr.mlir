@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main() {
+func.func @main() {
   tf_executor.graph {
     // CHECK:       key: "emptylist"
     // CHECK-NEXT:  value {

@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 
 Status TestRoundTrip(GraphDef& graphdef);
-void NormalizeTensorData(GraphDef& graphdef);
+void NormalizeTensorData(GraphDef& graphdef, bool add_fulltype);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_ROUNDTRIP_H_

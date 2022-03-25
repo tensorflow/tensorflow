@@ -1,4 +1,3 @@
-# Lint as python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -1380,7 +1379,7 @@ def _merge_row_partitions(row_partitions, value, rank, dtype, validate):
     return tuple(value_row_partitions)
   else:
     return tuple([
-        p1.merge_precomputed_encodings(p2, validate)
+        p1._merge_precomputed_encodings(p2, validate)  # pylint: disable=protected-access
         for (p1, p2) in zip(row_partitions, value_row_partitions)
     ])
 

@@ -547,7 +547,7 @@ class LayoutAssignment : public HloModulePass {
   bool reverse_computation_order_;
 
  protected:
-  static constexpr int64_t kNumberOfPropagationRounds = 3;
+  static constexpr int64_t kNumberOfPropagationRounds = 2;
   // Sets up the copy instruction according to the characteristic (sharding,
   // metadata, ...) of the reference instruction. The index argument is used
   // when the instruction is a tuple, and in such case the index represents

@@ -10,7 +10,7 @@ load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//tensorflow/tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
-load("//tensorflow/tools/toolchains:embedded/arm-linux/arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
+load("//tensorflow/tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
@@ -135,9 +135,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "416032ac07fb003a1feaa90e09e49bf1282a44c40a4a14b653c64fe0d387e863",
-        strip_prefix = "XNNPACK-57aaeaff9128a416e61d94da1523e775b33fd165",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/57aaeaff9128a416e61d94da1523e775b33fd165.zip"),
+        sha256 = "16a46625036735e1e48e65b9b2dec20dd9c05c38b580b79c9ee99fb3d6e4c505",
+        strip_prefix = "XNNPACK-c4267996b006f94694ea588ca2bbeac1ec98d458",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/c4267996b006f94694ea588ca2bbeac1ec98d458.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -190,11 +190,11 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "8322ed2e135999569082a95e7fbb2fa87786ffb1c67935b3ef71e00b53f2c887",
-        strip_prefix = "ComputeLibrary-21.11",
+        sha256 = "11244b05259fb1c4af7384d0c3391aeaddec8aac144774207582db4842726540",
+        strip_prefix = "ComputeLibrary-22.02",
         build_file = "//third_party/compute_library:BUILD",
         patch_file = ["//third_party/compute_library:compute_library.patch"],
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v21.11.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.02.tar.gz"),
     )
 
     tf_http_archive(

@@ -8,7 +8,7 @@ func @TfAdd(%arg0: tensor<4xf64>, %arg1: tensor<4xf64>) -> tensor<4xf64> {
   } : (tensor<4xf64>, tensor<4xf64>) -> tensor<4xf64>
 
 // CHECK: "tf.Add"(%arg0, %arg1) {T = f64}  : (tensor<4xf64>, tensor<4xf64>) -> tensor<4xf64>
-  return %0 : tensor<4xf64>
+  func.return %0 : tensor<4xf64>
 }
 
 
@@ -21,7 +21,7 @@ func @TfBatchMatMulV2(%arg0: tensor<4x128x2xf32>, %arg1:  tensor<2x1xf32>) -> te
   } : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
 
 // CHECK: "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false} : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
-  return %0 : tensor<4x128x1xf32>
+  func.return %0 : tensor<4x128x1xf32>
 }
 
 
@@ -36,7 +36,7 @@ func @TfTensorArrayV3(%arg0: tensor<i32>) -> tensor<f32> {
 // CHECK-SAME: : (tensor<i32>) -> (tensor<2x!tf_type.resource>, tensor<f32>)
 
   %1 = "tfl.cast"(%0#1) : (tensor<*xf32>) -> tensor<f32>
-  return %1 : tensor<f32>
+  func.return %1 : tensor<f32>
 }
 
 // CHECK-LABEL: TfParseExample
@@ -52,7 +52,7 @@ func @TfParseExample(%arg0: tensor<1x!tf_type.string>) -> (tensor<1x1x!tf_type.s
     tensor<1x!tf_type.string>, tensor<2x!tf_type.string>, tensor<1x!tf_type.string>,
     tensor<1x!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>
   ) -> (tensor<1x1x!tf_type.string>, tensor<1x1x!tf_type.string>)
-  return %4#0, %4#1 : tensor<1x1x!tf_type.string>, tensor<1x1x!tf_type.string>
+  func.return %4#0, %4#1 : tensor<1x1x!tf_type.string>, tensor<1x1x!tf_type.string>
 // CHECK: "tf.ParseExample"(
 // CHECK-SAME: operand_segment_sizes = dense<[1, 1, 0, 2, 2]> : vector<5xi32>, result_segment_sizes = dense<[0, 0, 0, 2]>
 }
@@ -64,5 +64,5 @@ func @FailureOnInvalidOp(%arg0: tensor<4xf64>, %arg1: tensor<4xf64>) -> tensor<4
     custom_code = "FlexNop",
     custom_option = opaque<"tfl", "0x034E6F70001412034E6F701A001A002A070A015412023002320000021B171414042801"> : tensor<35xi8>
   } : (tensor<4xf64>, tensor<4xf64>) -> tensor<4xf64>
-  return %0 : tensor<4xf64>
+  func.return %0 : tensor<4xf64>
 }

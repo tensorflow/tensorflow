@@ -1093,6 +1093,15 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     # https://docs.python.org/3/library/sys.html#sys.getrefcount
     self.assertEqual(sys.getrefcount(ref.deref()), 2)
 
+  def test_restore_incompatible_shape(self):
+    v = variables_lib.Variable([1.0, 1.0])
+    w = variables_lib.Variable([1.0])
+    ckpt = trackable_utils.Checkpoint(v=v)
+    save_path = ckpt.save(os.path.join(self.get_temp_dir(), "ckpt"))
+
+    with self.assertRaisesRegex(ValueError, "incompatible tensor with shape"):
+      trackable_utils.Checkpoint(v=w).restore(save_path)
+
 
 class TemplateTests(parameterized.TestCase, test.TestCase):
 

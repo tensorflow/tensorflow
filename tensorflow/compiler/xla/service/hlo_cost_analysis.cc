@@ -486,6 +486,21 @@ Status HloCostAnalysis::HandlePad(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleAsyncStart(const HloInstruction* async_start) {
+  TF_ASSIGN_OR_RETURN(
+      current_properties_,
+      ProcessSubcomputation(async_start->called_computations()[0]));
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAsyncUpdate(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAsyncDone(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleCopyStart(const HloInstruction*) {
   return Status::OK();
 }

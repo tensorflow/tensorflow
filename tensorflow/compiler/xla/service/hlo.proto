@@ -50,7 +50,7 @@ enum CustomCallApiVersion {
   // The first version of the API, with the following signatures:
   //
   // CPU:
-  //   void do_custom_call(void* out, const void** in)
+  //   void do_custom_call(void* out, const void** in);
   //
   // GPU:
   //   void do_custom_call(CUstream stream, void** buffers,
@@ -59,7 +59,9 @@ enum CustomCallApiVersion {
 
   // When the ability to return success/failure status was added:
   //
-  // CPU: Unimplemented
+  // CPU:
+  //   void do_custom_call(void* out, const void** in,
+  //                       XlaCustomCallStatus* status);
   //
   // GPU:
   //   void do_custom_call(CUstream stream, void** buffers,

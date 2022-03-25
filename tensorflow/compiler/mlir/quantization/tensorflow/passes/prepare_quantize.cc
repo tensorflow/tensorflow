@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -228,13 +230,18 @@ std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
           2, std::make_pair(std::initializer_list<int>({0, 1}),
                             quant::GetUniformQuantizedTypeForBias)));
       spec->coeff_op_quant_dim[0] = 3;
+    } else if (function_name.contains("matmul")) {
+      spec->biases_params.emplace(std::make_pair(
+          2, std::make_pair(std::initializer_list<int>({0, 1}),
+                            quant::GetUniformQuantizedTypeForBias)));
+      spec->coeff_op_quant_dim[0] = -1;
     }
   }
   return spec;
 }
 
 bool PrepareQuantizePass::RemoveRedundantStats(FuncOp func) {
-  return RemoveRedundantStatsOps(func, GetOpQuantSpec);
+  return RemoveRedundantStatsOps(func, GetOpQuantSpec, GetTfQuantScaleSpec);
 }
 
 static Value Quantized(Operation* user) {
@@ -372,7 +379,8 @@ void PrepareQuantizePass::runOnOperation() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
-      GetOpQuantSpec, infer_tensor_range, quant_specs_.legacy_float_scale);
+      GetOpQuantSpec, GetTfQuantScaleSpec, infer_tensor_range,
+      quant_specs_.legacy_float_scale);
 }
 
 }  // namespace
@@ -381,6 +389,8 @@ void PrepareQuantizePass::runOnOperation() {
 std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass() {
   return std::make_unique<PrepareQuantizePass>();
 }
+
+static PassRegistration<PrepareQuantizePass> pass;
 
 }  // namespace quant
 }  // namespace mlir

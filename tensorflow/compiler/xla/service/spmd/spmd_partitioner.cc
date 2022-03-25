@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 
-#include <float.h>
-
+#include <algorithm>
 #include <functional>
 #include <memory>
+#include <numeric>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -1924,7 +1926,6 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     const int64_t partition_count =
         input_sharding.tile_assignment().dim(sort_dim);
     const int64_t input_size = input->shape().dimensions(sort_dim);
-    const int64_t per_partition_size = CeilOfRatio(input_size, partition_count);
     const auto element_type = input->shape().element_type();
     const auto index_type = index->shape().element_type();
 
@@ -1942,7 +1943,7 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     // becomes the padded shape.
     std::vector<int64_t> replicated_dimensions(
         input->shape().dimensions().begin(), input->shape().dimensions().end());
-    replicated_dimensions[sort_dim] = per_partition_size * partition_count;
+    replicated_dimensions[sort_dim] = RoundUpTo(input_size, partition_count);
     const Shape replicated_shape = ShapeUtil::MakeTupleShape(
         {ShapeUtil::MakeShape(element_type, replicated_dimensions),
          ShapeUtil::MakeShape(index_type, replicated_dimensions)});

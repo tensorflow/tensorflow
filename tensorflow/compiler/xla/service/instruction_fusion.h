@@ -215,14 +215,16 @@ class InstructionFusion : public HloModulePass {
 
   // Fuses producer into consumer. Returns the fusion instruction.
   virtual HloInstruction* Fuse(HloInstruction* producer,
-                               HloInstruction* consumer);
+                               HloInstruction* consumer,
+                               HloComputation* computation);
 
   // Creates a new fusion instruction containing `producer` and `consumer`. A
   // tuple is added as the fusion instruction's root, which consumes from both,
   // `producer` and `consumer`. This style of fusion is referred to as
   // multi-output fusion.
   virtual HloInstruction* FuseIntoMultiOutput(HloInstruction* producer,
-                                              HloInstruction* consumer);
+                                              HloInstruction* consumer,
+                                              HloComputation* computation);
 
   // An "effectively unary" operation is one that has at most one "large"
   // input with the others being negligible in terms of memory usage.
@@ -251,9 +253,6 @@ class InstructionFusion : public HloModulePass {
   bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
                                      HloInstruction* consumer,
                                      const HloReachabilityMap& reachability);
-
-  // Current HloComputation instance the loop fuser is traversing.
-  HloComputation* computation_;
 
   FusionConfigCollection config_collection_mode() {
     return config_collection_mode_;
@@ -288,7 +287,8 @@ class InstructionFusion : public HloModulePass {
                                      HloInstruction* fusion_instruction);
 
   HloInstruction* AddFusionInstruction(HloInstruction* producer,
-                                       HloInstruction* consumer);
+                                       HloInstruction* consumer,
+                                       HloComputation* computation);
 
   // Whether or not we can fuse producer into consumer on all paths
   // from the producer to the consumer where nodes are HLOs and edges are uses.

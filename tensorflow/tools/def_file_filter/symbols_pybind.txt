@@ -256,6 +256,7 @@ tensorflow::ShapeRefiner::~ShapeRefiner
 tensorflow::AddControlInput
 tensorflow::SetAttr
 tensorflow::ClearAttr
+tensorflow::SetFullType
 tensorflow::SetRequestedDevice
 tensorflow::UpdateEdge
 tensorflow::RemoveAllControlInputs
@@ -481,6 +482,7 @@ tensorflow::config::Flag::reset
 tensorflow::AttributeTypeFromName
 tensorflow::AttrValueToPyObject
 tensorflow::ConvertPyObjectToAttributeType
+tensorflow::DataTypeToPyObject
 tensorflow::Safe_PyObjectPtr
 
 [//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc] # quantization

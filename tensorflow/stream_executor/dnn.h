@@ -2666,6 +2666,12 @@ class DnnSupport {
     return false;
   }
 
+  // Notifies that a stream is being destroyed and should be invalidated from
+  // any internal caching.  This exists to allow the CUDA implementation to
+  // avoid redundant cudnnSetStream calls without risking problems when a stream
+  // is destroyed and a new stream later created in the same memory.
+  virtual void NotifyStreamDestroyed(Stream* stream) {}
+
  protected:
   // Returns whether status is 'ok', and potentially logs the error.
   static bool IsStatusOk(const port::Status& status, bool report_error);

@@ -544,6 +544,8 @@ cc_library(
     srcs = [
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h",
         "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h.inc",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h",
+        "include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h.inc",
         "lib/Dialect/mhlo/IR/hlo_ops_base_structs.cc",
     ],
     hdrs = [
@@ -552,6 +554,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":hlo_ops_base_attrs_inc_gen",
+        ":hlo_ops_base_enums_inc_gen",
         ":hlo_ops_base_structs_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -624,12 +627,14 @@ cc_library(
         "@llvm-project//mlir:ArithmeticDialect",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:SparseTensor",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
@@ -1401,7 +1406,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
     ],
@@ -1609,12 +1613,13 @@ cc_library(
         ":mhlo_flatten_tuple",
         ":mhlo_to_mhlo_lowering_patterns",
         ":rank_specialization",
-        ":reshape_simplifier",
         ":sink_constants_to_control_flow",
+        ":symbolic_shape_optimization",
         ":test_passes",
         ":transforms_pass_details",
         ":transforms_pass_inc_gen",
         ":userange_analysis",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
 )
@@ -1646,6 +1651,7 @@ cc_library(
     deps = [
         ":gml_st_test_passes_inc_gen",
         ":gml_st_transforms",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
@@ -1757,6 +1763,7 @@ cc_library(
         ":transforms_pass_inc_gen",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:BufferizationTransforms",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:MemRefDialect",
@@ -1786,8 +1793,8 @@ cc_library(
 )
 
 cc_library(
-    name = "reshape_simplifier",
-    srcs = ["lib/Transforms/reshape_simplifier.cc"],
+    name = "symbolic_shape_optimization",
+    srcs = ["lib/Transforms/symbolic_shape_optimization.cc"],
     hdrs = [
         "include/mlir-hlo/Transforms/PassDetail.h",
         "include/mlir-hlo/Transforms/passes.h",
@@ -2080,6 +2087,7 @@ cc_library(
         ":gml_st_passes_inc_gen",
         ":hlo",
         ":tiling_interface",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -2097,6 +2105,7 @@ cc_library(
     deps = [
         ":gml_st",
         ":gml_st_passes_inc_gen",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFDialect",
@@ -2118,5 +2127,16 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:SCFUtils",
+    ],
+)
+
+# A light-weight runtime support library, used by MLIR code that results
+# after lowering some ops in the vector and sparse tensor dialects.
+cc_binary(
+    name = "libmlir_c_runner_utils.so",
+    linkshared = True,
+    linkstatic = False,
+    deps = [
+        "@llvm-project//mlir:mlir_c_runner_utils",
     ],
 )

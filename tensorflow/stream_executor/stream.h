@@ -2037,6 +2037,9 @@ class Stream {
     return parent()->GetDeviceDescription().cuda_compute_capability();
   }
 
+  RocmComputeCapability GetRocmComputeCapability() const {
+    return parent()->GetDeviceDescription().rocm_compute_capability();
+  }
   // Returns the (internal usage) temporary-memory-allocation manager associated
   // with this stream.
   internal::TemporaryMemoryManager *temporary_memory_manager();

@@ -19,7 +19,7 @@ func @single_cluster_one_result(%arg0 : tensor<i32>, %arg1 : tensor<i32>)
   %4 = "tf.Add"(%1, %3) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: }) {policy = "tfrt.auto-fusion"}
   // CHECK: return %[[CLUSTER]]
-  return %4 : tensor<i32>
+  func.return %4 : tensor<i32>
 }
 
 // CHECK-LABEL: func @do_not_cluster_hoistable_ops
@@ -50,5 +50,5 @@ func @do_not_cluster_hoistable_ops(
   %5 = "tf.Add"(%2, %4) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   // CHECK: }) {policy = "tfrt.auto-fusion"}
   // CHECK: return %[[CLUSTER]]
-  return %5 : tensor<i32>
+  func.return %5 : tensor<i32>
 }

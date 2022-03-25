@@ -54,6 +54,9 @@ int GetInputMaxDims(const OpSignature& op_sig) {
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
     case BuiltinOperator_CONV_2D:
+      if (op_sig.ext_options.conv_2d.is_grouped_convolution) {
+        return 6;
+      }
       // If the op has signed int16 op_sig.inputs and op_sig.outputs, its
       // version 4.
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&

@@ -98,6 +98,12 @@ XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(int64_t metadata_id) {
   return &metadata;
 }
 
+const XStatMetadata* XPlaneBuilder::GetStatMetadata(int64_t metadata_id) const {
+  auto result = plane_->stat_metadata().find(metadata_id);
+  if (result == plane_->stat_metadata().end()) return nullptr;
+  return &(result->second);
+}
+
 XStatMetadata* XPlaneBuilder::CreateStatMetadata() {
   return GetOrCreateStatMetadata(++last_stat_metadata_id_);
 }

@@ -143,6 +143,19 @@ struct TensorToHashBucket {
   int string_to_hash_bucket = kMissingIndex;
 };
 
+// Pad followed by Conv3D/FusedConv3D
+struct PadWithConv3D {
+  PadWithConv3D() = default;
+  PadWithConv3D(int contraction_idx, int pad_idx, int padding_const_idx)
+      : contraction_idx(contraction_idx),
+        pad_idx(pad_idx),
+        padding_const_idx(padding_const_idx) {}
+
+  int contraction_idx = kMissingIndex;
+  int pad_idx = kMissingIndex;
+  int padding_const_idx = kMissingIndex;
+};
+
 // Contraction node followed by a BiasAdd.
 struct ContractionWithBiasAdd {
   ContractionWithBiasAdd() = default;
@@ -802,6 +815,38 @@ bool IsAddWithNoBroadcast(const RemapperContext& ctx, const NodeDef& node) {
     return true;
   }
   return false;
+}
+
+bool FindPadWithConv3D(const RemapperContext& ctx, int node_index,
+                       PadWithConv3D* matched) {
+  if (!IsMKLEnabled()) return false;
+  const auto* node_view = ctx.graph_view.GetNode(node_index);
+  const auto* node_def = node_view->node();
+  // The optimization is only for CPU
+  if (!NodeIsOnCpu(node_def)) return false;
+  // Root of the pattern must be a Conv3D or _FusedConv3D
+  if (!(IsConv3D(*node_def) || node_def->op() == kFusedConv3D)) return false;
+  if (!(HasDataType(node_def, DT_FLOAT) || HasDataType(node_def, DT_BFLOAT16)))
+    return false;
+
+  // Input to Conv3D/_FusedConv3D must be a Pad
+  if (node_view->NumRegularFanins() < 1) return false;
+  const auto& regular_fanin_0 = node_view->GetRegularFanin(0);
+  const auto* pad_node_view = regular_fanin_0.node_view();
+  const auto* pad_node_def = pad_node_view->node();
+  const auto& padding_const = pad_node_view->GetRegularFanin(1);
+  const auto* padding_const_node_view = padding_const.node_view();
+
+  if (!(pad_node_def->op() == "Pad") ||
+      !HaveSameDataType(node_def, pad_node_def))
+    return false;
+  const PadWithConv3D pattern{node_view->node_index(),
+                              pad_node_view->node_index(),
+                              padding_const_node_view->node_index()};
+
+  // Successfully found a Pad+{Conv3D, _FusedConv3D} pattern.
+  *matched = pattern;
+  return true;
 }
 
 bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
@@ -2191,6 +2236,63 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   return Status::OK();
 }
 
+Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
+                          std::vector<bool>* invalidated_nodes,
+                          std::vector<bool>* nodes_to_delete) {
+  const GraphDef* graph = ctx->graph_view.graph();
+  const NodeDef& contraction = graph->node(matched.contraction_idx);
+  const NodeDef& pad_node_def = graph->node(matched.pad_idx);
+  const NodeDef& padding_const_node_def =
+      graph->node(matched.padding_const_idx);
+  VLOG(2) << "Fuse " << pad_node_def.op() << " with contraction: "
+          << " contraction=" << contraction.name();
+
+  NodeDef fused_node;
+  fused_node.set_name(contraction.name());
+  fused_node.set_device(contraction.device());
+  fused_node.add_input(pad_node_def.input(0));  // 0: input
+  fused_node.add_input(contraction.input(1));   // 1: filter
+  fused_node.set_op(kFusedConv3D);
+
+  auto* attr = fused_node.mutable_attr();
+  auto& src_attr = contraction.attr();
+  (*attr)["T"] = src_attr.at("T");
+  (*attr)["strides"] = src_attr.at("strides");
+  (*attr)["data_format"] = src_attr.at("data_format");
+  (*attr)["padding"] = src_attr.at("padding");
+  (*attr)["dilations"] = src_attr.at("dilations");
+
+  if (contraction.op() == kFusedConv3D) {
+    fused_node.add_input(contraction.input(2));  // 2: bias
+    (*attr)["fused_ops"] = src_attr.at("fused_ops");
+    (*attr)["num_args"] = src_attr.at("num_args");
+  } else {
+    SetAttrValue(0, &(*attr)["num_args"]);
+  }
+
+  Tensor const_tensor;
+  if (padding_const_node_def.op() == "Const" &&
+      const_tensor.FromProto(
+          padding_const_node_def.attr().at("value").tensor())) {
+    auto const_value = const_tensor.flat<int32>();
+    std::vector<int32> paddings;
+    for (int i = 0; i < const_value.size(); ++i) {
+      paddings.push_back(const_value(i));
+      SetAttrValue(paddings, &(*attr)["padding_list"]);
+    }
+  }
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_node), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+
+  (*invalidated_nodes)[matched.contraction_idx] = true;
+  (*nodes_to_delete)[matched.pad_idx] = true;
+  return Status::OK();
+}
+
 Status AddFusedContractionNode(
     RemapperContext* ctx, const ContractionWithBiasAndAddActivation& matched,
     std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
@@ -2814,6 +2916,113 @@ bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
   return false;
 }
 
+bool FindSoftplusAndTanhAndMul(RemapperContext* ctx, int node_index,
+                               std::map<string, int>* matched_nodes_map,
+                               std::set<int>* remove_node_indices) {
+  // Mish fusion is enabled only with oneDNN library.
+  if (!IsMKLEnabled()) return false;
+
+  using utils::MatchingDirection;
+  using utils::NodeStatus;
+  // clang-format off
+  //                Convert Softplus+Tanh+Mul to Mish
+  //          From Graph                          To Graph
+  //          -----------                         ---------
+  //    Conv2D  <-  Filter(const)           Conv2D  <-  Filter(const)
+  //      !                                   !
+  //      V                                   V
+  //    BiasAdd <-  bias(const)             BiasAdd <-  bias(const)
+  //      !                                   !
+  //      V                                   !
+  //  ---- ----                               !
+  //  !       !                               !
+  //  !       V                               !
+  //  !    Softplus                           !
+  //  !       !                               !
+  //  !       V                               !
+  //  !     Tanh                              !
+  //  !       !                               !
+  //  !       V                               !
+  //  ---   ---                               !
+  //     !  !                                 !
+  //     !  !                                 !
+  //     V  V                                 V
+  //      Mul                           _MklFusedMish
+  //      !                                   !
+  //      V                                   V
+
+  utils::OpTypePattern softplustanhmul_pattern {
+    "Mul", "mul_to_mish", NodeStatus::kReplace,
+    {
+      {
+        "Tanh", "tanh", NodeStatus::kRemove,
+        {
+          {
+            "Softplus", "softplus", NodeStatus::kRemove,
+            {
+              {"*", "input", NodeStatus::kRemain}
+            }
+          }
+        }
+      },
+      {"*", "input", NodeStatus::kRemain}
+    }
+  };
+  // clang-format on
+
+  // check for data types
+  auto* mul_node_def = ctx->graph_view.GetNode(node_index)->node();
+  if (!HasDataType(mul_node_def, DT_FLOAT) &&
+      !HasDataType(mul_node_def, DT_BFLOAT16))
+    return false;
+
+  if (!NodeIsOnCpu(mul_node_def)) return false;
+
+  bool found_op_type_match = false;
+  utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
+      &(ctx->graph_view));
+  matched_nodes_map->clear();
+  remove_node_indices->clear();
+  found_op_type_match = graph_matcher.GetMatchedNodes(
+      softplustanhmul_pattern, {}, ctx->graph_view.GetNode(node_index),
+      matched_nodes_map, remove_node_indices);
+
+  return found_op_type_match;
+}
+
+Status ReplaceSoftplusTanhAndMulWithMish(
+    RemapperContext* ctx, const std::map<string, int>* matched_nodes_map,
+    const std::set<int>* remove_node_indices,
+    std::vector<bool>* invalidated_nodes, std::vector<bool>* nodes_to_delete) {
+  // Fuse Softplus + Tanh + Mul to Mish
+  auto* old_mul_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("mul_to_mish"))->node();
+  auto* softplus_node =
+      ctx->graph_view.GetNode(matched_nodes_map->at("softplus"))->node();
+
+  NodeDef fused_node;
+  fused_node.set_name(old_mul_node->name());
+  fused_node.set_op("_MklFusedMish");
+  fused_node.set_device(old_mul_node->device());
+  fused_node.add_input(softplus_node->input(0));
+
+  auto* fused_node_attr = fused_node.mutable_attr();
+  (*fused_node_attr)["T"] = old_mul_node->attr().at("T");
+
+  utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
+  Status status;
+  mutation->AddNode(std::move(fused_node), &status);
+  TF_RETURN_IF_ERROR(status);
+  TF_RETURN_IF_ERROR(mutation->Apply());
+  (*invalidated_nodes)[matched_nodes_map->at("mul_to_mish")] = true;
+
+  for (const auto& node_index : *remove_node_indices) {
+    (*nodes_to_delete)[node_index] = true;
+  }
+
+  return Status::OK();
+}
+
 // Check if a node is a candidate to one of the patterns that require inferred
 // shapes:
 //   (1) Splitting FusedBatchNorm into primitives.
@@ -2963,7 +3172,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     ContractionWithBiasAddAndAdd contract_with_bias_and_add;
     ContractionWithBiasAndAddActivation contract_with_bias_and_add_activation;
 
-    if (IsMKLEnabled() && !item.optimization_options().is_eager_mode) {
+    if (IsMKLEnabled()) {
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
       // or Remap Conv3D+BiasAdd+Add+relu into _FusedConv3D
       if (FindContractionWithBiasAndAddActivation(
@@ -2983,6 +3192,14 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 
+      PadWithConv3D pad_with_conv3d;
+      // Remap Pad+{Conv3D,_FusedConv3D} into the _FusedConv3D.
+      if (FindPadWithConv3D(ctx, i, &pad_with_conv3d)) {
+        TF_RETURN_IF_ERROR(AddFusedConv3DNode(
+            &ctx, pad_with_conv3d, &invalidated_nodes, &nodes_to_delete));
+        continue;
+      }
+
       // Remap MatMul + BiasAdd + gelu-subgraph
       std::map<string, int> matched_nodes_map;
       std::set<int> remove_node_indices;
@@ -2993,6 +3210,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         TF_RETURN_IF_ERROR(AddFusedMatMulBiasAddAndGelu(
             &ctx, matched_nodes_map, remove_node_indices, &invalidated_nodes,
             &nodes_to_delete, is_gelu_approximate));
+        continue;
+      }
+
+      // Softplus + Tanh + Mul to Mish conversion
+      matched_nodes_map.clear();
+      remove_node_indices.clear();
+      if (FindSoftplusAndTanhAndMul(&ctx, i, &matched_nodes_map,
+                                    &remove_node_indices)) {
+        TF_RETURN_IF_ERROR(ReplaceSoftplusTanhAndMulWithMish(
+            &ctx, &matched_nodes_map, &remove_node_indices, &invalidated_nodes,
+            &nodes_to_delete));
         continue;
       }
 

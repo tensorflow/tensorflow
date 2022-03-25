@@ -225,7 +225,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_L2_POOL_2D, Register_L2_POOL_REF());
   AddBuiltin(BuiltinOperator_CONV_2D, Register_CONVOLUTION_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
              Register_DEPTHWISE_CONVOLUTION_REF(),
              /* min_version = */ 1,

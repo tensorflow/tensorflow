@@ -137,8 +137,6 @@ struct ComputeOpAndFuncBufferizePass
   }
 
   void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-
     // Bufferize ops using BufferizableOpInterface. This could be switched to
     // One-Shot Bufferize in the future.
     bufferization::BufferizationOptions options =
@@ -168,13 +166,7 @@ struct ComputeOpAndFuncBufferizePass
           return dialect_state;
         });
 
-    bufferization::AlwaysCopyBufferizationState bufferization_state(options);
-    bufferization::populateBufferizationPattern(bufferization_state, patterns);
-
-    GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns),
-                                            config))) {
+    if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
       return;
     }
@@ -201,8 +193,8 @@ struct ComputeOpAndFuncBufferizePass
         });
 
     CustomBufferizeTypeConverter converter;
-    populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
-                                                             converter);
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);
@@ -213,9 +205,9 @@ struct ComputeOpAndFuncBufferizePass
                                                          target);
 
     // TODO(herhut): Move this legality configuration to bufferize itself?
-    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-      auto inputs = op.getType().getInputs();
-      auto results = op.getType().getResults();
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+      auto inputs = op.getFunctionType().getInputs();
+      auto results = op.getFunctionType().getResults();
       return converter.isLegal(inputs) && converter.isLegal(results) &&
              converter.isLegal(&op.getBody());
     });
@@ -318,7 +310,6 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   void runOnOperation() override {
     // Bufferize ops using BufferizableOpInterface. This could be switched to
     // One-Shot Bufferize in the future.
-    RewritePatternSet patterns(&getContext());
     bufferization::BufferizationOptions options =
         bufferization::getPartialBufferizationOptions();
     options.bufferAlignment = alignment_;
@@ -327,11 +318,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     options.allowDialectInFilter<
         arith::ArithmeticDialect, linalg::LinalgDialect, func::FuncDialect,
         shape::ShapeDialect, tensor::TensorDialect, vector::VectorDialect>();
-    bufferization::AlwaysCopyBufferizationState bufferization_state(options);
-    bufferization::populateBufferizationPattern(bufferization_state, patterns);
-
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
+    if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
       return;
     }

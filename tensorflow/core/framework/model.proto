@@ -13,6 +13,7 @@ enum NodeClass {
   KNOWN_RATIO = 3;
   ASYNC_KNOWN_RATIO = 4;
   UNKNOWN_RATIO = 5;
+  ASYNC_UNKNOWN_RATIO = 6;
 }
 
 // Algorithm used for model autotuning optimization.

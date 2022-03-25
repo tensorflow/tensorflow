@@ -109,7 +109,7 @@ func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>, %ar
                   mlir::arith::ArithmeticDialect, mlir::func::FuncDialect>();
   mlir::MLIRContext context(registry);
   auto module = mlir::OwningOpRef<mlir::ModuleOp>(
-      mlir::parseSourceString(kMLIR, &context));
+      mlir::parseSourceString<mlir::ModuleOp>(kMLIR, &context));
   auto module_op = module.get();
   auto serialized_result_fb = ExportRuntimeMetadata(module_op);
   const auto* result =

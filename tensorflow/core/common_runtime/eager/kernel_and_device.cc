@@ -232,6 +232,10 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
 
   options.int_args_and_retvals_on_device = int_args_and_retvals_on_device_;
 
+  if (xla_compile_device_type_.has_value()) {
+    options.xla_compile_device_type = xla_compile_device_type_.value();
+  }
+
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);
@@ -395,6 +399,7 @@ KernelAndDeviceFunc::PrepareForRun(
   opts->step_container = step_container;
   opts->collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
+  opts->stack_trace = stack_trace;
 
   opts->stats_collector = nullptr;
   opts->runner = get_runner();

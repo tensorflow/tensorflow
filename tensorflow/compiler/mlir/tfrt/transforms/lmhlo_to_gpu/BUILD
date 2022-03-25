@@ -50,6 +50,7 @@ cc_library(
         ":lmhlo_to_gpu",
         ":lmhlo_to_gpu_binary",
         ":lmhlo_to_tfrt_gpu",
+        ":pattern_utils",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",

@@ -55,12 +55,10 @@ ElementsAttr GetTensorValueAsElementsAttr(const tensorflow::Tensor& tensor,
   return tensor_attr_or.ValueOrDie();
 }
 
-// Creates arith::ConstantOp which holds 'tensor_elements'.
-mlir::arith::ConstantOp GetConstOpFromElementsAttr(ElementsAttr tensor_elements,
-                                                   OpBuilder builder,
-                                                   Location loc) {
-  return builder.create<mlir::arith::ConstantOp>(loc, tensor_elements.getType(),
-                                                 tensor_elements);
+// Creates a constant op that holds 'tensor_elements'.
+TF::ConstOp GetConstOpFromElementsAttr(ElementsAttr tensor_elements,
+                                       OpBuilder builder, Location loc) {
+  return builder.create<TF::ConstOp>(loc, tensor_elements);
 }
 
 // Returns ElementsAttr which has the value held by 'resource_tensor'.

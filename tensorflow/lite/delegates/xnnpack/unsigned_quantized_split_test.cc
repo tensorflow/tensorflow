@@ -26,7 +26,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-TEST(Split, 1D_to_2_outputs) {
+TEST(UnsignedQuantizedSplit, 1D_to_2_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -48,7 +48,7 @@ TEST(Split, 1D_to_2_outputs) {
   }
 }
 
-TEST(Split, 2D_to_2_outputs) {
+TEST(UnsignedQuantizedSplit, 2D_to_2_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -74,7 +74,7 @@ TEST(Split, 2D_to_2_outputs) {
   }
 }
 
-TEST(Split, 3D_to_2_outputs) {
+TEST(UnsignedQuantizedSplit, 3D_to_2_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -100,7 +100,7 @@ TEST(Split, 3D_to_2_outputs) {
   }
 }
 
-TEST(Split, 4D_to_2_outputs) {
+TEST(UnsignedQuantizedSplit, 4D_to_2_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -127,7 +127,7 @@ TEST(Split, 4D_to_2_outputs) {
   }
 }
 
-TEST(Split, 1D_to_3_outputs) {
+TEST(UnsignedQuantizedSplit, 1D_to_3_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -149,7 +149,7 @@ TEST(Split, 1D_to_3_outputs) {
   }
 }
 
-TEST(Split, 2D_to_3_outputs) {
+TEST(UnsignedQuantizedSplit, 2D_to_3_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -175,7 +175,7 @@ TEST(Split, 2D_to_3_outputs) {
   }
 }
 
-TEST(Split, 3D_to_3_outputs) {
+TEST(UnsignedQuantizedSplit, 3D_to_3_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -201,7 +201,7 @@ TEST(Split, 3D_to_3_outputs) {
   }
 }
 
-TEST(Split, 4D_to_3_outputs) {
+TEST(UnsignedQuantizedSplit, 4D_to_3_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -228,7 +228,7 @@ TEST(Split, 4D_to_3_outputs) {
   }
 }
 
-TEST(Split, 1D_to_4_outputs) {
+TEST(UnsignedQuantizedSplit, 1D_to_4_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -250,7 +250,7 @@ TEST(Split, 1D_to_4_outputs) {
   }
 }
 
-TEST(Split, 2D_to_4_outputs) {
+TEST(UnsignedQuantizedSplit, 2D_to_4_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -276,7 +276,7 @@ TEST(Split, 2D_to_4_outputs) {
   }
 }
 
-TEST(Split, 3D_to_4_outputs) {
+TEST(UnsignedQuantizedSplit, 3D_to_4_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -302,7 +302,7 @@ TEST(Split, 3D_to_4_outputs) {
   }
 }
 
-TEST(Split, 4D_to_4_outputs) {
+TEST(UnsignedQuantizedSplit, 4D_to_4_outputs) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);

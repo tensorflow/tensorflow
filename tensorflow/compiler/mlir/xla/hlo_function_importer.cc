@@ -796,9 +796,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           func_builder->create<mlir::mhlo::SelectAndScatterOp>(
               loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*select_scatter->select(),
-                                        &select_scatter_op.select()));
+                                        &select_scatter_op.select(),
+                                        /*flatten_region_arg_tuple=*/true));
       TF_RETURN_IF_ERROR(ImportAsRegion(*select_scatter->scatter(),
-                                        &select_scatter_op.scatter()));
+                                        &select_scatter_op.scatter(),
+                                        /*flatten_region_arg_tuple=*/true));
       return select_scatter_op.getOperation();
     }
     case HloOpcode::kSetDimensionSize: {
@@ -1120,9 +1122,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "unit_diagonal",
           builder_->getBoolAttr(
               instruction->triangular_solve_options().unit_diagonal())));
-      auto transpose_a =
-          builder_->getStringAttr(TriangularSolveOptions::Transpose_Name(
-              instruction->triangular_solve_options().transpose_a()));
+      auto transpose_a = mlir::mhlo::TransposeAttr::get(
+          builder_->getContext(),
+          mlir::mhlo::symbolizeTranspose(
+              TriangularSolveOptions::Transpose_Name(
+                  instruction->triangular_solve_options().transpose_a()))
+              .getValue());
+
       attributes.push_back(builder_->getNamedAttr("transpose_a", transpose_a));
       return func_builder
           ->create<mlir::mhlo::TriangularSolveOp>(loc, result_type, operands,
@@ -1234,8 +1240,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
 
     case HloOpcode::kFft: {
-      auto fft_type =
-          builder_->getStringAttr(FftType_Name(instruction->fft_type()));
+      auto fft_type = mlir::mhlo::FftTypeAttr::get(
+          builder_->getContext(),
+          mlir::mhlo::symbolizeFftType(FftType_Name(instruction->fft_type()))
+              .getValue());
 
       std::vector<int64_t> fft_length(instruction->fft_length().begin(),
                                       instruction->fft_length().end());
@@ -1301,7 +1309,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto zero = func_builder->create<mlir::mhlo::ConstOp>(
           loc, func_builder->getZeroAttr(type));
       return {func_builder->create<mlir::mhlo::CompareOp>(
-          loc, operands[0], zero, func_builder->getStringAttr("NE"))};
+          loc, operands[0], zero, mlir::mhlo::ComparisonDirection::NE)};
     }
     case HloOpcode::kOptimizationBarrier: {
       llvm::SmallVector<Value> flattened_operands;
@@ -1391,9 +1399,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       llvm::SmallVector<Type> flattened_ret_types;
       FlattenTupleType(result_type, flattened_ret_types);
 
+      auto fusion_kind = mlir::mhlo::symbolizeFusionKind(
+          xla::ToString(instruction->fusion_kind()));
       auto fusion = func_builder->create<mlir::mhlo::FusionOp>(
           loc, flattened_ret_types, flattened_operands,
-          builder_->getStringAttr(xla::ToString(instruction->fusion_kind())));
+          mlir::mhlo::FusionKindAttr::get(func_builder->getContext(),
+                                          fusion_kind.getValue()));
       TF_RETURN_IF_ERROR(ImportAsRegion(
           *instruction->fused_instructions_computation(),
           &fusion.fused_computation(), /*flatten_region_arg_tuple=*/true));
@@ -1434,7 +1445,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         result.attributes.push_back(attr);
       }
 
-      return func_builder->createOperation(result);
+      return func_builder->create(result);
     }
   }
 }
@@ -1512,17 +1523,24 @@ mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
     ComparisonDirection direction) {
   return builder_->getNamedAttr(
       "comparison_direction",
-      builder_->getStringAttr(ComparisonDirectionToString(direction)));
+      mlir::mhlo::ComparisonDirectionAttr::get(
+          builder_->getContext(), mlir::mhlo::symbolizeComparisonDirection(
+                                      ComparisonDirectionToString(direction))
+                                      .getValue()));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertComparisonType(
     Comparison::Type type) {
   return builder_->getNamedAttr(
-      "compare_type", builder_->getStringAttr(ComparisonTypeToString(type)));
+      "compare_type",
+      mlir::mhlo::ComparisonTypeAttr::get(
+          builder_->getContext(),
+          mlir::mhlo::symbolizeComparisonType(ComparisonTypeToString(type))
+              .getValue()));
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(
-    llvm::ArrayRef<int64_t> op_dimensions) {
+    absl::Span<const int64_t> op_dimensions) {
   llvm::SmallVector<APInt, 8> dimensions;
   dimensions.reserve(op_dimensions.size());
   for (auto value : op_dimensions) dimensions.emplace_back(APInt(64, value));

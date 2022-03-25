@@ -301,7 +301,6 @@ cc_library(
         ":tflite_importer_exporter",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
-        "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
         "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:target_hardware",
         "//tensorflow/compiler/mlir/lite/experimental/tac/utils",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -313,6 +312,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -335,6 +335,7 @@ cc_library(
     hdrs = ["tac_importer_exporter.h"],
     deps = [
         "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
 )

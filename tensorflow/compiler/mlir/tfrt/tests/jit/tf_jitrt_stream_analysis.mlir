@@ -3,14 +3,14 @@
 module @rsqrt_m attributes { tfrt.compiled } {
   func @compute(%arg0: tensor<512xf32>) -> tensor<512xf32> {
     %0 = "tf.Rsqrt"(%arg0): (tensor<512xf32>) -> tensor<512xf32>
-    return %0 : tensor<512xf32>
+    func.return %0 : tensor<512xf32>
   }
 }
 
 module @add_m attributes { tfrt.compiled } {
   func @compute(%arg0: tensor<512x512xf32>) -> tensor<512x512xf32> {
     %0 = "tf.Rsqrt"(%arg0): (tensor<512x512xf32>) -> tensor<512x512xf32>
-    return %0 : tensor<512x512xf32>
+    func.return %0 : tensor<512x512xf32>
   }
 }
 
@@ -21,7 +21,7 @@ module @fusion_m attributes { tfrt.compiled } {
     %2 = "tf.Rsqrt"(%1): (tensor<?x512xf32>) -> tensor<?x512xf32>
     %3 = "tf.Rsqrt"(%2): (tensor<?x512xf32>) -> tensor<?x512xf32>
     %4 = "tf.Rsqrt"(%3): (tensor<?x512xf32>) -> tensor<?x512xf32>
-    return %4 : tensor<?x512xf32>
+    func.return %4 : tensor<?x512xf32>
   }
 }
 
@@ -44,7 +44,7 @@ module @dyn_m attributes {tfrt.compiled}  {
       -> tensor<?x?xf32>
     %5 = "tf.AddV2"(%0, %4) : (tensor<?x128xf32>, tensor<?x?xf32>)
       -> tensor<?x128xf32>
-    return %5 : tensor<?x128xf32>
+    func.return %5 : tensor<?x128xf32>
   }
 }
 
@@ -68,7 +68,7 @@ module @dyn_override_m attributes {tfrt.compiled,
       -> tensor<?x?xf32>
     %5 = "tf.AddV2"(%0, %4) : (tensor<?x128xf32>, tensor<?x?xf32>)
       -> tensor<?x128xf32>
-    return %5 : tensor<?x128xf32>
+    func.return %5 : tensor<?x128xf32>
   }
 }
 

@@ -24,7 +24,7 @@
 // CHECK: key: "type"
 // CHECK: type: DT_INT8
 
-func @main(%arg0 : tensor<16xf32>) {
+func.func @main(%arg0 : tensor<16xf32>) {
   tf_executor.graph {
     %1:2 = tf_executor.island wraps "tf.MlirPassthroughOp"(%arg0) {extra_type_attr = [tensor<5xi32>, tensor<16xf32>], Tinputs = [tensor<16xf32>], Toutputs = [tensor<16xf32>], mlir_module = ""} : (tensor<16xf32>) -> tensor<16xf32>
     tf_executor.fetch
@@ -32,7 +32,7 @@ func @main(%arg0 : tensor<16xf32>) {
   return
 }
 
-func @plain() {
+func.func @plain() {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Placeholder"() {type = i8} : () -> tensor<16xi8>
     tf_executor.fetch

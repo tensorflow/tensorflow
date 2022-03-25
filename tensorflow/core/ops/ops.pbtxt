@@ -8050,6 +8050,14 @@ op {
     name: "device_index"
     type: DT_INT32
   }
+  input_arg {
+    name: "base_key"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "group_size"
+    type: DT_INT32
+  }
   output_arg {
     name: "group_key"
     type: DT_INT32
@@ -30126,6 +30134,80 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "ParallelFilterDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "num_parallel_calls"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "predicate"
+    type: "func"
+  }
+  attr {
+    name: "deterministic"
+    type: "string"
+    default_value {
+      s: "default"
+    }
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
 }
 op {

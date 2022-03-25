@@ -17,6 +17,7 @@
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
 namespace tensorflow {

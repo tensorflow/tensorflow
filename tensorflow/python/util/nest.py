@@ -143,6 +143,7 @@ def _sorted(dict_):
     raise TypeError("nest only supports dicts with sortable keys.")
 
 
+# TODO(b/225045380): Move to a "leaf" library to use in trace_type.
 def is_namedtuple(instance, strict=False):
   """Returns True iff `instance` is a `namedtuple`.
 
@@ -168,6 +169,7 @@ _is_mutable_mapping = _pywrap_utils.IsMutableMapping
 _is_mapping = _pywrap_utils.IsMapping
 
 
+# TODO(b/225045380): Move to a "leaf" library to use in trace_type.
 @tf_export("__internal__.nest.is_attrs", v1=[])
 def is_attrs(obj):
   """Returns a true if its input is an instance of an attr.s decorated class."""

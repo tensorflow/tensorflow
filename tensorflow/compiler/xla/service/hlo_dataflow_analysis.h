@@ -173,6 +173,8 @@ class HloDataflowAnalysis {
   // and output shape index of the in-place operations within this HLO.
   static std::vector<std::pair<HloUse, ShapeIndex>> GetInPlaceInputOutputPairs(
       HloInstruction* instruction);
+  // Whether this HLO contains any in-place operations.
+  static bool HasInPlaceOperations(const HloInstruction& instruction);
 
  private:
   static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
@@ -224,6 +226,9 @@ class HloDataflowAnalysis {
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
+  bool UpdateAsyncStartValueSet(HloInstruction* async_start);
+  bool UpdateAsyncUpdateValueSet(HloInstruction* async_update);
+  bool UpdateAsyncDoneValueSet(HloInstruction* async_done);
   bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
   bool UpdateOptimizationBarrierValueSet(HloInstruction* barrier);

@@ -50,5 +50,5 @@ func @single_cluster_one_result(%arg0 : tensor<?xi32>, %arg1 : tensor<i32>)
 
   // REDUCTIONS: %[[SHAPE:.*]] = "tf.Shape"(%[[CLUSTER]])
   // REDUCTIONS: return %[[SHAPE]]
-  return %5 : tensor<?xi32>
+  func.return %5 : tensor<?xi32>
 }

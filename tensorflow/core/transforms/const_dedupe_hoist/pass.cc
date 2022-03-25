@@ -177,7 +177,7 @@ Operation* DedupeAndHoistConstantPass::BuildIdentity(Operation* input,
   }
   // Map dtype to T attribute.
   state.addAttribute(t_id, input->getAttr(dtype_id));
-  return OpBuilder(input).createOperation(state);
+  return OpBuilder(input).create(state);
 }
 
 void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {

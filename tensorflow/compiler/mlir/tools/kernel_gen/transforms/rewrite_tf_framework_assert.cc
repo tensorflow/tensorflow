@@ -48,7 +48,7 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
                                    adaptor.msg());
 
     SmallVector<Value, 2> null_memrefs;
-    for (auto type : func.getType().getResults()) {
+    for (auto type : func.getFunctionType().getResults()) {
       null_memrefs.push_back(rewriter.create<NullMemRefOp>(loc, type));
     }
     rewriter.create<func::ReturnOp>(loc, null_memrefs);

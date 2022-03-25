@@ -1403,7 +1403,8 @@ bool PlaceOpsOnTPU(Node* node) {
     const string& src_device = AssignedOrRequestedDevice(src);
 
     // Make exceptions that we don't force the some inputs to place on TPUs.
-    if (node->IsSwitch() && src->IsLoopCond()) {
+    if ((node->IsSwitch() && src->IsLoopCond()) ||
+        (node->IsMerge() && src->IsEnter())) {
       continue;
     }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 

@@ -652,7 +652,7 @@ func private @whitespace_tokenizer_rank1(%arg0: tensor<1x!tf_type.string> {tf._u
   %648 = "tf.Identity"(%647) {device = ""} : (tensor<0xi64>) -> tensor<0xi64>
   %649 = "tf.UnicodeEncode"(%36#0, %57) {Tsplits = i64, device = "", errors = "replace", output_encoding = "UTF-8", replacement_char = 65533 : i64} : (tensor<?xi32>, tensor<?xi64>) -> tensor<?x!tf_type.string>
   %650 = "tf.Identity"(%649) {device = ""} : (tensor<?x!tf_type.string>) -> tensor<?x!tf_type.string>
-  return %650, %631 : tensor<?x!tf_type.string>, tensor<?xi64>
+  func.return %650, %631 : tensor<?x!tf_type.string>, tensor<?xi64>
 }
 func @WhitespaceTokenize_RaggedConcat_assert_equal_1_Assert_AssertGuard_false_3210(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Input tensors have incompatible shapes."> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -662,12 +662,12 @@ func @WhitespaceTokenize_RaggedConcat_assert_equal_1_Assert_AssertGuard_false_32
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedConcat_assert_equal_1_Assert_AssertGuard_true_3200(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_3970(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -677,12 +677,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartit
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_3960(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_4330(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -691,12 +691,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartit
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_4320(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_4670(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -706,12 +706,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_eq
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_4660(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_5040(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -721,12 +721,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPart
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_5030(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_5400(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -735,12 +735,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPart
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_5390(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_false_5760(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -750,12 +750,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_true_5750(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_6110(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -765,12 +765,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPart
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_6100(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_6470(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -779,12 +779,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPart
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_6460(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_6810(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -794,12 +794,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_assert_
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_6800(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_7180(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -809,12 +809,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPart
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_7170(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_7540(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -823,12 +823,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPart
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_7530(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_7880(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -838,12 +838,12 @@ func @WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_assert_
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_7870(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_Assert_AssertGuard_false_8680(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -853,12 +853,12 @@ func @WhitespaceTokenize_RaggedGather_Assert_AssertGuard_false_8680(%arg0: tenso
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_Assert_AssertGuard_true_8670(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_Assert_1_AssertGuard_false_9750(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -868,12 +868,12 @@ func @WhitespaceTokenize_RaggedGather_Assert_1_AssertGuard_false_9750(%arg0: ten
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_Assert_1_AssertGuard_true_9740(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_Assert_2_AssertGuard_false_10240(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -883,12 +883,12 @@ func @WhitespaceTokenize_RaggedGather_Assert_2_AssertGuard_false_10240(%arg0: te
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_Assert_2_AssertGuard_true_10230(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_Assert_3_AssertGuard_false_10600(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -898,12 +898,12 @@ func @WhitespaceTokenize_RaggedGather_Assert_3_AssertGuard_false_10600(%arg0: te
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<?xi64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_Assert_3_AssertGuard_true_10590(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_Assert_AssertGuard_false_15300(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -913,12 +913,12 @@ func @WhitespaceTokenize_Assert_AssertGuard_false_15300(%arg0: tensor<i1>, %arg1
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_Assert_AssertGuard_true_15290(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_Assert_1_AssertGuard_false_16370(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -928,12 +928,12 @@ func @WhitespaceTokenize_Assert_1_AssertGuard_false_16370(%arg0: tensor<i1>, %ar
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_Assert_1_AssertGuard_true_16360(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_Assert_2_AssertGuard_false_16860(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -943,12 +943,12 @@ func @WhitespaceTokenize_Assert_2_AssertGuard_false_16860(%arg0: tensor<i1>, %ar
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_Assert_2_AssertGuard_true_16850(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_Assert_3_AssertGuard_false_17220(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -958,12 +958,12 @@ func @WhitespaceTokenize_Assert_3_AssertGuard_false_17220(%arg0: tensor<i1>, %ar
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<?xi64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_Assert_3_AssertGuard_true_17210(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_1_Assert_AssertGuard_false_21900(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -973,12 +973,12 @@ func @WhitespaceTokenize_RaggedGather_1_Assert_AssertGuard_false_21900(%arg0: te
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_1_Assert_AssertGuard_true_21890(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_1_Assert_1_AssertGuard_false_22970(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -988,12 +988,12 @@ func @WhitespaceTokenize_RaggedGather_1_Assert_1_AssertGuard_false_22970(%arg0: 
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_1_Assert_1_AssertGuard_true_22960(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_1_Assert_2_AssertGuard_false_23460(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1003,12 +1003,12 @@ func @WhitespaceTokenize_RaggedGather_1_Assert_2_AssertGuard_false_23460(%arg0: 
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_1_Assert_2_AssertGuard_true_23450(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_1_Assert_3_AssertGuard_false_23820(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1018,12 +1018,12 @@ func @WhitespaceTokenize_RaggedGather_1_Assert_3_AssertGuard_false_23820(%arg0: 
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<?xi64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_RaggedGather_1_Assert_3_AssertGuard_true_23810(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 
 // CHECK:  func private @whitespace_tokenizer_rank1(%arg0: tensor<1x!tf_type.string> {tf._user_specified_name = "input"}) -> (tensor<?x!tf_type.string>, tensor<?xi64>) attributes {tf._implements = #tf_type.func<@"tftext:WhitespaceTokenizer", {}>, tf._input_shapes = [#tf_type.shape<1>], tf.signature.is_stateful} {
@@ -1784,7 +1784,7 @@ func private @whitespace_tokenizer_rank2(%arg0: tensor<?x1x!tf_type.string> {tf.
   %750 = "tf.Range"(%12, %749, %15) {device = ""} : (tensor<i64>, tensor<i64>, tensor<i64>) -> tensor<?xi64>
   %751 = "tf.Mul"(%750, %15) {device = ""} : (tensor<?xi64>, tensor<i64>) -> tensor<?xi64>
   %752 = "tf.Identity"(%751) {device = ""} : (tensor<?xi64>) -> tensor<?xi64>
-  return %747, %752, %728 : tensor<?x!tf_type.string>, tensor<?xi64>, tensor<?xi64>
+  func.return %747, %752, %728 : tensor<?x!tf_type.string>, tensor<?xi64>, tensor<?xi64>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedConcat_assert_equal_1_Assert_AssertGuard_false_99640(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Input tensors have incompatible shapes."> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1794,12 +1794,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedConcat_asse
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedConcat_assert_equal_1_Assert_AssertGuard_true_99630(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_100400(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1809,12 +1809,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_100390(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_100760(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1823,12 +1823,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_100750(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_101100(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1838,12 +1838,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_101090(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_101470(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1853,12 +1853,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_101460(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_101830(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1867,12 +1867,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_101820(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_false_102190(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1882,12 +1882,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_true_102180(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_102540(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1897,12 +1897,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_102530(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_102900(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1911,12 +1911,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_102890(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_103240(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1926,12 +1926,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_103230(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_103610(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1941,12 +1941,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_103600(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_103970(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1955,12 +1955,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_103960(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_104310(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1970,12 +1970,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedR
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_104300(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_AssertGuard_false_105110(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -1985,12 +1985,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Asse
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_AssertGuard_true_105100(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_1_AssertGuard_false_106180(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2000,12 +2000,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Asse
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_1_AssertGuard_true_106170(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_2_AssertGuard_false_106670(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2015,12 +2015,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Asse
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_2_AssertGuard_true_106660(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_3_AssertGuard_false_107030(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2030,12 +2030,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Asse
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<?xi64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_3_AssertGuard_true_107020(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_AssertGuard_false_111870(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2045,12 +2045,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_AssertGuar
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_AssertGuard_true_111860(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_1_AssertGuard_false_112940(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2060,12 +2060,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_1_AssertGu
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_1_AssertGuard_true_112930(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_2_AssertGuard_false_113430(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2075,12 +2075,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_2_AssertGu
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_2_AssertGuard_true_113420(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_3_AssertGuard_false_113790(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2090,12 +2090,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_3_AssertGu
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<?xi64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_Assert_3_AssertGuard_true_113780(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_AssertGuard_false_118470(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2105,12 +2105,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_As
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_AssertGuard_true_118460(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_1_AssertGuard_false_119540(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2120,12 +2120,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_As
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_1_AssertGuard_true_119530(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_2_AssertGuard_false_120030(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2135,12 +2135,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_As
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_2_AssertGuard_true_120020(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_3_AssertGuard_false_120390(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2150,12 +2150,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_As
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<?xi64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_3_AssertGuard_true_120380(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 
 
@@ -2816,7 +2816,7 @@ func private @whitespace_tokenizer_rank0(%arg0: tensor<!tf_type.string> {tf._use
   %648 = "tf.Identity"(%647) {device = ""} : (tensor<0xi64>) -> tensor<0xi64>
   %649 = "tf.UnicodeEncode"(%37#0, %58) {Tsplits = i64, device = "", errors = "replace", output_encoding = "UTF-8", replacement_char = 65533 : i64} : (tensor<?xi32>, tensor<?xi64>) -> tensor<?x!tf_type.string>
   %650 = "tf.Identity"(%649) {device = ""} : (tensor<?x!tf_type.string>) -> tensor<?x!tf_type.string>
-  return %650 : tensor<?x!tf_type.string>
+  func.return %650 : tensor<?x!tf_type.string>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedConcat_assert_equal_1_Assert_AssertGuard_false_3220(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Input tensors have incompatible shapes."> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2826,12 +2826,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedConcat_assert_equal_1_Assert_A
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedConcat_assert_equal_1_Assert_AssertGuard_true_3210(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_3980(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2841,12 +2841,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFrom
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_3970(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_4340(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2855,12 +2855,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFrom
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_4330(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_4680(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2870,12 +2870,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFrom
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_4670(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_5050(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2885,12 +2885,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFrom
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_5040(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_5410(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2899,12 +2899,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFrom
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_5400(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_false_5770(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2914,12 +2914,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFrom
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_true_5760(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_6120(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2929,12 +2929,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFr
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_6110(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_6480(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2943,12 +2943,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFr
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_6470(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_6820(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2958,12 +2958,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFr
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_1_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_6810(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_7190(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2973,12 +2973,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFr
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_7180(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_7550(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -2987,12 +2987,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFr
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_7540(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_7890(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3002,12 +3002,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFr
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedFromNestedRowSplits_2_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_7880(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_AssertGuard_false_8690(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3017,12 +3017,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_AssertGuard_fals
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_AssertGuard_true_8680(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_1_AssertGuard_false_9760(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3032,12 +3032,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_1_AssertGuard_fa
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_1_AssertGuard_true_9750(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_2_AssertGuard_false_10250(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3047,12 +3047,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_2_AssertGuard_fa
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_2_AssertGuard_true_10240(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_3_AssertGuard_false_10610(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3062,12 +3062,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_3_AssertGuard_fa
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<?xi64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_Assert_3_AssertGuard_true_10600(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_Assert_AssertGuard_false_15310(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3077,12 +3077,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_Assert_AssertGuard_false_15310(%arg0
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_Assert_AssertGuard_true_15300(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_Assert_1_AssertGuard_false_16380(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3092,12 +3092,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_Assert_1_AssertGuard_false_16380(%ar
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_Assert_1_AssertGuard_true_16370(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_Assert_2_AssertGuard_false_16870(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3107,12 +3107,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_Assert_2_AssertGuard_false_16870(%ar
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_Assert_2_AssertGuard_true_16860(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_Assert_3_AssertGuard_false_17230(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3122,12 +3122,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_Assert_3_AssertGuard_false_17230(%ar
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<?xi64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_Assert_3_AssertGuard_true_17220(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_AssertGuard_false_21910(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3137,12 +3137,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_AssertGuard_fa
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_AssertGuard_true_21900(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_1_AssertGuard_false_22980(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3152,12 +3152,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_1_AssertGuard_
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_1_AssertGuard_true_22970(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_2_AssertGuard_false_23470(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3167,12 +3167,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_2_AssertGuard_
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_2_AssertGuard_true_23460(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_3_AssertGuard_false_23830(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Unable to broadcast: dimension size mismatch in dimension"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3182,12 +3182,12 @@ func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_3_AssertGuard_
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 10 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<i32>, tensor<!tf_type.string>, tensor<?xi64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func @WhitespaceTokenize_WhitespaceTokenize_RaggedGather_1_Assert_3_AssertGuard_true_23820(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 
 // CHECK: func private @whitespace_tokenizer_rank0(%arg0: tensor<!tf_type.string> {tf._user_specified_name = "input"}) -> tensor<?x!tf_type.string> attributes {tf._implements = #tf_type.func<@"tftext:WhitespaceTokenizer", {}>, tf._input_shapes = [#tf_type.shape<>], tf.signature.is_stateful} {
@@ -3205,7 +3205,7 @@ func @ngrams(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "input"
   %7 = "tf.Pack"(%5, %6) {axis = -1 : i64, device = ""} : (tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) -> tensor<?x2x!tf_type.string>
   %8 = "tf.ReduceJoin"(%7, %0) {device = "", keep_dims = false, separator = " "} : (tensor<?x2x!tf_type.string>, tensor<i32>) -> tensor<?x!tf_type.string>
   %9 = "tf.Identity"(%8) {device = ""} : (tensor<?x!tf_type.string>) -> tensor<?x!tf_type.string>
-  return %9 : tensor<?x!tf_type.string>
+  func.return %9 : tensor<?x!tf_type.string>
 }
 
 // CHECK: func @ngrams(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "input"}) -> tensor<?x!tf_type.string> attributes {tf._implements = #tf_type.func<@"tftext:Ngrams", {axis = -1 : i64, reduction_type = "STRING_JOIN", string_separator = " ", width = 2 : i64}>, tf._input_shapes = [#tf_type.shape<?>]} {
@@ -3328,12 +3328,12 @@ func private @ngrams_ragged_rank_2(%arg0: tensor<?x!tf_type.string> {tf._user_sp
   %69 = "tf.Identity"(%62) {device = ""} : (tensor<i1>) -> tensor<i1>
   %70 = "tf.Identity"(%58) {_class = ["loc:@args_0"], device = ""} : (tensor<3xi64>) -> tensor<3xi64>
   %71 = "tf.Identity"(%70) {device = ""} : (tensor<3xi64>) -> tensor<3xi64>
-  return %68, %71, %64 : tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>
+  func.return %68, %71, %64 : tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_27770(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_27780(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3343,12 +3343,12 @@ func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowS
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_28130(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_28140(%arg0: tensor<i1>, %arg1: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3357,12 +3357,12 @@ func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_RowPartitionFromRowS
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_true_28500(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Assert_AssertGuard_false_28510(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3372,12 +3372,12 @@ func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_assert_equal_1_Asser
 "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_true_28900(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_equal_1_Assert_AssertGuard_false_28910(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:zero"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3387,12 +3387,12 @@ func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRo
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_true_29260(%arg0: tensor<i1>, %arg1: tensor<2xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<2>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRowSplits_assert_non_negative_assert_less_equal_Assert_AssertGuard_false_29270(%arg0: tensor<i1>, %arg1: tensor<2xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<2>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to from_row_splits do not form a valid RaggedTensor:monotonic"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3401,12 +3401,12 @@ func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_RowPartitionFromRo
   "tf.Assert"(%arg0, %0, %1, %2, %arg1) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<2xi64>) -> ()
   %3 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %4 = "tf.Identity"(%3) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %4 : tensor<i1>
+  func.return %4 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_true_29650(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Assert_AssertGuard_false_29660(%arg0: tensor<i1>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<>, #tf_type.shape<>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Arguments to _from_row_partition do not form a valid RaggedTensor"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3416,12 +3416,12 @@ func private @RaggedFromNestedRowSplits_RaggedFromRowSplits_1_assert_equal_1_Ass
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<i64>, tensor<!tf_type.string>, tensor<i64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 func private @NGrams_SlidingWindow_RaggedConcat_assert_equal_2_Assert_AssertGuard_true_30330(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<?>]} {
   %0 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %1 = "tf.Identity"(%0) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %1 : tensor<i1>
+  func.return %1 : tensor<i1>
 }
 func private @NGrams_SlidingWindow_RaggedConcat_assert_equal_2_Assert_AssertGuard_false_30340(%arg0: tensor<i1>, %arg1: tensor<?xi64>, %arg2: tensor<?xi64>) -> tensor<i1> attributes {tf._input_shapes = [#tf_type.shape<>, #tf_type.shape<?>, #tf_type.shape<?>], tf.signature.is_stateful} {
   %0 = "tf.Const"() {value = dense<"Inputs must have identical ragged splits"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
@@ -3431,7 +3431,7 @@ func private @NGrams_SlidingWindow_RaggedConcat_assert_equal_2_Assert_AssertGuar
   "tf.Assert"(%arg0, %0, %1, %2, %arg1, %3, %arg2) {device = "", summarize = 3 : i64} : (tensor<i1>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<!tf_type.string>, tensor<?xi64>, tensor<!tf_type.string>, tensor<?xi64>) -> ()
   %4 = "tf.Identity"(%arg0) {device = ""} : (tensor<i1>) -> tensor<i1>
   %5 = "tf.Identity"(%4) {device = ""} : (tensor<i1>) -> tensor<i1>
-  return %5 : tensor<i1>
+  func.return %5 : tensor<i1>
 }
 // CHECK:  func private @ngrams_ragged_rank_2(%arg0: tensor<?x!tf_type.string> {tf._user_specified_name = "values"}, %arg1: tensor<3xi64> {tf._user_specified_name = "args_0"}, %arg2: tensor<?xi64> {tf._user_specified_name = "args_1"}) -> (tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>) attributes {tf._implements = #tf_type.func<@"tftext:Ngrams", {axis = -1 : i64, reduction_type = "STRING_JOIN", string_separator = "", width = 2 : i64}>, tf._input_shapes = [#tf_type.shape<?>, #tf_type.shape<3>, #tf_type.shape<?>], tf.signature.is_stateful} {
 // CHECK:    %0:3 = "tfl.custom"(%arg0, %arg1, %arg2) {custom_code = "tftext:Ngrams", custom_option = opaque<"tfl", "0x776964746800737472696E675F736570617261746F720000006178697300726564756374696F6E5F74797065000B535452494E475F4A4F494E0004221E373E040104FF152C0204141404082401"> : tensor<77xi8>} : (tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>) -> (tensor<?x!tf_type.string>, tensor<3xi64>, tensor<?xi64>)
@@ -3444,7 +3444,7 @@ func private @sgnn_projection(%arg0: tensor<?x!tf_type.string> {tf._user_specifi
   %2 = "tf.Sgnn"(%1, %0) {device = ""} : (tensor<?xi64>, tensor<10x1xi64>) -> tensor<10x?xf64>
   %3 = "tf.Const"() {value = dense<[-1, 10]> : tensor<2xi64>} : () -> tensor<2xi64>
   %4 = "tf.Reshape"(%2, %3) : (tensor<10x?xf64>, tensor<2xi64>) -> tensor<?x10xf64>
-  return %4 : tensor<?x10xf64>
+  func.return %4 : tensor<?x10xf64>
 }
 
 

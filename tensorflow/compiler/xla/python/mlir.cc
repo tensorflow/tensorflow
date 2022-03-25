@@ -62,7 +62,7 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
   context.loadDialect<mlir::mhlo::MhloDialect>();
   context.loadDialect<mlir::chlo::HloClientDialect>();
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  module = mlir::parseSourceString(
+  module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module.data(), mlir_module.size()), &context);
   if (!module) {
     return diagnostic_handler.ConsumeStatus();

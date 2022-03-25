@@ -337,7 +337,7 @@ SmallVector<Value, 8> MaterializeRankedOperations(
     OperationState ranked_op_state(loc, nested_op.getName().getStringRef(),
                                    mapped_operands, ranked_result_types,
                                    nested_op.getAttrs());
-    Operation *ranked_op = b.createOperation(ranked_op_state);
+    Operation *ranked_op = b.create(ranked_op_state);
     for (auto it : llvm::zip(nested_op.getResults(), ranked_op->getResults()))
       bvm.map(std::get<0>(it), std::get<1>(it));
   }

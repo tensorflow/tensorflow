@@ -84,6 +84,10 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
   using Base::Base;
 };
 
+// Returns the type, but without any sparsity encoding. Used to
+// strip sparsity properties of tensor types before is-same tests.
+Type getTypeWithoutSparseEncoding(Type tp);
+
 // Shape derivation function that computes the shape of the result based on an
 // operand. For a 2-dimensional input tensor, this produces IR of the form
 //

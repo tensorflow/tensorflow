@@ -102,14 +102,14 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
   auto entry_block = builder.createBlock(dest_region);
   func::CallOp result;
   if (!tuple_arg) {
-    auto inputs = func.getType().getInputs();
+    auto inputs = func.getFunctionType().getInputs();
     auto args = entry_block->addArguments(
         inputs, SmallVector<Location>(inputs.size(), loc));
     ArrayRef<Value> callop_args(args.begin(), args.end());
     result = builder.create<func::CallOp>(loc, func, callop_args);
   } else {
     auto tuple_arg = entry_block->addArgument(
-        builder.getTupleType(func.getType().getInputs()), loc);
+        builder.getTupleType(func.getFunctionType().getInputs()), loc);
     llvm::SmallVector<Value, 4> detupled_args;
     detupled_args.reserve(func.getNumArguments());
 

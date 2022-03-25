@@ -31,10 +31,10 @@ class CoordinationClient {
  public:
   virtual ~CoordinationClient() {}
 
-  virtual void RegisterWorkerAsync(CallOptions* call_opts,
-                                   const RegisterWorkerRequest* request,
-                                   RegisterWorkerResponse* response,
-                                   StatusCallback done) = 0;
+  virtual void RegisterTaskAsync(CallOptions* call_opts,
+                                 const RegisterTaskRequest* request,
+                                 RegisterTaskResponse* response,
+                                 StatusCallback done) = 0;
 
   virtual void HeartbeatAsync(const HeartbeatRequest* request,
                               HeartbeatResponse* response,
@@ -44,9 +44,17 @@ class CoordinationClient {
                                     WaitForAllTasksResponse* response,
                                     StatusCallback done) = 0;
 
-  virtual void ReportErrorToAgentAsync(const ReportErrorToAgentRequest* request,
-                                       ReportErrorToAgentResponse* response,
-                                       StatusCallback done) = 0;
+  virtual void ShutdownTaskAsync(const ShutdownTaskRequest* request,
+                                 ShutdownTaskResponse* response,
+                                 StatusCallback done) = 0;
+
+  virtual void ResetTaskAsync(const ResetTaskRequest* request,
+                              ResetTaskResponse* response,
+                              StatusCallback done) = 0;
+
+  virtual void ReportErrorToTaskAsync(const ReportErrorToTaskRequest* request,
+                                      ReportErrorToTaskResponse* response,
+                                      StatusCallback done) = 0;
 
   virtual void ReportErrorToServiceAsync(
       const ReportErrorToServiceRequest* request,

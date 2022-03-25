@@ -5,16 +5,16 @@ HloModule main.17
 // CHECK: func @main(%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>) -> tensor<f32> {
 // CHECK:   %[[F0:.+]] = "mhlo.fusion"(%[[ARG0:.*]], %[[ARG1:.*]]) ({
 // CHECK:   ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
-// CHECK:   }) {fusion_kind = "kLoop"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+// CHECK:   }) {fusion_kind = #mhlo<"fusion_kind kLoop">} : (tensor<f32>, tensor<f32>) -> tensor<f32>
 // CHECK:   %[[F1:.+]]:2 = "mhlo.fusion"(%[[ARG0:.*]]) ({
 // CHECK:   ^bb0(%[[ARG2:.*]]: tensor<f32>):
-// CHECK:   }) {fusion_kind = "kLoop"} : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
+// CHECK:   }) {fusion_kind = #mhlo<"fusion_kind kLoop">} : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
 // CHECK:   %[[F2:.+]]:2 = "mhlo.fusion"(%[[ARG0:.*]], %[[ARG1:.*]]) ({
 // CHECK:   ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
-// CHECK:   }) {fusion_kind = "kLoop"} : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+// CHECK:   }) {fusion_kind = #mhlo<"fusion_kind kLoop">} : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
 // CHECK:   %[[F3:.+]]:2 = "mhlo.fusion"(%[[ARG0:.*]], %[[ARG1:.*]]) ({
 // CHECK:   ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
-// CHECK:   }) {fusion_kind = "kLoop"} : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+// CHECK:   }) {fusion_kind = #mhlo<"fusion_kind kLoop">} : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
 // CHECK: }
 
 %region_0 (Arg_0.4: f32[], Arg_1.5: f32[]) -> f32[] {

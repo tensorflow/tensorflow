@@ -1477,7 +1477,9 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
                       GetAllocationSlice(fft_op.operand()));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
                       GetAllocationSlice(fft_op.output()));
-  TF_ASSIGN_OR_RETURN(xla::FftType fft_type, ConvertFftType(fft_op.fft_type()));
+  TF_ASSIGN_OR_RETURN(
+      xla::FftType fft_type,
+      ConvertFftType(mlir::mhlo::stringifyFftType(fft_op.fft_type())));
   auto fft_length_values = fft_op.fft_length().getValues<int64_t>();
   std::vector<int64_t> fft_length(fft_length_values.begin(),
                                   fft_length_values.end());

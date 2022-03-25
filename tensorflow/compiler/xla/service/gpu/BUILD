@@ -707,6 +707,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/synchronization",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
@@ -789,6 +790,7 @@ cc_library(
             "@tf_runtime//:beftomlir",
             "@tf_runtime//:core_runtime",
             "@tf_runtime//:hostcontext",
+            "@tf_runtime//:init_tfrt_dialects",
             "@tf_runtime//:mlirtobef_translate",
             "@tf_runtime//:support",
             "@tf_runtime//:tensor_alwayslink",
@@ -808,7 +810,7 @@ cc_library(
 cc_library(
     name = "cuda_runtime_for_xlir",
     tags = ["manual"],  # Build NCCL only if --config=experimental_tfrt_gpu.
-    deps = [
+    deps = if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cublas_lt_stub",
         "//tensorflow/stream_executor/cuda:cublas_stub",
         "//tensorflow/stream_executor/cuda:cuda_stub",
@@ -817,7 +819,9 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cufft_stub",
         "//tensorflow/stream_executor/cuda:cusolver_stub",
         "@local_config_nccl//:nccl",
-    ],
+    ]) + if_rocm_is_configured([
+        "@tf_runtime//backends/gpu:cuda_stubs",
+    ]),
 )
 
 cc_library(
@@ -1057,7 +1061,9 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cusolver_lib",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
+        "//tensorflow/stream_executor/rocm:hipsolver_wrapper",
     ]),
 )
 

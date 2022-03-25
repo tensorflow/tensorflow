@@ -781,32 +781,6 @@ class DistributedDatasetAndIteratorSpec(type_spec.TypeSpec):
         cardinality=self._cardinality,
         enable_get_next_as_optional=self._enable_get_next_as_optional)
 
-  # Overriding this method so that we can merge and reconstruct the spec object
-  def most_specific_compatible_type(self, other):
-    """Returns the most specific TypeSpec compatible with `self` and `other`.
-
-    Deprecated. Use most_specific_common_supertype instead.
-
-    Args:
-      other: A `TypeSpec`.
-
-    Raises:
-      ValueError: If there is no TypeSpec that is compatible with both `self`
-        and `other`.
-    """
-    # pylint: disable=protected-access
-    self.sanity_check_type(other)
-    element_spec = nest.map_structure(
-        lambda a, b: a.most_specific_compatible_type(b), self._element_spec,
-        other._element_spec)
-    return type(self)(
-        self._input_workers,
-        element_spec,
-        self._strategy,
-        self._options,
-        cardinality=self._cardinality,
-        enable_get_next_as_optional=self._enable_get_next_as_optional)
-
   def _with_tensor_ranks_only(self):
     element_spec = nest.map_structure(
         lambda s: s._with_tensor_ranks_only(),  # pylint: disable=protected-access

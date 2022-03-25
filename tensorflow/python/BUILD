@@ -66,6 +66,7 @@ visibility = [
     "//third_party/py/tensorflow_gnn:__subpackages__",
     "//third_party/py/tensorflow_numerics:__subpackages__",
     "//third_party/py/tensorflow_privacy:__subpackages__",
+    "//third_party/reverb:__subpackages__",
 ]
 
 package(
@@ -4588,10 +4589,13 @@ alias(
 
 # copybara:uncomment_begin(google-only)
 # # FIXME(b/189332820): Link the target when it is available on OSS.
-# alias(
+# py_library(
 #     name = "dtensor",
-#     actual =
+#     deps = [
 #         "//tensorflow/dtensor/python:core",
+#         "//tensorflow/dtensor/python:mesh_util",
+#         "//tensorflow/dtensor/python:tpu_util",
+#     ],
 # )
 # copybara:uncomment_end
 
