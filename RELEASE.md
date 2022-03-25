@@ -55,6 +55,10 @@
   `tf.keras.mixed_precision.experimental` API. The symbols are still available
   under `tf.compat.v1.mixed_precision`.
 
+* The `experimental_relax_shapes` heuristic for `tf.function` has been
+  deprecated and replaced with `reduce_retracing` which encompasses broader
+  heuristics to reduce the number of retraces (see below).
+
 # Known Caveats
 
 *   <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
@@ -137,6 +141,9 @@
          `tf.types.experimental.SupportsTracingProtocol`.
     *    `TypeSpec` classes (as associated with `ExtensionTypes`) also implement
          the Tracing Protocol which can be overriden if necessary.
+    *    The newly introduced `reduce_retracing` option also uses the Tracing
+         Protocol to proactively generate generalized traces similar to
+         `experimental_relax_shapes` (which has now been deprecated).
 
 # Bug Fixes and Other Changes
 
