@@ -379,9 +379,11 @@ Status CoordinationServiceAgentImpl::Shutdown() {
     ShutdownTaskRequest request;
     *request.mutable_source_task() = task_;
     ShutdownTaskResponse response;
+    CallOptions call_opts;
+    call_opts.SetTimeout(configs_.shutdown_barrier_timeout_in_ms());
 
     absl::Notification n;
-    leader_client_->ShutdownTaskAsync(&request, &response,
+    leader_client_->ShutdownTaskAsync(&call_opts, &request, &response,
                                       [&status, &n](Status s) {
                                         status = s;
                                         n.Notify();
