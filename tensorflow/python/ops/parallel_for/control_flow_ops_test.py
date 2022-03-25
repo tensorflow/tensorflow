@@ -98,11 +98,10 @@ class PForTest(PForTestCase):
     self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=True)
 
   def test_defun(self):        
-    def_function.function
     def loop_fn(a):
       range(array_ops.constant(5))
       return 1 
-    def_function.function
+    @def_function.function
     def vectorized():
       return self._test_loop_fn(loop_fn,2)
     vectorized()
