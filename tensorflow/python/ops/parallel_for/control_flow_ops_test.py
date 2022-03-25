@@ -102,9 +102,9 @@ class PForTest(PForTestCase):
       range(array_ops.constant(5))
       return 1 
     @def_function.function
-    def vectorized():
+    def f():
       return self._test_loop_fn(loop_fn,2)
-    vectorized()
+    self.assertAllEqual(1, f()))
 
   def test_parallel_iterations(self):
     for parallel_iterations in [2, 3, 8, 10]:
