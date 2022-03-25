@@ -249,7 +249,7 @@ def _tf_tensor_array_len(s):
 def _tf_tensor_list_len(s):
   return list_ops.tensor_list_length(s)
 
-def _tf_is_scalar(s):
+def _tf_tensor_is_scalar(s):
   shape = array_ops.shape(s)
 
   assert shape.shape, 'shape tensor of zero size? {}'.format(shape)
