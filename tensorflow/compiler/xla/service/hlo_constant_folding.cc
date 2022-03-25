@@ -68,9 +68,9 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
   // retains the behavior from before while loop support in HloEvaluator and may
   // be revised.
   auto evaluator = absl::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
+  // fast-path lets us e.g. use Eigen for matmuls.
+  evaluator->set_use_fast_path(true);
 
-  XLA_VLOG_LINES(2,
-                 "HloConstantFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
 
   for (auto* computation : module->MakeNonfusionComputations()) {
@@ -163,6 +163,8 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         }
       }
 
+      VLOG(5) << "Constant folding: " << instruction->ToString();
+
       Literal result;
       // Currently we skip unimplemented operations.
       // TODO(b/35975797): Fold constant computations for more operations.
@@ -180,7 +182,6 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       changed = true;
     }
   }
-  XLA_VLOG_LINES(2, "HloConstantFolding::Run(), after:\n" + module->ToString());
   return changed;
 }
 
