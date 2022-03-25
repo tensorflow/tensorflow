@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,15 +23,15 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
-from tensorflow.python.tpu import tpu_embedding_v2
+from tensorflow.python.tpu import tpu_embedding_for_serving
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.util import nest
 
 
-class CPUEmbeddingTest(test.TestCase):
+class TPUEmbeddingForServingTest(test.TestCase):
 
   def setUp(self):
-    super(CPUEmbeddingTest, self).setUp()
+    super(TPUEmbeddingForServingTest, self).setUp()
 
     self.embedding_values = np.array(list(range(32)), dtype=np.float64)
     self.initializer = init_ops_v2.Constant(self.embedding_values)
@@ -99,9 +99,8 @@ class CPUEmbeddingTest(test.TestCase):
 
   def _create_mid_level(self):
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
-    return tpu_embedding_v2.TPUEmbedding(
-        feature_config=self.feature_config,
-        optimizer=optimizer)
+    return tpu_embedding_for_serving.TPUEmbeddingForServing(
+        feature_config=self.feature_config, optimizer=optimizer)
 
   def _get_dense_tensors(self, dtype=dtypes.int32):
     feature0 = constant_op.constant(self.feature_watched_values, dtype=dtype)
@@ -112,11 +111,7 @@ class CPUEmbeddingTest(test.TestCase):
   def test_cpu_dense_lookup(self):
     mid_level = self._create_mid_level()
     features = self._get_dense_tensors()
-    results = tpu_embedding_v2.cpu_embedding_lookup(
-        features,
-        weights=None,
-        tables=mid_level.embedding_tables,
-        feature_config=self.feature_config)
+    results = mid_level(features, weights=None)
     all_lookups = []
     for feature, config in zip(nest.flatten(features), self.feature_config):
       table = mid_level.embedding_tables[config.table].numpy()
@@ -130,11 +125,7 @@ class CPUEmbeddingTest(test.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, 'Weight specified for .*, but input is dense.'):
-      tpu_embedding_v2.cpu_embedding_lookup(
-          features,
-          weights=weights,
-          tables=mid_level.embedding_tables,
-          feature_config=self.feature_config)
+      mid_level(features, weights=weights)
 
   def _get_sparse_tensors(self, dtype=dtypes.int32):
     feature0 = sparse_tensor.SparseTensor(
@@ -154,11 +145,7 @@ class CPUEmbeddingTest(test.TestCase):
   def test_cpu_sparse_lookup(self):
     mid_level = self._create_mid_level()
     features = self._get_sparse_tensors()
-    results = tpu_embedding_v2.cpu_embedding_lookup(
-        features,
-        weights=None,
-        tables=mid_level.embedding_tables,
-        feature_config=self.feature_config)
+    results = mid_level(features, weights=None)
     reduced = []
     for feature, config in zip(nest.flatten(features), self.feature_config):
       table = mid_level.embedding_tables[config.table].numpy()
@@ -177,11 +164,7 @@ class CPUEmbeddingTest(test.TestCase):
     mid_level = self._create_mid_level()
     features = self._get_sparse_tensors()
     weights = self._get_sparse_tensors(dtype=dtypes.float32)
-    results = tpu_embedding_v2.cpu_embedding_lookup(
-        features,
-        weights=weights,
-        tables=mid_level.embedding_tables,
-        feature_config=self.feature_config)
+    results = mid_level(features, weights=weights)
     weighted_sum = []
     for feature, weight, config in zip(nest.flatten(features),
                                        nest.flatten(weights),
@@ -206,11 +189,7 @@ class CPUEmbeddingTest(test.TestCase):
     weights = self._get_dense_tensors(dtype=dtypes.float32)
     with self.assertRaisesRegex(
         ValueError, 'but it does not match type of the input which is'):
-      tpu_embedding_v2.cpu_embedding_lookup(
-          features,
-          weights=weights,
-          tables=mid_level.embedding_tables,
-          feature_config=self.feature_config)
+      mid_level(features, weights=weights)
 
   def _get_ragged_tensors(self, dtype=dtypes.int32):
     feature0 = ragged_tensor.RaggedTensor.from_row_lengths(
@@ -228,11 +207,7 @@ class CPUEmbeddingTest(test.TestCase):
     mid_level = self._create_mid_level()
     features = self._get_ragged_tensors()
     weights = self._get_ragged_tensors(dtype=dtypes.float32)
-    results = tpu_embedding_v2.cpu_embedding_lookup(
-        features,
-        weights=weights,
-        tables=mid_level.embedding_tables,
-        feature_config=self.feature_config)
+    results = mid_level(features, weights=weights)
     weighted_sum = []
     for feature, weight, config in zip(nest.flatten(features),
                                        nest.flatten(weights),
@@ -254,11 +229,7 @@ class CPUEmbeddingTest(test.TestCase):
     # pass 3.
     features = tuple(self._get_sparse_tensors()[:2])
     with self.assertRaises(ValueError):
-      tpu_embedding_v2.cpu_embedding_lookup(
-          features,
-          weights=None,
-          tables=mid_level.embedding_tables,
-          feature_config=self.feature_config)
+      mid_level(features, weights=None)
 
   def test_cpu_invalid_structure_for_weights(self):
     mid_level = self._create_mid_level()
@@ -267,11 +238,7 @@ class CPUEmbeddingTest(test.TestCase):
     # pass 3 (or None).
     weights = tuple(self._get_dense_tensors(dtype=dtypes.float32)[:2])
     with self.assertRaises(ValueError):
-      tpu_embedding_v2.cpu_embedding_lookup(
-          features,
-          weights=weights,
-          tables=mid_level.embedding_tables,
-          feature_config=self.feature_config)
+      mid_level(features, weights=weights)
 
   def _numpy_sequence_lookup(self, table, indices, values, batch_size,
                              max_sequence_length, dim):
@@ -292,15 +259,10 @@ class CPUEmbeddingTest(test.TestCase):
         tpu_embedding_v2_utils.FeatureConfig(
             table=self.table_user, name='friends', max_sequence_length=2),)
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
-    mid_level = tpu_embedding_v2.TPUEmbedding(
-        feature_config=feature_config,
-        optimizer=optimizer)
+    mid_level = tpu_embedding_for_serving.TPUEmbeddingForServing(
+        feature_config=feature_config, optimizer=optimizer)
     features = self._get_sparse_tensors()[2:3]
-    result = tpu_embedding_v2.cpu_embedding_lookup(
-        features,
-        weights=None,
-        tables=mid_level.embedding_tables,
-        feature_config=feature_config)
+    result = mid_level(features, weights=None)
 
     golden = self._numpy_sequence_lookup(
         mid_level.embedding_tables[self.table_user].numpy(),
@@ -317,15 +279,10 @@ class CPUEmbeddingTest(test.TestCase):
         tpu_embedding_v2_utils.FeatureConfig(
             table=self.table_user, name='friends', max_sequence_length=2),)
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
-    mid_level = tpu_embedding_v2.TPUEmbedding(
-        feature_config=feature_config,
-        optimizer=optimizer)
+    mid_level = tpu_embedding_for_serving.TPUEmbeddingForServing(
+        feature_config=feature_config, optimizer=optimizer)
     features = self._get_ragged_tensors()[2:3]
-    result = tpu_embedding_v2.cpu_embedding_lookup(
-        features,
-        weights=None,
-        tables=mid_level.embedding_tables,
-        feature_config=feature_config)
+    result = mid_level(features, weights=None)
 
     sparse_ver = features[0].to_sparse()
     golden = self._numpy_sequence_lookup(
@@ -342,14 +299,10 @@ class CPUEmbeddingTest(test.TestCase):
     feature_config = (tpu_embedding_v2_utils.FeatureConfig(
         table=self.table_user, name='friends', output_shape=[2, 2]),)
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
-    mid_level = tpu_embedding_v2.TPUEmbedding(
+    mid_level = tpu_embedding_for_serving.TPUEmbeddingForServing(
         feature_config=feature_config, optimizer=optimizer)
     features = self._get_ragged_tensors()[2:3]
-    result = tpu_embedding_v2.cpu_embedding_lookup(
-        features,
-        weights=None,
-        tables=mid_level.embedding_tables,
-        feature_config=feature_config)
+    result = mid_level(features, weights=None)
 
     self.assertAllClose(result[0].shape, (2, 2, 2))
 
@@ -359,14 +312,10 @@ class CPUEmbeddingTest(test.TestCase):
     feature_config = (tpu_embedding_v2_utils.FeatureConfig(
         table=self.table_user, name='friends', output_shape=[2, 4]),)
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
-    mid_level = tpu_embedding_v2.TPUEmbedding(
+    mid_level = tpu_embedding_for_serving.TPUEmbeddingForServing(
         feature_config=feature_config, optimizer=optimizer)
     features = self._get_ragged_tensors()[2:3]
-    result = tpu_embedding_v2.cpu_embedding_lookup(
-        features,
-        weights=None,
-        tables=mid_level.embedding_tables,
-        feature_config=feature_config)
+    result = mid_level(features, weights=None)
     self.assertAllClose(result[0].shape, (2, 4, 2))
 
   def test_cpu_high_dimensional_invalid_lookup_ragged(self):
@@ -375,25 +324,20 @@ class CPUEmbeddingTest(test.TestCase):
     feature_config = (tpu_embedding_v2_utils.FeatureConfig(
         table=self.table_user, name='friends', output_shape=[3]),)
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
-    mid_level = tpu_embedding_v2.TPUEmbedding(
+    mid_level = tpu_embedding_for_serving.TPUEmbeddingForServing(
         feature_config=feature_config, optimizer=optimizer)
     features = self._get_ragged_tensors()[2:3]
     with self.assertRaisesRegex(
         ValueError,
         'Output shape set in the FeatureConfig should be the factor'):
-      tpu_embedding_v2.cpu_embedding_lookup(
-          features,
-          weights=None,
-          tables=mid_level.embedding_tables,
-          feature_config=feature_config)
+      mid_level(features, weights=None)
 
   def test_cpu_no_optimizer(self):
     feature_config = (
         tpu_embedding_v2_utils.FeatureConfig(
             table=self.table_video, name='watched', max_sequence_length=2),)
-    mid_level = tpu_embedding_v2.TPUEmbedding(
-        feature_config=feature_config,
-        optimizer=None)
+    mid_level = tpu_embedding_for_serving.TPUEmbeddingForServing(
+        feature_config=feature_config, optimizer=None)
     # Build the layer manually to create the variables. Normally calling enqueue
     # would do this.
     mid_level.build()
@@ -405,9 +349,9 @@ class CPUEmbeddingTest(test.TestCase):
     feature_config = (tpu_embedding_v2_utils.FeatureConfig(
         table=self.table_user, name='friends', max_sequence_length=2),)
     optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
-    embedding_one = tpu_embedding_v2.TPUEmbedding(
+    embedding_one = tpu_embedding_for_serving.TPUEmbeddingForServing(
         feature_config=feature_config, optimizer=optimizer)
-    embedding_two = tpu_embedding_v2.TPUEmbedding(
+    embedding_two = tpu_embedding_for_serving.TPUEmbeddingForServing(
         feature_config=feature_config, optimizer=optimizer)
 
     # Both of the tpu embedding tables should be able to build on cpu.
