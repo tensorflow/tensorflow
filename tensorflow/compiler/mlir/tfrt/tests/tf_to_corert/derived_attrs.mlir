@@ -1,7 +1,7 @@
 // RUN: tf-tfrt-opt -tf-to-tfrt %s | FileCheck %s --dump-input=fail
 
 // CHECK-LABEL: func @derived_attrs
-func @derived_attrs(
+func.func @derived_attrs(
   %serialized: tensor<?x!tf_type.string>,
   %names: tensor<0x!tf_type.string>,
   %sparse_keys: tensor<0x!tf_type.string>,

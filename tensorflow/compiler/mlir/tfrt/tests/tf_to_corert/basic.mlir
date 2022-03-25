@@ -21,7 +21,7 @@ module attributes {tf_saved_model.semantics} {
 
 // CHECK-LABEL: func @init
 // CHECK-SAME: {tfrt.cost_threshold = 1 : i64}
-func @func_init() attributes {tf_saved_model.exported_names = ["init"]} {
+func.func @func_init() attributes {tf_saved_model.exported_names = ["init"]} {
   return
 }
 
@@ -30,7 +30,7 @@ func @func_init() attributes {tf_saved_model.exported_names = ["init"]} {
 // CHECK-SAME: [[arg0_th:%.*]]: !corert.tensorhandle,
 // CHECK-SAME: [[arg1_th:%.*]]: !corert.tensorhandle {tf.resource_name = "y"})
 // CHECK-SAME: -> (!tfrt.chain, !corert.tensorhandle)
-func @func_basic(
+func.func @func_basic(
     %arg0: tensor<3x1xf32> {tf_saved_model.index_path = [0]},
     %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>> {tf_saved_model.bound_input = @y})
       -> (tensor<3x3xf32> {tf_saved_model.index_path = []})

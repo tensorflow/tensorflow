@@ -5,7 +5,7 @@
 // Outline a simple cluster with a single operation.
 
 // CHECK-LABEL: func @simple_cluster
-func @simple_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+func.func @simple_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK:      %[[RES:.*]] = jitrt.call(%arg0)
   // CHECK-SAME: {callee = @kernel::@compute}
   // CHECK-SAME: (tensor<?xf32>) -> tensor<?xf32>
@@ -31,7 +31,7 @@ func @simple_cluster(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // Check that tf.Transpose constraint propagated to the function argument.
 
 // CHECK-LABEL: func @cluster_with_transpose
-func @cluster_with_transpose(%arg0: tensor<?x?xf32>,
+func.func @cluster_with_transpose(%arg0: tensor<?x?xf32>,
                              %arg1: tensor<2xi32>) -> tensor<?x?xf32> {
   // CHECK:      %[[RES:.*]] = jitrt.call(%arg0, %arg1)
   // CHECK-SAME: {callee = @kernel::@compute}

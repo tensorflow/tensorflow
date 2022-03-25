@@ -2,7 +2,7 @@
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 567 : i32}} {
   // CHECK-LABEL: func @__inference_pruned_35
-  func @__inference_pruned_35() -> tensor<!tf_type.variant> attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "flatmapdataset__4_RetVal"}} {
+  func.func @__inference_pruned_35() -> tensor<!tf_type.variant> attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "flatmapdataset__4_RetVal"}} {
     %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i64>} : () -> tensor<i64>
     %1 = "tf.Const"() {device = "/device:CPU:0", value = dense<5> : tensor<i64>} : () -> tensor<i64>
     %2 = "tf.Const"() {device = "/device:CPU:0", value = dense<1> : tensor<i64>} : () -> tensor<i64>
@@ -12,7 +12,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %4 : tensor<!tf_type.variant>
   }
   // CHECK-LABEL: __inference_Dataset_flat_map_lambda_190
-  func private @__inference_Dataset_flat_map_lambda_190(%arg0: tensor<i64> {tf._user_specified_name = "args_0"}) -> tensor<!tf_type.variant> attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
+  func.func private @__inference_Dataset_flat_map_lambda_190(%arg0: tensor<i64> {tf._user_specified_name = "args_0"}) -> tensor<!tf_type.variant> attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
     %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<0> : tensor<i64>} : () -> tensor<i64>
     %1 = "tf.Const"() {device = "/device:CPU:0", value = dense<1> : tensor<i64>} : () -> tensor<i64>
     %2 = "tf.Const"() {device = "/device:CPU:0", value = dense<5> : tensor<i64>} : () -> tensor<i64>
@@ -23,7 +23,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %5 : tensor<!tf_type.variant>
   }
   // CHECK-LABEL: __inference_Dataset_map_lambda_160
-  func private @__inference_Dataset_map_lambda_160(%arg0: tensor<i64> {tf._user_specified_name = "args_0"}) -> tensor<i64> attributes {tf._tf_data_function = true} {
+  func.func private @__inference_Dataset_map_lambda_160(%arg0: tensor<i64> {tf._user_specified_name = "args_0"}) -> tensor<i64> attributes {tf._tf_data_function = true} {
     %0 = "tf.Const"() {device = "/device:CPU:0", value = dense<2> : tensor<i64>} : () -> tensor<i64>
     %1 = "tf.Mul"(%arg0, %0) {device = "/device:CPU:0"} : (tensor<i64>, tensor<i64>) -> tensor<i64>
     %2 = "tf.Identity"(%1) {device = "/device:CPU:0"} : (tensor<i64>) -> tensor<i64>

@@ -7,7 +7,7 @@ module attributes {tf_saved_model.semantics} {
 // Test error handling in a simple scenario.
 
 // expected-error @+1 {{'func.func' op failed to promote resource variables}}
-func @main(
+func.func @main(
     %arg0: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @y})
       -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_basic"]} {
@@ -28,7 +28,7 @@ module attributes {tf_saved_model.semantics} {
 
 "tf_saved_model.global_tensor"() {is_mutable, sym_name = "y", type = tensor<i32>, value = dense<0> : tensor<i32>} : () -> ()
 
-func private @callee(
+func.func private @callee(
   %arg0: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
 {
     func.return %arg0: tensor<!tf_type.resource<tensor<i32>>>
@@ -37,7 +37,7 @@ func private @callee(
 // Test error handling during recursive processing that involes a call operation.
 
 // expected-error @+1 {{'func.func' op failed to promote resource variables}}
-func @main(
+func.func @main(
     %arg0: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @y})
       -> (tensor<i32> {tf_saved_model.index_path = ["r"]})
   attributes {tf_saved_model.exported_names = ["test_basic"]} {

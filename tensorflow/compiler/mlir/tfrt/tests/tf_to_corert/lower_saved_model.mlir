@@ -10,7 +10,7 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-LABEL: func @test_basic
 // CHECK-SAME: [[arg0:%.*]]: tensor<i32> {tf.resource_name = "y"},
 // CHECK-SAME: [[arg1:%.*]]: tensor<i32> {tf.resource_name = "z"}
-func @basic(
+func.func @basic(
     %arg0: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @y},
     %arg1: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @z})
       -> (tensor<i32> {tf_saved_model.index_path = ["r0"]}, tensor<i32> {tf_saved_model.index_path = ["r1"]})
@@ -26,7 +26,7 @@ func @basic(
 
 // CHECK-LABEL: func private @then_branch
 // CHECK-SAME: [[arg0:%.*]]: tensor<i32>, [[arg1:%.*]]: tensor<i32>
-func private @then_branch(
+func.func private @then_branch(
     %arg0: tensor<!tf_type.resource<tensor<i32>>>,
     %arg1: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
   // CHECK-NOT: tf.ReadVariableOp
@@ -37,7 +37,7 @@ func private @then_branch(
 
 // CHECK-LABEL: func private @else_branch
 // CHECK-SAME: [[arg0:%.*]]: tensor<i32>, [[arg1:%.*]]: tensor<i32>
-func private @else_branch(
+func.func private @else_branch(
     %arg0: tensor<!tf_type.resource<tensor<i32>>>,
     %arg1: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32> {
   // CHECK-NOT: tf.ReadVariableOp
@@ -50,7 +50,7 @@ func private @else_branch(
 // CHECK-SAME: [[arg0:%.*]]: tensor<i1>,
 // CHECK-SAME: [[arg1:%.*]]: tensor<i32> {tf.resource_name = "y"},
 // CHECK-SAME: [[arg2:%.*]]: tensor<i32> {tf.resource_name = "z"}
-func @if(
+func.func @if(
     %arg0: tensor<i1> {tf_saved_model.index_path = [0]},
     %arg1: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @y},
     %arg2: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @z})
@@ -68,7 +68,7 @@ func @if(
 // CHECK-SAME: [[arg0:%.*]]: tensor<i32>,
 // CHECK-SAME: [[arg1:%.*]]: tensor<i32> {tf.resource_name = "y"},
 // CHECK-SAME: [[arg2:%.*]]: tensor<i32> {tf.resource_name = "z"}
-func @case(
+func.func @case(
     %arg0: tensor<i32> {tf_saved_model.index_path = [0]},
     %arg1: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @y},
     %arg2: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @z})
@@ -84,7 +84,7 @@ func @case(
 
 // CHECK-LABEL: func private @while_cond
 // CHECK-SAME: [[arg0:%.*]]: tensor<i32>, [[arg1:%.*]]: tensor<i32>
-func private @while_cond(
+func.func private @while_cond(
     %arg0: tensor<i32>,
     %arg1: tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i1> {
   %0 = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
@@ -95,7 +95,7 @@ func private @while_cond(
 // CHECK-LABEL: func private @while_body
 // CHECK-SAME: [[arg0:%.*]]: tensor<i32>, [[arg1:%.*]]: tensor<i32>
 // CHECK-SAME: -> (tensor<i32>, tensor<i32>)
-func private @while_body(
+func.func private @while_body(
     %arg0: tensor<i32>,
     %arg1: tensor<!tf_type.resource<tensor<i32>>>) -> (tensor<i32>, tensor<!tf_type.resource<tensor<i32>>>) {
   // CHECK-NOT: tf.ReadVariableOp
@@ -107,7 +107,7 @@ func private @while_body(
 
 // CHECK-LABEL: func @test_while
 // CHECK-SAME: [[arg0:%.*]]: tensor<i32> {tf.resource_name = "z"}
-func @while(
+func.func @while(
     %arg0: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @z})
       -> (tensor<i32> {tf_saved_model.index_path = ["r0"]}, tensor<i32> {tf_saved_model.index_path = ["r1"]})
   attributes {tf_saved_model.exported_names = ["test_while"]} {
@@ -128,7 +128,7 @@ func @while(
 
 // CHECK-LABEL: func private @batched_function
 // CHECK-SAME: [[arg0:%.*]]: tensor<i32>, [[arg1:%.*]]: tensor<i32>
-func private @batched_function(
+func.func private @batched_function(
     %arg0: tensor<i32>,
     %arg1: tensor<*x!tf_type.resource>) -> tensor<i32> {
   // CHECK-NOT: tf.ReadVariableOp
@@ -139,7 +139,7 @@ func private @batched_function(
 
 // CHECK-LABEL: func @test_batch_function
 // CHECK-SAME: [[arg0:%.*]]: tensor<i32>, [[arg1:%.*]]: tensor<i32>
-func @batch_function(
+func.func @batch_function(
     %arg0: tensor<i32> {tf_saved_model.index_path = [0]},
     %arg1: tensor<!tf_type.resource<tensor<i32>>> {tf_saved_model.bound_input = @y})
       -> (tensor<i32> {tf_saved_model.index_path = ["r"]})

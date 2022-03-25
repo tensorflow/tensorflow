@@ -8,7 +8,7 @@
 // CHECK-NEXT: [[o2:%.*]] = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle [[o1]]
 // CHECK-NEXT: tfrt.return [[out_ch]], [[o2]] : !tfrt.chain, !corert.tensorhandle
 module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0"], tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 679 : i32}}  {
-  func @__inference_pruned_131() -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "variable", outputs = "identity_retval_RetVal"}} {
+  func.func @__inference_pruned_131() -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "variable", outputs = "identity_retval_RetVal"}} {
     %0 = tf_executor.graph {
       %outputs, %control = tf_executor.island wraps "tf.VariableV2"() {container = "", device = "/job:localhost/replica:0/task:0/device:CPU:0", shape = #tf_type.shape<>, shared_name = "v_load_44"} : () -> tensor<!tf_type.f32ref>
       %outputs_0, %control_1 = tf_executor.island wraps "tf.Identity"(%outputs) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<!tf_type.f32ref>) -> tensor<*xf32>
