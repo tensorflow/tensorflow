@@ -347,8 +347,8 @@ def _tf_max(*args, **kwargs):
     raise ValueError('These keyword arguments are ' 
                      'currently not supported: {}'.format(kwargs_tuple))
   elif len(args) == 1:
-    if _tf_tensor_is_scalar(args)
-        return  math_ops.reduce_max(*args, axis=0)
+    # TODO (bhack) Do we want constain the input Tensor to rank==1 ?
+    return  math_ops.reduce_max(*args, axis=0)
   else:
     if all(_tf_tensor_is_scalar(arg) for arg in args):
       s= array_ops.concat([args], axis=0)
