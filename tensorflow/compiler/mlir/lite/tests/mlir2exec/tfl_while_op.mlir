@@ -19,7 +19,7 @@
 // ------------------------------------
 // CHECK: Operator Builtin Code {{[0-9]*}} WHILE
 
-func @main() -> (tensor<1xf32>, tensor<i32>)
+func.func @main() -> (tensor<1xf32>, tensor<i32>)
     attributes {tf.entry_function = {outputs = "result,pconst"}} {
   %cst = arith.constant dense<1> : tensor<i32> loc("dec")
   %arg0 = arith.constant dense<5> : tensor<i32> loc("N")
