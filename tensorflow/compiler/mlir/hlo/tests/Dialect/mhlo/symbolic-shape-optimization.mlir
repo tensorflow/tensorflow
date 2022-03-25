@@ -655,19 +655,17 @@ func @simplifiable_bcast(
     -> tensor<7xindex> {
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1
-  // CHECK-DAG: %[[C3:.*]] = arith.constant 3
   // CHECK-DAG: %[[C4:.*]] = arith.constant 4
   // CHECK-DAG: %[[C5:.*]] = arith.constant 5
+  // CHECK-DAG: %[[C8:.*]] = arith.constant 8
   // CHECK-DAG: %[[S0:.*]] = shape.shape_of %[[ARG0]]
   // CHECK-DAG: %[[S1:.*]] = shape.shape_of %[[ARG1]]
   // CHECK-DAG: %[[S0D0:.*]] = tensor.extract %[[S0]][%[[C0]]]
-  // CHECK-DAG: %[[S0D3:.*]] = tensor.extract %[[S0]][%[[C3]]]
   // CHECK-DAG: %[[S0D4:.*]] = tensor.extract %[[S0]][%[[C4]]]
   // CHECK-DAG: %[[S0D5:.*]] = tensor.extract %[[S0]][%[[C5]]]
-  // CHECK-DAG: %[[S1D1:.*]] = tensor.extract %[[S1]][%[[C1]]]
   // CHECK-DAG: %[[S1D5:.*]] = tensor.extract %[[S1]][%[[C5]]]
-  // CHECK-DAG: %8 = tensor.from_elements %[[S0D0]], %[[C1]], %[[S1D1]], %[[S0D3]], %[[S0D4]], %[[S0D5]], %[[S1D5]]
-  // CHECK:     return %8
+  // CHECK-DAG: %[[RES:.*]] = tensor.from_elements %[[S0D0]], %[[C1]], %[[C8]], %[[C4]], %[[S0D4]], %[[S0D5]], %[[S1D5]]
+  // CHECK:     return %[[RES]]
   %0 = shape.shape_of %arg0 : tensor<?x1x1x4x?x?x1xf32> -> tensor<7xindex>
   %1 = shape.shape_of %arg1 : tensor<1x8x1x?x1x?xf32> -> tensor<6xindex>
   %2 = shape.broadcast %0, %1 : tensor<7xindex>, tensor<6xindex>

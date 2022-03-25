@@ -43,75 +43,83 @@ using SymbolicExpr = ShapeComponentAnalysis::SymbolicExpr;
 
 namespace {
 
+// Temporary data structure to hold a single dimension of the symbolic result of
+// `shape.broadcast`.
+struct SymbolicBroadcastDimension {
+  size_t operand_index;
+  size_t operand_dim;
+  SymbolicExpr expr;
+};
+
 // Replace shape.broadcast with a shape if it's statically known.
 struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(
       shape::BroadcastOp op, mlir::PatternRewriter &rewriter) const override {
+    // Require successful shape analysis.
     ShapeComponentAnalysis shape_analysis;
-    auto loc = op.getLoc();
+    llvm::SmallVector<ArrayRef<SymbolicExpr>> shapes_info;
     auto shapes = op.getShapes();
-
-    // First find the input shape with the largest rank.
-    SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicExpr>> shapes_found;
-    size_t max_rank = 0;
-    for (const auto &shape : llvm::enumerate(op.getShapes())) {
-      auto found_shape = shape_analysis.GetValueInfo(shape.value());
-      if (!found_shape) return failure();
-      shapes_found.push_back(*found_shape);
-      max_rank = std::max(max_rank, found_shape->size());
-    }
-    if (max_rank == 0) {
-      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
-          op, shapes[0].getType(), SmallVector<Value>());
-      return success();
+    shapes_info.reserve(shapes.size());
+    for (Value s : shapes) {
+      auto s_info = shape_analysis.GetValueInfo(s);
+      if (!s_info) return failure();
+      shapes_info.push_back(*s_info);
     }
 
-    SmallVector<const ShapeComponentAnalysis::SymbolicExpr *> joined_dimensions(
-        max_rank);
-    SmallVector<std::pair<Value, int64_t>> shape_and_rank_for_dim(max_rank);
-    for (const auto &shape : llvm::enumerate(shapes_found)) {
-      for (const auto &dim : llvm::enumerate(llvm::reverse(shape.value()))) {
-        // 1 dimensions don't contribute to the final result.
-        if (dim.value().isConstant(1)) continue;
-        // If it's not a 1 dimension it will be present in the result. Remember
-        // where it came from.
-        auto index = max_rank - dim.index() - 1;
-        if (!joined_dimensions[index]) {
-          joined_dimensions[index] = &dim.value();
-          shape_and_rank_for_dim[index] =
-              std::make_pair(shapes[shape.index()], shape.value().size());
+    // Find the result rank.
+    size_t rank = 0;
+    for (const auto &s_info : shapes_info) rank = std::max(rank, s_info.size());
+
+    // Compute broadcast symbolically.
+    SmallVector<Optional<SymbolicBroadcastDimension>> sym_result(rank,
+                                                                 llvm::None);
+    for (const auto &s_info : llvm::enumerate(shapes_info)) {
+      size_t dim_offset = rank - s_info.value().size();
+      for (const auto &sym_expr : llvm::enumerate(s_info.value())) {
+        // Unit dimensions are neutral to the final result.
+        if (sym_expr.value().isConstant(1)) continue;
+
+        // Use unique expression.
+        size_t i = dim_offset + sym_expr.index();
+        if (!sym_result[i]) {
+          sym_result[i] = {s_info.index(), sym_expr.index(), sym_expr.value()};
           continue;
         }
+
         // Bail if the dimensions are neither equal nor 1.
-        if (*joined_dimensions[index] != dim.value()) return failure();
+        if (sym_result[i]->expr != sym_expr.value()) return failure();
       }
-    }
-    // If the output is the same as one of the inputs just return that.
-    if (llvm::is_splat(shape_and_rank_for_dim) &&
-        shape_and_rank_for_dim[0].first) {
-      rewriter.replaceOp(op, shape_and_rank_for_dim[0].first);
-      return success();
-    }
-    // Otherwise rematerialize the shape from the pieces we have.
-    SmallVector<Value> elements;
-    for (int i = 0; i != max_rank; ++i) {
-      // 1 dimensions are filtered above, recreate the constant.
-      if (!shape_and_rank_for_dim[i].first) {
-        auto one = rewriter.getIntegerAttr(
-            shapes[0].getType().cast<RankedTensorType>().getElementType(), 1);
-        elements.push_back(rewriter.create<arith::ConstantOp>(loc, one));
-        continue;
-      }
-      // Extract from one of the shapes, accounting for the reverse indexing
-      // performed by broadcast.
-      Value index = rewriter.create<arith::ConstantIndexOp>(
-          loc, i - max_rank + shape_and_rank_for_dim[i].second);
-      elements.push_back(rewriter.create<tensor::ExtractOp>(
-          loc, shape_and_rank_for_dim[i].first, index));
     }
 
-    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, elements);
+    // Materialize broadcast result.
+    auto loc = op.getLoc();
+    DenseMap<int64_t, Value> constants;
+    auto find_or_create_constant = [&](int64_t c) {
+      auto it = constants.find(c);
+      if (it != constants.end()) return it->second;
+      Value newly_created = rewriter.create<arith::ConstantIndexOp>(loc, c);
+      constants[c] = newly_created;
+      return newly_created;
+    };
+    auto elements = llvm::to_vector<8>(
+        llvm::map_range(sym_result, [&](const auto &sym_result_dim) {
+          // If we know the dimension statically, use a constant.
+          if (!sym_result_dim) return find_or_create_constant(1);
+          if (auto cexpr = sym_result_dim->expr.expr
+                               .template dyn_cast<AffineConstantExpr>()) {
+            return find_or_create_constant(cexpr.getValue());
+          }
+
+          // Othwerise, extract the dimension from the unique operand.
+          Value operand = shapes[sym_result_dim->operand_index];
+          Value operand_dim =
+              find_or_create_constant(sym_result_dim->operand_dim);
+          return rewriter.create<tensor::ExtractOp>(loc, operand, operand_dim)
+              .getResult();
+        }));
+    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
+        op, op->getResultTypes().front(), elements);
     return success();
   }
 };
