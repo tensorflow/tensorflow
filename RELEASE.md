@@ -124,6 +124,10 @@
             quantization and post-training float16 quantization.
         *   Set `experimental_new_dynamic_range_quantizer` in
             tf.lite.TFLiteConverter to False to disable this change
+    *   Native TF Lite variables are now enabled during conversion by default
+        on all v2 TfLiteConverter entry points.
+        `experimental_enable_resource_variables` on tf.lite.TFLiteConverter
+        is now True by default and will be removed in the future.
 
 *   `tf.function`:
 
