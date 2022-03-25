@@ -898,6 +898,7 @@ static Status CompileModuleToLlvmIrImpl(
     const std::string& platform_name, const se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
     se::CudaComputeCapability cuda_compute_capability,
+    se::RocmComputeCapability rocm_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     int pointer_size, CompileModuleResults* results) {
   results->llvm_module = absl::make_unique<llvm::Module>("", *llvm_context);
@@ -959,8 +960,8 @@ static Status CompileModuleToLlvmIrImpl(
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, &mlir_context,
-      results->llvm_module.get());
+      gpu_device_info, cuda_compute_capability, rocm_compute_capability,
+      &mlir_context, results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
 
@@ -1257,6 +1258,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       stream_exec->platform()->Name(), stream_exec->platform()->id(),
       gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
+      stream_exec->GetDeviceDescription().rocm_compute_capability(),
       GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
   if (user_pre_optimization_hook_) {
@@ -1423,6 +1425,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         stream_exec->platform()->Name(), stream_exec->platform()->id(),
         gpu_device_info,
         stream_exec->GetDeviceDescription().cuda_compute_capability(),
+        stream_exec->GetDeviceDescription().rocm_compute_capability(),
         GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
     if (!absl::holds_alternative<OwnedBefBuffer>(
@@ -1456,12 +1459,14 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, const se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability, int pointer_size) {
+    se::CudaComputeCapability cuda_compute_capability,
+    se::RocmComputeCapability rocm_compute_capability, int pointer_size) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
       platform_id, gpu_device_info, cuda_compute_capability,
-      DummyCanShareBufferFunction, pointer_size, &results));
+      rocm_compute_capability, DummyCanShareBufferFunction, pointer_size,
+      &results));
   return std::move(results.llvm_module);
 }
 
