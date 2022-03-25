@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -tf-graph-as-function -o - | FileCheck %s
 
-func @main(%arg0: tensor<*x!tf_type.resource>, %arg1: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>>, %arg2: tensor<*xf32>, %arg3: tensor<2x4x6x8xi32>) -> (tensor<f32>, tensor<f32>)
+func.func @main(%arg0: tensor<*x!tf_type.resource>, %arg1: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>>, %arg2: tensor<*xf32>, %arg3: tensor<2x4x6x8xi32>) -> (tensor<f32>, tensor<f32>)
 attributes {tf.entry_function = {inputs = "args_0,args_1,args_2,args_3", outputs = "rets_0_RetVal,rets_1_RetVal"}} {
   %graph:2 = tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32> loc("const")
@@ -11,7 +11,7 @@ attributes {tf.entry_function = {inputs = "args_0,args_1,args_2,args_3", outputs
   func.return %graph#0, %graph#1 : tensor<f32>, tensor<f32>
 }
 
-func @function0(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<*xf32>
+func.func @function0(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<*xf32>
 attributes {tf.signature.is_stateful} {
   %graph = tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Identity"(%arg0) {T = "tfdtype$DT_FLOAT", device = ""} : (tensor<*xf32>) -> tensor<*xf32> loc("Identity@function0")

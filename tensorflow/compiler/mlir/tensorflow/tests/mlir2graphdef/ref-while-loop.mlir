@@ -1,7 +1,7 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
 // Verify the ops generated when Ref type is used in a while loop.
-func @main() {
+func.func @main() {
   // CHECK:  op: "RefEnter"
   // CHECK:  op: "RefMerge"
   // CHECK:  op: "RefSwitch"

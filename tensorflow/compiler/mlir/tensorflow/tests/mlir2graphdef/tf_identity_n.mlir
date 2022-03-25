@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main() -> tensor<2x3xi32> {
+func.func @main() -> tensor<2x3xi32> {
   %graph = tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {value = dense<5> : tensor<2x3xi32>} : () -> tensor<2x3xi32> loc("Const0")
     %1:2 = tf_executor.island wraps "tf.Const"() {value = dense<4.2> : tensor<4x5xf32>} : () -> tensor<4x5xf32> loc("Const1")

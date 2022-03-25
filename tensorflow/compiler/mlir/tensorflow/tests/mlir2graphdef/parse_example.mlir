@@ -47,7 +47,7 @@
 // CHECK-NEXT: }
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 413 : i32}} {
-  func @main() -> tensor<*xi64> attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "result"}} {
+  func.func @main() -> tensor<*xi64> attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "result"}} {
     %0 = tf_executor.graph {
       %outputs, %control = tf_executor.island wraps "tf.Const"() {device = "", value = dense<"value"> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
       %outputs_0, %control_1 = tf_executor.island wraps "tf.Const"() {device = "", value = dense<"value"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>

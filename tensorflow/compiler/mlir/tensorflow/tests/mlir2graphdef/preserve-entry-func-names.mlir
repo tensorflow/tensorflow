@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
+func.func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
 attributes {tf.entry_function = {inputs = "foo,bar", outputs = "Add"}} {
   %graph = tf_executor.graph {
     // This node would be renamed to bar1 [note: if imported from TF graphdef this would not be possible]
