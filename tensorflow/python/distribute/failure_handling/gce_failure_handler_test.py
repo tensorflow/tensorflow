@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for GCE specifics of CoordinatedCheckpointManager."""
+"""Tests for GCE specifics of WorkerPreemptionHandler."""
 import os
 import random
 import re
@@ -69,7 +69,7 @@ def _enable_coordination_service(cluster_spec):
 
 
 class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
-  """Integration test for CoordinatedCheckpointManager."""
+  """Integration test for WorkerPreemptionHandler."""
 
   def _mwms_write_checkpoint_dir(self, checkpoint_dir, cluster_spec, task_type,
                                  task_id):
@@ -85,33 +85,33 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
   def worker_fn(self,
                 checkpoint_dir,
                 cluster_spec,
-                maintenance_event,
-                training_finished,
+                maintenance_event=None,
+                training_finished=None,
                 frequent_send=False):
 
     _enable_coordination_service(cluster_spec)
     strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
 
-    def mock_request_compute_metadata(*args, **kwargs):
-      del kwargs  # Unused.
-      if args[0] == 'instance/maintenance-event':
-        if not frequent_send:
-          time.sleep(1)
-          if (not maintenance_event.is_set()) and (random.randrange(0, 20) >
-                                                   18):
-            maintenance_event.set()
-            logging.info('Maintenance notice available.')
-            return 'TERMINATE_ON_HOST_MAINTENANCE'
-        elif frequent_send and not maintenance_event.is_set():
-          logging.info('Maintenance notice available.')
-          return 'TERMINATE_ON_HOST_MAINTENANCE'
+    def mock_termination_watcher_function_gce(*args, **kwargs):
+      del args, kwargs
+      if not frequent_send:
+        time.sleep(1)
+        if (not maintenance_event.is_set()) and (random.randrange(0, 20) > 18):
+          maintenance_event.set()
+          logging.info('Termination notice available.')
+          return True
 
-      return 'NONE'
+      elif frequent_send and not maintenance_event.is_set():
+        logging.info('Termination notice available.')
+        return True
 
-    with mock.patch.object(gce_util, 'request_compute_metadata',
-                           mock_request_compute_metadata), mock.patch.object(
-                               gce_util, 'detect_platform',
-                               lambda: gce_util.PlatformDevice.GCE_GPU):
+      return False
+
+    with mock.patch.object(
+        gce_util, 'termination_watcher_function_gce',
+        mock_termination_watcher_function_gce), mock.patch.object(
+            gce_util, 'detect_platform',
+            lambda: gce_util.PlatformDevice.GCE_GPU):
 
       class Model(module.Module):
 
@@ -129,7 +129,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
         model = Model()
         fh_ckpt = tracking_util.Checkpoint(model=model)
 
-        failure_handler = failure_handling.CoordinatedCheckpointManager(
+        worker_preemption_watcher = failure_handling.WorkerPreemptionHandler(
             strategy.cluster_resolver, fh_ckpt, checkpoint_dir)
 
       def distributed_train_step(current_epoch, current_step):
@@ -143,13 +143,15 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
         if current_step == STEPS_PER_EPOCH - 1:
           logging.info('epoch %d finished', current_epoch)
 
-      logging.info('Start training at %d', failure_handler.total_runs)
-      for epoch in range(failure_handler.total_runs // STEPS_PER_EPOCH,
-                         EPOCHS_TO_RUN):
+      logging.info('Start training at %d', worker_preemption_watcher.total_runs)
+      for epoch in range(
+          worker_preemption_watcher.total_runs // STEPS_PER_EPOCH,
+          EPOCHS_TO_RUN):
 
-        for step in range(failure_handler.total_runs % STEPS_PER_EPOCH,
-                          STEPS_PER_EPOCH):
-          failure_handler.run(distributed_train_step, epoch, step)
+        for step in range(
+            worker_preemption_watcher.total_runs % STEPS_PER_EPOCH,
+            STEPS_PER_EPOCH):
+          worker_preemption_watcher.run(distributed_train_step, epoch, step)
 
       training_finished.set()
 
@@ -165,7 +167,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
         try:
           # Explicitly call __del__ since making it None and gc.collect does
           # not invoke __del__ here.
-          failure_handler.__del__()
+          worker_preemption_watcher.__del__()
 
           time.sleep(2)
 
