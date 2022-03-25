@@ -43,6 +43,79 @@ using SymbolicExpr = ShapeComponentAnalysis::SymbolicExpr;
 
 namespace {
 
+// Replace shape.broadcast with a shape if it's statically known.
+struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(
+      shape::BroadcastOp op, mlir::PatternRewriter &rewriter) const override {
+    ShapeComponentAnalysis shape_analysis;
+    auto loc = op.getLoc();
+    auto shapes = op.getShapes();
+
+    // First find the input shape with the largest rank.
+    SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicExpr>> shapes_found;
+    size_t max_rank = 0;
+    for (const auto &shape : llvm::enumerate(op.getShapes())) {
+      auto found_shape = shape_analysis.GetValueInfo(shape.value());
+      if (!found_shape) return failure();
+      shapes_found.push_back(*found_shape);
+      max_rank = std::max(max_rank, found_shape->size());
+    }
+    if (max_rank == 0) {
+      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
+          op, shapes[0].getType(), SmallVector<Value>());
+      return success();
+    }
+
+    SmallVector<const ShapeComponentAnalysis::SymbolicExpr *> joined_dimensions(
+        max_rank);
+    SmallVector<std::pair<Value, int64_t>> shape_and_rank_for_dim(max_rank);
+    for (const auto &shape : llvm::enumerate(shapes_found)) {
+      for (const auto &dim : llvm::enumerate(llvm::reverse(shape.value()))) {
+        // 1 dimensions don't contribute to the final result.
+        if (dim.value().isConstant(1)) continue;
+        // If it's not a 1 dimension it will be present in the result. Remember
+        // where it came from.
+        auto index = max_rank - dim.index() - 1;
+        if (!joined_dimensions[index]) {
+          joined_dimensions[index] = &dim.value();
+          shape_and_rank_for_dim[index] =
+              std::make_pair(shapes[shape.index()], shape.value().size());
+          continue;
+        }
+        // Bail if the dimensions are neither equal nor 1.
+        if (*joined_dimensions[index] != dim.value()) return failure();
+      }
+    }
+    // If the output is the same as one of the inputs just return that.
+    if (llvm::is_splat(shape_and_rank_for_dim) &&
+        shape_and_rank_for_dim[0].first) {
+      rewriter.replaceOp(op, shape_and_rank_for_dim[0].first);
+      return success();
+    }
+    // Otherwise rematerialize the shape from the pieces we have.
+    SmallVector<Value> elements;
+    for (int i = 0; i != max_rank; ++i) {
+      // 1 dimensions are filtered above, recreate the constant.
+      if (!shape_and_rank_for_dim[i].first) {
+        auto one = rewriter.getIntegerAttr(
+            shapes[0].getType().cast<RankedTensorType>().getElementType(), 1);
+        elements.push_back(rewriter.create<arith::ConstantOp>(loc, one));
+        continue;
+      }
+      // Extract from one of the shapes, accounting for the reverse indexing
+      // performed by broadcast.
+      Value index = rewriter.create<arith::ConstantIndexOp>(
+          loc, i - max_rank + shape_and_rank_for_dim[i].second);
+      elements.push_back(rewriter.create<tensor::ExtractOp>(
+          loc, shape_and_rank_for_dim[i].first, index));
+    }
+
+    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, elements);
+    return success();
+  }
+};
+
 LogicalResult AnalyzeDynamicBroadcastInDimExpandingBehavior(
     ShapeComponentAnalysis &analysis, Value value, Value shape,
     llvm::SmallSetVector<int64_t, 4> *known_expanding_dims,
@@ -711,7 +784,8 @@ class SymbolicShapeOptimizationPass final
         CstrBroadcastableOpLowering,
         DynamicReshapeToExpandAndCollapseShape,
         RemoveComputeReshapeShape,
-        RemoveRedundantCstrReshapable>(ctx);
+        RemoveRedundantCstrReshapable,
+        SimplifyBroadcasts>(ctx);
     // clang-format on
     shape::AssumingOp::getCanonicalizationPatterns(patterns, ctx);
 

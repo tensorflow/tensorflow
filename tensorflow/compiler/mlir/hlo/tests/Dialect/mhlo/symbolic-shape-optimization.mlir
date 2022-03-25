@@ -627,3 +627,67 @@ func @optimize_10d_all_cases(
       -> tensor<?x?x?x?x?x?x?x?x?x?xf32>
   return %3: tensor<?x?x?x?x?x?x?x?x?x?xf32>
 }
+
+// -----
+
+// CHECK-LABEL: @empty_bcast
+// CHECK-SAME:  %[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>
+func @empty_bcast(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<0xindex> {
+  // CHECK-DAG: %[[SHAPE:.*]] = arith.constant dense<> : tensor<0xindex>
+  // CHECK:     return %[[SHAPE]]
+  %0 = shape.shape_of %arg0 : tensor<f32> -> tensor<0xindex>
+  %1 = shape.shape_of %arg1 : tensor<f32> -> tensor<0xindex>
+  %2 = shape.broadcast %0, %1 : tensor<0xindex>, tensor<0xindex>
+      -> tensor<0xindex>
+  return %2 : tensor<0xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @simplifiable_bcast
+// CHECK-SAME:  %[[ARG0:.*]]: tensor<?x1x1x4x?x?x1xf32>
+// CHECK-SAME:  %[[ARG1:.*]]: tensor<1x8x1x?x1x?xf32>
+func @simplifiable_bcast(
+    %arg0 : tensor<?x1x1x4x?x?x1xf32>
+    {jitrt.symbolic_shape = dense<[-2, 1, 1, 4, -2, -3,  1]> : tensor<7xi64>},
+    %arg1 : tensor<1x8x1x?x1x?xf32>
+    {jitrt.symbolic_shape = dense<[    1, 8, 1, -2,  1, -4]> : tensor<6xi64>})
+    -> tensor<7xindex> {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG: %[[C3:.*]] = arith.constant 3
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4
+  // CHECK-DAG: %[[C5:.*]] = arith.constant 5
+  // CHECK-DAG: %[[S0:.*]] = shape.shape_of %[[ARG0]]
+  // CHECK-DAG: %[[S1:.*]] = shape.shape_of %[[ARG1]]
+  // CHECK-DAG: %[[S0D0:.*]] = tensor.extract %[[S0]][%[[C0]]]
+  // CHECK-DAG: %[[S0D3:.*]] = tensor.extract %[[S0]][%[[C3]]]
+  // CHECK-DAG: %[[S0D4:.*]] = tensor.extract %[[S0]][%[[C4]]]
+  // CHECK-DAG: %[[S0D5:.*]] = tensor.extract %[[S0]][%[[C5]]]
+  // CHECK-DAG: %[[S1D1:.*]] = tensor.extract %[[S1]][%[[C1]]]
+  // CHECK-DAG: %[[S1D5:.*]] = tensor.extract %[[S1]][%[[C5]]]
+  // CHECK-DAG: %8 = tensor.from_elements %[[S0D0]], %[[C1]], %[[S1D1]], %[[S0D3]], %[[S0D4]], %[[S0D5]], %[[S1D5]]
+  // CHECK:     return %8
+  %0 = shape.shape_of %arg0 : tensor<?x1x1x4x?x?x1xf32> -> tensor<7xindex>
+  %1 = shape.shape_of %arg1 : tensor<1x8x1x?x1x?xf32> -> tensor<6xindex>
+  %2 = shape.broadcast %0, %1 : tensor<7xindex>, tensor<6xindex>
+      -> tensor<7xindex>
+  return %2 : tensor<7xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @very_dynamic_bcast
+// CHECK-SAME:  %[[ARG0:.*]]: tensor<?xf32>, %[[ARG1:.*]]: tensor<?xf32>
+func @very_dynamic_bcast(%arg0 : tensor<?xf32>, %arg1 : tensor<?xf32>)
+    -> tensor<1xindex> {
+  // CHECK-DAG: %[[S0:.*]] = shape.shape_of %[[ARG0]]
+  // CHECK-DAG: %[[S1:.*]] = shape.shape_of %[[ARG1]]
+  // CHECK-DAG: %[[BCASTED:.*]] = shape.broadcast %[[S0]], %[[S1]]
+  // CHECK:     return %[[BCASTED]]
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
+  %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
+  %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<1xindex>
+      -> tensor<1xindex>
+  return %2 : tensor<1xindex>
+}
