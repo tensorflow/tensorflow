@@ -92,6 +92,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
   }
   ~MklConvFwdPrimitive() {}
 
+  dnnl::memory::desc GetScratchPadDesc() {
+    return context_.fwd_pd->scratchpad_desc();
+  }
+
   // Convolution forward execute with bias
   //   src_data:    input data buffer of src
   //   filter_data: input data buffer of filter (weights)
@@ -99,16 +103,16 @@ class MklConvFwdPrimitive : public MklPrimitive {
   //   dst_data:    output data buffer of dst
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
                const Tbias* bias_data, const Toutput* dst_data,
-               std::shared_ptr<stream> fwd_stream) {
+               std::shared_ptr<stream> fwd_stream, void* sp_data = nullptr) {
     Execute(src_data, filter_data, bias_data, dst_data, nullptr, nullptr,
-            nullptr, nullptr, fwd_stream);
+            nullptr, nullptr, fwd_stream, sp_data);
   }
 
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
                const Tbias* bias_data, const Toutput* dst_data,
                const Tinput* bn_scale_data, const Tinput* bn_mean_data,
                const Tinput* bn_offset_data, const Tinput* bn_rsqrt_data,
-               std::shared_ptr<stream> fwd_stream) {
+               std::shared_ptr<stream> fwd_stream, void* sp_data) {
 #ifndef ENABLE_ONEDNN_OPENMP
     // TODO(intel-tf): Create a common function and avoid the duplicate code
     context_.src_mem->set_data_handle(
@@ -153,6 +157,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(
         static_cast<void*>(const_cast<Toutput*>(dst_data)));
 #endif  // !ENABLE_ONEDNN_OPENMP
+    if (sp_data) {
+      context_.sp_mem->set_data_handle(static_cast<void*>(sp_data),
+                                       *fwd_stream);
+    }
 
     DCHECK_EQ(context_.fwd_primitives.size(),
               context_.fwd_primitives_args.size());
@@ -174,6 +182,9 @@ class MklConvFwdPrimitive : public MklPrimitive {
       context_.bn_offset_mem->set_data_handle(DummyData);
     }
     context_.dst_mem->set_data_handle(DummyData);
+    if (sp_data) {
+      context_.sp_mem->set_data_handle(DummyData);
+    }
   }
 
   // Convolution forward execute without bias
@@ -181,9 +192,10 @@ class MklConvFwdPrimitive : public MklPrimitive {
   //   filter_data: input data buffer of filter (weights)
   //   dst_data:    output data buffer of dst
   void Execute(const Tinput* src_data, const Tfilter* filter_data,
-               const Toutput* dst_data, std::shared_ptr<stream> fwd_stream) {
+               const Toutput* dst_data, std::shared_ptr<stream> fwd_stream,
+               void* sp_data) {
     Execute(src_data, filter_data, nullptr, dst_data, nullptr, nullptr, nullptr,
-            nullptr, fwd_stream);
+            nullptr, fwd_stream, sp_data);
   }
 
   std::shared_ptr<ConvFwdPd> GetPrimitiveDesc() const {
@@ -198,6 +210,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
     std::shared_ptr<dnnl::memory> filter_mem;
     std::shared_ptr<dnnl::memory> bias_mem;
     std::shared_ptr<dnnl::memory> dst_mem;
+    std::shared_ptr<dnnl::memory> sp_mem;
 
     // FusedBatchNorm related memory
     std::shared_ptr<dnnl::memory> bn_scale_mem;
@@ -232,6 +245,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
           filter_mem(nullptr),
           bias_mem(nullptr),
           dst_mem(nullptr),
+          sp_mem(nullptr),
           bn_scale_mem(nullptr),
           bn_mean_mem(nullptr),
           bn_rsqrt_mem(nullptr),
@@ -305,6 +319,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
     auto const& post_op_params = convFwdDims.post_op_params;
     dnnl::primitive_attr post_ops_attr;
     dnnl::post_ops post_ops;
+    post_ops_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
         if (post_op_param.name == "activation") {
@@ -341,11 +356,9 @@ class MklConvFwdPrimitive : public MklPrimitive {
         }
       }
       post_ops_attr.set_post_ops(post_ops);
-      context_.fwd_pd.reset(
-          new ConvFwdPd(*context_.fwd_desc, post_ops_attr, cpu_engine_));
-    } else {
-      context_.fwd_pd.reset(new ConvFwdPd(*context_.fwd_desc, cpu_engine_));
     }
+    context_.fwd_pd.reset(
+        new ConvFwdPd(*context_.fwd_desc, post_ops_attr, cpu_engine_));
 
     // Create memory primitive based on dummy data
     context_.src_mem.reset(
@@ -356,6 +369,9 @@ class MklConvFwdPrimitive : public MklPrimitive {
         new memory(context_.fwd_pd.get()->dst_desc(), cpu_engine_, DummyData));
 
     context_.conv_fwd.reset(new convolution_forward(*context_.fwd_pd));
+    auto scratchpad_md = context_.fwd_pd->scratchpad_desc();
+    context_.sp_mem.reset(
+        new dnnl::memory(scratchpad_md, cpu_engine_, DummyData));
 
     // Create convolution primitive and add it to net
     if (!convFwdDims.bias_dims.empty()) {
@@ -366,6 +382,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
           {{DNNL_ARG_SRC, *context_.src_mem},
            {DNNL_ARG_WEIGHTS, *context_.filter_mem},
            {DNNL_ARG_BIAS, *context_.bias_mem},
+           {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
            {DNNL_ARG_DST, *context_.dst_mem}});
     } else if (!convFwdDims.fuse_bn_dims.empty()) {
       context_.bn_scale_mem.reset(
@@ -381,6 +398,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
           {{DNNL_ARG_SRC, *context_.src_mem},
            {DNNL_ARG_WEIGHTS, *context_.filter_mem},
            {DNNL_ARG_DST, *context_.dst_mem},
+           {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
             *context_.bn_mean_mem},
            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
@@ -393,6 +411,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
       context_.fwd_primitives_args.push_back(
           {{DNNL_ARG_SRC, *context_.src_mem},
            {DNNL_ARG_WEIGHTS, *context_.filter_mem},
+           {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
            {DNNL_ARG_DST, *context_.dst_mem}});
     }
     context_.fwd_primitives.push_back(*context_.conv_fwd);
@@ -845,6 +864,9 @@ class MklConvOp : public OpKernel {
             const_cast<Tfilter*>(filter_tensor.flat<Tfilter>().data()));
       }
 
+      UserScratchPad<unsigned char> scratch_pad;
+      scratch_pad.AllocateSPTensor(conv_fwd, context);
+
       // Execute convolution
       std::shared_ptr<stream> fwd_cpu_stream;
       MklDnnThreadPool eigen_tp(context);
@@ -854,7 +876,7 @@ class MklConvOp : public OpKernel {
         Tbias* bias_data =
             this->GetBiasHandle(context, conv_fwd_pd, bias_tensor);
         conv_fwd->Execute(src_data, filter_data, bias_data, dst_data,
-                          fwd_cpu_stream);
+                          fwd_cpu_stream, scratch_pad.Get());
       } else if (fuse_bn_) {
         const Tensor& bn_scale_tensor =
             MklGetInput(context, kInputIndex_BN_Scale);
@@ -879,9 +901,10 @@ class MklConvOp : public OpKernel {
                              bn_rsqrt_data);
         conv_fwd->Execute(src_data, filter_data, nullptr, dst_data,
                           bn_scale_data, bn_mean_data, bn_offset_data,
-                          bn_rsqrt_data, fwd_cpu_stream);
+                          bn_rsqrt_data, fwd_cpu_stream, scratch_pad.Get());
       } else {
-        conv_fwd->Execute(src_data, filter_data, dst_data, fwd_cpu_stream);
+        conv_fwd->Execute(src_data, filter_data, dst_data, fwd_cpu_stream,
+                          scratch_pad.Get());
       }
 
       // Delete primitive since it is not cached.

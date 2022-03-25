@@ -814,8 +814,7 @@ struct UserScratchPad {
     size_t spad_size = spad_md.get_size();
     if (spad_size == 0) return;
 
-    size_t allocate_size =
-        (spad_size / sizeof(T)) + ((spad_size % sizeof(T) > 0) ? 1 : 0);
+    size_t allocate_size = (spad_size + sizeof(T) - 1) / sizeof(T);
     TensorShape tf_shape;
     tf_shape.AddDim(allocate_size);
     AllocTmpBuffer<T>(context, &scratch_pad_, tf_shape);
