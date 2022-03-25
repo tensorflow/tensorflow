@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -1344,7 +1345,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         parent_->use_fast_path_ &&
         ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
         ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) {
-      return HandleDot<ReturnT>(dot);
+      return HandleDot<ElementwiseT>(dot);
     }
     return HandleDotSlowPath(dot);
   }
@@ -1380,32 +1381,38 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         << rhs->shape().dimensions(rhs_contracting_dimension);
 
     // The fast path is for a simple rank 2 dot with default layout operands.
-    if (lhs_rank == 2 && rhs_rank == 2 && lhs_contracting_dimension == 1 &&
-        rhs_contracting_dimension == 0 &&
-        LayoutUtil::Equal(lhs->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2()) &&
-        LayoutUtil::Equal(rhs->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2()) &&
-        LayoutUtil::Equal(dot->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2())) {
-      const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-      const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-      const int64_t contracted_dimension_size =
-          lhs->shape().dimensions(lhs_contracting_dimension);
-      Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
-                                 contracted_dimension_size);
-      lhs_array.SetValues(lhs_literal.data<NativeT>());
-      Array2D<NativeT> rhs_array(contracted_dimension_size,
-                                 rhs->shape().dimensions(1));
-      rhs_array.SetValues(rhs_literal.data<NativeT>());
-      std::unique_ptr<Array2D<NativeT>> result_array =
-          HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
-      Literal result(dot->shape());
-      result.PopulateR2FromArray2D(*result_array);
-      parent_->evaluated_[dot] = std::move(result);
-      return Status::OK();
+    if (lhs_rank != 2 || rhs_rank != 2 || lhs_contracting_dimension != 1 ||
+        rhs_contracting_dimension != 0 ||
+        !LayoutUtil::Equal(lhs->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2()) ||
+        !LayoutUtil::Equal(rhs->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2()) ||
+        !LayoutUtil::Equal(dot->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2())) {
+      return HandleDotSlowPath(dot);
     }
-    return HandleDotSlowPath(dot);
+
+    const PrimitiveType native_ty =
+        primitive_util::NativeToPrimitiveType<NativeT>();
+    Literal lhs_literal =
+        parent_->GetEvaluatedLiteralFor(lhs).Convert(native_ty).ValueOrDie();
+    Literal rhs_literal =
+        parent_->GetEvaluatedLiteralFor(rhs).Convert(native_ty).ValueOrDie();
+    const int64_t contracted_dimension_size =
+        lhs->shape().dimensions(lhs_contracting_dimension);
+    Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
+                               contracted_dimension_size);
+    lhs_array.SetValues(lhs_literal.data<NativeT>());
+    Array2D<NativeT> rhs_array(contracted_dimension_size,
+                               rhs->shape().dimensions(1));
+    rhs_array.SetValues(rhs_literal.data<NativeT>());
+    std::unique_ptr<Array2D<NativeT>> result_array =
+        HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
+    Literal result(ShapeUtil::MakeShape(native_ty, dot->shape().dimensions()));
+    result.PopulateR2FromArray2D(*result_array);
+    parent_->evaluated_[dot] =
+        std::move(result).Convert(dot->shape().element_type()).ValueOrDie();
+    return Status::OK();
   }
 
   template <typename NativeT, typename std::enable_if<!std::is_same<
