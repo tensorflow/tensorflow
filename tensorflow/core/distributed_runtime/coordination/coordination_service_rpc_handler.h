@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
@@ -70,7 +72,8 @@ class CoordinationServiceRpcHandler {
                           CancelBarrierResponse* response, StatusCallback done);
 
  private:
-  CoordinationServiceAgent* agent_;
+  mutex agent_mu_;
+  CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_);
 };
 
 }  // namespace tensorflow

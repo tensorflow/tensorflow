@@ -557,6 +557,7 @@ cc_library(
     hdrs = ["multi_trainer_cache.h"],
     deps = [
         ":logging_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",

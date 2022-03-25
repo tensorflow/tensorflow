@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/logging_utils.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -141,7 +142,7 @@ class MultiTrainerCache {
   // Maximum cache size in bytes.
   const size_t max_cache_size_bytes_;
 
-  // The element stream over which the sliding window cache operates.
+  // The element sequence over which the sliding window cache operates.
   std::unique_ptr<CachableSequence<ElementType>> cachable_sequence_;
 
   mutable mutex mu_;
@@ -187,12 +188,14 @@ MultiTrainerCache<ElementType>::Get(const std::string& trainer_id)
         "tf.data service multi-trainer cache trainer ID must be non-empty.");
   }
 
+  bool should_extend_cache = false;
   while (true) {
-    bool should_extend_cache = false;
     {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(status_);
       if (IsElementReady(trainer_id)) {
+        metrics::RecordTFDataServiceMultiTrainerCacheQuery(
+            /*cache_hit=*/!should_extend_cache);
         return GetElement(trainer_id);
       }
 

@@ -53,13 +53,13 @@ struct GetElementResult {
   // A dataset element produced by a GetElement request.
   std::vector<Tensor> components;
   // The element's index within the task it came from.
-  int64_t element_index;
+  int64_t element_index = 0;
   // If true, indicates that there is no more data to read.
-  bool end_of_sequence;
+  bool end_of_sequence = false;
   // If true, indicates that there is still data, but the caller should skip
   // reading from the worker. This is used for load balancing when doing round
   // robin reads.
-  bool skip;
+  bool skip = false;
 };
 
 // Client for communicating with the tf.data service transfer server.

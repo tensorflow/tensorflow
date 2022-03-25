@@ -64,7 +64,11 @@
 # Major Features and Improvements
 
 *   `tf.keras`:
-
+    *   Added `tf.keras.applications.resnet_rs` models.  This includes the
+        `ResNetRS50`, `ResNetRS101`, `ResNetRS152`, `ResNetRS200`,
+        `ResNetRS270`, `ResNetRS350` and `ResNetRS420` model architectures.
+        The ResNetRS models are based on the architecture described in
+        [Revisiting ResNets: Improved Training and Scaling Strategies](https://arxiv.org/pdf/2103.07579.pdf)
     *   Added `tf.keras.optimizers.experimental.Optimizer`. The reworked
         optimizer gives more control over different phases of optimizer calls,
         and is easier to customize. We provide Adam, SGD, Adadelta, AdaGrad and

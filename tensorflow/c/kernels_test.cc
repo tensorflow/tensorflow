@@ -678,6 +678,12 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
     EXPECT_EQ(TF_UINT8, TF_ExpectedOutputDataType(ctx, 0));
 
+    EXPECT_DEATH({ TF_ExpectedOutputDataType(ctx, 1); },
+                 "Check failed: i < cc_ctx->num_outputs");
+
+    EXPECT_DEATH({ TF_ExpectedOutputDataType(ctx, -1); },
+                 "Check failed: i >= 0");
+
     TF_DeleteStatus(s);
     if (input != nullptr) {
       TF_DeleteTensor(input);
