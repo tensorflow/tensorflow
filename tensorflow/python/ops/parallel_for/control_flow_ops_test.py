@@ -104,7 +104,7 @@ class PForTest(PForTestCase):
     @def_function.function
     def f():
       return self._test_loop_fn(loop_fn,2)
-    self.assertAllEqual(2, f()))
+    self.assert(2, f())
 
   def test_parallel_iterations(self):
     for parallel_iterations in [2, 3, 8, 10]:
