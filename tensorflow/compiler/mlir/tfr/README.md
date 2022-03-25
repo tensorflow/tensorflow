@@ -28,7 +28,7 @@ Using the Composable TF API to define a new op and its composition can bring the
 following benefits:
 
 * *Automatic backend support*: As long as it is composed of ops supported by the
-backend, the new op is automatcally supported (as a `tf.function` alternative);
+backend, the new op is automatically supported (as a `tf.function` alternative);
 * *Reduced tracing overhead*: Unlike `tf.function`, the composition function is
 compiled at build time, hence TF only needs to trace a single op to build the
 `graph`;
@@ -43,7 +43,7 @@ gradient a function of the op for training.
 
 ### Use Cases
 
-* (Portablity) User wants to add a new op and run this op on different
+* (Portability) User wants to add a new op and run this op on different
 platforms (CPU, TPU, TFLite, etc.) to be portable.
  * *Solution*: The user should define the new op as a composition. The ops used
  inside the composition should have support for these platforms. These ops can
@@ -152,7 +152,7 @@ directory.
 * condition of `if` statement couldn't be a tensor
 
 ## RFC
-This project is an alternative implementaion of [RFC:Standardizing composite ops in tensorflow to support efficient inference](https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md).
+This project is an alternative implementation of [RFC:Standardizing composite ops in tensorflow to support efficient inference](https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md).
 This project doesn't rely on the tracing functionality provided by `tf.function`
 to avoid all its pitfalls and it helps to build more general transformations in
 the backends.

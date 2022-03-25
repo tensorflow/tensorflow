@@ -165,7 +165,7 @@ Currently, tiling of the consumer and fusion of its producers are tightly
 coupled. If the fusion is happening not in the same pass, then some analysis is
 required to find the [consumer - `tensor.extract_slice` - producer] triple to
 perform the fusion. Keeping the subset computations separately from the
-"compute" ops not only improves readablity but also simplifies fusion, since we
+"compute" ops not only improves readability but also simplifies fusion, since we
 have a subset computation per operand and we can just specify what argument of
 the loop we want to fuse.
 
