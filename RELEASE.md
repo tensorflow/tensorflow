@@ -173,6 +173,12 @@
     * Added `tf.random.experimental.index_shuffle`, for shuffling a sequence
       without materializing the sequence in memory.
 
+*   `tf.RaggedTensor`:
+    *   Introduced `tf.experimental.RowPartition`, which encodes how one
+        dimension in a RaggedTensor relates to another, into the public API.
+    *   Introduced `tf.experimental.DynamicRaggedShape`, which represents the
+        shape of a RaggedTensor.
+
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 *   <NOTES SHOULD BE GROUPED PER AREA>

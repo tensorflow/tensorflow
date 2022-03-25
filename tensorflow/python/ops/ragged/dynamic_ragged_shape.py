@@ -39,6 +39,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.ops.ragged.row_partition import RowPartitionSpec
 from tensorflow.python.types import core
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(martinz): allow inner_shape to be a fully defined TensorShape.
@@ -51,6 +52,7 @@ from tensorflow.python.types import core
 #
 # TODO(martinz): unify the impl of the determination of index type across
 #     RowPartition and DynamicRaggedShape.
+@tf_export("experimental.DynamicRaggedShape")
 class DynamicRaggedShape(extension_type.ExtensionType):
   """The shape of a ragged or dense tensor.
 
