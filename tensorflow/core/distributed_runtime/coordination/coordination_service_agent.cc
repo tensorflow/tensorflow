@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -367,21 +368,18 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
 }
 
 Status CoordinationServiceAgentImpl::Shutdown() {
-  bool may_be_connected = false;
+  Status status = Status::OK();
+  bool is_connected = false;
   {
     mutex_lock l(state_mu_);
-    may_be_connected = state_ == State::RUNNING || state_ == State::ERROR;
+    is_connected = state_ == State::RUNNING;
   }
-
-  Status s = Status::OK();
-
   // Disconnect agent from service.
-  if (!configs_.agent_destruction_without_shutdown() && may_be_connected) {
+  if (!configs_.agent_destruction_without_shutdown() && is_connected) {
     ShutdownTaskRequest request;
     *request.mutable_source_task() = task_;
     ShutdownTaskResponse response;
 
-    Status status;
     absl::Notification n;
     leader_client_->ShutdownTaskAsync(&request, &response,
                                       [&status, &n](Status s) {
@@ -389,10 +387,10 @@ Status CoordinationServiceAgentImpl::Shutdown() {
                                         n.Notify();
                                       });
     n.WaitForNotification();
-    if (!s.ok()) {
+    if (!status.ok()) {
       LOG(ERROR)
-          << "Failed to disconnect from coordination service with status: " << s
-          << ". Proceeding with agent shutdown anyway.";
+          << "Failed to disconnect from coordination service with status: "
+          << status << ". Proceeding with agent shutdown anyway.";
     }
   }
 
@@ -400,9 +398,16 @@ Status CoordinationServiceAgentImpl::Shutdown() {
   StopHeartbeat();
   {
     mutex_lock l(state_mu_);
+    if (state_ == State::ERROR) {
+      status = MakeCoordinationError(errors::FailedPrecondition(absl::StrCat(
+          "Shutdown() was called while agent is in error state, implying that "
+          "distributed execution failed. Note: agent will still shutdown "
+          "anyway. Agent status: ",
+          status_.ToString())));
+    }
     state_ = State::SHUTDOWN;
   }
-  return s;
+  return status;
 }
 
 Status CoordinationServiceAgentImpl::Reset() {

@@ -239,6 +239,18 @@ TEST_F(CoordinationServiceAgentTest, NotAllowedToConnectAfterShuttingDown) {
   EXPECT_TRUE(errors::IsFailedPrecondition(status));
 }
 
+TEST_F(CoordinationServiceAgentTest, ShutdownInErrorShouldReturnError) {
+  // Connect coordination agent and set it to error.
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+  TF_EXPECT_OK(agent_->ReportError(errors::Internal("Test Error.")));
+
+  // Shutdown should return error.
+  Status s = agent_->Shutdown();
+
+  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+}
+
 TEST_F(CoordinationServiceAgentTest, Reset_ConnectedButNotInError_Fail) {
   // Connect agent.
   InitializeAgent();
