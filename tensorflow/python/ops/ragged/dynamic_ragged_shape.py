@@ -858,18 +858,26 @@ class DynamicRaggedShape(extension_type.ExtensionType):
           _inner_shape=inner_shape,
           _static_inner_shape=static_inner_shape)
 
+    # TODO(martinz): it is unclear what the default uniformity of RowPartitions
+    # should be, so I am moving this to experimental until we figure it out.
+    # Also, while I have specified this is meant to represent a shape of a
+    # proper Tensor instead of a RaggedTensor, this is also subject to
+    # interpretation.
     @classmethod
-    def from_tensor_shape(cls,
-                          shape: Any,
-                          num_row_partitions: int,
-                          dtype: dtypes.DType) -> "DynamicRaggedShape.Spec":
-      """Creates a DynamicRaggedShape.Spec corresponding to a TensorShape.
+    def _from_tensor_shape(cls,
+                           shape: Any,
+                           num_row_partitions: int,
+                           dtype: dtypes.DType) -> "DynamicRaggedShape.Spec":
+      """Creates a `DynamicRaggedShape.Spec` corresponding to a `tf.TensorShape`.
+
+      It is assumed that this is a `tf.TensorShape` coming from a
+      `tf.TensorSpec`, not from `RaggedTensor.shape`.
 
       In addition to the shape, we need to know the number of row partitions,
       and the dtype used in the shape (tf.int32 or tf.int64).
 
-      Within the dimensions that are partitioned, any dimensions which has
-      unknown size is assumed to be ragged.
+      Within the dimensions that are partitioned, all dimensions are assumed
+      to be uniform.
 
       Args:
         shape: a TensorShape.
@@ -885,7 +893,8 @@ class DynamicRaggedShape(extension_type.ExtensionType):
       shape = tensor_shape.as_shape(shape)
       if shape.rank is None:
         row_partitions = [
-            RowPartitionSpec(dtype=dtype) for _ in range(num_row_partitions)
+            RowPartitionSpec(is_uniform=True,
+                             dtype=dtype) for _ in range(num_row_partitions)
         ]
         return cls._from_row_partitions_inner_shape_and_dtype(
             row_partitions=row_partitions,
@@ -915,7 +924,8 @@ class DynamicRaggedShape(extension_type.ExtensionType):
             nrows=num_elements_so_far,
             nvals=nvals,
             uniform_row_length=current_dim,
-            dtype=dtype))
+            dtype=dtype,
+            is_uniform=True))
         num_elements_so_far = nvals
 
       static_inner_shape = tensor_shape.TensorShape(
@@ -1025,12 +1035,12 @@ class DynamicRaggedShape(extension_type.ExtensionType):
         A truncated DynamicRaggedShape.Spec.
       """
       if new_rank == 0:
-        return DynamicRaggedShape.Spec.from_tensor_shape([], 0, self.dtype)
+        return DynamicRaggedShape.Spec._from_tensor_shape([], 0, self.dtype)
 
       if new_rank == 1:
         vector_size = self._dimension(0)
-        return DynamicRaggedShape.Spec.from_tensor_shape([vector_size], 0,
-                                                         self.dtype)
+        return DynamicRaggedShape.Spec._from_tensor_shape([vector_size], 0,
+                                                          self.dtype)
 
       if new_rank < self.num_row_partitions + 1:
         new_row_partitions = self._row_partitions[:new_rank - 1]
