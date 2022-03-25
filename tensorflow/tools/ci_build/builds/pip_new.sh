@@ -634,9 +634,12 @@ if [[ "$IS_NIGHTLY" == 1 ]]; then
   # If 'nightly' is not specified in the project name already, then add.
   if ! [[ $PROJECT_NAME == *"nightly"* ]]; then
     echo "WARNING: IS_NIGHTLY=${IS_NIGHTLY} but requested project name \
-    (PROJECT_NAME=${PROJECT_NAME}) does not include 'nightly' string. \
-    Renaming it to 'tf_nightly'."
+    (PROJECT_NAME=${PROJECT_NAME}) does not include 'nightly' string."
     PROJECT_NAME="tf_nightly"
+    if [[ ${CONTAINER_TYPE} == "rocm" ]]; then
+      PROJECT_NAME="${PROJECT_NAME}_rocm"
+    fi
+    echo "Renaming it to '${PROJECT_NAME}'."
   fi
   NIGHTLY_FLAG="--nightly_flag"
 fi
