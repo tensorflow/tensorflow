@@ -58,15 +58,6 @@ class ReadVariablesOp : public OpKernel {
   DataTypeVector dtypes_;
 };
 
-class ReadVariableWithoutCopyOp : public OpKernel {
- public:
-  explicit ReadVariableWithoutCopyOp(OpKernelConstruction* c);
-  void Compute(OpKernelContext* ctx) override;
-
- private:
-  DataType dtype_;
-};
-
 class DestroyResourceOp : public OpKernel {
  public:
   explicit DestroyResourceOp(OpKernelConstruction* ctx);
@@ -74,6 +65,12 @@ class DestroyResourceOp : public OpKernel {
 
  private:
   bool ignore_lookup_error_;
+};
+
+class DisableCopyOnReadOp : public OpKernel {
+ public:
+  explicit DisableCopyOnReadOp(OpKernelConstruction* c) : OpKernel(c) {}
+  void Compute(OpKernelContext* ctx) override;
 };
 
 template <typename T>

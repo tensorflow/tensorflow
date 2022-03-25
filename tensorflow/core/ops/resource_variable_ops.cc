@@ -144,12 +144,6 @@ REGISTER_OP("_ReadVariablesOp")
     .Attr("dtypes: list(type)")
     .SetShapeFn(ReadVariablesShapeFn);
 
-REGISTER_OP("ReadVariableWithoutCopyOp")
-    .Input("resource: resource")
-    .Output("value: dtype")
-    .Attr("dtype: type")
-    .SetShapeFn(ReadVariableShapeFn);
-
 Status ReadGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FunctionDefHelper::Define(
@@ -424,5 +418,9 @@ REGISTER_OP("ConsumeMutexLock")
     .Input("mutex_lock: variant")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
+
+REGISTER_OP("DisableCopyOnReadOp")
+    .Input("resource: resource")
+    .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow
