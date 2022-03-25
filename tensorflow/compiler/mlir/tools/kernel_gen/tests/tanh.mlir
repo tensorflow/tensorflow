@@ -11,7 +11,7 @@
 // integration.
 // TODO: Expand this pattern once things have stabilized.
 // CHECK-LABEL: @tanh
-func @tanh(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @tanh(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: alloc
   // CHECK: scf.for
   // CHECK: memref.reshape

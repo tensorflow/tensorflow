@@ -1,6 +1,6 @@
 // RUN: kernel-gen-opt %s --convert-to-signless --canonicalize | FileCheck %s
 
-func @Uint16ToInt16(%arg0: memref<*xui16>) -> memref<ui16> {
+func.func @Uint16ToInt16(%arg0: memref<*xui16>) -> memref<ui16> {
   // CHECK-NOT: unrealized_conversion_cast
   // CHECK: %[[CAST:.*]] = memref.cast %arg0 : memref<*xi16> to memref<i16>
   // CHECK: return %[[CAST]] : memref<i16>

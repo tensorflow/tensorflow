@@ -5,7 +5,7 @@
 
 // CHECK-LABEL: @unary_tanh_rint
 // CHECK-SAME: (%[[ARG:.*]]: tensor<*xf32>)
-func @unary_tanh_rint(%arg : tensor<*xf32>) -> tensor<*xf32> {
+func.func @unary_tanh_rint(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[CALLABLE:.*]] = tf_framework.jit_compile_from_str
   // CHECK-SAME: "
   // CHECK-SAME: module {
@@ -36,7 +36,7 @@ func @unary_tanh_rint(%arg : tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL: @binary_sub
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<*xf32>, %[[ARG1:.*]]: tensor<*xf32>)
-func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
+func.func @binary_sub(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[CALLABLE:.*]] = tf_framework.jit_compile_from_str
   // CHECK-SAME: "
   // CHECK-SAME: module {
