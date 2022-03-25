@@ -1,7 +1,7 @@
 // RUN: tf-tfrt-opt -tfrt-test-cost-analysis -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: test_cheap_ops_0
-func @test_cheap_ops_0(%arg: tensor<?x!tf_type.string>) -> (tensor<?x8xf32>) {
+func.func @test_cheap_ops_0(%arg: tensor<?x!tf_type.string>) -> (tensor<?x8xf32>) {
     // expected-remark@+1 {{Cost: 1}}
     %0 = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
     // expected-remark@+1 {{Cost: 1}}
@@ -67,7 +67,7 @@ func @test_cheap_ops_0(%arg: tensor<?x!tf_type.string>) -> (tensor<?x8xf32>) {
 }
 
 // CHECK-LABEL: test_cheap_ops_1
-func @test_cheap_ops_1(%arg: tensor<?x8x?x?xf32>) -> (tensor<4xi32>, tensor<?x8x?x?xf32>) {
+func.func @test_cheap_ops_1(%arg: tensor<?x8x?x?xf32>) -> (tensor<4xi32>, tensor<?x8x?x?xf32>) {
     // expected-remark@+1 {{Cost: 1}}
     %0 = "tf.Const"() {value = dense<8> : tensor<i32>} : () -> tensor<i32>
     // expected-remark@+1 {{Cost: 1}}
@@ -103,7 +103,7 @@ func @test_cheap_ops_1(%arg: tensor<?x8x?x?xf32>) -> (tensor<4xi32>, tensor<?x8x
 }
 
 // CHECK-LABEL: test_expensive_ops
-func @test_expensive_ops(%arg: tensor<?x512xf32>) -> tensor<?x512xf32> {
+func.func @test_expensive_ops(%arg: tensor<?x512xf32>) -> tensor<?x512xf32> {
     // expected-remark@+1 {{Cost: 1}}
     %0 = "tf.VarHandleOp"() {allowed_devices = [], container = "", device = "/job:localhost/replica:0/task:0/device:CPU:0", shared_name = "var"} : () -> tensor<!tf_type.resource<tensor<512x512xf32>>>
     // expected-remark@+1 {{Cost: 2}}
@@ -116,7 +116,7 @@ func @test_expensive_ops(%arg: tensor<?x512xf32>) -> tensor<?x512xf32> {
 }
 
 // CHECK-LABEL: test_dynamic_shape
-func @test_dynamic_shape(%key: tensor<?x!tf_type.string>, %value: tensor<8xi64>) -> tensor<*xi1> {
+func.func @test_dynamic_shape(%key: tensor<?x!tf_type.string>, %value: tensor<8xi64>) -> tensor<*xi1> {
     // expected-remark@+1 {{Cost: 1}}
     %default = "tf.Const"() {device = "/job:localhost/replica:0/task:0/device:CPU:0", value = dense<-1> : tensor<i64>} : () -> tensor<i64>
     // expected-remark@+1 {{Cost: 1}}
@@ -131,7 +131,7 @@ func @test_dynamic_shape(%key: tensor<?x!tf_type.string>, %value: tensor<8xi64>)
 }
 
 // CHECK-LABEL: test_gather
-func @test_gather(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> (tensor<1x3x5x20xf32>){
+func.func @test_gather(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> (tensor<1x3x5x20xf32>){
     // expected-remark@+1 {{Cost: 1}}
     %0 = "tf.Const"() { value = dense<[1]> : tensor<1xi32> } : () -> tensor<1xi32>
     // expected-remark@+1 {{Cost: 300}}
@@ -141,7 +141,7 @@ func @test_gather(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> (tenso
 }
 
 // CHECK-LABEL: test_sparse_segment_sum
-func @test_sparse_segment_sum(%indices: tensor<3xi64>, %segment_ids: tensor<3xi64>) -> (tensor<?x28xf32>){
+func.func @test_sparse_segment_sum(%indices: tensor<3xi64>, %segment_ids: tensor<3xi64>) -> (tensor<?x28xf32>){
     // expected-remark@+1 {{Cost: 1}}
     %data = "tf.Const"() { value = dense<0.1> : tensor<476x28xf32> } : () -> tensor<476x28xf32>
     // expected-remark@+1 {{Cost: 28}}
