@@ -25,7 +25,7 @@ tfr.func @tf__my_pack(%values: !tfr.tensor_list,
 }
 
 // CHECK-LABEL: pack_one
-func @pack_one(%arg0: tensor<2x3xf32>) -> tensor<1x2x3xf32> {
+func.func @pack_one(%arg0: tensor<2x3xf32>) -> tensor<1x2x3xf32> {
   %0 = "tf.MyPack"(%arg0) {N=1:i32, axis=0:i32} : (tensor<2x3xf32>) -> tensor<1x2x3xf32>
   func.return %0 : tensor<1x2x3xf32>
 
@@ -37,7 +37,7 @@ func @pack_one(%arg0: tensor<2x3xf32>) -> tensor<1x2x3xf32> {
 }
 
 // CHECK-LABEL: pack_multiple
-func @pack_multiple(%arg0: tensor<2x3xf32>,
+func.func @pack_multiple(%arg0: tensor<2x3xf32>,
                     %arg1: tensor<2x3xf32>,
                     %arg2: tensor<2x3xf32>) -> tensor<3x2x3xf32> {
   %0 = "tf.MyPack"(%arg0, %arg1, %arg2) {N=3:i32, axis=0:i32} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<3x2x3xf32>

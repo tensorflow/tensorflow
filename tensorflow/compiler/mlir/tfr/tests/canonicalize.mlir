@@ -3,7 +3,7 @@
 // Tests for ops with canonicalization patterns.
 
 // CHECK-LABEL: get_real_shape
-func @get_real_shape(%arg0: tensor<1x2xf32>) -> tensor<2xindex> {
+func.func @get_real_shape(%arg0: tensor<1x2xf32>) -> tensor<2xindex> {
   %0 = "tfr.cast"(%arg0) : (tensor<1x2xf32>) -> !tfr.tensor
   %1 = tfr.get_shape %0 -> !shape.shape
   %2 = shape.to_extent_tensor %1 : !shape.shape -> tensor<2xindex>
@@ -14,7 +14,7 @@ func @get_real_shape(%arg0: tensor<1x2xf32>) -> tensor<2xindex> {
 }
 
 // CHECK-LABEL: equal
-func @equal() -> (i1, i1, i1, i1) {
+func.func @equal() -> (i1, i1, i1, i1) {
   %0 = tfr.constant f32 -> !tfr.attr
   %1 = tfr.constant f32 -> !tfr.attr
   %2 = tfr.constant i32 -> !tfr.attr
@@ -36,7 +36,7 @@ func @equal() -> (i1, i1, i1, i1) {
 // -----
 
 // CHECK-LABEL: constant_tensor_array
-func @constant_tensor_array() -> !tfr.tensor {
+func.func @constant_tensor_array() -> !tfr.tensor {
   %0 = tfr.constant [1, -1, 3] -> !tfr.attr
   %1 = "tfr.constant_tensor"(%0) : (!tfr.attr) -> !tfr.tensor
   func.return %1 : !tfr.tensor
@@ -49,7 +49,7 @@ func @constant_tensor_array() -> !tfr.tensor {
 // -----
 
 // CHECK-LABEL: constant_tensor_scalar
-func @constant_tensor_scalar() -> !tfr.tensor {
+func.func @constant_tensor_scalar() -> !tfr.tensor {
   %0 = "arith.constant"() {value = 42 : i32} : () -> i32
   %1 = "tfr.constant_tensor"(%0) : (i32) -> !tfr.tensor
   func.return %1 : !tfr.tensor
@@ -62,7 +62,7 @@ func @constant_tensor_scalar() -> !tfr.tensor {
 // -----
 
 // CHECK-LABEL: quant_raw_data
-func @quant_raw_data(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:1>>) -> tensor<1x10x!quant.uniform<i8:f32, 0.2:2>> {
+func.func @quant_raw_data(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:1>>) -> tensor<1x10x!quant.uniform<i8:f32, 0.2:2>> {
   %0 = "tfr.cast"(%arg0) : (tensor<1x10x!quant.uniform<i8:f32, 0.1:1>>) -> !tfr.tensor
   %1 = tfr.quant_raw_data(%0) : (!tfr.tensor) -> !tfr.tensor
   %2 = tfr.call @tf__risc(%1) : (!tfr.tensor) -> !tfr.tensor
@@ -82,7 +82,7 @@ func @quant_raw_data(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:1>>) -> tenso
 // -----
 
 // CHECK-LABEL:  quant_raw_data_with_list
-func @quant_raw_data_with_list(%arg0: !tfr.tensor, %arg1: !tfr.tensor) -> !tfr.tensor {
+func.func @quant_raw_data_with_list(%arg0: !tfr.tensor, %arg1: !tfr.tensor) -> !tfr.tensor {
   %cst_1 = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
   %1 = "tfr.cast"(%arg0) : (!tfr.tensor) -> tensor<1x4x4x3x!quant.uniform<i8:f32, 0.0078420601785182952:-1>>
   %2 = "tfr.cast"(%arg1) : (!tfr.tensor) -> tensor<1x3x4x3x!quant.uniform<i8:f32, 0.0078420601785182952:-1>>
@@ -104,7 +104,7 @@ func @quant_raw_data_with_list(%arg0: !tfr.tensor, %arg1: !tfr.tensor) -> !tfr.t
 // -----
 
 // CHECK-LABEL:  cast_with_unranked_quant
-func @cast_with_unranked_quant(%arg0: tensor<*xi8>, %arg1: tensor<*xi8>) -> tensor<*xf32> {
+func.func @cast_with_unranked_quant(%arg0: tensor<*xi8>, %arg1: tensor<*xi8>) -> tensor<*xf32> {
   %0 = "tf.MaximumFloat"(%arg0, %arg1) : (tensor<*xi8>, tensor<*xi8>) -> tensor<*xi8>
   %1 = "tfr.cast"(%0) : (tensor<*xi8>) -> !tfr.tensor
   %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<*x!quant.uniform<i8:f32, 0.0065901698544621468:-19>>
@@ -124,7 +124,7 @@ func @cast_with_unranked_quant(%arg0: tensor<*xi8>, %arg1: tensor<*xi8>) -> tens
 // -----
 
 // CHECK-LABEL: quant_qparam
-func @quant_qparam(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> (tensor<f32>, tensor<i32>) {
+func.func @quant_qparam(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> (tensor<f32>, tensor<i32>) {
   %0 = "tfr.cast"(%arg0) : (tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> !tfr.tensor
   %scale, %zp = tfr.quant_qparam(%0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
   %1 = "tfr.cast"(%scale) : (!tfr.tensor) -> tensor<f32>
@@ -137,7 +137,7 @@ func @quant_qparam(%arg0: tensor<1x10x!quant.uniform<i8:f32, 0.1:42>>) -> (tenso
 }
 
 // CHECK-LABEL: quant_qparam_per_channel
-func @quant_qparam_per_channel(%arg0: tensor<1x3x!quant.uniform<i8:f32:1, {0.1:1, 0.2:2, 0.3:3}>>) -> (tensor<3xf32>, tensor<3xi32>) {
+func.func @quant_qparam_per_channel(%arg0: tensor<1x3x!quant.uniform<i8:f32:1, {0.1:1, 0.2:2, 0.3:3}>>) -> (tensor<3xf32>, tensor<3xi32>) {
   %0 = "tfr.cast"(%arg0) : (tensor<1x3x!quant.uniform<i8:f32:1, {0.1:1, 0.2:2, 0.3:3}>>) -> !tfr.tensor
   %scale, %zp = tfr.quant_qparam(%0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
   %1 = "tfr.cast"(%scale) : (!tfr.tensor) -> tensor<3xf32>
@@ -150,7 +150,7 @@ func @quant_qparam_per_channel(%arg0: tensor<1x3x!quant.uniform<i8:f32:1, {0.1:1
 }
 
 // CHECK-LABEL: quant_qparam_invalid
-func @quant_qparam_invalid(%arg0: tensor<1x3x!quant.calibrated<f32<-1.0:1.0>>>) -> (!tfr.tensor, !tfr.tensor) {
+func.func @quant_qparam_invalid(%arg0: tensor<1x3x!quant.calibrated<f32<-1.0:1.0>>>) -> (!tfr.tensor, !tfr.tensor) {
   %0 = "tfr.cast"(%arg0) : (tensor<1x3x!quant.calibrated<f32<-1.0:1.0>>>) -> !tfr.tensor
   %scale, %zp = tfr.quant_qparam(%0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
   func.return %scale, %zp: !tfr.tensor, !tfr.tensor
@@ -162,7 +162,7 @@ func @quant_qparam_invalid(%arg0: tensor<1x3x!quant.calibrated<f32<-1.0:1.0>>>) 
 // -----
 
 // CHECK-LABEL: redundant_cast_with_different_element_type
-func @redundant_cast_with_different_element_type(%arg0: tensor<*xf32>) -> (tensor<*xi32>, tensor<2xi32>) {
+func.func @redundant_cast_with_different_element_type(%arg0: tensor<*xf32>) -> (tensor<*xi32>, tensor<2xi32>) {
   %0 = "tfr.cast"(%arg0) : (tensor<*xf32>) -> !tfr.tensor
   %1 = "tfr.cast"(%0) : (!tfr.tensor) -> tensor<*xi32>
   %2 = "tfr.cast"(%0) : (!tfr.tensor) -> tensor<2xi32>
@@ -177,7 +177,7 @@ func @redundant_cast_with_different_element_type(%arg0: tensor<*xf32>) -> (tenso
 // -----
 
 // CHECK-LABEL: redundant_cast_with_quant_type
-func @redundant_cast_with_quant_type(%arg0: tensor<10x!quant.uniform<i8:f32, 0.0039133410900831223:-128>>) -> (tensor<10xi32>) {
+func.func @redundant_cast_with_quant_type(%arg0: tensor<10x!quant.uniform<i8:f32, 0.0039133410900831223:-128>>) -> (tensor<10xi32>) {
   %0 = "tfr.cast"(%arg0) : (tensor<10x!quant.uniform<i8:f32, 0.0039133410900831223:-128>>) -> !tfr.tensor
   %1 = tfr.quant_raw_data(%0) : (!tfr.tensor) -> !tfr.tensor
   %2 = "tfr.cast"(%1) : (!tfr.tensor) -> tensor<10xi8>
@@ -192,7 +192,7 @@ func @redundant_cast_with_quant_type(%arg0: tensor<10x!quant.uniform<i8:f32, 0.0
 // -----
 
 // CHECK-LABEL: build_const_list
-func @build_const_list() -> !tfr.attr {
+func.func @build_const_list() -> !tfr.attr {
   %0 = "arith.constant"() {value = 42 : i32} : () -> i32
   %1 = "arith.constant"() {value = 41 : i32} : () -> i32
   %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
@@ -205,7 +205,7 @@ func @build_const_list() -> !tfr.attr {
 // -----
 
 // CHECK-LABEL: build_high_dim_const_list
-func @build_high_dim_const_list() -> !tfr.attr {
+func.func @build_high_dim_const_list() -> !tfr.attr {
   %0 = "arith.constant"() {value = 42 : i32} : () -> i32
   %1 = "arith.constant"() {value = 41 : i32} : () -> i32
   %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
@@ -220,7 +220,7 @@ func @build_high_dim_const_list() -> !tfr.attr {
 // -----
 
 // CHECK-LABEL: get_length
-func @get_length(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> index {
+func.func @get_length(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> index {
   %0 = "tfr.build_list"(%arg0, %arg1) : (!tfr.tensor<A>, !tfr.tensor<B>) -> !tfr.tensor_list
   %1 = "tfr.get_length"(%0) : (!tfr.tensor_list) -> index
   func.return %1 : index
