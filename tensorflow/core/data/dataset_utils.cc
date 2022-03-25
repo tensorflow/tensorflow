@@ -89,6 +89,7 @@ constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 constexpr char kMakeDeterministicOpt[] = "make_deterministic";
+constexpr char kFilterParallelizationOpt[] = "filter_parallelization";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -152,6 +153,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kMapParallelizationOpt);
     } else {
       optimization_disabled->insert(kMapParallelizationOpt);
+    }
+  }
+  if (optimization_options.optional_filter_parallelization_case() ==
+      OptimizationOptions::kFilterParallelization) {
+    if (optimization_options.filter_parallelization()) {
+      optimization_enabled->insert(kFilterParallelizationOpt);
+    } else {
+      optimization_disabled->insert(kFilterParallelizationOpt);
     }
   }
   if (optimization_options.optional_map_fusion_case() ==

@@ -147,6 +147,11 @@
         `tf.data.experimental.parse_example_dataset` to match the behavior of
         `tf.io.parse_example`.
 
+    *   Added a new field, `filter_parallelization`, to
+        `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
+        tf.data will run `Filter` transformation with multiple threads. Its
+        default value is `False` if not specified.
+
 *    `tf.keras`:
 
     *   Fixed bug in optimizers that prevented them from properly checkpointing
