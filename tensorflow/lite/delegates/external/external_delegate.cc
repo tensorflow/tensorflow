@@ -34,8 +34,8 @@ struct ExternalLib {
   bool load(const std::string library) {
     void* handle = SharedLibrary::LoadLibrary(library.c_str());
     if (handle == nullptr) {
-      TFLITE_LOG(TFLITE_LOG_INFO, "Unable to load external delegate from : %s",
-                 library.c_str());
+      TFLITE_LOG(TFLITE_LOG_INFO, "Unable to load external delegate from : %s (%s)",
+                 library.c_str(), SharedLibrary::GetError());
     } else {
       create =
           reinterpret_cast<decltype(create)>(SharedLibrary::GetLibrarySymbol(
