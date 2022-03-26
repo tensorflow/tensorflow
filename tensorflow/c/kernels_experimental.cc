@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/framework/ref_var.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/variant.h"
@@ -192,6 +193,32 @@ void TF_AssignVariable(TF_OpKernelContext* ctx, int input_index,
   }
   variable->is_initialized = true;
   TF_SetStatus(status, TF_OK, "");
+}
+
+void TF_AssignRefVariable(TF_OpKernelContext* ctx, int input_ref_index,
+                          int output_ref_index, int value_index,
+                          bool use_locking, bool validate_shape,
+                          void (*copyFunc)(TF_OpKernelContext* ctx,
+                                           TF_Tensor* source,
+                                           TF_Tensor* dest)) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+
+  auto copy = [copyFunc, ctx](::tensorflow::OpKernelContext* cc_ctx,
+                              ::tensorflow::Tensor* lhs,
+                              const ::tensorflow::Tensor& rhs) {
+    ::tensorflow::Status s;
+    TF_Tensor* tf_lhs = TF_TensorFromTensor(*lhs, &s);
+    OP_REQUIRES_OK(cc_ctx, s);
+
+    TF_Tensor* tf_rhs = TF_TensorFromTensor(rhs, &s);
+    OP_REQUIRES_OK(cc_ctx, s);
+
+    copyFunc(ctx, tf_rhs, tf_lhs);
+  };
+
+  ::tensorflow::AssignRefVariable(cc_ctx, input_ref_index, output_ref_index,
+                                  value_index, use_locking, validate_shape,
+                                  false, copy);
 }
 
 void TF_AssignUpdateVariable(TF_OpKernelContext* ctx, int input_index,

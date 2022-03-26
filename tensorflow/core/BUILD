@@ -1586,6 +1586,7 @@ filegroup(
     srcs = [
         "//tensorflow/core/framework:model.h",
         "//tensorflow/core/framework:op_segment.h",
+        "//tensorflow/core/framework:ref_var.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
         "//tensorflow/core/framework:resource_var.h",
         "//tensorflow/core/framework:run_handler.h",
