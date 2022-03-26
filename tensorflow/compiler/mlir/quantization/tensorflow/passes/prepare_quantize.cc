@@ -38,12 +38,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> post_training_quantize(
+static llvm::cl::opt<bool> post_training_quantize_flag(
     "quant-test-post-training-quantize", llvm::cl::value_desc("bool"),
     llvm::cl::desc("enable post training quantization. Only used in tests"),
     llvm::cl::init(false));
@@ -79,7 +80,13 @@ class PrepareQuantizePass
   // This is only used by test.
   explicit PrepareQuantizePass() {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
-    quant_specs_.post_training_quantization = post_training_quantize;
+    quant_specs_.post_training_quantization = post_training_quantize_flag;
+  }
+
+  explicit PrepareQuantizePass(QuantizationMethod quantization_method) {
+    quant_specs_.inference_type = tensorflow::DT_QINT8;
+    quant_specs_.post_training_quantization =
+        (quantization_method == QuantizationMethod::kPostTrainingQuantization);
   }
 
   // Constructor used by manually creating the pass.
@@ -386,8 +393,9 @@ void PrepareQuantizePass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect PrepareQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass() {
-  return std::make_unique<PrepareQuantizePass>();
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
+    QuantizationMethod quantization_method) {
+  return std::make_unique<PrepareQuantizePass>(quantization_method);
 }
 
 static PassRegistration<PrepareQuantizePass> pass;
