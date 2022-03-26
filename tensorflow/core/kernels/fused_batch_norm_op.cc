@@ -812,7 +812,7 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
 #elif TENSORFLOW_USE_ROCM
     // Ensure that NHWC is enabled on ROCm
     const bool fast_nhwc_batch_norm = 
-        (!is_training || DataTypeToEnum<T>::value == DT_HALF && use_reserved_space) &&
+        ((!is_training || DataTypeToEnum<T>::value == DT_HALF) && use_reserved_space) &&
         UseNhwcLayoutForBatchnormRocm(); 
 #else
     const bool fast_nhwc_batch_norm = false;
