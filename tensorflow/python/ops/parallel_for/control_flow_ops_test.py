@@ -2658,7 +2658,8 @@ class PartitionedCallTest(PForTestCase):
   def test_nested_calls_loop_fn_autograph(self):
 
     def inner(x):
-      range(array_ops.constant(5))
+      for y in range(array_ops.constant(3)):
+        pass
       return math_ops.square(x)
 
     def outer(y):
