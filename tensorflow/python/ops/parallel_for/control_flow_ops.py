@@ -67,8 +67,8 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
 
   def while_body(i, *ta_list):
     """Body of while loop."""
-    f = autograph.tf_convert(loop_fn, autograph_ctx.control_status_ctx())
-    fn_output = nest.flatten(f(i))
+    fn_conv = autograph.tf_convert(loop_fn, autograph_ctx.control_status_ctx())
+    fn_output = nest.flatten(fn_conv(i))
     if len(fn_output) != len(flat_loop_fn_dtypes):
       raise ValueError(
           f"Number of expected outputs {len(flat_loop_fn_dtypes)}, does not "
@@ -202,6 +202,7 @@ def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
           "These primitives will override the disable.")
       def_function.run_functions_eagerly(False)
     f = def_function.function(f)
+  
   outputs = f()
   if functions_run_eagerly is not None:
     def_function.run_functions_eagerly(functions_run_eagerly)

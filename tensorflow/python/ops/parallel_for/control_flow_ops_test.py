@@ -97,16 +97,6 @@ class PForTest(PForTestCase):
       self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=False)
     self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=True)
 
-  def test_nested_defun(self):        
-    def loop_fn(a):
-      for x in range(array_ops.constant(5)):
-        x = x + 1
-      return x
-    @def_function.function
-    def f():
-      return self._test_loop_fn(loop_fn,2)
-    self.assertEqual(5, f())
-
   def test_parallel_iterations(self):
     for parallel_iterations in [2, 3, 8, 10]:
       x = random_ops.random_uniform([8, 3])
@@ -2663,6 +2653,28 @@ class PartitionedCallTest(PForTestCase):
       return outer(array_ops.gather(z, i))
 
     self._test_loop_fn(loop_fn, 4)
+
+
+  def test_nested_calls_outer_autograph(self):
+
+    def inner(x):
+      range(array_ops.constant(5))
+      return math_ops.square(x)
+
+    def outer(y):
+      return math_ops.reduce_sum(inner(y)) + 2
+
+    z = random_ops.random_uniform([4, 2])
+    
+    def loop_fn(i):
+      return outer(array_ops.gather(z, i))
+
+    @def_function.function
+    def loop_fn_caller():
+      self._test_loop_fn(loop_fn, 4)
+
+    loop_fn_caller()
+
 
   def test_nested_definition(self):
 
