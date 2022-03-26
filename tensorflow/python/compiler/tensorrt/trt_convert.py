@@ -303,30 +303,41 @@ def _get_tensorrt_rewriter_config(conversion_params,
       max_batch_size, int):
     raise ValueError(
         "max_batch_size has to be an integer for is_dynamic_op==False in TF1")
-  rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
+  grappler_config = rewriter_config_pb2.RewriterConfig()
   # Disable Grappler Remapper to avoid that fused OPs that may not be
   # beneficial to TF-TRT and are not supported by TF-TRT.
-  rewriter_config_with_trt.remapping = False
+  grappler_config.remapping = False
 
   # Prevent folding of Const->QDQ chains.
-  rewriter_config_with_trt. \
-    experimental_disable_folding_quantization_emulation = (
+  grappler_config.experimental_disable_folding_quantization_emulation = (
       trt_utils.is_linked_tensorrt_version_greater_equal(8, 0, 0) or
       trt_utils.is_loaded_tensorrt_version_greater_equal(8, 0, 0))
 
   if not disable_non_trt_optimizers:
-    rewriter_config_with_trt.optimizers.extend([
+    grappler_config.optimizers.extend([
         "pruning", "debug_stripper", "layout", "dependency", "constfold",
         "common_subgraph_elimination"
     ])
-
-  rewriter_config_with_trt.meta_optimizer_iterations = (
+  
+  grappler_config.meta_optimizer_iterations = (
       rewriter_config_pb2.RewriterConfig.ONE)
-  optimizer = rewriter_config_with_trt.custom_optimizers.add()
 
+  # Add preperation pass.
+  preparer = grappler_config.custom_optimizers.add()
+  preparer.name = "TensorRTPreparer"
+  preparer.parameter_map["precision_mode"].s = _to_bytes(
+      conversion_params.precision_mode)
+
+
+  # Add cleanup passes.
   if not disable_non_trt_optimizers:
     # Add a constfold optimizer to cleanup the unused Const nodes.
-    rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+    grappler_config.custom_optimizers.add().name = "constfold"    
+    grappler_config.custom_optimizers.add().name = "common_subgraph_elimination"
+    grappler_config.custom_optimizers.add().name = "arithmetic"
+
+  # Add segment/convert pass.
+  optimizer = grappler_config.custom_optimizers.add()  
 
   optimizer.name = "TensorRTOptimizer"
   optimizer.parameter_map[
@@ -351,13 +362,19 @@ def _get_tensorrt_rewriter_config(conversion_params,
     optimizer.parameter_map["profile_strategy"].s = _to_bytes(
         profile_strategy.lower())
 
+  # Add cleanup passes
+  if not disable_non_trt_optimizers:
+    # Add a constfold optimizer to cleanup the unused Const nodes.
+    grappler_config.custom_optimizers.add().name = "constfold"
+
+
   # Disabling optimizers should happen after defining the TF-TRT grappler pass
   # otherwise the template can overwrite the disablement.
   if disable_non_trt_optimizers:
     trt_utils.disable_non_trt_optimizers_in_rewriter_config(
-        rewriter_config_with_trt)
-
-  return rewriter_config_with_trt
+        grappler_config)
+  
+  return grappler_config
 
 
 @deprecation.deprecated(

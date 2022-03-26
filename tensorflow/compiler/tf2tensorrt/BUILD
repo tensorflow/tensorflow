@@ -643,6 +643,7 @@ tf_cuda_cc_test(
 tf_cuda_library(
     name = "trt_conversion",
     srcs = [
+        "convert/preperation_pass.cc",
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
         "convert/ops/data_format_vec_permute.cc",
@@ -655,6 +656,7 @@ tf_cuda_library(
         "convert/trt_optimization_pass.cc",
     ],
     hdrs = [
+        "convert/preperation_pass.h",
         "convert/convert_graph.h",
         "convert/convert_nodes.h",
         "convert/ops/layer_utils.h",

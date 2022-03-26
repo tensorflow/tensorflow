@@ -50,9 +50,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/config.pb.h"             // NOLINT
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"    // NOLINT
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
@@ -573,51 +573,6 @@ int64 GetNextGraphSequenceNumber() {
   return graph_sequence_num++;
 }
 
-constexpr char kCastInputTypeAttrName[] = "SrcT";
-
-// Transforms node = cast(x, fp32) where datatype(x) != fp16 to:
-//   castToFp16 = cast(x, fp16)
-//   node = cast(castToFp16, fp32)
-//
-Status MaybeRewriteCastToFp32(GraphDef* graph_def, NodeDef* node_def) {
-  if (node_def->op() != "Cast") {
-    return Status::OK();
-  }
-
-  DataTypeVector input_types;
-  DataTypeVector output_types;
-  TF_RETURN_IF_ERROR(
-      graph_transforms::GetInOutTypes(*node_def, &input_types, &output_types));
-
-  if (input_types.size() != 1 || output_types.size() != 1) {
-    return errors::Internal("Bad cast operation");
-  }
-
-  if (input_types[0] == DT_HALF || output_types[0] != DT_FLOAT) {
-    return Status::OK();
-  }
-
-  VLOG(2) << "Rewriting cast to FP32 " << node_def->DebugString();
-
-  NodeDef* castToFp16 = graph_def->add_node();
-  for (auto attr_value : node_def->attr()) {
-    (*castToFp16->mutable_attr())[attr_value.first] = attr_value.second;
-  }
-  castToFp16->set_name(node_def->name() + "_split");
-  castToFp16->set_op("Cast");
-  castToFp16->set_device(node_def->device());
-  castToFp16->add_input(node_def->input(0));
-  (*castToFp16->mutable_attr())[kCastOutputTypeAttrName].set_type(DT_HALF);
-
-  node_def->set_input(0, castToFp16->name() + ":0");
-  (*node_def->mutable_attr())[kCastInputTypeAttrName].set_type(DT_HALF);
-
-  VLOG(2) << castToFp16->DebugString();
-  VLOG(2) << node_def->DebugString();
-
-  return Status::OK();
-}
-
 }  // namespace
 
 Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
@@ -741,20 +696,6 @@ Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
   }
 
   GraphDef& graph_def = grappler_item.graph;
-
-  // When precision_mode is FP16, transform cast(x, fp32) to
-  // cast(cast(x, fp16), fp32). This creates cast(fp16, f32) that can be
-  // included in the TRTEngineOp as an TensorRT Identity layer for performance:
-  //  . Avoid cast(fp32, fp16) in the TRT engine implementation for fp16
-  //    precision.
-  //  . Changing the input to the TRTEngine from fp32 to fp16 may reduce data
-  //    moving from the host to the GPU.
-  if (params.precision_mode == TrtPrecisionMode::FP16) {
-    for (int i = 0; i < graph_def.node_size(); i++) {
-      NodeDef* node_def = graph_def.mutable_node(i);
-      TF_RETURN_IF_ERROR(MaybeRewriteCastToFp32(&graph_def, node_def));
-    }
-  }
 
   // Construct a GrapplerItem using the modified graph_def and the input
   // grappler_item.
