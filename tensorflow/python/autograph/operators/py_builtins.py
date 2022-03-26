@@ -347,14 +347,21 @@ def _tf_max(*args, **kwargs):
     kwargs_tuple = tuple(set(kwargs.keys()))
     raise ValueError('These keyword arguments are ' 
                      'currently not supported: {}'.format(kwargs_tuple))
-  elif len(args) == 1:
-    # TODO (bhack) Do we want the input Tensor to be rank==1 or scalar?
-    # if not something like [[1, 2][3,4]] it will give an unexpected result
-    return  math_ops.reduce_max(*args, axis=0)
-  else:
-    if all(_tf_tensor_is_scalar(arg) for arg in args):
-      s= array_ops.concat([args], axis=0)
-      return math_ops.reduce_max(s, axis=0)
+  if len(args)== 1:
+    rank = args[0].shape.rank
+    if rank == 0 :
+      return args[0]
+    if rank == 1 :
+      return math_ops.reduce_max(*args, axis=0)
+    raise ValueError("max(x) currently support only tensor with rank 1, "
+                      "but got a tensor with rank {}".format(rank)) 
+  for arg in args:
+    rank = arg.shape.rank
+    if rank != 0:
+      raise ValueError("max(x, *y) currently support only scalar tensor, "
+                        "but got a tensor with shape {}".format(rank)) 
+  return math_ops.reduce_max(args, axis=0)
+
 
 def _py_max(*args, **kwargs):
   return max(*args, **kwargs)

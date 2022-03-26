@@ -199,15 +199,24 @@ class PyBuiltinsTest(test.TestCase):
       sys.stdout = sys.__stdout__
 
   def test_max(self):
-    self.assertEqual(py_builtins.max_([1, 3, 2]),3)
-    self.assertEqual(py_builtins.max_(0,1),1)
+    self.assertEqual(py_builtins.max_([1, 3, 2]), 3)
+    self.assertEqual(py_builtins.max_(0,2,1), 2)
 
   def test_max_tensor(self):
-    r = py_builtins.max_(constant_op.constant([[1, 3, 2]]))
+    r = py_builtins.max_(constant_op.constant(2))
+    self.assertAllEqual(self.evaluate(r), 2)
+    with self.assertRaises(ValueError):
+      py_builtins.max_(constant_op.constant([[2]]))
+    r = py_builtins.max_(constant_op.constant([1, 3, 2]))
     self.assertAllEqual(self.evaluate(r), 3)
+    with self.assertRaises(ValueError):
+      py_builtins.max_(constant_op.constant([[1, 3],[3,4]]))
     r = py_builtins.max_(constant_op.constant(6),constant_op.constant(4),
                         constant_op.constant(8))
     self.assertAllEqual(self.evaluate(r), 8)
+    with self.assertRaises(ValueError):
+      py_builtins.max_(constant_op.constant([6]),constant_op.constant(4),
+                      constant_op.constant(8))
 
   def test_range(self):
     self.assertListEqual(list(py_builtins.range_(3)), [0, 1, 2])
