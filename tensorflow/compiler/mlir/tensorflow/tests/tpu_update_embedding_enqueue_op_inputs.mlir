@@ -9,7 +9,7 @@
 // CHECK-SAME: %[[ARG_5:[a-z0-9]*]]: tensor<?xi32>
 // CHECK-SAME: %[[ARG_6:[a-z0-9]*]]: tensor<!tf_type.string>
 // CHECK-SAME: %[[ARG_7:[a-z0-9]*]]: tensor<!tf_type.string>
-func @check_enqueue_ops_update_for_eval(%arg0: tensor<?x2xi32>, %arg1: tensor<?x2xi32>,
+func.func @check_enqueue_ops_update_for_eval(%arg0: tensor<?x2xi32>, %arg1: tensor<?x2xi32>,
   %arg2 :tensor<?x2xi32>, %arg3: tensor<?xi32>, %arg4: tensor<?xi32>, %arg5: tensor<?xi32>,
   %arg6: tensor<!tf_type.string>, %arg7: tensor<!tf_type.string>) -> () {
   // CHECK: %[[CONST_0:.*]] = "tf.Const"()
@@ -33,7 +33,7 @@ func @check_enqueue_ops_update_for_eval(%arg0: tensor<?x2xi32>, %arg1: tensor<?x
 // CHECK-SAME: %[[ARG_5:[a-z0-9]*]]: tensor<?xi32>
 // CHECK-SAME: %[[ARG_6:[a-z0-9]*]]: tensor<!tf_type.string>
 // CHECK-SAME: %[[ARG_7:[a-z0-9]*]]: tensor<!tf_type.string>
-func @check_enqueue_ops_update_for_training(%arg0: tensor<?x2xi32>, %arg1: tensor<?x2xi32>,
+func.func @check_enqueue_ops_update_for_training(%arg0: tensor<?x2xi32>, %arg1: tensor<?x2xi32>,
   %arg2 :tensor<?x2xi32>, %arg3: tensor<?xi32>, %arg4: tensor<?xi32>, %arg5: tensor<?xi32>,
   %arg6: tensor<!tf_type.string>, %arg7: tensor<!tf_type.string>) -> () {
   // CHECK: %[[CONST_0:.*]] = "tf.Const"()
@@ -52,7 +52,7 @@ func @check_enqueue_ops_update_for_training(%arg0: tensor<?x2xi32>, %arg1: tenso
 
 // -----
 
-func @check_enqueue_ops_with_different_attr_disallowed(%arg0: tensor<?x2xi32>, %arg1: tensor<?x2xi32>,
+func.func @check_enqueue_ops_with_different_attr_disallowed(%arg0: tensor<?x2xi32>, %arg1: tensor<?x2xi32>,
   %arg2 :tensor<?x2xi32>, %arg3: tensor<?xi32>, %arg4: tensor<?xi32>, %arg5: tensor<?xi32>,
   %arg6: tensor<!tf_type.string>, %arg7: tensor<!tf_type.string>, %arg8: tensor<i1>) -> () {
   %0 = "tf.Const"() {value = dense<[]> : tensor<0xf32>} : () -> tensor<0xf32>

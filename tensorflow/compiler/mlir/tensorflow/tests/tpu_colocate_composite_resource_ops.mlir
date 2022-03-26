@@ -5,7 +5,7 @@
 
 // CHECK-LABEL: func @testReadVariableOpColocated
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
-func @testReadVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
+func.func @testReadVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
   // CHECK:      tf_device.replicate
   // CHECK-SAME: (%[[ARG0]] as %[[RI_0:[a-z0-9]*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
@@ -34,7 +34,7 @@ func @testReadVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tensor<4xf32
 
 // CHECK-LABEL: func @testReadVariableOpAfterIdentityColocated
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
-func @testReadVariableOpAfterIdentityColocated(%arg0: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
+func.func @testReadVariableOpAfterIdentityColocated(%arg0: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
   // CHECK:      tf_device.replicate
   // CHECK-SAME: (%[[ARG0]] as %[[RI_0:[a-z0-9]*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
@@ -68,7 +68,7 @@ func @testReadVariableOpAfterIdentityColocated(%arg0: tensor<*x!tf_type.resource
 
 // CHECK-LABEL: func @testAssignVariableOpColocated
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
-func @testAssignVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
+func.func @testAssignVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
   // CHECK:      tf_device.replicate
   // CHECK-SAME: (%[[ARG0]] as %[[RI_0:[a-z0-9]*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
@@ -96,7 +96,7 @@ func @testAssignVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tensor<4xf
 
 // CHECK-LABEL: func @testNonTPUDeviceReplicationIgnored
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
-func @testNonTPUDeviceReplicationIgnored(%arg0: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
+func.func @testNonTPUDeviceReplicationIgnored(%arg0: tensor<*x!tf_type.resource<tensor<4xf32>>>) {
   // CHECK:      tf_device.replicate
   // CHECK-SAME: (%[[ARG0]] as %[[RI_0:[a-z0-9]*]]: tensor<*x!tf_type.resource<tensor<4xf32>>>)
   tf_device.replicate(%arg0 as %arg1: tensor<*x!tf_type.resource<tensor<4xf32>>>) {

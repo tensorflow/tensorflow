@@ -59,5 +59,7 @@ jobs:
         token: ${{ secrets.JENKINS_TOKEN }}
         reviewers: angerson,mihaimaruseac
         body: |
-          Automated PR created once per week to get the latest Docker images.
-          See https://github.com/tensorflow/tensorflow/blob/master/.github/workflows/update-rbe.yml
+          This PR was created by a GitHub Actions workflow to update all the SIG Build-based RBE containers to the most recent containers. See:
+
+          - https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/toolchains/remote_config/configs.bzl
+          - https://github.com/tensorflow/tensorflow/blob/master/.github/workflows/update-rbe.yml

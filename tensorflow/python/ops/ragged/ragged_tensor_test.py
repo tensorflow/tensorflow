@@ -659,6 +659,18 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                   '.* must be from the same graph as .*'):
         RaggedTensor.from_row_splits(values, splits)
 
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='Rank0',
+          tensor='a'),
+      dict(
+          testcase_name='Rank1',
+          tensor=['a', 'b']),
+  ])
+  def testFromTensorRankError(self, tensor):
+    with self.assertRaisesRegex(ValueError, 'must be greater than 1'):
+      RaggedTensor.from_tensor(tensor)
+
   #=============================================================================
   # Ragged Value & Row-Partitioning Tensor Accessors
   #=============================================================================
@@ -823,6 +835,14 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                      'row_splits=array({}))'.format(values, row_splits))
     self.assertEqual(' '.join(str(rt).split()), expected_str)
     self.assertEqual(' '.join(repr(rt).split()), expected_repr)
+
+  def testRaggedTensorStrWithZeroSizeInnerShape(self):
+    # Tests that b/226112826 is fixed.
+    if context.executing_eagerly():
+      rt = RaggedTensor.from_row_lengths(array_ops.zeros([9, 0]), [4, 3, 2])
+      expected_repr = (
+          '<tf.RaggedTensor [[[], [], [], []], [[], [], []], [[], []]]>')
+      self.assertEqual(' '.join(repr(rt).split()), expected_repr)
 
   #=============================================================================
   # RaggedTensor.with_values() and RaggedTensor.with_flat_values().

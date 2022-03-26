@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -pass-pipeline='builtin.func(tf-tensor-device-copy),tfrt-lower-tf-savedmodel{hoist-invariant-ops=true},tf-to-tfrt{tfrt-cost-threshold=1024 tfrt-upper-cost-threshold=65536 tfrt-merge-inter-dependent-streams=true}' %s | FileCheck %s --dump-input-filter=all
+// RUN: tf-tfrt-opt -pass-pipeline='func.func(tf-tensor-device-copy),tfrt-lower-tf-savedmodel{hoist-invariant-ops=true},tf-to-tfrt{tfrt-cost-threshold=1024 tfrt-upper-cost-threshold=65536 tfrt-merge-inter-dependent-streams=true}' %s | FileCheck %s --dump-input-filter=all
 
 // CHECK-NOT: tf_saved_model.semantics
 // CHECK: tfrt.cost_threshold = 1024
@@ -21,7 +21,7 @@ module attributes {tf_saved_model.semantics} {
 
 // CHECK-LABEL: func @init
 // CHECK-SAME: {tfrt.cost_threshold = 1 : i64}
-func @func_init() attributes {tf_saved_model.exported_names = ["init"]} {
+func.func @func_init() attributes {tf_saved_model.exported_names = ["init"]} {
   return
 }
 
@@ -30,7 +30,7 @@ func @func_init() attributes {tf_saved_model.exported_names = ["init"]} {
 // CHECK-SAME: [[arg0_th:%.*]]: !corert.tensorhandle,
 // CHECK-SAME: [[arg1_th:%.*]]: !corert.tensorhandle {tf.resource_name = "y"})
 // CHECK-SAME: -> (!tfrt.chain, !corert.tensorhandle)
-func @func_basic(
+func.func @func_basic(
     %arg0: tensor<3x1xf32> {tf_saved_model.index_path = [0]},
     %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>> {tf_saved_model.bound_input = @y})
       -> (tensor<3x3xf32> {tf_saved_model.index_path = []})
@@ -60,7 +60,7 @@ func @func_basic(
   %6:2 = "tf.IdentityN"(%5, %4) {T = [f32, f32], _output_shapes = ["tfshape$dim { size: 3 } dim { size: 3 }", "tfshape$dim { size: 3 } dim { size: 3 }"], device = "/device:CPU:0"} : (tensor<3x3xf32>, tensor<3x3xf32>) -> (tensor<3x3xf32>, tensor<3x3xf32>)
   // CHECK-NEXT: [[out_ch:%.*]] = tfrt.merge.chains [[ch]], [[in_chain]] : !tfrt.chain, !tfrt.chain
   // CHECK-NEXT: tfrt.return [[out_ch]], [[r2_th]] : !tfrt.chain, !corert.tensorhandle
-  return %6#0 : tensor<3x3xf32>
+  func.return %6#0 : tensor<3x3xf32>
 }
 
 }

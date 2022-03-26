@@ -15,7 +15,7 @@
 // CHECK:   f32[] get-tuple-element((f32[], f32[]) %[[FUSION2]]), index=0
 // CHECK:   f32[] get-tuple-element((f32[], f32[]) %[[FUSION2]]), index=1
 // CHECK: }
-func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) {
+func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) {
   %result = "mhlo.fusion"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
       %result = "mhlo.add"(%arg2, %arg3): (tensor<f32>, tensor<f32>) -> tensor<f32>

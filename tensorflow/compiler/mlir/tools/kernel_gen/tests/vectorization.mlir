@@ -1,6 +1,6 @@
 // RUN: kernel-gen-opt %s --vectorization --cse --vectorization-cleanup --canonicalize | FileCheck %s
 
-func @Abs(%in: memref<?xf64>) {
+func.func @Abs(%in: memref<?xf64>) {
 linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
                 iterator_types = ["parallel"]}
     ins(%in : memref<?xf64>) outs(%in : memref<?xf64>) {
@@ -59,7 +59,7 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
 // CHECK-NOT:         linalg.generic
 // CHECK:             addf {{.*}}vector<4xf64>
 // CHECK-NOT:     linalg.generic
-func @Add(%lhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
+func.func @Add(%lhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
     %rhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d1 * s1)>>,
     %out: memref<?x?xf64>) {
 

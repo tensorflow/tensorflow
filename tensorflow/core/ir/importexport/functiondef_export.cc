@@ -172,7 +172,7 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
       func_attr->set_name(attr.getName().str());
       DictionaryAttr dict_attr = attr.getValue().dyn_cast<DictionaryAttr>();
       if (!dict_attr) return InvalidArgument("Expects dict attribute");
-      if (StringAttr type = dict_attr.getAs<StringAttr>("type"))
+      if (StringAttr type = dict_attr.getAs<StringAttr>("function_type"))
         func_attr->set_type(type.getValue().str());
       if (Attribute default_value = dict_attr.get("default_value")) {
         TF_ASSIGN_OR_RETURN((*func_attr->mutable_default_value()),

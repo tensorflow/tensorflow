@@ -402,7 +402,7 @@ class WhileOp : public AsyncOpKernel {
                                  const Tensor& cond_t, bool* out_result) {
     bool is_pluggable = ctx->op_device_context() &&
                         ctx->op_device_context()->IsPluggableDevice();
-    const DeviceBase::GpuDeviceInfo* gpu_device_info =
+    const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
         ctx->device()->tensorflow_gpu_device_info();
     const bool is_hostmem_dtype =
         cond_t.dtype() == DT_INT32 || cond_t.dtype() == DT_INT64;

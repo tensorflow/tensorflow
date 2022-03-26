@@ -33,7 +33,7 @@ func @reuse_input_buffer(%arg0: index) -> memref<?x10xf32> {
   memref.dealloc %1 : memref<?x10xf32>
 
   // CHECK: return %[[IN]]
-  return %2: memref<?x10xf32>
+  func.return %2: memref<?x10xf32>
 }
 
 // -----
@@ -67,7 +67,7 @@ func @user_before_generic(%arg0: index) -> memref<?x?xf32> {
   memref.dealloc %0 : memref<?x10xf32>
 
   // CHECK: return %[[CASTED_OUT]]
-  return %2: memref<?x?xf32>
+  func.return %2: memref<?x?xf32>
 }
 
 // -----
@@ -100,7 +100,7 @@ func @non_identity_input_indexing_map(%arg0: index) -> memref<?x10xf32> {
   memref.dealloc %0 : memref<?x10xf32>
 
   // CHECK: return %[[OUT]]
-  return %1: memref<?x10xf32>
+  func.return %1: memref<?x10xf32>
 }
 
 // -----
@@ -133,7 +133,7 @@ func @non_contiguous_input_memref(%arg0: index) -> memref<?x10xf32> {
   memref.dealloc %0 : memref<?x10xf32, #map1>
 
   // CHECK: return %[[OUT]]
-  return %1: memref<?x10xf32>
+  func.return %1: memref<?x10xf32>
 }
 
 // -----
@@ -166,7 +166,7 @@ func @non_identity_same_size(%arg0: index) -> memref<?x10xf32> {
   memref.dealloc %0 : memref<?x10xf32>
 
   // CHECK: return %[[IN]]
-  return %1: memref<?x10xf32>
+  func.return %1: memref<?x10xf32>
 }
 
 // -----
@@ -200,7 +200,7 @@ func @non_identity_different_size(%arg0: index, %arg1: index)
   memref.dealloc %0 : memref<?x10xf32>
 
   // CHECK: return %[[OUT]]
-  return %1: memref<?x10xf32>
+  func.return %1: memref<?x10xf32>
 }
 
 // -----
@@ -232,5 +232,5 @@ func @identity_different_size(%arg0: index, %arg1: index) -> memref<?x10xf32> {
   memref.dealloc %0 : memref<?x10xf32>
 
   // CHECK: return %[[IN]]
-  return %1: memref<?x10xf32>
+  func.return %1: memref<?x10xf32>
 }

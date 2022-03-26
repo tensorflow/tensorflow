@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main() {
+func.func @main() {
   // CHECK: node {
   // CHECK-NEXT: name: "Empty/shape"
   // CHECK-NEXT: op: "Const"

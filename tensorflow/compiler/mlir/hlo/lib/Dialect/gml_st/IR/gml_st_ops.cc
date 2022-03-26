@@ -193,20 +193,20 @@ void LoopOp::print(OpAsmPrinter &p) {
 ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
   // Parse an opening `(` followed by induction variables followed by `)`
-  SmallVector<OpAsmParser::OperandType, 4> ivs;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> ivs;
   if (parser.parseRegionArgumentList(ivs, /*requiredOperandCount=*/-1,
                                      OpAsmParser::Delimiter::Paren))
     return failure();
 
   // Parse loop bounds.
-  SmallVector<OpAsmParser::OperandType, 4> lower;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> lower;
   if (parser.parseEqual() ||
       parser.parseOperandList(lower, ivs.size(),
                               OpAsmParser::Delimiter::Paren) ||
       parser.resolveOperands(lower, builder.getIndexType(), result.operands))
     return failure();
 
-  SmallVector<OpAsmParser::OperandType, 4> upper;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> upper;
   if (parser.parseKeyword("to") ||
       parser.parseOperandList(upper, ivs.size(),
                               OpAsmParser::Delimiter::Paren) ||
@@ -214,7 +214,7 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   // Parse step values.
-  SmallVector<OpAsmParser::OperandType, 4> steps;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> steps;
   if (parser.parseKeyword("step") ||
       parser.parseOperandList(steps, ivs.size(),
                               OpAsmParser::Delimiter::Paren) ||
@@ -222,7 +222,7 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   // Parse input tensors.
-  SmallVector<OpAsmParser::OperandType, 4> inputs, inputRegionArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> inputs, inputRegionArgs;
   SmallVector<Type, 4> inputTypes;
   if (succeeded(parser.parseOptionalKeyword("ins"))) {
     SMLoc inputsOperandsLoc = parser.getCurrentLocation();
@@ -237,7 +237,7 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   }
 
   // Parse output tensors.
-  SmallVector<OpAsmParser::OperandType, 4> outputs, outputRegionArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> outputs, outputRegionArgs;
   SmallVector<Type, 4> outputTypes;
   if (succeeded(parser.parseOptionalKeyword("outs"))) {
     SMLoc outputsOperandsLoc = parser.getCurrentLocation();
@@ -301,7 +301,7 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
   regionTypes.append(inputTypes);
   regionTypes.append(outputTypes);
 
-  SmallVector<OpAsmParser::OperandType, 4> regionArgs(ivs);
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> regionArgs(ivs);
   regionArgs.append(inputRegionArgs);
   regionArgs.append(outputRegionArgs);
 

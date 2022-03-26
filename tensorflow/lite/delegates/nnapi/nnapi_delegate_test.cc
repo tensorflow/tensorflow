@@ -726,6 +726,39 @@ TEST(ConvolutionOpTest, SimpleTestQuantized) {
                                       }));
 }
 
+TEST(ConvolutionOpTest, SimpleTestQuantizedGrouped) {
+  ConvolutionOpModel m({TensorType_UINT8, {2, 2, 2, 2}, -63.5, 64},
+                       {TensorType_UINT8, {2, 2, 2, 1}, -63.5, 64},
+                       {TensorType_UINT8, {}, -127, 128});
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetFilter({
+      1, 2, 3, 4,    // first 2x2 filter
+      -1, 1, -1, 1,  // second 2x2 filter
+  });
+  m.SetBias({1, 2});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     18, 2,  // first batch
+                                     23, 6   // second batch
+                                 },
+                                 1e-5)));
+  // For good  measure, let's also verify the quantized values:
+  EXPECT_THAT(m.GetQuantizedOutput(), ElementsAreArray({
+                                          145, 129,  //
+                                          150, 133,  //
+                                      }));
+}
+
 TEST(ConvolutionOpTest, FloatInputQuantizedWeights) {
   ConvolutionOpModel m({TensorType_FLOAT32, {2, 2, 4, 1}},
                        {TensorType_UINT8, {3, 2, 2, 1}, 0, 64},

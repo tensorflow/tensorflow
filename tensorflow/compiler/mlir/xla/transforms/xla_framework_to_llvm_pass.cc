@@ -138,12 +138,12 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
 
     // This assertion might change but is in place for the current
     // implementation.
-    assert(funcOp.getType().getNumResults() == 0 &&
+    assert(funcOp.getFunctionType().getNumResults() == 0 &&
            "xla_entry function lowered with result values when memrefs should "
            "be caller supplied");
 
     BlockAndValueMapping mapping;
-    auto num_refs = funcOp.getType().getNumInputs();
+    auto num_refs = funcOp.getFunctionType().getNumInputs();
     auto result_index = 0;
     for (unsigned i = 0; i < num_refs; ++i) {
       if (funcOp.getArgAttr(i, "xla_framework.input_mapping")) {

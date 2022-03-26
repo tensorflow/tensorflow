@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt -test-print-userange -split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: Testing : func_empty
-func @func_empty() {
+func.func @func_empty() {
   return
 }
 //      CHECK:  ---- UserangeAnalysis -----
@@ -10,7 +10,7 @@ func @func_empty() {
 // -----
 
 // CHECK-LABEL: Testing : useRangeGap
-func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
+func.func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
@@ -34,7 +34,7 @@ func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 // -----
 
 // CHECK-LABEL: Testing : loopWithNestedRegion
-func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
+func.func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   %1 = memref.alloc() : memref<2xf32>
@@ -71,7 +71,7 @@ func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>
 // -----
 
 // CHECK-LABEL: Testing : condBranchWithAlias
-func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
+func.func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 {
   %0 = memref.alloc() : memref<2xf32>
   cf.cond_br %arg0, ^bb1, ^bb2

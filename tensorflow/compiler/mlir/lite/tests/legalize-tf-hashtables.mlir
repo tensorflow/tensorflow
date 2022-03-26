@@ -10,7 +10,7 @@ func @hashtable_string_to_int64(%arg0: tensor<i64>) -> tensor<*xi64> {
   // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf_type.string, table_id = 1530976467 : i32, value_dtype = i64} : () -> tensor<1x!tf_type.resource>
   // CHECK-NEXT:  [[FIND:%.*]] = "tfl.hashtable_find"([[HASH_TABLE]], [[CST]], %arg0) : (tensor<1x!tf_type.resource>, tensor<!tf_type.string>, tensor<i64>) -> tensor<*xi64>
   // CHECK-NEXT:  return [[FIND]] : tensor<*xi64>
-  return %1 : tensor<*xi64>
+  func.return %1 : tensor<*xi64>
 }
 
 // -----
@@ -25,7 +25,7 @@ func @hashtable_int64_to_string(%arg0: tensor<i64>) -> tensor<*x!tf_type.string>
   // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = i64, table_id = 1530976467 : i32, value_dtype = !tf_type.string} : () -> tensor<1x!tf_type.resource>
   // CHECK-NEXT:  [[FIND:%.*]] = "tfl.hashtable_find"([[HASH_TABLE]], %arg0, [[CST]]) : (tensor<1x!tf_type.resource>, tensor<i64>, tensor<!tf_type.string>) -> tensor<*x!tf_type.string>
   // CHECK-NEXT:  return [[FIND]] : tensor<*x!tf_type.string>
-  return %1 : tensor<*x!tf_type.string>
+  func.return %1 : tensor<*x!tf_type.string>
 }
 
 // -----
@@ -66,7 +66,7 @@ func @hashtable_size(%arg0: tensor<5x!tf_type.string>) -> tensor<i64> {
   // CHECK-NEXT:  [[HASH_TABLE:%.*]] = "tfl.hashtable"() {key_dtype = !tf_type.string, table_id = -1323619995 : i32, value_dtype = i64} : () -> tensor<1x!tf_type.resource>
   // CHECK-NEXT:  [[SIZE:%.*]] = "tfl.hashtable_size"([[HASH_TABLE]]) : (tensor<1x!tf_type.resource>) -> tensor<i64>
   // CHECK-NEXT:  return [[SIZE]] : tensor<i64>
-  return %1 : tensor<i64>
+  func.return %1 : tensor<i64>
 }
 
 // -----
@@ -87,7 +87,7 @@ func @hashtable_import_then_find(%arg0: tensor<5x!tf_type.string>) -> tensor<*xi
   // CHECK-NEXT:   "tfl.hashtable_import"([[HASH_TABLE]], [[CST]], [[CST_1]]) : (tensor<1x!tf_type.resource>, tensor<3x!tf_type.string>, tensor<3xi64>) -> ()
   // CHECK-NEXT:  [[FIND:%.*]] = "tfl.hashtable_find"([[HASH_TABLE]], %arg0, [[CST_0]]) : (tensor<1x!tf_type.resource>, tensor<5x!tf_type.string>, tensor<i64>) -> tensor<*xi64>
   // CHECK-NEXT:  return [[FIND]] : tensor<*xi64>
-  return %1 : tensor<*xi64>
+  func.return %1 : tensor<*xi64>
 }
 
 // -----
@@ -106,7 +106,7 @@ func @hashtable_import_then_size(%arg0: tensor<5x!tf_type.string>) -> tensor<i64
   // CHECK-NEXT:   "tfl.hashtable_import"([[HASH_TABLE]], [[CST]], [[CST_0]]) : (tensor<1x!tf_type.resource>, tensor<3x!tf_type.string>, tensor<3xi64>) -> ()
   // CHECK-NEXT:  [[SIZE:%.*]] = "tfl.hashtable_size"([[HASH_TABLE]]) : (tensor<1x!tf_type.resource>) -> tensor<i64>
   // CHECK-NEXT:  return [[SIZE]] : tensor<i64>
-  return %1 : tensor<i64>
+  func.return %1 : tensor<i64>
 }
 
 // -----

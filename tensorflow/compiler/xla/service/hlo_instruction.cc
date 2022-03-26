@@ -2119,7 +2119,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
   clone->set_outer_dimension_partitions(outer_dimension_partitions_);
-  clone->set_raw_backend_config_string(backend_config_);
+  clone->backend_config_ = backend_config_.Clone();
   if (context != nullptr) {
     context->MapInstruction(this, clone.get());
     clone->ReplaceCalledComputations([&](HloComputation* callee) {
@@ -2447,6 +2447,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kPartitionId:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
@@ -2491,14 +2492,12 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kWhile:
       return (eq_computations(while_body(), other.while_body()) &&
               eq_computations(while_condition(), other.while_condition()));
-    case HloOpcode::kAsyncStart:
-    case HloOpcode::kAsyncUpdate:
-    case HloOpcode::kAsyncDone:
-      return eq_computations(async_wrapped_computation(),
-                             other.async_wrapped_computation());
 
     // Ops migrated to subclasses should never come to this line.
     // TODO(b/80131774): Remove this switch when migration is complete.
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
@@ -2538,7 +2537,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kConvolution:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kPad:
@@ -3021,12 +3019,7 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
 
   // Print additional attributes. If an instruction contains a subcomputation,
   // the subcomputation is also printed here.
-  const HloInstruction* extra_attributes_instr = this;
-  if (options.syntax_sugar_async_ops() && HloOpcodeIsAsync(opcode())) {
-    extra_attributes_instr = async_wrapped_instruction();
-  }
-  for (const std::string& extra :
-       extra_attributes_instr->ExtraAttributesToString(options)) {
+  for (const std::string& extra : ExtraAttributesToString(options)) {
     StrAppend(&result, ", ", extra);
   }
 
@@ -3036,7 +3029,8 @@ std::string HloInstruction::ToStringWithCanonicalNameMap(
     StrAppend(&result, ", metadata={", xla::OpMetadataToString(metadata_), "}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
-    StrAppend(&result, ", backend_config=\"", CEscape(backend_config_), "\"");
+    StrAppend(&result, ", backend_config=\"",
+              CEscape(backend_config_.GetRawString()), "\"");
   }
   return result;
 }
@@ -3171,6 +3165,12 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                     }),
             "}"));
       }
+    } else if (HloOpcodeIsAsync(opcode())) {
+      if (!options.syntax_sugar_async_ops()) {
+        extra.push_back(StrCat(
+            "calls=",
+            PrintNameInternal(async_wrapped_computation()->name(), options)));
+      }
     } else if (!called_computations().empty()) {
       extra.push_back(StrCat(
           "calls=",
@@ -3289,7 +3289,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
 
   *proto.mutable_metadata() = metadata_;
-  proto.set_backend_config(backend_config_);
+  proto.set_backend_config(backend_config_.GetRawString());
   if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations_) {
       proto.add_called_computation_ids(computation->unique_id());
@@ -4233,18 +4233,71 @@ Status HloInstruction::GetBackendConfigInternal(
     tensorflow::protobuf::Message* proto) const {
   proto->Clear();
 
-  // Empty string does not parse as valid JSON, but it's a valid backend config,
-  // corresponding to the empty proto.
-  if (backend_config_.empty()) {
+  if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
+    proto->CopyFrom(*proto_ptr);
     return Status::OK();
   }
-  return tensorflow::HumanReadableJsonToProto(backend_config_, proto);
+
+  auto& raw_string = raw_backend_config_string();
+  // Empty string does not parse as valid JSON, but it's a valid backend config,
+  // corresponding to the empty proto.
+  if (raw_string.empty()) {
+    return Status::OK();
+  }
+  TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(raw_string, proto));
+  backend_config_.SetProto(*proto);
+  return Status::OK();
 }
 
-Status HloInstruction::set_backend_config(
+const std::string& HloInstruction::BackendConfigRep::GetRawString() const {
+  if (proto_ && raw_string_.empty()) {
+    raw_string_ = BackendConfigToRawString(*proto_).ValueOrDie();
+  }
+  return raw_string_;
+}
+
+HloInstruction::BackendConfigRep HloInstruction::BackendConfigRep::Clone()
+    const {
+  // Prefer cloning protobuf, raw_string_ will be lazily generated if accessed.
+  BackendConfigRep cloned;
+  if (auto* proto = GetProtoPtr()) {
+    cloned.SetProto(*proto);
+  } else {
+    cloned.raw_string_ = raw_string_;
+  }
+  return cloned;
+}
+
+HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
+    std::string raw_string) {
+  raw_string_ = std::move(raw_string);
+  proto_.reset();
+  return *this;
+}
+
+HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
     const tensorflow::protobuf::Message& proto) {
-  TF_ASSIGN_OR_RETURN(backend_config_, BackendConfigToRawString(proto));
-  return Status::OK();
+  SetProto(proto);
+  raw_string_.clear();
+  return *this;
+}
+
+void HloInstruction::BackendConfigRep::SetProto(
+    const tensorflow::protobuf::Message& proto) {
+  proto_.reset(proto.New());
+  proto_->CopyFrom(proto);
+}
+
+bool HloInstruction::BackendConfigRep::operator==(
+    const BackendConfigRep& other) const {
+  auto* proto_a = GetProtoPtr();
+  auto* proto_b = other.GetProtoPtr();
+  if (proto_a != nullptr && proto_b != nullptr) {
+    using ::tensorflow::protobuf::util::MessageDifferencer;
+    return MessageDifferencer::Equals(*proto_a, *proto_b);
+  }
+  // TODO(b/225956414): Consider canonicalizing raw string form.
+  return GetRawString() == other.GetRawString();
 }
 
 /* static */ StatusOr<std::string> HloInstruction::BackendConfigToRawString(

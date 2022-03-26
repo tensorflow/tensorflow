@@ -1490,6 +1490,7 @@ tf_kernel_library(
         ":options_dataset_op",
         ":padded_batch_dataset_op",
         ":parallel_batch_dataset_op",
+        ":parallel_filter_dataset_op",
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
         ":prefetch_dataset_op",

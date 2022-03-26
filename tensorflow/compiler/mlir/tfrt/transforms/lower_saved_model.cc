@@ -571,12 +571,12 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteGlobalTensors(
         mlir::tf_saved_model::GlobalTensorOp>(op, i, symbol_table);
     if (!global_tensor_op) continue;
 
-    auto result_types = op.getType().getResults();
+    auto result_types = op.getFunctionType().getResults();
     if (failed(PromoteFunctionArgument(op, i, global_tensor_op.type(),
                                        symbol_table)))
       return mlir::failure();
 
-    if (!CompareTypes(op.getType().getResults(), result_types).empty())
+    if (!CompareTypes(op.getFunctionType().getResults(), result_types).empty())
       op.emitOpError("cannot promote exported functions's results");
   }
   return mlir::success();
@@ -661,15 +661,15 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
 
     unsigned arg_index = operand_number - 1;
     for (auto func : {then_branch, else_branch}) {
-      if (func.getType().getInput(arg_index) != promoted.getType()) {
+      if (func.getFunctionType().getInput(arg_index) != promoted.getType()) {
         // Rescursively promote the uses in branches.
         if (failed(PromoteFunctionArgument(func, arg_index, promoted.getType(),
                                            symbol_table)))
           return mlir::failure();
       }
 
-      if (failed(update_promoted_result_indices(if_op,
-                                                func.getType().getResults())))
+      if (failed(update_promoted_result_indices(
+              if_op, func.getFunctionType().getResults())))
         return mlir::failure();
     }
   } else if (auto case_op = llvm::dyn_cast<mlir::TF::CaseOp>(op)) {
@@ -679,15 +679,15 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
       auto branch = symbol_table.lookup<mlir::FuncOp>(
           branch_attr.cast<mlir::FlatSymbolRefAttr>().getValue());
 
-      if (branch.getType().getInput(arg_index) != promoted.getType()) {
+      if (branch.getFunctionType().getInput(arg_index) != promoted.getType()) {
         // Rescursively promote the uses in branches.
         if (failed(PromoteFunctionArgument(branch, arg_index,
                                            promoted.getType(), symbol_table)))
           return mlir::failure();
       }
 
-      if (failed(update_promoted_result_indices(case_op,
-                                                branch.getType().getResults())))
+      if (failed(update_promoted_result_indices(
+              case_op, branch.getFunctionType().getResults())))
         return mlir::failure();
     }
   } else if (auto while_op = llvm::dyn_cast<mlir::TF::WhileOp>(op)) {
@@ -697,26 +697,26 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
     assert(body);
 
     unsigned arg_index = operand_number;
-    if (cond.getType().getInput(arg_index) != promoted.getType()) {
-      auto cond_result_type = cond.getType().getResult(0);
+    if (cond.getFunctionType().getInput(arg_index) != promoted.getType()) {
+      auto cond_result_type = cond.getFunctionType().getResult(0);
       if (failed(PromoteFunctionArgument(cond, arg_index, promoted.getType(),
                                          symbol_table)))
         return mlir::failure();
 
       // We cannot promote the result of cond branch as it may change the
       // behavior of this while op.
-      if (cond_result_type != cond.getType().getResult(0))
+      if (cond_result_type != cond.getFunctionType().getResult(0))
         return while_op.emitOpError("failed to promote cond for tf.While");
     }
 
-    if (body.getType().getInput(arg_index) != promoted.getType()) {
+    if (body.getFunctionType().getInput(arg_index) != promoted.getType()) {
       if (failed(PromoteFunctionArgument(body, /*arg_index=*/operand_number,
                                          promoted.getType(), symbol_table)))
         return mlir::failure();
     }
 
-    if (failed(update_promoted_result_indices(while_op,
-                                              body.getType().getResults())))
+    if (failed(update_promoted_result_indices(
+            while_op, body.getFunctionType().getResults())))
       return mlir::failure();
 
   } else if (auto call_interface = llvm::dyn_cast<mlir::CallOpInterface>(op)) {
@@ -729,14 +729,14 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
 
     unsigned arg_index =
         operand_number - call_interface.getArgOperands().getBeginOperandIndex();
-    if (callee.getType().getInput(arg_index) != promoted.getType()) {
+    if (callee.getFunctionType().getInput(arg_index) != promoted.getType()) {
       if (failed(PromoteFunctionArgument(callee, arg_index, promoted.getType(),
                                          symbol_table)))
         return mlir::failure();
     }
 
-    if (failed(
-            update_promoted_result_indices(op, callee.getType().getResults())))
+    if (failed(update_promoted_result_indices(
+            op, callee.getFunctionType().getResults())))
       return mlir::failure();
   } else if (auto batch_function_op =
                  llvm::dyn_cast<mlir::TF::BatchFunctionOp>(op)) {
@@ -745,14 +745,14 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
     assert(batch_fn);
 
     unsigned arg_index = operand_number;
-    if (batch_fn.getType().getInput(arg_index) != promoted.getType()) {
+    if (batch_fn.getFunctionType().getInput(arg_index) != promoted.getType()) {
       if (failed(PromoteFunctionArgument(batch_fn, arg_index,
                                          promoted.getType(), symbol_table)))
         return mlir::failure();
     }
 
-    if (failed(update_promoted_result_indices(op,
-                                              batch_fn.getType().getResults())))
+    if (failed(update_promoted_result_indices(
+            op, batch_fn.getFunctionType().getResults())))
       return mlir::failure();
   }
 
@@ -777,7 +777,7 @@ mlir::LogicalResult LowerTFSavedModelPass::PromoteOpOperand(
   state.addTypes(new_result_types);
   state.addAttributes(op->getAttrs());
 
-  auto *new_op = builder.createOperation(state);
+  auto *new_op = builder.create(state);
 
   // Replace all uses of `op`, and recursively replace those promoted uses.
   for (unsigned i = 0, j = 0, e = op->getNumResults(); i < e; ++i) {

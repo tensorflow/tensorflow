@@ -19,13 +19,14 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 
 namespace mlir {
-
+namespace func {
+class FuncOp;
+}
 class Value;
 class Location;
 class Operation;
 class ValueRange;
 class Region;
-class FuncOp;
 enum class AtomicRMWKind : uint64_t;
 
 namespace scf {

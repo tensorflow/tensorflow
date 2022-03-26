@@ -68,5 +68,5 @@
 // CHECK: }
 func @exp_scalar(%arg0: f32) -> f32 {
   %0 = math.exp %arg0 : f32
-  return %0 : f32
+  func.return %0 : f32
 }

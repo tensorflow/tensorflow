@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -54,7 +53,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -847,6 +846,16 @@ class HloBroadcastInDimConverter
   }
 };
 
+// If the input has a static shape we know exactly when the broadcast must
+// expand (the dimension is 1, which also trivially expands to 1) or will never
+// expand (the dimension is not 1). We can also source the information from the
+// optionally provided attrbibutes on statically known broadcasting behavior.
+// This means we can lower the broadcast just as we would lower a fully static
+// broadcast and go directly to `linalg.generic`.
+
+// This also covers the important case of broadcasting a scalar. Ideally the
+// pattern (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`) should be
+// converted to a tensor dialect op similar to TF's `ConstantLikeOp`.
 class HloDynamicBroadcastInDimConverter
     : public OpConversionPattern<mhlo::DynamicBroadcastInDimOp> {
  public:
@@ -855,40 +864,54 @@ class HloDynamicBroadcastInDimConverter
   LogicalResult matchAndRewrite(
       mhlo::DynamicBroadcastInDimOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    // If the input has a static shape we know exactly when the broadcast must
-    // expand (the dimension is 1, which also trivially expands to 1) or will
-    // never expand (the dimension is not 1). This means we can lower the
-    // broadcast just as we would lower a fully static broadcast and go directly
-    // to linalg.generic. This also covers the important case of broadcasting a
-    // scalar.
-
-    // Ideally the pattern (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`)
-    // should be converted to an Tensor-dialect op similar to TF ConstantLikeOp.
-
     Value operand = adaptor.operand();
     auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
-    if (!operand_type || !operand_type.hasStaticShape()) return failure();
-
+    if (!operand_type) return failure();
     auto result_type =
         typeConverter->convertType(op.getType()).dyn_cast<RankedTensorType>();
     if (!result_type) return failure();
 
-    Location loc = op.getLoc();
-    int64_t nloops = result_type.getRank();
-    auto operand_shape = operand_type.getShape();
-    SmallVector<AffineExpr, 4> dim_exprs;
-    dim_exprs.reserve(nloops);
+    // Determine dimension expressions based on whether the dimension is
+    // expanding (0) or non-expanding (identity), and fail if we cannot decide
+    // this.
+    SmallVector<AffineExpr> dim_exprs(operand_type.getRank(), nullptr);
 
-    if (op.broadcast_dimensions()) {
-      for (const auto& broadcast_dim :
-           enumerate(op.broadcast_dimensions().getValues<APInt>())) {
-        int64_t size = broadcast_dim.value().getSExtValue();
-        bool expansion_needed = operand_shape[broadcast_dim.index()] == 1;
-        dim_exprs.push_back(expansion_needed ? rewriter.getAffineConstantExpr(0)
-                                             : rewriter.getAffineDimExpr(size));
+    // Use static type info.
+    auto bcast_dims =
+        llvm::to_vector(llvm::map_range(op.broadcast_dimensions(), [](APInt d) {
+          return static_cast<int64_t>(d.getLimitedValue());
+        }));
+    for (const auto& it : llvm::enumerate(operand_type.getShape())) {
+      if (ShapedType::isDynamic(it.value())) continue;
+      bool is_expanding = it.value() == 1;
+      dim_exprs[it.index()] =
+          is_expanding ? rewriter.getAffineConstantExpr(0)
+                       : rewriter.getAffineDimExpr(bcast_dims[it.index()]);
+    }
+
+    // Use annotated expansion behavior, if available.
+    if (op.known_expanding_dimensions()) {
+      for (const auto& it :
+           op.known_expanding_dimensions()->getValues<APInt>()) {
+        auto i = it.getLimitedValue();
+        dim_exprs[i] = rewriter.getAffineConstantExpr(0);
+      }
+    }
+    if (op.known_nonexpanding_dimensions()) {
+      for (const auto& it :
+           op.known_nonexpanding_dimensions()->getValues<APInt>()) {
+        auto i = it.getLimitedValue();
+        dim_exprs[i] = rewriter.getAffineDimExpr(bcast_dims[i]);
       }
     }
 
+    // Fail if unknown expansion behavior remains.
+    if (!llvm::all_of(dim_exprs, [](AffineExpr expr) { return expr; }))
+      return failure();
+
+    // Materialize `linalg.generic` op.
+    Location loc = op.getLoc();
+    int64_t nloops = result_type.getRank();
     Value init =
         GetInitTensorFor(rewriter, loc, result_type, op, adaptor.getOperands());
     rewriter.replaceOpWithNewOp<linalg::GenericOp>(

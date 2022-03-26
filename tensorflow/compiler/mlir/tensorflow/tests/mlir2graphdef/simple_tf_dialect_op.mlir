@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -test-only-mlir-to-tf-nodedef %s -o - | FileCheck %s
 
-func @main() {
+func.func @main() {
 ^bb0:
   // CHECK: name: "node_name"
   // CHECK-NEXT: op: "Const"

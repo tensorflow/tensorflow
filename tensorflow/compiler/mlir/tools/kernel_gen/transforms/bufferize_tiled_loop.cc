@@ -241,9 +241,10 @@ struct BufferizeVectorTransferReadOp
       ConversionPatternRewriter &rewriter) const final {
     if (readOp.getShapedType().isa<MemRefType>()) return failure();
     rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
-        readOp, readOp.getType(), adaptor.source(), adaptor.indices(),
-        adaptor.permutation_mapAttr(), adaptor.padding(), adaptor.mask(),
-        adaptor.in_bounds() ? adaptor.in_boundsAttr() : ArrayAttr());
+        readOp, readOp.getType(), adaptor.getSource(), adaptor.getIndices(),
+        adaptor.getPermutationMapAttr(), adaptor.getPadding(),
+        adaptor.getMask(),
+        adaptor.getInBounds() ? adaptor.getInBoundsAttr() : ArrayAttr());
     return success();
   }
 };
@@ -257,10 +258,10 @@ struct BufferizeVectorTransferWriteOp
       ConversionPatternRewriter &rewriter) const final {
     if (writeOp.getShapedType().isa<MemRefType>()) return failure();
     rewriter.create<vector::TransferWriteOp>(
-        writeOp.getLoc(), adaptor.vector(), adaptor.source(), adaptor.indices(),
-        adaptor.permutation_mapAttr(),
-        adaptor.in_bounds() ? adaptor.in_boundsAttr() : ArrayAttr());
-    rewriter.replaceOp(writeOp, adaptor.source());
+        writeOp.getLoc(), adaptor.getVector(), adaptor.getSource(),
+        adaptor.getIndices(), adaptor.getPermutationMapAttr(),
+        adaptor.getInBounds() ? adaptor.getInBoundsAttr() : ArrayAttr());
+    rewriter.replaceOp(writeOp, adaptor.getSource());
     return success();
   }
 };

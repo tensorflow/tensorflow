@@ -155,7 +155,6 @@ class HloPrintOptions:
   canonicalize_computations: bool
   indent_amount: int
   is_in_nested_computation: bool
-  leading_and_trailing_instructions_number: int
 
 class HloModule:
   spmd_output_sharding: Optional[OpSharding]
@@ -224,6 +223,13 @@ class DebugOptions:
   xla_cpu_enable_xprof_traceme: bool
   xla_llvm_disable_expensive_passes: bool
   xla_test_all_input_layouts: bool
+
+class CompiledMemoryStats:
+  generated_code_size_in_bytes: int
+  argument_size_in_bytes: int
+  output_size_in_bytes: int
+  alias_size_in_bytes: int
+  temp_size_in_bytes: int
 
 class ExecutableBuildOptions:
   def __init__(self) -> None: ...

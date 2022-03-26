@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,7 +46,7 @@ profiler = _xla.profiler
 _version = 61
 
 # Version number for MLIR:Python components.
-mlir_api_version = 3
+mlir_api_version = 4
 
 xla_platform_names = {
     'cpu': 'Host',

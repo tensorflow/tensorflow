@@ -20,7 +20,7 @@ func @tanh_lower_and_fuse(%arg0: tensor<?x32xf32>) -> tensor<?x32xf32> {
   // CHECK: return %[[MEMREF]]
   %0 = "tf.Tanh"(%arg0): (tensor<?x32xf32>) -> tensor<?x32xf32>
   %1 = "tf.Tanh"(%0): (tensor<?x32xf32>) -> tensor<?x32xf32>
-  return %1 : tensor<?x32xf32>
+  func.return %1 : tensor<?x32xf32>
 }
 
 // -----
@@ -33,7 +33,7 @@ func @sigmoid_dynamic_dim(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
   // CHECK-SAME: indexing_maps = [#map, #map]
   // CHECK-SAME: iterator_types = ["parallel", "parallel"]
   %0 = "tf.Sigmoid"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
-  return %0 : tensor<?x1xf32>
+  func.return %0 : tensor<?x1xf32>
 }
 
 // -----
@@ -47,7 +47,7 @@ func @add_scalar_with_vec(%arg0: tensor<f32>,
   // CHECK: linalg.generic
   // CHECK-NOT: linalg.generic
   %0 = "tf.AddV2"(%arg0, %arg1): (tensor<f32>, tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // -----
@@ -63,7 +63,7 @@ func @add_vec_vec(
   // CHECK: linalg.generic
   // CHECK-NOT: linalg.generic
   %0 = "tf.AddV2"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // -----
@@ -83,7 +83,7 @@ func @add_vec_vec_vec(
   // CHECK-NOT: linalg.generic
   %0 = "tf.AddV2"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.AddV2"(%0, %arg2): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  return %1 : tensor<?xf32>
+  func.return %1 : tensor<?xf32>
 }
 
 // -----
@@ -134,7 +134,7 @@ func @compute_with_bcast(
        : (tensor<512xf32>, tensor<?x?x512xf32>) -> tensor<?x?x512xf32>
   %6 = "tf.AddV2"(%3, %5)
        : (tensor<?x?x512xf32>, tensor<?x?x512xf32>) -> tensor<?x?x512xf32>
-  return %6 : tensor<?x?x512xf32>
+  func.return %6 : tensor<?x?x512xf32>
 }
 
 // -----
@@ -155,7 +155,7 @@ func @add_vec_vec_vec_vec(
   %0 = "tf.AddV2"(%arg0, %arg1): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %1 = "tf.AddV2"(%0, %arg2): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
   %2 = "tf.AddV2"(%1, %arg3): (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-  return %2 : tensor<?xf32>
+  func.return %2 : tensor<?xf32>
 }
 
 // -----
@@ -177,7 +177,7 @@ func @add_vec_tensor_tensor(
         : (tensor<512xf32>, tensor<1x?x512xf32>) -> tensor<1x?x512xf32>
   %1 = "tf.AddV2"(%arg2, %0)
         : (tensor<1x?x512xf32>, tensor<1x?x512xf32>) -> tensor<1x?x512xf32>
-  return %1 : tensor<1x?x512xf32>
+  func.return %1 : tensor<1x?x512xf32>
 }
 
 // -----
@@ -192,7 +192,7 @@ func @tf_binary_with_bcast(%arg0: tensor<?x1xf32>,
   // CHECK:   mulf
   %0 = "tf.Mul"(%arg0, %arg1)
        : (tensor<?x1xf32>, tensor<?x4xf32>) -> tensor<?x4xf32>
-  return %0 : tensor<?x4xf32>
+  func.return %0 : tensor<?x4xf32>
 }
 
 // -----
@@ -217,7 +217,7 @@ func @tf_binary_with_bcast_and_fusion(%arg0: tensor<?x4xf32>,
        : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
   %2 = "tf.Mul"(%1, %arg2)
        : (tensor<?x4xf32>, tensor<4xf32>) -> tensor<?x4xf32>
-  return %2 : tensor<?x4xf32>
+  func.return %2 : tensor<?x4xf32>
 }
 
 // -----
@@ -246,7 +246,7 @@ func @tf_binary_with_bcast_symbolic_shapes(
        : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   %3 = "tf.AddV2"(%2, %arg3)
        : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  func.return %3 : tensor<?x?xf32>
 }
 
 // -----
@@ -266,7 +266,7 @@ func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
   %0 = "tf.Cast"(%arg0) : (tensor<?x32xi16>) -> tensor<?x32xf16>
   %1 = "tf.Sub"(%arg1, %0) : (tensor<?x?x32xf16>, tensor<?x32xf16>)
       -> tensor<?x?x32xf16>
-  return %1 : tensor<?x?x32xf16>
+  func.return %1 : tensor<?x?x32xf16>
 }
 
 // -----
@@ -284,7 +284,7 @@ func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
          : () -> tensor<2xi32>
   %1 = "tf.Transpose"(%arg0, %0)
          : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<3x2xf32>
-  return %1 : tensor<3x2xf32>
+  func.return %1 : tensor<3x2xf32>
 }
 
 // -----
@@ -308,7 +308,7 @@ func @tf_transpose_after_transpose(%arg0: tensor<?x?x?xf32>)
          : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
   %3 = "tf.Transpose"(%2, %1)
          : (tensor<?x?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
-  return %3 : tensor<?x?x?xf32>
+  func.return %3 : tensor<?x?x?xf32>
 }
 
 // -----
@@ -327,7 +327,7 @@ func @bias_add_and_relu(%arg0: tensor<?x32xf32>,
   %0 = "tf.BiasAdd"(%arg0, %arg1)
          : (tensor<?x32xf32>, tensor<32xf32>) -> tensor<?x32xf32>
   %1 = "tf.Relu"(%0): (tensor<?x32xf32>) -> tensor<?x32xf32>
-  return %1 : tensor<?x32xf32>
+  func.return %1 : tensor<?x32xf32>
 }
 
 // -----
@@ -343,7 +343,7 @@ func @sub_sub(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>, %arg2: tensor<?x
   // CHECK:      return %[[RESULT_BUF]] : memref<?x?x32xf16>
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<?x32xf16>, tensor<?x32xf16>) -> tensor<?x32xf16>
   %1 = "tf.Sub"(%arg2, %0) : (tensor<?x?x32xf16>, tensor<?x32xf16>) -> tensor<?x?x32xf16>
-  return %1 : tensor<?x?x32xf16>
+  func.return %1 : tensor<?x?x32xf16>
 }
 
 // -----
@@ -365,7 +365,7 @@ func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
          shrink_axis_mask = 1 : i64
        } : (tensor<3xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>)
          -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // -----
@@ -380,7 +380,7 @@ func @constant_folding() -> tensor<2xi32> {
   // CHECK: return %[[CONST]]
   %2 = "tf.Pack"(%0, %1) {axis = 0 : i64}
        : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
-  return %2 : tensor<2xi32>
+  func.return %2 : tensor<2xi32>
 }
 
 // -----
@@ -395,17 +395,17 @@ func @add_floormod_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   %2 = "tf.AddV2"(%1, %arg0)
       : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  return %2 : tensor<?x?xf32>
+  func.return %2 : tensor<?x?xf32>
 }
 
 // -----
 
 // CHECK-LABEL: @min_clip_by_value
-builtin.func @min_clip_by_value(%V__0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+func.func @min_clip_by_value(%V__0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %dims0 = "tf.Const"() { value = dense<[1, 2]> : tensor<2xi32> }: () -> tensor<2xi32>
   %0 = "tf.Min"(%V__0, %dims0) {keep_dims = true} : (tensor<?x?x?xf32>, tensor<2xi32>) -> tensor<?x?x?xf32>
   %1 = "tf.ClipByValue"(%V__0, %0, %V__0) : (tensor<?x?x?xf32>, tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return %1 : tensor<?x?x?xf32>
+  func.return %1 : tensor<?x?x?xf32>
 }
 
 // -----
@@ -417,7 +417,7 @@ func @rint_sq_sub(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %0 = "tf.Rint"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %1 = "tf.Square"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   %2 = "tf.Sub"(%0, %1) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  return %2 : tensor<?x?xf32>
+  func.return %2 : tensor<?x?xf32>
 }
 
 // -----
@@ -436,5 +436,5 @@ func @do_not_fuse_if_multiple_uses(%arg0: tensor<?x?xf32>)
   // CHECK-NEXT:  linalg.yield
   %2 = "tf.Rsqrt"(%1) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   // CHECK-NOT: linalg.generic
-  return %1, %2 : tensor<?x?xf32>, tensor<?x?xf32>
+  func.return %1, %2 : tensor<?x?xf32>, tensor<?x?xf32>
 }

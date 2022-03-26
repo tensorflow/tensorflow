@@ -269,11 +269,9 @@ extern "C" void* _mlir_ciface_tf_jit_compile(
       ctx->op_device_context()->stream()->GetCudaComputeCapability();
   architectures.push_back(absl::StrCat("sm_", cc.major, cc.minor));
 #elif defined(TENSORFLOW_USE_ROCM)
-  architectures.push_back(ctx->op_device_context()
-                              ->stream()
-                              ->parent()
-                              ->GetDeviceDescription()
-                              .rocm_amdgpu_gcn_arch_name());
+  stream_executor::RocmComputeCapability cc =
+      ctx->op_device_context()->stream()->GetRocmComputeCapability();
+  architectures.push_back(cc.gcn_arch_name());
 #endif
 
   // Construct `SmallVector`s from arguments.

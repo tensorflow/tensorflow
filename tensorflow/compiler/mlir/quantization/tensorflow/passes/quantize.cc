@@ -240,7 +240,7 @@ class QuantizeSameScaleOpsPattern : public OpRewritePattern<DequantizeCastOp> {
       for (int i = 0; i < quantizing_op->getNumRegions(); ++i) {
         new_state.addRegion();
       }
-      Operation* quantized_op = rewriter.createOperation(new_state);
+      Operation* quantized_op = rewriter.create(new_state);
       if (quantizing_op->getNumRegions() != 0) {
         for (const auto& indexed_regions :
              llvm::enumerate(quantizing_op->getRegions())) {

@@ -8,7 +8,7 @@
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @fft(%input: memref<3x5xf32>, %output: memref<3x5xcomplex<f32>>) {
+func.func @fft(%input: memref<3x5xf32>, %output: memref<3x5xcomplex<f32>>) {
   // CHECK-NOT: cast
 
   // CHECK: [[CONTEXT:%[0-9]+]] = tfrt_gpu.stream.get_context %arg1
