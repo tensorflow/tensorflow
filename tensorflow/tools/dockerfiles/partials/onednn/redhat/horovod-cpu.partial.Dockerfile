@@ -1,13 +1,13 @@
 FROM registry.access.redhat.com/ubi8/ubi:${REDHAT_VERSION} as base
 
 ### Required OpenShift Labels
-LABEL name="Intel&#174; Optimizations for TensorFlow*" \
+LABEL name="Intel&#174; Optimizations for TensorFlow* with Open MPI* and Horovod*" \
       maintainer="Abolfazl Shahbazi <abolfazl.shahbazi@intel.com>" \
       vendor="Intel&#174; Corporation" \
       version="2.7.0" \
       release="2.7.0" \
-      summary="Intel&#174; Optimizations for TensorFlow* is a binary distribution of TensorFlow* with Intel&#174; oneAPI Deep Neural Network Library primitives." \
-      description="Intel&#174; Optimizations for TensorFlow* is a binary distribution of TensorFlow* with Intel&#174; oneAPI Deep Neural Network Library (Intel&#174; oneDNN) primitives, a popular performance library for deep learning applications. TensorFlow* is a widely-used machine learning framework in the deep learning arena, demanding efficient utilization of computational resources. In order to take full advantage of Intel&#174; architecture and to extract maximum performance, the TensorFlow* framework has been optimized using Intel&#174; oneDNN primitives."
+      summary="Intel&#174; Optimizations for TensorFlow* with Open MPI* and Horovod* is a binary distribution of TensorFlow* with Intel&#174; oneAPI Deep Neural Network Library primitives." \
+      description="Intel&#174; Optimizations for TensorFlow* with Open MPI* and Horovod* is a binary distribution of TensorFlow* with Intel&#174; oneAPI Deep Neural Network Library (Intel&#174; oneDNN) primitives, a popular performance library for deep learning applications. TensorFlow* is a widely-used machine learning framework in the deep learning arena, demanding efficient utilization of computational resources. In order to take full advantage of Intel&#174; architecture and to extract maximum performance, the TensorFlow* framework has been optimized using Intel&#174; oneDNN primitives."
 
 # Licenses, Legal Notice and TPPs for older versions
 ADD https://raw.githubusercontent.com/Intel-tensorflow/tensorflow/v2.7.0/LEGAL-NOTICE ./licenses/
