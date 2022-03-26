@@ -203,6 +203,7 @@ py_library(
         ":tpu_embedding",
         ":tpu_embedding_base",
         ":tpu_embedding_for_serving",
+        ":tpu_embedding_v1",
         ":tpu_embedding_v2",
         ":tpu_embedding_v2_utils",
         ":tpu_hardware_feature",
@@ -655,6 +656,30 @@ tf_py_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//third_party/py/numpy",
+    ],
+)
+
+pytype_strict_library(
+    name = "tpu_embedding_v1",
+    srcs = ["tpu_embedding_v1.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_embedding_base",
+        ":tpu_embedding_v2_utils",
+        ":tpu_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
