@@ -183,12 +183,13 @@ TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
 
 // Returns true if the ith input is allocated in host memory. If i < 0 or i >=
 // TF_NumInputs(ctx), the program aborts.
-TF_CAPI_EXPORT extern bool TF_IsHostMemoryInput(TF_OpKernelContext* ctx, int i);
+TF_CAPI_EXPORT extern bool TF_IsHostMemoryInput(TF_OpKernelContext* ctx, int i,
+                                                TF_Status* status);
 
 // Returns true if the ith output is allocated in host memory. If i < 0 or i >=
 // TF_NumOutputs(ctx), the program aborts.
-TF_CAPI_EXPORT extern bool TF_IsHostMemoryOutput(TF_OpKernelContext* ctx,
-                                                 int i);
+TF_CAPI_EXPORT extern bool TF_IsHostMemoryOutput(TF_OpKernelContext* ctx, int i,
+                                                 TF_Status* status);
 
 // Returns the step ID of the given context.
 TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);

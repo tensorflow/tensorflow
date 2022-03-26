@@ -457,24 +457,20 @@ TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
 
 bool TF_IsHostMemoryInput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-
   if (i < 0 || i >= cc_ctx->num_inputs()) {
     TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");
     return false;
   }
-
   TF_SetStatus(status, TF_OK, "");
   return cc_ctx->input_memory_type(i) == tensorflow::HOST_MEMORY;
 }
 
 bool TF_IsHostMemoryOutput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-
   if (i < 0 || i >= cc_ctx->num_outputs()) {
     TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");
     return false;
   }
-
   return cc_ctx->output_memory_type(i) == tensorflow::HOST_MEMORY;
 }
 
