@@ -155,7 +155,6 @@ class HloPrintOptions:
   canonicalize_computations: bool
   indent_amount: int
   is_in_nested_computation: bool
-  leading_and_trailing_instructions_number: int
 
 class HloModule:
   spmd_output_sharding: Optional[OpSharding]
