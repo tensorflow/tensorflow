@@ -471,6 +471,7 @@ bool TF_IsHostMemoryOutput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
     TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");
     return false;
   }
+  TF_SetStatus(status, TF_OK, "");
   return cc_ctx->output_memory_type(i) == tensorflow::HOST_MEMORY;
 }
 
