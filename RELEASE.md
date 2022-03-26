@@ -115,12 +115,14 @@
 *   `tf.lite`:
 
     *   Added TFLite builtin op support for the following TF ops:
-    *   `tf.math.argmin`/`tf.math.argmax` for input data type `tf.bool` on CPU.
-    *   `tf.nn.gelu` op for output data type `tf.float32` and quantization on
-        CPU.
+        *   `tf.math.argmin`/`tf.math.argmax` for input data type `tf.bool` on
+            CPU.
+        *   `tf.nn.gelu` op for output data type `tf.float32` and quantization
+            on CPU.
     *   Add nominal support for unsigned 16-bit integer tensor types. Note that
         very few TFLite kernels support this type natively, so its use in mobile
         ML authoring is generally discouraged.
+    *   Add support for unsigned 16-bit integer tensor types in cast op.
     *   Experimental support for lowering `list_ops.tensor_list_set_item` with
         `DynamicUpdateSlice`.
     *   Enabled a new MLIR-based dynamic range quantization backend by default
