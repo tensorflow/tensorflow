@@ -309,10 +309,20 @@ def _find_roctracer_config(rocm_install_path):
 def _find_hipsparse_config(rocm_install_path):
 
   def hipsparse_version_numbers(path):
-    version_file = os.path.join(path, "hipsparse/include/hipsparse-version.h")
-    if not os.path.exists(version_file):
+    possible_version_files = [
+        "include/hipsparse/hipsparse-version.h",  # ROCm 5.2
+        "hipsparse/include/hipsparse-version.h",  # ROCm 5.1 and prior
+    ]
+    version_file = None
+    for f in possible_version_files:
+      version_file_path = os.path.join(path, f)
+      if os.path.exists(version_file_path):
+        version_file = version_file_path
+        break
+    if not version_file:
       raise ConfigError(
-          'hipsparse version file "{}" not found'.format(version_file))
+          "hipsparse version file not found in {}".format(
+              possible_version_files))
     major = _get_header_version(version_file, "hipsparseVersionMajor")
     minor = _get_header_version(version_file, "hipsparseVersionMinor")
     patch = _get_header_version(version_file, "hipsparseVersionPatch")
@@ -331,6 +341,7 @@ def _find_hipsolver_config(rocm_install_path):
 
   def hipsolver_version_numbers(path):
     possible_version_files = [
+        "include/hipsolver/internal/hipsolver-version.h",  # ROCm 5.2
         "hipsolver/include/internal/hipsolver-version.h",  # ROCm 5.1
         "hipsolver/include/hipsolver-version.h",  # ROCm 5.0 and prior
     ]
