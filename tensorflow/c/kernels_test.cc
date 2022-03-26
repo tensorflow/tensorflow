@@ -673,26 +673,41 @@ TEST(TestKernel, TestHostMemory) {
   auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
     MyComputeFunc(kernel, ctx);
 
-    EXPECT_EQ(false, TF_IsHostMemoryInput(ctx, 0));
-    EXPECT_EQ(true, TF_IsHostMemoryInput(ctx, 1));
-    EXPECT_EQ(true, TF_IsHostMemoryOutput(ctx, 0));
-    EXPECT_EQ(false, TF_IsHostMemoryOutput(ctx, 1));
+    TF_Status* status = TF_NewStatus();
 
-    EXPECT_DEATH({
-      TF_IsHostMemoryInput(ctx, -1);
-    }, "Check failed: i >= 0");
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(false, TF_IsHostMemoryInput(ctx, 0, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
 
-    EXPECT_DEATH({
-      TF_IsHostMemoryInput(ctx, 2);
-    }, "Check failed: i < cc_ctx->num_inputs()");
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(true, TF_IsHostMemoryInput(ctx, 1, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
 
-    EXPECT_DEATH({
-      TF_IsHostMemoryOutput(ctx, -1);
-    }, "Check failed: i >= 0");
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(true, TF_IsHostMemoryOutput(ctx, 0, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
 
-    EXPECT_DEATH({
-      TF_IsHostMemoryOutput(ctx, 2);
-    }, "Check failed: i < cc_ctx->num_outputs()");
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(false, TF_IsHostMemoryOutput(ctx, 1, status));
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryInput(ctx, -1, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryInput(ctx, 2, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryOutput(ctx, -1, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_SetStatus(status, TF_OK, "");
+    TF_IsHostMemoryOutput(ctx, 2, status);
+    EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(status));
+
+    TF_DeleteStatus(status);
   };
 
   TF_KernelBuilder* builder = TF_NewKernelBuilder(
