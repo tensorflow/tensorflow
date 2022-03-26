@@ -2550,3 +2550,7 @@ def _reduce_prod_patch(x):
     return math_ops.cast(
         math_ops.reduce_prod(math_ops.cast(x, dtypes.int32)), dtypes.int64)
   return math_ops.reduce_prod(x)
+
+
+# Type alias for shape encoded as a DynamicRaggedShape or a Tensor.
+DenseOrRaggedShape = Union[DynamicRaggedShape, core.TensorLike]
