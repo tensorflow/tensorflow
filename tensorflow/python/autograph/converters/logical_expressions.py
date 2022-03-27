@@ -37,11 +37,6 @@ LOGICAL_OPERATORS = {
     gast.Or: 'ag__.or_',
 }
 
-EQUALITY_OPERATORS = {
-    gast.Eq: 'ag__.eq',
-    gast.NotEq: 'ag__.not_eq',
-}
-
 
 class LogicalExpressionTransformer(converter.Base):
   """Converts logical expressions to corresponding TF calls."""
@@ -50,12 +45,6 @@ class LogicalExpressionTransformer(converter.Base):
     op_type = type(operator)
     if op_type in LOGICAL_OPERATORS:
       return LOGICAL_OPERATORS[op_type]
-    if self.ctx.user.options.uses(converter.Feature.EQUALITY_OPERATORS):
-      deprecation.deprecated(None,
-        ("tf.autograph.experimental.Feature.EQUALITY_OPERATORS "
-        "is deprecated and it is alredy enabled by default"))
-    if op_type in EQUALITY_OPERATORS:
-      return EQUALITY_OPERATORS[op_type]
     return None
 
   def _as_lambda(self, expr):
