@@ -44,6 +44,11 @@ class LogicalExpressionTransformer(converter.Base):
     op_type = type(operator)
     if op_type in LOGICAL_OPERATORS:
       return LOGICAL_OPERATORS[op_type]
+    if op_type == gast.Eq:
+      return  'ag__.eq'
+    if op_type == gast.NotEq:
+      return 'ag__.not_eq'
+}
     return None
 
   def _as_lambda(self, expr):
