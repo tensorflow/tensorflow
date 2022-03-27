@@ -48,7 +48,6 @@ class LogicalExpressionTransformer(converter.Base):
       return  'ag__.eq'
     if op_type == gast.NotEq:
       return 'ag__.not_eq'
-}
     return None
 
   def _as_lambda(self, expr):
