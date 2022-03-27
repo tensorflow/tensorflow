@@ -201,7 +201,7 @@ class PyBuiltinsTest(test.TestCase):
 
   def test_max(self):
     self.assertEqual(py_builtins.max_([1, 3, 2]), 3)
-    self.assertEqual(py_builtins.max_(0,2,1), 2)
+    self.assertEqual(py_builtins.max_(0, 2, 1), 2)
 
 
   def test_max_tensor(self):
@@ -212,18 +212,18 @@ class PyBuiltinsTest(test.TestCase):
     r = py_builtins.max_(constant_op.constant([1, 3, 2]))
     self.assertAllEqual(self.evaluate(r), 3)
     with self.assertRaises(ValueError):
-      py_builtins.max_(constant_op.constant([[1, 3],[3,4]]))
-    r = py_builtins.max_(constant_op.constant(6),constant_op.constant(4),
+      py_builtins.max_(constant_op.constant([[1, 3], [3, 4]]))
+    r = py_builtins.max_(constant_op.constant(6), constant_op.constant(4), 
                         constant_op.constant(8))
     self.assertAllEqual(self.evaluate(r), 8)
     with self.assertRaises(ValueError):
-      py_builtins.max_(constant_op.constant([6]),constant_op.constant(4),
+      py_builtins.max_(constant_op.constant([6]),constant_op.constant(4), 
                       constant_op.constant(8))
 
 
   def test_min(self):
     self.assertEqual(py_builtins.min_([2, 1, 3]), 1)
-    self.assertEqual(py_builtins.min_(2,0,1), 0)
+    self.assertEqual(py_builtins.min_(2, 0, 1), 0)
 
 
   def test_min_tensor(self):
@@ -234,12 +234,12 @@ class PyBuiltinsTest(test.TestCase):
     r = py_builtins.min_(constant_op.constant([3, 1, 2]))
     self.assertAllEqual(self.evaluate(r), 1)
     with self.assertRaises(ValueError):
-      py_builtins.min_(constant_op.constant([[1, 3],[3,4]]))
-    r = py_builtins.min_(constant_op.constant(6),constant_op.constant(4),
+      py_builtins.min_(constant_op.constant([[1, 3], [3, 4]]))
+    r = py_builtins.min_(constant_op.constant(6),constant_op.constant(4), 
                         constant_op.constant(8))
     self.assertAllEqual(self.evaluate(r), 4)
     with self.assertRaises(ValueError):
-      py_builtins.min_(constant_op.constant([6]),constant_op.constant(4),
+      py_builtins.min_(constant_op.constant([6]),constant_op.constant(4), 
                       constant_op.constant(8))
 
 
