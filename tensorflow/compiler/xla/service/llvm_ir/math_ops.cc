@@ -30,42 +30,49 @@ llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input) {
   auto use_aprox =
       b->CreateFCmpOLT(abs_x, llvm::ConstantFP::get(type, kCanUseApprox));
 
+  auto cutoff_upper = llvm::ConstantFP::get(type, 15.6437711715698242f);
+  //auto x = llvm_ir::EmitFloatMin(input, cutoff_upper, b);
   // Clamp the input to [-9, 9].
   //
   // To simplify the code base until it's an issue, don't have a slow min/max in
   // this approximation.
-  llvm::Value* input_clamped = llvm_ir::EmitFloatMin(
+  llvm::Value* x = llvm_ir::EmitFloatMin(
       llvm_ir::EmitFloatMax(input, llvm::ConstantFP::get(type, -9.0), b,
                             /*enable_fast_min_max=*/true),
       llvm::ConstantFP::get(type, 9.0), b, /*enable_fast_min_max=*/true);
 
-  static constexpr std::array<float, 7> numerator_coeffs{
-      -2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,
-      5.12229709037114e-08f,  1.48572235717979e-05f, 6.37261928875436e-04f,
-      4.89352455891786e-03f};
 
-  static constexpr std::array<float, 4> denominator_coeffs{
-      1.19825839466702e-06f, 1.18534705686654e-04f, 2.26843463243900e-03f,
-      4.89352518554385e-03f};
 
-  llvm::Value* input_squared = b->CreateFMul(input_clamped, input_clamped);
-  llvm::Value* numerator = llvm::ConstantFP::get(type, numerator_coeffs[0]);
-  for (int i = 1; i < numerator_coeffs.size(); i++) {
-    numerator = b->CreateFAdd(b->CreateFMul(input_squared, numerator),
-                              llvm::ConstantFP::get(type, numerator_coeffs[i]));
-  }
+  auto alpha_1 = llvm::ConstantFP::get(type, 2.48287947061529e-01f);
+  auto alpha_3 = llvm::ConstantFP::get(type, 8.51377133304701e-03f);
+  auto alpha_5 = llvm::ConstantFP::get(type, 6.08574864600143e-05f);
+  auto alpha_7 = llvm::ConstantFP::get(type, 1.15627324459942e-07f);
+  auto alpha_9 = llvm::ConstantFP::get(type, 4.37031012579801e-11f);
 
-  numerator = b->CreateFMul(input_clamped, numerator);
+  auto beta_0  = llvm::ConstantFP::get(type, 9.93151921023180e-01f);
+  auto beta_2  = llvm::ConstantFP::get(type, 1.16817656904453e-01f);
+  auto beta_4  = llvm::ConstantFP::get(type, 1.70198817374094e-03f);
+  auto beta_6  = llvm::ConstantFP::get(type, 6.29106785017040e-06f);
+  auto beta_8  = llvm::ConstantFP::get(type, 5.76102136993427e-09f);
+  auto beta_10 = llvm::ConstantFP::get(type, 6.10247389755681e-13f);
 
-  llvm::Value* denominator = llvm::ConstantFP::get(type, denominator_coeffs[0]);
-  for (int i = 1; i < denominator_coeffs.size(); i++) {
-    denominator =
-        b->CreateFAdd(b->CreateFMul(input_squared, denominator),
-                      llvm::ConstantFP::get(type, denominator_coeffs[i]));
-  }
+  llvm::Value* x2 = b->CreateFMul(x, x);
+  auto p = b->CreateFAdd(b->CreateFMul(x2, alpha_9), alpha_7);
+  p = b->CreateFAdd(b->CreateFMul(x2, p), alpha_5);
+  p = b->CreateFAdd(b->CreateFMul(x2, p), alpha_3);
+  p = b->CreateFAdd(b->CreateFMul(x2, p), alpha_1);
+  p = b->CreateFMul(x, p);
 
-  return b->CreateSelect(use_aprox, input,
-                         b->CreateFDiv(numerator, denominator));
+  auto q = b->CreateFAdd(b->CreateFMul(x2, beta_10), beta_8);
+  q = b->CreateFAdd(b->CreateFMul(x2, q), beta_6);
+  q = b->CreateFAdd(b->CreateFMul(x2, q), beta_4);
+  q = b->CreateFAdd(b->CreateFMul(x2, q), beta_2);
+  q = b->CreateFAdd(b->CreateFMul(x2, q), beta_0);
+
+  auto ret = b->CreateFAdd(b->CreateFDiv(p,q), llvm::ConstantFP::get(type, 0.5f));
+
+  return b->CreateSelect(use_aprox, input, ret);
+
 }
 
 }  // namespace llvm_ir
