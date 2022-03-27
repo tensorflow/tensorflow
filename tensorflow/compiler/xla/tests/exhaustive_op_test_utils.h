@@ -180,8 +180,10 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     mutable_debug_options()->clear_xla_disable_hlo_passes();
   }
 
-  void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op) {
-    Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator<T, N>());
+  void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op,
+           NativeT max = std::numeric_limits<NativeT>::max(),
+           NativeT min = std::numeric_limits<NativeT>::lowest()) {
+    Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator<T, N>(), max, min);
   }
 
   // A helper for implementing the Run method for exhaustive op tests. It
@@ -192,7 +194,9 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // called each time an output element is compared inside a loop in routine
   // ExpectNear.
   void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op,
-           ErrorSpecGen error_spec_gen) {
+           ErrorSpecGen error_spec_gen,
+           NativeT max = std::numeric_limits<NativeT>::max(),
+           NativeT min = std::numeric_limits<NativeT>::lowest()) {
     InputLiterals input_literals = CreateInputLiterals();
     FillInput(&input_literals);
 
@@ -207,7 +211,8 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
     TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
                             RunComputationHelper(comp, input_literals));
-    ExpectNear(input_literals, result_literal, evaluate_op, error_spec_gen);
+    ExpectNear(input_literals, result_literal, evaluate_op, error_spec_gen, max,
+               min);
   }
 
   StatusOr<Literal> RunComputationHelper(const XlaComputation& comp,
@@ -232,9 +237,13 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   //  c) we need special handling of certain inputs.  For example, we say that
   //     a denormal input has multiple correct outputs (namely, f(x) and f(0))
   //     and just needs to be close to one of them.
+  // We need to guarantee the actual output in a valid range, so we add max and
+  // min args.
   void ExpectNear(const InputLiterals& input_literals,
                   const Literal& result_literal, EvaluateOp evaluate_op,
-                  ErrorSpecGen error_spec_gen);
+                  ErrorSpecGen error_spec_gen,
+                  NativeT max = std::numeric_limits<NativeT>::max(),
+                  NativeT min = std::numeric_limits<NativeT>::lowest());
 
   // Builds and runs the computation using the LocalClient API, rather than the
   // plain Client API, which is used by ClientLibraryTestBase.  This is because
@@ -940,6 +949,23 @@ inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveF32Ranges() {
     result.push_back({i, i + step});
   }
   return result;
+}
+
+template <typename T>
+bool CheckValidRange(const T input, const T max, const T min) const {
+  return (input < max) && (input > min);
+}
+
+template <>
+bool CheckValidRange(const std::complex<double>, const std::complex<double>,
+                     const std::complex<double>) const {
+  return true;
+}
+
+template <>
+bool CheckValidRange(const std::complex<float>, const std::complex<float>,
+                     const std::complex<float>) const {
+  return true;
 }
 
 template <PrimitiveType T, size_t N>
