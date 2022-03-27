@@ -468,7 +468,7 @@ bool TF_IsHostMemoryInput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
 bool TF_IsHostMemoryOutput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (i < 0 || i >= cc_ctx->num_outputs()) {
-    TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "output index out of range");
     return false;
   }
   TF_SetStatus(status, TF_OK, "");
