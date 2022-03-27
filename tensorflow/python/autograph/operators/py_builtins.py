@@ -370,11 +370,11 @@ def _tf_max(*args, **kwargs):
     kwargs_tuple = tuple(set(kwargs.keys()))
     raise ValueError('These keyword arguments are ' 
                      'currently not supported: {}'.format(kwargs_tuple))
-  if len(args)== 1:
+  if len(args) == 1:
     rank = args[0].shape.rank
-    if rank == 0 :
+    if rank == 0:
       return args[0]
-    if rank == 1 :
+    if rank == 1:
       return math_ops.reduce_max(*args, axis=0)
     raise ValueError("max(arg) currently support only tensor with rank 1, "
                       "but got a tensor with rank {}".format(rank)) 
