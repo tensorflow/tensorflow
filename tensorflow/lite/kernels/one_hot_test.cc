@@ -69,7 +69,7 @@ TEST(OneHotOpTest, BasicFloat) {
   const int depth = 3;
   OneHotOpModel<float> model({3}, depth, TensorType_FLOAT32);
   model.SetIndices({0, 1, 2});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
   EXPECT_THAT(model.GetOutput(),
@@ -80,7 +80,7 @@ TEST(OneHotOpTest, BasicInt) {
   const int depth = 3;
   OneHotOpModel<int> model({3}, depth, TensorType_INT32);
   model.SetIndices({0, 1, 2});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 1, 0, 0, 0, 1}));
@@ -90,7 +90,7 @@ TEST(OneHotOpTest, BasicInt8) {
   const int depth = 3;
   OneHotOpModel<int8_t> model({3}, depth, TensorType_INT8);
   model.SetIndices({0, 1, 2});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 1, 0, 0, 0, 1}));
@@ -100,7 +100,7 @@ TEST(OneHotOpTest, BasicUint8) {
   const int depth = 3;
   OneHotOpModel<uint8_t> model({3}, depth, TensorType_UINT8);
   model.SetIndices({0, 1, 2});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 1, 0, 0, 0, 1}));
@@ -110,7 +110,7 @@ TEST(OneHotOpTest, BasicBool) {
   const int depth = 3;
   OneHotOpModel<bool> model({3}, depth, TensorType_BOOL);
   model.SetIndices({0, 1, 2});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
   EXPECT_THAT(model.GetOutput(),
@@ -122,7 +122,7 @@ TEST(OneHotOpTest, SmallDepth) {
   const int depth = 1;
   OneHotOpModel<int> model({3}, depth, TensorType_INT32);
   model.SetIndices({0, 1, 2});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 1}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0}));
@@ -132,7 +132,7 @@ TEST(OneHotOpTest, BigDepth) {
   const int depth = 4;
   OneHotOpModel<int> model({2}, depth, TensorType_INT32);
   model.SetIndices({0, 1});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 4}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 0, 1, 0, 0}));
@@ -145,7 +145,7 @@ TEST(OneHotOpTest, OnOffValues) {
   const int off = 0;
   OneHotOpModel<int> model({4}, depth, TensorType_INT32, axis, on, off);
   model.SetIndices({0, 2, -1, 1});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({4, 3}));
   EXPECT_THAT(model.GetOutput(),
@@ -159,7 +159,7 @@ TEST(OneHotOpTest, ZeroAxis) {
   const int off = 0;
   OneHotOpModel<int> model({4}, depth, TensorType_INT32, axis, on, off);
   model.SetIndices({0, 2, -1, 1});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 4}));
   EXPECT_THAT(model.GetOutput(),
@@ -173,7 +173,7 @@ TEST(OneHotOpTest, MultiDimensionalIndices) {
   const float off = 0;
   OneHotOpModel<float> model({2, 2}, depth, TensorType_FLOAT32, axis, on, off);
   model.SetIndices({0, 2, 1, -1});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 3}));
   EXPECT_THAT(model.GetOutput(),
@@ -189,7 +189,7 @@ TEST(OneHotOpTest, Int64Indices) {
                            TensorType_INT64);
   std::initializer_list<int64_t> indices = {0, 1, 2};
   model.SetIndices(indices);
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 3}));
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 0, 0, 0, 1, 0, 0, 0, 1}));

@@ -64,7 +64,7 @@ TEST(SpaceToDepthOpModel, BadBlockSize) {
 TEST(SpaceToDepthOpModel, Float32) {
   SpaceToDepthOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}}, 2);
   m.SetInput<float>({1.4, 2.3, 3.2, 4.1, 5.4, 6.3, 7.2, 8.1});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray({1.4, 2.3, 3.2, 4.1, 5.4, 6.3, 7.2, 8.1}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 8));
@@ -73,7 +73,7 @@ TEST(SpaceToDepthOpModel, Float32) {
 TEST(SpaceToDepthOpModel, Uint8) {
   SpaceToDepthOpModel m({TensorType_UINT8, {1, 2, 2, 1}}, 2);
   m.SetInput<uint8_t>({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({1, 2, 3, 4}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
@@ -81,7 +81,7 @@ TEST(SpaceToDepthOpModel, Uint8) {
 TEST(SpaceToDepthOpModel, int8) {
   SpaceToDepthOpModel m({TensorType_INT8, {1, 2, 2, 1}}, 2);
   m.SetInput<int8_t>({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({1, 2, 3, 4}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
@@ -89,7 +89,7 @@ TEST(SpaceToDepthOpModel, int8) {
 TEST(SpaceToDepthOpModel, Int32) {
   SpaceToDepthOpModel m({TensorType_INT32, {1, 2, 2, 3}}, 2);
   m.SetInput<int32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int32_t>(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 12));
@@ -98,7 +98,7 @@ TEST(SpaceToDepthOpModel, Int32) {
 TEST(SpaceToDepthOpModel, Int64) {
   SpaceToDepthOpModel m({TensorType_INT64, {1, 4, 4, 1}}, 2);
   m.SetInput<int64_t>({1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14, 11, 12, 15, 16});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int64_t>(),
               ElementsAreArray(
                   {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}));
