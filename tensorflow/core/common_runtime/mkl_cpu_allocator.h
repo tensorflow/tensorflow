@@ -29,7 +29,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/numa.h"
-
+#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/onednn_env_vars.h"
 #ifdef _WIN32
 typedef unsigned int uint;
 #endif
@@ -221,7 +222,7 @@ class MklCPUAllocator : public Allocator {
     // otherwise call large-size allocator (BFC). We found that BFC allocator
     // does not deliver good performance for small allocations when
     // inter_op_parallelism_threads is high.
-    if (num_bytes < kSmallAllocationsThreshold) {
+    if (UseSystemAlloc() || num_bytes < kSmallAllocationsThreshold) {
       return small_size_allocator_->AllocateRaw(alignment, num_bytes);
     } else {
       mutex_lock l(mutex_);
@@ -230,11 +231,10 @@ class MklCPUAllocator : public Allocator {
       return ptr;
     }
   }
-
   inline void DeallocateRaw(void* ptr) override {
     // Check if ptr is for "small" allocation. If it is, then call Free
     // directly. Otherwise, call BFC to handle free.
-    if (IsSmallSizeAllocation(ptr)) {
+    if (UseSystemAlloc() || IsSmallSizeAllocation(ptr)) {
       small_size_allocator_->DeallocateRaw(ptr);
     } else {
       mutex_lock l(mutex_);
@@ -242,7 +242,6 @@ class MklCPUAllocator : public Allocator {
       large_size_allocator_->DeallocateRaw(ptr);
     }
   }
-
   absl::optional<AllocatorStats> GetStats() override {
     auto s_stats = small_size_allocator_->GetStats();
     auto l_stats = large_size_allocator_->GetStats();
@@ -270,7 +269,6 @@ class MklCPUAllocator : public Allocator {
 
  private:
   // Hooks provided by this allocator for memory allocation routines from MKL
-
   static inline void* MallocHook(size_t size) {
     VLOG(3) << "MklCPUAllocator: In MallocHook";
     return cpu_allocator()->AllocateRaw(kAlignment, size);
