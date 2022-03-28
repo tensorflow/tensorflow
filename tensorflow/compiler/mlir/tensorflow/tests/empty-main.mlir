@@ -10,5 +10,5 @@
 // EXECUTOR-NEXT:    return
 
 func.func @main() {
-  return
+  func.return
 }

@@ -1424,7 +1424,7 @@ func.func @constant() {
   %result = "mhlo.constant"() {
     value = dense<10> : tensor<i32>
   } : () -> (tensor<i32>)
-  return
+  func.return
 }
 // CHECK: %[[CONSTANT:.*]] = arith.constant dense<10> : tensor<i32>
 
@@ -1622,7 +1622,7 @@ func @dynamic_broadcast_in_dim(%arg: tensor<?x?x?x?x1x42xf32>,
       known_expanding_dimensions = dense<[0, 1]> : tensor<2xi64>,
       known_nonexpanding_dimensions = dense<[2, 3]> : tensor<2xi64> }
       : (tensor<?x?x?x?x1x42xf32>, tensor<7xindex>) -> tensor<?x?x?x?x?x?x?xf32>
-  return %result : tensor<?x?x?x?x?x?x?xf32>
+  func.return %result : tensor<?x?x?x?x?x?x?xf32>
 }
 
 // -----

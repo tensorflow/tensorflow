@@ -56,7 +56,7 @@ func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
   %shape = mhlo.constant dense<1> : tensor<2xi32>
   %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<f32>, tensor<2xi32>) -> tensor<?x?xf32>
-  return %reshape : tensor<?x?xf32>
+  func.return %reshape : tensor<?x?xf32>
 }
 
 // -----
@@ -69,7 +69,7 @@ func @reshape_collapse_scalar(%arg0 : tensor<?x?xf32>) -> tensor<f32> {
   // CHECK-DAG: %[[COLLAPSED:.*]] = tensor.collapse_shape %[[CASTED_ARG]] [] : tensor<1x1xf32> into tensor<f32>
   // CHECK:     return %[[COLLAPSED]]
   %reshape = "mhlo.dynamic_reshape"(%arg0, %shape) : (tensor<?x?xf32>, tensor<0xi32>) -> tensor<f32>
-  return %reshape : tensor<f32>
+  func.return %reshape : tensor<f32>
 }
 
 // -----
@@ -81,7 +81,7 @@ func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
   %shape = tensor.from_elements %c1, %c1, %c1 : tensor<3xindex>
   %reshape = "mhlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<?xf32>, tensor<3xindex>) -> tensor<1x1x1xf32>
-  return %reshape : tensor<1x1x1xf32>
+  func.return %reshape : tensor<1x1x1xf32>
 }
 
 // -----
@@ -97,7 +97,7 @@ func @shape_expansion(%arg : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
   %shape = tensor.from_elements %d0, %c1, %c1 : tensor<3xindex>
   %result = "mhlo.dynamic_reshape"(%arg, %shape)
       : (tensor<?x1xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
-  return %result : tensor<?x1x1xi64>
+  func.return %result : tensor<?x1x1xi64>
 }
 
 // -----
@@ -116,7 +116,7 @@ func @shape_collapse_and_expansion(%arg : tensor<3x?x1xi64>)
   %15 = tensor.from_elements %three_d1, %c1, %c1 : tensor<3xindex>
   %16 = "mhlo.dynamic_reshape"(%arg, %15)
       : (tensor<3x?x1xi64>, tensor<3xindex>) -> tensor<?x1x1xi64>
-  return %16 : tensor<?x1x1xi64>
+  func.return %16 : tensor<?x1x1xi64>
 }
 
 // -----
@@ -138,7 +138,7 @@ func @shape_collapse_and_expansion_w_cast(%arg0: tensor<16x8x?x?xf32>) -> tensor
   %4 = arith.muli %1, %2 : index
   %5 = tensor.from_elements %c16, %c4, %c2, %4 : tensor<4xindex>
   %6 = "mhlo.dynamic_reshape"(%arg0, %5)  : (tensor<16x8x?x?xf32>, tensor<4xindex>) -> tensor<16x4x?x?xf32>
-  return %6 : tensor<16x4x?x?xf32>
+  func.return %6 : tensor<16x4x?x?xf32>
 }
 
 // -----
@@ -163,7 +163,7 @@ func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
   %shape = tensor.from_elements %s0, %s1, %c8_i32 : tensor<3xi32>
   %result = "mhlo.dynamic_reshape"(%arg0, %shape)
       : (tensor<1x4x?x64x?x8x1x1xf32>, tensor<3xi32>) -> tensor<?x?x8xf32>
-  return %result : tensor<?x?x8xf32>
+  func.return %result : tensor<?x?x8xf32>
 }
 
 // -----
@@ -179,7 +179,7 @@ func @expansion_unit_dims(%arg0: tensor<1x?x1xi64>) -> tensor<1x1x?x1xi64> {
   %1 = tensor.from_elements %c1, %c1, %0, %c1 : tensor<4xindex>
   %2 = "mhlo.dynamic_reshape"(%arg0, %1)
       : (tensor<1x?x1xi64>, tensor<4xindex>) -> tensor<1x1x?x1xi64>
-  return %2 : tensor<1x1x?x1xi64>
+  func.return %2 : tensor<1x1x?x1xi64>
 }
 
 // -----
@@ -224,7 +224,7 @@ func @multiple_reductions_and_reshape(%arg0: tensor<?x?x?x?xi64>) -> tensor<1x1x
       applies mhlo.multiply across dimensions = [0, 1, 2]
       : (tensor<1x1x?x1xi64>, tensor<i64>) -> tensor<1xi64>
   %16 = "mhlo.reshape"(%15) : (tensor<1xi64>) -> tensor<1x1x1x1xi64>
-  return %16 : tensor<1x1x1x1xi64>
+  func.return %16 : tensor<1x1x1x1xi64>
 }
 
 // -----
@@ -445,7 +445,7 @@ func @optimize_1dx1d_constraint(
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
   // CHECK: shape.const_witness true
   %2 = shape.cstr_broadcastable %0, %1 : tensor<1xindex>, tensor<1xindex>
-  return %2: !shape.witness
+  func.return %2: !shape.witness
 }
 
 // -----
@@ -460,7 +460,7 @@ func @optimize_1dx1d_constraint_with_static_shape(
   %1 = shape.shape_of %arg1 : tensor<10xf32> -> tensor<1xindex>
   // CHECK: shape.const_witness true
   %2 = shape.cstr_broadcastable %0, %1 : tensor<1xindex>, tensor<1xindex>
-  return %2: !shape.witness
+  func.return %2: !shape.witness
 }
 
 // -----
@@ -475,7 +475,7 @@ func @optimize_1dx1d_constraint_with_const_shape(
   %1 = shape.shape_of %arg1 : tensor<?x512xf32> -> tensor<2xindex>
   // CHECK: shape.const_witness true
   %2 = shape.cstr_broadcastable %0, %1 : tensor<1xindex>, tensor<2xindex>
-  return %2: !shape.witness
+  func.return %2: !shape.witness
 }
 
 // -----
@@ -495,7 +495,7 @@ func @optimize_1dx1d_bcast(
   %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
       {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
       : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
-  return %3: tensor<?xf32>
+  func.return %3: tensor<?xf32>
 }
 
 // -----
@@ -516,7 +516,7 @@ func @optimize_1dx2d_bcast_const_shape(
   %3 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %2)
       {broadcast_dimensions = dense<[1]> : tensor<1xi64>}
       : (tensor<512xf32>, tensor<2xindex>) -> tensor<?x512xf32>
-  return %3: tensor<?x512xf32>
+  func.return %3: tensor<?x512xf32>
 }
 
 // -----
@@ -542,7 +542,7 @@ func @optimize_1dx1dx1d_bcast(
   %5 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %4)
       {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
       : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
-  return %5: tensor<?xf32>
+  func.return %5: tensor<?xf32>
 }
 
 // -----
@@ -570,7 +570,7 @@ func @optimize_2dx1d_bcast(
   %4 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %2)
       {broadcast_dimensions = dense<[1]> : tensor<1xi64>}
       : (tensor<?xf32>, tensor<2xindex>) -> tensor<10x?xf32>
-  return %3, %4: tensor<10x?xf32>, tensor<10x?xf32>
+  func.return %3, %4: tensor<10x?xf32>, tensor<10x?xf32>
 }
 
 // -----
@@ -598,7 +598,7 @@ func @optimize_3dx3d_bcast(
   %4 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %2)
       {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
       : (tensor<1x?x1xf32>, tensor<3xindex>) -> tensor<?x?x?xf32>
-  return %3, %4: tensor<?x?x?xf32>, tensor<?x?x?xf32>
+  func.return %3, %4: tensor<?x?x?xf32>, tensor<?x?x?xf32>
 }
 
 // -----
@@ -625,7 +625,7 @@ func @optimize_10d_all_cases(
       : tensor<10xi64>}
       : (tensor<1x1x1x8x8x8x?x?x?x?xf32>, tensor<10xindex>)
       -> tensor<?x?x?x?x?x?x?x?x?x?xf32>
-  return %3: tensor<?x?x?x?x?x?x?x?x?x?xf32>
+  func.return %3: tensor<?x?x?x?x?x?x?x?x?x?xf32>
 }
 
 // -----
@@ -639,7 +639,7 @@ func @empty_bcast(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<0xindex> {
   %1 = shape.shape_of %arg1 : tensor<f32> -> tensor<0xindex>
   %2 = shape.broadcast %0, %1 : tensor<0xindex>, tensor<0xindex>
       -> tensor<0xindex>
-  return %2 : tensor<0xindex>
+  func.return %2 : tensor<0xindex>
 }
 
 // -----
@@ -670,7 +670,7 @@ func @simplifiable_bcast(
   %1 = shape.shape_of %arg1 : tensor<1x8x1x?x1x?xf32> -> tensor<6xindex>
   %2 = shape.broadcast %0, %1 : tensor<7xindex>, tensor<6xindex>
       -> tensor<7xindex>
-  return %2 : tensor<7xindex>
+  func.return %2 : tensor<7xindex>
 }
 
 // -----
@@ -687,5 +687,5 @@ func @very_dynamic_bcast(%arg0 : tensor<?xf32>, %arg1 : tensor<?xf32>)
   %1 = shape.shape_of %arg1 : tensor<?xf32> -> tensor<1xindex>
   %2 = shape.broadcast %0, %1 : tensor<1xindex>, tensor<1xindex>
       -> tensor<1xindex>
-  return %2 : tensor<1xindex>
+  func.return %2 : tensor<1xindex>
 }

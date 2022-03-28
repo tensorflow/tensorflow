@@ -19,7 +19,7 @@ builtin.module {
       %and = arith.andi %arg1, %arg2 : i16
       linalg.yield %and : i16
     }
-    return
+    func.return
   }
 }
 
@@ -60,7 +60,7 @@ builtin.module {
       %and = arith.andi %arg1, %arg2 : i16
       linalg.yield %and : i16
     }
-    return
+    func.return
   }
 }
 
@@ -105,7 +105,7 @@ builtin.module {
       %and = arith.andi %arg1, %arg2 : i16
       linalg.yield %and : i16
     }
-    return
+    func.return
   }
 }
 
@@ -140,7 +140,7 @@ builtin.module  {
       linalg.yield %1 : i32
     }
     memref.copy %0, %arg4 : memref<4xi32> to memref<4xi32>
-    return
+    func.return
   }
 }
 
@@ -170,7 +170,7 @@ builtin.module  {
     }
     memref.copy %0, %arg4 : memref<4xi32> to memref<4xi32>
     memref.store %c42, %0[%c0] : memref<4xi32>
-    return
+    func.return
   }
 }
 

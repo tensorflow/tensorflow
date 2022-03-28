@@ -173,7 +173,7 @@ func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model
   %x = "tf.StatefulPartitionedCall"(%cond) {device = "/CPU:0", config = "", config_proto = "", executor_type = "", f = @some_func} : (tensor<i1>) -> (tensor<i32>)
   %var1 = "tf.VarHandleOp"() {container = "", shared_name = "var1"} : () -> tensor<!tf_type.resource<tensor<i32>>>
   "tf.AssignVariable"(%var1, %x) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
-  return
+  func.return
 }
 
 

@@ -56,7 +56,7 @@ func.func @tanh_3d(%d0: index, %d1: index, %d2: index) {
     "prevent.dce"() : () -> ()
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @tanh_3d(

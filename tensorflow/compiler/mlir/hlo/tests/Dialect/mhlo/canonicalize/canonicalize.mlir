@@ -1246,7 +1246,7 @@ func.func @erase_dead_lhlo_constant() {
   // CHECK-NEXT: return
   "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
   memref.dealloc %M : memref<256x1024xf32>
-  return
+  func.return
 }
 
 // A negative test for dead lhlo constant op erasure.
@@ -1325,7 +1325,7 @@ func @simplify_not_as_select_pred(%arg0 : tensor<4xi1>, %arg1 : tensor<4xf32>, %
   %0 = "mhlo.not"(%arg0) : (tensor<4xi1>) -> tensor<4xi1>
   %1 = "mhlo.select"(%0, %arg1, %arg2) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   // CHECK: "mhlo.select"([[ARGV0]], [[ARGV2]], [[ARGV1]])
-  return %1 : tensor<4xf32>
+  func.return %1 : tensor<4xf32>
 }
 
 // CHECK-LABEL: gather_to_slice

@@ -1390,7 +1390,7 @@ func @unpack(%arg0: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
 
 func @unpack(%arg0: tensor<?x2x5x3xf32>) -> () {
   %0:2 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 2 : i32} : (tensor<?x2x5x3xf32>) -> (tensor<5x5x3xf32>, tensor<5x5x3xf32>)
-  return
+  func.return
 }
 
 // -----
@@ -2058,7 +2058,7 @@ func @testSplitOpWithBadNumSplits(%arg0 : tensor<16xf32>) -> () {
   %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split' op attribute 'num_splits' failed to satisfy constraint: 32-bit signless integer attribute whose value is positive}}
   "tfl.split"(%split_dim, %arg0) {num_splits = 0 : i32} : (tensor<i32>, tensor<16xf32>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -2181,7 +2181,7 @@ func @testSplitVOpWithBadNumSplits(%arg0 : tensor<16xf32>) -> () {
   %split_dim = arith.constant dense<0> : tensor<i32>
   // expected-error @+1 {{'tfl.split_v' op attribute 'num_splits' failed to satisfy constraint: 32-bit signless integer attribute whose value is positive}}
   "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 0 : i32} : (tensor<16xf32>, tensor<0xi32>, tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -2552,11 +2552,11 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<i32> {
   // expected-error @+1 {{number of operands does not match number of results}}
   %0:1 = "tfl.while"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
-    %1 = call @WhileOp_cond(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> tensor<i1>
+    %1 = func.call @WhileOp_cond(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> tensor<i1>
     "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
-    %1:2 = call @WhileOp_body(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
+    %1:2 = func.call @WhileOp_body(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
     "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
   }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>)
   func.return %0#0 : tensor<i32>
@@ -2581,11 +2581,11 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<i32> {
   // expected-error @+1 {{number of arguments in condition function does not match number of arguments in body function}}
   %0:2 = "tfl.while"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<*xi32>):
-    %1 = call @WhileOp_cond(%arg2) : (tensor<*xi32>) -> tensor<i1>
+    %1 = func.call @WhileOp_cond(%arg2) : (tensor<*xi32>) -> tensor<i1>
     "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
-    %1:2 = call @WhileOp_body(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
+    %1:2 = func.call @WhileOp_body(%arg2, %arg3) : (tensor<*xi32>, tensor<*xf32>) -> (tensor<*xi32>, tensor<*xf32>)
     "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
   }) : (tensor<i32>, tensor<*xf32>) -> (tensor<i32>, tensor<*xf32>)
   func.return %0#0 : tensor<i32>
@@ -2610,11 +2610,11 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>, %arg2: tensor<2xf32>) -> te
   // expected-error @+1 {{condition function's argument type does not match body function's argument type}}
   %0:3 = "tfl.while"(%arg0, %arg1, %arg2) ({
   ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<1xf32>, %arg5: tensor<2xf32>):
-    %1 = call @WhileOp_cond(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<1xf32>, tensor<2xf32>) -> tensor<i1>
+    %1 = func.call @WhileOp_cond(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<1xf32>, tensor<2xf32>) -> tensor<i1>
     "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg3: tensor<*xi32>, %arg4: tensor<2xf32>, %arg5: tensor<1xf32>):
-    %1:3 = call @WhileOp_body(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>)
+    %1:3 = func.call @WhileOp_body(%arg3, %arg4, %arg5) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>)
     "tfl.yield"(%1#0, %1#1, %1#2) : (tensor<*xi32>, tensor<2xf32>, tensor<1xf32>) -> ()
   }) : (tensor<i32>, tensor<1xf32>, tensor<2xf32>) -> (tensor<i32>, tensor<2xf32>, tensor<1xf32>)
   func.return %0#0 : tensor<i32>

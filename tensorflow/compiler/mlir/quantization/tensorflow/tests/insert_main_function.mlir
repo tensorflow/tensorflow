@@ -18,7 +18,7 @@
 module attributes {tf.versions = {producer = 930 : i32}, tf_saved_model.semantics, tfl.description = "MLIR Converted.", tfl.schema_version = 3 : i32}  {
   "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
   func.func @NoOp() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]} {
-    return
+    func.return
   }
 // CHECK: func @NoOp() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]}
 

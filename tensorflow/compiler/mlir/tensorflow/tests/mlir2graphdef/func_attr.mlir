@@ -9,13 +9,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
       %control = tf_executor.island wraps "tf.NoOp"() {_f = #tf_type.func<@callee, {attr2 = true, attr3 = 8.0 : f32}>} : () -> ()
       tf_executor.fetch
     }
-    return
+    func.return
   }
   func.func @callee() {
     tf_executor.graph {
       tf_executor.fetch
     }
-    return
+    func.return
   }
 }
 

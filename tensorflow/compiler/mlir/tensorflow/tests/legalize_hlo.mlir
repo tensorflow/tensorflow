@@ -3177,7 +3177,7 @@ func @lowered_cumsum(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
     %2 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<[[3, 0], [0, 0]]> : tensor<2x2xi64>, window_dilations = dense<1> : tensor<2xi64>, window_dimensions = dense<[4, 1]> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
-  return %1 : tensor<4x12xf32>
+  func.return %1 : tensor<4x12xf32>
 }
 
 // CHECK-LABEL:   func @lowered_cumprod(
@@ -3194,5 +3194,5 @@ func @lowered_cumprod(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
     %2 = mhlo.multiply %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<[[0, 0], [11, 0]]> : tensor<2x2xi64>, window_dilations = dense<1> : tensor<2xi64>, window_dimensions = dense<[1, 12]> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
-  return %1 : tensor<4x12xf32>
+  func.return %1 : tensor<4x12xf32>
 }

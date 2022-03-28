@@ -20,7 +20,7 @@ func.func @send_tpu_embedding_gradients(%arg0: tensor<512x256xf32>) -> () {
   // CHECK-NOT: tf.RecvTPUEmbeddingActivations
 
   "tf.SendTPUEmbeddingGradients"(%arg0) {config = "\0A%\0A\0Dwatches_table\10\F5\03\18\80\02 \01*\0C\1A\00j\05\0D\00\00\80?\88\01\01\10\02\18\80\04 \01(\02", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @recv_send_ops
@@ -31,7 +31,7 @@ func.func @recv_send_ops() -> () {
 
   %0 = "tf.RecvTPUEmbeddingActivations"() {config = "\0A%\0A\0Dwatches_table\10\F5\03\18\80\02 \01*\0C\1A\00j\05\0D\00\00\80?\88\01\01\10\02\18\80\04 \01(\02"} : () -> tensor<512x256xf32>
   "tf.SendTPUEmbeddingGradients"(%0) {config = "\0A%\0A\0Dwatches_table\10\F5\03\18\80\02 \01*\0C\1A\00j\05\0D\00\00\80?\88\01\01\10\02\18\80\04 \01(\02", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @no_embedding_ops

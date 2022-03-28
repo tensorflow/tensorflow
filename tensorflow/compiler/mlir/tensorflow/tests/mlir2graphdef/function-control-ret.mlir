@@ -6,7 +6,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
       %0 = tf_executor.island wraps "tf.PartitionedCall"() {Tin = [], Tout = [], config = "", config_proto = "", device = "", executor_type = "", f = @foo, name = "Call_foo"} : () -> ()
       tf_executor.fetch
     }
-    return
+    func.return
   }
   func.func @foo() {
     tf_executor.graph {
@@ -21,6 +21,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
       // CHECK-NEXT:  }
       tf_executor.fetch %0#1 : !tf_executor.control
     }
-    return
+    func.return
   }
 }

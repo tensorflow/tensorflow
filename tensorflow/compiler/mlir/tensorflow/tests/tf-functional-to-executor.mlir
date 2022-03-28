@@ -19,7 +19,7 @@ func.func @multiple_return(%arg0 : tensor<*xi32>, %arg1 : tensor<i32>) -> (tenso
 // CHECK:   return %[[GRAPH_RESULT]]#0, %[[GRAPH_RESULT]]#1 : tensor<*xi32>, tensor<*xi32>
 
 func.func @empty_graph() {
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @empty_graph
@@ -38,7 +38,7 @@ func.func @graph_already() {
     }
     tf_executor.fetch %control : !tf_executor.control
   }
-  return
+  func.return
 }
 
 

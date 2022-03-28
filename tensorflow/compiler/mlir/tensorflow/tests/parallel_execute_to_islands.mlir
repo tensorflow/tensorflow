@@ -13,7 +13,7 @@ func.func @testEmptyRegions() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      [[ISLAND_0_CTRL:%.+]] = tf_executor.island {
@@ -43,7 +43,7 @@ func.func @testDataOperandsAndResults(%arg0 : tensor<i1>) {
     }
     tf_executor.fetch %3#0, %3#1 : tensor<i1>, tensor<i32>
   }
-  return
+  func.return
 }
 
 // CHECK:      [[INPUT_A:%.+]], {{%.+}} = tf_executor.island {
@@ -76,7 +76,7 @@ func.func @testControlOperands() {
     }
     tf_executor.fetch %2#0, %2#1 : tensor<i1>, tensor<i32>
   }
-  return
+  func.return
 }
 
 // CHECK:      [[INPUT_CTRL:%.+]] = tf_executor.island {
@@ -107,7 +107,7 @@ func.func @testControlResults() {
     }
     tf_executor.fetch %3 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK:      {{%.+}}, [[ISLAND_0_CTRL:%.+]] = tf_executor.island {
@@ -136,7 +136,7 @@ func.func @testSomeRegionNoUsers() {
     }
     tf_executor.fetch %1#0 : tensor<i1>
   }
-  return
+  func.return
 }
 
 // CHECK:      [[ISLAND_0_OUTPUT:%.+]], {{%.+}} = tf_executor.island {

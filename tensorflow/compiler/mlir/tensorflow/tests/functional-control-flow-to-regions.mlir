@@ -98,7 +98,7 @@ func.func @testIfNoResult(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> () {
   // CHECK: "tf.Cast"
   // CHECK: call @testIf1Else
   // CHECK: "tf.Yield"()
-  return
+  func.return
 }
 
 // -----
@@ -120,7 +120,7 @@ func.func @testIfNoInputAndNoResult(%arg0: tensor<i1>) -> () {
   // CHECK: "tf.Yield"()
   // CHECK: call @testIf1Else
   // CHECK: "tf.Yield"()
-  return
+  func.return
 }
 
 // -----
@@ -194,7 +194,7 @@ func.func @testWhileResultNoIO() -> () {
   // CHECK: "tf.Yield"([[Result1]])
   // CHECK: call @testWhileBody
   // CHECK: "tf.Yield"()
-  return
+  func.return
 }
 
 // -----
@@ -261,7 +261,7 @@ func.func @testIfDevice(%arg0: tensor<i1>) {
 
   // CHECK: "tf.IfRegion"
   // CHECK: device = "/device:CPU:0"
-  return
+  func.return
 }
 
 // -----
@@ -276,5 +276,5 @@ func.func @testWhileDevice() {
 
   // CHECK: "tf.WhileRegion"
   // CHECK: device = "/device:CPU:0"
-  return
+  func.return
 }

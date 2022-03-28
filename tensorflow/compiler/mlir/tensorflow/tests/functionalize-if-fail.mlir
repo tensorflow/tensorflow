@@ -8,7 +8,7 @@ func.func @main() {
     %0 = tf_executor.island wraps "tf._TPUReplicate"() {computation = @foo, Tinputs = [], Tbroadcast_inputs = [], NumVariables = 0, Tguaranteed_constants = [], output_types = []} : () -> () loc("_TPUReplicate")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 func.func @foo() {
@@ -21,5 +21,5 @@ func.func @foo() {
     %5:3 = tf_executor.Merge %3#0, %4#0 : tensor<i32> {device = "", N = 2, T = "tfdtype$DT_INT32"} loc("Merge")
     tf_executor.fetch
   }
-  return
+  func.return
 }

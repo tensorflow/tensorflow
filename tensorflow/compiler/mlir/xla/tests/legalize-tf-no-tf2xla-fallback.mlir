@@ -1679,7 +1679,7 @@ func.func @outfeed_enqueue_tuple(%data_1: tensor<3xi32>, %data_2: tensor<4xf32>)
 // CHECK: [[TOKEN:%.*]] = "mhlo.create_token"() : () -> !mhlo.token
 // CHECK: "mhlo.outfeed"([[VAL_0]],  [[VAL_1]], [[TOKEN]]) {outfeed_config = ""} : (tensor<3xi32>, tensor<4xf32>, !mhlo.token) -> !mhlo.token
   "tf.OutfeedEnqueueTuple"(%data_1, %data_2) : (tensor<3xi32>, tensor<4xf32>) -> ()
-  return
+  func.return
 }
 
 //===----------------------------------------------------------------------===//
@@ -3336,7 +3336,7 @@ func.func @strided_slice_begin_end_mask(%input: tensor<4x128x1024xf32>) {
   // CHECK: "mhlo.reshape"(%[[SLICE]])
   // CHECK-SAME: -> tensor<4x16x1022xf32>
 
-  return
+  func.return
 }
 
 // -----
@@ -3378,7 +3378,7 @@ func.func @strided_slice_shrink_axis_mask(%input: tensor<4x128x1024xf32>) {
   // CHECK: "mhlo.reshape"(%[[SLICE]])
   // CHECK-SAME: -> tensor<16xf32>
 
-  return
+  func.return
 }
 
 // -----
@@ -3408,7 +3408,7 @@ func.func @strided_slice_ellipsis_mask(%input: tensor<2x4x8x16x32x64xf32>) {
   // CHECK: "mhlo.reshape"(%[[SLICE]])
   // CHECK-SAME: -> tensor<4x8x8x10x2xf32>
 
-  return
+  func.return
 }
 
 // -----
@@ -3442,7 +3442,7 @@ func.func @strided_slice_new_axis_mask(%input: tensor<2x4x8x16x32x64xf32>) {
   // CHECK: "mhlo.reshape"(%[[SLICE]])
   // CHECK-SAME: -> tensor<1x4x8x8x10x2x1xf32>
 
-  return
+  func.return
 }
 
 // -----
@@ -4607,7 +4607,7 @@ func.func @splitv_dynamic_dim_in_split_sizes(%input: tensor<4x6xf32>) -> (tensor
 func.func @assert(%arg0: tensor<i1>, %arg1: tensor<*xf32>) {
   // CHECK-NOT: tf.Assert
   "tf.Assert"(%arg0, %arg1) {summarize = 1} : (tensor<i1>, tensor<*xf32>) -> ()
-  return
+  func.return
 }
 
 //===----------------------------------------------------------------------===//

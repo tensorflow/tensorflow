@@ -7,7 +7,7 @@ func.func @main() {
     %1:2 = tf_executor.island wraps "tf.StatefulPartitionedCall"(%0#0) {Tin = ["tfdtype$DT_RESOURCE"], Tout = ["tfdtype$DT_RESOURCE"], config = "", config_proto = "", executor_type = "", f = @foo} : (tensor<!tf_type.resource<tensor<8xf32>>>) -> tensor<!tf_type.resource<tensor<8xf32>>> loc("call_foo")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 func.func @foo(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {

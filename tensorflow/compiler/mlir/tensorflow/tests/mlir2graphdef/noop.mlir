@@ -5,7 +5,7 @@ func.func @main() {
     tf_executor.island wraps "tf.NoOp"() {} : () -> () loc("noop")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: node {

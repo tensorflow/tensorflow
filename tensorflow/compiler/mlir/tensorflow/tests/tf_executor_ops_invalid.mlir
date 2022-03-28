@@ -9,7 +9,7 @@ func.func @invalid_type() -> !tf_executor.foobar
 func.func @graph_with_invalid_op(%arg0: tensor<*xf32>) {
   "tf_executor.graph" (%arg0) ({}) : (tensor<*xf32>) -> ()
 // expected-error@-1 {{'tf_executor.graph' op requires zero operands}}
-  return
+  func.return
 }
 
 // -----
@@ -19,7 +19,7 @@ func.func @empty_graph() {
  "tf_executor.graph" () ({
 // expected-error@-1 {{'tf_executor.graph' op region #0 ('body') failed to verify constraint: region with 1 blocks}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -30,7 +30,7 @@ func.func @empty_graph() {
 // expected-error@-1 {{'tf_executor.graph' op expects a non-empty block}}
  ^entry:
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -53,7 +53,7 @@ func.func @nested_graph() {
     tf_executor.graph {}
 // expected-error@-1 {{'tf_executor.graph' op unallowed directly inside another tf_executor.graph}}
   }
-  return
+  func.return
 }
 
 // -----
@@ -62,7 +62,7 @@ func.func @nested_graph() {
 func.func @graph_with_invalid_terminator(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   tf_executor.graph {
 // expected-error@-1 {{custom op 'tf_executor.graph' expects a tf_executor.fetch terminator}}
-    return
+    func.return
   }
   func.return %arg0 : tensor<*xf32>
 }
@@ -75,7 +75,7 @@ func.func @parent_is_graph() {
     tf_executor.fetch
 // expected-error@-1 {{'tf_executor.fetch' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -177,7 +177,7 @@ func.func @parent_is_graph() {
     %ctl = tf_executor.island {}
 // expected-error@-1 {{'tf_executor.island' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -189,7 +189,7 @@ func.func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 // expected-error@-1 {{'tf_executor.island' op operand #0 must be control}}
     }) : (tensor<*xf32>) -> (!tf_executor.control)
   }
-  return
+  func.return
 }
 
 // -----
@@ -201,7 +201,7 @@ func.func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 // expected-error@-1 {{'tf_executor.island' op expected 1 or more results}}
     }) : () -> ()
   }
-  return
+  func.return
 }
 
 // -----
@@ -213,7 +213,7 @@ func.func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 // expected-error@-1 {{'tf_executor.island' op region #0 ('body') failed to verify constraint: region with 1 blocks}}
     }) : () -> (!tf_executor.control)
   }
-  return
+  func.return
 }
 
 // -----
@@ -226,7 +226,7 @@ func.func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
  ^entry:
     }) : () -> (!tf_executor.control)
   }
-  return
+  func.return
 }
 
 // -----
@@ -240,7 +240,7 @@ func.func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
         tf_executor.yield
     }) : () -> (!tf_executor.control)
   }
-  return
+  func.return
 }
 
 // -----
@@ -250,10 +250,10 @@ func.func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
   tf_executor.graph {
     "tf_executor.island"() ({
 // expected-error@+1 {{'func.return' op invalid tf_executor.island terminator, yield expected}}
-      return
+      func.return
     }) : () -> (!tf_executor.control)
   }
-  return
+  func.return
 }
 
 // -----
@@ -264,7 +264,7 @@ func.func @parent_is_island() {
     tf_executor.yield
 // expected-error@-1 {{'tf_executor.yield' op expects parent op 'tf_executor.island'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -277,7 +277,7 @@ func.func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 // expected-error@-1 {{'tf_executor.yield' op has 1 operand, but island returns 0}}
     }) : () -> (!tf_executor.control)
   }
-  return
+  func.return
 }
 
 // -----
@@ -290,7 +290,7 @@ func.func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 // expected-error@-1 {{'tf_executor.yield' op operand #0 type mismatch island results}}
     }) : () -> (i32, !tf_executor.control)
   }
-  return
+  func.return
 }
 
 // -----
@@ -303,7 +303,7 @@ func.func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 // expected-error@-1 {{'tf_executor.yield' op operand #1 type mismatch island results}}
     }) : () -> (tensor<*xf32>, i32, !tf_executor.control)
   }
-  return
+  func.return
 }
 
 // -----
@@ -316,7 +316,7 @@ func.func @invalid_yield(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 // expected-error@-1 {{'tf_executor.yield' op unexpected control type for operand #1}}
     }) : () -> (tensor<*xf32>, !tf_executor.control, tensor<*xf32>, !tf_executor.control)
   }
-  return
+  func.return
 }
 
 // -----
@@ -329,7 +329,7 @@ func.func @invalid_yield(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 // expected-error@-1 {{'tf_executor.yield' op unexpected control type for operand #1}}
     }) : () -> (tensor<*xf32>, !tf_executor.control, !tf_executor.control)
   }
-  return
+  func.return
 }
 
 // -----
@@ -340,7 +340,7 @@ func.func @parent_is_graph(%arg0: tensor<*xf32>, %arg1: tensor<i1>) {
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
 // expected-error@-1 {{'tf_executor.Switch' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -351,7 +351,7 @@ func.func @invalid_switch(%arg0: tensor<*xf32>) {
     %true, %false, %ctlSwitch = "tf_executor.Switch"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
 // expected-error@-1 {{'tf_executor.Switch' op expected 2 or more operands}}
   }
-  return
+  func.return
 }
 
 // -----
@@ -362,7 +362,7 @@ func.func @invalid_switch(%arg0: tensor<*xf32>) {
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0 : tensor<*xf32>
 // expected-error@-1 {{custom op 'tf_executor.Switch'  expects a single data type and a predicate}}
   }
-  return
+  func.return
 }
 
 // -----
@@ -409,7 +409,7 @@ func.func @parent_is_graph(%arg0: tensor<*xf32>, %arg1: tensor<i32>) {
      %1:6 = tf_executor._SwitchN %arg0, %arg1 of 5 : tensor<*xf32>
 // expected-error@-1 {{'tf_executor._SwitchN' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -499,7 +499,7 @@ func.func @parent_is_graph(%arg0: tensor<*xf32>) {
     %value, %idx, %ctlMerge = tf_executor.Merge %arg0, %arg0 : tensor<*xf32>
 // expected-error@-1 {{'tf_executor.Merge' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -639,7 +639,7 @@ func.func @parent_is_graph(%arg0: tensor<*xf32>) {
     %res:2 = tf_executor.Enter %arg0 frame "some/fra\"me" : tensor<*xf32>
 // expected-error@-1 {{'tf_executor.Enter' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -662,7 +662,7 @@ func.func @parent_is_graph(%arg0: tensor<*xf32>, %arg1: !tf_executor.token) {
     tf_executor.NextIteration.Sink[%arg1] %arg0 : tensor<*xf32>
 // expected-error@-1 {{'tf_executor.NextIteration.Sink' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -673,7 +673,7 @@ func.func @parent_is_graph() {
     %1:3 = tf_executor.NextIteration.Source : tensor<*xf32>
 // expected-error@-1 {{'tf_executor.NextIteration.Source' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -747,7 +747,7 @@ func.func @parent_is_graph(%arg0: tensor<*xf32>) {
     %1:2 = tf_executor.Exit %arg0 : tensor<*xf32>
 // expected-error@-1 {{'tf_executor.Exit' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -769,7 +769,7 @@ func.func @parent_is_graph(%arg0: !tf_executor.control, %arg1: !tf_executor.cont
     %0 = tf_executor.ControlTrigger %arg0, %arg1
 // expected-error@-1 {{'tf_executor.ControlTrigger' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -780,5 +780,5 @@ func.func @parent_is_graph(%arg0: tensor<i1>, %arg1: !tf_executor.control) {
     %1:2 = tf_executor.LoopCond %arg0, %arg1 : tensor<i1>
 // expected-error@-1 {{'tf_executor.LoopCond' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
-  return
+  func.return
 }

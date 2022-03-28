@@ -14,7 +14,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["bad_devi
       "tf.C"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 }
 
@@ -35,7 +35,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 2, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 }
 
@@ -63,7 +63,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @single_op_hostlaunch_no_input_output
@@ -83,7 +83,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @single_op_host_launch_input_output
@@ -103,7 +103,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %4 = "tf.C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
       tf_device.return
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @multiple_ops_host_launch_input_output
@@ -126,7 +126,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %5 = "tf.C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
       tf_device.return
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // Tests a host launch that's called from a tf_device.cluster.
@@ -136,7 +136,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.PartitionedCall"() {f = @called_hostlaunch_callee} : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
   // CHECK-LABEL: func @called_hostlaunch_callee
   func.func @called_hostlaunch_callee() -> () {
@@ -151,7 +151,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return
     }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
     "tf.C"() : () -> ()
-    return
+    func.return
   }
 
   // Test that the same outside compiled function cannot be called from two
@@ -166,7 +166,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.PartitionedCall"() {f = @called_hostlaunch_bad_callee} : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
   // expected-error@+1 {{The same function is reachable from multiple TPU Clusters.}}
   func.func @called_hostlaunch_bad_callee() -> () {
@@ -181,6 +181,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       tf_device.return
     }) {device = "/job:worker/replica:0/task:0/device:CPU:0"} : () -> ()
     "tf.C"() : () -> ()
-    return
+    func.return
   }
 }

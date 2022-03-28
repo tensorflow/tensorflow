@@ -13,6 +13,6 @@ func @inline_with_arg(%arg0 : tensor<2xi32>) -> tensor<2xi32> {
 // CHECK-NEXT:  [[VAL_1:%.*]] = tfl.sub [[VAL_0]], [[VAL_0]] {fused_activation_function = "RELU6"} : tensor<2xi32>
 // CHECK-NEXT:  [[VAL_2:%.*]] = tfl.add [[VAL_1]], [[VAL_0]] {fused_activation_function = "RELU6"} : tensor<2xi32>
 // CHECK-NEXT:  return [[VAL_2]] : tensor<2xi32>
-  %0 = call @func_with_tfl_ops(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+  %0 = func.call @func_with_tfl_ops(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
   func.return %0 : tensor<2xi32>
 }

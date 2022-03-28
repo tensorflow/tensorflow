@@ -12,7 +12,7 @@ func.func @island_wrap_print(%arg0: tensor<i32>, %arg1: tensor<f32>) {
     } loc("identity@some_function")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @island_no_wrap_print_mismatched_results
@@ -26,7 +26,7 @@ func.func @island_no_wrap_print_mismatched_results(%arg0: tensor<i32>, %arg1: te
     } loc("identity@some_function")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @island_no_wrap_print_mismatched_op_location
@@ -40,7 +40,7 @@ func.func @island_no_wrap_print_mismatched_op_location(%arg0: tensor<i32>, %arg1
     } loc("identity@some_function")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @island_no_wrap_print_mismatched_yield_location
@@ -54,7 +54,7 @@ func.func @island_no_wrap_print_mismatched_yield_location(%arg0: tensor<i32>, %a
     } loc("identity@some_function")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @island_no_wrap_print_multiple_ops
@@ -69,5 +69,5 @@ func.func @island_no_wrap_print_multiple_ops(%arg0: tensor<i32>, %arg1: tensor<f
     } loc("identity@some_function")
     tf_executor.fetch
   }
-  return
+  func.return
 }

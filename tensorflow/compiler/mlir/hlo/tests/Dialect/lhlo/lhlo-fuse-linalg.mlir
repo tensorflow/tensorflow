@@ -23,7 +23,7 @@ func.func @fusion(%multiplier: memref<6x6xf32>, %summand_1: memref<6x6xf32>,
     linalg.yield %out : f32
   }
   memref.dealloc %temp_result : memref<6x6xf32>
-  return
+  func.return
 }
 // CHECK-LABEL: func @fusion
 //       CHECK:  %[[C1:.*]] = arith.constant 1
@@ -96,7 +96,7 @@ func.func @fusion_of_three(%arg0: memref<100x10xf32>,
        linalg.yield %2 : f32
      }
  memref.dealloc %1 : memref<100x10xf32>
- return
+ func.return
 }
 // CHECK-LABEL: func @fusion
 //       CHECK:  %[[C1:.*]] = arith.constant 1 :
@@ -157,7 +157,7 @@ func.func @fusion_4d(%multiplier: memref<6x6x6x6xf32>, %summand_1: memref<6x6x6x
     linalg.yield %out : f32
   }
   memref.dealloc %temp_result : memref<6x6x6x6xf32>
-  return
+  func.return
 }
 // CHECK-LABEL: func @fusion_4d
 //       CHECK:  %[[C1:.*]] = arith.constant 1

@@ -10,7 +10,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
       %outputs_6, %control_7 = tf_executor.island wraps "tf.Case"(%outputs_0, %outputs) {Tin = [i32], Tout = [i32], _lower_using_switch_merge = true, _read_only_resource_inputs = [], branches = [@indexed_case_branch0_40, @indexed_case_branch1_50], device = "", is_stateless = false, output_shapes = [#tf_type.shape<>]} : (tensor<i32>, tensor<i32>) -> tensor<*xi32> loc("regular_case")
       tf_executor.fetch
     }
-    return
+    func.return
   }
 
   func.func private @indexed_case_branch0_40(%arg0: tensor<i32>) -> tensor<*xi32> {

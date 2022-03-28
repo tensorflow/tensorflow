@@ -440,7 +440,7 @@ func.func @select_and_scatter_invalid_ret_type(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x32xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -468,7 +468,7 @@ func.func @select_and_scatter_invalid_ret_type(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xi32>
 
-    return
+    func.return
 }
 
 // -----
@@ -496,7 +496,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -524,7 +524,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -552,7 +552,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -581,7 +581,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -609,7 +609,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -637,7 +637,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -665,7 +665,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -693,7 +693,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<i32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -721,7 +721,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -749,7 +749,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<1xf32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -777,7 +777,7 @@ func.func @select_and_scatter_invalid_source_operand(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x32xf32>, tensor<f32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }
 
 // -----
@@ -805,5 +805,5 @@ func.func @select_and_scatter_invalid_source_operand(
     } : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xi32>, tensor<i32>) ->
           tensor<10x24x24x64xf32>
 
-    return
+    func.return
 }

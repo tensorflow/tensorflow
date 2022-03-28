@@ -37,7 +37,7 @@ func @no_legalization_on_hashtable_string_to_string(%arg0: tensor<!tf_type.strin
   // CHECK-LABEL: no_legalization_on_hashtable_string_to_string
   // CHECK-NEXT:  "tf.HashTableV2"
   // CHECK-NEXT:  "tf.LookupTableRemoveV2"
-  return
+  func.return
 }
 
 // -----
@@ -48,7 +48,7 @@ func @hashtable_import(%arg0: tensor<5x!tf_type.string>) {
   %cst_0 = arith.constant dense<[0, 1, 2]> : tensor<3xi64>
   %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "hash_table_1dd4fef4-646d-491f-a3a8-bf5334f45813", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
   "tf.LookupTableImportV2"(%0, %cst, %cst_0) {device = ""} : (tensor<!tf_type.resource>, tensor<3x!tf_type.string>, tensor<3xi64>) -> ()
-  return
+  func.return
   // CHECK-LABEL: hashtable_import
   // CHECK:       [[CST:%.*]] = arith.constant dense<["emerson", "lake", "palmer"]> : tensor<3x!tf_type.string>
   // CHECK-NEXT:  [[CST_0:%.*]] = arith.constant dense<[0, 1, 2]> : tensor<3xi64>
@@ -118,7 +118,7 @@ func @no_legalization_on_hashtable_remove(%arg0: tensor<i64>) {
   // CHECK-LABEL: no_legalization_on_hashtable_remove
   // CHECK-NEXT:  "tf.HashTableV2"
   // CHECK-NEXT:  "tf.LookupTableRemoveV2"
-  return
+  func.return
 }
 
 // -----
@@ -130,5 +130,5 @@ func @no_legalization_on_mutable_hashtable(%arg0: tensor<i64>) {
   // CHECK-LABEL: no_legalization_on_mutable_hashtable
   // CHECK-NEXT:  "tf.MutableHashTableV2Op"
   // CHECK-NEXT:  "tf.LookupTableRemoveV2"
-  return
+  func.return
 }

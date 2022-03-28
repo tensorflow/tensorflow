@@ -21,7 +21,7 @@ module {
     %handle = "tf.VarHandleOp"() {container="", shared_name="var1", device = "/job:worker/replica:0/task:1/device:CPU:0"} : () -> tensor<!tf_type.resource<tensor<0xf32>>>
     "tf.AssignVariableOp"(%handle, %cst) : (tensor<!tf_type.resource<tensor<0xf32>>>, tensor<0xf32>) -> ()
     // CHECK: "tf.VarHandleOp"
-    return
+    func.return
   }
 }
 
@@ -36,7 +36,7 @@ module {
     %0 = "tf.AddV2"(%val, %val) : (tensor<0xf32>, tensor<0xf32>) -> tensor<0xf32>
     "tf.AssignVariableOp"(%handle, %0) : (tensor<!tf_type.resource<tensor<0xf32>>>, tensor<0xf32>) -> ()
     // CHECK: "tf.VarHandleOp"
-    return
+    func.return
   }
 }
 
@@ -313,7 +313,7 @@ module {
     %handle = "tf.VarHandleOp"() {container="", shared_name="var1", device = "/job:worker/replica:0/task:1/device:CPU:0"} : () -> tensor<!tf_type.resource<tensor<0xf32>>>
     "tf.AssignVariableOp"(%handle, %cst) : (tensor<!tf_type.resource<tensor<0xf32>>>, tensor<0xf32>) -> ()
     // CHECK: "tf.VarHandleOp"
-    return
+    func.return
   }
 
   func.func @f2() -> tensor<0xf32> {
@@ -335,7 +335,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     %cst = "tf.Const"() { value = dense<1.0> : tensor<0xf32> } : () -> tensor<0xf32>
     %handle = "tf.VarHandleOp"() {container="", shared_name="var1", device = "/job:worker/replica:0/task:1/device:CPU:0"} : () -> tensor<!tf_type.resource<tensor<0xf32>>>
     "tf.AssignVariableOp"(%handle, %cst) : (tensor<!tf_type.resource<tensor<0xf32>>>, tensor<0xf32>) -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @main()
@@ -356,7 +356,7 @@ module {
   func.func @f() -> tensor<0xf32> {
     // CHECK-NOT: "tf.VarHandleOp"
     %handle = "tf.VarHandleOp"() {container="", shared_name="var1", device = "/job:worker/replica:0/task:1/device:CPU:0"} : () -> tensor<!tf_type.resource<tensor<f32>>>
-    %res:2 = call @f_1(%handle) : (tensor<!tf_type.resource<tensor<f32>>>) -> (tensor<0xf32>, tensor<0xf32>)
+    %res:2 = func.call @f_1(%handle) : (tensor<!tf_type.resource<tensor<f32>>>) -> (tensor<0xf32>, tensor<0xf32>)
     func.return %res#0 : tensor<0xf32>
   }
 

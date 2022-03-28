@@ -49,13 +49,13 @@ func @while2(%cst : tensor<i32>) -> tensor<1xf32> attributes {tf.entry_function 
   ^bb0(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>):
     // CHECK: call @WhileOp_cond
     // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
-    %1 = call @WhileOp_cond(%arg0, %arg1, %cst) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> tensor<i1>
+    %1 = func.call @WhileOp_cond(%arg0, %arg1, %cst) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> tensor<i1>
     "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>):
     // CHECK: call @WhileOp_body
     // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
-    %1:3 = call @WhileOp_body(%arg0, %arg1, %cst) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
+    %1:3 = func.call @WhileOp_body(%arg0, %arg1, %cst) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
     "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
   }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>) loc("WhileOp")
   // CHECK: (tensor<i32>, tensor<1xf32>, tensor<i32>) ->

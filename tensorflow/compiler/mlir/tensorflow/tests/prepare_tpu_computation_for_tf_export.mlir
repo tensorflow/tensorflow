@@ -47,7 +47,7 @@ func.func @RewriteSendRecvOps() -> () {
   // CHECK: key = "send_key_dtoh_0"
   "tf.XlaSendToHost"(%0) {key = "send_key"} : (tensor<i32>) -> ()
 
-  return
+  func.return
 }
 
 // CHECK-LABEL: @CommunicateOpTokenAttrs
@@ -60,7 +60,7 @@ func.func @CommunicateOpTokenAttrs() -> () {
 
   // CHECK: _xla_original_oc_node_name = [[NODE_NAME3:.*]], _xla_token_input_nodes = {{\[}}[[NODE_NAME2]]{{\]}}
   %1 = "tf._XlaHostComputeMlir"(%0) {recv_key = "host_compute_channel_recv1", send_key = "host_compute_channel_send1", tpu_core = 0, host_mlir_module = ""} : (tensor<i32>) -> (tensor<f32>)
-  return
+  func.return
 }
 
 // CHECK-LABEL: @IfOpTokenAttrs
