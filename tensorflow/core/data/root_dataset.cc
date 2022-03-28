@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/data/root_dataset.h"
 
 #include <functional>
-#include <memory>
 #include <string>
 #include <utility>
 
@@ -134,9 +133,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   explicit Iterator(const Params& params)
       : DatasetIterator<RootDataset>(params) {
     if (dataset()->params_.autotune) {
-      model_ = std::make_shared<model::Model>(
-          model::Model::BudgetParams({dataset()->params_.autotune_cpu_budget,
-                                      dataset()->params_.autotune_ram_budget}));
+      model_ = std::make_shared<model::Model>();
     }
     if (dataset()->params_.max_intra_op_parallelism >= 0) {
       max_intra_op_parallelism_ =
@@ -241,8 +238,11 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     mutex_lock l(mu_);
     if (!model_thread_) {
       model_thread_ = ctx->StartThread("tf_data_model", [this]() {
-        Status status = model_->OptimizeLoop(
-            dataset()->params_.autotune_algorithm, cancellation_manager_.get());
+        Status status =
+            model_->OptimizeLoop(dataset()->params_.autotune_algorithm,
+                                 dataset()->params_.autotune_cpu_budget,
+                                 dataset()->params_.autotune_ram_budget,
+                                 cancellation_manager_.get());
         if (!status.ok()) {
           LOG(WARNING) << "Optimization loop failed: " << status.ToString();
         }
