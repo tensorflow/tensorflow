@@ -50,7 +50,7 @@ class ExpandHloTuplesPass
   // Expands the mhlo.tuple used in return op. Also updates function
   // signature accordingly.
   void ExpandTupledTensorInReturnOp(FuncOp func) {
-    FunctionType old_func_type = func.getType();
+    FunctionType old_func_type = func.getFunctionType();
     // Update input signatures.
     // We will flatten the tuples for the function inputs as well.
     // So if an input is tuple, will be flattened and packed as following:

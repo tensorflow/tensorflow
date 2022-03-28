@@ -401,8 +401,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // Map asserts to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
   if (embed_memref_prints) {
-    pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
+    pm.addPass(mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
   }
   if (failed(pm.run(module))) {
     return tensorflow::errors::Internal("Lowering to GPU kernels failed.");

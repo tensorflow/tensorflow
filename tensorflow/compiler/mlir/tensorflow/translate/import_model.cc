@@ -1916,7 +1916,7 @@ mlir::Operation* ImporterBase::CreateOperation(
       mlir::OpBuilder::atBlockEnd(&island.GetBody());
 
   // Create the operation inside the island now.
-  mlir::Operation* inner_op = island_builder.createOperation(result);
+  mlir::Operation* inner_op = island_builder.create(result);
 
   // Sets operand_segment_sizes or result_segment_sizes attribute to the op.
   const auto set_segment_sizes_attr =
@@ -2253,7 +2253,7 @@ Status ImporterBase::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
   state.types.assign(dst->getResultTypes().begin(),
                      dst->getResultTypes().end());
   builder_.setInsertionPoint(dst);
-  auto* new_dst = builder_.createOperation(state);
+  auto* new_dst = builder_.create(state);
 
   // Replaces the output uses of the old operation by the corresponding
   // result of the new operation, and deletes the old operation.
@@ -3178,7 +3178,7 @@ void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
       new_input_types.push_back(arg.getType());
     }
     func.setType(mlir::FunctionType::get(module.getContext(), new_input_types,
-                                         func.getType().getResults()));
+                                         func.getFunctionType().getResults()));
   }
 }
 
@@ -3334,7 +3334,8 @@ Status CreateSavedModelIR(
         }
         mlir::OpBuilder body_builder(&func.getBody());
         auto call = body_builder.create<mlir::TF::StatefulPartitionedCallOp>(
-            func.getLoc(), orig_func.getType().getResults(), args_as_values,
+            func.getLoc(), orig_func.getFunctionType().getResults(),
+            args_as_values,
             mlir::SymbolRefAttr::get(builder.getContext(), orig_func.getName()),
             /*config=*/builder.getStringAttr(""),
             /*config_proto=*/builder.getStringAttr(""),

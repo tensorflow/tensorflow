@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/BitVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Analysis/DataFlowAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project

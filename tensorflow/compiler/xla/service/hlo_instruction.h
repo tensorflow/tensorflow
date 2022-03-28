@@ -122,9 +122,12 @@ class HloPrintOptions {
         .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
         .set_print_metadata(false)
         .set_print_backend_config(false)
+        // Compact option won't print name of operand_k, where k > a threshold.
+        // Canonical (and Fingerprint) must include all operands.
         .set_compact_operands(false)
         .set_print_operand_names(false)
         .set_print_operand_shape(true)
+        // No index annotations as they are only for ease of human inspection.
         .set_print_operand_index_annotation_interval(0)
         .set_print_program_shape(false)
         .set_print_percent(false)
@@ -132,37 +135,31 @@ class HloPrintOptions {
         .set_canonicalize_instruction_names(true);
   }
 
-  // Options to produce a fingerprint of an HLO.
-  // This option is primarily based on the Canonical option with some
-  // important changes commented below.
+  // Options to produce a fingerprint of an HLO instruction.
+  // Based on Canonical() with some important changes commented below.
   static HloPrintOptions Fingerprint() {
-    return HloPrintOptions()
-        .set_print_subcomputation_mode(PrintSubcomputationMode::kFullBodies)
-        .set_print_metadata(false)
-        .set_print_backend_config(false)
+    return Canonical()
         // Exclude because they do not affect HLO optimizations.
         .set_print_infeed_outfeed_config(false)
         // Exclude floating point constant literals that are not all zeros, all
         // ones, or integers because they may be randomly initialized weights,
         // which may be changed across different runs.
         .set_print_only_essential_constants(true)
-        // For faster ToString().
-        .set_compact_operands(true)
-        .set_print_operand_names(false)
-        // For faster ToString(). This information can be inferred from
-        // output shapes and canonicalized names.
-        .set_print_operand_shape(false)
-        .set_print_operand_index_annotation_interval(0)
-        .set_print_program_shape(false)
-        .set_print_percent(false)
-        .set_print_control_dependencies(false)
-        .set_canonicalize_instruction_names(true)
-        // Ignore "id" in "name.id" (afer period) because it can be
+        // Remove "id" in "name.id" (after period) because it can be
         // non-deterministic. This mainly affects computations' names because
         // canonicalized instructions' names are in "tmp_id" format.
         .set_print_ids(false)
         // Sort computations.
         .set_canonicalize_computations(true);
+  }
+
+  // Options to produce a fingerprint of an HLO module and computation.
+  // Shorter (and therefore faster) than Fingerprint().
+  static HloPrintOptions ModuleFingerprint() {
+    return Fingerprint()
+        // Operand shapes can be inferred from output shapes and canonicalized
+        // names when we have an entire computation.
+        .set_print_operand_shape(false);
   }
 
   // If true, large constants will be printed out.
@@ -340,45 +337,6 @@ class HloPrintOptions {
     return *this;
   }
 
-  // Instructions are selected for printing by a predicate function
-  // (`set_print_instructions`). We also print their surrounding instructions
-  // for ease of reading. We print `leading_and_trailing_instructions_number`
-  // instructions before and after the qualified ones inside a computation.
-  HloPrintOptions& set_leading_and_trailing_instructions_number(int value) {
-    leading_and_trailing_instructions_number_ = value;
-    return *this;
-  }
-
-  // A callback which takes an HloInstruction*, its string representation,
-  // the indentation level of the resulting block, and a
-  // bool variable indicating whether the instruction is root or not. The return
-  // value is a string which is used for this instruction during printing.
-  using FormatInstructionFunc = std::function<std::string(
-      const HloInstruction*, const std::string&, int, bool)>;
-
-  HloPrintOptions& set_format_instruction(FormatInstructionFunc callback) {
-    format_instruction_ = callback;
-    return *this;
-  }
-
-  using HloInstructionPredicate = std::function<bool(const HloInstruction*)>;
-
-  // A callback which takes an HloInstruction* and returns whether it should be
-  // printed or not.
-  HloPrintOptions& set_print_instruction(HloInstructionPredicate callback) {
-    print_instruction_ = callback;
-    return *this;
-  }
-
-  using HloComputationPredicate = std::function<bool(const HloComputation*)>;
-
-  // A callback which takes an HloComputation* and returns whether it should be
-  // printed or not.
-  HloPrintOptions& set_print_computation(HloComputationPredicate callback) {
-    print_computation_ = callback;
-    return *this;
-  }
-
   bool print_large_constants() const { return print_large_constants_; }
   bool print_only_essential_constants() const {
     return print_only_essential_constants_;
@@ -413,20 +371,6 @@ class HloPrintOptions {
   bool canonicalize_computations() const { return canonicalize_computations_; }
   int indent_amount() const { return indent_amount_; }
   int is_in_nested_computation() const { return is_in_nested_computation_; }
-  int leading_and_trailing_instructions_number() const {
-    return leading_and_trailing_instructions_number_;
-  }
-  std::string format_instruction(const HloInstruction* instr,
-                                 const std::string& instr_name, int indent,
-                                 bool is_root) const {
-    return format_instruction_(instr, instr_name, indent, is_root);
-  }
-  bool print_instruction(const HloInstruction* instr) const {
-    return print_instruction_(instr);
-  }
-  bool print_computation(const HloComputation* comp) const {
-    return print_computation_(comp);
-  }
 
  private:
   bool print_large_constants_;
@@ -453,19 +397,6 @@ class HloPrintOptions {
   bool canonicalize_computations_;
   bool print_extra_attributes_;
   bool syntax_sugar_async_ops_;
-  int leading_and_trailing_instructions_number_ = 3;
-  FormatInstructionFunc format_instruction_ = [](const HloInstruction* instr,
-                                                 const std::string& instr_name,
-                                                 int indent, bool is_root) {
-    return absl::StrCat(std::string(2 * indent, ' '), is_root ? "ROOT " : "",
-                        instr_name);
-  };
-  HloInstructionPredicate print_instruction_ = [](const HloInstruction* instr) {
-    return true;
-  };
-  HloComputationPredicate print_computation_ = [](const HloComputation* comp) {
-    return true;
-  };
 };
 
 // For canonical string output, we need to have a canonical way to rename
@@ -1751,6 +1682,10 @@ class HloInstruction {
   // if no id has been assigned yet).
   int unique_id() const { return unique_id_; }
 
+  template <typename T>
+  using EnableIfProto = typename std::enable_if_t<
+      std::is_base_of<tensorflow::protobuf::Message, T>::value>;
+
   // Returns the backend-specific configuration for how a backend should compile
   // this HLO. The meaning of the field is backend specific. Not for use before
   // or during general HLO optimization, since HLO optimizations do not preserve
@@ -1759,13 +1694,25 @@ class HloInstruction {
   // general HLO optimization needs to interpret it.
   //
   // ConfigProto should be a protobuf Message type.
-  template <typename ConfigProto>
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   StatusOr<ConfigProto> backend_config() const {
     ConfigProto proto;
     TF_RETURN_IF_ERROR(GetBackendConfigInternal(&proto));
     return std::move(proto);
   }
-  Status set_backend_config(const tensorflow::protobuf::Message& proto);
+
+  Status set_backend_config(const tensorflow::protobuf::Message& proto) {
+    backend_config_ = proto;
+    return Status::OK();
+  }
+
+  bool has_backend_config() const { return !backend_config_.empty(); }
+
+  void clear_backend_config() { backend_config_.clear(); }
+
+  void CopyBackendConfigFrom(const HloInstruction* other) {
+    backend_config_ = other->backend_config_.Clone();
+  }
 
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
     frontend_attributes_ = std::move(frontend_attributes);
@@ -1783,7 +1730,7 @@ class HloInstruction {
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const std::string& raw_backend_config_string() const {
-    return backend_config_;
+    return backend_config_.GetRawString();
   }
   void set_raw_backend_config_string(std::string config_str) {
     backend_config_ = std::move(config_str);
@@ -2196,6 +2143,38 @@ class HloInstruction {
 
  private:
   friend class HloComputation;
+  // Wrapper class of string format and protobuf format of BackendConfig.
+  class BackendConfigRep {
+   public:
+    const tensorflow::protobuf::Message* GetProtoPtr() const {
+      return proto_.get();
+    }
+
+    const std::string& GetRawString() const;
+
+    BackendConfigRep Clone() const;
+
+    bool operator==(const BackendConfigRep& other) const;
+    bool operator!=(const BackendConfigRep& other) const {
+      return !(*this == other);
+    }
+
+    bool empty() const { return proto_ == nullptr && raw_string_.empty(); }
+
+    void clear() {
+      proto_.reset();
+      raw_string_.clear();
+    }
+
+    BackendConfigRep& operator=(std::string raw_string);
+    BackendConfigRep& operator=(const tensorflow::protobuf::Message& proto);
+    void SetProto(const tensorflow::protobuf::Message& proto);
+
+   private:
+    std::unique_ptr<tensorflow::protobuf::Message> proto_;
+    // If proto_ is not null, raw_string_ is a lazy cache of its string format.
+    mutable std::string raw_string_;
+  };
 
   bool IdenticalInternal(
       const HloInstruction& other,
@@ -2309,7 +2288,7 @@ class HloInstruction {
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
-  std::string backend_config_;
+  mutable BackendConfigRep backend_config_;
 
   // Attributes passed from the frontend to give hints to the backend about
   // how to compile this HLO.

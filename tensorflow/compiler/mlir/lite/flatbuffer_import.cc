@@ -586,7 +586,8 @@ static StatusOr<Operation*> BuildSparseConstOp(
     if (tensor.sparsity->dim_metadata[i]->format ==
         tflite::DimensionType_DENSE) {
       dim_metadata[i] = tfl::DimensionMetadataAttr::get(
-          builder.getStringAttr("DENSE"),
+          ::mlir::TFL::DimensionTypeAttr::get(builder.getContext(),
+                                              tfl::DimensionType::DENSE),
           builder.getI32IntegerAttr(
               tensor.sparsity->dim_metadata[i]->dense_size),
           builder.getI32ArrayAttr({}), builder.getI32ArrayAttr({}),
@@ -602,8 +603,10 @@ static StatusOr<Operation*> BuildSparseConstOp(
           ConvertSparseIndexVector(
               tensor.sparsity->dim_metadata[i]->array_indices, builder));
       dim_metadata[i] = tfl::DimensionMetadataAttr::get(
-          builder.getStringAttr("SPARSE_CSR"), builder.getI32IntegerAttr(0),
-          segments, indices, builder.getContext());
+          ::mlir::TFL::DimensionTypeAttr::get(builder.getContext(),
+                                              tfl::DimensionType::SPARSE_CSR),
+          builder.getI32IntegerAttr(0), segments, indices,
+          builder.getContext());
     } else {
       return errors::Unimplemented("Unsupported dimension metadata type");
     }
@@ -921,7 +924,7 @@ StatusOr<Operation*> ConvertOp(
                                                          func_names, builder));
   op_state.addAttributes(function_ref_attrs);
 
-  return builder.createOperation(op_state);
+  return builder.create(op_state);
 }
 
 // Returns indices of the given tensors in the subgraph. Returns error if a
@@ -1419,11 +1422,11 @@ void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
   OpBuilder op_builder{region};
   region.push_back(new mlir::Block());
   Location loc = region.getLoc();
-  auto inputs = func.getType().getInputs();
+  auto inputs = func.getFunctionType().getInputs();
   region.addArguments(inputs, mlir::SmallVector<Location>(inputs.size(), loc));
   op_builder.setInsertionPointToStart(&region.front());
   auto call_op = op_builder.create<mlir::func::CallOp>(
-      loc, func.getType().getResults(), func.getSymName(),
+      loc, func.getFunctionType().getResults(), func.getSymName(),
       region.getArguments());
   op_builder.create<mlir::TFL::YieldOp>(loc, call_op.getResults());
 }

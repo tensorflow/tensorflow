@@ -478,7 +478,7 @@ tensorflow::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
                            return true;
                          })
                          .Case<IntegerAttr>([&](IntegerAttr iattr) {
-                           ret.set_i(iattr.getSInt());
+                           ret.set_i(iattr.getInt());
                            return true;
                          })
                          .Default([&](Attribute attr) { return false; });

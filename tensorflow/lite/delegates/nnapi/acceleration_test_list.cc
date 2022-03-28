@@ -155,6 +155,7 @@ ConvolutionOpTest/ConvolutionOpTest.SimpleTestLargeIrregularQuantized/.+,29
 ConvolutionOpTest/ConvolutionOpTest.SimpleTestQuantizedOutputMultiplierGreaterThan1/.+,29
 ConvolutionOpTest/ConvolutionOpTest.SimpleTestQuantizedWithDilation/.+,29
 ConvolutionOpTest/ConvolutionOpTest.SimplePerChannelTest/.+,29
+ConvolutionOpTest/ConvolutionOpTest.SimpleTestQuantizedGrouped/.+,29
 ConvolutionOpTest/ConvolutionOpTest/.+Hybrid.+,29/
 ConvolutionOpTest/ConvolutionOpTest/.+/\d+
 

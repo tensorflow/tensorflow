@@ -10,7 +10,7 @@
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @cholesky(%input: memref<2x2xf32>, %output: memref<2x2xf32>, %scratch: memref<2x2xf32>, %info: memref<2x2xi32>) {
+func.func @cholesky(%input: memref<2x2xf32>, %output: memref<2x2xf32>, %scratch: memref<2x2xf32>, %info: memref<2x2xi32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 

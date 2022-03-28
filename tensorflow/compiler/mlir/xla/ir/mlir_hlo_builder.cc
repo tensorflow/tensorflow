@@ -681,7 +681,7 @@ StatusOr<XlaOp> MlirHloBuilder::CreateOp(
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
   mlir::OperationState state(loc_, op_name, operand_values, {ty}, attributes);
-  mlir::Operation* op = builder_.createOperation(state);
+  mlir::Operation* op = builder_.create(state);
   return MakeXlaOp(op->getResult(0));
 }
 

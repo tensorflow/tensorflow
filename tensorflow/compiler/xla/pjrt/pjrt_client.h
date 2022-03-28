@@ -831,6 +831,20 @@ struct ExecuteOptions {
   const MultiSliceConfig* multi_slice_config = nullptr;
 };
 
+// Static device memory usage for a compiled program.
+// The on-device memory needed to run an executable is at least
+//   generated_code_size_in_bytes
+//   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
+//   + temp_size_in_bytes.
+struct CompiledMemoryStats {
+  int32_t generated_code_size_in_bytes = 0;
+  int32_t argument_size_in_bytes = 0;
+  int32_t output_size_in_bytes = 0;
+  // How much argument is reused for output.
+  int32_t alias_size_in_bytes = 0;
+  int32_t temp_size_in_bytes = 0;
+};
+
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. If any input/output alias has been specified in
 // the computation, the parameter containing the input buffer will be donated
@@ -849,6 +863,12 @@ class PjRtExecutable {
   virtual int num_partitions() const = 0;
 
   virtual int64_t SizeOfGeneratedCodeInBytes() const = 0;
+
+  // Return memory stats that allow callers to estimate device memory usage
+  // when running this executable.
+  virtual StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+    return Unimplemented("Retrieving CompiledMemoryStats is not supported.");
+  }
 
   virtual const DeviceAssignment& device_assignment() const = 0;
 

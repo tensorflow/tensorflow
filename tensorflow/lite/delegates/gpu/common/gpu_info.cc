@@ -49,6 +49,8 @@ GpuVendor GetGpuVendor(const std::string& gpu_description) {
 
 AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
   const std::map<std::string, AdrenoGpu> kMapping = {
+      // Adreno 7xx series
+      {"730", AdrenoGpu::kAdreno730},
       // Adreno 6xx series
       {"685", AdrenoGpu::kAdreno685},
       {"680", AdrenoGpu::kAdreno680},
@@ -193,12 +195,18 @@ bool AdrenoInfo::IsAdreno6xx() const {
          adreno_gpu == AdrenoGpu::kAdreno685;
 }
 
+bool AdrenoInfo::IsAdreno7xx() const {
+  return adreno_gpu == AdrenoGpu::kAdreno730;
+}
+
 bool AdrenoInfo::IsAdreno6xxOrHigher() const {
-  return !compiler_bugs_in_a6xx && IsAdreno6xx();
+  return (!compiler_bugs_in_a6xx && IsAdreno6xx()) || IsAdreno7xx();
 }
 
 int AdrenoInfo::GetMaximumWavesCount() const {
-  if (IsAdreno6xx()) {
+  if (IsAdreno7xx()) {
+    return 16;
+  } else if (IsAdreno6xx()) {
     if (adreno_gpu == AdrenoGpu::kAdreno640) {
       return 30;
     } else {
@@ -211,7 +219,9 @@ int AdrenoInfo::GetMaximumWavesCount() const {
 }
 
 int AdrenoInfo::GetRegisterMemorySizePerComputeUnit() const {
-  if (IsAdreno6xx()) {
+  if (IsAdreno7xx()) {
+    return 128 * 96 * 16;
+  } else if (IsAdreno6xx()) {
     if (adreno_gpu == AdrenoGpu::kAdreno640) {
       return 128 * 144 * 16;
     } else if (adreno_gpu == AdrenoGpu::kAdreno620 ||
@@ -237,7 +247,9 @@ int AdrenoInfo::GetMaximumWavesCount(int register_footprint_per_tread,
 }
 
 int AdrenoInfo::GetWaveSize(bool full_wave) const {
-  if (IsAdreno6xx()) {
+  if (IsAdreno7xx()) {
+    return full_wave ? 128 : 64;
+  } else if (IsAdreno6xx()) {
     return full_wave ? 128 : 64;
   } else if (IsAdreno5xx() || IsAdreno4xx()) {
     return full_wave ? 64 : 32;
@@ -249,6 +261,9 @@ int AdrenoInfo::GetWaveSize(bool full_wave) const {
 int AdrenoInfo::GetComputeUnitsCount() const {
   // can provide not correct numbers.
   switch (adreno_gpu) {
+    // Adreno 7xx series
+    case AdrenoGpu::kAdreno730:
+      return 4;
     // Adreno 6xx series
     case AdrenoGpu::kAdreno685:
       return 4;

@@ -1,4 +1,3 @@
-# lint as: python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,7 +75,9 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 1.12',
+    # TODO(b/187981032): remove the constraint for 2.0 once the incompatibile
+    # issue is resolved.
+    'flatbuffers >= 1.12, <2',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',

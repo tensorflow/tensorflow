@@ -16,7 +16,7 @@
 
 module {
   // TODO(b/220993213): factor out common logic.
-  func private @quantized_conv2d_fn(%input : tensor<*xi8>,
+  func.func private @quantized_conv2d_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
@@ -48,10 +48,10 @@ module {
     %i8_max = "tf.Const"() {value = dense<127> : tensor<i32>} : () -> tensor<i32>
     %13 = "tf.ClipByValue"(%12, %i8_min, %i8_max) : (tensor<*xi32>, tensor<i32>, tensor<i32>) -> tensor<*xi32>
     %14 = "tf.Cast"(%13) {Truncate = false} : (tensor<*xi32>) -> tensor<*xi8>
-    return %14 : tensor<*xi8>
+    func.return %14 : tensor<*xi8>
   }
 
-  func private @quantized_conv2d_relu_fn(%input : tensor<*xi8>,
+  func.func private @quantized_conv2d_relu_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
@@ -84,10 +84,10 @@ module {
     %clip_min = "tf.Maximum"(%i8_min, %out_zp) : (tensor<i32>, tensor<*xi32>) -> tensor<i32>
     %13 = "tf.ClipByValue"(%12, %clip_min, %i8_max) : (tensor<*xi32>, tensor<i32>, tensor<i32>) -> tensor<*xi32>
     %14 = "tf.Cast"(%13) {Truncate = false} : (tensor<*xi32>) -> tensor<*xi8>
-    return %14 : tensor<*xi8>
+    func.return %14 : tensor<*xi8>
   }
 
-  func private @quantized_conv2d_relu6_fn(%input : tensor<*xi8>,
+  func.func private @quantized_conv2d_relu6_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
@@ -126,30 +126,11 @@ module {
     %clip_max = "tf.Minimum"(%i8_max, %i8_act_max_1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
     %13 = "tf.ClipByValue"(%12, %clip_min, %clip_max) : (tensor<*xi32>, tensor<i32>, tensor<i32>) -> tensor<*xi32>
     %14 = "tf.Cast"(%13) {Truncate = false} : (tensor<*xi32>) -> tensor<*xi8>
-    return %14 : tensor<*xi8>
-  }
-
-  // TODO(b/215620570): remove after all biases are handled as i32
-  func private @quantized_conv2d_relu6_f32_bias_fn(%input : tensor<*xi8>,
-    %filter : tensor<*xi8>, %bias : tensor<*xf32>,
-    %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
-    %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
-    %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
-    %bias_scale = "tf.Mul"(%input_scale, %filter_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %q_bias = "tf.Div"(%bias, %bias_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %4 = "tf.Cast"(%q_bias) : (tensor<*xf32>) -> tensor<*xi32>
-    %conv = "tf.PartitionedCall"(%input, %filter, %4,
-      %input_scale, %input_zp, %filter_scale, %filter_zp,
-      %bias_scale, %filter_zp, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@quantized_conv2d_relu6_fn
-      } : (tensor<*xi8>, tensor<*xi8>, tensor<*xi32>,
-        tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
-        tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
-    return %conv: tensor<*xi8>
+    func.return %14 : tensor<*xi8>
   }
 
   // TODO(b/220993213): factor out common logic.
-  func private @quantized_matmul_fn(%input : tensor<*xi8>,
+  func.func private @quantized_matmul_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
@@ -180,10 +161,10 @@ module {
     %i8_max = "tf.Const"() {value = dense<127> : tensor<i32>} : () -> tensor<i32>
     %13 = "tf.ClipByValue"(%12, %i8_min, %i8_max) : (tensor<*xi32>, tensor<i32>, tensor<i32>) -> tensor<*xi32>
     %14 = "tf.Cast"(%13) {Truncate = false} : (tensor<*xi32>) -> tensor<*xi8>
-    return %14 : tensor<*xi8>
+    func.return %14 : tensor<*xi8>
   }
 
-  func private @quantized_matmul_relu_fn(%input : tensor<*xi8>,
+  func.func private @quantized_matmul_relu_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
@@ -215,10 +196,10 @@ module {
     %clip_min = "tf.Maximum"(%i8_min, %out_zp) : (tensor<i32>, tensor<*xi32>) -> tensor<i32>
     %13 = "tf.ClipByValue"(%12, %clip_min, %i8_max) : (tensor<*xi32>, tensor<i32>, tensor<i32>) -> tensor<*xi32>
     %14 = "tf.Cast"(%13) {Truncate = false} : (tensor<*xi32>) -> tensor<*xi8>
-    return %14 : tensor<*xi8>
+    func.return %14 : tensor<*xi8>
   }
 
-  func private @quantized_matmul_relu6_fn(%input : tensor<*xi8>,
+  func.func private @quantized_matmul_relu6_fn(%input : tensor<*xi8>,
                          %weight : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
@@ -256,24 +237,24 @@ module {
     %clip_max = "tf.Minimum"(%i8_max, %i8_act_max_1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
     %13 = "tf.ClipByValue"(%12, %clip_min, %clip_max) : (tensor<*xi32>, tensor<i32>, tensor<i32>) -> tensor<*xi32>
     %14 = "tf.Cast"(%13) {Truncate = false} : (tensor<*xi32>) -> tensor<*xi8>
-    return %14 : tensor<*xi8>
+    func.return %14 : tensor<*xi8>
   }
 
   // Note: following functions won't handle per-channel quantization for now.
-  func private @quantize_i8(%input : tensor<*xf32>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xi8> {
+  func.func private @quantize_i8(%input : tensor<*xf32>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xi8> {
     %div = "tf.Div"(%input, %scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %round = "tf.Round"(%div) : (tensor<*xf32>) -> tensor<*xf32>
     %cast = "tf.Cast"(%round) : (tensor<*xf32>) -> tensor<*xi32>
     %add = "tf.AddV2"(%cast, %zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
     %i8 = "tf.Cast"(%add) : (tensor<*xi32>) -> tensor<*xi8>
-    return %i8 : tensor<*xi8>
+    func.return %i8 : tensor<*xi8>
   }
 
-  func private @dequantize_i8(%input : tensor<*xi8>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xf32> {
+  func.func private @dequantize_i8(%input : tensor<*xi8>, %scale : tensor<*xf32>, %zp : tensor<*xi32>) -> tensor<*xf32> {
     %input_i32 = "tf.Cast"(%input) : (tensor<*xi8>) -> tensor<*xi32>
     %output = "tf.Sub"(%input_i32, %zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
     %cast = "tf.Cast"(%output) : (tensor<*xi32>) -> tensor<*xf32>
     %mul = "tf.Mul"(%cast, %scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    return %mul : tensor<*xf32>
+    func.return %mul : tensor<*xf32>
   }
 }

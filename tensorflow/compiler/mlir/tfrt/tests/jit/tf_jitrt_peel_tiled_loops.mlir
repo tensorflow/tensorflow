@@ -4,7 +4,7 @@
 #map0 = affine_map<(d0) -> (8, -d0 + 102401)>
 #map1 = affine_map<(d0)[s0] -> (d0 + s0)>
 
-func @tanh_1d(%arg0: memref<102401xf32>) -> memref<102401xf32> {
+func.func @tanh_1d(%arg0: memref<102401xf32>) -> memref<102401xf32> {
   %c102401 = arith.constant 102401 : index
   %c8 = arith.constant 8 : index
   %cst = arith.constant 0.000000e+00 : f32
@@ -25,7 +25,7 @@ func @tanh_1d(%arg0: memref<102401xf32>) -> memref<102401xf32> {
     memref.copy %3, %3 : memref<?xf32, #map1> to memref<?xf32, #map1>
     gml_st.yield
   }
-  return %0 : memref<102401xf32>
+  func.return %0 : memref<102401xf32>
 }
 
 // CHECK-DAG:  #[[$MAP:.*]] = affine_map<(d0)[s0] -> (d0 + s0)>
@@ -46,7 +46,7 @@ func @tanh_1d(%arg0: memref<102401xf32>) -> memref<102401xf32> {
 
 // -----
 
-func @tanh_3d(%d0: index, %d1: index, %d2: index) {
+func.func @tanh_3d(%d0: index, %d1: index, %d2: index) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c8 = arith.constant 8 : index
@@ -56,7 +56,7 @@ func @tanh_3d(%d0: index, %d1: index, %d2: index) {
     "prevent.dce"() : () -> ()
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @tanh_3d(
@@ -83,7 +83,7 @@ func @tanh_3d(%d0: index, %d1: index, %d2: index) {
 
 // -----
 
-func @reduce_column_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
+func.func @reduce_column_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c1 = arith.constant 1 : index
   %c4 = arith.constant 4 : index
@@ -132,7 +132,7 @@ func @reduce_column_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
             : tensor<?xf32> into tensor<?xf32>
     gml_st.yield %15 : tensor<?xf32>
   }
-  return %5 : tensor<?xf32>
+  func.return %5 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @reduce_column_sum_2d_dynamic
@@ -159,7 +159,7 @@ func @reduce_column_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
 // -----
 
 
-func @reduce_row_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
+func.func @reduce_row_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %c4 = arith.constant 4 : index
@@ -207,7 +207,7 @@ func @reduce_row_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
             : tensor<?xf32> into tensor<?xf32>
     gml_st.yield %15 : tensor<?xf32>
   }
-  return %5 : tensor<?xf32>
+  func.return %5 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @reduce_row_sum_2d_dynamic

@@ -12,12 +12,12 @@
 // CHECK:         %[[VAL_10:.*]] = select i1 %[[VAL_9]], i32 0, i32 %[[VAL_8]]
 // CHECK:         %[[VAL_11:.*]] = icmp sle i32 49, %[[VAL_10]]
 // CHECK:         %[[VAL_12:.*]] = select i1 %[[VAL_11]], i32 49, i32 %[[VAL_10]]
-// CHECK:         %[[VAL_13:.*]] = load i32, i32* bitcast ([4 x i8]* @1 to i32*), align 4
+// CHECK:         %[[VAL_13:.*]] = load i32, i32* bitcast ([4 x i8]* @0 to i32*), align 4
 // CHECK:         %[[VAL_14:.*]] = icmp sge i32 0, %[[VAL_13]]
 // CHECK:         %[[VAL_15:.*]] = select i1 %[[VAL_14]], i32 0, i32 %[[VAL_13]]
 // CHECK:         %[[VAL_16:.*]] = icmp sle i32 0, %[[VAL_15]]
 // CHECK:         %[[VAL_17:.*]] = select i1 %[[VAL_16]], i32 0, i32 %[[VAL_15]]
-// CHECK:         %[[VAL_18:.*]] = load i32, i32* bitcast ([4 x i8]* @2 to i32*), align 4
+// CHECK:         %[[VAL_18:.*]] = load i32, i32* bitcast ([4 x i8]* @0 to i32*), align 4
 // CHECK:         %[[VAL_19:.*]] = icmp sge i32 0, %[[VAL_18]]
 // CHECK:         %[[VAL_20:.*]] = select i1 %[[VAL_19]], i32 0, i32 %[[VAL_18]]
 // CHECK:         %[[VAL_21:.*]] = icmp sle i32 0, %[[VAL_20]]

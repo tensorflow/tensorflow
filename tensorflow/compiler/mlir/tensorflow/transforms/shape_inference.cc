@@ -887,7 +887,8 @@ bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
   bool changed = false;
   // Map each of the results of the call to the returned type of the
   // function.
-  for (auto result : zip(op->getResults(), func.getType().getResults())) {
+  for (auto result :
+       zip(op->getResults(), func.getFunctionType().getResults())) {
     changed = RefineResultType(op, std::get<0>(result), std::get<1>(result)) ||
               changed;
   }
@@ -927,9 +928,9 @@ bool ShapeInference::InferShapeForIf(IfOp op) {
   DCOMMENT_OP(op.getOperation(), "Infer shape for if ");
   bool changed = false;
   auto then_results =
-      op.ResolveThenFunction(&symbol_table_).getType().getResults();
+      op.ResolveThenFunction(&symbol_table_).getFunctionType().getResults();
   auto else_results =
-      op.ResolveElseFunction(&symbol_table_).getType().getResults();
+      op.ResolveElseFunction(&symbol_table_).getFunctionType().getResults();
   for (auto it : llvm::zip(op.getResults(), then_results, else_results)) {
     // If then and else types do not match, skip refinement for that result.
     if (std::get<1>(it) != std::get<2>(it)) continue;
@@ -967,7 +968,7 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   FuncOp func = host_compute_op.GetHostFunc(&module_for_func);
 
   // Update/use input shapes for function.
-  FunctionType func_type = func.getType();
+  FunctionType func_type = func.getFunctionType();
   func.setType(FunctionType::get(func.getContext(),
                                  host_compute_op.getOperandTypes(),
                                  func_type.getResults()));
@@ -981,7 +982,7 @@ bool ShapeInference::InferShapeForXlaHostComputeMlir(
   bool changed = false;
   // Use refined function return shape for XlaHostComputeMlirOp.
   for (auto result :
-       zip(host_compute_op.getResults(), func.getType().getResults())) {
+       zip(host_compute_op.getResults(), func.getFunctionType().getResults())) {
     changed = RefineResultType(host_compute_op, std::get<0>(result),
                                std::get<1>(result)) ||
               changed;
@@ -2044,8 +2045,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     return InferShapeForIfRegion(if_region);
 
   if (auto while_op = dyn_cast<WhileOp>(op))
-    return InferShapeForWhile(while_op,
-                              while_op.body_function().getType().getResults());
+    return InferShapeForWhile(
+        while_op, while_op.body_function().getFunctionType().getResults());
 
   if (auto while_region = dyn_cast<WhileRegionOp>(op))
     return InferShapeForWhile(
@@ -2174,7 +2175,7 @@ FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
 
       continue;
     }
-    FunctionType func_type = func.getType();
+    FunctionType func_type = func.getFunctionType();
     func.setType(FunctionType::get(func.getContext(), input_types,
                                    func_type.getResults()));
 
@@ -2356,7 +2357,9 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
     if (while_op.shape_invariant()) {
       auto compatible_types = GetWhileCompatibleTypes(
           while_op.input().getTypes(), while_op.output().getTypes(),
-          while_op.ResolveBodyFunction(&symbol_table_).getType().getInputs());
+          while_op.ResolveBodyFunction(&symbol_table_)
+              .getFunctionType()
+              .getInputs());
       return PropagateShapeToFunctions(
           module, compatible_types,
           {while_op.ResolveCondFunction(&symbol_table_),
@@ -2385,7 +2388,7 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
       auto func = llvm::cast<mlir::FuncOp>(
           mlir::SymbolTable::lookupSymbolIn(module, func_sym));
       mlir::SmallVector<mlir::Type, 2> types;
-      for (auto type : func.getType().getInputs()) {
+      for (auto type : func.getFunctionType().getInputs()) {
         types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
       }
       return PropagateShapeToFunctions(module, types, {func}, max_iterations);
@@ -2650,7 +2653,7 @@ FailureOr<bool> InferShapeForFunction(FuncOp func,
     return InferShapeForFunction(context, func, max_iterations);
   }
 
-  FunctionType func_type = func.getType();
+  FunctionType func_type = func.getFunctionType();
   bool needs_refinement = false;
   SmallVector<Type, 4> new_arg_types;
   new_arg_types.reserve(func_type.getNumInputs());
@@ -2690,7 +2693,7 @@ FailureOr<bool> InferShapeForFunction(FuncOp func,
 
   if (failed(context.InferShapeForFunctionReturnType(func))) return failure();
   func.setType(FunctionType::get(func.getContext(), new_arg_types,
-                                 func.getType().getResults()));
+                                 func.getFunctionType().getResults()));
 
   return true;
 }

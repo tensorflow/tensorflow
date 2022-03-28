@@ -932,7 +932,8 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
-    auto compute_capability = absl::get_if<se::RocmComputeCapability>(&gpu_version);
+    auto compute_capability =
+        absl::get_if<se::RocmComputeCapability>(&gpu_version);
     if (!compute_capability) {
       return xla::InternalError(
           "Incompatible compute capability was specified.");

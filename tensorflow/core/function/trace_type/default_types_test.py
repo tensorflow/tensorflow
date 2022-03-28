@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for default_types."""
 
+import collections
+
 from tensorflow.core.function.trace_type import default_types
 from tensorflow.python.platform import test
 
@@ -32,34 +34,7 @@ class DefaultTypesTest(test.TestCase):
                      generic_a.most_specific_common_supertype([generic_c]))
     self.assertIsNone(generic_a.most_specific_common_supertype([generic_b]))
 
-  def testOrderedCollectionTypeEquality(self):
-    collection = default_types.OrderedCollection
-    generic = default_types.Generic
-    collection_a = collection(generic(1), generic(2), generic(3))
-    collection_b = collection(generic(1), generic(2), generic(1))
-    collection_c = collection(generic(1), generic(2), generic(3))
-
-    self.assertNotEqual(collection_a, collection_b)
-    self.assertEqual(collection_a, collection_c)
-    self.assertEqual(hash(collection_a), hash(collection_c))
-
-  def testOrderedCollectionTypeSubtype(self):
-
-    class Subtypable(default_types.Generic):
-
-      def is_subtype_of(self, other):
-        return self._object == 2 or other._object == 3
-
-    collection = default_types.OrderedCollection
-    collection_a = collection(Subtypable(1), Subtypable(2), Subtypable(3))
-    collection_b = collection(Subtypable(2), Subtypable(1), Subtypable(2))
-    collection_c = collection(Subtypable(1), Subtypable(3), Subtypable(3))
-
-    self.assertTrue(collection_b.is_subtype_of(collection_c))
-    self.assertFalse(collection_a.is_subtype_of(collection_b))
-    self.assertFalse(collection_c.is_subtype_of(collection_a))
-
-  def testOrderedCollectionTypeSupertype(self):
+  def testListSupertype(self):
 
     class Supertypable(default_types.Generic):
 
@@ -72,17 +47,67 @@ class DefaultTypesTest(test.TestCase):
         else:
           return None
 
-    collection = default_types.OrderedCollection
-    collection_a = collection(Supertypable(1), Supertypable(2), Supertypable(3))
-    collection_b = collection(Supertypable(2), Supertypable(2), Supertypable(2))
+    list_a = default_types.List(
+        Supertypable(1), Supertypable(2), Supertypable(3))
+    list_b = default_types.List(
+        Supertypable(2), Supertypable(2), Supertypable(2))
 
-    self.assertEqual(collection_a,
-                     collection_a.most_specific_common_supertype([]))
-    self.assertIsNone(
-        collection_a.most_specific_common_supertype([collection_b]))
+    self.assertEqual(list_a, list_a.most_specific_common_supertype([]))
+    self.assertIsNone(list_a.most_specific_common_supertype([list_b]))
     self.assertEqual(
-        collection_b.most_specific_common_supertype([collection_a]),
-        collection(Supertypable(3), Supertypable(3), Supertypable(3)))
+        list_b.most_specific_common_supertype([list_a]),
+        default_types.List(Supertypable(3), Supertypable(3), Supertypable(3)))
+
+  def testTupleSupertype(self):
+
+    class Supertypable(default_types.Generic):
+
+      def most_specific_common_supertype(self, others):
+        if not others:
+          return self
+
+        if self._object == 2 and isinstance(others[0]._object, int):
+          return Supertypable(3)
+        else:
+          return None
+
+    tuple_a = default_types.Tuple(
+        Supertypable(1), Supertypable(2), Supertypable(3))
+    tuple_b = default_types.Tuple(
+        Supertypable(2), Supertypable(2), Supertypable(2))
+
+    self.assertEqual(tuple_a, tuple_a.most_specific_common_supertype([]))
+    self.assertIsNone(tuple_a.most_specific_common_supertype([tuple_b]))
+    self.assertEqual(
+        tuple_b.most_specific_common_supertype([tuple_a]),
+        default_types.Tuple(Supertypable(3), Supertypable(3), Supertypable(3)))
+
+  def testNamedTupleSupertype(self):
+
+    class Supertypable(default_types.Generic):
+
+      def most_specific_common_supertype(self, others):
+        if not others:
+          return self
+
+        if self._object == 2 and isinstance(others[0]._object, int):
+          return Supertypable(3)
+        else:
+          return None
+
+    named_tuple_type = collections.namedtuple('MyNamedTuple', 'x y z')
+    tuple_a = default_types.NamedTuple(
+        named_tuple_type, (Supertypable(1), Supertypable(2), Supertypable(3)))
+    tuple_b = default_types.NamedTuple(
+        named_tuple_type, (Supertypable(2), Supertypable(2), Supertypable(2)))
+
+    self.assertEqual(tuple_a, tuple_a.most_specific_common_supertype([]))
+    self.assertIsNone(tuple_a.most_specific_common_supertype([tuple_b]))
+    self.assertEqual(
+        tuple_b.most_specific_common_supertype([tuple_a]),
+        default_types.NamedTuple(
+            named_tuple_type,
+            (Supertypable(3), Supertypable(3), Supertypable(3))))
 
   def testDictTypeSubtype(self):
 

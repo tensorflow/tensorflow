@@ -28,6 +28,7 @@ namespace gpu {
 TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::lmhlo::LmhloDialect>();
+  registry.insert<mlir::func::FuncDialect>();
   mlir::MLIRContext context(registry);
 
   auto module = mlir::parseSourceString<mlir::ModuleOp>(R"(
@@ -37,7 +38,8 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
     }
   )",
                                                         &context);
-  mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
+  mlir::func::FuncOp func =
+      mlir::cast<mlir::func::FuncOp>(module->lookupSymbol("foo"));
   mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }
@@ -45,6 +47,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionNoAlias) {
 TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::lmhlo::LmhloDialect>();
+  registry.insert<mlir::func::FuncDialect>();
   mlir::MLIRContext context(registry);
 
   auto module = mlir::parseSourceString<mlir::ModuleOp>(R"(
@@ -54,7 +57,8 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
     }
   )",
                                                         &context);
-  mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
+  mlir::func::FuncOp func =
+      mlir::cast<mlir::func::FuncOp>(module->lookupSymbol("foo"));
   mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }
@@ -62,6 +66,7 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias0) {
 TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::lmhlo::LmhloDialect>();
+  registry.insert<mlir::func::FuncDialect>();
   mlir::MLIRContext context(registry);
 
   auto module = mlir::parseSourceString<mlir::ModuleOp>(R"(
@@ -71,7 +76,8 @@ TEST(IrEmissionUtilsTest, TestOperandPartitionWithAlias1) {
     }
   )",
                                                         &context);
-  mlir::FuncOp func = mlir::cast<mlir::FuncOp>(module->lookupSymbol("foo"));
+  mlir::func::FuncOp func =
+      mlir::cast<mlir::func::FuncOp>(module->lookupSymbol("foo"));
   mlir::Operation* op = &func.getBody().front().front();
   EXPECT_EQ(2, PartitionLmhloOperandsAndOutputs(op));
 }

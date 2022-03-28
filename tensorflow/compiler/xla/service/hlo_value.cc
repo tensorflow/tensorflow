@@ -203,6 +203,17 @@ std::ostream& operator<<(std::ostream& out, const HloValue& value) {
   return out;
 }
 
+HloValueSet::HloValueSet(absl::Span<const HloValue* const> values)
+    : values_(values.begin(), values.end()) {
+  SortAndUniquifyValues();
+}
+
+HloValueSet::HloValueSet(const absl::flat_hash_set<const HloValue*>& values)
+    : values_(values.begin(), values.end()) {
+  // Values are already unique, so only need to sort.
+  absl::c_sort(values_, HloValue::IdLessThan);
+}
+
 void HloValueSet::SortAndUniquifyValues() {
   absl::c_sort(values_, HloValue::IdLessThan);
   values_.erase(std::unique(values_.begin(), values_.end()), values_.end());

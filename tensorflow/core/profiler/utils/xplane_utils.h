@@ -131,7 +131,8 @@ bool IsEmpty(const XSpace& space);
 
 // Mutate the XPlane by adding predefined XFlow. e.g. GPU kernel launches =>
 // GPU kernel events.
-void AddFlowsToXplane(int32_t host_id, bool is_host_plane, XPlane* plane);
+void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
+                      XPlane* plane);
 
 }  // namespace profiler
 }  // namespace tensorflow

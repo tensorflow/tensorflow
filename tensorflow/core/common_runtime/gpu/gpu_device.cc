@@ -484,7 +484,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
         timestamped_allocator_ ? gpu_allocator_ : nullptr, em_));
   }
 
-  gpu_device_info_ = new GpuDeviceInfo;
+  gpu_device_info_ = new DeviceBase::AcceleratorDeviceInfo;
   gpu_device_info_->stream = stream_->compute;
   gpu_device_info_->default_context = device_context_;
   gpu_device_info_->event_mgr = em_;
@@ -492,7 +492,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   TF_RETURN_IF_ERROR(
       GpuIdManager::TfToPlatformDeviceId(tf_device_id_, &platform_device_id));
   gpu_device_info_->gpu_id = platform_device_id.value();
-  set_tensorflow_gpu_device_info(gpu_device_info_);
+  set_tensorflow_accelerator_device_info(gpu_device_info_);
 
   // Whether and how the GPU device uses its own threadpool.
   // This option is experimental. Once we confirm the best setting, we

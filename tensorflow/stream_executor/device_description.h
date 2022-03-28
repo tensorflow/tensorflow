@@ -22,6 +22,8 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <set>
+#include <vector>
 
 #include "absl/base/macros.h"
 #include "absl/strings/str_join.h"
