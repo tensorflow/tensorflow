@@ -845,6 +845,39 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
           self._testSparseReduceShape(sp_t, [-1], 2, keep_dims, do_sum)
           self._testSparseReduceShape(sp_t, [1, -2], 2, keep_dims, do_sum)
 
+  def testIntegerOverflow(self):
+    with self.cached_session(use_gpu=False):
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_reduce_max(
+            input_indices=[[1, 2], [3, 4]],
+            input_shape=[2**32, 2**31],
+            input_values=[1, 3],
+            reduction_axes=[0],
+            keep_dims=False,
+            name=None)
+
+        self.evaluate(res)
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_reduce_max_sparse(
+            input_indices=[[1, 2], [3, 4]],
+            input_shape=[2**32, 2**31],
+            input_values=[1, 3],
+            reduction_axes=[0],
+            keep_dims=False,
+            name=None)
+
+        self.evaluate(res)
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_reduce_sum(
+            input_indices=[[1, 2], [3, 4]],
+            input_shape=[2**32, 2**31],
+            input_values=[1, 3],
+            reduction_axes=[0],
+            keep_dims=False,
+            name=None)
+
+        self.evaluate(res)
+
 
 class SparseMathOpsTest(test_util.TensorFlowTestCase):
 
@@ -1009,6 +1042,25 @@ class SparseSoftmaxTest(test_util.TensorFlowTestCase):
         err = gradient_checker.compute_gradient_error(x_tf.values, (nnz,),
                                                       y_tf.values, (nnz,))
         self.assertLess(err, 1e-4)
+
+  def testIntegerOverflow(self):
+    with self.cached_session(use_gpu=False):
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_softmax(
+            sp_indices=[[1, 1]],
+            sp_values=[2.0],
+            sp_shape=[2**32, 2**31],
+            name=None)
+
+        self.evaluate(res)
+
+  def testReshapeNegativeShape(self):
+    with self.cached_session(use_gpu=False):
+      with self.assertRaises(errors.InvalidArgumentError):
+        res = sparse_ops.gen_sparse_ops.sparse_softmax(
+            sp_indices=[[1, 1]], sp_values=[2.0], sp_shape=[-1, 1], name=None)
+
+        self.evaluate(res)
 
 
 class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):

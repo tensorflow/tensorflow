@@ -232,12 +232,3 @@ py_library(
         "//tensorflow/python/util:tf_export",
     ],
 )
-
-py_library(
-    name = "traceme",
-    srcs = ["traceme.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":trace",
-    ],
-)

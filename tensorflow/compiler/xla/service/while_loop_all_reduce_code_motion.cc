@@ -18,6 +18,7 @@ limitations under the License.
 #include <iterator>
 #include <stack>
 #include <tuple>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
@@ -319,8 +320,8 @@ MovableAllReduceContext IsAllReduceMovable(HloInstruction* all_reduce,
             if (!output_buffer_tuple_index.unsupported_operation &&
                 output_buffer_tuple_index.returned_from_computation &&
                 !origin_buffer_tuple_index.tuple_index.empty() &&
-                ContainersEqual(origin_buffer_tuple_index.tuple_index,
-                                output_buffer_tuple_index.tuple_index)) {
+                absl::c_equal(origin_buffer_tuple_index.tuple_index,
+                              output_buffer_tuple_index.tuple_index)) {
               accumulation_contexts.push_back(AccumulationContext{
                   user, accumulation_buffer,
                   std::move(output_buffer_tuple_index.tuple_index)});

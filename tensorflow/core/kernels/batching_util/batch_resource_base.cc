@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/cost_constants.h"
+#include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/cost_util.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor.h"
@@ -649,9 +650,11 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
   // which are running this Session, of which this BatchOp is a part.
   WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
+  // TODO(b/185852990): Add a unit test to check the context is correctly set.
   // Creates the CostMeasurements within the same context that runs the Session.
+  const CostMeasurement::Context batching_context{/*is_per_query=*/false};
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements =
-      CreateCostMeasurements();
+      CreateCostMeasurements(batching_context);
 
   auto& last_task = batch->task(batch->num_tasks() - 1);
   OpKernelContext* last_task_context = last_task.context;
@@ -668,7 +671,11 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
       return;
     }
     SplitBatchCosts(batch_cost_measurements, processed_size, *batch);
+    // Clear the measurements before unblocking the batch task, as measurements
+    // are associated with the task's thread context.
+    batch_cost_measurements.clear();
     for (int i = 0; i < batch->num_tasks(); ++i) {
+      WithContext wc(batch->task(i).propagated_context);
       if (batch->task(i).is_partial) {
         batch->mutable_task(i)->status->Update(status);
       } else {
@@ -745,9 +752,11 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
   // which are running this Session, of which this BatchOp is a part.
   WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
+  // TODO(b/185852990): Add a unit test to check the context is correctly set.
   // Creates the CostMeasurement within the same context that runs the Session.
+  const CostMeasurement::Context batching_context{/*is_per_query=*/false};
   std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements =
-      CreateCostMeasurements();
+      CreateCostMeasurements(batching_context);
 
   int64_t processed_size = batch->size();
   auto batch_cost_split_cleanup = gtl::MakeCleanup([&] {

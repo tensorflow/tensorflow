@@ -80,7 +80,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self, sess, thread_name_filter=thread_name_filter)
 
     if not dump_root:
-      self._dump_root = tempfile.mktemp(prefix=_DUMP_ROOT_PREFIX)
+      self._dump_root = tempfile.mkdtemp(prefix=_DUMP_ROOT_PREFIX)
     else:
       dump_root = os.path.expanduser(dump_root)
       if os.path.isfile(dump_root):

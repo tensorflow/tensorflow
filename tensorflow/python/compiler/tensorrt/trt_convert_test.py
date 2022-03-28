@@ -27,7 +27,6 @@ from tensorflow.compiler.tf2tensorrt.utils.trt_engine_instance_pb2 import TRTEng
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
-from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -274,7 +273,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.assertEqual(
             {
                 "add": "AddV2",
-                "add/ReadVariableOp": "Const",
+                "v1": "Const",
                 "add_1": "AddV2",
                 "add_2": "AddV2",
                 "input1": "Placeholder",
@@ -287,7 +286,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             {
                 "input1": "Placeholder",
                 "input2": "Placeholder",
-                "TRTEngineOp_0": "TRTEngineOp",
+                "TRTEngineOp_000": "TRTEngineOp",
                 "output": "Identity"
             }, node_name_to_op)
 
@@ -805,7 +804,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     node_name_to_op = {node.name: node.op for node in output_graph_def.node}
     self.assertEqual(
         {
-            "add/ReadVariableOp": "Const",
+            "v1": "Const",
             "input1": "Placeholder",
             "input2": "Placeholder",
             "add": "AddV2",
@@ -879,14 +878,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def testTrtGraphConverter_AllowEngineNativeSegmentExecution(self):
-
-    # This test will not work anymore with TRT >= 8. TensorRT does not
-    # preallocate anymore the max_workspace_size_bytes, but rather allocates as
-    # it needs up to this value.
-    # TODO: update the unittest to make this TRTEngine creation fail with TRT8.
-    if trt_utils.is_linked_tensorrt_version_greater_equal(8, 0, 0):
-      return
-
     np_input1, np_input2 = self._RandomInput([4, 1, 1])
 
     # Create a model and save it.
@@ -898,12 +889,13 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     def _InputFn():
       yield np_input1, np_input2
 
-    # Run TRT conversion and request an unreasonably large workspace.
+    # Run TRT conversion
     converter = self._CreateConverterV2(
-        input_saved_model_dir, max_workspace_size_bytes=10 << 40)
+        input_saved_model_dir, max_workspace_size_bytes=1 << 20)
     converter.convert()
 
     os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "False"
+    os.environ["TF_TRT_ABORT_CUDA_ENGINE_BUILD"] = "True"
     with self.assertRaisesRegex(
         errors.AbortedError,
         r"User disallowed engine native segment execution"):
@@ -912,6 +904,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       finally:
         # Always reset the environment variable.
         os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
+        os.environ["TF_TRT_ABORT_CUDA_ENGINE_BUILD"] = "False"
 
     converter.build(input_fn=_InputFn)
 

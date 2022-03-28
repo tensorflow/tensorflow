@@ -17,6 +17,8 @@ from typing import Any, Callable, Hashable, Iterable, List, Optional, Sequence, 
 
 _T = TypeVar("_T")
 
+version: int
+
 def flatten(
     tree: Any,
     leaf_predicate: Optional[Callable[[Any], bool]] = ...,

@@ -98,8 +98,9 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   ::tflite::python::ImportNumpy();
 
   std::unique_ptr<Interpreter> interpreter;
-  InterpreterBuilder builder(*model, resolver);
-  if (preserve_all_tensors) builder.PreserveAllTensorsExperimental();
+  InterpreterOptions options;
+  options.SetPreserveAllTensors(preserve_all_tensors);
+  InterpreterBuilder builder(*model, resolver, &options);
   if (builder(&interpreter) != kTfLiteOk) {
     return nullptr;
   }
@@ -532,7 +533,8 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value,
   }
 
   if (tensor->type != kTfLiteString) {
-    if (tensor->data.raw == nullptr) {
+    // Only allow empty tensors.
+    if (tensor->data.raw == nullptr && tensor->bytes) {
       PyErr_Format(PyExc_ValueError,
                    "Cannot set tensor:"
                    " Tensor is unallocated. Try calling allocate_tensors()"
@@ -616,7 +618,8 @@ PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
   TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(tensor_index, subgraph_index);
 
   *tensor = interpreter_->subgraph(subgraph_index)->tensor(tensor_index);
-  if ((*tensor)->bytes == 0) {
+  // Invalid size only when bytes are 0 but pointer is allocated.
+  if ((*tensor)->bytes == 0 && (*tensor)->data.raw) {
     PyErr_SetString(PyExc_ValueError, "Invalid tensor size.");
     return nullptr;
   }
@@ -627,7 +630,9 @@ PyObject* CheckGetTensorArgs(Interpreter* interpreter_, int tensor_index,
     return nullptr;
   }
 
-  if (!(*tensor)->data.raw) {
+  // Tensor data can't be null if size is > 0. 0 bytes is valid if tensor
+  // is empty.
+  if (!(*tensor)->data.raw && (*tensor)->bytes) {
     PyErr_SetString(PyExc_ValueError,
                     "Tensor data is null."
                     " Run allocate_tensors() first");

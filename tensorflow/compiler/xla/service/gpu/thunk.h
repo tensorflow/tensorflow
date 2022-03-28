@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -48,9 +49,6 @@ class Thunk {
     kConditional,
     kConvolution,
     kCopy,
-    kCudnnBatchNormBackward,
-    kCudnnBatchNormForwardInference,
-    kCudnnBatchNormForwardTraining,
     kCustomCall,
     kFft,
     kGemm,
@@ -105,6 +103,10 @@ class Thunk {
   // Parameters passed to ExecuteOnStream.  Encapsulated in a struct so that
   // when we add something we don't have to change every subclass of Thunk.
   struct ExecuteParams {
+    ExecuteParams(const ServiceExecutableRunOptions& run_options,
+                  const BufferAllocations& buffer_allocations,
+                  se::Stream* stream, se::Stream* async_comms_stream);
+
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
     se::Stream* async_comms_stream;

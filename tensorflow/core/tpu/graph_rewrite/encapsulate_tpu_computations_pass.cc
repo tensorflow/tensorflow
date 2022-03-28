@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/compiler/jit/extract_outside_compilation_pass.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -243,21 +244,11 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   AddNodeAttr("_guaranteed_const_start_index", guaranteed_const_start_index,
               call_def);
 
-  // Uniquify the function name.
-  GraphDef gdef;
-  graph->ToGraphDef(&gdef);
-
-  // Before serialization, sort each node's control inputs to achieve
-  // determinism. Sorting control inputs could help (but not necessarily)
-  // create a deterministic serialization and fingerprint. Other sources of
-  // nondeterminism include unstable node ordering.
-  SortControlInputs(&gdef);
-  // Fingerprint the function.
+  // Uniquify the function name by fingerprinting the function.
   // Nondeterminism in serialization would not lead to incorrect results, but
   // may cause spurious cache misses. DeterministicSerialization is a
   // best-effort deterministic serialization.
-  string serialized;
-  TF_RET_CHECK(SerializeToStringDeterministic(gdef, &serialized));
+  TF_ASSIGN_OR_RETURN(string serialized, SerializeGraphDeterministic(*graph));
   uint64 fingerprint =
       TpuCompileInterface::Get()->FingerprintString(serialized);
   LOG(INFO) << "Subgraph fingerprint:" << fingerprint;

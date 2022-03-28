@@ -12,25 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Tensorflow -> CPURT compilation."""
+"""Tests for Tensorflow -> jitrt compilation."""
 
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 class TfPackTest(test.TestCase):
 
   def pack_and_check(self, src, shape, dtype):
-    compiled = cpurt.compile(src, 'test')
+    compiled = jitrt.compile(src, 'test')
 
     arg0 = np.random.uniform(0, 10.0, size=shape).astype(dtype)
     arg1 = np.random.uniform(0, 10.0, size=shape).astype(dtype)
 
-    [res] = cpurt.execute(compiled, [arg0, arg1])
+    [res] = jitrt.execute(compiled, [arg0, arg1])
     np.testing.assert_allclose(res, np.array([arg0, arg1]), atol=0.0)
 
   def test_pack_0d_f32(self):

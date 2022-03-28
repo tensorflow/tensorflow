@@ -998,7 +998,7 @@ Status FunctionalizeCond::PropagateUpdatedState(const Node* replacee) {
   // TODO(jpienaar): The original topological order could also be updated
   // dynamically if needed.
   std::vector<Node*> rev_topo_order;
-  GetPostOrder(*graph_, &rev_topo_order);
+  GetPostOrder(*graph_, &rev_topo_order, NodeComparatorID());
 
   // All the outputs of the new node could potentially be updated.
   std::unordered_set<Node*> changed;
@@ -1517,7 +1517,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   ShapeRefiner shape_refiner{graph_->versions().producer(),
                              graph_->op_registry()};
   std::vector<Node*> nodes;
-  GetReversePostOrder(*graph_, &nodes);
+  GetReversePostOrder(*graph_, &nodes, NodeComparatorID());
   for (auto node : nodes) {
     if (!shape_refiner.AddNode(node).ok()) {
       LOG(WARNING) << "Couldn't deduce shape for " << node->name();

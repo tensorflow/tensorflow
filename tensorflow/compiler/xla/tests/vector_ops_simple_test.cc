@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -121,21 +120,21 @@ XLA_TEST_F(VecOpsSimpleTest, NegateTenFloatValues) {
 
 XLA_TEST_F(VecOpsSimpleTest, NegateTenInt32Values) {
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<int32>(&builder, {2, -2, 12, -4, 5, 20, -15, 0, -2, 1});
+  auto x = ConstantR1<int32_t>(&builder, {2, -2, 12, -4, 5, 20, -15, 0, -2, 1});
   Neg(x);
 
   std::vector<int> expected = {-2, 2, -12, 4, -5, -20, 15, 0, 2, -1};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, NegateUint32Values) {
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<uint32>(
-      &builder, {0, 1, 42, static_cast<uint32>(-1), static_cast<uint32>(-12)});
+  auto x = ConstantR1<uint32_t>(&builder, {0, 1, 42, static_cast<uint32_t>(-1),
+                                           static_cast<uint32_t>(-12)});
   Neg(x);
-  std::vector<uint32> expected = {0, static_cast<uint32>(-1),
-                                  static_cast<uint32>(-42), 1, 12};
-  ComputeAndCompareR1<uint32>(&builder, expected, {});
+  std::vector<uint32_t> expected = {0, static_cast<uint32_t>(-1),
+                                    static_cast<uint32_t>(-42), 1, 12};
+  ComputeAndCompareR1<uint32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, InvSqrtSevenValues) {
@@ -395,12 +394,12 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
 
 XLA_TEST_F(VecOpsSimpleTest, RemainderTenValuesS32) {
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<int32>(&builder, {-5, -4, -3, -2, -1, 0, 1, 2, 3, 4});
-  auto y = ConstantR0<int32>(&builder, 3);
+  auto x = ConstantR1<int32_t>(&builder, {-5, -4, -3, -2, -1, 0, 1, 2, 3, 4});
+  auto y = ConstantR0<int32_t>(&builder, 3);
   Rem(x, y);
 
-  std::vector<int32> expected = {-2, -1, 0, -2, -1, 0, 1, 2, 0, 1};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  std::vector<int32_t> expected = {-2, -1, 0, -2, -1, 0, 1, 2, 0, 1};
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, VectorPredicateEqual) {

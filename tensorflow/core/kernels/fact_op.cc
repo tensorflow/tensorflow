@@ -115,6 +115,8 @@ class FactOpKernel2 : public FactOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("Fact").Device(DEVICE_GPU).HostMemory("fact"),
                         FactOpKernel1);
+REGISTER_KERNEL_BUILDER(Name("Fact").Device(DEVICE_DEFAULT).HostMemory("fact"),
+                        FactOpKernel1);
 
 static string D(const char* s) {
   string ret(s);

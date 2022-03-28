@@ -15,6 +15,7 @@
 """Tests for utilities working with arbitrarily nested structures."""
 
 import collections
+import collections.abc
 import time
 from typing import NamedTuple
 
@@ -30,7 +31,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 
 try:
   import attr  # pylint:disable=g-import-not-at-top
@@ -38,7 +38,7 @@ except ImportError:
   attr = None
 
 
-class _CustomMapping(collections_abc.Mapping):
+class _CustomMapping(collections.abc.Mapping):
 
   def __init__(self, *args, **kwargs):
     self._wrapped = dict(*args, **kwargs)
@@ -57,7 +57,7 @@ class _CustomList(list):
   pass
 
 
-class _CustomSequenceThatRaisesException(collections.Sequence):
+class _CustomSequenceThatRaisesException(collections.abc.Sequence):
 
   def __len__(self):
     return 1

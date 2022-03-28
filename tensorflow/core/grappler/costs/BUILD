@@ -213,6 +213,8 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -302,6 +304,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "@com_google_absl//absl/strings",
     ],
 )
 

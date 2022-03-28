@@ -460,6 +460,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
                                        << "CPU:0 device?";
 
     SessionOptions options;
+    options.target = req->target();
     options.config = req->config();
 
     std::vector<string> filtered_worker_list;

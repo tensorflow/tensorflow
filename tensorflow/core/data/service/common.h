@@ -65,6 +65,9 @@ std::string TargetWorkersToString(TargetWorkers target_workers);
 // Returns InvalidArgument if the string is not recognized.
 StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s);
 
+// Returns true if `status` is a retriable error that indicates preemption.
+bool IsPreemptedError(const Status& status);
+
 // Base class for data service clients. Data service clients are
 // threadsafe.
 class DataServiceClientBase {

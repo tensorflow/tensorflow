@@ -31,9 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace Eigen {
@@ -141,7 +139,7 @@ class Backend {
   }
 
   // Return a string identifier for the given device, eg: "GPU:3".
-  string device_name(int device_ordinal) const {
+  std::string device_name(int device_ordinal) const {
     return absl::StrCat(platform_->Name(), ":", device_ordinal);
   }
 
@@ -175,11 +173,11 @@ class Backend {
   // Vector of stream executors. stream_executors_[0] is the default executor.
   std::vector<se::StreamExecutor*> stream_executors_;
 
-  tensorflow::mutex mu_;
+  absl::Mutex mu_;
 
   // Mapping from stream executor to stream pools, used by `BorrowStream` above.
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamPool>>
-      stream_pools_ TF_GUARDED_BY(mu_);
+      stream_pools_ ABSL_GUARDED_BY(mu_);
 
   // The default memory allocator to use.
   // This must be a shared_ptr, as this is passed all the way down to the

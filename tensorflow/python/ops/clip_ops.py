@@ -14,8 +14,6 @@
 # ==============================================================================
 
 """Operations for clipping (gradient, weight) tensors to min/max values."""
-import six
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -260,7 +258,7 @@ def global_norm(t_list, name=None):
     TypeError: If `t_list` is not a sequence.
   """
   if (not isinstance(t_list, collections_abc.Sequence) or
-      isinstance(t_list, six.string_types)):
+      isinstance(t_list, str)):
     raise TypeError("`t_list` should be a sequence of tensors. Received "
                     f"{type(t_list)}.")
   t_list = list(t_list)
@@ -339,7 +337,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
       ([pdf](http://proceedings.mlr.press/v28/pascanu13.pdf))
   """
   if (not isinstance(t_list, collections_abc.Sequence) or
-      isinstance(t_list, six.string_types)):
+      isinstance(t_list, str)):
     raise TypeError("`t_list` should be a sequence of tensors. Received "
                     f"{type(t_list)}.")
   t_list = list(t_list)

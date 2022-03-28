@@ -110,13 +110,10 @@ void BFloat16Propagation::RevertIfFusionInternalBF16Changes(
               if (subshape.element_type() != F32) {
                 return;
               }
-              for (const HloValue* value :
-                   dataflow_->GetValueSet(inst, index).values()) {
-                if (ContainsKey(changed_root_buffers, value)) {
-                  aliasing = true;
-                  break;
-                }
-              }
+
+              aliasing =
+                  absl::c_any_of(dataflow_->GetValueSet(inst, index).values(),
+                                 IsValueIn(changed_root_buffers));
             });
         return aliasing;
       };
@@ -253,7 +250,7 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
     if (value->shape().element_type() == BF16) {
       continue;
     }
-    for (const HloUse& use : value->uses()) {
+    for (const HloUse& use : value->GetUses()) {
       if (!ContainsKey(instructions_visited_in_backward_pass_,
                        use.instruction)) {
         // We don't know yet whether use.instruction will consume BF16 since it

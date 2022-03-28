@@ -452,7 +452,7 @@ internal dequantized buffer.
 
 Using serialization of GPU kernel code and model data from previous
 initializations can reduce latency of GPU delegate's initialization up to 90%.
-ThThis improvement is is achieved by exchanging disk space for time savings. You
+This improvement is achieved by exchanging disk space for time savings. You
 can enable this feature with a few configurations options, as shown in the
 following code examples:
 

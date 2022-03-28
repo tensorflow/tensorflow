@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 
+#include <string>
+
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 
@@ -30,23 +33,19 @@ std::vector<std::string> CandidateCudaRoots(const HloModuleConfig& config) {
 
 }  // namespace
 
-void PrintCantFindCudaMessage(absl::string_view msg,
-                              const HloModuleConfig& hlo_module_config) {
-  LOG(WARNING) << msg;
-  LOG(WARNING) << "Searched for CUDA in the following directories:";
-
-  for (const auto& dir : CandidateCudaRoots(hlo_module_config)) {
-    LOG(WARNING) << "  " << dir;
-  }
-  LOG(WARNING)
-      << "You can choose the search directory by setting xla_gpu_cuda_data_dir "
-         "in HloModule's DebugOptions.  For most apps, setting the environment "
-         "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
+std::string CantFindCudaMessage(absl::string_view msg,
+                                const HloModuleConfig& hlo_module_config) {
+  return absl::StrCat(
+      msg, "\nSearched for CUDA in the following directories:\n  ",
+      absl::StrJoin(CandidateCudaRoots(hlo_module_config), "\n  "),
+      "\nYou can choose the search directory by setting xla_gpu_cuda_data_dir "
+      "in HloModule's DebugOptions.  For most apps, setting the environment "
+      "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.");
 }
 
-string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
-  for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
-    string libdevice_dir =
+std::string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
+  for (const std::string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
+    std::string libdevice_dir =
         tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
     VLOG(2) << "Looking for libdevice at " << libdevice_dir;
     if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
@@ -54,7 +53,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
       return libdevice_dir;
     }
   }
-  PrintCantFindCudaMessage(
+  LOG(WARNING) << CantFindCudaMessage(
       "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
       "result in compilation or runtime failures, if the program we try to run "
       "uses routines from libdevice.",

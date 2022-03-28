@@ -484,6 +484,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
     self.assertEqual(self.coordinator.fetch(got), want)
 
   def testFetchingRemoteValueStructure(self):
+    self.skipTest('b/171040359: flaky test')
     x = constant_op.constant(1)
 
     @def_function.function
@@ -904,6 +905,8 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
       self.coordinator.join()
 
   def testRemoteValueReturnError(self):
+    self.skipTest('TODO(b/211502459): Fix this in OSS test.')
+
     result = self.coordinator.schedule(self._error_function)
 
     with self.assertRaises(errors.InvalidArgumentError):

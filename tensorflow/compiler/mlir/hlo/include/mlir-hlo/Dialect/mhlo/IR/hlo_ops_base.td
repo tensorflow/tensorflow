@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef HLO_OPS_BASE
 #define HLO_OPS_BASE
 
+include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 
 def HLO_Dialect : Dialect {
   let name = "mhlo";
   let cppNamespace = "::mlir::mhlo";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let useDefaultAttributePrinterParser = 0;
+  let useDefaultTypePrinterParser = 0;
 }
 
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.td"
@@ -69,6 +74,8 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
+def HLO_TensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_Token]>;
+
 def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
 
 def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
@@ -114,6 +121,13 @@ def HLO_LayoutAttr : Attr<
 // An array of layout (1D tensor) attributes.
 def HLO_ArrayOfLayoutAttr : TypedArrayAttrBase<HLO_LayoutAttr,
     "Array of layout (1D tensor of index type) attributes">;
+
+// An array of FlatSymbolRef attributes that can be used as a default valued
+// attribute.
+def HLO_FlatSymbolRefArrayAttr :
+  TypedArrayAttrBase<FlatSymbolRefAttr, "flat symbol ref array attribute"> {
+  let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
+}
 
 
 //===----------------------------------------------------------------------===//

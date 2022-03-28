@@ -2976,11 +2976,11 @@ class RocmConvRunner : public dnn::ConvRunner {
     return {{algo_id_, false, workspace_size_}};
   }
 
-  port::Status operator()(Stream* stream, DeviceMemoryBase input_data,
-                          DeviceMemoryBase filter_data,
-                          DeviceMemoryBase output_data,
+  port::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
                           DeviceMemoryBase scratch_memory,
-                          dnn::ProfileResult* profile_result) const override {
+                          DeviceMemoryBase input_data,
+                          DeviceMemoryBase filter_data,
+                          DeviceMemoryBase output_data) const override {
     auto miopen = miopen_->GetHandle(parent_, stream);
     // Alpha is the scaling factor for input.
     float alpha = 1.0;
@@ -3118,12 +3118,12 @@ port::Status MIOpenSupport::DoConvolve(
     dnn::ProfileResult* output_profile_result) {
   SE_ASSIGN_OR_RETURN(
       auto runner,
-      ConvolveRunnerFromDesc(algorithm_desc, kind, element_type, output_type,
-                             input_descriptor, filter_descriptor,
+      ConvolveRunnerFromDesc(stream, algorithm_desc, kind, element_type,
+                             output_type, input_descriptor, filter_descriptor,
                              output_descriptor, convolution_descriptor));
 
-  return (*runner)(stream, input_data, filter_data, output_data, scratch_memory,
-                   output_profile_result);
+  return (*runner)(stream, output_profile_result, scratch_memory, input_data,
+                   filter_data, output_data);
 }
 
 bool MIOpenSupport::GetConvolveAlgorithms(
@@ -3170,10 +3170,10 @@ port::Status MIOpenSupport::GetConvolveRunners(
 
   for (const auto& profile_result : profile_results) {
     SE_ASSIGN_OR_RETURN(
-        auto runner,
-        ConvolveRunnerFromDesc(profile_result.algorithm(), kind, input_type,
-                               output_type, input_descriptor, filter_descriptor,
-                               output_descriptor, convolution_descriptor));
+        auto runner, ConvolveRunnerFromDesc(
+                         stream, profile_result.algorithm(), kind, input_type,
+                         output_type, input_descriptor, filter_descriptor,
+                         output_descriptor, convolution_descriptor));
     out_runners->push_back(std::move(runner));
   }
 
@@ -3182,9 +3182,9 @@ port::Status MIOpenSupport::GetConvolveRunners(
 
 port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
 MIOpenSupport::ConvolveRunnerFromDesc(
-    const dnn::AlgorithmDesc& algorithm_desc, dnn::ConvolutionKind kind,
-    dnn::DataType input_type, dnn::DataType output_type,
-    const dnn::BatchDescriptor& input_descriptor,
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor) {

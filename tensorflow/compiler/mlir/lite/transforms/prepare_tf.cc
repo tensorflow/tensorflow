@@ -39,12 +39,12 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -98,7 +98,7 @@ static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
+class PrepareTFPass : public PassWrapper<PrepareTFPass, OperationPass<FuncOp>> {
  public:
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
@@ -121,7 +121,7 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
     return "Prepare TF for legalization to TensorFlow Lite dialect";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, quant::QuantizationDialect,
@@ -1226,14 +1226,14 @@ LogicalResult ValidateOp(Operation *op) {
 LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   ConversionTarget target(*context);
   target.addLegalDialect<arith::ArithmeticDialect>();
-  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<FuncOp>();
   target.addIllegalOp<TF::XlaConvOp>();
   target.addIllegalOp<TF::XlaGatherOp>();
 
-  OwningRewritePatternList patterns(context);
+  RewritePatternSet patterns(context);
   mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context);
   mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
@@ -1338,11 +1338,40 @@ struct ConvertRfftToRfft2d : public RewritePattern {
   }
 };
 
-void PrepareTFPass::runOnFunction() {
+// Replaces the Identity op with its input in either of the following scenarios
+// : 1) The Identity op's input and output have same types/shapes. 2) The result
+// of Identity op is only used by TF ops.
+struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
+  using OpRewritePattern<TF::IdentityOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::IdentityOp identity,
+                                PatternRewriter &rewriter) const override {
+    // Replace the op with the input if input and result have the same type.
+    if (identity.input().getType() == identity.getType()) {
+      rewriter.replaceOp(identity, identity.input());
+      return success();
+    }
+    // Replace the op with the input if output is only used by TF ops.
+    // Currently this is more on the conservative side since we need to ensure
+    // every consumer op to be a TF op before applying this pattern. We can
+    // consider to revisit this in the future if this turns out to be too
+    // restrictive.
+    for (Operation *user : identity->getUsers()) {
+      if (user->getDialect()->getNamespace() != "tf") {
+        return failure();
+      }
+    }
+
+    rewriter.replaceOp(identity, identity.input());
+    return success();
+  }
+};
+
+void PrepareTFPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
-  OwningRewritePatternList patterns(ctx);
-  OwningRewritePatternList phase_2_patterns(ctx);
-  auto func = getFunction();
+  RewritePatternSet patterns(ctx);
+  RewritePatternSet phase_2_patterns(ctx);
+  auto func = getOperation();
 
   // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
   // PrepareTFPass is the very first TFLite pass in the pipeline.
@@ -1362,9 +1391,10 @@ void PrepareTFPass::runOnFunction() {
   // This pattern will try to identify and optimize for dilated convolution.
   // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be
   // replaced with a single Conv op with dilation parameter.
-  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
-                  ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
+  patterns.add<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
+               ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
+  patterns.add<RemoveIdentity>(ctx);
   TFL::populateWithGenerated(patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
@@ -1390,9 +1420,10 @@ void PrepareTFPass::runOnFunction() {
   if (unfold_batch_matmul_) {
     TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }
-  phase_2_patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
-                          ConvertTFStridedSlice, ConvertRfftToRfft2d>(ctx);
-  phase_2_patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
+  phase_2_patterns
+      .add<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFStridedSlice,
+           ConvertRfftToRfft2d, RemoveIdentity>(ctx);
+  phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));

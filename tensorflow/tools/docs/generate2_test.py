@@ -15,23 +15,27 @@
 """Tests for tensorflow.tools.docs.generate2."""
 
 import os
+import pathlib
 import shutil
 import types
 from unittest import mock
 
 import tensorflow as tf
+from tensorflow import estimator as tf_estimator
 
 from tensorflow.python.platform import googletest
 from tensorflow.tools.docs import generate2
 
 # Make a mock tensorflow package that won't take too long to test.
 fake_tf = types.ModuleType('FakeTensorFlow')
-fake_tf.estimator = tf.estimator
+fake_tf.estimator = tf_estimator
 fake_tf.keras = tf.keras
 fake_tf.nn = tf.nn
 fake_tf.summary = tf.summary
 fake_tf.raw_ops = types.ModuleType('raw_ops')
+fake_tf.raw_ops.Add = tf.raw_ops.Add
 fake_tf.Module = tf.Module
+fake_tf.__version__ = tf.__version__
 
 for name in sorted(dir(tf.raw_ops))[:5]:
   setattr(fake_tf.raw_ops, name, getattr(tf.raw_ops, name))
@@ -41,16 +45,19 @@ class Generate2Test(googletest.TestCase):
 
   @mock.patch.object(generate2, 'tf', fake_tf)
   def test_end_to_end(self):
-    output_dir = os.path.join(googletest.GetTempDir(), 'output')
+    generate2.MIN_NUM_FILES_EXPECTED = 1
+    output_dir = pathlib.Path(googletest.GetTempDir())/'output'
     if os.path.exists(output_dir):
       shutil.rmtree(output_dir)
     os.makedirs(output_dir)
-    with self.assertRaisesRegex(ValueError, '2000 files'):
-      generate2.build_docs(
-          output_dir=output_dir,
-          code_url_prefix='',
-          search_hints=True,
-      )
+    generate2.build_docs(
+        output_dir=output_dir,
+        code_url_prefix='',
+        search_hints=True,
+    )
+
+    raw_ops_page = (output_dir/'tf/raw_ops.md').read_text()
+    self.assertIn('/tf/raw_ops/Add.md', raw_ops_page)
 
 
 if __name__ == '__main__':

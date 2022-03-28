@@ -99,9 +99,9 @@ py_library(
 )
 
 cuda_py_test(
-    name = "bias_op_deterministic_test",
+    name = "bias_op_d9m_test",
     size = "medium",
-    srcs = ["bias_op_deterministic_test.py"],
+    srcs = ["bias_op_d9m_test.py"],
     shard_count = 2,
     deps = [
         ":bias_op_base",
@@ -299,9 +299,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "cudnn_deterministic_test",
+    name = "cudnn_d9m_test",
     size = "small",
-    srcs = ["cudnn_deterministic_test.py"],
+    srcs = ["cudnn_d9m_test.py"],
     tags = [
         "no_cuda_asan",  # TODO(b/171509035): re-enable.
     ],
@@ -634,9 +634,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "xent_op_deterministic_test",
+    name = "xent_op_d9m_test",
     size = "medium",
-    srcs = ["xent_op_deterministic_test.py"],
+    srcs = ["xent_op_d9m_test.py"],
     tags = ["notsan"],  # TODO(b/200548634): Remove.
     xla_enable_strict_auto_jit = False,
     deps = [

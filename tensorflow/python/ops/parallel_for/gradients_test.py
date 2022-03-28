@@ -44,7 +44,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
-class FullyConnectedModel(object):
+class FullyConnectedModel:
 
   def __init__(self, activation_size, num_layers):
     self._layers = [

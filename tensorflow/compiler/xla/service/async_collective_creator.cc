@@ -35,12 +35,12 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
     // iterating through them.
     std::vector<HloInstruction*> supported_collectives;
     for (HloInstruction* instruction : computation->instructions()) {
-      if ((convert_all_reduce_ &&
-           instruction->opcode() == HloOpcode::kAllReduce) ||
-          (convert_all_gather_ &&
-           instruction->opcode() == HloOpcode::kAllGather) ||
-          (convert_collective_permute_ &&
-           instruction->opcode() == HloOpcode::kCollectivePermute)) {
+      if ((instruction->opcode() == HloOpcode::kAllReduce &&
+           convert_all_reduce_(instruction)) ||
+          (instruction->opcode() == HloOpcode::kAllGather &&
+           convert_all_gather_(instruction)) ||
+          (instruction->opcode() == HloOpcode::kCollectivePermute &&
+           convert_collective_permute_(instruction))) {
         supported_collectives.push_back(instruction);
       }
     }
@@ -63,7 +63,7 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
         std::unique_ptr<HloInstruction> done = HloInstruction::CreateUnary(
             ar->shape(), HloOpcode::kAllReduceDone, start);
         start->set_metadata(ar->metadata());
-        start->set_raw_backend_config_string(ar->raw_backend_config_string());
+        start->CopyBackendConfigFrom(ar);
         if (should_update_schedule) {
           replaced_pairs[ar] = ReplacedAsync{start, done.get()};
         }
@@ -92,7 +92,7 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
         std::unique_ptr<HloInstruction> done = HloInstruction::CreateUnary(
             ag->shape(), HloOpcode::kAllGatherDone, start);
         start->set_metadata(ag->metadata());
-        start->set_raw_backend_config_string(ag->raw_backend_config_string());
+        start->CopyBackendConfigFrom(ag);
         if (should_update_schedule) {
           replaced_pairs[ag] = ReplacedAsync{start, done.get()};
         }
@@ -131,8 +131,7 @@ StatusOr<bool> AsyncCollectiveCreator::Run(HloModule* module) {
                   cp->dynamic_slice_sizes_list(), cp->channel_id()));
         }
         collective_permute_start->set_metadata(cp->metadata());
-        collective_permute_start->set_raw_backend_config_string(
-            cp->raw_backend_config_string());
+        collective_permute_start->CopyBackendConfigFrom(cp);
         HloInstruction* collective_permute_done =
             computation->AddInstruction(HloInstruction::CreateUnary(
                 cp->shape(), HloOpcode::kCollectivePermuteDone,

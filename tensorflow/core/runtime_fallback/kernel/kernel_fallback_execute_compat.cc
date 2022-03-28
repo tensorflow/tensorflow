@@ -29,10 +29,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
-#include "tensorflow/core/runtime_fallback/kernel/op_kernel_runner.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/op_logger.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
@@ -57,12 +57,14 @@ const char kOpKernelRunnerCacheResourceName[] =
 
 namespace {
 
+using ::tensorflow::tfrt_stub::OpKernelRunner;
+using ::tensorflow::tfrt_stub::OpKernelRunnerTable;
+using ::tensorflow::tfrt_stub::OpKernelRunState;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValueRef;
 using ::tfrt::Chain;
 using ::tfrt::OpAttrsRef;
 using ::tfrt::RCReference;
-using ::tfrt::SmallVector;
 using ::tfrt::string_view;
 
 constexpr char kOpKernelRunnerTableResourceName[] =
@@ -116,7 +118,7 @@ Status SetUpKernelFallbackCompatRequestContext(
     const tensorflow::DeviceMgr* device_manager,
     const tensorflow::ProcessFunctionLibraryRuntime* pflr,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata,
+    const absl::optional<SessionMetadata>& model_metadata,
     std::function<void(std::function<void()>)>* runner) {
   DCHECK(builder);
   DCHECK(device_manager);
@@ -142,7 +144,7 @@ Status SetUpKernelFallbackCompatRequestContext(
     tfrt::RequestContextBuilder* builder, OpKernelRunnerTable* runner_table,
     tensorflow::EagerContext* eager_context,
     tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<tfrt::ModelMetadata>& model_metadata) {
+    const absl::optional<SessionMetadata>& model_metadata) {
   auto* resource_array =
       builder->resource_context()->GetOrCreateResource<FallbackResourceArray>(
           kFallbackResourceArray);

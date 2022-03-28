@@ -14,8 +14,6 @@
 # ==============================================================================
 """Operations for generating random numbers."""
 
-import six
-
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values_util
@@ -99,7 +97,7 @@ def _make_1d_state(state_size, seed):
   Returns:
     a 1-D tensor of shape [state_size] and dtype STATE_TYPE.
   """
-  if isinstance(seed, six.integer_types):
+  if isinstance(seed, int):
     # chop the Python integer (infinite precision) into chunks of SEED_TYPE
     ls = []
     for _ in range(state_size):

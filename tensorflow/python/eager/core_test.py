@@ -14,7 +14,7 @@
 # ==============================================================================
 """Tests for core."""
 
-import collections
+import collections.abc
 import os
 import pickle
 import threading
@@ -81,11 +81,11 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def _test_hashable(self, a, b, hashable):
     if hashable:
-      self.assertIsInstance(b, collections.Hashable)
+      self.assertIsInstance(b, collections.abc.Hashable)
       self.assertLen(set([a, b]), 2)
     else:
       # TODO(gjn): Figure out how to make this work for tf.Tensor
-      # self.assertNotIsInstance(b, collections.Hashable)
+      # self.assertNotIsInstance(b, collections.abc.Hashable)
       with self.assertRaisesRegex(TypeError, 'unhashable'):
         set([a, b])
 

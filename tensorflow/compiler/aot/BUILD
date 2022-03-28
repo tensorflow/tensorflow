@@ -36,6 +36,7 @@ cc_library(
         "flags.h",
         "quantize.h",
     ],
+    compatible_with = [],
     defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]) + if_llvm_system_z_available([
         "TF_LLVM_S390X_AVAILABLE=1",
     ]),
@@ -129,6 +130,7 @@ cc_library(
 cc_library(
     name = "tfcompile_main",
     srcs = ["tfcompile_main.cc"],
+    compatible_with = [],
     visibility = ["//visibility:public"],
     deps = [
         ":tfcompile_lib",

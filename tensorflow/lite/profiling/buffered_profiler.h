@@ -75,10 +75,16 @@ namespace profiling {
 //
 class BufferedProfiler : public tflite::Profiler {
  public:
-  explicit BufferedProfiler(uint32_t max_num_entries)
-      : buffer_(max_num_entries, false),
+  BufferedProfiler(uint32_t max_num_initial_entries,
+                   bool allow_dynamic_buffer_increase)
+      : buffer_(max_num_initial_entries, false /*enabled*/,
+                allow_dynamic_buffer_increase),
         supported_event_types_(~static_cast<uint64_t>(
             EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT)) {}
+
+  explicit BufferedProfiler(uint32_t max_num_entries)
+      : BufferedProfiler(max_num_entries,
+                         false /*allow_dynamic_buffer_increase*/) {}
 
   uint32_t BeginEvent(const char* tag, EventType event_type,
                       int64_t event_metadata1,

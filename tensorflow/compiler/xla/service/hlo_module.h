@@ -21,9 +21,10 @@ limitations under the License.
 #include <memory>
 #include <random>
 #include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
 
@@ -65,7 +65,7 @@ class HloModule {
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
   // cache. A default configuration is created for this module.
-  explicit HloModule(const string& name, HloModuleConfig config);
+  explicit HloModule(const std::string& name, HloModuleConfig config);
   virtual ~HloModule() {}
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -105,13 +105,13 @@ class HloModule {
       const absl::flat_hash_map<HloComputation*, HloComputation*>&
           replacements);
 
-  const string& name() const { return name_; }
-  void set_name(string name) { name_ = std::move(name); }
+  const std::string& name() const { return name_; }
+  void set_name(std::string name) { name_ = std::move(name); }
 
   // Returns a deep copy of this module including all computations.
-  std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
+  std::unique_ptr<HloModule> Clone(const std::string& suffix = "clone") const;
   std::unique_ptr<HloModule> Clone(const HloModuleConfig& config,
-                                   const string& suffix = "clone") const;
+                                   const std::string& suffix = "clone") const;
 
   // Performs a deep clone of the computation, by recursively cloning all
   // the called computations as well. If the clone context is specified, it
@@ -154,7 +154,18 @@ class HloModule {
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO modules,
   // with respect to HloInstruction::Identical() method.
-  uint64 Hash() const;
+  template <typename H>
+  friend H AbslHashValue(H h, const HloModule& module) {
+    h = H::combine(std::move(h), module.entry_computation_layout());
+    // Use MakeComputationSorted() instead of MakeComputationPostOrder()
+    // because naming may affect the order of MakeComputationPostOrder() but not
+    // MakeComputationSorted().
+    auto computations = module.MakeComputationSorted();
+    for (auto* computation : computations) {
+      h = H::combine(std::move(h), *computation);
+    }
+    return H::combine(std::move(h), computations.size());
+  }
 
   // Gets the computations in this module.
   //
@@ -238,8 +249,15 @@ class HloModule {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  string ToString() const { return ToString(HloPrintOptions()); }
-  string ToString(const HloPrintOptions& options) const;
+  std::string ToString() const { return ToString(HloPrintOptions()); }
+  std::string ToString(const HloPrintOptions& options) const;
+
+  // Returns a Cord representation of the module.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  absl::Cord ToCord() const { return ToCord(HloPrintOptions()); }
+  absl::Cord ToCord(const HloPrintOptions& options) const;
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
@@ -267,10 +285,11 @@ class HloModule {
   // instructions and topologically sorts them.
   HloInstruction* OutlineExpressionFromComputation(
       absl::Span<HloInstruction* const> instructions_to_outline,
-      const string& outlined_computation_name, HloComputation* computation);
+      const std::string& outlined_computation_name,
+      HloComputation* computation);
 
-  // Returns a randomly generated uint64.
-  uint64 RandomNew64() const;
+  // Returns a randomly generated uint64_t.
+  uint64_t RandomNew64() const;
 
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
@@ -389,30 +408,41 @@ class HloModule {
     module->metadata_ = std::move(metadata_);
   }
 
-  void set_autofdo_fingerprint(std::string fingerprint) {
-    autofdo_fingerprint_ = fingerprint;
+  uint64_t session_id() const { return session_id_; }
+
+  void set_session_id(uint64_t session_id) { session_id_ = session_id; }
+
+  void add_profile_info(const HloModuleProto::ProfileInfo& profile_info) {
+    profile_info_list_.push_back(profile_info);
   }
 
-  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
+  void set_profile_info(
+      const std::vector<HloModuleProto::ProfileInfo>& profile_info) {
+    profile_info_list_ = profile_info;
+  }
 
-  void add_profile_info(HloModuleProto::ProfileType profile_type,
-                        double relative_speedup) {
-    HloModuleProto::ProfileInfo profile_info;
-    profile_info.set_profile_type(profile_type);
-    profile_info.set_relative_speedup(relative_speedup);
-    profile_info_list_.push_back(profile_info);
+  const std::vector<HloModuleProto::ProfileInfo>& profile_info() const {
+    return profile_info_list_;
   }
 
   void set_relative_speedup(double relative_speedup) {
     relative_speedup_ = relative_speedup;
   }
 
+  // Sets the **unoptimized** fingerprint for the module. This fingerprint is
+  // prior to any optimizations.
+  void set_autofdo_fingerprint(absl::string_view fingerprint) {
+    autofdo_fingerprint_ = std::string(fingerprint);
+  }
+
+  absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
 
-  string name_;
+  std::string name_;
   HloModuleConfig config_;
   HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
@@ -422,7 +452,7 @@ class HloModule {
   // TODO(b/25995601): Replace with better seed setting or dev/random for
   // where we don't need deterministic execution.
   mutable std::mt19937_64 rng_{42};
-  mutable tensorflow::mutex rng_mutex_;
+  mutable absl::Mutex rng_mutex_;
 
   // Unique name generator for computation and instruction names, which are
   // unique per module.
@@ -464,8 +494,8 @@ class HloModule {
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
 
-  // a fingerprint to search autofdo profile entry.
-  std::string autofdo_fingerprint_;
+  // A compilation session id.
+  uint64_t session_id_ = 0;
 
   // An array of ProfileInfo specifying what optimization profiles this module
   // contains, along with the relative speedups.
@@ -473,6 +503,9 @@ class HloModule {
 
   // Relative speedup of best config compared to default config.
   double relative_speedup_;
+
+  // The unoptimized module fingerprint.
+  std::string autofdo_fingerprint_;
 };
 
 }  // namespace xla

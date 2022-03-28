@@ -61,10 +61,10 @@ class ConvolutionThunk : public Thunk {
 
   // Convolution config
   const GpuConvConfig config_;
-  tensorflow::mutex mu_;
+  absl::Mutex mu_;
   absl::flat_hash_map<const stream_executor::Stream*,
                       std::unique_ptr<MaybeFusedConvRunner>>
-      runner_cache_ TF_GUARDED_BY(mu_);
+      runner_cache_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

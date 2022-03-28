@@ -19,11 +19,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <random>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -321,13 +321,13 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 /* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
     const Shape& shape) {
   CHECK(IsDenseArray(shape));
-  return AsInt64Slice(shape.layout().minor_to_major());
+  return shape.layout().minor_to_major();
 }
 
 /* static */ absl::Span<const int64_t> LayoutUtil::MinorToMajor(
     const Layout& layout) {
   CHECK(layout.format() == DENSE);
-  return AsInt64Slice(layout.minor_to_major());
+  return layout.minor_to_major();
 }
 
 /* static */ int64_t LayoutUtil::Major(const Layout& layout,
@@ -357,7 +357,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   return logical_to_physical;
 }
 
-/* static */ string LayoutUtil::HumanString(const Layout& layout) {
+/* static */ std::string LayoutUtil::HumanString(const Layout& layout) {
   return layout.ToString();
 }
 
@@ -452,26 +452,6 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   }
   ret.add_minor_to_major(dim);
   return ret;
-}
-
-/*static*/ size_t LayoutUtil::Hash(const Layout& layout) {
-  using tensorflow::hash;
-  using tensorflow::Hash64Combine;
-
-  size_t hash_value = hash<Format>()(layout.format());
-
-  for (int64_t minor_to_major : layout.minor_to_major()) {
-    hash_value = Hash64Combine(hash_value, hash<int64_t>()(minor_to_major));
-  }
-  for (const Tile& tile : layout.tiles()) {
-    for (int64_t tile_dim : tile.dimensions()) {
-      hash_value = Hash64Combine(hash_value, hash<int64_t>()(tile_dim));
-    }
-  }
-  hash_value = Hash64Combine(hash_value, layout.element_size_in_bits());
-  hash_value = Hash64Combine(hash_value, layout.memory_space());
-
-  return hash_value;
 }
 
 /*static*/ int64_t LayoutUtil::LinearIndex(const Shape& shape,

@@ -30,7 +30,7 @@ namespace {
 // TPUCompileSucceededAssertOp.
 class FuseTpuCompileAndExecutePass
     : public mlir::PassWrapper<FuseTpuCompileAndExecutePass,
-                               mlir::FunctionPass> {
+                               mlir::OperationPass<mlir::FuncOp>> {
  public:
   llvm::StringRef getArgument() const final {
     return "tfrt-fuse-tpu-compile-and-execute-ops";
@@ -39,8 +39,8 @@ class FuseTpuCompileAndExecutePass
     return "Fuse TPU Ops according to TFRT's requirements.";
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
 
     // remove TPUCompileSucceededAssertOp
     func.walk([&](mlir::Operation *op) {
@@ -73,7 +73,7 @@ class FuseTpuCompileAndExecutePass
       }
     });
 
-    mlir::OpBuilder builder(&func.body());
+    mlir::OpBuilder builder(&func.getBody());
 
     for (auto exec_op : tpu_execute_ops) {
       auto compile_cache_entry = exec_op.key();
@@ -114,12 +114,16 @@ class FuseTpuCompileAndExecutePass
         }
       }
 
+      auto producer_name =
+          exec_op->getAttrOfType<mlir::StringAttr>("_producer_name");
+      if (!producer_name)
+        producer_name = mlir::StringAttr::get(&getContext(), "default");
       auto compile_and_execute_op =
           builder.create<mlir::TF::TPUCompileMlirAndExecuteOp>(
               exec_op.getLoc(), output_types, exec_op_args,
               static_shape_tensors,
               builder.getI32ArrayAttr(static_shaped_operand_indices_attr),
-              compile_op.mlir_module(), compile_op.metadata());
+              compile_op.mlir_module(), compile_op.metadata(), producer_name);
 
       exec_op.replaceAllUsesWith(compile_and_execute_op.results());
       for (auto program_result : compile_op.program()) {

@@ -2,7 +2,7 @@
 
 // Tests that the tf.InitializeTableFromTextFileV2 op are inlined.
 
-func @init_all_tables() {
+func.func @init_all_tables() {
   %cst = arith.constant dense<"%FILE_PLACEHOLDER"> : tensor<!tf_type.string>
   %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "hash_table_/tmp/vocab.txt_-2_-1", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
   "tf.InitializeTableFromTextFileV2"(%0, %cst) {delimiter = " ", device = "", key_index = -2 : i64, value_index = -1 : i64, vocab_size = -1 : i64} : (tensor<!tf_type.resource>, tensor<!tf_type.string>) -> ()
@@ -16,7 +16,7 @@ func @init_all_tables() {
 
 // Tests that the tf.InitializeTableFromTextFileV2 op with explicit vocab size.
 
-func @init_all_tables_with_explicit_vocab_size() {
+func.func @init_all_tables_with_explicit_vocab_size() {
   %cst = arith.constant dense<"%FILE_PLACEHOLDER"> : tensor<!tf_type.string>
   %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "hash_table_/tmp/vocab.txt_-2_-1", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
   "tf.InitializeTableFromTextFileV2"(%0, %cst) {delimiter = " ", device = "", key_index = -2 : i64, value_index = -1 : i64, vocab_size = 2 : i64} : (tensor<!tf_type.resource>, tensor<!tf_type.string>) -> ()

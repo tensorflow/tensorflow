@@ -171,7 +171,8 @@ class TensorShapeBase : public TensorShapeRep {
   /// Construct an empty TensorShape, or an unknown rank PartialTensorShape
   TensorShapeBase();
 
-  // TODO(mihaimaruseac): Mark this explicit in a subsequent change
+  // Cannot be made explicit because we rely on conversion between proto and
+  // `TensorShapeBase` throughtout the codebase (needs bigger cleanup)
   TensorShapeBase(const TensorShapeProto& proto);
 
   // These factory methods should be used instead of the constructors that take
@@ -414,8 +415,8 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   // These CHECK fail to ease debugging.
   // REQUIRES: dims() == NDIMS
   void CheckDimsEqual(int NDIMS) const;
-  // REQUIRES: dims() >= NDIMS
-  void CheckDimsAtLeast(int NDIMS) const;
+  // REQUIRES: dims() <= NDIMS
+  void CheckDimsAtMost(int NDIMS) const;
 
   // Fill output from `*this`.
   // Helper method for common code between `AsEigenDSize()` and
@@ -653,7 +654,7 @@ Status TensorShape::AsEigenDSizesWithStatus(
 
 template <int NDIMS, typename IndexType>
 Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizesWithPadding() const {
-  CheckDimsAtLeast(NDIMS);
+  CheckDimsAtMost(NDIMS);
   return AsEigenDSizesCopyAndPad<NDIMS, IndexType>();
 }
 

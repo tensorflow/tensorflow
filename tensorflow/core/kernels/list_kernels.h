@@ -40,9 +40,9 @@ limitations under the License.
 
 // stream.h isn't available in some platforms such as Android and iOS.
 // Only include it for platforms that PluggableDevice is tested on.
-#if !defined(PLUGGABLE_DEVICE_SUPPORTED) &&                                \
-    (__x86_64__ || __i386__ || defined(__APPLE__)) && !defined(ANDROID) && \
-    !defined(__ANDROID__) && !TARGET_OS_IOS
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED) &&                              \
+    (__x86_64__ || __i386__ || defined(__APPLE__) || defined(_WIN32)) && \
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS
 #define PLUGGABLE_DEVICE_SUPPORTED
 #endif
 

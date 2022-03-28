@@ -16,11 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_RUNTIME_WORK_QUEUE_INTERFACE_H_
 
 #include "tensorflow/core/platform/context.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
-#include "tensorflow/core/tfrt/utils/statusor.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 

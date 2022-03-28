@@ -17,15 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_APPROX_TOPK_H_
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
-// EXPERIMENTAL
-// This method is only implemented on TPU, and must have the flag
-// `xla_tpu_nested_dot_fusion` set to true.
-//
 // Computes approximate top-ks by aggregating top-1s in equal-sized windows.
 // The number and the size of the windows are determined by the `recall_target`.
 //
@@ -61,28 +56,14 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                  float recall_target = 0.9, bool aggregate_to_topk = true,
                  int64_t reduction_input_size_override = -1);
 
-// Determine the output size of the reduction dimension. This is useful for jax
-// abstract eval to determine the output size.
-//
-// input_size: Input size of the reduction dimension.
-// rank: Rank of the input operand.
-// top_k: Determines the k in top-k operation.
-// recall_target: Valid range (0, 1]. User can trade-off quality and performance
-//   with this knob.
-// aggregate_to_topk: When true, sorts the set of approximate top-k elements and
-//   only keep the final k elements on TPU. This option is useful when user
-//   wanted to forward the approximate results to host and aggregate the results
-//   on CPU for better throughput.
-//
-// Returns a pair of
-//   1. Reduction output size
-//   2. Reduction amount in log2 form.
-//
-// 2. is invalid and set to -1 when the approximate output is disabled, i.e.
-//   top_k = 1 or aggregate_to_topk = true.
-StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
-    int64_t input_size, int64_t rank, int64_t top_k, float recall_target,
-    bool aggregate_to_topk, int64_t input_size_override = -1);
+// Fallback for platforms that haven't been optimized.
+XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
+                         absl::Span<const XlaOp> init_values, int64_t top_k,
+                         int64_t reduction_dim,
+                         const XlaComputation& comparator,
+                         float recall_target = 0.9,
+                         bool aggregate_to_topk = true,
+                         int64_t reduction_input_size_override = -1);
 
 }  // namespace xla
 

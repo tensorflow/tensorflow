@@ -15,11 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv_impl.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedConv2DF16(
     const void* /*run_options_ptr*/, Eigen::half* out, Eigen::half* lhs,
     Eigen::half* rhs, int64_t input_batch, int64_t input_rows,
@@ -39,7 +38,7 @@ __xla_cpu_runtime_EigenSingleThreadedConv2DF16(
       feature_group_count);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedConv2DF32(
     const void* /*run_options_ptr*/, float* out, float* lhs, float* rhs,
     int64_t input_batch, int64_t input_rows, int64_t input_cols,

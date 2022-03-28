@@ -27,13 +27,13 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -369,7 +369,7 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
 }
 
 static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::arith::ArithmeticDialect, mlir::StandardOpsDialect,
+  registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
                   mlir::TF::TensorFlowDialect>();
 }
 
@@ -378,8 +378,9 @@ static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {
   registry.insert<mlir::tf_executor::TensorFlowExecutorDialect>();
 }
 
-static mlir::OwningModuleRef SerializedMlirStringAttrToMlirModuleTranslate(
-    llvm::StringRef input, mlir::MLIRContext* context) {
+static mlir::OwningOpRef<mlir::ModuleOp>
+SerializedMlirStringAttrToMlirModuleTranslate(llvm::StringRef input,
+                                              mlir::MLIRContext* context) {
   mlir::Attribute attr = mlir::parseAttribute(input, context);
   if (!attr || !attr.isa<mlir::StringAttr>()) {
     LOG(ERROR) << "Input is not parsable as a MLIR StringAttr.";
@@ -390,7 +391,7 @@ static mlir::OwningModuleRef SerializedMlirStringAttrToMlirModuleTranslate(
   mlir::DialectRegistry registry;
   RegisterMlirInputDialects(registry);
   context->appendDialectRegistry(registry);
-  mlir::OwningModuleRef module_ref;
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref;
   auto status =
       DeserializeMlirModule(str_attr.getValue().str(), context, &module_ref);
   if (!status.ok()) {

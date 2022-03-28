@@ -10,8 +10,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_C_TYPES_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_C_TYPES_H_
+#ifndef MLIR_HLO_C_TYPES_H
+#define MLIR_HLO_C_TYPES_H
 
 #include "mlir-c/IR.h"
 #include "mlir-c/Support.h"
@@ -30,4 +30,4 @@ MLIR_CAPI_EXPORTED bool mlirMhloTypeIsAToken(MlirType type);
 }
 #endif
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_C_TYPES_H_
+#endif  // MLIR_HLO_C_TYPES_H

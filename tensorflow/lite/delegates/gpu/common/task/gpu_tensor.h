@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_TENSOR_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_GPU_TENSOR_H_
 
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
+
 namespace tflite {
 namespace gpu {
 
@@ -34,6 +36,8 @@ class GpuSpatialTensor {
   virtual int Channels() const = 0;
   virtual int Slices() const = 0;
   virtual int Batch() const = 0;
+
+  virtual TensorDescriptor GetDescriptor() const = 0;
 };
 
 }  // namespace gpu

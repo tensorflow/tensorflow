@@ -17,7 +17,8 @@ limitations under the License.
 
 include "tensorflow/compiler/mlir/tfjs/ir/tfjs_ops.td"
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/IR/PatternBase.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 // Checks if the value has only one user.

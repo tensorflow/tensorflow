@@ -16,11 +16,13 @@
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
@@ -37,6 +39,13 @@ class SparseToDenseTest(test.TestCase):
     tf_ans = sparse_ops.sparse_to_dense([1, 3], [5], 1.0, 0.0)
     np_ans = np.array([0, 1, 0, 1, 0]).astype(np.float32)
     self.assertAllClose(np_ans, tf_ans)
+
+  def testComplex(self):
+    for dtype in [dtypes.complex64, dtypes.complex128]:
+      tf_val = math_ops.cast(
+          constant_op.constant([1.0 + 1.0j, 2.0 - 2.0j]), dtypes.complex128)
+      tf_ans = sparse_ops.sparse_tensor_to_dense(sparse_ops.from_dense(tf_val))
+      self.assertAllClose(tf_val, tf_ans)
 
   def testEmptyNonZeros(self):
     indices = array_ops.constant([], dtype=dtypes.int32)

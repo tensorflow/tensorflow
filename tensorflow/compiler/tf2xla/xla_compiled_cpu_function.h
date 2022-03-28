@@ -173,15 +173,15 @@ class XlaCompiledCpuFunction {
   // called for each positional argument, in order to set the argument buffers.
   //
   // Allocated memory must be aligned to the size specified by
-  // xla::cpu_function_runtime::kMinAlign. If possible, use the functions in
+  // xla::cpu_function_runtime::MinAlign(). If possible, use the functions in
   // tensorflow/compiler/tf2xla/cpu_function_runtime.h to ensure correct
   // alignment.
   //
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
   void set_arg_data(size_t index, const void* data) {
-    assert((arg_size(index) < xla::cpu_function_runtime::kMinAlign ||
-            (uintptr_t)data % xla::cpu_function_runtime::kMinAlign == 0) &&
+    assert((arg_size(index) < xla::cpu_function_runtime::MinAlign() ||
+            (uintptr_t)data % xla::cpu_function_runtime::MinAlign() == 0) &&
            "Underaligned pointer!");
     // The const_cast is safe because the generated code does not write to arg
     // buffers.

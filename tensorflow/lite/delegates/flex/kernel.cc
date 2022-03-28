@@ -16,11 +16,10 @@ limitations under the License.
 
 #include <map>
 #include <set>
+#include <utility>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/common_runtime/eager/execute.h"
-#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -52,7 +51,7 @@ limitations under the License.
 //
 // For each node included in the subgraph, we query the interpreter and
 // retrieve the associated NodeDef, which is then used to configure the
-// corresponding TensorFlow/Eager Op.
+// corresponding TensorFlow OpKernel.
 
 using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
@@ -73,7 +72,7 @@ struct TensorSource {
   int node_output_index;
 };
 
-// A list of inputs of a given node of the TensorFlow/Eager graph.
+// A list of inputs of a given node of the TensorFlow graph.
 class OpInputs {
  public:
   explicit OpInputs(const TfLiteIntArray* indexes) {
@@ -116,12 +115,12 @@ class OpInputs {
   // List of tensors that can be used by TF in its forwarding optimization.
   // Doing so allows an input tensor to be modified and used as the output
   // tensor. The delegate takes care of not holding any references to tensors
-  // in this list while Eager is executing the corresponding op.
+  // in this list while the corresponding tensorflow::OpKernel is executed.
   std::vector<int> forwardable_;
 };
 
-// A list of outputs of a given node of the TensorFlow/Eager graph, along with
-// the actual outputs of the EagerOperation.
+// A list of outputs of a given node of the TensorFlow graph, along with
+// the actual outputs of the tensorflow::OpKernel.
 class OpOutputs {
  public:
   explicit OpOutputs(const TfLiteIntArray* indexes) {
@@ -130,7 +129,7 @@ class OpOutputs {
     }
     vector_.resize(outputs_.size());
   }
-  ~OpOutputs() { ResetTensorHandles(); }
+  ~OpOutputs() = default;
 
   // Stores information about which of the tensors in this class are also
   // outputs of the sugbraph.
@@ -145,43 +144,21 @@ class OpOutputs {
   // subgraph.
   bool IsSubgraphOutput(int i) const { return subgraph_outputs_[i]; }
 
-  // Returns a handle to a given tensor and, optionally, remove it from the
-  // internal vector.
-  tensorflow::TensorHandle* GetHandle(int i, bool remove) {
-    auto* handle = vector_[i];
-    if (!remove) {
-      handle->Ref();
-    } else {
-      // Don't increase the ref-count. Instead, simply take it out of the
-      // vector.
-      vector_[i] = nullptr;
-    }
-    return handle;
-  }
+  const tensorflow::Tensor& GetTensor(int i) const { return vector_[i]; }
+  tensorflow::Tensor ReleaseTensor(int i) { return std::move(vector_[i]); }
 
   int Size() const { return outputs_.size(); }
 
   int TfLiteIndex(int i) const { return outputs_[i]; }
 
-  // Carefully unreference all the handles in the eager output vector.
-  void ResetTensorHandles() {
-    for (int i = 0; i < vector_.size(); ++i) {
-      if (vector_[i]) {
-        vector_[i]->Unref();
-        vector_[i] = nullptr;
-      }
-    }
-  }
-
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>*
-  GetTensorHandles() {
+  tensorflow::gtl::InlinedVector<tensorflow::Tensor, 2>* GetTensors() {
     return &vector_;
   }
 
  private:
   std::vector<int> outputs_;
   std::vector<bool> subgraph_outputs_;
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> vector_;
+  tensorflow::gtl::InlinedVector<tensorflow::Tensor, 2> vector_;
 };
 
 // This struct holds information such as tensor lifecycle and BufferMap which
@@ -204,9 +181,7 @@ class OpNode {
  public:
   OpNode(const TfLiteIntArray* inputs, const TfLiteIntArray* outputs)
       : inputs_(inputs), outputs_(outputs) {}
-  ~OpNode() {
-    if (op_) ClearEagerInputs();
-  }
+  ~OpNode() = default;
 
   const string& name() const { return name_; }
   void set_name(const string& name) { name_ = name; }
@@ -228,7 +203,9 @@ class OpNode {
   int NumInputs() const { return inputs_.Size(); }
   int NumOutputs() const { return outputs_.Size(); }
 
-  tensorflow::EagerOperation* op() { return op_.get(); }
+  const tensorflow::tfrt_stub::OpKernelRunner& op_kernel_runner() const {
+    return op_kernel_runner_;
+  }
 
   tensorflow::Status InitializeNodeDef(const void* custom_initial_data,
                                        int custom_initial_data_size) {
@@ -259,63 +236,53 @@ class OpNode {
     return tensorflow::Status::OK();
   }
 
-  // Build thew new EagerOperation. In case of error, the returned 'op' is
-  // guaranteed to be 'nullptr'.
-  tensorflow::Status BuildEagerOp(
-      tensorflow::EagerContext* eager_context,
-      tensorflow::CancellationManager* cancellation_manager) {
-    op_.reset(new tensorflow::EagerOperation(eager_context));
-    TF_RETURN_IF_ERROR(op_->Reset(name_.c_str(), nullptr, false, nullptr));
-    if (op_->is_function()) {
-      op_.reset();
-      return tensorflow::errors::NotFound(
-          "Operation '", name_,
-          "' is not registered.  (while processing attributes of '", name_,
-          "')");
-    }
-
-    op_->MutableAttrs()->NumInputs(inputs_.Size());
-    for (const auto& attr : nodedef_.attr()) {
-      op_->MutableAttrs()->Set(attr.first, attr.second);
-    }
-
-    // Precalculating a cache key saves about 10% of inference time for very
-    // small models.
-    op_->MutableAttrs()->CacheKey(op_->DeviceName());
-
-    op_->SetCancellationManager(cancellation_manager);
+  tensorflow::Status BuildOpKernelRunner(
+      tensorflow::EagerContext* eager_context) {
+    // Create tensorflow::OpKernel on host CPU.
+    TF_ASSIGN_OR_RETURN(op_kernel_runner_,
+                        tensorflow::tfrt_stub::OpKernelRunner::Create(
+                            name_, inputs_.Size(), /*attr_builder=*/
+                            [this](tensorflow::AttrValueMap* attr_value_map) {
+                              *attr_value_map = nodedef_.attr();
+                              return tensorflow::Status::OK();
+                            },
+                            *eager_context->pflr(),
+                            eager_context->local_device_mgr()->HostCPU()));
 
     return tensorflow::Status::OK();
   }
 
-  void ClearEagerInputs() { op_->Clear(); }
+  tensorflow::Status BuildOpKernelInputs(
+      const BufferMap* buffer_map,
+      tensorflow::tfrt_stub::OpKernelRunState* run_state) {
+    run_state->input_tf_tensors.resize(inputs_.Size());
+    run_state->input_tf_tensor_values.resize(inputs_.Size());
 
-  tensorflow::Status BuildEagerInputs(const BufferMap* buffer_map) {
-    absl::InlinedVector<tensorflow::TensorHandle*, 4>* op_inputs;
-    TF_RETURN_IF_ERROR(op_->MutableTensorHandleInputs(&op_inputs));
     for (int i = 0; i < inputs_.Size(); ++i) {
       int input_index = inputs_.TfLiteIndex(i);
       TensorSource s = inputs_.GetTensorSource(i);
       if (!s.node) {
-        // This input is not produced by this Eager subgraph (it could be a TF
+        // This input is not produced by this TF subgraph (it could be a TF
         // Lite native buffer, or could be produced by a separater subgraph). We
         // need to fetch it from the delegate's buffer_map.
         if (!buffer_map->HasTensor(input_index)) {
           return tensorflow::errors::Internal(
               "Cannot read from invalid tensor index ", input_index);
         }
-        tensorflow::TensorHandle* handle =
-            tensorflow::TensorHandle::CreateLocalHandle(
-                buffer_map->GetTensor(input_index));
-        op_inputs->push_back(handle);
+        run_state->input_tf_tensors[i] = buffer_map->GetTensor(input_index);
       } else {
         // If this is a forwardable tensor, we will remove it from the previous
         // op's list, giving TF the opportunity to reuse its buffer.
-        bool unref_handle = inputs_.IsForwardable(i);
-        auto* handle =
-            s.node->outputs_.GetHandle(s.node_output_index, unref_handle);
-        op_inputs->push_back(handle);
+        if (inputs_.IsForwardable(i)) {
+          run_state->input_tf_tensors[i] =
+              s.node->outputs_.ReleaseTensor(s.node_output_index);
+        } else {
+          run_state->input_tf_tensors[i] =
+              s.node->outputs_.GetTensor(s.node_output_index);
+        }
       }
+      run_state->input_tf_tensor_values[i].tensor =
+          &run_state->input_tf_tensors[i];
     }
     return tensorflow::Status::OK();
   }
@@ -324,9 +291,9 @@ class OpNode {
   // checking its lifetime information.
   // The eager tensor doesn't need to be persisted in the buffer map if it has
   // no future uses in the graph.
-  bool ShouldPersistEagerTensor(TfLiteContext* context,
-                                const OpDataInfo* shared_info, int tensor_index,
-                                int node_index) {
+  bool ShouldPersistTensorflowTensor(TfLiteContext* context,
+                                     const OpDataInfo* shared_info,
+                                     int tensor_index, int node_index) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     // Always persist variant|resource|string tensors since they have special
     // storage requirement.
@@ -340,13 +307,12 @@ class OpNode {
   }
 
   // Copies the data of Tensorflow tensor into the corresponding TfLite tensor,
-  // after copy is done release the original tensor handle so that memory could
-  // be released by TF eager runtime.
-  TfLiteStatus CopyToTfLiteTensor(
-      TfLiteContext* context, OpDataInfo* shared_info,
-      tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>* handles,
-      TfLiteTensor* tensor, const tensorflow::Tensor* tf_tensor,
-      int tensor_index, int index) const {
+  // after copy is done release the original tensor so that memory could be
+  // released by TF runtime.
+  TfLiteStatus CopyToTfLiteTensor(TfLiteContext* context,
+                                  OpDataInfo* shared_info, TfLiteTensor* tensor,
+                                  tensorflow::Tensor* tf_tensor,
+                                  int tensor_index) const {
     if (tensor->allocation_type == kTfLiteDynamic) {
       // For dynamic tensors, update the TfLite tensor's shape information from
       // the Tensorflow tensor.
@@ -363,38 +329,35 @@ class OpNode {
                          NumElements(tensor));
       return kTfLiteError;
     }
-    // Copy TF tensor's data content into TfLiteTensor, and release the
-    // tensor handle.
+    // Copy TF tensor's data content into TfLiteTensor, and release the tensor.
     memcpy(tensor->data.raw, t_data.data(), t_data.size());
-    handles->at(index)->Release();
-    handles->at(index) = nullptr;
+    *tf_tensor = {};
     shared_info->already_transferred_outputs.insert(tensor_index);
     return kTfLiteOk;
   }
 
   // TODO(b/204479285): Release tensors from BufferMap if it has no future
   // uses.
-  tensorflow::Status MaybePersistEagerOutputs(TfLiteContext* context,
-                                              OpDataInfo* shared_info,
-                                              int node_index) {
-    auto* handles = outputs_.GetTensorHandles();
+  tensorflow::Status MaybePersistTensorflowOutputs(TfLiteContext* context,
+                                                   OpDataInfo* shared_info,
+                                                   int node_index) {
+    auto* tensors = outputs_.GetTensors();
 
     for (int i = 0; i < outputs_.Size(); ++i) {
       if (outputs_.IsSubgraphOutput(i)) {
-        const tensorflow::Tensor* tf_tensor = nullptr;
-        TF_RETURN_IF_ERROR(handles->at(i)->Tensor(&tf_tensor));
+        tensorflow::Tensor& tf_tensor = tensors->at(i);
         const int tflite_index = outputs_.TfLiteIndex(i);
         TfLiteTensor* tensor = &context->tensors[tflite_index];
-        if (!ShouldPersistEagerTensor(context, shared_info, tflite_index,
-                                      node_index)) {
-          if (CopyToTfLiteTensor(context, shared_info, handles, tensor,
-                                 tf_tensor, tflite_index, i) != kTfLiteOk) {
+        if (!ShouldPersistTensorflowTensor(context, shared_info, tflite_index,
+                                           node_index)) {
+          if (CopyToTfLiteTensor(context, shared_info, tensor, &tf_tensor,
+                                 tflite_index) != kTfLiteOk) {
             return tensorflow::Status(tensorflow::error::INTERNAL,
                                       "failed to copy data from TF tensor");
           }
         } else {
           shared_info->buffer_map->SetFromTensorFlow(outputs_.TfLiteIndex(i),
-                                                     *tf_tensor);
+                                                     tf_tensor);
         }
       }
     }
@@ -418,7 +381,7 @@ class OpNode {
   // List of outputs, as TF Lite tensor indices.
   OpOutputs outputs_;
 
-  std::unique_ptr<tensorflow::EagerOperation> op_;
+  tensorflow::tfrt_stub::OpKernelRunner op_kernel_runner_;
 };
 
 // The larger 'op', which contains all the nodes in a supported subgraph.
@@ -431,34 +394,39 @@ struct OpData {
   OpDataInfo shared_info;
 };
 
-tensorflow::Status DelegateKernel::ExecuteFlexOp(TfLiteContext* context,
-                                                 OpNode* node_data) {
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      node_data->BuildEagerInputs(op_data_->shared_info.buffer_map),
-      " (while executing '", node_data->name(), "' via Eager)");
+tensorflow::Status DelegateKernel::ExecuteOpKernelRunner(
+    tensorflow::tfrt_stub::OpKernelRunState* run_state, TfLiteContext* context,
+    OpNode* node_data) {
+  const auto& op_kernel_runner = node_data->op_kernel_runner();
 
-  node_data->mutable_outputs()->ResetTensorHandles();
-  int num_retvals = node_data->NumOutputs();
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      node_data->op()->Execute(
-          absl::MakeSpan(
-              reinterpret_cast<tensorflow::AbstractTensorHandle**>(
-                  node_data->mutable_outputs()->GetTensorHandles()->data()),
-              num_retvals),
-          &num_retvals),
-      " (while executing '", node_data->name(), "' via Eager)");
-
-  if (num_retvals != node_data->NumOutputs()) {
+  if (op_kernel_runner.op_kernel()->num_outputs() != node_data->NumOutputs()) {
     return tensorflow::errors::Internal(
-        "Unexpected number of outputs from EagerExecute");
+        "Unexpected number of outputs from tensorflow::OpKernel");
   }
 
-  TF_RETURN_IF_ERROR(node_data->MaybePersistEagerOutputs(
-      context, &(op_data_->shared_info), node_data->index()));
+  TF_RETURN_IF_ERROR(node_data->BuildOpKernelInputs(
+      op_data_->shared_info.buffer_map, run_state));
 
-  node_data->ClearEagerInputs();
+  run_state->params.inputs = &run_state->input_tf_tensor_values;
+  run_state->params.op_kernel = op_kernel_runner.op_kernel();
+  run_state->params.input_alloc_attrs = &op_kernel_runner.input_alloc_attrs();
+  run_state->params.output_attr_array =
+      op_kernel_runner.output_alloc_attrs().data();
+  run_state->params.function_library =
+      op_kernel_runner.function_library_runtime();
 
-  return tensorflow::Status::OK();
+  tensorflow::OpKernelContext tf_context(&run_state->params,
+                                         node_data->NumOutputs());
+  op_kernel_runner.Run(&tf_context);
+  TF_RETURN_IF_ERROR(tf_context.status());
+
+  auto& outputs = *node_data->mutable_outputs()->GetTensors();
+  for (int i = 0; i < tf_context.num_outputs(); ++i) {
+    outputs[i] = std::move(*tf_context.mutable_output(i));
+  }
+
+  return node_data->MaybePersistTensorflowOutputs(
+      context, &(op_data_->shared_info), node_data->index());
 }
 
 DelegateKernel::DelegateKernel() : op_data_(new OpData) {}
@@ -521,8 +489,7 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
     status = node_data.InitializeNodeDef(node->custom_initial_data,
                                          node->custom_initial_data_size);
     if (!status.ok()) break;
-    status = node_data.BuildEagerOp(op_data_->eager_context,
-                                    op_data_->cancellation_manager);
+    status = node_data.BuildOpKernelRunner(op_data_->eager_context);
     if (!status.ok()) break;
   }
 
@@ -533,7 +500,7 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   std::map<int, TensorSource> tflite_tensor_sources;
 
   // Find out how each tensor is produced. This does not account for
-  // tensors that are not produce by eager ops.
+  // tensors that are not produced by tensorflow::Opkernels.
   for (auto& node_data : op_data_->nodes) {
     node_data->mutable_outputs()->InitializeGraphOutputs(output_set);
     for (int i = 0; i < node_data->outputs().Size(); ++i) {
@@ -587,8 +554,8 @@ TfLiteStatus DelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
                "FlexDelegate: Some tensor shapes are inconsistent.");
   }
 
-  // All output tensors are allocated by TensorFlow/Eager, so we
-  // mark them as kTfLiteDynamic.
+  // All output tensors are allocated by TensorFlow, so we mark them as
+  // kTfLiteDynamic.
   for (auto tensor_index : op_data_->subgraph_outputs) {
     if (!shapes_are_valid) {
       SetTensorToDynamic(&context->tensors[tensor_index]);
@@ -602,7 +569,7 @@ TfLiteStatus DelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
                            node_data->name().c_str());
       return kTfLiteError;
     }
-    TF_LITE_ENSURE(context, node_data->op());
+    TF_LITE_ENSURE(context, node_data->op_kernel_runner());
 
     for (int i = 0; i < node_data->inputs().Size(); ++i) {
       ++tensor_ref_count[node_data->inputs().TfLiteIndex(i)];
@@ -710,6 +677,11 @@ TfLiteStatus DelegateKernel::ValidateOutputTensorShapeConsistency(
   return kTfLiteOk;
 }
 
+static tensorflow::CancellationManager* GetDefaultCancellationManager() {
+  static auto* const cancellation_manager = new tensorflow::CancellationManager;
+  return cancellation_manager;
+}
+
 TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
   BufferMap* buffer_map = op_data_->shared_info.buffer_map;
 
@@ -727,21 +699,38 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  // Execute the TensorFlow Ops sequentially.
-  for (auto& node_data : op_data_->nodes) {
-    TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(
-        reinterpret_cast<Profiler*>(context->profiler),
-        node_data->name().c_str(), node_data->index());
+  auto& eager_context = *op_data_->eager_context;
 
-    if (op_data_->cancellation_manager != nullptr &&
-        op_data_->cancellation_manager->IsCancelled()) {
-      TF_LITE_KERNEL_LOG(context,
-                         "Client requested cancel during DelegateKernel::Eval");
-      return kTfLiteError;
+  {
+    tensorflow::tfrt_stub::OpKernelRunState run_state;
+
+    run_state.params.step_container = eager_context.StepContainer();
+    auto* device = eager_context.local_device_mgr()->HostCPU();
+    run_state.params.device = device;
+    run_state.params.resource_manager = device->resource_manager();
+    run_state.params.runner = eager_context.runner();
+    run_state.params.cancellation_manager =
+        op_data_->cancellation_manager ? op_data_->cancellation_manager
+                                       : GetDefaultCancellationManager();
+    // TODO(b/179048776): Set up remaining params such as collective and
+    // rendezvous.
+
+    // Execute the TensorFlow Ops sequentially.
+    for (auto& node_data : op_data_->nodes) {
+      TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(
+          reinterpret_cast<Profiler*>(context->profiler),
+          node_data->name().c_str(), node_data->index());
+
+      if (op_data_->cancellation_manager != nullptr &&
+          op_data_->cancellation_manager->IsCancelled()) {
+        TF_LITE_KERNEL_LOG(
+            context, "Client requested cancel during DelegateKernel::Eval");
+        return kTfLiteError;
+      }
+
+      auto status = ExecuteOpKernelRunner(&run_state, context, node_data.get());
+      TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));
     }
-
-    auto status = ExecuteFlexOp(context, node_data.get());
-    TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));
   }
 
   for (auto tensor_index : op_data_->subgraph_outputs) {

@@ -111,7 +111,7 @@ LogicalResult ResourceAnalyzer::AnalyzeRegion(Region& region) {
   }
 
   region.walk([&](Operation* op) {
-    if (isa<TF::ReadVariableOp, ReturnOp, YieldOp>(op)) {
+    if (isa<TF::ReadVariableOp, func::ReturnOp, YieldOp>(op)) {
       return;
     }
     if (auto assign_variable = dyn_cast<TF::AssignVariableOp>(op)) {

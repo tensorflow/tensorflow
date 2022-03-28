@@ -36,13 +36,11 @@ Status MakeSloppy::OptimizeAndCollectStats(Cluster* cluster,
     if (graph_utils::HasSloppyAttr(node.op())) {
       (*node.mutable_attr())["sloppy"].set_b(true);
       stats->num_changes++;
-      break;
     }
     if (graph_utils::HasDeterministicAttr(node.op()) &&
         node.attr().at("deterministic").s() == "default") {
       (*node.mutable_attr())["deterministic"].set_s("false");
       stats->num_changes++;
-      break;
     }
   }
   return Status::OK();

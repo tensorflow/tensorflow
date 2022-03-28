@@ -49,7 +49,7 @@ static llvm::SmallVector<InputTensorSpec> Inputs() {
   };
 }
 
-BM_Cpurt(ComputeDynamicDims, dynamic_dims, "compute_dynamic", Inputs())->Arg(0);
-BM_Cpurt(ComputeStaticDims, static_dims, "compute_static", Inputs())->Arg(0);
+BM_Jitrt(ComputeDynamicDims, dynamic_dims, "compute_dynamic", Inputs())->Arg(0);
+BM_Jitrt(ComputeStaticDims, static_dims, "compute_static", Inputs())->Arg(0);
 
 }  // namespace tensorflow

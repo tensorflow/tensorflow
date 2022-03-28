@@ -39,6 +39,29 @@ ios_unit_test(
 )
 
 objc_library(
+    name = "cast_test_lib",
+    testonly = 1,
+    srcs = ["cast_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "cast_test",
+    testonly = 1,
+    minimum_os_version = "11.4",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":cast_test_lib"],
+)
+
+objc_library(
     name = "concat_test_lib",
     testonly = 1,
     srcs = ["concat_test.mm"],
@@ -71,8 +94,11 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal_simd",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task",
+        "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
     ],
 )
 
@@ -717,6 +743,7 @@ objc_library(
     testonly = 1,
     srcs = [
         "add_test.mm",
+        "cast_test.mm",
         "concat_test.mm",
         "conv_test.mm",
         "conv_weights_converter_test.mm",
@@ -756,10 +783,12 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_metal_simd",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_test_util",
@@ -794,6 +823,8 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
         "//tensorflow/lite/delegates/gpu/metal:common",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task",
+        "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
     ],
 )
 

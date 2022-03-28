@@ -14,6 +14,7 @@
 # ==============================================================================
 """Test utilities."""
 
+import collections
 import functools
 import io
 import itertools
@@ -130,17 +131,20 @@ def topological_sort_operations(operations):
   both data dependencies and control dependencies. Note that the edge goes from
   an operation to its dependencies.
 
+  The sort is intentionally unstable, reversing orders of operations and
+  dependencies on ties.
+
   Args:
     operations: a list of tf.Operation in the same graph.
 
   Returns:
     A map from a tf.Operation to its topological order.
   """
-  in_degrees = {}
-  for op in operations:
+  in_degrees = collections.OrderedDict()
+  for op in reversed(operations):
     if op not in in_degrees:
       in_degrees[op] = 0
-    for next_op in _op_dependencies(op):
+    for next_op in reversed(_op_dependencies(op)):
       in_degrees[next_op] = in_degrees.get(next_op, 0) + 1
   nexts = []
   for op, in_degree in in_degrees.items():
@@ -152,7 +156,7 @@ def topological_sort_operations(operations):
     op, nexts = nexts[0], nexts[1:]
     order[op] = next_order
     next_order += 1
-    for next_op in _op_dependencies(op):
+    for next_op in reversed(_op_dependencies(op)):
       in_degrees[next_op] -= 1
       if in_degrees[next_op] == 0:
         nexts.append(next_op)

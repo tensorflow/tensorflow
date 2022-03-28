@@ -969,7 +969,7 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     }
 
     auto iteration = b->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32_t>(0)));
 
     // Create a while loop that computes one window per iteration. During each
     // iteration, each partition sends its input window to its neighbor using
@@ -985,7 +985,7 @@ StatusOr<HloInstruction*> PartitionBaseCase(
           lhs.state().collective_ops_creator.create_partition_id(&body_b);
       auto partition_count =
           body_b.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<uint32>(num_partitions)));
+              LiteralUtil::CreateR0<uint32_t>(num_partitions)));
       auto ccw_data_partition_id =
           body_b.AddInstruction(HloInstruction::CreateBinary(
               i->shape(), HloOpcode::kAdd, i, partition_id));
@@ -997,12 +997,12 @@ StatusOr<HloInstruction*> PartitionBaseCase(
             body_b.AddInstruction(HloInstruction::CreateBinary(
                 i->shape(), HloOpcode::kAdd, ccw_data_partition_id,
                 body_b.AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<uint32>(num_partitions / 2 + 1)))));
+                    LiteralUtil::CreateR0<uint32_t>(num_partitions / 2 + 1)))));
         cw_data_partition_id =
             body_b.AddInstruction(HloInstruction::CreateBinary(
                 i->shape(), HloOpcode::kSubtract, cw_data_partition_id,
                 body_b.AddInstruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<uint32>(num_partitions / 2)))));
+                    LiteralUtil::CreateR0<uint32_t>(num_partitions / 2)))));
       } else {
         cw_data_partition_id =
             body_b.AddInstruction(HloInstruction::CreateBinary(
@@ -1365,7 +1365,7 @@ StatusOr<HloInstruction*> PartitionBaseCase(
               i->shape(), HloOpcode::kAdd, i, partition_id));
       auto partition_count =
           body_b.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<uint32>(num_partitions)));
+              LiteralUtil::CreateR0<uint32_t>(num_partitions)));
       data_partition_id = body_b.AddInstruction(
           HloInstruction::CreateBinary(i->shape(), HloOpcode::kRemainder,
                                        data_partition_id, partition_count));
@@ -1550,11 +1550,11 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         i = body_b.AddInstruction(HloInstruction::CreateBinary(
             i->shape(), HloOpcode::kAdd, i,
             body_b.AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<uint32>(2)))));
+                LiteralUtil::CreateR0<uint32_t>(2)))));
         auto real_i = body_b.AddInstruction(HloInstruction::CreateBinary(
             i->shape(), HloOpcode::kAdd, i,
             body_b.AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<uint32>(1)))));
+                LiteralUtil::CreateR0<uint32_t>(1)))));
 
         TF_ASSIGN_OR_RETURN(o, get_partial_unid_result(l, r, o, real_i));
         body_b.AddInstruction(
@@ -1587,7 +1587,7 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         i = body_b.AddInstruction(HloInstruction::CreateBinary(
             i->shape(), HloOpcode::kAdd, i,
             body_b.AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<uint32>(1)))));
+                LiteralUtil::CreateR0<uint32_t>(1)))));
 
         // Odd number iteration.
         auto second_next_l = next_l;
@@ -1609,7 +1609,7 @@ StatusOr<HloInstruction*> PartitionBaseCase(
         i = body_b.AddInstruction(HloInstruction::CreateBinary(
             i->shape(), HloOpcode::kAdd, i,
             body_b.AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<uint32>(1)))));
+                LiteralUtil::CreateR0<uint32_t>(1)))));
 
         body_b.AddInstruction(HloInstruction::CreateTuple(
             {second_next_l, second_next_r, o, extra_inout, i}));
@@ -1630,11 +1630,11 @@ StatusOr<HloInstruction*> PartitionBaseCase(
       i = body_b.AddInstruction(HloInstruction::CreateBinary(
           i->shape(), HloOpcode::kAdd, i,
           body_b.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<uint32>(1)))));
+              LiteralUtil::CreateR0<uint32_t>(1)))));
       auto has_more = body_b.AddInstruction(HloInstruction::CreateCompare(
           ShapeUtil::MakeShape(PRED, {}), i,
           body_b.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CreateR0<uint32>(num_partitions))),
+              LiteralUtil::CreateR0<uint32_t>(num_partitions))),
           ComparisonDirection::kLt));
       // Collective-permute for the next window. We don't need it for the last
       // iteration, so we use a conditional around the collective-permute.
@@ -1708,7 +1708,7 @@ StatusOr<HloInstruction*> PartitionBaseCase(
     cond_b.AddInstruction(HloInstruction::CreateCompare(
         ShapeUtil::MakeShape(PRED, {}), cond_i,
         cond_b.AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<uint32>(adapted_num_partitions))),
+            LiteralUtil::CreateR0<uint32_t>(adapted_num_partitions))),
         ComparisonDirection::kLt));
     auto while_loop = b->AddInstruction(HloInstruction::CreateWhile(
         cond_param->shape(), module->AddEmbeddedComputation(cond_b.Build()),
@@ -3288,40 +3288,75 @@ StatusOr<HloInstruction*> PartitionDot(
     // convolution. Case 0.a: Group partitions by feature group count.
     if (original_hlo->feature_group_count() > 1 ||
         original_hlo->batch_group_count() > 1) {
-      DotConvDimsMapping new_dims_mapping;
+      absl::optional<DotConvDimsMapping> new_dims_mapping;
       if (original_hlo->feature_group_count() > 1) {
-        new_dims_mapping =
-            ConvertDimsMappingWithFeatureGroupCount(dims_mapping, original_hlo);
+        const int64_t input_feature_dim =
+            original_hlo->convolution_dimension_numbers()
+                .input_feature_dimension();
+        const int64_t kernel_output_feature_dim =
+            original_hlo->convolution_dimension_numbers()
+                .kernel_output_feature_dimension();
+        // If the input and output feature dims are not equal, we require the
+        // feature_group_count to be evenly partitioned; otherwise, there will
+        // be different padding in the input/output.
+        // TODO(xla): Use halo exchange to solve this problem. Can be a
+        // preprocessing that uses padding/slicing to make the shape evenly
+        // shardable.
+        if (lhs.base_shape().dimensions(input_feature_dim) ==
+                rhs.base_shape().dimensions(kernel_output_feature_dim) ||
+            (lhs.sharding().IsTiled() &&
+             original_hlo->feature_group_count() %
+                     ShardCountAtDim(lhs.sharding(), input_feature_dim) ==
+                 0)) {
+          new_dims_mapping = ConvertDimsMappingWithFeatureGroupCount(
+              dims_mapping, original_hlo);
+        }
       }
 
       if (original_hlo->batch_group_count() > 1) {
-        new_dims_mapping =
-            ConvertDimsMappingWithBatchGroupCount(dims_mapping, original_hlo);
+        const int64_t input_batch_dim =
+            original_hlo->convolution_dimension_numbers()
+                .input_batch_dimension();
+        const int64_t kernel_output_feature_dim =
+            original_hlo->convolution_dimension_numbers()
+                .kernel_output_feature_dimension();
+        if (lhs.base_shape().dimensions(input_batch_dim) ==
+                rhs.base_shape().dimensions(kernel_output_feature_dim) ||
+            (lhs.sharding().IsTiled() &&
+             original_hlo->batch_group_count() %
+                     ShardCountAtDim(lhs.sharding(), input_batch_dim) ==
+                 0)) {
+          new_dims_mapping =
+              ConvertDimsMappingWithBatchGroupCount(dims_mapping, original_hlo);
+        }
+      }
+      if (!new_dims_mapping.has_value()) {
+        return nullptr;
       }
 
       const int64_t conv_lhs_contracting_partitions = get_partitions_for_dims(
-          lhs.sharding(), new_dims_mapping.contracting_dims, 0);
+          lhs.sharding(), new_dims_mapping->contracting_dims, 0);
       const int64_t conv_rhs_contracting_partitions = get_partitions_for_dims(
-          rhs.sharding(), new_dims_mapping.contracting_dims, 1);
+          rhs.sharding(), new_dims_mapping->contracting_dims, 1);
       const int64_t conv_lhs_non_contracting_partitions =
-          get_partitions_for_dims(lhs.sharding(),
-                                  new_dims_mapping.lhs_non_contracting_dims, 0);
+          get_partitions_for_dims(
+              lhs.sharding(), new_dims_mapping->lhs_non_contracting_dims, 0);
       const int64_t conv_rhs_non_contracting_partitions =
-          get_partitions_for_dims(rhs.sharding(),
-                                  new_dims_mapping.rhs_non_contracting_dims, 1);
+          get_partitions_for_dims(
+              rhs.sharding(), new_dims_mapping->rhs_non_contracting_dims, 1);
       const int64_t conv_lhs_batch_partitions = get_partitions_for_dims(
-          lhs.sharding(), new_dims_mapping.batch_dims, 0);
+          lhs.sharding(), new_dims_mapping->batch_dims, 0);
       const int64_t conv_rhs_batch_partitions = get_partitions_for_dims(
-          rhs.sharding(), new_dims_mapping.batch_dims, 1);
+          rhs.sharding(), new_dims_mapping->batch_dims, 1);
       const int64_t conv_output_batch_partitions = get_partitions_for_dims(
-          output_sharding, new_dims_mapping.batch_dims, 2);
+          output_sharding, new_dims_mapping->batch_dims, 2);
       if ((conv_lhs_batch_partitions == conv_output_batch_partitions ||
            conv_rhs_batch_partitions == conv_output_batch_partitions) &&
           conv_output_batch_partitions > 1) {
         TF_ASSIGN_OR_RETURN(
             auto try_partitioned_conv,
             PartitionDotGroupOnBatch(
-                lhs, rhs, output_base_shape, output_sharding, new_dims_mapping,
+                lhs, rhs, output_base_shape, output_sharding, *new_dims_mapping,
                 num_partitions, conv_lhs_contracting_partitions,
                 conv_rhs_contracting_partitions,
                 conv_lhs_non_contracting_partitions,
@@ -3929,51 +3964,65 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       body->AddInstruction(HloInstruction::CreateGetTupleElement(
           new_input_subtuple->shape(), body_param, 2));
 
-  // Now create the moved nodes inside the loop body.
-  absl::flat_hash_map<const HloInstruction*, HloInstruction*> outside_to_inside;
-  absl::flat_hash_map<const HloInstruction*, HloInstruction*>
-      outside_to_inside_unroll;
+  // Represents a cluster that's associated to a single dynamic-update-slice op,
+  // which should be moved to inside of the windowed dot-general loop. There
+  // might be multiple clusters associated with multiple dynamic-update-slice
+  // ops which all need moving.
+  struct MotionCluster {
+    HloInstruction* dus;
+    absl::flat_hash_map<const HloInstruction*, HloInstruction*>
+        outside_to_inside;
+    std::vector<HloInstruction*> slice_offsets;
+  };
+
+  std::vector<MotionCluster> motion_clusters;
+
+  // The elementwise nodes will be created with sliced shape. The original
+  // loop output corresponds to the dynamic-update-slice's update slice.
+  {
+    HloInstruction* dus = body_root->mutable_operand(2);
+    while (dus->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      motion_clusters.emplace_back();
+      motion_clusters.back().dus = dus;
+      motion_clusters.back().outside_to_inside[original_output] =
+          dus->mutable_operand(1);
+      motion_clusters.back().slice_offsets.reserve(padded_shape.rank());
+      for (int64_t i = 0; i < padded_shape.rank(); ++i) {
+        motion_clusters.back().slice_offsets.push_back(
+            motion_clusters.back().dus->mutable_operand(i + 2));
+      }
+      dus = dus->mutable_operand(0);
+    }
+  }
+  // This is at least one cluster that needs moving.
+  CHECK_GE(motion_clusters.size(), 1);
+  MotionCluster& base_motion_cluster = motion_clusters[0];
+
   worklist.clear();
   auto add_users_if_available = [&](HloInstruction* inst) {
     for (auto* u : inst->users()) {
-      if (outside_to_inside.count(u) == 0 && to_move.count(u) > 0 &&
+      if (base_motion_cluster.outside_to_inside.count(u) == 0 &&
+          to_move.count(u) > 0 &&
           absl::c_all_of(u->operands(), [&](const HloInstruction* o) {
-            return outside_to_inside.count(o) > 0;
+            return base_motion_cluster.outside_to_inside.count(o) > 0;
           })) {
         worklist.push_back(u);
       }
     }
   };
+
   for (int64_t i = 0; i < new_operands.size(); ++i) {
-    outside_to_inside[new_operands[i]] =
+    auto* operand_gte =
         body->AddInstruction(HloInstruction::CreateGetTupleElement(
             new_operands[i]->shape(), new_loop_input, i));
-    outside_to_inside_unroll[new_operands[i]] =
-        outside_to_inside[new_operands[i]];
+    for (MotionCluster& motion_cluster : motion_clusters) {
+      motion_cluster.outside_to_inside[new_operands[i]] = operand_gte;
+    }
     add_users_if_available(new_operands[i]);
   }
-  // The elementwise nodes will be created with sliced shape. The original
-  // loop output corresponds to the dynamic-update-slice's update slice.
-  auto* dus = body_root->mutable_operand(2);
-  CHECK_EQ(dus->opcode(), HloOpcode::kDynamicUpdateSlice);
-  outside_to_inside[original_output] = dus->mutable_operand(1);
   add_users_if_available(original_output);
-  HloInstruction* dus_unroll = nullptr;
-  if (options.unroll_windowed_einsum) {
-    dus_unroll = dus->mutable_operand(0);
-    CHECK_EQ(dus_unroll->opcode(), HloOpcode::kDynamicUpdateSlice);
-    outside_to_inside_unroll[original_output] = dus_unroll->mutable_operand(1);
-  }
-  std::vector<HloInstruction*> slice_offsets(padded_shape.rank());
-  for (int64_t i = 0; i < slice_offsets.size(); ++i) {
-    slice_offsets[i] = dus->mutable_operand(i + 2);
-  }
-  std::vector<HloInstruction*> slice_offsets_unroll(padded_shape.rank());
-  if (options.unroll_windowed_einsum) {
-    for (int64_t i = 0; i < slice_offsets_unroll.size(); ++i) {
-      slice_offsets_unroll[i] = dus_unroll->mutable_operand(i + 2);
-    }
-  }
+
+  // Now create the moved nodes inside the loop body.
   auto get_slice = [&](HloInstruction* padded,
                        absl::Span<HloInstruction* const> slice_offsets,
                        HloInstruction* dus) {
@@ -3983,97 +4032,81 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
         padded, slice_offsets, dus->operand(1)->shape().dimensions()));
   };
   // Helper functions to create nodes with small operands.
-  auto add_broadcast =
-      [&](const HloInstruction* broadcast,
-          absl::Span<HloInstruction* const> slice_offsets, HloInstruction* dus,
-          absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-              outside_to_inside) {
-        Shape padded_operand_shape = broadcast->operand(0)->shape();
-        for (int64_t i = 0; i < broadcast->dimensions().size(); ++i) {
-          padded_operand_shape.set_dimensions(
-              i, padded_shape.dimensions(broadcast->dimensions(i)));
-        }
-        auto* padded_operand =
-            PadToShape(outside_to_inside[broadcast->operand(0)],
-                       padded_operand_shape, nullptr, body);
-        outside_to_inside[broadcast] = get_slice(
-            body->AddInstruction(broadcast->CloneWithNewOperands(
-                ShapeUtil::ChangeElementType(
-                    padded_shape, padded_operand_shape.element_type()),
-                {padded_operand})),
-            slice_offsets, dus);
-      };
-  auto add_iota =
-      [&](const HloInstruction* iota,
-          absl::Span<HloInstruction* const> slice_offsets, HloInstruction* dus,
-          absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-              outside_to_inside) {
-        outside_to_inside[iota] =
-            get_slice(body->AddInstruction(iota->CloneWithNewOperands(
-                          ShapeUtil::ChangeElementType(
-                              padded_shape, iota->shape().element_type()),
-                          {})),
-                      slice_offsets, dus);
-      };
-  auto add_constant =
-      [&](const HloInstruction* constant,
-          absl::Span<HloInstruction* const> slice_offsets, HloInstruction* dus,
-          absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-              outside_to_inside) {
-        outside_to_inside[constant] = body->AddInstruction(constant->Clone());
-        outside_to_inside[constant] = get_slice(
-            PadToShape(outside_to_inside[constant],
-                       ShapeUtil::ChangeElementType(
-                           padded_shape, constant->shape().element_type()),
-                       nullptr, body),
-            slice_offsets, dus);
-      };
-  auto add_other_inst =
-      [&](const HloInstruction* inst, HloInstruction* dus,
-          absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
-              outside_to_inside) {
-        std::vector<HloInstruction*> operands_inside(inst->operand_count());
-        for (int64_t i = 0; i < operands_inside.size(); ++i) {
-          operands_inside[i] = outside_to_inside[inst->operand(i)];
-        }
-        outside_to_inside[inst] =
-            body->AddInstruction(inst->CloneWithNewOperands(
-                ShapeUtil::ChangeElementType(dus->operand(1)->shape(),
-                                             inst->shape().element_type()),
-                operands_inside));
-      };
+  auto add_broadcast = [&](const HloInstruction* broadcast) {
+    Shape padded_operand_shape = broadcast->operand(0)->shape();
+    for (int64_t i = 0; i < broadcast->dimensions().size(); ++i) {
+      padded_operand_shape.set_dimensions(
+          i, padded_shape.dimensions(broadcast->dimensions(i)));
+    }
+    auto* padded_operand =
+        PadToShape(base_motion_cluster.outside_to_inside[broadcast->operand(0)],
+                   padded_operand_shape, nullptr, body);
+    auto* inside_broadcast =
+        body->AddInstruction(broadcast->CloneWithNewOperands(
+            ShapeUtil::ChangeElementType(padded_shape,
+                                         padded_operand_shape.element_type()),
+            {padded_operand}));
+    for (MotionCluster& motion_cluster : motion_clusters) {
+      motion_cluster.outside_to_inside[broadcast] = get_slice(
+          inside_broadcast, motion_cluster.slice_offsets, motion_cluster.dus);
+    }
+  };
+  auto add_iota = [&](const HloInstruction* iota) {
+    auto* inside_iota = body->AddInstruction(iota->CloneWithNewOperands(
+        ShapeUtil::ChangeElementType(padded_shape,
+                                     iota->shape().element_type()),
+        {}));
+    for (MotionCluster& motion_cluster : motion_clusters) {
+      motion_cluster.outside_to_inside[iota] = get_slice(
+          inside_iota, motion_cluster.slice_offsets, motion_cluster.dus);
+    }
+  };
+  auto add_constant = [&](const HloInstruction* constant) {
+    auto* constant_clone = body->AddInstruction(constant->Clone());
+    auto* inside_constant =
+        PadToShape(constant_clone,
+                   ShapeUtil::ChangeElementType(
+                       padded_shape, constant->shape().element_type()),
+                   nullptr, body);
+    for (MotionCluster& motion_cluster : motion_clusters) {
+      motion_cluster.outside_to_inside[constant] = get_slice(
+          inside_constant, motion_cluster.slice_offsets, motion_cluster.dus);
+    }
+  };
+  auto add_other_inst = [&](const HloInstruction* inst) {
+    std::vector<HloInstruction*> operands_inside(inst->operand_count());
+    for (MotionCluster& motion_cluster : motion_clusters) {
+      for (int64_t i = 0; i < operands_inside.size(); ++i) {
+        operands_inside[i] = motion_cluster.outside_to_inside[inst->operand(i)];
+      }
+      motion_cluster.outside_to_inside[inst] =
+          body->AddInstruction(inst->CloneWithNewOperands(
+              ShapeUtil::ChangeElementType(
+                  motion_cluster.dus->operand(1)->shape(),
+                  inst->shape().element_type()),
+              operands_inside));
+    }
+  };
 
   while (!worklist.empty()) {
     auto* inst = worklist.back();
     worklist.pop_back();
-    if (outside_to_inside.count(inst) > 0) {
+    if (absl::c_all_of(
+            motion_clusters, [inst](const MotionCluster& motion_cluster) {
+              return motion_cluster.outside_to_inside.count(inst) > 0;
+            })) {
       continue;
     }
     if (inst->opcode() == HloOpcode::kBroadcast) {
-      add_broadcast(inst, slice_offsets, dus, outside_to_inside);
-      if (options.unroll_windowed_einsum) {
-        add_broadcast(inst, slice_offsets_unroll, dus_unroll,
-                      outside_to_inside_unroll);
-      }
+      add_broadcast(inst);
     } else if (inst->opcode() == HloOpcode::kIota) {
-      add_iota(inst, slice_offsets, dus, outside_to_inside);
-      if (options.unroll_windowed_einsum) {
-        add_iota(inst, slice_offsets_unroll, dus_unroll,
-                 outside_to_inside_unroll);
-      }
+      add_iota(inst);
     } else if (inst->opcode() == HloOpcode::kConstant) {
-      add_constant(inst, slice_offsets, dus, outside_to_inside);
-      if (options.unroll_windowed_einsum) {
-        add_constant(inst, slice_offsets_unroll, dus_unroll,
-                     outside_to_inside_unroll);
-      }
+      add_constant(inst);
     } else if (inst->opcode() == HloOpcode::kReduce) {
       // This is an output, for which we has special handling later.
     } else if (inst->IsElementwise()) {
-      add_other_inst(inst, dus, outside_to_inside);
-      if (options.unroll_windowed_einsum) {
-        add_other_inst(inst, dus_unroll, outside_to_inside_unroll);
-      }
+      add_other_inst(inst);
     } else {
       // Skip cloning other non-elementwise ops.
     }
@@ -4081,7 +4114,8 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
   }
   std::vector<HloInstruction*> new_outputs_inside(new_operands.size());
   for (int64_t i = 0; i < new_outputs_inside.size(); ++i) {
-    new_outputs_inside[i] = outside_to_inside[new_operands[i]];
+    new_outputs_inside[i] =
+        base_motion_cluster.outside_to_inside[new_operands[i]];
   }
 
   // Now create the reduce outputs inside of the loop.
@@ -4089,14 +4123,14 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
     auto* reduce_outside = reduce_outputs[i];
     CHECK_EQ(reduce_outside->opcode(), HloOpcode::kReduce);
     int64_t index_in_operand = new_operands.size() - reduce_outputs.size() + i;
-    auto* last_iter_result = outside_to_inside[new_operands[index_in_operand]];
+    auto* last_iter_result =
+        base_motion_cluster.outside_to_inside[new_operands[index_in_operand]];
 
     auto create_inside_reduce =
         [&](absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
                 outside_to_inside,
-            HloInstruction* last_iter_result,
-            absl::Span<HloInstruction* const> slice_offsets)
-        -> StatusOr<HloInstruction*> {
+            absl::Span<HloInstruction* const> slice_offsets,
+            HloInstruction* last_iter_result) -> StatusOr<HloInstruction*> {
       HloInstruction* operand0 = outside_to_inside[reduce_outside->operand(0)];
       HloInstruction* operand1 = outside_to_inside[reduce_outside->operand(1)];
       TF_ASSIGN_OR_RETURN(
@@ -4136,7 +4170,7 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
         auto* limit = body->AddInstruction(HloInstruction::CreateBroadcast(
             iota->shape(),
             body->AddInstruction(
-                HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+                HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
                     reduce_outside->operand(0)->shape().dimensions(dim)))),
             {}));
         auto* compare = body->AddInstruction(HloInstruction::CreateCompare(
@@ -4171,16 +4205,13 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       }
       return output_inside;
     };
-    TF_ASSIGN_OR_RETURN(HloInstruction * output_inside,
-                        create_inside_reduce(outside_to_inside,
-                                             last_iter_result, slice_offsets));
-    if (options.unroll_windowed_einsum) {
+    for (MotionCluster& motion_cluster : motion_clusters) {
       TF_ASSIGN_OR_RETURN(
-          output_inside,
-          create_inside_reduce(outside_to_inside_unroll, output_inside,
-                               slice_offsets_unroll));
+          last_iter_result,
+          create_inside_reduce(motion_cluster.outside_to_inside,
+                               motion_cluster.slice_offsets, last_iter_result));
     }
-    new_outputs_inside[index_in_operand] = output_inside;
+    new_outputs_inside[index_in_operand] = last_iter_result;
   }
 
   // Body output.
@@ -4188,7 +4219,8 @@ Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       body->AddInstruction(HloInstruction::CreateTuple(new_outputs_inside));
   TF_RETURN_IF_ERROR(
       body_root->ReplaceOperandWithDifferentShape(2, new_output_inside));
-  TF_RETURN_IF_ERROR(body->RemoveInstructionAndUnusedOperands(dus));
+  TF_RETURN_IF_ERROR(
+      body->RemoveInstructionAndUnusedOperands(base_motion_cluster.dus));
   // Replace uses of the reduces outside the loop.
   auto* new_output_gte =
       computation->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -4230,8 +4262,7 @@ Status SpmdPartitioningVisitor::DoCodeMotionForWindowedDotGeneralLoops(
               loop.while_loop, 1 - loop.windowed_operand));
     }
     // Currently unrolled loop does not support this optimization.
-    if (!options.bidirectional_windowed_einsum &&
-        !loop.windowed_in_contracting_dims &&
+    if (!loop.windowed_in_contracting_dims &&
         !loop.operands_sharded_at_contracting_dims) {
       // We have a dynamic-update-slice for the output in
       // batch/non-contracting-dim windowed dot-general. So moving reduce ops

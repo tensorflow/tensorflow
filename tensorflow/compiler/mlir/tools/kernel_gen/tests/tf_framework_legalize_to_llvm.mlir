@@ -7,10 +7,10 @@
 // CHECK-SAME:    [[TF_CTX:%.*]]: !llvm.ptr<i8>,
 // CHECK-SAME:    [[SIZE_0:%.*]]: i64,
 // CHECK-SAME:    [[SIZE_2:%.*]]: i64) -> [[DESC_TY:!.*]] {
-func @alloc(%ctx: !tf_framework.op_kernel_context,
+func.func @alloc(%ctx: !tf_framework.op_kernel_context,
                 %size_0 : index , %size_2 : index) -> memref<?x10x?xf32> {
   %buf = tf_framework.alloc(%ctx, %size_0, %size_2) : memref<?x10x?xf32>
-  std.return %buf : memref<?x10x?xf32>
+  func.return %buf : memref<?x10x?xf32>
 }
 // Compute number of elements.
 // CHECK: [[SIZE_1:%.*]] = llvm.mlir.constant(10 : index) : i64
@@ -64,7 +64,7 @@ func @alloc(%ctx: !tf_framework.op_kernel_context,
 
 // CHECK-LABEL: llvm.func @dealloc(
 // CHECK-SAME:    [[TF_CTX:%.*]]: !llvm.ptr<i8>,
-func @dealloc(%ctx: !tf_framework.op_kernel_context,
+func.func @dealloc(%ctx: !tf_framework.op_kernel_context,
                   %memref : memref<?x10xf32>) {
   tf_framework.dealloc(%ctx, %memref) : memref<?x10xf32>
   return
@@ -84,7 +84,7 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK-LABEL: llvm.func @_mlir_ciface_tf_report_error(!llvm.ptr<i8>, i32, !llvm.ptr<i8>)
 // CHECK: llvm.mlir.global internal constant [[MSG_CONST:@error_message_[0-9]+]]("Everything is awesome\00")
 
-func @report_error(%ctx: !tf_framework.op_kernel_context) {
+func.func @report_error(%ctx: !tf_framework.op_kernel_context) {
   tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome" loc(unknown)
   return
 }
@@ -97,7 +97,7 @@ func @report_error(%ctx: !tf_framework.op_kernel_context) {
 // ----
 
 // CHECK-LABEL: llvm.func @unranked_null_memref()
-func @unranked_null_memref() {
+func.func @unranked_null_memref() {
   %null = tf_framework.null_memref : memref<*xf32>
   return
 }
@@ -110,7 +110,7 @@ func @unranked_null_memref() {
 // ----
 
 // CHECK-LABEL: llvm.func @ranked_null_memref()
-func @ranked_null_memref() {
+func.func @ranked_null_memref() {
   %null = tf_framework.null_memref : memref<2x?xf32>
   return
 }
@@ -134,9 +134,9 @@ func @ranked_null_memref() {
 // ----
 
 // CHECK-LABEL: llvm.func @is_valid_memref
-func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
+func.func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
   %pred = tf_framework.is_valid_memref(%buf) : memref<?xf32> -> i1
-  return %pred : i1
+  func.return %pred : i1
 }
 // CHECK: %[[MEMREF:.*]] = llvm.insertvalue %{{.*}}, %{{.*}}[4, 0]
 
@@ -156,11 +156,11 @@ func @is_valid_memref(%buf: memref<?xf32>) -> i1 {
 
 // -----
 
-// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr<i8>, !llvm.ptr<i8>, i64, !llvm.ptr<i64>, i64, !llvm.ptr<i64>, i64, i1, i1) -> !llvm.ptr<i8>
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_jit_compile(!llvm.ptr<i8>, !llvm.ptr<i8>, i64, !llvm.ptr<i64>, i64, !llvm.ptr<i64>, i64, i1, i1, i1) -> !llvm.ptr<i8>
 // CHECK: llvm.mlir.global internal constant @[[CODE:jit_module_code_[0-9]+]]("placeholder\00")
 
 // CHECK: @jit_compile_from_str(%[[CTX:.*]]: !llvm.ptr<i8>)
-func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
+func.func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
     -> !tf_framework.jit_callable {
   // CHECK: %[[ADDR:.*]] = llvm.mlir.addressof @[[CODE]]
   // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : index)
@@ -190,9 +190,9 @@ func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   // CHECK: %[[C4:.*]] = llvm.mlir.constant(4 : i64)
   // CHECK: llvm.store %[[C4]], %[[PTR]]
 
-  // CHECK: %[[MAX_RANK:.*]] = llvm.mlir.constant(3 : i64)
-  // CHECK: %[[ENABLE_FTZ:.*]] = llvm.mlir.constant(false)
-  // CHECK: %[[CPU_CODEGEN:.*]] = llvm.mlir.constant(false)
+  // CHECK-DAG: %[[MAX_RANK:.*]] = llvm.mlir.constant(3 : i64)
+  // CHECK-DAG: %[[ENABLE_FTZ:.*]] = llvm.mlir.constant(false)
+  // CHECK-DAG: %[[CPU_CODEGEN:.*]] = llvm.mlir.constant(false)
   // CHECK: %[[RES:.*]] = llvm.call @_mlir_ciface_tf_jit_compile
   // CHECK-SAME: %[[CTX]], %[[CODE_PTR]],
   // CHECK-SAME: %[[NUM_TILE_SIZES]], %[[TILE_SIZES]],
@@ -201,8 +201,8 @@ func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
   // CHECK: llvm.return %[[RES]]
   %0 = tf_framework.jit_compile_from_str %ctx, "placeholder" {
       tileSizes = [1, 2, 3], unrollFactors = [4], maxSupportedRank = 3 : i64,
-      enableFtz = false, cpuCodegen = false }
-  return %0 : !tf_framework.jit_callable
+      enableFtz = false, index64Bit = false, cpuCodegen = false }
+  func.return %0 : !tf_framework.jit_callable
 }
 
 // -----
@@ -211,7 +211,7 @@ func @jit_compile_from_str(%ctx: !tf_framework.op_kernel_context)
 
 // CHECK:      @jit_execute
 // CHECK-SAME: (%[[CTX:.*]]: !llvm.ptr<i8>, %[[CALLABLE:.*]]: !llvm.ptr<i8>, %[[RANK:.*]]: i64, %[[ARG_DESCR:.*]]: !llvm.ptr<i8>)
-func @jit_execute(%ctx: !tf_framework.op_kernel_context,
+func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
     %callable : !tf_framework.jit_callable, %arg : memref<*xf32>)
     -> memref<*xf32> {
   // CHECK: %[[T0:.*]] = llvm.mlir.undef
@@ -258,5 +258,5 @@ func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // CHECK: llvm.return %[[RESULT]]
   %0 = tf_framework.jit_execute ctx(%ctx) %callable(%arg)
       : memref<*xf32> -> memref<*xf32>
-  return %0 : memref<*xf32>
+  func.return %0 : memref<*xf32>
 }

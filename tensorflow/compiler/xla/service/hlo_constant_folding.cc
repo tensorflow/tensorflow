@@ -68,21 +68,47 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
   // retains the behavior from before while loop support in HloEvaluator and may
   // be revised.
   auto evaluator = absl::make_unique<HloEvaluator>(/*max_loop_iterations=*/0);
+  // fast-path lets us e.g. use Eigen for matmuls.
+  evaluator->set_use_fast_path(true);
 
-  XLA_VLOG_LINES(2,
-                 "HloConstantFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
 
   for (auto* computation : module->MakeNonfusionComputations()) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
-      if (instruction->user_count() == 0 &&
-          computation->root_instruction() != instruction) {
+      if (instruction->IsDead()) {
         continue;
       }
 
-      // Skip instructions with non-constant operands.
-      if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+      // We only handle instructions where
+      //
+      //  - at least one operand is a constant, and
+      //  - all other operands are either constants or broadcast(constant).
+      //
+      // Why this particular set of rules around broadcasts?
+      //
+      //  - We don't want to fold broadcast(constant) on its own, because in
+      //    general it's "simpler" to remember that it's a broadcast.  Also,
+      //    algsimp will fold an all-one-value constant into a broadcast, so
+      //    we'd just end up fighting with it.
+      //
+      //  - We don't want to fold an op where all operands are broadcasts of
+      //    constants, because algsimp will transform op(broadcast(constant) =>
+      //    broadcast(op(constant)).  Then we can constant-fold the smaller op.
+      //
+      //  - So the only remaining case is where some but not all operands are
+      //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
+      //
+      if (!absl::c_any_of(instruction->operands(),
+                          [](const HloInstruction* operand) {
+                            return operand->opcode() == HloOpcode::kConstant;
+                          }) ||
+          !absl::c_all_of(
+              instruction->operands(), [](const HloInstruction* operand) {
+                return operand->opcode() == HloOpcode::kConstant ||
+                       (operand->opcode() == HloOpcode::kBroadcast &&
+                        operand->operand(0)->opcode() == HloOpcode::kConstant);
+              })) {
         continue;
       }
 
@@ -137,10 +163,14 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         }
       }
 
+      VLOG(5) << "Constant folding: " << instruction->ToString();
+
       Literal result;
       // Currently we skip unimplemented operations.
       // TODO(b/35975797): Fold constant computations for more operations.
-      if (!evaluator->TryEvaluate(instruction, &result)) {
+      if (!evaluator->TryEvaluate(
+              instruction, &result,
+              /*recursively_evaluate_nonconstant_operands=*/true)) {
         VLOG(2) << "Constant folding failed for instruction: "
                 << instruction->ToString();
         continue;
@@ -152,7 +182,6 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       changed = true;
     }
   }
-  XLA_VLOG_LINES(2, "HloConstantFolding::Run(), after:\n" + module->ToString());
   return changed;
 }
 

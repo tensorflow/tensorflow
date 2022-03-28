@@ -25,7 +25,7 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -60,7 +60,7 @@ llvm::Optional<std::string> GetDeviceName(mlir::Operation* op) {
 
   // The model may contain quant stats op which is unrelevant to the
   // execution.
-  if (llvm::isa<mlir::ReturnOp, mlir::quant::StatisticsOp>(op))
+  if (llvm::isa<mlir::func::ReturnOp, mlir::quant::StatisticsOp>(op))
     return llvm::None;
 
   if (!HasValidHardwareTarget(op)) return llvm::None;
@@ -103,7 +103,8 @@ flatbuffers::Offset<SubgraphMetadata> CreateSubgraphMetadata(
 
     // The model may contain quant stats op which is unrelevant to the
     // execution.
-    if (llvm::isa<mlir::ReturnOp, mlir::quant::StatisticsOp>(&inst)) continue;
+    if (llvm::isa<mlir::func::ReturnOp, mlir::quant::StatisticsOp>(&inst))
+      continue;
 
     // If an op doesn't implement any of the hardware interface we skip it.
     // This can happen in cases like Flex when we have non TFLite ops.

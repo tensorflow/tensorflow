@@ -15,11 +15,9 @@
 """Tests for tf.data service metadata."""
 
 import functools
-from unittest import mock
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute
@@ -28,7 +26,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
@@ -200,15 +197,14 @@ class DataServiceMetadataTest(data_service_test_base.TestBase,
       return script_ops.numpy_function(
           func=lambda x: x.decode("utf-8").upper(), inp=[x], Tout=dtypes.string)
     dataset = dataset.map(to_upper, num_parallel_calls=dataset_ops.AUTOTUNE)
-    with mock.patch.object(compat, "forward_compatible", return_value=True):
-      dataset_id = data_service_ops.register_dataset(
-          cluster.dispatcher.target, dataset=dataset, compression=compression)
-      dataset = data_service_ops.from_dataset_id(
-          processing_mode=data_service_ops.ShardingPolicy.OFF,
-          service=cluster.dispatcher.target,
-          dataset_id=dataset_id,
-          element_spec=dataset.element_spec)
-      self.assertDatasetProduces(dataset, list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+    dataset_id = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset=dataset, compression=compression)
+    dataset = data_service_ops.from_dataset_id(
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        dataset_id=dataset_id,
+        element_spec=dataset.element_spec)
+    self.assertDatasetProduces(dataset, list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
 
   # Eager-only as querying `element_spec` is only supported in the eager mode.
   @combinations.generate(
@@ -219,50 +215,13 @@ class DataServiceMetadataTest(data_service_test_base.TestBase,
         num_workers=1, data_transfer_protocol="grpc")
     dataset = dataset_ops.Dataset.from_tensor_slices(
         list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-    with mock.patch.object(compat, "forward_compatible", return_value=True):
-      dataset_id = data_service_ops.register_dataset(
-          cluster.dispatcher.target, dataset=dataset, compression=compression)
-      dataset = data_service_ops.from_dataset_id(
-          processing_mode=data_service_ops.ShardingPolicy.OFF,
-          service=cluster.dispatcher.target,
-          dataset_id=dataset_id)
-      self.assertDatasetProduces(dataset, list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-
-  def _testCompressionMismatch(self, dataset):
-    cluster = data_service_test_base.TestCluster(
-        num_workers=1, data_transfer_protocol="grpc")
-    with mock.patch.object(compat, "forward_compatible", return_value=False):
-      dataset_id = data_service_ops._register_dataset(
-          cluster.dispatcher.target, dataset=dataset, compression=None)
-      # `compression` is "AUTO" by default.
-      dataset = data_service_ops._from_dataset_id(
-          processing_mode=data_service_ops.ShardingPolicy.OFF,
-          service=cluster.dispatcher.target,
-          dataset_id=dataset_id,
-          element_spec=dataset.element_spec)
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.getDatasetOutput(dataset)
-
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations()))
-  def testCompressionDtypeMismatch(self):
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-    self._testCompressionMismatch(dataset)
-
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations()))
-  def testCompressionShapeMismatch(self):
-    dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2], [3, 4]])
-    self._testCompressionMismatch(dataset)
-
-  # Only test eager mode since nested datasets are not allowed in graph mode.
-  @combinations.generate(
-      combinations.times(test_base.eager_only_combinations()))
-  def testCompressionVariantMismatch(self):
-    # Use a nested dataset as an example of a variant.
-    dataset = dataset_ops.Dataset.from_tensors(dataset_ops.Dataset.range(10))
-    self._testCompressionMismatch(dataset)
+    dataset_id = data_service_ops.register_dataset(
+        cluster.dispatcher.target, dataset=dataset, compression=compression)
+    dataset = data_service_ops.from_dataset_id(
+        processing_mode=data_service_ops.ShardingPolicy.OFF,
+        service=cluster.dispatcher.target,
+        dataset_id=dataset_id)
+    self.assertDatasetProduces(dataset, list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
 
 
 if __name__ == "__main__":

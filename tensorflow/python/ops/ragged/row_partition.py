@@ -15,8 +15,10 @@
 """A class used to partition a sequence into contiguous subsequences ("rows").
 """
 
+
 # TODO(martinz): Remove preferred_dtype
 # TODO(edloper):  Make into a ExtensionType (if possible)
+
 
 import numpy as np
 
@@ -34,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.util.tf_export import tf_export
 
 #===============================================================================
 # RowPartition
@@ -47,6 +50,7 @@ from tensorflow.python.ops.ragged import segment_id_ops
 # the from_row_starts and from_row_limits factory methods in RaggedTensor.
 
 
+@tf_export("experimental.RowPartition")
 class RowPartition(composite_tensor.CompositeTensor):
   """Partitioning of a sequence of values into contiguous subsequences ("rows").
 
@@ -149,9 +153,9 @@ class RowPartition(composite_tensor.CompositeTensor):
       ValueError: If nrows is specified but value_rowids is not None.
     """
     if internal is not _row_partition_factory_key:
-      raise ValueError("RaggedTensor constructor is private; please use one "
+      raise ValueError("RowPartition constructor is private; please use one "
                        "of the factory methods instead (e.g., "
-                       "RaggedTensor.from_row_lengths())")
+                       "RowPartition.from_row_lengths())")
 
     # Validate the arguments.
     if not isinstance(row_splits, ops.Tensor):
@@ -166,23 +170,18 @@ class RowPartition(composite_tensor.CompositeTensor):
     self._row_splits = row_splits
 
     # Store any cached tensors.  These are used to avoid unnecessary
-    # round-trip conversions when a RaggedTensor is constructed from
+    # round-trip conversions when a RowPartition is constructed from
     # lengths or rowids, and we later want those lengths/rowids back.
-    for tensor in [row_lengths, value_rowids, nrows]:
+    for tensor in [row_lengths, value_rowids, nrows, uniform_row_length, nvals]:
       if tensor is not None:
         if not isinstance(tensor, ops.Tensor):
           raise TypeError("Cached value must be a Tensor or None.")
-        elif tensor.dtype not in (dtypes.int32, dtypes.int64):
-          raise TypeError("Cached value must be int32 or int64.")
+        elif tensor.dtype != row_splits.dtype:
+          raise ValueError(f"Inconsistent dtype for encoding tensors: "
+                           f"{tensor} vs {row_splits}")
     self._row_lengths = row_lengths
     self._value_rowids = value_rowids
     self._nrows = nrows
-
-    if uniform_row_length is not None:
-      if not isinstance(uniform_row_length, ops.Tensor):
-        raise TypeError("uniform_row_length must be a Tensor or None.")
-      elif uniform_row_length.dtype not in (dtypes.int32, dtypes.int64):
-        raise TypeError("uniform_row_length must be int32 or int64.")
     self._uniform_row_length = uniform_row_length
     self._nvals = nvals
 
@@ -724,7 +723,7 @@ class RowPartition(composite_tensor.CompositeTensor):
 
     return partition
 
-  def with_dependencies(self, dependencies):
+  def _with_dependencies(self, dependencies):
     """Returns a new RowPartition equal to self with control dependencies.
 
     Specifically, self._row_splits is gated by the given control dependencies.
@@ -880,15 +879,15 @@ class RowPartition(composite_tensor.CompositeTensor):
       or `None` (otherwise).
     """
     if self._row_splits is not None:
-      nrows = tensor_shape.dimension_at_index(self._row_splits.shape, 0) - 1
-      if nrows.value is not None:
-        return nrows
+      nrows_plus_one = tensor_shape.dimension_value(self._row_splits.shape[0])
+      if nrows_plus_one is not None:
+        return nrows_plus_one - 1
     if self._row_lengths is not None:
-      nrows = tensor_shape.dimension_at_index(self._row_lengths.shape, 0)
-      if nrows.value is not None:
+      nrows = tensor_shape.dimension_value(self._row_lengths.shape[0])
+      if nrows is not None:
         return nrows
     if self._nrows is not None:
-      return tensor_shape.Dimension(tensor_util.constant_value(self._nrows))
+      return tensor_util.constant_value(self._nrows)
     return None
 
   @property
@@ -956,7 +955,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._uniform_row_length is not None
 
-  def static_check(self):
+  def _static_check(self):
     """Checks if the object is internally consistent.
 
     Raises:
@@ -985,17 +984,15 @@ class RowPartition(composite_tensor.CompositeTensor):
   # Transformation
   #=============================================================================
 
-  def with_row_splits_dtype(self, dtype):
-    """Returns a copy of this RowPartition with the given `row_splits` dtype.
-
-    For RaggedTensors with multiple ragged dimensions, the `row_splits` for all
-    nested `RaggedTensor` objects are cast to the given dtype.
+  def with_dtype(self, dtype):
+    """Returns a copy of this RowPartition with the given encoding dtype.
 
     Args:
-      dtype: The dtype for `row_splits`.  One of `tf.int32` or `tf.int64`.
+      dtype: The dtype for encoding tensors, such as `row_splits` and `nrows`.
+      One of `tf.int32` or `tf.int64`.
 
     Returns:
-      A copy of this RaggedTensor, with the `row_splits` cast to the given
+      A copy of this RowPartition, with the encoding tensors cast to the given
       type.
     """
     dtype = dtypes.as_dtype(dtype)
@@ -1027,7 +1024,7 @@ class RowPartition(composite_tensor.CompositeTensor):
   # Precomputed Encodings
   #=============================================================================
 
-  def has_precomputed_row_splits(self):
+  def _has_precomputed_row_splits(self):
     """Returns true if `row_splits` has already been computed.
 
     If true, then `self.row_splits()` will return its value without calling
@@ -1035,7 +1032,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._row_splits is not None
 
-  def has_precomputed_row_lengths(self):
+  def _has_precomputed_row_lengths(self):
     """Returns true if `row_lengths` has already been computed.
 
     If true, then `self.row_lengths()` will return its value without calling
@@ -1043,7 +1040,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._row_lengths is not None
 
-  def has_precomputed_value_rowids(self):
+  def _has_precomputed_value_rowids(self):
     """Returns true if `value_rowids` has already been computed.
 
     If true, then `self.value_rowids()` will return its value without calling
@@ -1051,7 +1048,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._value_rowids is not None
 
-  def has_precomputed_nrows(self):
+  def _has_precomputed_nrows(self):
     """Returns true if `nrows` has already been computed.
 
     If true, then `self.nrows()` will return its value without calling
@@ -1059,7 +1056,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._nrows is not None
 
-  def has_precomputed_nvals(self):
+  def _has_precomputed_nvals(self):
     """Returns true if `nvals` has already been computed.
 
     If true, then `self.nvals()` will return its value without calling
@@ -1067,7 +1064,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._nvals is not None
 
-  def with_precomputed_row_splits(self):
+  def _with_precomputed_row_splits(self):
     """Returns a copy of `self` with `row_splits` precomputed."""
     return RowPartition(
         row_splits=self.row_splits(),
@@ -1078,7 +1075,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         nvals=self._nvals,
         internal=_row_partition_factory_key)
 
-  def with_precomputed_row_lengths(self):
+  def _with_precomputed_row_lengths(self):
     """Returns a copy of `self` with `row_lengths` precomputed."""
     return RowPartition(
         row_splits=self._row_splits,
@@ -1089,7 +1086,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
-  def with_precomputed_value_rowids(self):
+  def _with_precomputed_value_rowids(self):
     """Returns a copy of `self` with `value_rowids` precomputed."""
     return RowPartition(
         row_splits=self._row_splits,
@@ -1100,7 +1097,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
-  def with_precomputed_nrows(self):
+  def _with_precomputed_nrows(self):
     """Returns a copy of `self` with `nrows` precomputed."""
     return RowPartition(
         row_splits=self._row_splits,
@@ -1111,7 +1108,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
-  def with_precomputed_nvals(self):
+  def _with_precomputed_nvals(self):
     """Returns a copy of `self` with `row_splits` precomputed."""
     return RowPartition(
         row_splits=self.row_splits(),
@@ -1122,7 +1119,7 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
-  def merge_precomputed_encodings(self, other, validate=True):
+  def _merge_precomputed_encodings(self, other, validate=True):
     """Returns a RowPartition that merges encodings from `self` and `other`.
 
     Requires that `self` and `other` describe the same partition.
@@ -1221,7 +1218,8 @@ class RowPartitionSpec(type_spec.TypeSpec):
                nrows=None,
                nvals=None,
                uniform_row_length=None,
-               dtype=dtypes.int64):
+               dtype=dtypes.int64,
+               is_uniform=False):
     """Constructs a new RowPartitionSpec.
 
     Args:
@@ -1232,19 +1230,23 @@ class RowPartitionSpec(type_spec.TypeSpec):
         RowPartition, or `None` if rows are ragged or row length is unspecified.
       dtype: The data type used to encode the partition.  One of `tf.int64` or
         `tf.int32`.
+      is_uniform: True if the partition is uniform.
     """
     # Wrap dimension sizes in 1D TensorShapes so the default implementations
-    # of TypeSpec methods such as `is_compatile_with` will work.
+    # of TypeSpec methods such as `is_compatible_with` will work.
     nrows = tensor_shape.TensorShape([nrows])
     nvals = tensor_shape.TensorShape([nvals])
     if not isinstance(uniform_row_length, tensor_shape.TensorShape):
       uniform_row_length = tensor_shape.TensorShape([uniform_row_length])
     else:
       uniform_row_length = uniform_row_length.with_rank(1)
+    if not isinstance(is_uniform, bool):
+      raise TypeError(f"is_uniform should be bool, got {is_uniform}")
 
     self._nrows = nrows
     self._nvals = nvals
     self._uniform_row_length = uniform_row_length
+    self._is_uniform = is_uniform
     self._dtype = dtypes.as_dtype(dtype)
     if self._dtype not in (dtypes.int32, dtypes.int64):
       raise ValueError("dtype must be tf.int32 or tf.int64")
@@ -1265,10 +1267,17 @@ class RowPartitionSpec(type_spec.TypeSpec):
       elif nvals != 0:
         raise ValueError("nvals=%s is not compatible with uniform_row_length"
                          "=%s" % (nvals, uniform_row_length))
+    if ncols is not None and not is_uniform:
+      raise ValueError("if uniform_row_length is specified, then RowPartition "
+                       "is uniform.")
     if ncols is not None and nvals is not None:
+      # is_uniform is True
+      if ncols == 0 and nvals != 0:
+        raise ValueError("nvals=%s is not compatible with uniform_row_length"
+                         "=%s (zero length)" % (nvals, ncols))
       if ncols != 0 and nvals % ncols != 0:
         raise ValueError("nvals=%s is not compatible with uniform_row_length"
-                         "=%s (doesn't divide evenly)" % (nvals, ncols))
+                         "=%s (not a multiple)" % (nvals, ncols))
       if nrows is not None and nvals != ncols * nrows:
         raise ValueError("nvals=%s is not compatible with nrows=%s and "
                          "uniform_row_length=%s" % (nvals, nrows, ncols))
@@ -1276,6 +1285,13 @@ class RowPartitionSpec(type_spec.TypeSpec):
         self._nrows = tensor_shape.TensorShape([nvals // ncols])
     if ncols is not None and nrows is not None and nvals is None:
       self._nvals = tensor_shape.TensorShape([ncols * nrows])
+    if (ncols is None and is_uniform and nvals is not None
+        and nrows is not None and nrows != 0):
+      if nvals % nrows != 0:
+        raise ValueError(
+            f"nvals={nvals} is not compatible with nrows={nrows} " +
+            f"and is_uniform={is_uniform}")
+      self._uniform_row_length = tensor_shape.TensorShape([nvals // nrows])
 
   def is_compatible_with(self, other):
     if not super(RowPartitionSpec, self).is_compatible_with(other):
@@ -1286,15 +1302,16 @@ class RowPartitionSpec(type_spec.TypeSpec):
     return self._dimensions_compatible(nrows, nvals, ncols)
 
   def _serialize(self):
-    return (self._nrows, self._nvals, self._uniform_row_length, self._dtype)
+    return (self._nrows, self._nvals, self._uniform_row_length, self._dtype,
+            self._is_uniform)
 
   @classmethod
   def _deserialize(cls, serialization):
     # Remove TensorShape wrappers from serialization.
-    (nrows, nvals, uniform_row_length, dtype) = serialization
+    (nrows, nvals, uniform_row_length, dtype, is_uniform) = serialization
     nrows = tensor_shape.dimension_value(nrows[0])
     nvals = tensor_shape.dimension_value(nvals[0])
-    return cls(nrows, nvals, uniform_row_length, dtype)
+    return cls(nrows, nvals, uniform_row_length, dtype, is_uniform)
 
   @property
   def nrows(self):
@@ -1309,19 +1326,35 @@ class RowPartitionSpec(type_spec.TypeSpec):
     return tensor_shape.dimension_value(self._uniform_row_length[0])
 
   @property
+  def is_uniform(self):
+    return self._is_uniform
+
+  @property
   def dtype(self):
     return self._dtype
 
   @property
   def _component_specs(self):
-    row_splits_shape = tensor_shape.TensorShape(
-        [tensor_shape.dimension_at_index(self._nrows, 0) + 1])
-    return tensor_spec.TensorSpec(row_splits_shape, self._dtype)
+    if self._is_uniform:
+      scalar_shape = tensor_shape.TensorShape([])
+      scalar_spec = tensor_spec.TensorSpec(scalar_shape, self._dtype)
+      return (scalar_spec, scalar_spec)
+
+    else:
+      row_splits_shape = tensor_shape.TensorShape(
+          [tensor_shape.dimension_at_index(self._nrows, 0) + 1])
+      return tensor_spec.TensorSpec(row_splits_shape, self._dtype)
 
   def _to_components(self, value):
+    if self._is_uniform:
+      return (value.uniform_row_length(), value.nrows())
     return value.row_splits()
 
   def _from_components(self, tensor):
+    if self._is_uniform:
+      (uniform_row_length, nrows) = tensor
+      return RowPartition.from_uniform_row_length(
+          uniform_row_length, nrows=nrows, validate=False)
     return RowPartition.from_row_splits(tensor, validate=False)
 
   @classmethod
@@ -1329,12 +1362,12 @@ class RowPartitionSpec(type_spec.TypeSpec):
     if not isinstance(value, RowPartition):
       raise TypeError("Expected `value` to be a `RowPartition`")
     return cls(value.static_nrows, value.static_nvals,
-               value.static_uniform_row_length, value.dtype)
+               value.static_uniform_row_length, value.dtype, value.is_uniform())
 
   def __repr__(self):
-    return ("RowPartitionSpec(nrows=%s, nvals=%s, uniform_row_length=%s, "
-            "dtype=%r)" % (self.nrows, self.nvals, self.uniform_row_length,
-                           self.dtype))
+    return (f"RowPartitionSpec(nrows={self.nrows}, nvals={self.nvals}, " +
+            f"uniform_row_length={self.uniform_row_length}, " +
+            f"is_uniform={self.is_uniform}, dtype={self.dtype})")
 
   @staticmethod
   def _dimensions_compatible(nrows, nvals, uniform_row_length):
@@ -1396,7 +1429,7 @@ def _merge_tensors(t1, t2, name, validate):
   elif t1 is t2:
     return t1, True
   else:
-    err_msg = ("RowPartition.merge_precomputed_encodings: partitions "
+    err_msg = ("RowPartition._merge_precomputed_encodings: partitions "
                "have incompatible %s" % name)
     if not t1.shape.is_compatible_with(t2.shape):
       raise ValueError(err_msg)

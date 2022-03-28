@@ -959,6 +959,7 @@ py_library(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:lookup_ops",
+        "//tensorflow/python/data/experimental/ops:random_access",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
@@ -1074,7 +1075,7 @@ tf_py_test(
 
 tf_py_test(
     name = "window_test",
-    size = "small",
+    size = "medium",
     srcs = ["window_test.py"],
     shard_count = 2,
     deps = [

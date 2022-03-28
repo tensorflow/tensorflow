@@ -206,7 +206,7 @@ jlongArray buildSubgraph(JNIEnv* env, jclass clazz, jobject subgraph_builder,
   jmethodID build_subgraph_method_id = env->GetStaticMethodID(
       clazz, "buildSubgraph",
       "(Lorg/tensorflow/Graph$WhileSubgraphBuilder;J[J[I[J[I)[J");
-  if (build_subgraph_method_id == 0) return nullptr;
+  if (build_subgraph_method_id == nullptr) return nullptr;
 
   jlong subgraph_handle = reinterpret_cast<jlong>(subgraph);
 
@@ -309,7 +309,7 @@ JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_whileLoop(
                                 body_output_elems, 0);
 
   // set loop name param
-  params.name = env->GetStringUTFChars(name, 0);
+  params.name = env->GetStringUTFChars(name, nullptr);
 
   // build the while loop, storing loop outputs in `outputs`
   std::unique_ptr<TF_Output[]> outputs(new TF_Output[ninputs]);

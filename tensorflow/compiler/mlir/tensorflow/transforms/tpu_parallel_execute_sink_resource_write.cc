@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -40,7 +41,7 @@ namespace {
 struct TPUParallelExecuteSinkResourceWrite
     : public TF::TPUParallelExecuteSinkResourceWritePassBase<
           TPUParallelExecuteSinkResourceWrite> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Finds an AssignVariableOp that can be moved into the parallel_execute region.
@@ -142,9 +143,9 @@ void SinkResourceWritesIntoParallelExecute(
   parallel_execute.erase();
 }
 
-void TPUParallelExecuteSinkResourceWrite::runOnFunction() {
+void TPUParallelExecuteSinkResourceWrite::runOnOperation() {
   llvm::SmallVector<tf_device::ParallelExecuteOp, 4> parallel_executes;
-  getFunction().walk([&](tf_device::ParallelExecuteOp parallel_execute) {
+  getOperation().walk([&](tf_device::ParallelExecuteOp parallel_execute) {
     parallel_executes.push_back(parallel_execute);
   });
 

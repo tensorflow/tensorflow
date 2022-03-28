@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+#include <fstream>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -50,6 +53,57 @@ bool GetEnvBool(const char* name, bool defval) {
 }
 
 }  // namespace
+
+// This function gets pid of a process and checks if that process is using tpu.
+// It is not able to check processes that are owned by another user.
+bool IsTpuUsed(int64_t pid) {
+  std::string path = absl::StrCat("/proc/", pid, "/fd");
+  DIR* raw_fd_dir = opendir(path.c_str());
+  if (!raw_fd_dir) {
+    return false;
+  }
+  std::unique_ptr<DIR, int (*)(DIR*)> fd_dir(raw_fd_dir, closedir);
+  struct dirent* ent;
+  std::string line;
+  std::string tpu_dev_path = "/dev/accel0";
+  line.resize(tpu_dev_path.size());
+  while ((ent = readdir(raw_fd_dir))) {
+    if (!isdigit(*ent->d_name)) continue;
+    int64_t fd = strtol(ent->d_name, nullptr, 10);
+    path = absl::StrCat("/proc/", pid, "/fd/", fd);
+    if (!readlink(path.c_str(), &line[0], line.size())) continue;
+    if (line != tpu_dev_path) continue;
+    return true;
+  }
+  return false;
+}
+
+// This function iterates through all the processes in /proc and logs if any
+// process it was able to check is using the TPU. It does not have permission to
+// processes owned by another user.
+// TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for
+// this.
+bool FindAndLogLibtpuProcess() {
+  DIR* proc = opendir("/proc");
+
+  if (proc == nullptr) {
+    return false;
+  }
+  std::unique_ptr<DIR, int (*)(DIR*)> proc_dir(proc, closedir);
+  struct dirent* ent;
+  int64_t pid;
+  while ((ent = readdir(proc))) {
+    if (!isdigit(*ent->d_name)) continue;
+
+    pid = strtol(ent->d_name, nullptr, 10);
+    if (IsTpuUsed(pid)) {
+      LOG(INFO) << "libtpu.so is already in use by process with pid " << pid
+                << ". Not attempting to load libtpu.so in this process.";
+      return true;
+    }
+  }
+  return false;
+}
 
 bool TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
@@ -91,10 +145,13 @@ bool TryAcquireTpuLock() {
       // This lock is held until the process exits intentionally. The underlying
       // TPU device will be held on until it quits.
       if (lockf(fd, F_TLOCK, 0) != 0) {
-        LOG(INFO) << "libtpu.so already in use by another process. "
-                     "Run \"$ sudo lsof -w /dev/accel0\" to figure out "
-                     "which process is using the TPU. Not "
-                     "attempting to load libtpu.so in this process.";
+        if (!FindAndLogLibtpuProcess()) {
+          LOG(INFO) << "libtpu.so already in use by another process probably"
+                       " owned by another user. "
+                       "Run \"$ sudo lsof -w /dev/accel0\" to figure out "
+                       "which process is using the TPU. Not "
+                       "attempting to load libtpu.so in this process.";
+        }
         should_load_library = false;
       } else {
         should_load_library = true;

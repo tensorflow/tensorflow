@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
@@ -49,7 +50,8 @@ _TfrtGetResourceOp::GetResourceHandleValueAndIdList(
   return resource_vec;
 }
 
-static LogicalResult Verify(_TfrtGetResourceOp get_resource_op) {
+LogicalResult _TfrtGetResourceOp::verify() {
+  _TfrtGetResourceOp get_resource_op = *this;
   // The sizes of indices, shared_name and container must be equal.
   int32_t indices_size =
       get_resource_op->getAttrOfType<mlir::ArrayAttr>("indices").size();

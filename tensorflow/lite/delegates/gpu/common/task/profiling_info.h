@@ -28,6 +28,9 @@ struct ProfilingInfo {
   struct DispatchInfo {
     std::string label;
     absl::Duration duration;
+    uint64_t read_mem_size = 0;
+    uint64_t write_mem_size = 0;
+    uint64_t flops = 0;
   };
 
   std::vector<DispatchInfo> dispatches;

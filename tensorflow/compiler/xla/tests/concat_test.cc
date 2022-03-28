@@ -451,15 +451,15 @@ XLA_TEST_F(ConcatTest, ConcatSeveralBoxedPredicates) {
 
 XLA_TEST_F(ConcatTest, ConcatSeveralR1S32s) {
   XlaBuilder builder(TestName());
-  auto a0 = ConstantR1<int32>(&builder, {1});
-  auto a1 = ConstantR1<int32>(&builder, {2, 3});
-  auto a2 = ConstantR1<int32>(&builder, {4, 5, 6});
-  auto a3 = ConstantR1<int32>(&builder, {7, 8, 9, 10});
+  auto a0 = ConstantR1<int32_t>(&builder, {1});
+  auto a1 = ConstantR1<int32_t>(&builder, {2, 3});
+  auto a2 = ConstantR1<int32_t>(&builder, {4, 5, 6});
+  auto a3 = ConstantR1<int32_t>(&builder, {7, 8, 9, 10});
   ConcatInDim(&builder, {a0, a1, a2, a3}, 0);
 
-  std::vector<int32> expected(10);
+  std::vector<int32_t> expected(10);
   std::iota(expected.begin(), expected.end(), 1);
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ConcatTest, ConcatR3WeirdDims) {
@@ -780,19 +780,19 @@ class ConcatR2BinaryTest : public ClientLibraryTestBase,
 
 TEST_P(ConcatR2BinaryTest, DoIt) {
   const R2BinarySpec& spec = GetParam();
-  Array2D<int32> lhs(spec.lhs_dim0, spec.lhs_dim1);
+  Array2D<int32_t> lhs(spec.lhs_dim0, spec.lhs_dim1);
   lhs.FillUnique();
-  Array2D<int32> rhs(spec.rhs_dim0, spec.rhs_dim1);
+  Array2D<int32_t> rhs(spec.rhs_dim0, spec.rhs_dim1);
   rhs.FillUnique(1000);
 
   XlaBuilder builder(TestName());
-  auto a0 = ConstantR2FromArray2D<int32>(&builder, lhs);
-  auto a1 = ConstantR2FromArray2D<int32>(&builder, rhs);
+  auto a0 = ConstantR2FromArray2D<int32_t>(&builder, lhs);
+  auto a1 = ConstantR2FromArray2D<int32_t>(&builder, rhs);
   ConcatInDim(&builder, {a0, a1}, spec.concat_dimension);
 
-  std::unique_ptr<Array2D<int32>> expected =
+  std::unique_ptr<Array2D<int32_t>> expected =
       ReferenceUtil::Concat2D(lhs, rhs, spec.concat_dimension);
-  ComputeAndCompareR2<int32>(&builder, *expected, {});
+  ComputeAndCompareR2<int32_t>(&builder, *expected, {});
 }
 
 // Regression test for b/31944287. x*y is used (at the same index) by all

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
 #include "tensorflow/compiler/tf2xla/test_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -178,14 +179,7 @@ TEST(EncapsulateXlaComputations, DeterministicEncapsulate) {
       }
     }
     TF_CHECK_OK(EncapsulateXlaComputationsPass::Encapsulate(&graph, &flib_def));
-    GraphDef gdef;
-    graph->ToGraphDef(&gdef);
-    // Before serialization, sort control inputs first to remove
-    // nondeterminism.
-    SortControlInputs(&gdef);
-    string serialized;
-    SerializeToStringDeterministic(gdef, &serialized);
-    return serialized;
+    return SerializeGraphDeterministic(*graph).ValueOrDie();
   };
 
   // Changing the order of control input shouldn't affect the graph generated.

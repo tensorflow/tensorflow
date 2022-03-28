@@ -365,25 +365,16 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim);
 // The shape is represented as a Python tuple of integers.
 PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 
-// Encodes the object as a tuple that is meant to be used as part of the key
-// for the defun function cache.  If `include_tensor_ranks_only` is true,
-// then the encoding only stores tensor ranks, and the key is
-// agnostic to dimension sizes.  Otherwise, full tensor shape encodings are
-// returned.
-PyObject* TFE_Py_EncodeArg(PyObject* arg, PyObject* signature_context,
-                           bool include_tensor_ranks_only,
-                           bool encode_variable_by_resource_id,
-                           bool use_full_trace_type);
-
 void TFE_Py_EnableInteractivePythonLogging();
 
-// Sets `python_context` as the current eager Context object (defined
+// Sets the current Python eager Context object (defined
 // in eager/context.py). This function must be called at least once before
 // eager tensors are created.
 // If an error is encountered, sets python error and returns NULL. Else, returns
 // Py_None.
 //
-// This function is not thread-safe.
+// Not thread-safe.
+// TODO(mdan): Retire this - non-Python users should only need the EagerContext.
 PyObject* TFE_Py_SetEagerContext(PyObject* py_context);
 
 // Returns the current eager Context object (defined in eager/context.py)

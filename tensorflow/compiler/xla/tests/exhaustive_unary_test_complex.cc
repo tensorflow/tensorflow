@@ -68,7 +68,7 @@ class ExhaustiveComplexUnaryTestBase
 
     absl::Span<NativeT> input_arr = (*input_literal)[0].data<NativeT>();
 
-    uint64 i = 0;
+    uint64_t i = 0;
     for (auto real : real_values) {
       for (auto imag : imag_values) {
         input_arr[i] =

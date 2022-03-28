@@ -338,14 +338,12 @@ TEST_F(RaggedTensorToVariantKernelTest, NonBatchInput) {
 
 TEST_F(RaggedTensorToVariantKernelTest, ShapeFnTestBatched) {
   ShapeInferenceTestOp op("RaggedTensorToVariant");
+  (*op.node_def.mutable_attr())["Tvalues"].set_type(DT_INT32);
   (*op.node_def.mutable_attr())["batched_input"].set_b(true);
 
   // Tests with len(ragged_splits)==0.
   (*op.node_def.mutable_attr())["RAGGED_RANK"].set_i(0);
-  INFER_ERROR(
-      "ragged_rank=0 is not currently supported "
-      "when batched_input=true.",
-      op, "?");
+  INFER_OK(op, "?", "[?]");
 
   // Tests with len(ragged_splits)==1.
   (*op.node_def.mutable_attr())["RAGGED_RANK"].set_i(1);
@@ -379,6 +377,7 @@ TEST_F(RaggedTensorToVariantKernelTest, ShapeFnTestBatched) {
 
 TEST_F(RaggedTensorToVariantKernelTest, ShapeFnTestNotBatched) {
   ShapeInferenceTestOp op("RaggedTensorToVariant");
+  (*op.node_def.mutable_attr())["Tvalues"].set_type(DT_INT32);
   (*op.node_def.mutable_attr())["batched_input"].set_b(false);
 
   // Tests with len(ragged_splits)==0.
@@ -423,6 +422,27 @@ TEST_F(RaggedTensorToVariantKernelTest, NonRaggedInput) {
   ExpectRaggedTensorVariantEqual<int, int64_t>(
       CreateVariantFromRagged<int, int64_t>({}, values),
       *encoded_scalar.get<RaggedTensorVariant>());
+}
+
+TEST_F(RaggedTensorToVariantKernelTest, NonRaggedBatchedInput) {
+  // input contains [[[1, 2], [3, 4], [5, 6]],  [[7, 8], [9, 10], [11, 12]]]
+  TensorShape shape({2, 3, 2});
+  const std::vector<int> values = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+  BuildEncodeRaggedTensorGraph<int, int64_t>({}, shape, values, true);
+  TF_ASSERT_OK(RunOpKernel());
+
+  const auto& encoded_list = GetOutput(0)->vec<Variant>();
+  EXPECT_EQ(encoded_list.size(), 2);
+
+  // encoded_list[0] conatins [[1, 2], [3, 4], [5, 6]].
+  ExpectRaggedTensorVariantEqual<int, int64_t>(
+      CreateVariantFromRagged<int, int64_t>({}, {3, 2}, {1, 2, 3, 4, 5, 6}),
+      *encoded_list(0).get<RaggedTensorVariant>());
+  // encoded_list[1] contains [[7, 8], [9, 10], [11, 12]].
+  ExpectRaggedTensorVariantEqual<int, int64_t>(
+      CreateVariantFromRagged<int, int64_t>({}, {3, 2}, {7, 8, 9, 10, 11, 12}),
+      *encoded_list(1).get<RaggedTensorVariant>());
 }
 
 }  // namespace

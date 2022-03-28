@@ -24,7 +24,6 @@
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_service.grpc.pb.h"
 #include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 /*
@@ -505,7 +504,7 @@ class RecordingTpuDriver : public TpuDriver {
         return;
       }
 
-      tensorflow::StringPiece buffer_sp(buffer.data(), buffer.size());
+      absl::string_view buffer_sp(buffer.data(), buffer.size());
       auto data_status = log_file_->Append(buffer_sp);
       if (!data_status.ok()) {
         LOG(WARNING) << "Unable to write data to log file. File possibly "

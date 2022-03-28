@@ -746,6 +746,15 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([False, True, False, True], f(True))
       self.assertAllEqual([False, True, False, False], f(False))
 
+  def testHasDefaultWriter_checkWriter(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with self.subTest(name='has_writer'):
+        with summary_ops.create_file_writer_v2(logdir).as_default():
+          self.assertTrue(summary_ops.has_default_writer())
+      with self.subTest(name='no_writer'):
+        self.assertFalse(summary_ops.has_default_writer())
+
 
 class SummaryWriterTest(test_util.TensorFlowTestCase):
 
@@ -1213,6 +1222,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     summary_ops.trace_off()
+    super(SummaryOpsTest, self).tearDown()
 
   def exec_summary_op(self, summary_op_fn):
     assert context.executing_eagerly()

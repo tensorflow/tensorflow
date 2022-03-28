@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TFL_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TFL_PASSES_H_
 
+#include <string>
+
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 
@@ -23,7 +25,14 @@ namespace mlir {
 namespace tosa {
 
 struct TOSATFLLegalizationPipelineOptions
-    : public PassPipelineOptions<TOSATFLLegalizationPipelineOptions> {};
+    : public PassPipelineOptions<TOSATFLLegalizationPipelineOptions> {
+  ArrayRef<std::string> disabled_patterns;
+  ArrayRef<std::string> enabled_patterns;
+  TOSATFLLegalizationPipelineOptions() {
+    disabled_patterns = llvm::None;
+    enabled_patterns = llvm::None;
+  }
+};
 
 // Legalizes TFL (TensorFlow lite) dialect(s) to Tosa.
 void createTFLtoTOSALegalizationPipeline(

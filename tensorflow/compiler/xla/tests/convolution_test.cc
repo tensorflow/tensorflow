@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -56,7 +55,7 @@ class ConvolutionTest : public ClientLibraryTestBase {
 using TestTypes = ::testing::Types<
 // TODO(b/183565702): Support integer convs on GPU.
 #if !XLA_TEST_BACKEND_GPU
-    int32,
+    int32_t,
 #endif
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
     Eigen::half,

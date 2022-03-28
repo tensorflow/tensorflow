@@ -70,7 +70,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateNodeId(int node_id) {
 }
 
 xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
-    uint64 session_id) {
+    uint64_t session_id) {
   if (session_id != session_id_) {
     return xla::FailedPrecondition(
         "Session ID of request %llu does not match active session ID %llu",
@@ -83,7 +83,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
     ::grpc::ServerContext* context, const ConnectRequest* request,
     ConnectResponse* response) {
   VLOG(10) << "Connect " << request->DebugString();
-  if (request->protocol_version() != kDistributedRuntimeProtocolVersion) {
+  if (request->protocol_version() != DistributedRuntimeProtocolVersion()) {
     return ToGrpcStatus(xla::InvalidArgument("Invalid protocol version %d",
                                              request->protocol_version()));
   }

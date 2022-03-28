@@ -40,6 +40,8 @@ class TakeDataset : public DatasetBase {
 
   int64_t CardinalityInternal() const override;
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override;
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
 
   Status Get(OpKernelContext* ctx, int64 index,

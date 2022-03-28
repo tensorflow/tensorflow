@@ -17,7 +17,7 @@ include "mlir/Pass/PassBase.td"
 
 // TF dialect passes.
 
-def TensorflowGPUFusion : FunctionPass<"tf-gpu-op-fusion"> {
+def TensorflowGPUFusion : Pass<"tf-gpu-op-fusion", "mlir::FuncOp"> {
   let summary = "Fusion optimization for GPU targets";
   let description = [{
     This pass is performing fusion specific to GPU targets. This is an ad-hoc
@@ -27,9 +27,31 @@ def TensorflowGPUFusion : FunctionPass<"tf-gpu-op-fusion"> {
   let constructor = "TF::CreateGpuOpFusionPass()";
 }
 
-def BatchMatMulToEinsumPass : FunctionPass<"tf-batch-matmul-to-tf-einsum"> {
+def BatchMatMulToEinsumPass : Pass<"tf-batch-matmul-to-tf-einsum", "mlir::FuncOp"> {
   let summary = "Replace TF BatchMatMul op by TF Einsum op.";
   let constructor = "TF::CreateBatchMatMulToEinsumPass()";
+}
+
+def CanonicalizeCompileAndReplicateAttributesPass : Pass<"tf-canonicalize-compile-and-replicate-attributes", "ModuleOp"> {
+  let summary = "Canonicalize compilation and replication attributes.";
+
+  let description = [{
+    A pass that converts existing compilation and replication attributes into
+    unified attributes. For example, `_tpu_replicate="cluster"` in the
+    following code
+
+    ```mlir
+    %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_tpu = true, use_spmd_for_xla_partitioning = false} : () -> ()
+    ```
+
+    wll be replaced by `_replication_info="cluster"` and  `_xla_compile_device_type="TPU"`.
+
+    ```mlir
+    %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
+    ```
+  }];
+
+  let constructor = "TFTPU::CreateCanonicalizeCompileAndReplicateAttributesPass()";
 }
 
 def ClusterTFOpsByHostPass : Pass<"cluster-tf-ops-by-host", "ModuleOp"> {
@@ -37,6 +59,35 @@ def ClusterTFOpsByHostPass : Pass<"cluster-tf-ops-by-host", "ModuleOp"> {
            "contains ops placed on the same host";
 
   let constructor = "TF::CreateClusterTFOpsByHostPass()";
+}
+
+def ConvertToLegacyCompileAndReplicateAttributesPass : Pass<"tf-convert-to-legacy-compile-and-replicate-attributes", "ModuleOp"> {
+  let summary = "Convert unified compilation and replication attributes back to legacy attributes.";
+
+  let description = [{
+    This transformation pass converts unified compilation and replication
+    attributes (`_replication_info` and `_xla_compile_device_type`) into legacy
+    attributes. This ensures the unified attributes do not get exposed outside
+    of the MLIR bridge with V1 pipeline in some cases. The pass expects to have
+    either none or both of the unified attributes present in an op for the
+    conversion to happen. Otherwise it will fail.
+
+    For example, `_replication_info="cluster"` and
+    `_xla_compile_device_type="TPU"` in the following code
+
+    ```mlir
+    %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
+    ```
+
+    wll be replaced by `_tpu_replicate="cluster"` as follows,
+
+
+    ```mlir
+    %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_tpu = true, use_spmd_for_xla_partitioning = false} : () -> ()
+    ```
+  }];
+
+  let constructor = "TFTPU::CreateConvertToLegacyCompileAndReplicateAttributesPass()";
 }
 
 def ResourceDeviceInferencePass : Pass<"tf-resource-device-inference", "ModuleOp"> {
@@ -238,12 +289,12 @@ def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "Modu
   }];
 }
 
-def UnrollBatchMatMulPass : FunctionPass<"tf-unroll-batch-matmul"> {
+def UnrollBatchMatMulPass : Pass<"tf-unroll-batch-matmul", "mlir::FuncOp"> {
   let summary = "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.";
   let constructor = "TF::CreateUnrollBatchMatMulPassPass()";
 }
 
-def ClusterFormationPass : FunctionPass<"tf-device-cluster-formation"> {
+def ClusterFormationPass : Pass<"tf-device-cluster-formation", "mlir::FuncOp"> {
   let summary = "Form clusters from instructions assigned to same device";
   let constructor = "TFDevice::CreateClusterFormationPass()";
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
@@ -276,7 +327,7 @@ def ClusterFormationPass : FunctionPass<"tf-device-cluster-formation"> {
   }];
 }
 
-def MaterializePassthroughOp : FunctionPass<"tf-materialize-passthrough-op"> {
+def MaterializePassthroughOp : Pass<"tf-materialize-passthrough-op", "mlir::FuncOp"> {
   let summary = "Materialize the MlirPassthroughOp by replacing it with the "
     "MLIR module attached as an attribute";
   let constructor = "TF::CreateMaterializePassthroughOpPass()";
@@ -286,12 +337,12 @@ def MaterializePassthroughOp : FunctionPass<"tf-materialize-passthrough-op"> {
   }];
 }
 
-def TransformEinsumPass : FunctionPass<"tf-einsum"> {
+def TransformEinsumPass : Pass<"tf-einsum", "mlir::FuncOp"> {
   let summary = "Transform Einsum to other TF Ops for the supported variants";
   let constructor = "TF::CreateTransformEinsumPass()";
 }
 
-def LegalizeHloToTfPass : FunctionPass<"tf-legalize-hlo"> {
+def LegalizeHloToTfPass : Pass<"tf-legalize-hlo", "mlir::FuncOp"> {
   let summary = "Legalize from HLO to the TF dialect";
   let dependentDialects = ["TF::TensorFlowDialect"];
   let constructor = "TF::CreateLegalizeHloToTfPass()";
@@ -302,13 +353,25 @@ def LegalizeTFGToTFPass : Pass<"tfe-legalize-tfg", "ModuleOp"> {
   let constructor = "TF::CreateLegalizeTFGToTFEPass()";
 }
 
-def ReplicateToIslandPass : FunctionPass<"tf-replicate-to-island"> {
+def ReplicateToIslandPass : Pass<"tf-replicate-to-island", "mlir::FuncOp"> {
   let summary = "Lowers device replicate to executor islands";
   let constructor = "TFDevice::CreateReplicateToIslandPass()";
 }
 
+def ReplicaIDToDeviceOrdinalPass : Pass<"tf-replica-id-to-device-ordinal", "mlir::FuncOp"> {
+  let summary = "Set device ordinal with replica id";
+  let constructor = "TFDevice::CreateReplicaIDToDeviceOrdinalPass()";
+    let description = [{
+    This pass sets the device ordinal attribute of the ops using the replica id
+    attribute. This is run immediately after the replica_to_island pass which
+    sets the replica id attribute of these ops. Note for single chip usecase,
+    the pass will check if there is one op and sets the device ordinal attribute
+    to be zero.
+  }];
+}
+
 def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
-  FunctionPass<"tf-readonly-references-to-resources"> {
+  Pass<"tf-readonly-references-to-resources", "mlir::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";
   let constructor = "TF::CreateConvertReadonlyReferenceVariablesToResourceVariablesPass()";
 }
@@ -408,7 +471,7 @@ def ExecutorConvertControlToDataOutputsPass : Pass<"tf-executor-convert-control-
   let constructor = "tf_executor::CreateTFExecutorConvertControlToDataOutputsPass()";
 }
 
-def ExecutorGraphPruningPass : FunctionPass<"tf-executor-graph-pruning"> {
+def ExecutorGraphPruningPass : Pass<"tf-executor-graph-pruning", "mlir::FuncOp"> {
   let summary = "Prunes unreachable ops in a tf_executor.graph";
 
   let description = [{
@@ -465,7 +528,7 @@ def ExecutorGraphPruningPass : FunctionPass<"tf-executor-graph-pruning"> {
   ];
 }
 
-def ExecutorDialectToFunctionalPass : FunctionPass<"tf-executor-to-functional-conversion"> {
+def ExecutorDialectToFunctionalPass : Pass<"tf-executor-to-functional-conversion", "mlir::FuncOp"> {
   let summary = "Lifts tf_executor.island inner ops from a tf_executor.graph";
 
   let description = [{
@@ -507,7 +570,7 @@ def ExecutorDialectToFunctionalPass : FunctionPass<"tf-executor-to-functional-co
   let constructor = "CreateExecutorDialectToFunctionalConversionPass()";
 }
 
-def ExecutorIslandCoarseningPass : FunctionPass<"tf-executor-island-coarsening"> {
+def ExecutorIslandCoarseningPass : Pass<"tf-executor-island-coarsening", "mlir::FuncOp"> {
   let summary = "Walks tf_executor::GraphOp and merges individual tf_executor::IslandOps.";
   let description = [{
     This pass performs whole graph analysis for a graph encapsulated into tf_executor::GraphOp.
@@ -667,16 +730,18 @@ def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
 
   let description = [{
     TPU computations from the frontend are composed of a `tf.TPUReplicateMetadata`
-    op, a subgraph of ops (TensorFlow Dialect) each with a matching `_tpu_replicate`
-    attribute relative to the associated `tf.TPUReplicateMetadata` op, and
-    optionally `tf.TPUReplicatedInput` and `tf.TPUReplicatedOutput` ops feeding in
-    inputs and outputs to and from a replicated TPU computation. The number of times
-    a TPU computation is replicated is defined in the `tf.TPUReplicateMetadata` op
-    (`num_replicas` attribute) and operand and result sizes of
-    `tf.TPUReplicatedInput` and `tf.TPUReplicatedOutput` respectively must match,
-    excluding packed tensors. It is also assumed ops of the same TPU computation do
-    not have ops outside of the TPU computation that are both inputs and outputs to
-    the same TPU computation.
+    op, a subgraph of ops (TensorFlow Dialect) each with a matching
+    `_replication_info` attribute relative to the associated
+    `tf.TPUReplicateMetadata` op, and optionally `tf.TPUReplicatedInput` and
+    `tf.TPUReplicatedOutput` ops feeding in inputs and outputs to and from a
+    replicated TPU computation. The number of times a TPU computation is
+    replicated is defined in the `tf.TPUReplicateMetadata` op (`num_replicas`
+    attribute) and operand and result sizes of `tf.TPUReplicatedInput` and
+    `tf.TPUReplicatedOutput` respectively must match, excluding packed tensors.
+    It is also assumed ops of the same TPU computation do not have ops outside
+    of the TPU computation that are both inputs and outputs to the same TPU
+    computation. Furthermore, we assume that every node has either none or both
+    of `_replication_info` and `_xla_compile_device_type` attributes defined.
 
     This pass takes the TPU computation subgraph, moves them into a
     `tf_device.cluster`, and copies over attributes from the associated
@@ -695,9 +760,9 @@ def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
     func @tpu_computation(%arg0: tensor<i32>) -> tensor<i32> {
       // Metadata op for cluster `cluster` with 1 replica, 1 core per replica and
       // with topology `<topology>`.
-      "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", num_relicas = 1, num_cores_per_replica = 1, topology = "<topology>", device_assignment = [], padding_map = []} : () -> ()
+      "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", num_relicas = 1, num_cores_per_replica = 1, topology = "<topology>", device_assignment = [], padding_map = []} : () -> ()
       %replicated_input = "tf.TPUReplicatedInput"(%arg0) : (tensor<i32>) -> tensor<i32>
-      %identity = "tf.Identity"(%replicated_input) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i32>
+      %identity = "tf.Identity"(%replicated_input) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i32>) -> tensor<i32>
       %replicated_output = "tf.TPUReplicatedOutput(%identity) : (tensor<i32>) -> tensor<i32>
       return %replicated_output : tensor<i32>
     }
@@ -710,7 +775,7 @@ def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
       %cluster = "tf_device.cluster"() ( {
         %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
         tf_device.return %identity : tensor<i32>
-      }) {_tpu_replicate = "cluster", num_cores_per_replica = 1, topology = "topology", device_assignment = [], padding_map = []} : () -> (tensor<i32>)
+      }) {_xla_compile_device_type = "TPU", _replication_info = "cluster", num_cores_per_replica = 1, topology = "topology", device_assignment = [], padding_map = []} : () -> (tensor<i32>)
       return %cluster : tensor<i32>
     }
     ```
@@ -719,9 +784,9 @@ def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
 
     ```mlir
     func @tpu_computation(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
-      "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", num_relicas = 2, num_cores_per_replica = 1, topology = "topology", device_assignment = [], padding_map = []} : () -> ()
+      "tf.TPUReplicateMetadata"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", num_relicas = 2, num_cores_per_replica = 1, topology = "topology", device_assignment = [], padding_map = []} : () -> ()
       %replicated_input = "tf.TPUReplicatedInput"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-      %identity = "tf.Identity"(%replicated_input) {_tpu_replicate = "cluster"} : (tensor<i32>) -> tensor<i32>
+      %identity = "tf.Identity"(%replicated_input) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<i32>) -> tensor<i32>
       %replicated_output:2 = "tf.TPUReplicatedOutput(%identity) : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
       return %replicated_output#0, %replicated_output#1 : tensor<i32>, tensor<i32>
     }
@@ -735,7 +800,7 @@ def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
         %cluster = "tf_device.cluster"() ( {
           %identity = "tf.Identity"(%replicated_input) : (tensor<i32>) -> tensor<i32>
           tf_device.return %identity : tensor<i32>
-        }) {_tpu_replicate = "cluster", num_cores_per_replica = 1, topology = "topology", device_assignment = [], padding_map = []} : () -> (tensor<i32>)
+        }) {_xla_compile_device_type = "TPU", _replication_info = "cluster", num_cores_per_replica = 1, topology = "topology", device_assignment = [], padding_map = []} : () -> (tensor<i32>)
         tf_device.return %cluster : tensor<i32>
       }
       return %replicate#0, %replicate#1 : tensor<i32>, tensor<i32>
@@ -746,7 +811,7 @@ def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
   let constructor = "TFTPU::CreateTPUClusterFormationPass()";
 }
 
-def ClusterConstantSinkingPass : FunctionPass<"tf-device-constant-sinking"> {
+def ClusterConstantSinkingPass : Pass<"tf-device-constant-sinking", "mlir::FuncOp"> {
   let summary = "Sinks constants implicitly captured in a tf_device.cluster region.";
 
   let description = [{
@@ -1002,7 +1067,7 @@ def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation"
   let constructor = "TFTPU::CreateTPUExtractOutsideCompilationPass()";
 }
 
-def HoistReplicateInvariantResourceWritesPass : FunctionPass<"tf-hoist-replicate-invariant-resource-writes"> {
+def HoistReplicateInvariantResourceWritesPass : Pass<"tf-hoist-replicate-invariant-resource-writes", "mlir::FuncOp"> {
   let summary = "Hoists writes to replicate invariant resource variables.";
 
   let description = [{
@@ -1132,7 +1197,7 @@ def RegionControlFlowToFunctionalPass : Pass<"tf-region-control-flow-to-function
   let constructor = "TF::CreateTFRegionControlFlowToFunctional()";
 }
 
-def TPUReorderReplicateAndPartitionedInputsPass : FunctionPass<"tf-tpu-reorder-replicate-partitioned-inputs"> {
+def TPUReorderReplicateAndPartitionedInputsPass : Pass<"tf-tpu-reorder-replicate-partitioned-inputs", "mlir::FuncOp"> {
   let summary = "Reorder replicated and partitioned input ops.";
 
   let description = [{
@@ -1173,7 +1238,7 @@ def TPUReorderReplicateAndPartitionedInputsPass : FunctionPass<"tf-tpu-reorder-r
   let constructor = "TFTPU::CreateTPUReorderReplicateAndPartitionedInputsPass()";
 }
 
-def TPUResourceReadsWritesPartitioningPass : FunctionPass<"tf-tpu-resource-partition"> {
+def TPUResourceReadsWritesPartitioningPass : Pass<"tf-tpu-resource-partition", "mlir::FuncOp"> {
   let summary = "Partitions unpartitioned resource read/write to partitioned resource variables.";
 
   let description = [{
@@ -1234,13 +1299,13 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
     If it is not possible to rewrite the operation or device assignment fails,
     a failure will be returned.
 
-    Note, many parameters to the `tf_device.cluster_func` are ommited in this
+    Note, many parameters to the `tf_device.cluster_func` are omitted in this
     and following examples.
     For example, a non replicated `tf_device.cluster_func`:
 
     ```mlir
     func @tf_tpu_rewrite(%arg0: tensor<i8>) {
-      %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "cluster0", func = @func} : (tensor<i8>) -> tensor<i8>
+      %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @func} : (tensor<i8>) -> tensor<i8>
       return
     }
     ```
@@ -1270,7 +1335,7 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
     ```mlir
     func @tf_tpu_rewrite(%arg0: tensor<i8>, %arg1: tensor<i8>) {
       %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<i8>) {n = 2 : i32} {
-        %1 = "tf_device.cluster_func"(%ri) {_tpu_replicate = "cluster0", func = @func} : (tensor<i8>) -> tensor<i8>
+        %1 = "tf_device.cluster_func"(%ri) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @func} : (tensor<i8>) -> tensor<i8>
         tf_device.return %1 : tensor<i8>
       }
       return
@@ -1304,7 +1369,7 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
 
     ```mlir
     func @tf_tpu_rewrite(%arg0: tensor<8xi32>) -> tensor<8xi32> {
-      %0 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "cluster0", func = @func, num_cores_per_replica = 2, input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
+      %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @func, num_cores_per_replica = 2, input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
       return %0 : tensor<8xi32>
     }
     ```
@@ -1339,6 +1404,11 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
     ```
   }];
 
+  let options = [
+    Option<"tpu_compile_metadata_debug_", "tpu-compile-metadata-debug", "bool", /*default=*/"false",
+           "Whether to serialize TPUCompileMetadataProto metadata in 'tf._TPUCompileMlir' op as a proto debug string">
+  ];
+
   let constructor = "TFTPU::CreateTPURewritePass()";
 }
 
@@ -1364,7 +1434,7 @@ def PrepareTpuComputationForTfExportPass : Pass<"prepare-tpu-computation-for-tf-
   let constructor = "TF::CreatePrepareTpuComputationForTfExportPass()";
 }
 
-def TensorDeviceCopyConversionPass : FunctionPass<"tf-tensor-device-copy"> {
+def TensorDeviceCopyConversionPass : Pass<"tf-tensor-device-copy", "mlir::FuncOp"> {
   let summary = "Fold the tf.Identity op and the tf.IdentityN op if the op has the same device as its operand";
 
   let constructor = "TF::CreateTensorDeviceCopyConversionPass()";
@@ -1388,7 +1458,7 @@ def TensorArrayOpsDecompositionPass : Pass<"tf-tensor-array-ops-decomposition", 
   let constructor = "TF::CreateTensorArrayOpsDecompositionPass()";
 }
 
-def TensorFlowOptimizePass : FunctionPass<"tf-optimize"> {
+def TensorFlowOptimizePass : Pass<"tf-optimize", "mlir::FuncOp"> {
   let summary = "Optimize TensorFlow module";
 
   let constructor = "TF::CreateTFOptimizePass()";
@@ -1483,7 +1553,7 @@ def TPUMergeVariablesWithExecutePass : Pass<"tf-tpu-merge-variables-with-execute
   let constructor = "TFTPU::CreateTPUMergeVariablesWithExecutePass()";
 }
 
-def ReplicateInvariantOpHoistingPass : FunctionPass<"tf-replicate-invariant-op-hoisting"> {
+def ReplicateInvariantOpHoistingPass : Pass<"tf-replicate-invariant-op-hoisting", "mlir::FuncOp"> {
   let summary = "Hoists replicate invariant operations out of replicate";
 
   let description = [{
@@ -1534,7 +1604,7 @@ def ReplicateInvariantOpHoistingPass : FunctionPass<"tf-replicate-invariant-op-h
   let constructor = "TFDevice::CreateReplicateInvariantOpHoistingPass()";
 }
 
-def LowerQuantizedPass : FunctionPass<"tf-lower-quantized"> {
+def LowerQuantizedPass : Pass<"tf-lower-quantized", "mlir::FuncOp"> {
   let summary = "Lowers ops that require quantized input or output.";
 
   let description = [{
@@ -1590,7 +1660,7 @@ def OutsideCompiledToHostLaunchPass : Pass<"tf-outside-compiled-to-host-launch",
   let constructor = "TFTPU::CreateOutsideCompiledToHostLaunchPass()";
 }
 
-def TPUHostComputationExpansionPass : FunctionPass<"tf-tpu-host-computation-expansion"> {
+def TPUHostComputationExpansionPass : Pass<"tf-tpu-host-computation-expansion", "mlir::FuncOp"> {
   let summary = "Expands host computation before and after TPU computation.";
 
   let description = [{
@@ -1601,7 +1671,7 @@ def TPUHostComputationExpansionPass : FunctionPass<"tf-tpu-host-computation-expa
   let constructor = "TFTPU::CreateTPUHostComputationExpansionPass()";
 }
 
-def TPUUpdateEmbeddingEnqueueOpInputsPass : FunctionPass<"tf-tpu-update-embedding-enqueue-op-inputs"> {
+def TPUUpdateEmbeddingEnqueueOpInputsPass : Pass<"tf-tpu-update-embedding-enqueue-op-inputs", "mlir::FuncOp"> {
   let summary = "Updates inputs to TPU embedding enqueue ops depending on whether graph is in training mode or in evaluation mode.";
 
   let description = [{
@@ -1612,7 +1682,7 @@ def TPUUpdateEmbeddingEnqueueOpInputsPass : FunctionPass<"tf-tpu-update-embeddin
   let constructor = "TFTPU::CreateTPUUpdateEmbeddingEnqueueOpInputsPass()";
 }
 
-def DropWhileShapeInvariantPass : FunctionPass<"tf-drop-while-shape-invariant"> {
+def DropWhileShapeInvariantPass : Pass<"tf-drop-while-shape-invariant", "mlir::FuncOp"> {
   let summary = "Drop `shape_invariant` attrbute from While/WhileRegion ops.";
 
   let description = [{
@@ -1624,7 +1694,7 @@ def DropWhileShapeInvariantPass : FunctionPass<"tf-drop-while-shape-invariant"> 
   let constructor = "TF::CreateDropWhileShapeInvariantPass()";
 }
 
-def DropWhileShapeInvariantInDeviceClusterPass : FunctionPass<"tf-drop-while-shape-invariant-in-device-cluster"> {
+def DropWhileShapeInvariantInDeviceClusterPass : Pass<"tf-drop-while-shape-invariant-in-device-cluster", "mlir::FuncOp"> {
   let summary = "Drop `shape_invariant` attrbute from While/WhileRegion ops inside device cluster.";
 
   let description = [{
@@ -1638,10 +1708,10 @@ def DropWhileShapeInvariantInDeviceClusterPass : FunctionPass<"tf-drop-while-sha
 }
 
 def TPUCleanupClusterAttributesPass : Pass<"tf-tpu-cleanup-cluster-attributes", "ModuleOp"> {
-  let summary = "Eliminate _tpu_replicate and other attributes from ops in a cluster";
+  let summary = "Eliminate _replication_info and other attributes from ops in a cluster";
 
   let description = [{
-    This pass eliminate `_tpu_replicate` and `device` attribute on operations
+    This pass eliminate `_replication_info` and `device` attribute on operations
     that are contained in a tf_device.cluster op.
   }];
 
@@ -1843,21 +1913,21 @@ func @main(%arg0: tensor<8x4xf32>) {
   let constructor = "TF::CreateTensorListOpsDecompositionPass()";
 }
 
-def TPUParallelExecuteSinkResourceWritePass : FunctionPass<"tf-tpu-parallel-execute-sink-resource-write"> {
+def TPUParallelExecuteSinkResourceWritePass : Pass<"tf-tpu-parallel-execute-sink-resource-write", "mlir::FuncOp"> {
   let summary = "Moves tf.AssignVariableOp consumers of tf_device.parallel_execute "
            "into tf_device.parallel_execute regions";
 
   let constructor = "TFTPU::CreateTPUParallelExecuteSinkResourceWritePass()";
 }
 
-def RewriteTPUEmbeddingOpsPass : FunctionPass<"tf-rewrite-tpu-embedding-ops"> {
+def RewriteTPUEmbeddingOpsPass : Pass<"tf-rewrite-tpu-embedding-ops", "mlir::FuncOp"> {
   let summary = "Rewrites TPU embedding send/recv ops by adding TPU embedding "
            "deduplication data";
 
   let constructor = "TF::CreateRewriteTPUEmbeddingOpsPass()";
 }
 
-def InitTextFileToImportPass : FunctionPass<"tf-init-text-file-to-import"> {
+def InitTextFileToImportPass : Pass<"tf-init-text-file-to-import", "mlir::FuncOp"> {
   let summary = "convert InitializeTableFromTextFileV2 ops to LookupTableImportV2Op "
            "to remove the dependency on asset files";
 
@@ -1870,36 +1940,36 @@ def InitTextFileToImportPass : FunctionPass<"tf-init-text-file-to-import"> {
   ];
 }
 
-def FusedKernelMatcherPass : FunctionPass<"tf-fused-kernel-matcher"> {
+def FusedKernelMatcherPass : Pass<"tf-fused-kernel-matcher", "mlir::FuncOp"> {
   let summary = "Matches computations corresponding to optimized fused kernels";
   let constructor = "TF::CreateFusedKernelMatcherPass()";
 }
 
-def TFDataOptimizationPass : FunctionPass<"tf-data-optimization"> {
+def TFDataOptimizationPass : Pass<"tf-data-optimization", "mlir::FuncOp"> {
   let summary = "Performs tf.data optimizations";
   let constructor = "TF::CreateTFDataOptimizationPass()";
 }
 
-def FunctionalControlFlowToCFGPass : FunctionPass<"tf-functional-control-flow-to-cfg"> {
+def FunctionalControlFlowToCFGPass : Pass<"tf-functional-control-flow-to-cfg", "mlir::FuncOp"> {
   let summary = "Transform functional control flow Ops to MLIR Control Form Graph "
            "(CFG) form";
   let constructor = "TF::CreateTFFunctionalControlFlowToCFG()";
   let dependentDialects = ["tensor::TensorDialect"];
 }
 
-def BreakUpIslandsPass : FunctionPass<"tf-functional-control-flow-to-cfg"> {
+def BreakUpIslandsPass : Pass<"tf-executor-break-up-islands", "mlir::FuncOp"> {
   let summary = "Transform from TF control dialect to TF executor dialect.";
   let constructor = "CreateBreakUpIslandsPass()";
   let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
 }
 
-def FunctionalToExecutorDialectConversionPass : FunctionPass<"tf-functional-to-executor-conversion"> {
+def FunctionalToExecutorDialectConversionPass : Pass<"tf-functional-to-executor-conversion", "mlir::FuncOp"> {
   let summary = "Transform from func op to TF executor dialect.";
   let constructor = "CreateFunctionalToExecutorDialectConversionPass()";
   let dependentDialects = ["mlir::tf_executor::TensorFlowExecutorDialect"];
 }
 
-def SimpleTFDeviceAssignmentPass : FunctionPass<"tf-simple-device-assignment"> {
+def SimpleTFDeviceAssignmentPass : Pass<"tf-simple-device-assignment", "mlir::FuncOp"> {
   let summary = "Simple device assignment in TF dialect.";
   let constructor = "TF::CreateSimpleTFDeviceAssignmentPass()";
   let options = [
@@ -1928,7 +1998,7 @@ def SimpleTFDeviceAssignmentPass : FunctionPass<"tf-simple-device-assignment"> {
   }];
 }
 
-def LayoutAssignmentPass : FunctionPass<"tf-layout-assignment"> {
+def LayoutAssignmentPass : Pass<"tf-layout-assignment", "mlir::FuncOp"> {
   let summary = "Layout assignment pass.";
   let constructor = "TF::CreateLayoutAssignmentPass()";
   let options = [
@@ -1937,7 +2007,7 @@ def LayoutAssignmentPass : FunctionPass<"tf-layout-assignment"> {
   ];
 }
 
-def MoveTransposesPass : FunctionPass<"tf-move-transposes"> {
+def MoveTransposesPass : Pass<"tf-move-transposes", "mlir::FuncOp"> {
   let summary = "Move transposes pass.";
   let constructor = "TF::CreateMoveTransposesPass()";
   let options = [
@@ -1951,13 +2021,13 @@ def MoveTransposesPass : FunctionPass<"tf-move-transposes"> {
   ];
 }
 
-def BroadcastFoldPass : FunctionPass<"tf-broadcast-fold"> {
+def BroadcastFoldPass : Pass<"tf-broadcast-fold", "mlir::FuncOp"> {
   let summary = "Fold explicit broadcasts into the following operations if they "
            "support implicit broadcasting on their operand.";
   let constructor = "TF::CreateBroadcastFoldPass()";
 }
 
-def ParallelExecuteToIslandsPass : FunctionPass<"tf-parallel-execute-to-islands"> {
+def ParallelExecuteToIslandsPass : Pass<"tf-parallel-execute-to-islands", "mlir::FuncOp"> {
   let summary = "Lowers device parallel_execute to executor islands";
   let constructor = "TFDevice::CreateParallelExecuteToIslandsPass()";
 }
@@ -1972,7 +2042,7 @@ def GuaranteeAllFuncsOneUsePass : Pass<"tf-guarantee-all-funcs-one-use", "Module
   let constructor = "TF::CreateGuaranteeAllFuncsOneUsePass()";
 }
 
-def TPUColocateCompositeResourceOpsPass : FunctionPass<"tf-tpu-colocate-composite-resource-ops"> {
+def TPUColocateCompositeResourceOpsPass : Pass<"tf-tpu-colocate-composite-resource-ops", "mlir::FuncOp"> {
   let summary = "Colocate resource with composite device assignment to TPU device.";
   let constructor = "TFTPU::CreateTPUColocateCompositeResourceOps()";
   let description = [{
@@ -1996,7 +2066,7 @@ def TPUColocateCompositeResourceOpsPass : FunctionPass<"tf-tpu-colocate-composit
   }];
 }
 
-def TPUDevicePropagationPass : FunctionPass<"tf-tpu-device-propagation"> {
+def TPUDevicePropagationPass : Pass<"tf-tpu-device-propagation", "mlir::FuncOp"> {
   let summary = "Propagates TPU devices from ops to users";
   let constructor = "TFTPU::CreateTPUDevicePropagationPass()";
 }

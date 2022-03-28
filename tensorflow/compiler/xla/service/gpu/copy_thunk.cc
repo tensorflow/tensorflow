@@ -22,7 +22,7 @@ namespace gpu {
 
 DeviceToDeviceCopyThunk::DeviceToDeviceCopyThunk(
     ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer, uint64 mem_size)
+    const BufferAllocation::Slice& destination_buffer, uint64_t mem_size)
     : Thunk(Kind::kCopy, thunk_info),
       source_buffer_(source_buffer),
       destination_buffer_(destination_buffer),

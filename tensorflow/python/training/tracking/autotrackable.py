@@ -22,6 +22,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.types import core as core_types
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -76,8 +77,12 @@ class AutoTrackable(base.Trackable):
     """Override to allow TrackableBase to disable dependency tracking."""
     return data_structures.NoDependency(value)
 
-  def _list_functions_for_serialization(self, unused_serialization_cache):
-    """Return a dict of `Function`s of a trackable."""
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
+    """Returns all children of a trackable, including functions."""
+    if save_type != base.SaveType.SAVEDMODEL:
+      return super(AutoTrackable, self)._trackable_children(
+          save_type, **kwargs)
+
     functions = {}
     try:
       # We get the attributes, suppressing warnings and exceptions.
@@ -100,7 +105,37 @@ class AutoTrackable(base.Trackable):
     finally:
       logging.set_verbosity(logging_verbosity)
 
-    return functions
+    # Trace concrete functions to force side-effects:
+    #   1. populate the cache for functions that have an input_signature
+    #      and have not been called
+    #   2. force side effects of creation of concrete functions, e.g. create
+    #      variables on first run.
+    for fn in functions.values():
+      if isinstance(fn, core_types.GenericFunction):
+        fn._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+
+    # Additional dependencies may have been generated during function tracing
+    # (e.g. captured variables). Make sure we return those too.
+    children = {}
+    for name, child in self._checkpoint_dependencies:
+      if isinstance(child, (core_types.GenericFunction,
+                            core_types.ConcreteFunction)):
+        # Skip "tracked" functions for now since there may be objects that
+        # automatically track functions that should not be saved.
+        # TODO(kathywu): remove once `_list_functions_for_serialization` has
+        # been fully deprecated.
+        continue
+
+      if name in functions and child is not functions[name]:
+        raise ValueError(
+            "Can't save object because it has multiple children with the same "
+            f"name. Object: {self}, attribute name: {name}, child 1: "
+            f"{child}, child 2: {functions[name]}")
+
+      children[name] = child
+
+    children.update(functions)
+    return children
 
   def _delete_tracking(self, name):
     """Removes the tracking of name."""

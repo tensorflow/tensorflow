@@ -132,7 +132,8 @@ class ModelDatasetOp::Dataset : public DatasetBase {
                           ? kRamBudgetShare * port::AvailableRam()
                           : dataset()->ram_budget_) {
       cancellation_manager_ = absl::make_unique<CancellationManager>();
-      model_ = std::make_shared<model::Model>();
+      model_ = std::make_shared<model::Model>(
+          model::Model::BudgetParams({cpu_budget_, ram_budget_}));
     }
 
     ~Iterator() override { cancellation_manager_->StartCancel(); }
@@ -188,9 +189,8 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!model_thread_) {
         model_thread_ = ctx->StartThread("tf_data_model", [this]() {
-          Status status =
-              model_->OptimizeLoop(dataset()->algorithm_, cpu_budget_,
-                                   ram_budget_, cancellation_manager_.get());
+          Status status = model_->OptimizeLoop(dataset()->algorithm_,
+                                               cancellation_manager_.get());
           if (!status.ok()) {
             LOG(WARNING) << "Optimization loop failed: " << status.ToString();
           }

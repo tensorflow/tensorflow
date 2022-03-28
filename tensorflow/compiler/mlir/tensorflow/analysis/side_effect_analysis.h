@@ -102,6 +102,13 @@ class SideEffectAnalysisInfo {
   const llvm::SmallVector<std::pair<ResourceId, bool>>& GetResourceIds(
       Operation* op) const;
 
+  // Returns true iff given resource is allocated by op with
+  // `UniqueResourceAllocation` trait. This can be utilized for while-loop
+  // parallelization.
+  bool IsUniqueResourceAllocationId(ResourceId resource_id) const {
+    return alias_analysis_.IsUniqueResourceAllocationId(resource_id);
+  }
+
  private:
   // Runs the analysis and populates `sorted_control_predecessors_` and
   // `sorted_control_successors_` for `func_op`. Clears `control_predecessors_`.
@@ -187,6 +194,9 @@ class SideEffectAnalysis : public detail::PerFunctionAggregateAnalysis<
  public:
   // Constructs analysis by analyzing the given module operation.
   explicit SideEffectAnalysis(ModuleOp module);
+
+ private:
+  ResourceAliasAnalysis alias_analysis_;
 };
 
 }  // namespace TF

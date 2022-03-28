@@ -21,10 +21,23 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Auto populate the feature descriptor field based on the table descriptor
-// field. Modify the TPU embedding configuration proto in place.
-Status PopulateEmbeddingFeatureDescriptor(
-    tpu::TPUEmbeddingConfiguration& tpu_embedding_config);
+// Validates the TPU embedding configuration has been populated correctly and
+// fills in missing fields. The user model is expected to fill in exactly one of
+// the following:
+//
+// (1) batch_size_per_tensor_core and TableDescriptor.num_features, or
+// (2) feature_descriptor.
+//
+// (1) If the user model fills in batch_size_per_tensor_core and
+// TableDescriptor.num_features, this function validates that the
+// feature_descriptor has not been filled in, and then populates
+// feature_descriptor with appropriate values.
+//
+// (2) If the user model fills in feature_descriptor, this function validates
+// that batch_size_per_tensor_core and TableDescriptor.num_features have not
+// been filled in, and then populated them with appropriate values.
+Status PopulateMissingFieldsInTPUEmbeddingConfig(
+    tpu::TPUEmbeddingConfiguration* config);
 
 }  // namespace tensorflow
 

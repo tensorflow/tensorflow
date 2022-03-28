@@ -171,6 +171,7 @@ def tf_library(
     header_file = name + ".h"
     metadata_object_file = name + "_tfcompile_metadata.o"
     function_object_file = name + "_tfcompile_function.o"
+    session_module_pb = name + "_session_module.pb"
 
     # The XLA backends morph kernal name prefix __ that is not in the form of
     # __xla_.
@@ -226,6 +227,7 @@ def tf_library(
             header_file,
             metadata_object_file,
             function_object_file,
+            session_module_pb,
         ],
         cmd = (
             default_fast_math_xla_flags +
@@ -240,46 +242,8 @@ def tf_library(
             " --out_header=$(@D)/" + header_file +
             " --out_metadata_object=$(@D)/" + metadata_object_file +
             " --out_function_object=$(@D)/" + function_object_file +
-            " " + flags + " " + profiling_flag + " " + mlir_flag + " " + traceme_flag
-        ),
-        tools = [tfcompile_tool],
-        visibility = visibility,
-        testonly = testonly,
-        # Run tfcompile on the build host since it's typically faster on the
-        # local machine.
-        #
-        # Note that setting the local=1 attribute on a *test target* causes the
-        # test infrastructure to skip that test.  However this is a genrule, not
-        # a test target, and runs with --strategy=Genrule=forced_forge, meaning
-        # the local=1 attribute is ignored, and the genrule is still run.
-        #
-        # https://www.bazel.io/versions/master/docs/be/general.html#genrule
-        local = 1,
-        tags = tags,
-    )
-
-    # Rule that runs tfcompile to produce the SessionModule proto, useful for
-    # debugging.  TODO(b/64813587): Once the SessionModule proto is
-    # deterministic, move this into the main rule above.
-    session_module_pb = name + "_session_module.pb"
-    native.genrule(
-        name = (name + "_session_module"),
-        srcs = srcs,
-        outs = [
-            session_module_pb,
-        ],
-        cmd = (
-            default_fast_math_xla_flags +
-            "CUDA_VISIBLE_DEVICES='' " +
-            "$(location " + tfcompile_tool + ")" +
-            " --graph=$(location " + tfcompile_graph + ")" +
-            debug_info_flag +
-            " --config=$(location " + config + ")" +
-            " --entry_point=" + ep +
-            " --cpp_class=" + cpp_class +
-            " --target_triple=" + target_llvm_triple() +
             " --out_session_module=$(@D)/" + session_module_pb +
-            " " + flags
+            " " + flags + " " + profiling_flag + " " + mlir_flag + " " + traceme_flag
         ),
         tools = [tfcompile_tool],
         visibility = visibility,
@@ -319,7 +283,11 @@ def tf_library(
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
             "//third_party/eigen3",
-        ] or []) + (deps or []),
+        ] or []) + (
+            mlir_components.count("HloLowering") > 0 and [
+                "@llvm-project//mlir:mlir_c_runner_utils",
+            ] or []
+        ) + (deps or []),
         tags = tags,
     )
 
@@ -434,6 +402,7 @@ def target_llvm_triple():
         "//tensorflow:ios": "arm64-none-ios",
         "//tensorflow:ios_x86_64": "x86_64-apple-ios",
         "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
+        "//tensorflow:linux_aarch64": "aarch64-none-linux-gnu",
         "//tensorflow:macos_x86_64": "x86_64-none-darwin",
         "//tensorflow:macos_arm64": "aarch64-none-darwin",
         "//tensorflow:windows": "x86_64-none-windows",

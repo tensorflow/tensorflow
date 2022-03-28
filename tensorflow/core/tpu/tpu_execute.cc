@@ -112,8 +112,8 @@ xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
   tensorflow::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
       &c_host_shape, &c_device_shape);
   xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
-  ApiConverter::Free(&c_host_shape);
-  ApiConverter::Free(&c_device_shape);
+  ApiConverter::Destroy(&c_host_shape);
+  ApiConverter::Destroy(&c_device_shape);
   return device_shape;
 }
 
@@ -122,7 +122,7 @@ int64_t ShapeSizeCompact(const xla::Shape& shape) {
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =
       tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactFn(&c_shape);
-  ApiConverter::Free(&c_shape);
+  ApiConverter::Destroy(&c_shape);
   return size;
 }
 
@@ -132,7 +132,7 @@ int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
   int64_t size =
       tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
           &c_shape);
-  ApiConverter::Free(&c_shape);
+  ApiConverter::Destroy(&c_shape);
   return size;
 }
 
@@ -257,8 +257,8 @@ xla::Status UpdateDynamicInputs(
 
             tensorflow::tpu::OpsApiFn()->TpuExecute_RuntimeInputToPaddedDataFn(
                 &params);
-            ApiConverter::Free(&c_runtime_shape);
-            ApiConverter::Free(&c_compile_time_shape);
+            ApiConverter::Destroy(&c_runtime_shape);
+            ApiConverter::Destroy(&c_compile_time_shape);
             return status.status();
           });
           // Allocate new input and transfer the padded and transposed data to

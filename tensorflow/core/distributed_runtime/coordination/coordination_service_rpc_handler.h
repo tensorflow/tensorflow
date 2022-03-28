@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_RPC_HANDLER_H_
 
-#include "tensorflow/core/distributed_runtime/worker_env.h"
-#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
@@ -26,13 +26,12 @@ class CoordinationServiceAgent;
 
 class CoordinationServiceRpcHandler {
  public:
-  explicit CoordinationServiceRpcHandler(const WorkerEnv* env) : env_(env) {}
+  explicit CoordinationServiceRpcHandler() {}
 
   void SetAgentInstance(CoordinationServiceAgent* agent);
 
-  void RegisterWorkerAsync(const RegisterWorkerRequest* request,
-                           RegisterWorkerResponse* response,
-                           StatusCallback done);
+  void RegisterTaskAsync(const RegisterTaskRequest* request,
+                         RegisterTaskResponse* response, StatusCallback done);
 
   void HeartbeatAsync(const HeartbeatRequest* request,
                       HeartbeatResponse* response, StatusCallback done);
@@ -41,9 +40,15 @@ class CoordinationServiceRpcHandler {
                             WaitForAllTasksResponse* response,
                             StatusCallback done);
 
-  void ReportErrorToAgentAsync(const ReportErrorToAgentRequest* request,
-                               ReportErrorToAgentResponse* response,
-                               StatusCallback done);
+  void ShutdownTaskAsync(const ShutdownTaskRequest* request,
+                         ShutdownTaskResponse* response, StatusCallback done);
+
+  void ResetTaskAsync(const ResetTaskRequest* request,
+                      ResetTaskResponse* response, StatusCallback done);
+
+  void ReportErrorToTaskAsync(const ReportErrorToTaskRequest* request,
+                              ReportErrorToTaskResponse* response,
+                              StatusCallback done);
 
   void ReportErrorToServiceAsync(const ReportErrorToServiceRequest* request,
                                  ReportErrorToServiceResponse* response,
@@ -60,10 +65,15 @@ class CoordinationServiceRpcHandler {
                            DeleteKeyValueResponse* response,
                            StatusCallback done);
 
+  void BarrierAsync(const BarrierRequest* request, BarrierResponse* response,
+                    StatusCallback done);
+
+  void CancelBarrierAsync(const CancelBarrierRequest* request,
+                          CancelBarrierResponse* response, StatusCallback done);
+
  private:
-  const WorkerEnv* env_;
-  const int64_t leader_incarnation_id_ = random::New64();
-  CoordinationServiceAgent* agent_;
+  mutex agent_mu_;
+  CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_);
 };
 
 }  // namespace tensorflow

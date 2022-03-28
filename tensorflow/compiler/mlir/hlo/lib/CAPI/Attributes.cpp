@@ -12,6 +12,8 @@ limitations under the License.
 
 #include "mlir-hlo-c/Attributes.h"
 
+#include <string>
+
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_attrs.h"
 #include "mlir/CAPI/IR.h"
 
@@ -346,4 +348,165 @@ int64_t mlirMhloConvDimensionNumbersGetOutputSpatialDimensionsElem(
   return unwrap(attr)
       .cast<mlir::mhlo::ConvDimensionNumbersAttr>()
       .getOutputSpatialDimensions()[pos];
+}
+
+//
+// ComparisonDirectionAttr.
+//
+MlirAttribute mlirMhloComparisonDirectionAttrGet(MlirContext ctx,
+                                                 const std::string &direction) {
+  llvm::Optional<mlir::mhlo::ComparisonDirection> compare_direction =
+      mlir::mhlo::symbolizeComparisonDirection(direction);
+  if (!compare_direction)
+    llvm_unreachable("Invalid comparison-direction specified.");
+  return wrap(mlir::mhlo::ComparisonDirectionAttr::get(
+      unwrap(ctx), compare_direction.getValue()));
+}
+
+bool mlirMhloAttributeIsAComparisonDirectionAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::ComparisonDirectionAttr>();
+}
+
+std::string mlirMhloComparisonDirectionAttrGetDirection(MlirAttribute attr) {
+  return mlir::mhlo::stringifyComparisonDirection(
+             unwrap(attr)
+                 .cast<mlir::mhlo::ComparisonDirectionAttr>()
+                 .getValue())
+      .str();
+}
+
+//
+// ComparisonTypeAttr.
+//
+
+MlirAttribute mlirMhloComparisonTypeAttrGet(MlirContext ctx,
+                                            const std::string &type) {
+  llvm::Optional<mlir::mhlo::ComparisonType> compare_type =
+      mlir::mhlo::symbolizeComparisonType(type);
+  if (!compare_type) llvm_unreachable("Invalid comparison-type specified.");
+  return wrap(mlir::mhlo::ComparisonTypeAttr::get(unwrap(ctx),
+                                                  compare_type.getValue()));
+}
+
+bool mlirMhloAttributeIsAComparisonTypeAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::ComparisonTypeAttr>();
+}
+
+std::string mlirMhloComparisonTypeAttrGetType(MlirAttribute attr) {
+  return mlir::mhlo::stringifyComparisonType(
+             unwrap(attr).cast<mlir::mhlo::ComparisonTypeAttr>().getValue())
+      .str();
+}
+
+//
+// PrecisionAttr.
+//
+
+MlirAttribute mlirMhloPrecisionAttrGet(MlirContext ctx,
+                                       const std::string &type) {
+  llvm::Optional<mlir::mhlo::Precision> precision_type =
+      mlir::mhlo::symbolizePrecision(type);
+  if (!precision_type) llvm_unreachable("Invalid precision-type specified.");
+  return wrap(
+      mlir::mhlo::PrecisionAttr::get(unwrap(ctx), precision_type.getValue()));
+}
+
+bool mlirMhloAttributeIsAPrecisionAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::PrecisionAttr>();
+}
+
+std::string mlirMhloPrecisionAttrGetPrecision(MlirAttribute attr) {
+  return mlir::mhlo::stringifyPrecision(
+             unwrap(attr).cast<mlir::mhlo::PrecisionAttr>().getValue())
+      .str();
+}
+
+//
+// FftTypeAttr.
+//
+
+MlirAttribute mlirMhloFftTypeAttrGet(MlirContext ctx, const std::string &type) {
+  llvm::Optional<mlir::mhlo::FftType> fft_type =
+      mlir::mhlo::symbolizeFftType(type);
+  if (!fft_type) llvm_unreachable("Invalid fft-type specified.");
+  return wrap(mlir::mhlo::FftTypeAttr::get(unwrap(ctx), fft_type.getValue()));
+}
+
+bool mlirMhloAttributeIsAFftTypeAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::FftTypeAttr>();
+}
+
+std::string mlirMhloFftTypeAttrGetFftType(MlirAttribute attr) {
+  return mlir::mhlo::stringifyFftType(
+             unwrap(attr).cast<mlir::mhlo::FftTypeAttr>().getValue())
+      .str();
+}
+
+//
+// DequantizeModeAttr.
+//
+
+MlirAttribute mlirMhloDequantizeModeAttrGet(MlirContext ctx,
+                                            const std::string &mode) {
+  llvm::Optional<mlir::mhlo::DequantizeMode> dequantize_mode =
+      mlir::mhlo::symbolizeDequantizeMode(mode);
+  if (!dequantize_mode) llvm_unreachable("Invalid dequantize-mode specified.");
+  return wrap(mlir::mhlo::DequantizeModeAttr::get(unwrap(ctx),
+                                                  dequantize_mode.getValue()));
+}
+
+bool mlirMhloAttributeIsADequantizeModeAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::DequantizeModeAttr>();
+}
+
+std::string mlirMhloDequantizeModeAttrGetDequantizeMode(MlirAttribute attr) {
+  return mlir::mhlo::stringifyDequantizeMode(
+             unwrap(attr).cast<mlir::mhlo::DequantizeModeAttr>().getValue())
+      .str();
+}
+
+//
+// TransposeAttr.
+//
+
+MlirAttribute mlirMhloTransposeAttrGet(MlirContext ctx,
+                                       const std::string &type) {
+  llvm::Optional<mlir::mhlo::Transpose> transpose_type =
+      mlir::mhlo::symbolizeTranspose(type);
+  if (!transpose_type) llvm_unreachable("Invalid transpose-type specified.");
+  return wrap(
+      mlir::mhlo::TransposeAttr::get(unwrap(ctx), transpose_type.getValue()));
+}
+
+bool mlirMhloAttributeIsATransposeAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::TransposeAttr>();
+}
+
+std::string mlirMhloTransposeAttrGetTranspose(MlirAttribute attr) {
+  return mlir::mhlo::stringifyTranspose(
+             unwrap(attr).cast<mlir::mhlo::TransposeAttr>().getValue())
+      .str();
+}
+
+//
+// FusionKindAttr.
+//
+
+MlirAttribute mlirMhloFusionKindAttrGet(MlirContext ctx,
+                                        const std::string &kind) {
+  llvm::Optional<mlir::mhlo::FusionKind> fusion_kind =
+      mlir::mhlo::symbolizeFusionKind(kind);
+  if (!fusion_kind) llvm_unreachable("Invalid fusion-kind specified.");
+  return wrap(
+      mlir::mhlo::FusionKindAttr::get(unwrap(ctx), fusion_kind.getValue()));
+}
+
+bool mlirMhloAttributeIsAFusionKindAttr(MlirAttribute attr) {
+  return unwrap(attr).isa<mlir::mhlo::FusionKindAttr>();
+}
+
+std::string mlirMhloFusionKindAttrGetFusionKind(MlirAttribute attr) {
+  return mlir::mhlo::stringifyFusionKind(
+             unwrap(attr).cast<mlir::mhlo::FusionKindAttr>().getValue())
+      .str();
 }

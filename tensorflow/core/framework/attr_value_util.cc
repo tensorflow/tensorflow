@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -288,10 +289,11 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
           pieces.push_back(SummarizeFunc(attr_value.list().func(i)));
         }
       }
-      constexpr int kMaxListSummarySize = 50;
+      constexpr int kMaxListSummarySize = 15;
       if (pieces.size() >= kMaxListSummarySize) {
-        pieces.erase(pieces.begin() + 5, pieces.begin() + (pieces.size() - 6));
-        pieces[5] = "...";
+        pieces[5] = strings::StrCat(Fingerprint64(
+            absl::StrJoin(pieces.begin() + 5, pieces.end() - 5, ",")));
+        pieces.erase(pieces.begin() + 6, pieces.end() - 5);
       }
       return strings::StrCat("[", absl::StrJoin(pieces, ", "), "]");
     }

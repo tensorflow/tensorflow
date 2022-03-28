@@ -378,8 +378,14 @@ filegroup(
 # is written.
 tf_version_info_genrule(
     name = "version_info_gen",
-    out = "version_info.cc",
+    out = "version_info.h",
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "version_info",
+    hdrs = ["version_info.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -549,15 +555,6 @@ cc_library(
 cc_library(
     name = "ptr_util",
     hdrs = ["ptr_util.h"],
-)
-
-cc_library(
-    name = "version_info",
-    srcs = ["version_info.cc"],
-    hdrs = ["//tensorflow/core/public:version.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = tf_copts(),
-    alwayslink = if_static(0, 1),
 )
 
 cc_library(

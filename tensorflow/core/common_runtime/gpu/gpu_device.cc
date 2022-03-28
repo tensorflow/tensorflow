@@ -441,13 +441,20 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
 
   stream_ = StreamGroupFactory::Global().GetOrCreate(
       tf_device_id_, 0, executor_, options.config.gpu_options());
+
+  // Get an allocator that allocates pinned memory on host.
+  AllocatorAttributes attr;
+  attr.set_on_host(true);
+  attr.set_gpu_compatible(true);
+  Allocator* host_memory_allocator = GetAllocator(attr);
+
   device_context_ =
       new GPUDeviceContext(0, stream_->compute,
 #if TENSORFLOW_USE_ROCM
                            stream_->nccl,
 #endif
                            stream_->host_to_device, stream_->device_to_host,
-                           stream_->device_to_device);
+                           stream_->device_to_device, host_memory_allocator);
 
   em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
                                                   options.config.gpu_options());
@@ -477,7 +484,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
         timestamped_allocator_ ? gpu_allocator_ : nullptr, em_));
   }
 
-  gpu_device_info_ = new GpuDeviceInfo;
+  gpu_device_info_ = new DeviceBase::AcceleratorDeviceInfo;
   gpu_device_info_->stream = stream_->compute;
   gpu_device_info_->default_context = device_context_;
   gpu_device_info_->event_mgr = em_;
@@ -485,7 +492,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   TF_RETURN_IF_ERROR(
       GpuIdManager::TfToPlatformDeviceId(tf_device_id_, &platform_device_id));
   gpu_device_info_->gpu_id = platform_device_id.value();
-  set_tensorflow_gpu_device_info(gpu_device_info_);
+  set_tensorflow_accelerator_device_info(gpu_device_info_);
 
   // Whether and how the GPU device uses its own threadpool.
   // This option is experimental. Once we confirm the best setting, we
@@ -1749,14 +1756,6 @@ std::vector<se::CudaComputeCapability> GetSupportedCudaComputeCapabilities() {
 }
 #endif  // GOOGLE_CUDA
 
-#if TENSORFLOW_USE_ROCM
-std::vector<int> supported_amdgpu_isa_versions = {803, 900, 906, 908};
-
-std::vector<int> GetSupportedAMDGPUISAVersions() {
-  return supported_amdgpu_isa_versions;
-}
-#endif  // TENSORFLOW_USE_ROCM
-
 }  // namespace
 
 Status BaseGPUDeviceFactory::EnablePeerAccess(
@@ -1828,7 +1827,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
             << strings::HumanReadableNumBytes(description->memory_bandwidth())
             << "/s";
 #elif TENSORFLOW_USE_ROCM
-    std::string gcn_arch_name = description->rocm_amdgpu_gcn_arch_name();
+    std::string gcn_arch_name =
+        description->rocm_compute_capability().gcn_arch_name();
     VLOG(1) << "Found device " << i << " with properties: "
             << "\npciBusID: " << description->pci_bus_id()
             << " name: " << description->name()
@@ -1866,14 +1866,6 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   }
   se::CudaComputeCapability min_supported_capability = *std::min_element(
       cuda_supported_capabilities.begin(), cuda_supported_capabilities.end());
-#elif TENSORFLOW_USE_ROCM
-  auto rocm_supported_isas = GetSupportedAMDGPUISAVersions();
-  if (rocm_supported_isas.empty()) {
-    return errors::FailedPrecondition(
-        "No supported rocm capabilities in binary.");
-  }
-  int min_supported_isa =
-      *std::min_element(rocm_supported_isas.begin(), rocm_supported_isas.end());
 #endif
 
   int min_gpu_core_count =
@@ -1908,18 +1900,16 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
 #elif TENSORFLOW_USE_ROCM
     int device_isa;
-    if (!desc->rocm_amdgpu_isa_version(&device_isa)) {
-      continue;
-    }
-    // Only GPUs with no less than the minimum supported compute capability is
-    // accepted.
-    if (device_isa < min_supported_isa) {
+    // Only GPUs with supported gfx versions are accepted.
+    auto rocm_compute_capability = desc->rocm_compute_capability();
+    if (!rocm_compute_capability.is_supported_gfx_version()) {
       LOG(INFO) << "Ignoring visible gpu device "
                 << "(" << GetShortDeviceDescription(visible_gpu_id, *desc)
                 << ") "
-                << "with AMDGPU ISA gfx" << device_isa
-                << ". The minimum required AMDGPU ISA is gfx"
-                << min_supported_isa << ".";
+                << "with AMDGPU version : "
+                << rocm_compute_capability.gfx_version()
+                << ". The supported AMDGPU versions are "
+                << rocm_compute_capability.supported_gfx_versions_str() << ".";
       continue;
     }
 #endif

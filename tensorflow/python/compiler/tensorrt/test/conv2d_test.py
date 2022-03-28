@@ -96,7 +96,7 @@ class Conv2DNCHWTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""
@@ -131,7 +131,7 @@ class Conv2DNHWCTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
 
 class Conv2DStridedNCHWTest(trt_test.TfTrtIntegrationTestBase):
@@ -162,7 +162,7 @@ class Conv2DStridedNCHWTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
 
 class Conv2DTranposeTest(trt_test.TfTrtIntegrationTestBase):
@@ -192,7 +192,7 @@ class Conv2DTranposeTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
 
 if __name__ == "__main__":

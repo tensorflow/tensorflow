@@ -214,7 +214,7 @@ TEST(TensorShapeTest, AddDimWithStatus) {
   ASSERT_EQ(4, s.dims());
 
   status = s.AddDimWithStatus(-1);
-  EXPECT_EQ(tensorflow::error::INTERNAL, status.code());
+  EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
 }
 
 TEST(TensorShapeTest, Factory) {
@@ -225,7 +225,7 @@ TEST(TensorShapeTest, Factory) {
   ASSERT_EQ(3, s.dims());
 
   status = TensorShape::BuildTensorShapeBase({-10, 5, 20}, &s);
-  EXPECT_EQ(tensorflow::error::INTERNAL, status.code());
+  EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
 }
 
 // -----------------------------------------------------------------------

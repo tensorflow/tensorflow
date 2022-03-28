@@ -222,12 +222,9 @@ TEST_F(KernelTest, IncompatibleNodeDef) {
 
   ApplyFlexDelegate();
 
-  SetShape(0, {2, 2, 1});
-  SetValues(0, {1.1f, 2.2f, 3.3f, 4.4f});
-
-  ASSERT_FALSE(Invoke());
+  ASSERT_NE(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_THAT(error_reporter().error_messages(),
-              ContainsRegex("while executing 'Cast' via Eager"));
+              ContainsRegex("No attr named 'SrcT' in NodeDef"));
 }
 
 TEST_F(KernelTest, WrongSetOfNodes) {

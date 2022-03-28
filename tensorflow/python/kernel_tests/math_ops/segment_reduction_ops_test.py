@@ -276,7 +276,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         math_ops.segment_prod,
     ]:
       with self.cached_session(use_gpu=False):
-        with self.assertRaises((ValueError, errors_impl.InternalError)):
+        with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
           s = op(data=np.ones((1, 10, 1)), segment_ids=[1676240524292489355])
           self.evaluate(s)
 
@@ -519,6 +519,14 @@ class UnsortedSegmentTest(SegmentReductionHelper):
           tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, s)
+
+  @test_util.run_deprecated_v1
+  def testAllNegatives(self):
+    with self.session(use_gpu=False):
+      data = np.ones((2, 1), dtype=np.float32)
+      segment_ids = np.array([-1, -1], dtype=np.int32)
+      unsorted = math_ops.unsorted_segment_sum(data, segment_ids, 2)
+      self.assertAllClose(unsorted.eval(), np.zeros((2, 1), dtype=np.float32))
 
 
 class SparseSegmentReductionHelper(SegmentReductionHelper):
@@ -794,6 +802,19 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         with self.assertRaisesOpError("segment ids must be >= 0"):
+          self.evaluate(s)
+
+  @test_util.run_deprecated_v1
+  def testSegmentsInvalid8(self):
+    tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
+    ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
+    segment_indices = [2**62 - 1]
+    tf_indices = [2**62 - 1]
+    with self.session(use_gpu=False):
+      for tf_op in ops_list:
+        s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
+        with self.assertRaisesOpError(
+            "Encountered overflow when multiplying"):
           self.evaluate(s)
 
   def testSegmentWithNumSegmentsValid(self):

@@ -20,10 +20,13 @@ set(LIBS
         ${conversion_libs}
         MLIROptLib
 
+        GmlStPasses
+        GmlStTestPasses
+        GmlStDialect
         LmhloDialect
         LmhloGPUDialect
         MhloRegisterDialects
-        AllDiscRalPasses
+        LmhloPasses
         AllMhloPasses
         MLIRBufferTransforms
         MLIRHLOAnalysis
@@ -31,7 +34,6 @@ set(LIBS
         )
 add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cpp
   DEPENDS
-        MLIRDiscRalPassIncGen
         MLIRLmhloPassIncGen
         MLIRMhloPassIncGen
         LMHLOTransformsPassIncGen

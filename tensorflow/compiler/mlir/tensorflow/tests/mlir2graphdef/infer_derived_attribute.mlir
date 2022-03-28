@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main() {
+func.func @main() {
   // The operation does not have any attributes, but TensorFlow OpDef expects
   // a `dtype` to be added on the NodeDef. We verify that we correctly use the
   // DerivedAttr to populate the NodeDef.

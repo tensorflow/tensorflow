@@ -26,7 +26,7 @@ class ExampleHardware : public SimpleHardware {
  public:
   static constexpr char kId[] = "ExampleHardware";
 
-  mlir::OwningRewritePatternList GetTransformations(
+  mlir::RewritePatternSet GetTransformations(
       MLIRContext* context) const override;
 
   mlir::TypeID GetTypeId() const override {

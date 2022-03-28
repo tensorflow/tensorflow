@@ -19,6 +19,10 @@ limitations under the License.
 namespace tflite {
 namespace tools {
 
+TfLiteDelegatePtr CreateNullDelegate() {
+  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
 void ProvidedDelegateList::AddAllDelegateParams() const {
   for (const auto& provider : providers_) {
     params_->Merge(provider->DefaultParams());
@@ -37,7 +41,7 @@ void ProvidedDelegateList::RemoveCmdlineFlag(std::vector<Flag>& flags,
   decltype(flags.begin()) it;
   for (it = flags.begin(); it < flags.end();) {
     if (it->GetFlagName() == name) {
-      flags.erase(it);
+      it = flags.erase(it);
     } else {
       ++it;
     }

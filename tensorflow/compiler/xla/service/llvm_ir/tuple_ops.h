@@ -20,7 +20,6 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
-#include "tensorflow/core/platform/types.h"
 
 // Utilities for emitting LLVM IR related to HLO tuples.
 

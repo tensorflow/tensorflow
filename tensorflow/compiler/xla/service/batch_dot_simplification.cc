@@ -36,8 +36,7 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
   if (!absl::c_equal(
           batch_dot->dot_dimension_numbers().lhs_batch_dimensions(),
           batch_dot->dot_dimension_numbers().rhs_batch_dimensions()) ||
-      !is_iota(AsInt64Slice(
-          batch_dot->dot_dimension_numbers().lhs_batch_dimensions()))) {
+      !is_iota(batch_dot->dot_dimension_numbers().lhs_batch_dimensions())) {
     return false;
   }
 

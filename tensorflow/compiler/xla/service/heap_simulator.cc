@@ -16,8 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <tuple>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
@@ -597,8 +602,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetTransitiveColocations(
     const BufferInterval* item = worklist.back();
     worklist.pop_back();
     for (const BufferType* buffer_colocated : item->colocations) {
-      result.insert(buffer_colocated);
-      worklist.push_back(&buffer_intervals_.at(buffer_colocated));
+      if (result.insert(buffer_colocated).second) {
+        worklist.push_back(&buffer_intervals_.at(buffer_colocated));
+      }
     }
   }
 
@@ -825,10 +831,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::Finish() {
       continue;
     }
 
-    ChunkCandidate chunk_candidate = FindChunkCandidate(buffer_interval);
     // This implementation of the heap algorithm does not have a notion of
     // maximum heap size, so it just commits.
-    CommitChunk(buffer_interval, chunk_candidate);
+    CommitChunk(buffer_interval, FindChunkCandidate(buffer_interval));
   }
   VLOG(1) << "result heap_size: " << result_.heap_size;
   Result result;
@@ -852,7 +857,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetSortedBufferIntervals() const {
 }
 
 template <typename BufferType>
-typename GlobalDecreasingSizeBestFitHeap<BufferType>::ChunkCandidate
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
     const GlobalDecreasingSizeBestFitHeap::BufferInterval& buffer_interval,
     int64_t preferred_offset) const {
@@ -860,8 +865,6 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
           << buffer_interval.buffer->ToString();
   VLOG(1) << "Size " << buffer_interval.size << ", start "
           << buffer_interval.start << ", end " << buffer_interval.end;
-  auto chunks_overlapping_in_time = interval_tree_.ChunksOverlappingInTime(
-      buffer_interval.start, buffer_interval.end);
   // Get all colocated buffers and gather all interferenced chunks.
   //
   // Imagine that we've already allocated three chunks : a, b and c.  And now
@@ -881,94 +884,93 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidate(
   //   ||   |  |               |  |       |
   //   |+-a-+  +-------b-------+  +---c---+
   //   ----------------------------------------> time
-  for (auto colocation : GetTransitiveColocations(buffer_interval)) {
-    auto colocation_interval = buffer_intervals_.at(colocation);
-    auto colocation_overlapping = interval_tree_.ChunksOverlappingInTime(
-        colocation_interval.start, colocation_interval.end);
-    VLOG(1) << "  Alias size " << colocation_interval.size << ", start "
-            << colocation_interval.start << ", end " << colocation_interval.end
-            << " " << colocation_interval.buffer->ToString();
-    chunks_overlapping_in_time.insert(chunks_overlapping_in_time.end(),
-                                      colocation_overlapping.begin(),
-                                      colocation_overlapping.end());
-  }
-  absl::c_sort(chunks_overlapping_in_time, [](const Chunk& x, const Chunk& y) {
-    return x.offset < y.offset;
-  });
 
-  // Find the minimum free chunk that can hold this buffer.
-  ChunkCandidate chunk_candidate{Chunk{-1, INT64_MAX}, result_.heap_size};
-  Chunk& min_fit_chunk = chunk_candidate.chunk;
-  int64_t preferred_chunk_end = preferred_offset + buffer_interval.size;
-  auto use_free_chunk_if_smaller = [&](int64_t free_offset, int64_t free_size) {
-    if (free_size < buffer_interval.size) {
-      return;
-    }
+  // Map free chunk offsets -> ends.
+  // We use `greater` for the comparison so that we can use `lower_bound` to
+  // find the largest key less than or equal to the lookup value.
+  absl::btree_map<int64_t, int64_t, std::greater<int64_t>> free_chunks{
+      {0, INT64_MAX}};  // Initialize with "infinite" free memory.
 
-    // If a preferred offset is provided, pick that offset.
-    if (free_offset <= preferred_offset &&
-        free_offset + free_size >= preferred_chunk_end) {
-      min_fit_chunk = {preferred_offset, buffer_interval.size};
-    } else if (free_offset + free_size == result_.heap_size &&
-               free_offset <= preferred_offset) {
-      // If the free offset is at the very end and if the preferred offset lies
-      // in this, pick the preferred offset and grow the heap.
-      min_fit_chunk = {preferred_offset, buffer_interval.size};
-      chunk_candidate.heap_size = preferred_chunk_end;
-    }
+  // Subtract chunks that are in use from the free chunks.
+  auto subtract_used_chunks = [&](const std::vector<Chunk>& used_chunks) {
+    for (const Chunk& used_chunk : used_chunks) {
+      // Find the free chunks containing the start and end of the used chunk.
+      auto it_end = free_chunks.lower_bound(used_chunk.chunk_end());
+      if (it_end == free_chunks.end()) continue;
+      auto it_start = free_chunks.lower_bound(used_chunk.offset);
 
-    // Pick the min-fit chunk only if we didn't have a preferred offset or a
-    // chunk at the preferred offset hasn't been found.
-    if ((preferred_offset < 0 || min_fit_chunk.offset != preferred_offset) &&
-        free_size < min_fit_chunk.size) {
-      min_fit_chunk = {free_offset, free_size};
+      // Store original free chunk end, in case `it_start == it_end`.
+      int64_t free_chunk_end = it_end->second;
+
+      // Subtract from free chunk containing start of used range, removing if it
+      // becomes too small for the buffer.
+      if (it_start != free_chunks.end()) {
+        if (used_chunk.offset - it_start->first >= buffer_interval.size) {
+          it_start->second = std::min(it_start->second, used_chunk.offset);
+        } else {
+          ++it_start;  // Increment iterator so that this entry is erased below.
+        }
+      }
+
+      // Erase from the start chunk (possibly inclusive) to the end chunk
+      // (always inclusive). We iterate from end to start, as the map is in
+      // reverse order.
+      free_chunks.erase(it_end, it_start);
+
+      // Create a new free chunk after the used chunk, if it is large enough.
+      int64_t chunk_end_aligned = RoundUpTo(used_chunk.chunk_end(), alignment_);
+      if (free_chunk_end - chunk_end_aligned >= buffer_interval.size) {
+        CHECK(free_chunks.insert({chunk_end_aligned, free_chunk_end}).second);
+      }
     }
   };
 
-  int64_t offset = 0;
-  for (auto& chunk : chunks_overlapping_in_time) {
-    if (offset < chunk.offset) {
-      use_free_chunk_if_smaller(offset, chunk.offset - offset);
-    }
-    offset = std::max(offset, RoundUpToNearest(chunk.chunk_end(), alignment_));
-  }
-  use_free_chunk_if_smaller(offset, result_.heap_size - offset);
-  // When preferred offset is provided and the preferred offset is larger than
-  // the current heap size, simply use the preferred offset provided.
-  if (result_.heap_size <= preferred_offset) {
-    chunk_candidate.heap_size = preferred_chunk_end;
-    min_fit_chunk = {preferred_offset, buffer_interval.size};
+  subtract_used_chunks(interval_tree_.ChunksOverlappingInTime(
+      buffer_interval.start, buffer_interval.end));
+
+  for (const BufferType* colocation :
+       GetTransitiveColocations(buffer_interval)) {
+    const BufferInterval& interval = buffer_intervals_.at(colocation);
+    VLOG(1) << "  Alias size " << interval.size << ", start " << interval.start
+            << ", end " << interval.end << " " << interval.buffer->ToString();
+
+    subtract_used_chunks(
+        interval_tree_.ChunksOverlappingInTime(interval.start, interval.end));
   }
 
-  if (min_fit_chunk.offset == -1) {
-    // Increase the heap size to fit in the last free chunk.
-    chunk_candidate.heap_size = offset + buffer_interval.size;
-    min_fit_chunk = {offset, buffer_interval.size};
+  // Try to find a large enough free chunk containing the preferred offset.
+  Chunk chunk{preferred_offset, buffer_interval.size};
+  auto it = (preferred_offset < 0) ? free_chunks.end()
+                                   : free_chunks.lower_bound(preferred_offset);
+  if (it == free_chunks.end() || (it->second < chunk.chunk_end())) {
+    // Otherwise, find the smallest free chunk. In the case of a tie, prefer the
+    // smallest offset. We ensure above that all of the free chunks are large
+    // enough to store the buffer.
+    chunk.offset = absl::c_min_element(free_chunks, [](auto a, auto b) {
+                     return std::forward_as_tuple(a.second - a.first, a.first) <
+                            std::forward_as_tuple(b.second - b.first, b.first);
+                   })->first;
   }
-
-  min_fit_chunk.size = buffer_interval.size;
-  return chunk_candidate;
+  return chunk;
 }
 
 template <typename BufferType>
 void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
     const GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval&
         buffer_interval,
-    GlobalDecreasingSizeBestFitHeap<BufferType>::ChunkCandidate
-        chunk_candidate) {
+    GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk chunk) {
   // Update the maximum heap size according to the one determined by the chunk
   // candidate.
-  result_.heap_size = chunk_candidate.heap_size;
-  interval_tree_.Add(buffer_interval.start, buffer_interval.end,
-                     chunk_candidate.chunk);
+  result_.heap_size = result_.UpdatedHeapSize(chunk);
+  interval_tree_.Add(buffer_interval.start, buffer_interval.end, chunk);
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
-    AddToChunkMap(colocation, chunk_candidate.chunk);
+    AddToChunkMap(colocation, chunk);
     auto colocation_interval = buffer_intervals_[colocation];
     interval_tree_.Add(colocation_interval.start, colocation_interval.end,
-                       chunk_candidate.chunk);
+                       chunk);
   }
 
-  AddToChunkMap(buffer_interval.buffer, chunk_candidate.chunk);
+  AddToChunkMap(buffer_interval.buffer, chunk);
 }
 
 template <typename BufferType>
@@ -1003,8 +1005,8 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
                      << size_limit_per_heap_;
       }
 
-      ChunkCandidate chunk_candidate = FindChunkCandidate(buffer_interval);
-      if (chunk_candidate.heap_size <= size_limit_per_heap_ ||
+      Chunk chunk_candidate = FindChunkCandidate(buffer_interval);
+      if (chunk_candidate.chunk_end() <= size_limit_per_heap_ ||
           // Commit the chunk as long as the heap is empty. We do this because
           // we want the size constraint to be soft, meaning that results are
           // successfully generated even if there are some buffer sizes larger

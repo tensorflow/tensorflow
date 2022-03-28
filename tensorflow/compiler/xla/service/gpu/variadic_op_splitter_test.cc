@@ -50,7 +50,7 @@ TEST_F(VariadicOpSplitterTest, DontSplit) {
 TEST_F(VariadicOpSplitterTest, SplitInto2) {
   auto builder = HloComputation::Builder(TestName());
   auto operand = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({42})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({42})));
   std::vector<HloInstruction*> concat_operands(255, operand);
   builder.AddInstruction(HloInstruction::CreateConcatenate(
       ShapeUtil::MakeShape(S32, {255}), concat_operands, 0));
@@ -65,7 +65,7 @@ TEST_F(VariadicOpSplitterTest, SplitInto2) {
 TEST_F(VariadicOpSplitterTest, SplitInto3) {
   auto builder = HloComputation::Builder(TestName());
   auto operand = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({42})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({42})));
   std::vector<HloInstruction*> concat_operands(256, operand);
   builder.AddInstruction(HloInstruction::CreateConcatenate(
       ShapeUtil::MakeShape(S32, {256}), concat_operands, 0));

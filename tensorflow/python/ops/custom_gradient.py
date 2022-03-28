@@ -297,7 +297,7 @@ def custom_gradient(f=None):
   return tf_decorator.make_decorator(f, decorated(f))  # pylint: disable=no-value-for-parameter
 
 
-class Bind(object):
+class Bind:
   """When called evaluates `d(f, args, kwargs)` but supports binding `f`.
 
   >>> @Bind.decorator
@@ -305,7 +305,7 @@ class Bind(object):
   ...   print("my_decorator called with", args, kwargs)
   ...   return f(*args, **kwargs)
 
-  >>> class Foo(object):
+  >>> class Foo:
   ...   @my_decorator
   ...   def bar(self, a, b, c):
   ...     return a * b * c
@@ -477,9 +477,9 @@ def _graph_mode_decorator(f, args, kwargs):
         "since function uses variables: {}".format(variables))
   if variables_in_signature and not variables:
     # User seems to intend to use variables but none were captured.
-    logging.warning(
-        "@custom_gradient grad_fn has 'variables' in signature, but "
-        "no ResourceVariables were used on the forward pass.")
+    logging.vlog(
+        1, "@custom_gradient grad_fn has 'variables' in signature, "
+        "but no ResourceVariables were used on the forward pass.")
 
   all_tensors = flat_result + args + variables
 

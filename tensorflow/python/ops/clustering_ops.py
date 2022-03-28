@@ -49,7 +49,7 @@ KMC2_INIT = 'kmc2'
 CLUSTERS_VAR_NAME = 'clusters'
 
 
-class KMeans(object):
+class KMeans:
   """Creates the graph for k-means clustering."""
 
   def __init__(self,
@@ -539,7 +539,7 @@ class KMeans(object):
     return state_ops.assign(cluster_centers, new_clusters_centers)
 
 
-class _InitializeClustersOpFactory(object):
+class _InitializeClustersOpFactory:
   """Internal class to create the op to initialize the clusters.
 
     The op performs this algorithm (see constructor args):

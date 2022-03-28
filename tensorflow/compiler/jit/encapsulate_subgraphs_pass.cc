@@ -64,22 +64,6 @@ const char* const kXlaHostTransferSequencerAttr =
     "_xla_host_transfer_sequencer";
 const char* const kXlaHasReferenceVarsAttr = "_XlaHasReferenceVars";
 
-void SortControlInputs(GraphDef* gdef) {
-  int64_t num_nodes = gdef->node_size();
-  for (int64_t i = 0; i < num_nodes; ++i) {
-    NodeDef* node = gdef->mutable_node(i);
-    // Stable sort control inputs and leave the order of data inputs unchanged.
-    std::stable_sort(node->mutable_input()->begin(),
-                     node->mutable_input()->end(),
-                     [](const string& a, const string& b) {
-                       bool a_is_control = absl::StartsWith(a, "^");
-                       bool b_is_control = absl::StartsWith(b, "^");
-                       return (!a_is_control && b_is_control) ||
-                              (a_is_control && b_is_control && a < b);
-                     });
-  }
-}
-
 namespace {
 
 bool AreAllParentsGuaranteedConst(

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
+
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -47,7 +48,7 @@ class ParallelTaskAssignmentTest : public HloTestBase {
 };
 
 TEST_F(ParallelTaskAssignmentTest, DotOperationNotParallelized) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
     HloModule TestTaskParallel_Dot
     ENTRY Dot {
       dot_lhs = f32[196614,2]{1,0} parameter(0)
@@ -65,7 +66,7 @@ TEST_F(ParallelTaskAssignmentTest, DotOperationNotParallelized) {
 
 TEST_F(ParallelTaskAssignmentTest,
        FusedComputationWithDotOperationNotParallelized) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
     HloModule TestTaskParallel_DotNestedInFusedComp
     fused_computation.0 {
       parameter.0 = f32[196614,2]{1,0} parameter(0)
@@ -92,7 +93,7 @@ TEST_F(ParallelTaskAssignmentTest,
 }
 
 TEST_F(ParallelTaskAssignmentTest, RngOperationNotParallelized) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
     HloModule TestTaskParallel_rng
     ENTRY Rng {
       src0 = f32[] parameter(0)
@@ -109,7 +110,7 @@ TEST_F(ParallelTaskAssignmentTest, RngOperationNotParallelized) {
 }
 
 TEST_F(ParallelTaskAssignmentTest, InfeedOutfeedOperationNotParallelized) {
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
     HloModule TestTaskParallel_infeed_outfeed
     ENTRY InfeedOutfeed {
       token0 = token[] after-all()
@@ -130,7 +131,7 @@ TEST_F(ParallelTaskAssignmentTest, InPlaceDynamicUpdateSliceNotParallelized) {
   // way to make a DUS which can be run "in-place" (i.e. the input and output
   // are the same buffer, and running the DUS only writes to the updated
   // elements).
-  const string hlo_string = R"(
+  const std::string hlo_string = R"(
   HloModule test
 
   body {

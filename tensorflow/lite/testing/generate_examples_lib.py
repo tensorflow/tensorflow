@@ -68,6 +68,7 @@ from tensorflow.lite.testing.op_tests.cumsum import make_cumsum_tests
 from tensorflow.lite.testing.op_tests.depth_to_space import make_depth_to_space_tests
 from tensorflow.lite.testing.op_tests.depthwiseconv import make_depthwiseconv_tests
 from tensorflow.lite.testing.op_tests.dynamic_rnn import make_dynamic_rnn_tests
+from tensorflow.lite.testing.op_tests.dynamic_update_slice import make_dynamic_update_slice_tests
 from tensorflow.lite.testing.op_tests.einsum import make_einsum_tests
 from tensorflow.lite.testing.op_tests.elementwise import make_sin_tests, make_log_tests, make_sqrt_tests, make_rsqrt_tests, make_square_tests
 from tensorflow.lite.testing.op_tests.elu import make_elu_tests
@@ -84,6 +85,7 @@ from tensorflow.lite.testing.op_tests.fused_batch_norm import make_fused_batch_n
 from tensorflow.lite.testing.op_tests.gather import make_gather_tests
 from tensorflow.lite.testing.op_tests.gather_nd import make_gather_nd_tests
 from tensorflow.lite.testing.op_tests.gather_with_constant import make_gather_with_constant_tests
+from tensorflow.lite.testing.op_tests.gelu import make_gelu_tests
 from tensorflow.lite.testing.op_tests.global_batch_norm import make_global_batch_norm_tests
 from tensorflow.lite.testing.op_tests.greater import make_greater_tests
 from tensorflow.lite.testing.op_tests.greater_equal import make_greater_equal_tests
@@ -259,7 +261,6 @@ class Options(object):
     # test sets.
     # TODO(juhoha): Separate the state from the options.
     self.multi_gen_state = None
-    self.use_experimental_converter = False
     self.mlir_quantizer = False
     # The list of ops' name that should exist in the converted model.
     # This feature is currently only supported in MLIR conversion path.
@@ -269,6 +270,8 @@ class Options(object):
     self.expected_ops_in_converted_model = []
     # Whether to skip generating tests with high dimension input shape.
     self.skip_high_dimension_inputs = False
+    # Whether to enable DynamicUpdateSlice op.
+    self.enable_dynamic_update_slice = False
 
 
 def _prepare_dir(options):

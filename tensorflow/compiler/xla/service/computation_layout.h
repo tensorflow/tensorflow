@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -83,7 +83,7 @@ class ComputationLayout {
   bool LayoutIsSet() const;
 
   // Returns a string representation of this object.
-  string ToString() const;
+  std::string ToString() const;
 
   // Create a ProgramShape proto based on the parameter and result shapes held
   // within this object.
@@ -91,7 +91,16 @@ class ComputationLayout {
 
   bool operator==(const ComputationLayout& other) const;
   bool operator!=(const ComputationLayout& other) const;
-  uint64 Hash() const;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ComputationLayout& computation_layout) {
+    h = H::combine(std::move(h), computation_layout.result_layout_.shape());
+    for (const auto& parameter_layout : computation_layout.parameter_layouts_) {
+      h = H::combine(std::move(h), parameter_layout.shape());
+    }
+    h = H::combine(std::move(h), computation_layout.parameter_layouts_.size());
+    return h;
+  }
 
  private:
   std::vector<ShapeLayout> parameter_layouts_;

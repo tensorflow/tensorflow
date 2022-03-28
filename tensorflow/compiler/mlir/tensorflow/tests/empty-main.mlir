@@ -9,6 +9,6 @@
 // EXECUTOR-NEXT:    }
 // EXECUTOR-NEXT:    return
 
-func @main() {
+func.func @main() {
   return
 }

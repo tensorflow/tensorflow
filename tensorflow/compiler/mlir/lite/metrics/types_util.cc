@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 
 #include "llvm/ADT/TypeSwitch.h"
-#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {

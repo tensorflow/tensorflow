@@ -6,19 +6,20 @@ RUN mkdir -p ${ANDROID_DEV_HOME}
 RUN apt-get install -y --no-install-recommends default-jdk
 
 # Install Android SDK.
-ENV ANDROID_SDK_FILENAME tools_r25.2.5-linux.zip
+ENV ANDROID_SDK_FILENAME commandlinetools-linux-6858069_latest.zip
 ENV ANDROID_SDK_URL https://dl.google.com/android/repository/${ANDROID_SDK_FILENAME}
 ENV ANDROID_API_LEVEL 23
 ENV ANDROID_NDK_API_LEVEL 21
 # Build Tools Version liable to change.
-ENV ANDROID_BUILD_TOOLS_VERSION 28.0.0
+ENV ANDROID_BUILD_TOOLS_VERSION 30.0.0
 ENV ANDROID_SDK_HOME ${ANDROID_DEV_HOME}/sdk
-ENV PATH ${PATH}:${ANDROID_SDK_HOME}/tools:${ANDROID_SDK_HOME}/platform-tools
+RUN mkdir -p ${ANDROID_SDK_HOME}/cmdline-tools
+ENV PATH ${PATH}:${ANDROID_SDK_HOME}/cmdline-tools/latest/bin:${ANDROID_SDK_HOME}/platform-tools
 RUN cd ${ANDROID_DEV_HOME} && \
     wget -q ${ANDROID_SDK_URL} && \
-    unzip ${ANDROID_SDK_FILENAME} -d android-sdk-linux && \
-    rm ${ANDROID_SDK_FILENAME} && \
-    bash -c "ln -s ${ANDROID_DEV_HOME}/android-sdk-* ${ANDROID_SDK_HOME}"
+    unzip ${ANDROID_SDK_FILENAME} -d /tmp && \
+    mv /tmp/cmdline-tools ${ANDROID_SDK_HOME}/cmdline-tools/latest && \
+    rm ${ANDROID_SDK_FILENAME}
 
 # Install Android NDK.
 ENV ANDROID_NDK_FILENAME android-ndk-r19c-linux-x86_64.zip

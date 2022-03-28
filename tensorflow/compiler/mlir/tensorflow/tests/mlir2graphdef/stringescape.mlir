@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
-func @main() {
+func.func @main() {
 ^bb0:
   // CHECK:      key: "listvalue"
   // CHECK-NEXT: value {

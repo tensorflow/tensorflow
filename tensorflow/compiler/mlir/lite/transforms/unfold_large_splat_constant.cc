@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -61,7 +61,7 @@ class UnfoldLargeSplatConstant
   void runOnOperation() override {
     auto module = getOperation();
 
-    mlir::OpBuilder op_builder(&module.body());
+    mlir::OpBuilder op_builder(&module.getBodyRegion());
     module.walk([&](mlir::arith::ConstantOp const_op) {
       MaybeUnfoldLargeSplatConstant(&op_builder, const_op);
     });

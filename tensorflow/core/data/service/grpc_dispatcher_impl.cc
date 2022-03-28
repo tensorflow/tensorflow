@@ -53,8 +53,8 @@ HANDLER(MaybeRemoveTask);
 HANDLER(GetOrCreateJob);
 HANDLER(ClientHeartbeat);
 HANDLER(GetWorkers);
-HANDLER(GetElementSpec);
 HANDLER(GetDataServiceMetadata);
+HANDLER(GetDataServiceConfig);
 #undef HANDLER
 
 }  // namespace data

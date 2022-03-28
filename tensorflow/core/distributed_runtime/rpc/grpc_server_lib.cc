@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "grpcpp/grpcpp.h"
@@ -51,8 +53,10 @@ limitations under the License.
 #include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/env_var.h"
@@ -254,8 +258,9 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                                          opts.worker_service_options)
                         .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
+  thread::ThreadPool* compute_pool = ComputePool(sess_opts);
   coordination_service_ =
-      new GrpcCoordinationServiceImpl(&worker_env_, &builder);
+      new GrpcCoordinationServiceImpl(compute_pool, &builder);
 
   profiler_service_ = profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
@@ -302,7 +307,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
         WorkerCacheFactoryOptions options(server_def);
         return WorkerCacheFactory(options, worker_cache);
       });
-  worker_env_.compute_pool = ComputePool(sess_opts);
+  worker_env_.compute_pool = compute_pool;
 
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
@@ -488,6 +493,19 @@ Status GrpcServer::SetCoordinationServiceAgentInstance(
   auto* coord_service =
       static_cast<GrpcCoordinationServiceImpl*>(coordination_service_);
   coord_service->SetCoordinationServiceAgentInstance(agent);
+  return Status::OK();
+}
+
+Status GrpcServer::StopCoordinationService() {
+  // Note: the sequence of events is important here.
+  // 1. Agent must be torn down before the service as it needs to notify the
+  // service.
+  // 2. Remove RPC handlers' access to agent/service first before destructing
+  // them within the session manager to prevent data races.
+  TF_RETURN_IF_ERROR(SetCoordinationServiceAgentInstance(nullptr));
+  worker_env()->session_mgr->TeardownCoordinationServiceAgent();
+  coordination_service_->Shutdown();
+  worker_env()->session_mgr->TeardownCoordinationService();
   return Status::OK();
 }
 

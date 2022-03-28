@@ -178,6 +178,11 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      bool allow_fp32_relax_to_fp16,
                                      bool apply_delegate,
                                      bool allocate_and_delegate) {
+  input_shapes_ = input_shapes;
+  allow_fp32_relax_to_fp16_ = allow_fp32_relax_to_fp16;
+  apply_delegate_ = apply_delegate;
+  allocate_and_delegate_ = allocate_and_delegate;
+
   auto opcodes = builder_.CreateVector(opcodes_);
   auto operators = builder_.CreateVector(operators_);
   auto tensors = builder_.CreateVector(tensors_);

@@ -22,11 +22,11 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -61,7 +61,8 @@ LogicalResult VerifyTensorTypesCompatible(Type t1, Type t2) {
   return verifyCompatibleShape(t1.cast<TensorType>(), t2.cast<TensorType>());
 }
 
-static LogicalResult Verify(GlobalTensorOp global_tensor) {
+LogicalResult GlobalTensorOp::verify() {
+  GlobalTensorOp global_tensor = *this;
   if (failed(VerifyTensorTypesCompatible(
           global_tensor.type(), global_tensor.value().Attribute::getType()))) {
     return global_tensor.emitError() << "'type' and 'value' attributes should "
@@ -77,7 +78,8 @@ static LogicalResult Verify(GlobalTensorOp global_tensor) {
   return success();
 }
 
-static LogicalResult Verify(SessionInitializerOp session_initializer) {
+LogicalResult SessionInitializerOp::verify() {
+  SessionInitializerOp session_initializer = *this;
   mlir::SymbolTable symbol_table(
       session_initializer->getParentOfType<ModuleOp>());
 
@@ -89,7 +91,7 @@ static LogicalResult Verify(SessionInitializerOp session_initializer) {
       return session_initializer.emitOpError()
              << "the initializer function does not exist";
 
-    if (!init_func_op.getType().getResults().empty())
+    if (!init_func_op.getFunctionType().getResults().empty())
       return session_initializer.emitOpError()
              << "the initializer function should have no output";
 
@@ -242,7 +244,7 @@ static bool HasAnyTfSavedModelArgAttr(FuncOp func) {
 static LogicalResult VerifySavedModelModule(
     ModuleOp module, TensorFlowSavedModelDialect *dialect) {
   auto exported_names_ident =
-      Identifier::get("tf_saved_model.exported_names", dialect->getContext());
+      StringAttr::get(dialect->getContext(), "tf_saved_model.exported_names");
   // Check that there are no duplicated exported_names.
   DenseMap<StringRef, Operation *> exported_name_to_op;
   for (auto &op : module) {
@@ -278,7 +280,6 @@ static LogicalResult VerifySavedModelModule(
       return func.emitError() << "non-exported function @" << func.getName()
                               << " should be private";
     }
-
     if (!is_exported && HasAnyTfSavedModelArgAttr(func)) {
       return func.emitError() << "can only apply 'tf_saved_model' argument "
                                  "attributes to exported functions";
@@ -492,8 +493,8 @@ class OptimizeSessionInitializerPattern
 };
 
 void SessionInitializerOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<OptimizeSessionInitializerPattern>(context);
+    RewritePatternSet &results, MLIRContext *context) {
+  results.add<OptimizeSessionInitializerPattern>(context);
 }
 
 SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp op) {

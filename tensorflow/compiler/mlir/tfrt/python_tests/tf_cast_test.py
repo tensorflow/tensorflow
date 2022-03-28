@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Tensorflow -> CPURT compilation."""
+"""Tests for Tensorflow -> jitrt compilation."""
 
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 class TfCastTest(test.TestCase):
@@ -31,11 +31,11 @@ class TfCastTest(test.TestCase):
         return %0 : tensor<?xi32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
+    compiled = jitrt.compile(mlir_function, 'test')
 
     arg0 = np.random.uniform(300, 3000, size=10).astype(np.uint32)
 
-    [res] = cpurt.execute(compiled, [arg0])
+    [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_equal(res, arg0)
     np.testing.assert_equal(res.dtype, np.int32)
 
@@ -46,11 +46,11 @@ class TfCastTest(test.TestCase):
         return %0 : tensor<?xui32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
+    compiled = jitrt.compile(mlir_function, 'test')
 
     arg0 = np.random.uniform(300, 3000, size=10).astype(np.int32)
 
-    [res] = cpurt.execute(compiled, [arg0])
+    [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_equal(res, arg0)
     np.testing.assert_equal(res.dtype, np.uint32)
 
@@ -61,11 +61,11 @@ class TfCastTest(test.TestCase):
         return %0 : tensor<?xi64>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
+    compiled = jitrt.compile(mlir_function, 'test')
 
     arg0 = np.random.uniform(300, 3000, size=10).astype(np.uint32)
 
-    [res] = cpurt.execute(compiled, [arg0])
+    [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_equal(res, arg0)
     np.testing.assert_equal(res.dtype, np.int64)
 
@@ -76,11 +76,11 @@ class TfCastTest(test.TestCase):
         return %0 : tensor<?xui8>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
+    compiled = jitrt.compile(mlir_function, 'test')
 
     arg0 = np.random.uniform(300, 3000, size=10).astype(np.int64)
 
-    [res] = cpurt.execute(compiled, [arg0])
+    [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_equal(res, arg0.astype(np.uint8))
     np.testing.assert_equal(res.dtype, np.uint8)
 

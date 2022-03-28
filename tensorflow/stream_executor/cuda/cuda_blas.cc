@@ -219,11 +219,20 @@ class ScopedCublasMathMode {
 };
 #endif  // CUDA_VERSION >= 9000
 
+static const char *const kCublasNotInitializedExplanation =
+    "Failure to initialize cublas may be due to OOM (cublas needs some free "
+    "memory when you initialize it, and your deep-learning framework may have "
+    "preallocated more than its fair share), or may be because this binary was "
+    "not built with support for the GPU in your machine.";
+
 bool CUDABlas::Init() {
   gpu::ScopedActivateExecutorContext sac{parent_};
   cublasStatus_t ret = cublasCreate(&blas_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create cublas handle: " << ToString(ret);
+    if (ret == CUBLAS_STATUS_NOT_INITIALIZED) {
+      LOG(ERROR) << kCublasNotInitializedExplanation;
+    }
     return false;
   }
 
@@ -231,6 +240,9 @@ bool CUDABlas::Init() {
   ret = cublasLtCreate(&blasLt_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create cublasLt handle: " << ToString(ret);
+    if (ret == CUBLAS_STATUS_NOT_INITIALIZED) {
+      LOG(ERROR) << kCublasNotInitializedExplanation;
+    }
     return false;
   }
 #endif  // CUDA_VERSION >= 11000
@@ -3024,6 +3036,66 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
                         CUDABlasTranspose(transa), CUDABlasDiagonal(diag), m, n,
                         GpuComplex(&cb_alpha), GpuComplex(GpuMemory(a)), lda,
                         GpuComplex(GpuMemoryMutable(b)), ldb);
+}
+
+bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+                                 blas::UpperLower uplo, blas::Transpose transa,
+                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 float alpha, const DeviceMemory<float *> &as,
+                                 int lda, DeviceMemory<float *> *bs, int ldb,
+                                 int batch_count) {
+  return DoBlasInternal(cublasStrsmBatched, stream,
+                        true /* = pointer_mode_host */, CUDABlasSide(side),
+                        CUDABlasUpperLower(uplo), CUDABlasTranspose(transa),
+                        CUDABlasDiagonal(diag), m, n, &alpha, GpuMemory(as),
+                        lda, GpuMemoryMutable(bs), ldb, batch_count);
+}
+
+bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+                                 blas::UpperLower uplo, blas::Transpose transa,
+                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 double alpha, const DeviceMemory<double *> &as,
+                                 int lda, DeviceMemory<double *> *bs, int ldb,
+                                 int batch_count) {
+  return DoBlasInternal(cublasDtrsmBatched, stream,
+                        true /* = pointer_mode_host */, CUDABlasSide(side),
+                        CUDABlasUpperLower(uplo), CUDABlasTranspose(transa),
+                        CUDABlasDiagonal(diag), m, n, &alpha, GpuMemory(as),
+                        lda, GpuMemoryMutable(bs), ldb, batch_count);
+}
+
+bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+                                 blas::UpperLower uplo, blas::Transpose transa,
+                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 std::complex<float> alpha,
+                                 const DeviceMemory<std::complex<float> *> &as,
+                                 int lda,
+                                 DeviceMemory<std::complex<float> *> *bs,
+                                 int ldb, int batch_count) {
+  auto cb_alpha = GpuComplexValue(alpha);
+  return DoBlasInternal(
+      cublasCtrsmBatched, stream, true /* = pointer_mode_host */,
+      CUDABlasSide(side), CUDABlasUpperLower(uplo), CUDABlasTranspose(transa),
+      CUDABlasDiagonal(diag), m, n, &cb_alpha,
+      reinterpret_cast<float2 *const *>(GpuMemory(as)), lda,
+      reinterpret_cast<float2 **>(GpuMemoryMutable(bs)), ldb, batch_count);
+}
+
+bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
+                                 blas::UpperLower uplo, blas::Transpose transa,
+                                 blas::Diagonal diag, uint64_t m, uint64 n,
+                                 std::complex<double> alpha,
+                                 const DeviceMemory<std::complex<double> *> &as,
+                                 int lda,
+                                 DeviceMemory<std::complex<double> *> *bs,
+                                 int ldb, int batch_count) {
+  auto cb_alpha = GpuComplexValue(alpha);
+  return DoBlasInternal(
+      cublasZtrsmBatched, stream, true /* = pointer_mode_host */,
+      CUDABlasSide(side), CUDABlasUpperLower(uplo), CUDABlasTranspose(transa),
+      CUDABlasDiagonal(diag), m, n, &cb_alpha,
+      reinterpret_cast<double2 *const *>(GpuMemory(as)), lda,
+      reinterpret_cast<double2 **>(GpuMemoryMutable(bs)), ldb, batch_count);
 }
 
 // We only use cublasLt from CUDA 11.0 onward.

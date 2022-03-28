@@ -20,6 +20,7 @@ Symbols in this file are deprecated. See replacements in
 tensorflow/python/training/trackable and tensorflow/python/training/saving.
 """
 import collections
+import glob
 import os.path
 import threading
 import time
@@ -78,6 +79,19 @@ def _get_duration_microseconds(start_time_seconds, end_time_seconds):
     # Avoid returning negative value in case of clock skew.
     return 0
   return round((end_time_seconds - start_time_seconds) * 1000000)
+
+
+def _get_checkpoint_size(prefix):
+  """Calculates filesize of checkpoint based on prefix."""
+  size = 0
+  # Gather all files beginning with prefix (.index plus sharded data files).
+  files = glob.glob("{}*".format(prefix))
+  for file in files:
+    logging.info(file)
+    # Use TensorFlow's C++ FileSystem API.
+    size += metrics.CalculateFileSize(file)
+    logging.info(size)
+  return size
 
 
 class BaseSaverBuilder(object):
@@ -1315,6 +1329,9 @@ class Saver(object):
     if self._is_empty:
       return None
     else:
+      metrics.RecordCheckpointSize(
+          api_label=_SAVER_LABEL,
+          filesize=_get_checkpoint_size(model_checkpoint_path))
       return model_checkpoint_path
 
   def export_meta_graph(self,

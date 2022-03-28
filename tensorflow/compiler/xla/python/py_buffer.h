@@ -37,7 +37,7 @@ namespace xla {
 // b) to add Python-specific functionality.
 //
 // A `PyBuffer` can be used from Python without being wrapped in a Python
-// `DeviceArray` object, at the condition there is no associated LazyExpr.
+// `DeviceArray` object.
 class PyBuffer {
  public:
   // pybind11::object typed subclass for PyBuffer objects.

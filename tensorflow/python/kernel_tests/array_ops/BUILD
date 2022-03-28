@@ -689,6 +689,7 @@ cuda_py_test(
     name = "where_op_test",
     size = "medium",
     srcs = ["where_op_test.py"],
+    tags = ["no_cuda_asan"],  #TODO(b/212580469)
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

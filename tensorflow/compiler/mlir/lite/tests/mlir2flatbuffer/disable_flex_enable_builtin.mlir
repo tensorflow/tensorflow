@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<4xf32>) -> tensor<4xf32> {
+func.func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):
 // CHECK:  {
 // CHECK-NEXT:  version: 3,
@@ -104,5 +104,5 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
   %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("mul0")
   %2 = "tfl.mul"(%1, %0) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("mul1")
   %3 = "tfl.exp"(%2)  : (tensor<4xf32>) -> tensor<4xf32> loc("exp")
-  return %3 : tensor<4xf32>
+  func.return %3 : tensor<4xf32>
 }

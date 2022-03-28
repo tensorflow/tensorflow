@@ -75,6 +75,14 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     return count_ < 0 ? 0 : std::max(int64_t{0}, n - count_);
   }
 
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t n = input_->Cardinality(options);
+    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+      return n;
+    }
+    return count_ < 0 ? 0 : std::max(int64_t{0}, n - count_);
+  }
+
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return Status::OK();

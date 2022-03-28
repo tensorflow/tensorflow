@@ -36,11 +36,11 @@ class HloSnapshot;
 
 // Get a timestamp which we can use as a filename prefix specific to this
 // module.
-string TimestampFor(const HloModule& module);
+std::string TimestampFor(const HloModule& module);
 
 // Create the filename we will use to dump in DumpToFileInDir.
-string FilenameFor(const HloModule& module, absl::string_view prefix,
-                   absl::string_view suffix);
+std::string FilenameFor(const HloModule& module, absl::string_view prefix,
+                        absl::string_view suffix);
 
 // Writes the given string to a file in the xla_dump_to directory specified by
 // module's DebugOptions.

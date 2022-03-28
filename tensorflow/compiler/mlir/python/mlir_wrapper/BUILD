@@ -22,9 +22,9 @@ tf_python_pybind_extension(
         "//tensorflow/python:pybind11_status",
         "@llvm-project//llvm:FileCheckLib",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:StandardOps",
         "@pybind11",
     ],
 )

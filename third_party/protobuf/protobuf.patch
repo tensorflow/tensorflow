@@ -186,3 +186,16 @@ index 3530a9b37..c31fa8fcc 100644
      if (collections == NULL) {
        return false;
      }
+diff --git a/python/google/protobuf/pyext/unknown_fields.cc b/python/google/protobuf/pyext/unknown_fields.cc
+index c3679c0d3..e80a1d97a 100755
+--- a/python/google/protobuf/pyext/unknown_fields.cc
++++ b/python/google/protobuf/pyext/unknown_fields.cc
+@@ -221,7 +221,7 @@ const UnknownField* GetUnknownField(PyUnknownFieldRef* self) {
+                  "The parent message might be cleared.");
+     return NULL;
+   }
+-  ssize_t total_size = fields->field_count();
++  Py_ssize_t total_size = fields->field_count();
+   if (self->index >= total_size) {
+     PyErr_Format(PyExc_ValueError,
+                  "UnknownField does not exist. "

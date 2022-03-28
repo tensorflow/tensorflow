@@ -393,7 +393,7 @@ final class TensorImpl implements Tensor {
 
     if (oType != dtype) {
       // INT8 and UINT8 have the same string name, "byte"
-      if (oType.toStringName().equals(dtype.toStringName())) {
+      if (DataTypeUtils.toStringName(oType).equals(DataTypeUtils.toStringName(dtype))) {
         return;
       }
 
@@ -476,7 +476,7 @@ final class TensorImpl implements Tensor {
 
   private TensorImpl(long nativeHandle) {
     this.nativeHandle = nativeHandle;
-    this.dtype = DataType.fromC(dtype(nativeHandle));
+    this.dtype = DataTypeUtils.fromC(dtype(nativeHandle));
     this.shapeCopy = shape(nativeHandle);
     this.shapeSignatureCopy = shapeSignature(nativeHandle);
     this.quantizationParamsCopy =

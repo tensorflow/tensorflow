@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -analyze-tf-for-tfrt %s | FileCheck %s
 
-func @main(%serialized: tensor<32x!tf_type.string>,
+func.func @main(%serialized: tensor<32x!tf_type.string>,
            %names : tensor<32x!tf_type.string>,
            %dense_keys : tensor<2x!tf_type.string>,
            %dense_default_0 : tensor<?xf32>,

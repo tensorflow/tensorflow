@@ -16,13 +16,13 @@
 
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
 specializations = [
-    tf_cpurt.Specialization.ENABLED,
-    tf_cpurt.Specialization.DISABLED,
-    tf_cpurt.Specialization.ALWAYS,
+    tf_jitrt.Specialization.ENABLED,
+    tf_jitrt.Specialization.DISABLED,
+    tf_jitrt.Specialization.ALWAYS,
 ]
 
 
@@ -35,19 +35,19 @@ def logical_op_1d(op_name):
   }}"""
 
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 def test_logical_op(mlir_blob, reference_fn, rank):
   for specialize in specializations:
-    compiled = cpurt.compile(mlir_blob, "test", specialize)
+    compiled = jitrt.compile(mlir_blob, "test", specialize)
 
     for _ in range(100):
       shape = np.random.randint(0, 100, size=(rank))
       arg0 = np.random.choice([True, False], size=shape)
       arg1 = np.random.choice([True, False], size=shape)
 
-      [res] = cpurt.execute(compiled, [arg0, arg1])
+      [res] = jitrt.execute(compiled, [arg0, arg1])
       np.testing.assert_equal(res, reference_fn(arg0, arg1))
 
 

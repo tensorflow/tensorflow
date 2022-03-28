@@ -98,6 +98,26 @@ StatusOr<bool> HloDomainRemover::RunContext::Run() {
   return removed_domains > 0;
 }
 
+StatusOr<int64_t> HloDomainRemover::RemoveExitDomains(
+    HloInstruction* instruction, absl::string_view domain_kind) {
+  int64_t removed_domains = 0;
+  HloComputation* computation = instruction->parent();
+  // Make a const copy of instruction's users to loop through later, as the
+  // users vector could be changed during the loop(e.g. ReplaceAllUsesWith).
+  const std::vector<HloInstruction*> users(instruction->users());
+  for (HloInstruction* user : users) {
+    if (user->opcode() == HloOpcode::kDomain &&
+        user->user_side_metadata().Kind() == domain_kind &&
+        user->operand_side_metadata().Kind() == domain_kind) {
+      VLOG(5) << "Removing exit domain " << user->name();
+      TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(instruction));
+      TF_RETURN_IF_ERROR(computation->RemoveInstruction(user));
+      ++removed_domains;
+    }
+  }
+  return removed_domains;
+}
+
 StatusOr<bool> HloDomainRemover::Run(HloModule* module) {
   RunContext run_context(module, this);
   return run_context.Run();

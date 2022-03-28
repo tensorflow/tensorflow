@@ -31,9 +31,11 @@ class MockReadlineUI(readline_ui.ReadlineUI):
   """Test subclass of ReadlineUI that bypasses terminal manipulations."""
 
   def __init__(self, on_ui_exit=None, command_sequence=None):
+    _, config_file_path = tempfile.mkstemp()  # safe to ignore fd
     readline_ui.ReadlineUI.__init__(
-        self, on_ui_exit=on_ui_exit,
-        config=cli_config.CLIConfig(config_file_path=tempfile.mktemp()))
+        self,
+        on_ui_exit=on_ui_exit,
+        config=cli_config.CLIConfig(config_file_path=config_file_path))
 
     self._command_sequence = command_sequence
     self._command_counter = 0
@@ -164,7 +166,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertTrue(observer["callback_invoked"])
 
   def testIncompleteRedirectWorks(self):
-    output_path = tempfile.mktemp()
+    _, output_path = tempfile.mkstemp()  # safe to ignore fd
 
     ui = MockReadlineUI(
         command_sequence=["babble -n 2 > %s" % output_path, "exit"])

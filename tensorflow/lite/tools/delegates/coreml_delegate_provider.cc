@@ -76,7 +76,7 @@ void CoreMlDelegateProvider::LogParams(const ToolParams& params,
 
 TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
-  TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
+  TfLiteDelegatePtr delegate = CreateNullDelegate();
 
 #if defined(REAL_IPHONE_DEVICE)
   if (params.Get<bool>("use_coreml")) {

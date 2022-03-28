@@ -30,8 +30,10 @@ cc_library(
     srcs = ["grpc_coordination_service_impl.cc"],
     hdrs = ["grpc_coordination_service_impl.h"],
     deps = [
+        "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core:platform_base",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_rpc_handler",
@@ -41,5 +43,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/platform",
+        "//tensorflow/core/distributed_runtime:worker_env",
     ] + tf_grpc_cc_dependencies(),
 )

@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/meta/type_traits.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -28,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -46,14 +48,14 @@ class XStatsBuilder {
   // NOTE: A stat shouldn't have existed for the given metadata.
   // Adds a stat for the given metadata and sets its value.
   template <typename ValueT>
-  void AddStatValue(const XStatMetadata& metadata, ValueT value) {
-    SetStatValue(value, AddStat(metadata));
+  void AddStatValue(const XStatMetadata& metadata, ValueT&& value) {
+    SetStatValue(std::forward<ValueT>(value), AddStat(metadata));
   }
 
   // Adds or finds a stat for the given metadata and sets its value.
   template <typename ValueT>
-  void SetOrAddStatValue(const XStatMetadata& metadata, ValueT value) {
-    SetStatValue(value, FindOrAddStat(metadata));
+  void SetOrAddStatValue(const XStatMetadata& metadata, ValueT&& value) {
+    SetStatValue(std::forward<ValueT>(value), FindOrAddStat(metadata));
   }
 
   // Adds a stat by copying a stat from another XPlane. Does not check if a stat
@@ -96,6 +98,22 @@ class XStatsBuilder {
     }
   }
 
+  const XStat* GetStat(int64_t metadata_id) const {
+    for (auto& stat : *stats_owner_->mutable_stats()) {
+      if (stat.metadata_id() == metadata_id) {
+        return &stat;
+      }
+    }
+    return nullptr;
+  }
+
+  static uint64 IntOrUintValue(const XStat& stat) {
+    return stat.value_case() == XStat::kUint64Value ? stat.uint64_value()
+                                                    : stat.int64_value();
+  }
+
+  absl::string_view StrOrRefValue(const XStat& stat);
+
  private:
   XStat* AddStat(const XStatMetadata& metadata) {
     XStat* stat = stats_owner_->add_stats();
@@ -112,23 +130,25 @@ class XStatsBuilder {
     return AddStat(metadata);
   }
 
-  static void SetStatValue(uint32 value, XStat* stat) {
-    stat->set_uint64_value(value);
-  }
-  static void SetStatValue(unsigned long value, XStat* stat) {  // NOLINT
-    stat->set_uint64_value(value);
-  }
-  static void SetStatValue(unsigned long long value, XStat* stat) {  // NOLINT
-    stat->set_uint64_value(value);
-  }
-  static void SetStatValue(int32_t value, XStat* stat) {
+  static void SetStatValue(bool value, XStat* stat) {
+    // bool is integral unsigned, but saved in the signed slot for backwards
+    // compatibility.
     stat->set_int64_value(value);
   }
-  static void SetStatValue(long value, XStat* stat) {  // NOLINT
+  template <typename Int,
+            std::enable_if_t<absl::conjunction<std::is_integral<Int>,
+                                               std::is_signed<Int>>::value,
+                             bool> = true>
+  static void SetStatValue(Int value, XStat* stat) {
     stat->set_int64_value(value);
   }
-  static void SetStatValue(long long value, XStat* stat) {  // NOLINT
-    stat->set_int64_value(value);
+  template <typename UInt,
+            std::enable_if_t<
+                absl::conjunction<std::is_integral<UInt>,
+                                  absl::negation<std::is_signed<UInt>>>::value,
+                bool> = true>
+  static void SetStatValue(UInt value, XStat* stat) {
+    stat->set_uint64_value(value);
   }
   static void SetStatValue(double value, XStat* stat) {
     stat->set_double_value(value);
@@ -198,10 +218,10 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
 
   void SetOffsetPs(int64_t offset_ps) { event_->set_offset_ps(offset_ps); }
 
-  void SetOffsetNs(int64_t offset_ns) { SetOffsetPs(NanosToPicos(offset_ns)); }
+  void SetOffsetNs(int64_t offset_ns) { SetOffsetPs(NanoToPico(offset_ns)); }
 
   void SetTimestampNs(int64_t timestamp_ns) {
-    SetOffsetPs(NanosToPicos(timestamp_ns - line_->timestamp_ns()));
+    SetOffsetPs(NanoToPico(timestamp_ns - line_->timestamp_ns()));
   }
 
   void SetNumOccurrences(int64_t num_occurrences) {
@@ -212,20 +232,20 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
     event_->set_duration_ps(duration_ps);
   }
   void SetDurationNs(int64_t duration_ns) {
-    SetDurationPs(NanosToPicos(duration_ns));
+    SetDurationPs(NanoToPico(duration_ns));
   }
 
   void SetEndTimestampPs(int64_t end_timestamp_ps) {
-    SetDurationPs(end_timestamp_ps - PicosToNanos(line_->timestamp_ns()) -
+    SetDurationPs(end_timestamp_ps - PicoToNano(line_->timestamp_ns()) -
                   event_->offset_ps());
   }
   void SetEndTimestampNs(int64_t end_timestamp_ns) {
-    SetDurationPs(NanosToPicos(end_timestamp_ns - line_->timestamp_ns()) -
+    SetDurationPs(NanoToPico(end_timestamp_ns - line_->timestamp_ns()) -
                   event_->offset_ps());
   }
 
   Timespan GetTimespan() const {
-    return Timespan(NanosToPicos(line_->timestamp_ns()) + event_->offset_ps(),
+    return Timespan(NanoToPico(line_->timestamp_ns()) + event_->offset_ps(),
                     event_->duration_ps());
   }
 
@@ -347,6 +367,9 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   // Returns stat metadata with the given name. Returns nullptr if not found.
   XStatMetadata* GetStatMetadata(absl::string_view name) const;
 
+  // Returns stat metadata given its id. Returns a default value if not found.
+  const XStatMetadata* GetStatMetadata(int64_t metadata_id) const;
+
   // Returns a new stat metadata with an automatically generated metadata_id.
   // WARNING: If calling this function, don't call GetOrCreateEventMetadata.
   XStatMetadata* CreateStatMetadata();
@@ -385,6 +408,23 @@ const XStatMetadata& XStatsBuilder<T>::GetOrCreateStatMetadata(
   return *stats_metadata_owner_->GetOrCreateStatMetadata(value);
 }
 
+template <typename T>
+absl::string_view XStatsBuilder<T>::StrOrRefValue(const XStat& stat) {
+  switch (stat.value_case()) {
+    case XStat::kStrValue:
+      return stat.str_value();
+    case XStat::kRefValue: {
+      auto* ref_stat = stats_metadata_owner_->GetStatMetadata(stat.ref_value());
+      return ref_stat ? ref_stat->name() : absl::string_view();
+    }
+    case XStat::kInt64Value:
+    case XStat::kUint64Value:
+    case XStat::kDoubleValue:
+    case XStat::kBytesValue:
+    case XStat::VALUE_NOT_SET:
+      return absl::string_view();
+  }
+}
 }  // namespace profiler
 }  // namespace tensorflow
 

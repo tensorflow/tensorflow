@@ -250,13 +250,22 @@ class ProcessFunctionLibraryRuntime {
    public:
     enum Summary { kSafeForSync = 0, kSendOnly, kRecvOnly, kAsyncRequired };
 
-    AsyncAttributes() : summary_(kSafeForSync) {}
-    explicit AsyncAttributes(const Graph* graph) : summary_(Summarize(graph)) {}
+    AsyncAttributes()
+        : allow_control_flow_sync_execution_(false), summary_(kSafeForSync) {}
+    explicit AsyncAttributes(const Graph* graph,
+                             bool allow_control_flow_sync_execution)
+        : allow_control_flow_sync_execution_(allow_control_flow_sync_execution),
+          summary_(Summarize(graph)) {}
     Summary summary() const { return summary_; }
+    bool allow_control_flow_sync_execution() const {
+      return allow_control_flow_sync_execution_;
+    }
 
    private:
+    // This data member should be initialized before the summary_.
+    bool allow_control_flow_sync_execution_;
     Summary summary_;
-    static Summary Summarize(const Graph* graph);
+    Summary Summarize(const Graph* graph);
   };
 
   // Structure to keep track of how a component function (a single-device

@@ -559,7 +559,7 @@ TEST_F(HloComputationTest, Stringification) {
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options = HloPrintOptions().set_print_metadata(false);
-  const string expected_computation =
+  const std::string expected_computation =
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
@@ -595,7 +595,7 @@ TEST_F(HloComputationTest, StringificationIndent) {
 
   auto options =
       HloPrintOptions().set_print_metadata(false).set_indent_amount(2);
-  const string expected_computation =
+  const std::string expected_computation =
       R"(    %TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
       %x = f32[5,10]{1,0} parameter(0)
       %y = f32[20,10]{1,0} parameter(1)
@@ -630,7 +630,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options = HloPrintOptions().set_print_metadata(false);
-  const string expected_computation1 =
+  const std::string expected_computation1 =
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
@@ -640,7 +640,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   EXPECT_EQ(computation->ToString(options), expected_computation1);
 
   options = HloPrintOptions().Canonical();
-  const string expected_computation2 = R"(TransposeDot {
+  const std::string expected_computation2 = R"(TransposeDot {
   tmp_0 = f32[5,10]{1,0} parameter(0)
   tmp_1 = f32[20,10]{1,0} parameter(1)
   tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}

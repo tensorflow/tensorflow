@@ -128,9 +128,9 @@ class HloInputOutputAliasConfig {
   // Returns the shape of the output of the alias config.
   const Shape& shape() const;
 
-  string ToString() const;
+  std::string ToString() const;
 
-  string ToShortString() const;
+  std::string ToShortString() const;
 
  private:
   // A ShapeTree which indicates the list of buffers that's expected to be

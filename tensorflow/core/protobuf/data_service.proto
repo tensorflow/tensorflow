@@ -71,12 +71,18 @@ message DataServiceMetadata {
   enum Compression {
     COMPRESSION_UNSPECIFIED = 0;
     // No compression.
-    OFF = 1;
+    COMPRESSION_OFF = 1;
     // Snappy compression as defined in tensorflow/core/platform/snappy.h.
-    SNAPPY = 2;
+    COMPRESSION_SNAPPY = 2;
   }
   Compression compression = 2;
 
   // Cardinality of the dataset.
   int64 cardinality = 3;
+}
+
+// Data service config available to the client through GetDataServiceConfig RPC.
+// Next tag: 2
+message DataServiceConfig {
+  DeploymentMode deployment_mode = 1;
 }

@@ -16,7 +16,7 @@
 
 import numpy as np
 
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 from tensorflow.python.platform import test
 
 
@@ -32,14 +32,14 @@ def matmul():
   }"""
 
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
 def verify_matmul(compiled, m, k, n):
   lhs = np.random.uniform(0.0, 1.0, size=(m, k)).astype(np.float32)
   rhs = np.random.uniform(0.0, 1.0, size=(k, n)).astype(np.float32)
 
-  [res] = cpurt.execute(compiled, [lhs, rhs])
+  [res] = jitrt.execute(compiled, [lhs, rhs])
   np.testing.assert_allclose(res, np.matmul(lhs, rhs), rtol=1e-05)
 
 
@@ -47,14 +47,14 @@ class TfMatMulTest(test.TestCase):
 
   # Matmul: [1, k] x [k, 1]
   def test_dot_product(self):
-    compiled = cpurt.compile(matmul(), "matmul")
+    compiled = jitrt.compile(matmul(), "matmul")
     for _ in range(100):
       k = np.random.randint(1, 10)
       verify_matmul(compiled, 1, k, 1)
 
   # Matmul: [1, k] x [k, n]
   def test_vec_mat(self):
-    compiled = cpurt.compile(matmul(), "matmul")
+    compiled = jitrt.compile(matmul(), "matmul")
     for _ in range(100):
       k = np.random.randint(1, 10)
       n = np.random.randint(1, 10)
@@ -62,7 +62,7 @@ class TfMatMulTest(test.TestCase):
 
   # Matmul: [n, k] x [k, 1]
   def test_mat_vec(self):
-    compiled = cpurt.compile(matmul(), "matmul")
+    compiled = jitrt.compile(matmul(), "matmul")
     for _ in range(100):
       m = np.random.randint(1, 10)
       k = np.random.randint(1, 10)
@@ -70,7 +70,7 @@ class TfMatMulTest(test.TestCase):
 
   # Matmul: [m, k] x [k, n]
   def test_matmul(self):
-    compiled = cpurt.compile(matmul(), "matmul")
+    compiled = jitrt.compile(matmul(), "matmul")
     for _ in range(100):
       m = np.random.randint(1, 10)
       k = np.random.randint(1, 10)

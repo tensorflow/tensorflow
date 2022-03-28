@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
-load("//tensorflow/lite:special_rules.bzl", "nnapi_sl_headers_visibility_allowlist")
+load("//tensorflow/lite:special_rules.bzl", "nnapi_sl_visibility_allowlist")
 
 _DEFAULT_VISIBILITY = ["//tensorflow/lite:__subpackages__"]
 
@@ -17,8 +17,10 @@ cc_library(
         "public/NeuralNetworksSupportLibraryImpl.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = _DEFAULT_VISIBILITY + nnapi_sl_headers_visibility_allowlist(),
+    visibility = _DEFAULT_VISIBILITY + nnapi_sl_visibility_allowlist(),
     deps = [
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/nnapi:nnapi_lib",
     ],
 )
@@ -30,6 +32,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
+    visibility = _DEFAULT_VISIBILITY + nnapi_sl_visibility_allowlist(),
     deps = [
         ":nnapi_support_library_headers",
         "//tensorflow/lite:minimal_logging",

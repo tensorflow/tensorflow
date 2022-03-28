@@ -93,11 +93,6 @@ class DistributedManagerContextImpl
   tensorflow::Status EnableCollectiveOps(
       const tensorflow::ServerDef& server_def) override;
 
-  tensorflow::Status EnableCoordinationService(
-      const std::string& service_type, const tensorflow::WorkerEnv* worker_env,
-      const tensorflow::ServerDef& server_def,
-      tensorflow::WorkerCacheInterface* worker_cache) override;
-
   tensorflow::Status CheckRemoteAlive(const std::string& remote_task_name,
                                       bool* is_alive) override;
 
@@ -106,16 +101,11 @@ class DistributedManagerContextImpl
   void UpdateRequestContextBuilder(RequestContextBuilder* builder) override;
   void PopulateRemoteDevices(tensorflow::DeviceSet* dev_set) override;
 
-  int64_t GetNextStepId() override { return ++step_id_; }
-
-  int64_t step_id() override { return step_id_; }
-
  private:
   HostContext* host_context_;
   std::unique_ptr<tfrt::ServerContext> server_context_;
   AsyncValueRef<tfrt::DistributedContext> dist_context_;
   std::unique_ptr<tensorflow::StaticDeviceMgr> tf_devices_;
-  std::atomic<int64_t> step_id_;
 };
 
 DistributedManagerContextImpl::DistributedManagerContextImpl(
@@ -190,14 +180,6 @@ tensorflow::Status DistributedManagerContextImpl::EnableCollectiveOps(
 #endif  // PLATFORM_GOOGLE
   return tensorflow::errors::Unimplemented(
       "EnableCollectiveOps in open source is not yet implemented.");
-}
-
-tensorflow::Status DistributedManagerContextImpl::EnableCoordinationService(
-    const std::string& service_type, const tensorflow::WorkerEnv* worker_env,
-    const tensorflow::ServerDef& server_def,
-    tensorflow::WorkerCacheInterface* worker_cache) {
-  return tensorflow::errors::Unimplemented(
-      "EnableCoordinationService in TFRT is not yet implemented.");
 }
 
 tensorflow::Status DistributedManagerContextImpl::CheckRemoteAlive(

@@ -123,6 +123,41 @@ the native *flatc* binary needs to be provided along with the
 cmake -DCMAKE_TOOLCHAIN_FILE=${OE_CMAKE_TOOLCHAIN_FILE} -DTFLITE_KERNEL_TEST=on -DTFLITE_HOST_TOOLS_DIR=<flatc_dir_path> ../tensorflow/lite/
 ```
 
+##### Cross-compiled kernel (unit) tests launch on target
+
+Unit tests can be run as separate executables or using the CTest utility. As far
+as CTest is concerned, if at least one of the parameters `TFLITE_ENABLE_NNAPI,
+TFLITE_ENABLE_XNNPACK` or `TFLITE_EXTERNAL_DELEGATE` is enabled for the TF Lite
+build, the resulting tests are generated with two different **labels**
+(utilizing the same test executable): - *plain* - denoting the tests ones run on
+CPU backend - *delegate* - denoting the tests expecting additional launch
+arguments used for the used delegate specification
+
+Both `CTestTestfile.cmake` and `run-tests.cmake` (as referred below) are
+available in `<build_dir>/kernels`.
+
+Launch of unit tests with CPU backend (provided the `CTestTestfile.cmake` is
+present on target in the current directory):
+
+```sh
+ctest -L plain
+```
+
+Launch examples of unit tests using delegates (provided the
+`CTestTestfile.cmake` as well as `run-tests.cmake` file are present on target in
+the current directory):
+
+```sh
+cmake -E env TESTS_ARGUMENTS=--use_nnapi=true\;--nnapi_accelerator_name=vsi-npu ctest -L delegate
+cmake -E env TESTS_ARGUMENTS=--use_xnnpack=true ctest -L delegate
+cmake -E env TESTS_ARGUMENTS=--external_delegate_path=<PATH> ctest -L delegate
+```
+
+**A known limitation** of this way of providing additional delegate-related
+launch arguments to unit tests is that it effectively supports only those with
+an **expected return value of 0**. Different return values will be reported as a
+test failure.
+
 #### OpenCL GPU delegate
 
 If your target machine has OpenCL support, you can use

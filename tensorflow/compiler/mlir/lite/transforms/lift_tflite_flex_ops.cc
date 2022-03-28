@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -106,7 +106,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     }
     op_state.addAttributes(attrs);
 
-    Operation* tf_op = rewriter.createOperation(op_state);
+    Operation* tf_op = rewriter.create(op_state);
     rewriter.replaceOp(op, tf_op->getResults());
 
     // Special type fixes for TF Resource Tensors that are casted to
@@ -243,8 +243,8 @@ class LiftTfliteFlexOpsPass
     MLIRContext* context = &getContext();
     FuncOp func = getOperation();
 
-    mlir::OwningRewritePatternList patterns(context);
-    patterns.insert<LiftFlexCustomOp>(context);
+    mlir::RewritePatternSet patterns(context);
+    patterns.add<LiftFlexCustomOp>(context);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       signalPassFailure();
       return;

@@ -30,8 +30,9 @@ namespace {
 
 using test::function::NDef;
 
-constexpr char kPrefetchDataset[] = "PrefetchDataset";
 constexpr char kOptionsDataset[] = "OptionsDataset";
+constexpr char kParallelMapDataset[] = "ParallelMapDatasetV2";
+constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
 Status Optimize(InjectPrefetch &optimizer, const GrapplerItem &item,
                 GraphDef *output, bool autotune) {
@@ -135,6 +136,29 @@ TEST(InjectPrefetchTest, AlreadyPrefetched) {
   GraphDef output;
   TF_ASSERT_OK(OptimizeWithInjectPrefetch(item, &output, true));
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp(kPrefetchDataset, output));
+  EXPECT_EQ(6, output.node_size());
+}
+
+TEST(InjectPrefetchTest, AlreadyParallelMap) {
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"},
+            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
+             {"output_types", gtl::ArraySlice<DataType>{}}}),
+       NDef("parallel_map", kParallelMapDataset, {"range"},
+            {{"f", "__inference_Dataset_map_normalize_8232"},
+             {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+             {"output_types", gtl::ArraySlice<DataType>{}}}),
+       NDef("Sink", "Identity", {"parallel_map"}, {})});
+
+  item.fetch.push_back("Sink");
+
+  GraphDef output;
+  TF_ASSERT_OK(OptimizeWithInjectPrefetch(item, &output, true));
+  EXPECT_FALSE(graph_utils::ContainsNodeWithOp(kPrefetchDataset, output));
   EXPECT_EQ(6, output.node_size());
 }
 

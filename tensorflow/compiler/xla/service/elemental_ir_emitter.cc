@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -885,6 +884,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
     // unordered comparison.  This makes x != y equivalent to !(x == y), and
     // matches C++'s semantics.
     case HloOpcode::kCompare: {
+      PrimitiveType operand_type = op->operand(0)->shape().element_type();
+      if (operand_type == BF16) {
+        lhs_value = EmitBF16ToF32(lhs_value, b_);
+        rhs_value = EmitBF16ToF32(rhs_value, b_);
+      }
       switch (op->comparison_direction()) {
         case ComparisonDirection::kEq:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
@@ -1717,11 +1721,11 @@ llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* base,
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPredBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
   // Per the reference interpreter, pred arithmetic should behave like
-  // `int8(x) OP int8(y) != 0`.  For most permitted ops, we can just emit the
-  // underlying i8 op to achieve this (e.g. kAnd, kOr, kXor, kMultiply).  In the
-  // case of kAdd, we would need to insert a comparison instruction after the
-  // addition, but it's both easier and faster to emit a bitwise or instruction
-  // instead.
+  // `int8_t(x) OP int8_t(y) != 0`.  For most permitted ops, we can just emit
+  // the underlying i8 op to achieve this (e.g. kAnd, kOr, kXor, kMultiply).  In
+  // the case of kAdd, we would need to insert a comparison instruction after
+  // the addition, but it's both easier and faster to emit a bitwise or
+  // instruction instead.
   //
   // For several of these ops, a faster bitwise implementation is available, but
   // LLVM is unlikely to be able to see it, since it gets IR that e.g. loads i8s
@@ -2048,7 +2052,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
   llvm::Type* index_type = index.GetType();
   std::vector<llvm::Value*> slice_start_multi_index(rank);
   for (int64_t i = 0; i < rank; ++i) {
-    auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
     llvm_ir::IrArray::Index zero_index(index_type);
@@ -2220,7 +2224,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
 
   for (int64_t i = 0; i < rank; ++i) {
     llvm::Type* index_type = index[0]->getType();
-    auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
 
@@ -2367,7 +2371,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   int64_t rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
   llvm::Type* index_type = dot_result_index.GetType();
-  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+  auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_type, c);
   };
 
@@ -2763,7 +2767,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalMap(
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm::Value*> values,
       EmitThreadLocalCall(*map_instr->to_apply(), elemental_operands,
-                          llvm_ir::IrName(map_instr)));
+                          llvm_ir::IrName(map_instr), /*is_reducer=*/false));
   CHECK_EQ(values.size(), 1);
   return values[0];
 }
@@ -2808,7 +2812,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   }
 
   llvm::Type* index_type = index.GetType();
-  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+  auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
     return index.GetConstantWithIndexType(c);
   };
 
@@ -2878,7 +2882,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   }
   TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accum_values,
                       EmitThreadLocalCall(*reduce_window->to_apply(),
-                                          input_values, "reducer_function"));
+                                          input_values, "reducer_function",
+                                          /*is_reducer=*/true));
 
   for (int64_t operand_idx = 0; operand_idx < accum_values.size();
        ++operand_idx) {
@@ -2970,7 +2975,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm::Value*> results,
       EmitThreadLocalCall(*reduce->to_apply(), reduction_operands,
-                          "reduce_function"));
+                          "reduce_function", /*is_reducer=*/true));
 
   CHECK(results.size() == accumulators_count);
   for (int i = 0; i < accumulators_count; i++) {

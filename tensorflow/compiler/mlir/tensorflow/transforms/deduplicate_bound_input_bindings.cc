@@ -16,6 +16,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/DenseMap.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -29,14 +30,14 @@ namespace {
 
 class DedupBoundInputBindingPass
     : public DedupBoundInputBindingPassBase<DedupBoundInputBindingPass> {
-  void runOnFunction() final;
+  void runOnOperation() final;
 };
 
-void DedupBoundInputBindingPass::runOnFunction() {
-  FuncOp func = getFunction();
+void DedupBoundInputBindingPass::runOnOperation() {
+  FuncOp func = getOperation();
   if (!mlir::tf_saved_model::IsExported(func)) return;
   llvm::SmallDenseMap<Attribute, unsigned, 8> unique_bound_inputs;
-  llvm::SmallVector<unsigned, 8> arg_indices_to_erase;
+  llvm::BitVector arg_indices_to_erase(func.getNumArguments());
   for (unsigned i = 0, e = func.getNumArguments(); i < e; i++) {
     auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
         i, "tf_saved_model.bound_input");
@@ -46,7 +47,7 @@ void DedupBoundInputBindingPass::runOnFunction() {
     auto duplicate_arg = func.getArgument(i);
     auto original_arg = func.getArgument(unique_bound_inputs[attr]);
     duplicate_arg.replaceAllUsesWith(original_arg);
-    arg_indices_to_erase.push_back(i);
+    arg_indices_to_erase.set(i);
   }
   func.eraseArguments(arg_indices_to_erase);
 }

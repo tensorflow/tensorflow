@@ -31,10 +31,6 @@ namespace tensorflow {
 
 namespace tfrt_compiler {
 
-// Create a pass to set shape_invariant attribute for all tf.While ops.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
-CreateSetShapeInvariantInWhileOps();
-
 // Create a pass to insert kernels that copy fallback tensors when they are
 // passed to multiple threads, to avoid atomic contention on their refcounts.
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
@@ -92,7 +88,7 @@ CreateConvertReferenceVariableToResourceVariablePass();
 // reusing the pass logic in a custom pass with additional conversions.
 mlir::LogicalResult TFSavedModelToCoreRTConversionPassRun(
     mlir::MLIRContext* context, mlir::FuncOp func,
-    mlir::ConversionTarget* target, mlir::OwningRewritePatternList* patterns,
+    mlir::ConversionTarget* target, mlir::RewritePatternSet* patterns,
     CoreRTConverter* corert_converter);
 
 // Create an operation pass that converts each tfrt_dist.remote_execute_func op
@@ -108,7 +104,8 @@ CreateRemoveDeviceAttributePass();
 
 // Create an operation pass that inserts corert.transfer op to make sure any
 // argument of any op is on the same device of the op itself.
-std::unique_ptr<mlir::FunctionPass> CreateCrossDeviceTransferPass();
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+CreateCrossDeviceTransferPass();
 
 struct TfrtPipelineOptions
     : public mlir::PassPipelineOptions<TfrtPipelineOptions> {
@@ -180,6 +177,12 @@ struct TfrtPipelineOptions
       llvm::cl::desc(
           "If true, use TF tensor as input/output types in func (and other "
           "control flow) ops."),
+      llvm::cl::init(false)};
+
+  Option<bool> enable_while_parallel_iterations{
+      *this, "enable-while-parallel-iterations",
+      llvm::cl::desc("If true, tf.While op will be parallelized. This is "
+                     "currently experimental."),
       llvm::cl::init(false)};
 
   Option<bool> hoist_invariant_ops{

@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/profiler/internal/cpu/python_tracer.h"
+
 #include <memory>
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/python/profiler/internal/python_hooks.h"
 
@@ -84,22 +84,18 @@ Status PythonTracer::CollectData(XSpace* space) {
 
 }  // namespace
 
-// Not in anonymous namespace for testing purposes.
 std::unique_ptr<ProfilerInterface> CreatePythonTracer(
-    const ProfileOptions& options) {
-  if (options.python_tracer_level() == 0 && options.host_tracer_level() == 0) {
+    const PythonTracerOptions& options) {
+  if (!options.enable_trace_python_function && !options.enable_python_traceme) {
     return nullptr;
   }
   PythonHooksOptions pyhooks_options;
-  pyhooks_options.enable_trace_python_function = options.python_tracer_level();
-  pyhooks_options.enable_python_traceme = options.host_tracer_level();
+  pyhooks_options.enable_trace_python_function =
+      options.enable_trace_python_function;
+  pyhooks_options.enable_python_traceme = options.enable_python_traceme;
+  pyhooks_options.end_to_end_mode = options.end_to_end_mode;
   return absl::make_unique<PythonTracer>(pyhooks_options);
 }
-
-auto register_python_tracer_factory = [] {
-  RegisterProfilerFactory(&CreatePythonTracer);
-  return 0;
-}();
 
 }  // namespace profiler
 }  // namespace tensorflow

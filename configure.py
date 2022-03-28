@@ -30,8 +30,8 @@ except ImportError:
   from distutils.spawn import find_executable as which
 # pylint: enable=g-import-not-at-top
 
-_DEFAULT_CUDA_VERSION = '10'
-_DEFAULT_CUDNN_VERSION = '7'
+_DEFAULT_CUDA_VERSION = '11'
+_DEFAULT_CUDNN_VERSION = '2'
 _DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
@@ -45,8 +45,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '4.2.1'
-_TF_MAX_BAZEL_VERSION = '4.99.0'
+_TF_MIN_BAZEL_VERSION = '4.2.2'
+_TF_MAX_BAZEL_VERSION = '5.99.0'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -945,7 +945,7 @@ def is_cuda_compatible(lib, cuda_ver, cudnn_ver):
 
 def set_tf_tensorrt_version(environ_cp):
   """Set TF_TENSORRT_VERSION."""
-  if not is_linux():
+  if not (is_linux() or is_windows()):
     raise ValueError('Currently TensorRT is only supported on Linux platform.')
 
   if not int(environ_cp.get('TF_NEED_TENSORRT', False)):
@@ -1238,6 +1238,10 @@ def validate_cuda_config(environ_cp):
       cuda_libraries.append('tensorrt')
     if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')
+  if is_windows():
+    if int(environ_cp.get('TF_NEED_TENSORRT', False)):
+      cuda_libraries.append('tensorrt')
+      print('WARNING: TensorRT support on Windows is experimental\n')
 
   paths = glob.glob('**/third_party/gpus/find_cuda_config.py', recursive=True)
   if not paths:
@@ -1317,7 +1321,6 @@ def main():
   if is_windows():
     environ_cp['TF_NEED_OPENCL'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
-    environ_cp['TF_NEED_TENSORRT'] = '0'
     # TODO(ibiryukov): Investigate using clang as a cpu or cuda compiler on
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
@@ -1343,6 +1346,9 @@ def main():
     write_action_env_to_bazelrc('ROCM_PATH', environ_cp.get('ROCM_PATH'))
     write_action_env_to_bazelrc('ROCBLAS_TENSILE_LIBPATH',
                                 environ_cp.get('ROCM_PATH') + '/lib/library')
+
+  if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('HIP_PLATFORM')):
+    write_action_env_to_bazelrc('HIP_PLATFORM', environ_cp.get('HIP_PLATFORM'))
 
   environ_cp['TF_NEED_CUDA'] = str(
       int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
@@ -1386,6 +1392,8 @@ def main():
 
       set_tf_cuda_version(environ_cp)
       set_tf_cudnn_version(environ_cp)
+      if is_windows():
+        set_tf_tensorrt_version(environ_cp)
       if is_linux():
         set_tf_tensorrt_version(environ_cp)
         set_tf_nccl_version(environ_cp)

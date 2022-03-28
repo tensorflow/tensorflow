@@ -47,6 +47,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable",
         "//tensorflow/compiler/xla/tests:filecheck",
@@ -54,8 +55,10 @@ cc_library(
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -106,6 +109,18 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "mlir_fft_test",
+    srcs = ["mlir_fft_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":mlir_gpu_test_base",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "mlir_gemm_test",
     srcs = ["mlir_gemm_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -151,26 +166,6 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service/gpu:gpu_reduce_scatter_creator",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
-    ],
-)
-
-tf_cc_test(
-    name = "gpu_spmd_partitioner_test",
-    srcs = ["gpu_spmd_partitioner_test.cc"],
-    deps = [
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_matchers",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/service:rng_expander",
-        "//tensorflow/compiler/xla/service:sharding_propagation",
-        "//tensorflow/compiler/xla/service/gpu:gpu_spmd_partitioner",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
@@ -317,6 +312,33 @@ tf_cc_test(
         "tree_reduction_rewriter_test.cc",
     ],
     tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu:gemm_rewriter",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "swap_conv_operands_test",
+    srcs = [
+        "swap_conv_operands_test.cc",
+    ],
+    tags = ["no_rocm"] + tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -711,6 +733,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/cuda:cuda_platform_id",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/compiler/xla/service/gpu:nvptx_helper",
@@ -752,6 +775,17 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "in_place_op_test",
+    srcs = ["in_place_op_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test_main",
     ],
 )

@@ -43,7 +43,6 @@ using ::tfrt::DenseHostTensor;
 using ::tfrt::MutableArrayRef;
 using ::tfrt::MutableDHTArrayView;
 using ::tfrt::RCReference;
-using ::tfrt::SmallVector;
 using ::tfrt::string_view;
 
 // Adapted from tfrt::ExecuteOpImpl, with additional logic to override OpAttrs.
@@ -56,7 +55,7 @@ void ExecuteFallbackOp(CoreRuntimeOp op,
                        std::unique_ptr<tfrt::ExecutionContext> exec_ctx_ptr) {
   assert(!results.empty());
 
-  SmallVector<tfrt::TensorHandle, 8> result_ths;
+  llvm::SmallVector<tfrt::TensorHandle, 8> result_ths;
   result_ths.resize(results.size());
 
   tfrt::OpAttrs op_attrs;
@@ -154,7 +153,7 @@ void BatchFunctionFallback(tfrt::Argument<Chain> in_op_chain,
   auto op = runtime->MakeOp(kTfKernelNameToFallback, op_handler);
   if (!op) return handler.ReportError(tfrt::StrCat(op.takeError()));
 
-  SmallVector<tfrt::TensorHandle, 8> th_args;
+  llvm::SmallVector<tfrt::TensorHandle, 8> th_args;
   th_args.reserve(args.size() + 1);
   for (const auto& arg : args) {
     th_args.push_back(arg.CopyRef());
@@ -172,7 +171,7 @@ void BatchFunctionFallback(tfrt::Argument<Chain> in_op_chain,
                          std::move(dht));
   }
 
-  SmallVector<RCReference<AsyncValue>, 8> results_refs;
+  llvm::SmallVector<RCReference<AsyncValue>, 8> results_refs;
   for (int b = 0, e = results.size(); b < e; ++b) {
     results_refs.push_back(results.AllocateAt<tfrt::TensorHandle>(b));
   }

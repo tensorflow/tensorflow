@@ -317,7 +317,8 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
   node->set_name(std::move(name));
 }
 
-void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
+void SetUniqueGraphFunctionName(StringPiece prefix,
+                                const FunctionDefLibrary* library,
                                 FunctionDef* function) {
   string name = string(prefix);
   int id = library->function_size();

@@ -153,20 +153,23 @@ class _DynamicLossScaleState(trackable.Trackable):
     backend.track_variable(variable)
     return variable
 
-  @property
-  def _checkpoint_dependencies(self):
+  def _trackable_children(self,
+                          save_type=trackable.SaveType.CHECKPOINT,
+                          **kwargs):
     """From Trackable. Gather graph-specific weights to save."""
     if context.executing_eagerly():
       graph_key = None
     else:
       graph = ops.get_default_graph()
       graph_key = graph._graph_key  # pylint: disable=protected-access
-    weights = []
+    weights = {}
     for (name, g), v in sorted(self._weights.items(), key=lambda i: i[0][0]):
       if g == graph_key:
-        weights.append(trackable.TrackableReference(name=name, ref=v))
-    return (super(_DynamicLossScaleState, self)._checkpoint_dependencies +
-            weights)
+        weights[name] = v
+    weights.update(
+        super(_DynamicLossScaleState,
+              self)._trackable_children(save_type, **kwargs))
+    return weights
 
   def _lookup_dependency(self, name):
     """From Trackable. Find a weight in the current graph."""

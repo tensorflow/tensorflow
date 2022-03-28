@@ -2144,15 +2144,16 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_ELEMENTWISE = 14,
     VT_LINKABLE = 16,
     VT_CHECK_SRC_CHANNELS_SIZE = 18,
-    VT_DEFINITION = 20,
-    VT_GRID_DIMENSION = 22,
-    VT_WORK_GROUP_LAUNCH_ORDER = 24,
-    VT_GRID_SIZE = 26,
-    VT_SRC_TENSORS_NAMES = 28,
-    VT_DST_TENSORS_NAMES = 30,
-    VT_WORK_GROUPS_COUNT = 32,
-    VT_LINKABLE_COUNT = 34,
-    VT_ELEMENTWISE_CODE = 36
+    VT_FLOPS = 20,
+    VT_DEFINITION = 22,
+    VT_GRID_DIMENSION = 24,
+    VT_WORK_GROUP_LAUNCH_ORDER = 26,
+    VT_GRID_SIZE = 28,
+    VT_SRC_TENSORS_NAMES = 30,
+    VT_DST_TENSORS_NAMES = 32,
+    VT_WORK_GROUPS_COUNT = 34,
+    VT_LINKABLE_COUNT = 36,
+    VT_ELEMENTWISE_CODE = 38
   };
   const tflite::gpu::data::Arguments *arguments() const {
     return GetPointer<const tflite::gpu::data::Arguments *>(VT_ARGUMENTS);
@@ -2179,6 +2180,7 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   bool check_src_channels_size() const {
     return GetField<uint8_t>(VT_CHECK_SRC_CHANNELS_SIZE, 0) != 0;
   }
+  uint64_t flops() const { return GetField<uint64_t>(VT_FLOPS, 0); }
   const tflite::gpu::data::OperationDef *definition() const {
     return GetPointer<const tflite::gpu::data::OperationDef *>(VT_DEFINITION);
   }
@@ -2226,6 +2228,7 @@ struct GPUOperation FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<uint8_t>(verifier, VT_ELEMENTWISE) &&
            VerifyField<uint8_t>(verifier, VT_LINKABLE) &&
            VerifyField<uint8_t>(verifier, VT_CHECK_SRC_CHANNELS_SIZE) &&
+           VerifyField<uint64_t>(verifier, VT_FLOPS) &&
            VerifyOffset(verifier, VT_DEFINITION) &&
            verifier.VerifyTable(definition()) &&
            VerifyField<int32_t>(verifier, VT_GRID_DIMENSION) &&
@@ -2283,6 +2286,9 @@ struct GPUOperationBuilder {
   void add_check_src_channels_size(bool check_src_channels_size) {
     fbb_.AddElement<uint8_t>(GPUOperation::VT_CHECK_SRC_CHANNELS_SIZE,
                              static_cast<uint8_t>(check_src_channels_size), 0);
+  }
+  void add_flops(uint64_t flops) {
+    fbb_.AddElement<uint64_t>(GPUOperation::VT_FLOPS, flops, 0);
   }
   void add_definition(
       flatbuffers::Offset<tflite::gpu::data::OperationDef> definition) {
@@ -2346,7 +2352,7 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperation(
     tflite::gpu::data::TensorToGrid tensor_to_grid =
         tflite::gpu::data::TensorToGrid::CUSTOM,
     bool elementwise = false, bool linkable = false,
-    bool check_src_channels_size = false,
+    bool check_src_channels_size = false, uint64_t flops = 0,
     flatbuffers::Offset<tflite::gpu::data::OperationDef> definition = 0,
     int32_t grid_dimension = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> work_group_launch_order = 0,
@@ -2361,6 +2367,7 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperation(
     int32_t linkable_count = 0,
     flatbuffers::Offset<flatbuffers::String> elementwise_code = 0) {
   GPUOperationBuilder builder_(_fbb);
+  builder_.add_flops(flops);
   builder_.add_elementwise_code(elementwise_code);
   builder_.add_linkable_count(linkable_count);
   builder_.add_work_groups_count(work_groups_count);
@@ -2391,7 +2398,7 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperationDirect(
     tflite::gpu::data::TensorToGrid tensor_to_grid =
         tflite::gpu::data::TensorToGrid::CUSTOM,
     bool elementwise = false, bool linkable = false,
-    bool check_src_channels_size = false,
+    bool check_src_channels_size = false, uint64_t flops = 0,
     flatbuffers::Offset<tflite::gpu::data::OperationDef> definition = 0,
     int32_t grid_dimension = 0,
     flatbuffers::Offset<tflite::gpu::data::Int3> work_group_launch_order = 0,
@@ -2423,7 +2430,7 @@ inline flatbuffers::Offset<GPUOperation> CreateGPUOperationDirect(
       elementwise_code ? _fbb.CreateString(elementwise_code) : 0;
   return tflite::gpu::data::CreateGPUOperation(
       _fbb, arguments, code__, work_group_size, compiler_options__,
-      tensor_to_grid, elementwise, linkable, check_src_channels_size,
+      tensor_to_grid, elementwise, linkable, check_src_channels_size, flops,
       definition, grid_dimension, work_group_launch_order, grid_size,
       src_tensors_names__, dst_tensors_names__, work_groups_count,
       linkable_count, elementwise_code__);

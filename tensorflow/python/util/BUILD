@@ -711,3 +711,14 @@ filegroup(
     name = "util_hdr",
     srcs = ["util.h"],
 )
+
+tf_py_test(
+    name = "compat_test",
+    srcs = ["compat_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
+    ],
+)

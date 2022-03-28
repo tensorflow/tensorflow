@@ -201,7 +201,7 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
     }
 
     for (const auto& test :
-         std::vector<std::pair<std::function<XlaOp(XlaOp)>, string>>({
+         std::vector<std::pair<std::function<XlaOp(XlaOp)>, std::string>>({
              {IsFinite, "is_finite"},
              {IsInf, "is_inf"},
              {IsPosInf, "is_pos_inf"},

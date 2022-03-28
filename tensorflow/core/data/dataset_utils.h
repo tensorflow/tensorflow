@@ -33,6 +33,9 @@ namespace data {
 // should be supplied by the auto-sharding rewrite.
 constexpr int kShardHint = -1;
 
+// The initial parallelism value before Autotune has a chance to optimize.
+constexpr int kAutotuneDefaultParallelism = 16;
+
 // Creates a resource handle with a unique name for the given resource where
 // the resource is managed by the Resource Manager.
 template <typename T>
@@ -353,6 +356,10 @@ inline int GetCpuBudget() {
   static bool in_experiment = GetExperiments().contains("tune_cpu_budget");
   return (in_experiment ? 1.2 : 1.0) * port::NumSchedulableCPUs();
 }
+
+// Returns the initial value for parallelism parameter before the first Autotune
+// optimization.
+int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
 
 // Registry of tf.data experiments.
 class DatasetExperimentRegistry {

@@ -92,6 +92,7 @@ Status PopulateConvMap(
   if (m.kv_pairs().size() == 0) {
     return Status::OK();
   }
+  std::set<std::string> unmatched_device_ids;
   // Map device_id's to corresponding device_identifiers.
   std::vector<string> device_ids_map =
       autotune_maps_utils::GetDeviceIdToIdentifierMap();
@@ -115,23 +116,6 @@ Status PopulateConvMap(
           ". Actual version: ", params_proto.version());
     }
 
-    const AlgorithmConfigProto &algorithm_config_proto = kv.value();
-
-    AutotuneEntry<Op> entry;
-#if TENSORFLOW_USE_ROCM
-    // ROCm doesn't yet support the OpRunner-based API, so for the time being we
-    // still need legacy AlgorithmDesc entries in the autotune map.  Long-term,
-    // this should be folded into the next case.
-    entry = AutotuneEntry<Op>(AlgorithmConfig(algorithm_config_proto));
-#else
-    entry = AutotuneEntry<Op>(
-        AlgorithmDesc(algorithm_config_proto.algorithm()),
-        algorithm_config_proto.has_algorithm_no_scratch()
-            ? absl::optional<AlgorithmDesc>(
-                  AlgorithmDesc(algorithm_config_proto.algorithm_no_scratch()))
-            : absl::nullopt);
-#endif
-
     auto iter = device_identifiers_map.find(params_proto.device_identifier());
     std::vector<int> device_ids;
     if (iter == device_identifiers_map.end()) {
@@ -147,16 +131,39 @@ Status PopulateConvMap(
     }
 
     if (device_ids.empty()) {
-      LOG(WARNING) << "No matching devices found for "
-                   << params_proto.device_identifier() << "; existing devices: "
-                   << str_util::Join(device_ids_map, ", ");
+      unmatched_device_ids.insert(params_proto.device_identifier());
     } else {
       devices_matched = true;
     }
 
+    const AlgorithmConfigProto &algorithm_config_proto = kv.value();
+    const AlgorithmDesc primary(algorithm_config_proto.algorithm());
+    const absl::optional<AlgorithmDesc> fallback =
+        algorithm_config_proto.has_algorithm_no_scratch()
+            ? absl::optional<AlgorithmDesc>(
+                  AlgorithmDesc(algorithm_config_proto.algorithm_no_scratch()))
+            : absl::nullopt;
+
     for (int device_id : device_ids) {
+      AutotuneEntry<Op> entry;
+#if TENSORFLOW_USE_ROCM
+      // ROCm doesn't yet support the OpRunner-based API, so for the time being
+      // we still need legacy AlgorithmDesc entries in the autotune map.
+      // Long-term, this should be folded into the next case.
+      entry = AutotuneEntry<Op>(AlgorithmConfig(algorithm_config_proto));
+#else
+      entry = AutotuneEntry<Op>(primary, fallback);
+#endif
+
       autotune_map->Insert(ConvParameters(device_id, params_proto), entry);
     }
+  }
+
+  if (!unmatched_device_ids.empty()) {
+    LOG(WARNING) << "Unmatched device id's from AoT autotuning data: "
+                 << str_util::Join(unmatched_device_ids, ", ")
+                 << "; existing devices: "
+                 << str_util::Join(device_ids_map, ", ");
   }
 
   // When no matching devices are found, populating autotuning map will not

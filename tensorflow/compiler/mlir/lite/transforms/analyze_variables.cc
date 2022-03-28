@@ -43,8 +43,8 @@ bool IsSupportedTFLiteControlFlow(Operation* op) {
 // Returns true if the 'op' is one of the supported TF control flow ops or
 // dataset ops. Those ops just forward the operands to other subgraphs.
 bool IsSupportedTFDataForwardingOp(Operation* op) {
-  return llvm::isa<TF::MapDatasetOp, TF::ReduceDatasetOp, TF::IfOp,
-                   TF::WhileOp>(op);
+  return llvm::isa<TF::MapDatasetOp, TF::ReduceDatasetOp,
+                   TF::TakeWhileDatasetOp, TF::IfOp, TF::WhileOp>(op);
 }
 
 }  // namespace

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TOOLS_HLO_MODULE_LOADER_H_
 #define TENSORFLOW_COMPILER_XLA_TOOLS_HLO_MODULE_LOADER_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -35,7 +36,7 @@ struct Config {
 
 // Given a string composed by multiple lines, strip the log headers, if present
 // at the beginning of each line.
-string StripLogHeaders(const string& hlo_string);
+std::string StripLogHeaders(const std::string& hlo_string);
 
 // Loads an HLO module from a string.
 // The data can have the followings formats:
@@ -50,7 +51,7 @@ string StripLogHeaders(const string& hlo_string);
 // The HloModuleConfig is passed to config_modifier_hook for custom
 // modifications before use.
 StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
-    const string& data, const string& format,
+    const std::string& data, const std::string& format,
     hlo_module_loader_details::Config ovr_config =
         hlo_module_loader_details::Config(),
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {});
@@ -69,10 +70,10 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
 // The HloModuleConfig is passed to config_modifier_hook for custom
 // modifications before use.
 StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
-    const string& path,
+    const std::string& path,
     hlo_module_loader_details::Config ovr_config =
         hlo_module_loader_details::Config(),
-    string format = "",
+    std::string format = "",
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {});
 
 }  // namespace xla

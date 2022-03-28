@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -58,9 +59,9 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // definition in `dataset_def`.
   Status GetDatasetDef(int64_t dataset_id, DatasetDef& dataset_def);
 
-  // Gets the next split for the specified job id, repetition, and split
+  // Gets the next split for the specified job id, iteration, and split
   // provider index.
-  Status GetSplit(int64_t job_id, int64_t repetition,
+  Status GetSplit(int64_t job_id, int64_t iteration,
                   int64_t split_provider_index, Tensor& split,
                   bool& end_of_splits);
 
@@ -75,7 +76,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // id is stored in `job_client_id`.
   Status GetOrCreateJob(int64_t dataset_id,
                         const ProcessingModeDef& processing_mode,
-                        const absl::optional<JobKey>& job_key,
+                        const absl::optional<JobKeyDef>& job_key,
                         absl::optional<int64_t> num_consumers,
                         TargetWorkers target_workers, int64_t& job_client_id);
 
@@ -97,12 +98,12 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // stored in `workers`.
   Status GetWorkers(std::vector<WorkerInfo>& workers);
 
-  // Returns element spec for the registered dataset.
-  Status GetElementSpec(int64_t dataset_id, std::string& element_spec);
-
   // Returns data service metadata for the registered dataset.
   Status GetDataServiceMetadata(int64_t dataset_id,
                                 DataServiceMetadata& metadata);
+
+  // Returns data service config of the data service cluster.
+  Status GetDataServiceConfig(DataServiceConfig& config);
 
  protected:
   Status EnsureInitialized() override;

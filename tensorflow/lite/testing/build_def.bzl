@@ -46,6 +46,7 @@ def generated_test_models():
         "depthwiseconv",
         "div",
         "dynamic_rnn",
+        "dynamic_update_slice",
         "einsum",
         "elu",
         "embedding_lookup",
@@ -63,6 +64,7 @@ def generated_test_models():
         "gather",
         "gather_nd",
         "gather_with_constant",
+        "gelu",
         "global_batch_norm",
         "greater",
         "greater_equal",
@@ -332,6 +334,10 @@ def merged_test_models():
                 # Merged test rules are only for running on the real device environment.
                 if "notap" not in tags:
                     tags.append("notap")
+
+                # Only execute merged tests on real device.
+                if "no_oss" not in tags:
+                    tags.append("no_oss")
                 args = common_test_args_for_generated_models(conversion_mode, False)
                 n = number_of_merged_zip_file(conversion_mode, delegate)
                 for i in range(n):
@@ -561,12 +567,12 @@ def gen_zipped_test_file(name, file, flags = ""):
     """
     native.genrule(
         name = file + ".files",
-        cmd = (("$(locations :generate_examples) " +
+        cmd = (("$(location //tensorflow/lite/testing:generate_examples) " +
                 " --zip_to_output {0} {1} $(@D)").format(file, flags)),
         outs = [file],
         # `exec_tools` is required for PY3 compatibility in place of `tools`.
         exec_tools = [
-            ":generate_examples",
+            "//tensorflow/lite/testing:generate_examples",
         ],
     )
 

@@ -63,6 +63,29 @@ class StrategyTest(test.TestCase, parameterized.TestCase):
 
     g()
 
+  def testMergeCallInitScope(self, strategy):
+    with strategy.scope():
+
+      @def_function.function
+      def fn():
+
+        def merge_fn(unused_strat):
+
+          y = constant_op.constant(11)
+          return y
+
+        def replica_fn():
+
+          with ops.init_scope():
+            y = ds_context.get_replica_context().merge_call(merge_fn)
+            z = y + 1
+            return z
+
+        return strategy.run(replica_fn)
+
+      result = strategy.experimental_local_results(fn())
+      self.assertAllClose(result, [12] * _get_num_replicas_per_client(strategy))
+
 
 @combinations.generate(
     combinations.combine(

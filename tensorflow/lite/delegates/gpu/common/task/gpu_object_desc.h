@@ -167,7 +167,8 @@ class GPUObjectDescriptor {
     state_vars_[key] = value;
   }
 
-  virtual absl::Status PerformConstExpr(const std::string& const_expr,
+  virtual absl::Status PerformConstExpr(const tflite::gpu::GpuInfo& gpu_info,
+                                        const std::string& const_expr,
                                         std::string* result) const {
     return absl::UnimplementedError(
         "No implementation of perform const expression");
@@ -185,6 +186,10 @@ class GPUObjectDescriptor {
   }
 
   virtual void Release() {}
+
+  // For internal use, will work correct only for const objects and before
+  // Release() call.
+  virtual uint64_t GetSizeInBytes() const { return 0; }
 
   void SetAccess(AccessType access_type) { access_type_ = access_type; }
   AccessType GetAccess() const { return access_type_; }
