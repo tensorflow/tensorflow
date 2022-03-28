@@ -2,7 +2,7 @@
 // RUN:   -tf-jitrt-tile-reduction="reduction-2d-tile-sizes=4,4 reduction-vector-size=8 reduction-1d-tile-size=16" \
 // RUN: | FileCheck %s
 
-func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
+func.func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
                         %rhs: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
@@ -61,7 +61,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
 
 // -----
 
-func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
+func.func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %input, %c0 : tensor<8x16xf32>
@@ -86,7 +86,7 @@ func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
 
 // -----
 
-func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
+func.func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %input, %c0 : tensor<?x?xf32>
@@ -138,7 +138,7 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
 
 // -----
 
-func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -163,7 +163,7 @@ func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
 // -----
 
-func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
+func.func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %lhs, %c0 : tensor<?xf32>
