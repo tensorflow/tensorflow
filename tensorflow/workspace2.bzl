@@ -552,13 +552,14 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/google/boringssl/archive/80ca9f9f6ece29ab132cce4cf807a9465a18cfac.tar.gz"),
     )
 
+    # Note: if you update this, you have to update libpng too. See cl/437813808
     tf_http_archive(
         name = "zlib",
         build_file = "//third_party:zlib.BUILD",
-        sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
-        strip_prefix = "zlib-1.2.11",
+        sha256 = "91844808532e5ce316b3c010929493c0244f3d37593afd6de04f71821d5136d9",
+        strip_prefix = "zlib-1.2.12",
         system_build_file = "//third_party/systemlibs:zlib.BUILD",
-        urls = tf_mirror_urls("https://zlib.net/zlib-1.2.11.tar.gz"),
+        urls = tf_mirror_urls("https://zlib.net/zlib-1.2.12.tar.gz"),
     )
 
     # LINT.IfChange
