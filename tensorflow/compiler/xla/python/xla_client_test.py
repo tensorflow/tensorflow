@@ -612,9 +612,12 @@ def TestFactory(xla_backend,
       self.assertEqual(buffer.ndim, 2)
 
       self.assertIs(buffer, buffer.block_until_ready())
+      self.assertTrue(buffer.is_ready())
       buffer.delete()
       with self.assertRaises(RuntimeError):
         buffer.block_until_ready()
+      with self.assertRaises(RuntimeError):
+        buffer.is_ready()
 
     def testOnDeviceSizeInBytes(self):
       if not isinstance(self.backend, xla_client.Client):
