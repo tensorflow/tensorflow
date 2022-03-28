@@ -3170,7 +3170,7 @@ func.func @torch_index_select(%arg0: tensor<2x1xf32>, %arg1: tensor<2xi32>) -> t
 // CHECK:           %[[VAL_3:.*]] = "tf.Cumsum"(%[[VAL_0]], %[[VAL_2]]) {exclusive = false, reverse = false} : (tensor<4x12xf32>, tensor<i64>) -> tensor<4x12xf32>
 // CHECK:           return %[[VAL_3]] : tensor<4x12xf32>
 // CHECK:         }
-func @lowered_cumsum(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
+func.func @lowered_cumsum(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = "mhlo.reduce_window"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
@@ -3187,7 +3187,7 @@ func @lowered_cumsum(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
 // CHECK:           %[[VAL_3:.*]] = "tf.Cumprod"(%[[VAL_0]], %[[VAL_2]]) {exclusive = false, reverse = false} : (tensor<4x12xf32>, tensor<i64>) -> tensor<4x12xf32>
 // CHECK:           return %[[VAL_3]] : tensor<4x12xf32>
 // CHECK:         }
-func @lowered_cumprod(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
+func.func @lowered_cumprod(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
   %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
   %1 = "mhlo.reduce_window"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):

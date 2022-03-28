@@ -8,7 +8,7 @@
 // CHECK:           %[[VAL_2:.*]] = "mhlo.tuple"(%[[VAL_1]]) : (tensor<3x4xf32>) -> tuple<tensor<3x4xf32>>
 // CHECK:           return %[[VAL_2]] : tuple<tensor<3x4xf32>>
 // CHECK:         }
-func @tfl_wrapped_jax_random_normal(%arg0: tensor<2xui32>) -> tuple<tensor<3x4xf32>> {
+func.func @tfl_wrapped_jax_random_normal(%arg0: tensor<2xui32>) -> tuple<tensor<3x4xf32>> {
   // This is a fake jax random normal body.
   %0 = mhlo.constant dense<0.0> : tensor<12xf32>
   %1 = "mhlo.reshape"(%0) : (tensor<12xf32>) -> tensor<3x4xf32>
@@ -24,7 +24,7 @@ func @tfl_wrapped_jax_random_normal(%arg0: tensor<2xui32>) -> tuple<tensor<3x4xf
 // CHECK:           %[[VAL_2:.*]] = "mhlo.tuple"(%[[VAL_1]]) : (tensor<1x2xf32>) -> tuple<tensor<1x2xf32>>
 // CHECK:           return %[[VAL_2]] : tuple<tensor<1x2xf32>>
 // CHECK:         }
-func @tfl_wrapped_jax_random_uniform(%arg0: tensor<2xui32>) -> tuple<tensor<1x2xf32>> {
+func.func @tfl_wrapped_jax_random_uniform(%arg0: tensor<2xui32>) -> tuple<tensor<1x2xf32>> {
   // This is a fake jax random uniform body.
   %0 = mhlo.constant dense<0.0> : tensor<2xf32>
   %1 = "mhlo.reshape"(%0) : (tensor<2xf32>) -> tensor<1x2xf32>

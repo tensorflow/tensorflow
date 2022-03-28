@@ -1593,7 +1593,7 @@ func.func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>, %cst: tensor<ui32>)
 
 // CHECK-LABEL: @dynamic_broadcast_in_dim
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x?x?x1x42xf32>, %[[SHAPE:.*]]: tensor<7xindex>
-func @dynamic_broadcast_in_dim(%arg: tensor<?x?x?x?x1x42xf32>,
+func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?x?x?x1x42xf32>,
     %shape: tensor<7xindex>) -> tensor<?x?x?x?x?x?x?xf32> {
   // CHECK-DAG:  %[[C0:.*]] = arith.constant 0
   // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
@@ -1627,7 +1627,7 @@ func @dynamic_broadcast_in_dim(%arg: tensor<?x?x?x?x1x42xf32>,
 
 // -----
 
-func @dot_matmul(%arg0: tensor<2x3xf32>,
+func.func @dot_matmul(%arg0: tensor<2x3xf32>,
                  %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
   %0 = "mhlo.dot"(%arg0, %arg1) {someattr}
            : (tensor<2x3xf32>, tensor<3x?xf32>) -> tensor<2x?xf32>

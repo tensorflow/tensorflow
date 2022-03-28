@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -tfl-unfold-large-splat-constant | FileCheck %s
 
 // CHECK-LABEL: @unfold_large_constant_splat
-func @unfold_large_constant_splat() -> (tensor<10x10xf32>, tensor<1000x1000xf32>) {
+func.func @unfold_large_constant_splat() -> (tensor<10x10xf32>, tensor<1000x1000xf32>) {
   %0 = arith.constant dense<0.00000e+00> : tensor<10x10xf32>
   %1 = arith.constant dense<1.00000e+00> : tensor<1000x1000xf32>
   func.return %0, %1 : tensor<10x10xf32>, tensor<1000x1000xf32>

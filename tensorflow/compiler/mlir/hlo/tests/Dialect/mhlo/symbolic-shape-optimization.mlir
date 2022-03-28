@@ -49,7 +49,7 @@ func.func @reshape_expand_back(%arg0: tensor<?x?xf32>) -> tensor<?x?x1x1xf32> {
 
 // CHECK-LABEL: @reshape_expand_scalar
 // CHECK-SAME:  %[[ARG:.*]]: tensor<f32>
-func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
+func.func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
   // CHECK-DAG: %[[EXPAND:.*]] = tensor.expand_shape %[[ARG]] [] : tensor<f32> into tensor<1x1xf32>
   // CHECK-DAG: %[[RES:.*]] = tensor.cast %[[EXPAND]] : tensor<1x1xf32> to tensor<?x?xf32>
   // CHECK:     return %[[RES]]
@@ -63,7 +63,7 @@ func @reshape_expand_scalar(%arg0: tensor<f32>) -> tensor<?x?xf32> {
 
 // CHECK-LABEL: @reshape_collapse_scalar
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?xf32>
-func @reshape_collapse_scalar(%arg0 : tensor<?x?xf32>) -> tensor<f32> {
+func.func @reshape_collapse_scalar(%arg0 : tensor<?x?xf32>) -> tensor<f32> {
   %shape = mhlo.constant dense<1> : tensor<0xi32>
   // CHECK-DAG: %[[CASTED_ARG:.*]] = tensor.cast %[[ARG]] : tensor<?x?xf32> to tensor<1x1xf32>
   // CHECK-DAG: %[[COLLAPSED:.*]] = tensor.collapse_shape %[[CASTED_ARG]] [] : tensor<1x1xf32> into tensor<f32>
@@ -75,7 +75,7 @@ func @reshape_collapse_scalar(%arg0 : tensor<?x?xf32>) -> tensor<f32> {
 // -----
 
 // CHECK-LABEL: func @reshape_undefined
-func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
+func.func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
   // CHECK: mhlo.dynamic_reshape
   %c1 = arith.constant 1 : index
   %shape = tensor.from_elements %c1, %c1, %c1 : tensor<3xindex>
@@ -88,7 +88,7 @@ func @reshape_undefined(%arg0: tensor<?xf32>) -> tensor<1x1x1xf32> {
 
 // CHECK-LABEL: @shape_expansion
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x1xi64>
-func @shape_expansion(%arg : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
+func.func @shape_expansion(%arg : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
   // CHECK-DAG: %[[RES:.*]] = tensor.expand_shape %[[ARG]] {{\[}}[0], [1, 2]{{\]}} : tensor<?x1xi64> into tensor<?x1x1xi64>
   // CHECK:     return %[[RES]]
   %c0 = arith.constant 0 : index
@@ -104,7 +104,7 @@ func @shape_expansion(%arg : tensor<?x1xi64>) -> tensor<?x1x1xi64> {
 
 // CHECK-LABEL: @shape_collapse_and_expansion
 // CHECK-SAME:  %[[ARG:.*]]: tensor<3x?x1xi64>
-func @shape_collapse_and_expansion(%arg : tensor<3x?x1xi64>)
+func.func @shape_collapse_and_expansion(%arg : tensor<3x?x1xi64>)
     -> tensor<?x1x1xi64> {
   // CHECK: %[[EED:.*]] = tensor.expand_shape %[[ARG]] {{\[}}[0], [1], [2, 3]{{\]}} : tensor<3x?x1xi64> into tensor<3x?x1x1xi64>
   // CHECK: %[[CED:.*]] = tensor.collapse_shape %[[EED]] {{\[}}[0, 1], [2], [3]{{\]}} : tensor<3x?x1x1xi64> into tensor<?x1x1xi64>
@@ -123,7 +123,7 @@ func @shape_collapse_and_expansion(%arg : tensor<3x?x1xi64>)
 
 // CHECK-LABEL: @shape_collapse_and_expansion_w_cast
 // CHECK-SAME:  %[[ARG:.*]]: tensor<16x8x?x?xf32>
-func @shape_collapse_and_expansion_w_cast(%arg0: tensor<16x8x?x?xf32>) -> tensor<16x4x?x?xf32> {
+func.func @shape_collapse_and_expansion_w_cast(%arg0: tensor<16x8x?x?xf32>) -> tensor<16x4x?x?xf32> {
   // CHECK-DAG: %[[EED:.*]] = tensor.expand_shape %[[ARG]] {{\[}}[0], [1, 2], [3], [4]{{\]}} : tensor<16x8x?x?xf32> into tensor<16x4x2x?x?xf32>
   // CHECK-DAG: %[[CED:.*]] = tensor.collapse_shape %[[EED]] {{\[}}[0], [1], [2], [3, 4]{{\]}} : tensor<16x4x2x?x?xf32> into tensor<16x4x2x?xf32>
   // CHECK-DAG: %[[RES:.*]] = tensor.cast %[[CED]]
@@ -145,7 +145,7 @@ func @shape_collapse_and_expansion_w_cast(%arg0: tensor<16x8x?x?xf32>) -> tensor
 
 // CHECK-LABEL: @dynamic_reshape_to_collapse_shape
 // CHECK-SAME: %[[ARG:.*]]: tensor<1x4x?x64x?x8x1x1xf32>
-func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
+func.func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
     -> tensor<?x?x8xf32> {
   // CHECK: %[[RESULT:.*]] = tensor.collapse_shape %[[ARG]] {{\[}}[0, 1, 2], [3, 4], [5, 6, 7]{{\]}}
   // CHECK: return %[[RESULT]]
@@ -170,7 +170,7 @@ func @dynamic_reshape_to_collapse_shape(%arg0 : tensor<1x4x?x64x?x8x1x1xf32>)
 
 // CHECK-LABEL: @expansion_unit_dims
 // CHECK-SAME:  %[[ARG:.*]]: tensor<1x?x1xi64>
-func @expansion_unit_dims(%arg0: tensor<1x?x1xi64>) -> tensor<1x1x?x1xi64> {
+func.func @expansion_unit_dims(%arg0: tensor<1x?x1xi64>) -> tensor<1x1x?x1xi64> {
   // CHECK-DAG: %[[RES:.*]] = tensor.expand_shape %[[ARG]] {{\[}}[0, 1], [2], [3]{{\]}} : tensor<1x?x1xi64> into tensor<1x1x?x1xi64>
   // CHECK:     return %[[RES]]
   %c0 = arith.constant 0 : index
@@ -186,7 +186,7 @@ func @expansion_unit_dims(%arg0: tensor<1x?x1xi64>) -> tensor<1x1x?x1xi64> {
 
 // CHECK-LABEL: @multiple_reductions_and_reshape
 // CHECK-SAME:  %[[ARG:.*]]: tensor<?x?x?x?xi64>
-func @multiple_reductions_and_reshape(%arg0: tensor<?x?x?x?xi64>) -> tensor<1x1x1x1xi64> {
+func.func @multiple_reductions_and_reshape(%arg0: tensor<?x?x?x?xi64>) -> tensor<1x1x1x1xi64> {
   // CHECK: %[[RED0:.*]] = mhlo.reduce(%[[ARG]]
   // CHECK: %[[RED0_:.*]] = tensor.expand_shape %[[RED0]] {{\[}}[0], [1], [2, 3]{{\]}} : tensor<?x?x?xi64> into tensor<?x?x?x1xi64>
   // CHECK: %[[RED1:.*]] = mhlo.reduce(%[[RED0_]]
@@ -435,7 +435,7 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>,
 // -----
 
 // CHECK-LABEL: @optimize_1dx1d_constraint
-func @optimize_1dx1d_constraint(
+func.func @optimize_1dx1d_constraint(
   %arg0: tensor<?xf32>
     {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
   %arg1: tensor<?xf32>
@@ -451,7 +451,7 @@ func @optimize_1dx1d_constraint(
 // -----
 
 // CHECK-LABEL: @optimize_1dx1d_constraint_with_static_shape
-func @optimize_1dx1d_constraint_with_static_shape(
+func.func @optimize_1dx1d_constraint_with_static_shape(
   %arg0: tensor<?xf32>
     {jitrt.symbolic_shape = dense<[10]> : tensor<1xi64>},
   %arg1: tensor<10xf32>
@@ -466,7 +466,7 @@ func @optimize_1dx1d_constraint_with_static_shape(
 // -----
 
 // CHECK-LABEL: @optimize_1dx1d_constraint_with_const_shape
-func @optimize_1dx1d_constraint_with_const_shape(
+func.func @optimize_1dx1d_constraint_with_const_shape(
   %arg0: tensor<512xf32>,
   %arg1: tensor<?x512xf32>
     {jitrt.symbolic_shape = dense<[-2,512]> : tensor<2xi64>}
@@ -481,7 +481,7 @@ func @optimize_1dx1d_constraint_with_const_shape(
 // -----
 
 // CHECK-LABEL: @optimize_1dx1d_bcast
-func @optimize_1dx1d_bcast(
+func.func @optimize_1dx1d_bcast(
     %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
     %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>})
     -> tensor<?xf32> {
@@ -501,7 +501,7 @@ func @optimize_1dx1d_bcast(
 // -----
 
 // CHECK-LABEL: @optimize_1dx2d_bcast_const_shape
-func @optimize_1dx2d_bcast_const_shape(
+func.func @optimize_1dx2d_bcast_const_shape(
     %arg0: tensor<512xf32>,
     %arg1: tensor<?x512xf32>
     {jitrt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>})
@@ -522,7 +522,7 @@ func @optimize_1dx2d_bcast_const_shape(
 // -----
 
 // CHECK-LABEL: @optimize_1dx1dx1d_bcast
-func @optimize_1dx1dx1d_bcast(
+func.func @optimize_1dx1dx1d_bcast(
     %arg0: tensor<?xf32>
     {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
     %arg1: tensor<?xf32>
@@ -548,7 +548,7 @@ func @optimize_1dx1dx1d_bcast(
 // -----
 
 // CHECK-LABEL: @optimize_2dx1d_bcast
-func @optimize_2dx1d_bcast(
+func.func @optimize_2dx1d_bcast(
     %arg0: tensor<10x?xf32>
     {jitrt.symbolic_shape = dense<[10, -2]> : tensor<2xi64>},
     %arg1: tensor<?xf32>
@@ -576,7 +576,7 @@ func @optimize_2dx1d_bcast(
 // -----
 
 // CHECK-LABEL: @optimize_3dx3d_bcast
-func @optimize_3dx3d_bcast(
+func.func @optimize_3dx3d_bcast(
     %arg0: tensor<?x1x?xf32>
     {jitrt.symbolic_shape = dense<[-2, 1, -3]> : tensor<3xi64>},
     %arg1: tensor<1x?x1xf32>
@@ -604,7 +604,7 @@ func @optimize_3dx3d_bcast(
 // -----
 
 // CHECK-LABEL: @optimize_10d_all_cases
-func @optimize_10d_all_cases(
+func.func @optimize_10d_all_cases(
     %arg0: tensor<1x1x1x8x8x8x?x?x?x?xf32>
     {jitrt.symbolic_shape = dense<[1, 1,  1, 8, 8,  8, -2, -3, -4, -5]>
     : tensor<10xi64>},
@@ -632,7 +632,7 @@ func @optimize_10d_all_cases(
 
 // CHECK-LABEL: @empty_bcast
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>
-func @empty_bcast(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<0xindex> {
+func.func @empty_bcast(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<0xindex> {
   // CHECK-DAG: %[[SHAPE:.*]] = arith.constant dense<> : tensor<0xindex>
   // CHECK:     return %[[SHAPE]]
   %0 = shape.shape_of %arg0 : tensor<f32> -> tensor<0xindex>
@@ -647,7 +647,7 @@ func @empty_bcast(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<0xindex> {
 // CHECK-LABEL: @simplifiable_bcast
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<?x1x1x4x?x?x1xf32>
 // CHECK-SAME:  %[[ARG1:.*]]: tensor<1x8x1x?x1x?xf32>
-func @simplifiable_bcast(
+func.func @simplifiable_bcast(
     %arg0 : tensor<?x1x1x4x?x?x1xf32>
     {jitrt.symbolic_shape = dense<[-2, 1, 1, 4, -2, -3,  1]> : tensor<7xi64>},
     %arg1 : tensor<1x8x1x?x1x?xf32>
@@ -677,7 +677,7 @@ func @simplifiable_bcast(
 
 // CHECK-LABEL: @very_dynamic_bcast
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<?xf32>, %[[ARG1:.*]]: tensor<?xf32>
-func @very_dynamic_bcast(%arg0 : tensor<?xf32>, %arg1 : tensor<?xf32>)
+func.func @very_dynamic_bcast(%arg0 : tensor<?xf32>, %arg1 : tensor<?xf32>)
     -> tensor<1xindex> {
   // CHECK-DAG: %[[S0:.*]] = shape.shape_of %[[ARG0]]
   // CHECK-DAG: %[[S1:.*]] = shape.shape_of %[[ARG1]]

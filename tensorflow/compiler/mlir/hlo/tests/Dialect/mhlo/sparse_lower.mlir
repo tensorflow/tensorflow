@@ -23,7 +23,7 @@
 // CHECK:         } -> tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>
 // CHECK:         return %[[VAL_8:.*]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ], {{.*}} }>>
 // CHECK:       }
-func @sparse_abs_eltwise(%arg0: tensor<10x20xf32, #CSR>) -> tensor<10x20xf32, #DCSR> {
+func.func @sparse_abs_eltwise(%arg0: tensor<10x20xf32, #CSR>) -> tensor<10x20xf32, #DCSR> {
   %0 = "mhlo.abs"(%arg0) : (tensor<10x20xf32, #CSR>) -> tensor<10x20xf32, #DCSR>
   func.return %0 : tensor<10x20xf32, #DCSR>
 }
