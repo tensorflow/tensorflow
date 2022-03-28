@@ -118,8 +118,19 @@ struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
           return rewriter.create<tensor::ExtractOp>(loc, operand, operand_dim)
               .getResult();
         }));
-    rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(
-        op, op->getResultTypes().front(), elements);
+    Type index_ty = rewriter.getIndexType();
+    Type concrete_result_ty = RankedTensorType::get(
+        {static_cast<int64_t>(elements.size())}, index_ty);
+    Value result = rewriter.create<tensor::FromElementsOp>(
+        loc, concrete_result_ty, elements);
+
+    // Insert cast, if needed.
+    Type expected_ty = op.getResult().getType();
+    if (result.getType() != expected_ty) {
+      result = rewriter.create<tensor::CastOp>(loc, expected_ty, result);
+    }
+
+    rewriter.replaceOp(op, result);
     return success();
   }
 };
