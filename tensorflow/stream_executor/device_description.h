@@ -28,10 +28,7 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-<<<<<<< HEAD
 #include "absl/types/variant.h"
-=======
->>>>>>> google_upstream/master
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -107,11 +104,7 @@ class RocmComputeCapability {
  public:
   // gcn_arch_name example --  gfx90a:sramecc+:xnack-
   // gfx_version is the "gfx90a" part of the gcn_arch_name
-<<<<<<< HEAD
   RocmComputeCapability(const std::string gcn_arch_name)
-=======
-  explicit RocmComputeCapability(const std::string &gcn_arch_name)
->>>>>>> google_upstream/master
       : gcn_arch_name_(gcn_arch_name) {}
 
   ~RocmComputeCapability() {}

@@ -798,13 +798,6 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
   if (!compute_capability) {
     return xla::InternalError("Incompatible compute capability was specified.");
   }
-<<<<<<< HEAD
-=======
-
-  std::string gcn_arch_name = compute_capability->gcn_arch_name();
-  TF_RETURN_IF_ERROR(
-      LinkROCDLIfNecessary(module, gcn_arch_name, device_bitcode_dir_path));
->>>>>>> google_upstream/master
 
   std::string gcn_arch_name = compute_capability->gcn_arch_name();
   TF_RETURN_IF_ERROR(
@@ -939,12 +932,8 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
-<<<<<<< HEAD
-    auto compute_capability = absl::get_if<se::RocmComputeCapability>(&gpu_version);
-=======
     auto compute_capability =
         absl::get_if<se::RocmComputeCapability>(&gpu_version);
->>>>>>> google_upstream/master
     if (!compute_capability) {
       return xla::InternalError(
           "Incompatible compute capability was specified.");
