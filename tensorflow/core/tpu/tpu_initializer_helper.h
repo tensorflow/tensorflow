@@ -1,11 +1,8 @@
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,6 +15,10 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
+#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -26,7 +27,10 @@ namespace tpu {
 // up calls to this function will return true if the lock has been acquired and
 // false if we failed to acquire the lock.
 bool TryAcquireTpuLock();
-
+// This will initialize the TPU library.
+Status InitializeTpuLibrary(void* library_handle);
+// This will check the lock and then load the library. 
+bool FindAndLoadTpuLibrary();
 // Returns arguments (e.g. flags) set in the LIBTPU_INIT_ARGS environment
 // variable. The first return value is the arguments, the second return value is
 // pointers to the arguments suitable for passing into the C API.
