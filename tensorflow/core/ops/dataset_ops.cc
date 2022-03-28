@@ -328,7 +328,7 @@ REGISTER_OP("FilterDataset")
 REGISTER_OP("ParallelFilterDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
-    .Input("num_parallel_calls: int32")
+    .Input("num_parallel_calls: int64")
     .Output("handle: variant")
     .Attr("predicate: func")
     // "true", "false", or "default".

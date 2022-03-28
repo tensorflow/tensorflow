@@ -171,7 +171,7 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
     tensorflow::IncreaseOpExpansionExecuteCounterByOne(
         op->getName().getStringRef().str());
 
-    auto compose_func_type = compose_func.getType();
+    auto compose_func_type = compose_func.getFunctionType();
     builder.setInsertionPoint(op);
     TFRTensorType unconstrainted_tensor_type = builder.getType<TFRTensorType>();
 

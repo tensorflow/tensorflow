@@ -8050,6 +8050,14 @@ op {
     name: "device_index"
     type: DT_INT32
   }
+  input_arg {
+    name: "base_key"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "group_size"
+    type: DT_INT32
+  }
   output_arg {
     name: "group_key"
     type: DT_INT32
@@ -30140,7 +30148,7 @@ op {
   }
   input_arg {
     name: "num_parallel_calls"
-    type: DT_INT32
+    type: DT_INT64
   }
   output_arg {
     name: "handle"

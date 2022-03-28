@@ -53,7 +53,7 @@ struct TransferReadOfOneDimExpandShape
   mlir::LogicalResult matchAndRewrite(
       TransferReadOp vector_read,
       mlir::PatternRewriter &rewriter) const override {
-    auto expand = vector_read.source().getDefiningOp<ExpandShapeOp>();
+    auto expand = vector_read.getSource().getDefiningOp<ExpandShapeOp>();
     if (!expand) return failure();
 
     auto expand_src = expand.src();
@@ -78,7 +78,7 @@ struct TransferReadOfOneDimExpandShape
         mlir::VectorType::get(expand_src_type.getShape(),
                               expand_src_type.getElementType()),
         expand_src, mlir::ValueRange{zero}, mlir::AffineMapAttr::get(map),
-        vector_read.padding(),
+        vector_read.getPadding(),
         /*mask=*/mlir::Value(), rewriter.getBoolArrayAttr({true}));
     rewriter.replaceOpWithNewOp<mlir::vector::ShapeCastOp>(
         vector_read, vector_read.getType(), new_read);
@@ -96,7 +96,7 @@ struct VectorizeTiledOpsPass
     auto funcOp = getOperation();
 
     // Vectorize linalg.fill and linalg.generic operations.
-    mlir::OpPassManager dynamicPM("builtin.func");
+    mlir::OpPassManager dynamicPM("func.func");
     CodegenStrategy strategy;
     strategy.vectorize(FillOp::getOperationName(), [](mlir::Operation *op) {
       auto fill = mlir::dyn_cast<FillOp>(op);
@@ -116,7 +116,7 @@ struct VectorizeTiledOpsPass
     strategy.configurePassPipeline(dynamicPM, funcOp.getContext());
     if (failed(runPipeline(dynamicPM, funcOp))) return signalPassFailure();
 
-    mlir::OpPassManager dynamicPM2("builtin.func");
+    mlir::OpPassManager dynamicPM2("func.func");
     CodegenStrategy strategy2;
     strategy2.vectorize(GenericOp::getOperationName(), [](mlir::Operation *op) {
       auto generic = mlir::dyn_cast<GenericOp>(op);

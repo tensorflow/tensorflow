@@ -598,6 +598,12 @@ Status PyBuffer::RegisterTypes(py::module& m) {
         return self.buf()->BlockHostUntilReady();
       },
       py::is_method(type));
+  type.attr("is_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsReady(); },
+      py::is_method(type));
+  type.attr("is_known_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsKnownReady(); },
+      py::is_method(type));
   type.attr("block_until_ready") = py::cpp_function(
       [](PyBuffer::object self) -> StatusOr<PyBuffer::object> {
         TF_RETURN_IF_ERROR(self.buf()->BlockHostUntilReady());

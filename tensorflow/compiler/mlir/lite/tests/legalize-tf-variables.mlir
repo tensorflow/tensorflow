@@ -12,7 +12,7 @@ module attributes {tf_saved_model.semantics} {
     "tf.AssignVariableOp"(%handle_0, %1) : (tensor<!tf_type.resource<tensor<1x10xf32>>>, tensor<1x10xf32>) -> ()
     %2 = "tf.ReadVariableOp"(%handle_0) {device = ""} : (tensor<!tf_type.resource<tensor<1x10xf32>>>) -> tensor<1x10xf32>
     %3 = "tf.ReadVariableOp"(%handle_1) {device = ""} : (tensor<!tf_type.resource<tensor<1x10xi64>>>) -> tensor<1x10xi64>
-    return %2, %3 : tensor<1x10xf32>, tensor<1x10xi64>
+    func.return %2, %3 : tensor<1x10xf32>, tensor<1x10xi64>
   }
 
   // CHECK: %[[RESOURCE:.*]] = "tfl.var_handle"() {container = "c", shared_name = "a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
@@ -39,7 +39,7 @@ module attributes {tf_saved_model.semantics} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
     %cst_1 = arith.constant dense<1.0> : tensor<1x10xf32>
     "tf.AssignVariableOp"(%handle_0, %cst_1) : (tensor<!tf_type.resource<tensor<1x10xf32>>>, tensor<1x10xf32>) -> ()
-    return
+    func.return
     // CHECK: %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<1x10xf32>
     // CHECK: %[[RESOURCE:.*]] = "tfl.var_handle"() {container = "c", shared_name = "a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
     // CHECK: "tfl.assign_variable"(%[[RESOURCE]], %[[CST]]) : (tensor<!tf_type.resource<tensor<1x10xf32>>>, tensor<1x10xf32>) -> ()
@@ -56,7 +56,7 @@ module attributes {tf_saved_model.semantics} {
     %1 = tfl.add %0, %arg0 {fused_activation_function = "NONE"} : tensor<1x10xf32>
     "tf.AssignVariableOp"(%handle_0, %1) : (tensor<!tf_type.resource<tensor<1x10xf32>>>, tensor<1x10xf32>) -> ()
     %2 = "tf.ReadVariableOp"(%handle_0) {device = ""} : (tensor<!tf_type.resource<tensor<1x10xf32>>>) -> tensor<1x10xf32>
-    return %2 : tensor<1x10xf32>
+    func.return %2 : tensor<1x10xf32>
     // CHECK: %[[RESOURCE:.*]] = "tfl.var_handle"() {container = "c", shared_name = "a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
     // CHECK: %[[VAR_VAL:.*]] = "tfl.read_variable"(%[[RESOURCE]]) : (tensor<!tf_type.resource<tensor<1x10xf32>>>) -> tensor<1x10xf32>
     // CHECK: %[[ADD:.*]] = tfl.add %[[VAR_VAL]], %arg0 {fused_activation_function = "NONE"} : tensor<1x10xf32>
@@ -74,7 +74,7 @@ module attributes {tf_saved_model.semantics} {
     (tensor<1x10xui64> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xui64>>>
     %0 = "tf.ReadVariableOp"(%handle_0) {device = ""} : (tensor<!tf_type.resource<tensor<1x10xui64>>>) -> tensor<1x10xui64>
-    return %0 : tensor<1x10xui64>
+    func.return %0 : tensor<1x10xui64>
   }
 
   // CHECK: tf.ReadVariableOp
@@ -89,7 +89,7 @@ module attributes {tf_saved_model.semantics, tfl._legalize_tfl_variables = true}
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xui64>>>
     %cst = arith.constant dense<2> : tensor<1x10xui64>
     "tf.AssignVariableOp"(%handle_0, %cst) : (tensor<!tf_type.resource<tensor<1x10xui64>>>, tensor<1x10xui64>) -> ()
-    return
+    func.return
   }
 
   // CHECK: tf.VarHandleOp
@@ -104,7 +104,7 @@ module attributes {tf_saved_model.semantics, tfl._legalize_tfl_variables = false
     (tensor<1x10xf32> {tf_saved_model.index_path = ["output_0"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "StatefulPartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
     %handle_0 = "tf.VarHandleOp"() {container="c", shared_name="a"} : () -> tensor<!tf_type.resource<tensor<1x10xf32>>>
     %0 = "tf.ReadVariableOp"(%handle_0) : (tensor<!tf_type.resource<tensor<1x10xf32>>>) -> tensor<1x10xf32>
-    return %0 : tensor<1x10xf32>
+    func.return %0 : tensor<1x10xf32>
   }
 
   // CHECK: tf.ReadVariableOp

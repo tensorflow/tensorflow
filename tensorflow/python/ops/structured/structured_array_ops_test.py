@@ -1,4 +1,3 @@
-# Lint as python3
 # Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -93,73 +92,180 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
           testcase_name="1D_0",
           st=[{"x": [1, 3]}, {"x": [2, 7, 9]}],
           axis=0,
-          expected=[[{"x": [1, 3]}, {"x": [2, 7, 9]}]]),
+          expected=
+          lambda: StructuredTensor.from_fields(
+              {"x": ragged_tensor.RaggedTensor.from_uniform_row_length(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      [1, 3, 2, 7, 9], [2, 3]), 2)}, shape=[1, 2])),
       dict(
           testcase_name="1D_1",
           st=[{"x": [1]}, {"x": [2, 10]}],
           axis=1,
-          expected=[[{"x": [1]}], [{"x": [2, 10]}]]),
+          # expected=[[{"x": [1]}], [{"x": [2, 10]}]]
+          expected=lambda: StructuredTensor.from_fields({
+              "x": ragged_tensor.RaggedTensor.from_uniform_row_length(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      [1, 2, 10], [1, 2]), 1)}, shape=[2, 1])),
       dict(
           testcase_name="2D_0",
           st=[[{"x": [1]}, {"x": [2]}], [{"x": [3, 4]}]],
           axis=0,
-          expected=[[[{"x": [1]}, {"x": [2]}], [{"x": [3, 4]}]]]),
+          # expected=[[[{"x": [1]}, {"x": [2]}], [{"x": [3, 4]}]]]
+          expected=lambda: StructuredTensor.from_fields({
+              "x": ragged_tensor.RaggedTensor.from_uniform_row_length(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      ragged_tensor.RaggedTensor.from_row_lengths(
+                          [1, 2, 3, 4], [1, 1, 2]), [2, 1]), 2)},
+                                                        shape=[1, 2, 1])
+          ),
       dict(
           testcase_name="2D_1",
           st=[[{"x": 1}, {"x": 2}], [{"x": 3}]],
           axis=1,
-          expected=[[[{"x": 1}, {"x": 2}]], [[{"x": 3}]]]),
+          # expected=[[[{"x": 1}, {"x": 2}]], [[{"x": 3}]]]
+          expected=lambda: StructuredTensor.from_fields({
+              "x": ragged_tensor.RaggedTensor.from_uniform_row_length(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      [1, 2, 3], [2, 1]), 1)}, shape=[2, 1, 1])),
       dict(
           testcase_name="2D_2",
           st=[[{"x": [1]}, {"x": [2]}], [{"x": [3, 4]}]],
           axis=2,
-          expected=[[[{"x": [1]}], [{"x": [2]}]], [[{"x": [3, 4]}]]]),
+          # expected=[[[{"x": [1]}], [{"x": [2]}]], [[{"x": [3, 4]}]]]),
+          expected=lambda: StructuredTensor.from_fields({
+              "x": ragged_tensor.RaggedTensor.from_row_lengths(
+                  ragged_tensor.RaggedTensor.from_uniform_row_length(
+                      ragged_tensor.RaggedTensor.from_row_lengths(
+                          [1, 2, 3, 4], [1, 1, 2]), 1), [2, 1])},
+                                                        shape=[2, 1, 1])),
       dict(
           testcase_name="3D_0",
           st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
           axis=0,
-          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]],
-                     [[{"x": [4, 5]}]]]]),
+          # expected=[[
+          #             [[{"x": [1]}, {"x": [2]}], [{"x": [3]}]],
+          #             [[{"x": [4, 5]}]]
+          # ]]),
+          expected=lambda: StructuredTensor.from_fields(
+              {"x": ragged_tensor.RaggedTensor.from_uniform_row_length(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      ragged_tensor.RaggedTensor.from_row_lengths(
+                          ragged_tensor.RaggedTensor.from_row_lengths(
+                              [1, 2, 3, 4, 5],
+                              [1, 1, 1, 2]),
+                          [2, 1, 1]),
+                      [2, 1]),
+                  2)},
+              shape=[1, 2, None, None])),
       dict(
           testcase_name="3D_minus_4",
           st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
           axis=-4,  # same as zero
-          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]],
-                     [[{"x": [4, 5]}]]]]),
+          # expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]],
+          #            [[{"x": [4, 5]}]]]]),
+          expected=lambda: StructuredTensor.from_fields(
+              {"x": ragged_tensor.RaggedTensor.from_uniform_row_length(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      ragged_tensor.RaggedTensor.from_row_lengths(
+                          ragged_tensor.RaggedTensor.from_row_lengths(
+                              [1, 2, 3, 4, 5],
+                              [1, 1, 1, 2]),
+                          [2, 1, 1]),
+                      [2, 1]),
+                  2)},
+              shape=[1, 2, None, None])),
+
       dict(
           testcase_name="3D_1",
           st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
           axis=1,
-          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]]],
-                    [[[{"x": [4, 5]}]]]]),
+          # expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]]],
+          #           [[[{"x": [4, 5]}]]]]),
+          expected=lambda: StructuredTensor.from_fields(
+              {"x": ragged_tensor.RaggedTensor.from_uniform_row_length(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      ragged_tensor.RaggedTensor.from_row_lengths(
+                          ragged_tensor.RaggedTensor.from_row_lengths(
+                              [1, 2, 3, 4, 5],
+                              [1, 1, 1, 2]),
+                          [2, 1, 1]),
+                      [2, 1]),
+                  1)},
+              shape=[2, 1, None, None])),
       dict(
           testcase_name="3D_minus_3",
           st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
           axis=-3,  # same as 1
-          expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]]],
-                    [[[{"x": [4, 5]}]]]]),
+          # expected=[[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]]],
+          #           [[[{"x": [4, 5]}]]]]),
+          expected=lambda: StructuredTensor.from_fields(
+              {"x": ragged_tensor.RaggedTensor.from_uniform_row_length(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      ragged_tensor.RaggedTensor.from_row_lengths(
+                          ragged_tensor.RaggedTensor.from_row_lengths(
+                              [1, 2, 3, 4, 5],
+                              [1, 1, 1, 2]),
+                          [2, 1, 1]),
+                      [2, 1]),
+                  1)},
+              shape=[2, 1, None, None])),
       dict(
           testcase_name="3D_2",
           st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
           axis=2,
-          expected=[[[[{"x": [1]}, {"x": [2]}]], [[{"x": [3]}]]],
-                    [[[{"x": [4, 5]}]]]]),
+          # expected=[[[[{"x": [1]}, {"x": [2]}]], [[{"x": [3]}]]],
+          #           [[[{"x": [4, 5]}]]]]),
+          expected=lambda: StructuredTensor.from_fields(
+              {"x": ragged_tensor.RaggedTensor.from_row_lengths(
+                  ragged_tensor.RaggedTensor.from_uniform_row_length(
+                      ragged_tensor.RaggedTensor.from_row_lengths(
+                          ragged_tensor.RaggedTensor.from_row_lengths(
+                              [1, 2, 3, 4, 5],
+                              [1, 1, 1, 2]),
+                          [2, 1, 1]),
+                      1),
+                  [2, 1])},
+              shape=[2, None, 1, None])),
       dict(
           testcase_name="3D_minus_2",
           st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
           axis=-2,  # same as 2
-          expected=[[[[{"x": [1]}, {"x": [2]}]], [[{"x": [3]}]]],
-                    [[[{"x": [4, 5]}]]]]),
+          # expected=[[[[{"x": [1]}, {"x": [2]}]], [[{"x": [3]}]]],
+          #           [[[{"x": [4, 5]}]]]]),
+          expected=lambda: StructuredTensor.from_fields(
+              {"x": ragged_tensor.RaggedTensor.from_row_lengths(
+                  ragged_tensor.RaggedTensor.from_uniform_row_length(
+                      ragged_tensor.RaggedTensor.from_row_lengths(
+                          ragged_tensor.RaggedTensor.from_row_lengths(
+                              [1, 2, 3, 4, 5],
+                              [1, 1, 1, 2]),
+                          [2, 1, 1]),
+                      1),
+                  [2, 1])},
+              shape=[2, None, 1, None])),
       dict(
           testcase_name="3D_3",
           st=[[[{"x": [1]}, {"x": [2]}], [{"x": [3]}]], [[{"x": [4, 5]}]]],
           axis=3,
-          expected=[[[[{"x": [1]}], [{"x": [2]}]], [[{"x": [3]}]]],
-                    [[[{"x": [4, 5]}]]]]),
+          # expected=[[[[{"x": [1]}], [{"x": [2]}]], [[{"x": [3]}]]],
+          #           [[[{"x": [4, 5]}]]]]
+          expected=lambda: StructuredTensor.from_fields(
+              {"x": ragged_tensor.RaggedTensor.from_row_lengths(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      ragged_tensor.RaggedTensor.from_uniform_row_length(
+                          ragged_tensor.RaggedTensor.from_row_lengths(
+                              [1, 2, 3, 4, 5],
+                              [1, 1, 1, 2]),
+                          1),
+                      [2, 1, 1]),
+                  [2, 1])},
+              shape=[2, None, None, 1])),
   ])  # pyformat: disable
   def testExpandDims(self, st, axis, expected):
     st = StructuredTensor.from_pyval(st)
     result = array_ops.expand_dims(st, axis)
+    if callable(expected):
+      expected = expected()
     self.assertAllEqual(result, expected)
 
   def testExpandDimsAxisTooBig(self):
@@ -936,8 +1042,26 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
       my_zeros = array_ops.zeros(my_shape)
       return structured_array_ops._structured_tensor_like(my_zeros)
 
-    result = my_fun(array_ops.constant([2, 2]))
-    self.assertAllEqual([[{}, {}], [{}, {}]], result)
+    result = my_fun(array_ops.constant([2, 2], dtype=dtypes.int64))
+
+    @def_function.function
+    def my_expected(nrows, uniform_row_length, nvals):
+      return StructuredTensor.from_fields(
+          {},
+          shape=[None, None],
+          nrows=nrows,
+          row_partitions=[
+              row_partition.RowPartition.from_uniform_row_length(
+                  uniform_row_length=uniform_row_length,
+                  nvals=nvals,
+                  dtype=dtypes.int64)
+          ])
+
+    expected = my_expected(
+        array_ops.constant(2, dtype=dtypes.int64),
+        array_ops.constant(2, dtype=dtypes.int64),
+        array_ops.constant(4, dtype=dtypes.int64))
+    self.assertAllEqual(expected, result)
 
   def testStructuredTensorArrayRankZero(self):
     """Fully test structured_tensor_array_like."""
@@ -1025,9 +1149,15 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
           indices=[1, 0],
           axis=1,
           batch_dims=0,
-          expected=[[{"a": {}, "b": [5]}, {"a": {}, "b": [3, 4]}],
-                    [{"a": {}, "b": [2, 8, 2]}, {"a": {}, "b": [7, 8, 9]}],
-                    [{"a": {}, "b": [4]}, {"a": {}, "b": []}]]),
+          expected=lambda: StructuredTensor.from_fields({
+              "a": StructuredTensor.from_fields(
+                  {},
+                  shape=[3, 2]),
+              "b": ragged_tensor.RaggedTensor.from_uniform_row_length(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      [5, 3, 4, 2, 8, 2, 7, 8, 9, 4],
+                      [1, 2, 3, 3, 1, 0]
+                  ), 2)}, shape=[3, 2])),
       dict(
           testcase_name="lists_of_lists_axis_minus_2",
           params=[[{"a": {}, "b": [3, 4]}, {"a": {}, "b": [5]}],
@@ -1047,9 +1177,18 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
           indices=[1, 0],
           axis=-1,  # same as 1
           batch_dims=0,
-          expected=[[{"a": {}, "b": [5]}, {"a": {}, "b": [3, 4]}],
-                    [{"a": {}, "b": [2, 8, 2]}, {"a": {}, "b": [7, 8, 9]}],
-                    [{"a": {}, "b": [4]}, {"a": {}, "b": []}]]),
+          # expected=[[{"a": {}, "b": [5]}, {"a": {}, "b": [3, 4]}],
+          #           [{"a": {}, "b": [2, 8, 2]}, {"a": {}, "b": [7, 8, 9]}],
+          #           [{"a": {}, "b": [4]}, {"a": {}, "b": []}]]),
+          expected=lambda: StructuredTensor.from_fields({
+              "a": StructuredTensor.from_fields(
+                  {},
+                  shape=[3, 2]),
+              "b": ragged_tensor.RaggedTensor.from_uniform_row_length(
+                  ragged_tensor.RaggedTensor.from_row_lengths(
+                      [5, 3, 4, 2, 8, 2, 7, 8, 9, 4],
+                      [1, 2, 3, 3, 1, 0]
+                  ), 2)}, shape=[3, 2])),
       dict(
           testcase_name="from_structured_tensor_util_test",
           params=[{"x0": 0, "y": {"z": [[3, 13]]}},
@@ -1099,6 +1238,8 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
         axis=axis,
         name=None,
         batch_dims=batch_dims)
+    if callable(expected):
+      expected = expected()
     self.assertAllEqual(actual, expected)
 
   @parameterized.named_parameters([

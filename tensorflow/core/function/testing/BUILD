@@ -16,6 +16,7 @@ cc_library(
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

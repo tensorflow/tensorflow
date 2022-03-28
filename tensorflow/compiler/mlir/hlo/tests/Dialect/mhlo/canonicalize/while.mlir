@@ -3,7 +3,7 @@
 
 // CHECK-LABEL: func @loop_invariants
 module  {
-  func @loop_invariants(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
+  func.func @loop_invariants(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>) {
     // The first operand is used directly as an implicit capture in the return
     // of the body, the third operand is loop carried: they both can be
     // eliminated, ony the second operand is really a loop-carried value.
@@ -26,7 +26,7 @@ module  {
       "mhlo.return"(%arg0, %1, %arg6) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
     }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
     // CHECK: return %arg0, %[[WHILE]], %arg3
-    return %0#0, %0#1, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
+    func.return %0#0, %0#1, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
   }
 }
 
@@ -34,7 +34,7 @@ module  {
 
 // CHECK-LABEL: func @dead_loop
 module  {
-  func @dead_loop(%arg0: tensor<i32>) -> tensor<i32> {
+  func.func @dead_loop(%arg0: tensor<i32>) -> tensor<i32> {
     // The following loop will always return its operand which is carried over
     // from one iteration to the next as-is, that is: we assume that loops
     // always terminate.
@@ -47,6 +47,6 @@ module  {
     ^bb0(%arg1: tensor<i32>):
       "mhlo.return"(%arg1) : (tensor<i32>) -> ()
     }) : (tensor<i32>) -> (tensor<i32>)
-    return %0 : tensor<i32>
+    func.return %0 : tensor<i32>
   }
 }

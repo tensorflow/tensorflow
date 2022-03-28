@@ -121,7 +121,7 @@ LogicalResult ConvertTflFusableOp(
   }
 
   auto tfl_fusable_op = builder.create<TFL::CustomOp>(
-      func->getLoc(), func.getType().getResults(), func.getArguments(),
+      func->getLoc(), func.getFunctionType().getResults(), func.getArguments(),
       custom_op_name, CustomOption(&builder, custom_option_buffer));
   builder.create<func::ReturnOp>(func->getLoc(), tfl_fusable_op.getResults());
   return success();
@@ -137,7 +137,7 @@ class ConvertEmbeddedLookupFunc {
                    StringAttr::get(func_.getContext(), "embedding_lookup"));
     Value lookup = func_.getArgument(1);
     Value value = func_.getArgument(0);
-    auto output_type = func_.getType().getResult(0);
+    auto output_type = func_.getFunctionType().getResult(0);
 
     OpBuilder builder(func_.getBody());
     auto op = builder.create<mlir::TFL::EmbeddingLookupOp>(
@@ -152,7 +152,7 @@ class ConvertEmbeddedLookupFunc {
              << "Invalid number of arguments in the embedding "
                 "matmul composite function";
     }
-    if (func_.getType().getNumResults() != 1) {
+    if (func_.getFunctionType().getNumResults() != 1) {
       return func_.emitWarning() << "Invalid number of results in the "
                                     "embedding matmul composite function";
     }

@@ -3,7 +3,7 @@
 
 
 // CHECK-LABEL: func @while
-func @while() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
+func.func @while() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
 // CHECK-DAG: %[[CST_M1:.*]] = arith.constant dense<-1>
 // CHECK-DAG: %[[CST_0:.*]] = arith.constant dense<0>
 // CHECK-DAG: %[[CST_1:.*]] = arith.constant dense<1>
@@ -31,11 +31,11 @@ func @while() -> (tensor<i32>, tensor<i32>, tensor<i32>) {
     %1 = mhlo.add %iterArg, %cst_0 : tensor<i32>
     "mhlo.return"(%1, %iterArg_3, %iterArg_4) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
   }
-  return %0#0, %0#2, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
+  func.return %0#0, %0#2, %0#2 : tensor<i32>, tensor<i32>, tensor<i32>
 }
 
 // CHECK-LABEL: func @while_no_arg
-func @while_no_arg() {
+func.func @while_no_arg() {
 // CHECK:  mhlo.while()
   mhlo.while()
   cond {
@@ -44,5 +44,5 @@ func @while_no_arg() {
   } do {
    "mhlo.return"() : () -> ()
   }
-  return
+  func.return
 }

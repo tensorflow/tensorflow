@@ -8,7 +8,6 @@ load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependenci
 load("@build_bazel_apple_support//lib:repositories.bzl", "apple_support_dependencies")
 load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("@local_config_android//:android.bzl", "android_workspace")
-load("@rules_cc//cc:repositories.bzl", "rules_cc_toolchains")
 
 def _tf_bind():
     """Bind targets for some external repositories"""
@@ -104,8 +103,6 @@ def workspace():
             "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2020_05_24.zip",
         ],
     )
-
-    rules_cc_toolchains()
 
     bazel_toolchains_repositories()
 

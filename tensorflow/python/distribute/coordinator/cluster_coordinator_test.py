@@ -484,6 +484,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
     self.assertEqual(self.coordinator.fetch(got), want)
 
   def testFetchingRemoteValueStructure(self):
+    self.skipTest('b/171040359: flaky test')
     x = constant_op.constant(1)
 
     @def_function.function

@@ -1125,6 +1125,36 @@ add {
 // CHECK-SAME:  }
 // CHECK:  return [[RESULT:%.*]] : tensor<4x5xf32>
 
+// Test SelectAndScatter with tuple returns from computations.
+%ge_select_returning_tuple (lhs: f32[], rhs: f32[]) -> (pred[]) {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
+  ROOT tple = (pred[]) tuple(%greater-than-or-equal-to)
+}
+
+%add_gather_returning_tuple (lhs.1: f32[], rhs.1: f32[]) -> (f32[]) {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  %add = f32[] add(f32[] %lhs, f32[] %rhs)
+  ROOT tple = (f32[]) tuple(%add)
+}
+
+// CHECK-LABEL:  func private @test_select_and_scatter_with_regions_returning_tuple
+%test_select_and_scatter_with_regions_returning_tuple {
+  %input = f32[4,5] parameter(0)
+  %source = f32[2,2] parameter(1)
+  %init_value = f32[] parameter(2)
+  ROOT %select-and-scatter = f32[4,5] select-and-scatter(f32[4,5] %input, f32[2,2] %source, f32[] %init_value), window={size=2x3 stride=2x3 pad=0_0x0_1}, select=%ge_select_returning_tuple, scatter=%add_gather_returning_tuple
+}
+
+// CHECK:  ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+// CHECK:    [[CMP:%.*]] = "mhlo.compare"([[LHS]], [[RHS]])
+// CHECK:    "mhlo.return"([[CMP]]) : (tensor<i1>) -> ()
+// CHECK:  ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+// CHECK:    [[ADD:%.*]] = mhlo.add [[LHS]], [[RHS]]
+// CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+
 
 // CHECK-LABEL:  func private @test_set_dimension_size
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>, [[SIZE:%.*]]: tensor<i32>)

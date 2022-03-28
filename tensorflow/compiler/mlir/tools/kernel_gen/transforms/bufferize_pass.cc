@@ -193,8 +193,8 @@ struct ComputeOpAndFuncBufferizePass
         });
 
     CustomBufferizeTypeConverter converter;
-    populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
-                                                             converter);
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
     populateCallOpTypeConversionPattern(patterns, converter);
     populateBranchOpInterfaceTypeConversionPattern(patterns, converter);
     populateReturnOpTypeConversionPattern(patterns, converter);
@@ -205,9 +205,9 @@ struct ComputeOpAndFuncBufferizePass
                                                          target);
 
     // TODO(herhut): Move this legality configuration to bufferize itself?
-    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-      auto inputs = op.getType().getInputs();
-      auto results = op.getType().getResults();
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+      auto inputs = op.getFunctionType().getInputs();
+      auto results = op.getFunctionType().getResults();
       return converter.isLegal(inputs) && converter.isLegal(results) &&
              converter.isLegal(&op.getBody());
     });

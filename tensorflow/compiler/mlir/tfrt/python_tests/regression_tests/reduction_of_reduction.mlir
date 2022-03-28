@@ -1,4 +1,4 @@
-builtin.func @test(%V__0: tensor<?x?x?xi64>
+func.func @test(%V__0: tensor<?x?x?xi64>
     { python_test_attrs.static_type = tensor<9x32x26xi64> })
     -> tensor<?x?xi64> {
   %dims1 = "tf.Const"() {
@@ -17,5 +17,5 @@ builtin.func @test(%V__0: tensor<?x?x?xi64>
         keep_dims = true,
         device = "/job:localhost/replica:0/task:0/device:CPU:0"
       } : (tensor<?x?xi64>, tensor<1xi32>) -> tensor<?x?xi64>
-  return %2 : tensor<?x?xi64>
+  func.return %2 : tensor<?x?xi64>
 }

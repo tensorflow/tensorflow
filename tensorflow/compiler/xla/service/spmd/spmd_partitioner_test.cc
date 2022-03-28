@@ -2630,7 +2630,7 @@ ENTRY entry
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort = FindInstruction(module.get(), "sort");
+  auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 104832);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 104832);
   auto final_sort = FindInstruction(module.get(), "sort.1");
@@ -2709,7 +2709,7 @@ ENTRY entry
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort = FindInstruction(module.get(), "sort");
+  auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 104832);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 104832);
   auto final_sort = FindInstruction(module.get(), "sort.1");
@@ -2786,7 +2786,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort = FindInstruction(module.get(), "sort");
+  auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
 }
@@ -2862,7 +2862,7 @@ ENTRY entry
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort = FindInstruction(module.get(), "sort");
+  auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
 }
@@ -2937,7 +2937,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort = FindInstruction(module.get(), "sort");
+  auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
 }
@@ -9083,7 +9083,7 @@ ENTRY %module {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
 
-  const HloInstruction* sort = FindInstruction(module.get(), "sort");
+  const HloInstruction* sort = FindInstruction(module.get(), "sort.0");
   EXPECT_NE(sort, nullptr);
   auto sort_match =
       AllOf(op::Shape("(f32[2,64,32128], s32[2,64,32128])"), op::Sort(_, _));

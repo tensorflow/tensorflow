@@ -394,6 +394,22 @@ T RoundDownTo(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
 }
 
+template <typename T>
+struct DivMod {
+  T quotient;
+  T modulo;
+};
+
+// Divide `dividend` by `divisor` such that the quotient is rounded towards
+// negative infinity. The remainder will have the same sign as `divisor`.
+template <typename T>
+DivMod<T> FloorDivMod(T dividend, T divisor) {
+  DivMod<T> div_mod;
+  div_mod.quotient = FloorOfRatio(dividend, divisor);
+  div_mod.modulo = dividend - div_mod.quotient * divisor;
+  return div_mod;
+}
+
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.

@@ -354,6 +354,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       save_slice_info=None,
       caching_device=None,
       in_graph_mode=None,
+      validate_shape=True,
       **unused_kwargs):
     """Creates a variable from a handle.
 
@@ -403,6 +404,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       in_graph_mode: whether we are executing in TF1 graph mode. If None, will
         detect within the function. This is to avoid repeated init_scope()
         conetxt entrances which can add up.
+      validate_shape: If `False`, allows the variable to be initialized with a
+        value of unknown shape. If `True`, the default, the shape of
+        `initial_value` must be known.
     """
     if in_graph_mode is None:
       with ops.init_scope():
@@ -430,9 +434,13 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     self._dtype = dtypes.as_dtype(dtype)
     self._handle = handle
     self._unique_id = unique_id
-    self._handle_name = handle_name + ":0"
+    if handle_name is None:
+      self._handle_name = "Variable:0"
+    else:
+      self._handle_name = handle_name + ":0"
     self._constraint = constraint
     self._cached_shape_as_list = None
+    self._validate_shape = validate_shape
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
@@ -899,7 +907,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
       if forward_compat.forward_compatible(2022, 3, 23):
         # If the shape is fully defined, we do a runtime check with the shape of
         # value.
-        validate_shape = self._shape.is_fully_defined()
+        validate_shape = self._validate_shape and self._shape.is_fully_defined()
         kwargs["validate_shape"] = validate_shape
       assign_op = gen_resource_variable_ops.assign_variable_op(
           self.handle, value_tensor, name=name, **kwargs)
@@ -1556,7 +1564,9 @@ class ResourceVariable(BaseResourceVariable):
         which case it defaults to `False`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
-      validate_shape: Ignored. Provided for compatibility with tf.Variable.
+      validate_shape: If `False`, allows the variable to be initialized with a
+        value of unknown shape. If `True`, the default, the shape of
+        `initial_value` must be known.
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
@@ -1614,7 +1624,8 @@ class ResourceVariable(BaseResourceVariable):
         raise ValueError(f"Creating a `tf.Variable` with a `variable_def` arg "
                          f"is not supported when eager execution is enabled. "
                          f"Got: variable_def={variable_def}")
-      self._init_from_proto(variable_def, import_scope=import_scope)
+      self._init_from_proto(variable_def, import_scope=import_scope,
+                            validate_shape=validate_shape)
     else:
       self._init_from_args(
           initial_value=initial_value,
@@ -1627,7 +1638,9 @@ class ResourceVariable(BaseResourceVariable):
           synchronization=synchronization,
           aggregation=aggregation,
           shape=shape,
-          distribute_strategy=distribute_strategy)
+          distribute_strategy=distribute_strategy,
+          validate_shape=validate_shape,
+      )
 
   def _init_from_args(self,
                       initial_value=None,
@@ -1640,7 +1653,9 @@ class ResourceVariable(BaseResourceVariable):
                       synchronization=None,
                       aggregation=None,
                       distribute_strategy=None,
-                      shape=None):
+                      shape=None,
+                      validate_shape=True,
+                      ):
     """Creates a variable.
 
     Args:
@@ -1688,6 +1703,9 @@ class ResourceVariable(BaseResourceVariable):
         `initial_value` will be used. When setting this argument to
         `tf.TensorShape(None)` (representing an unspecified shape), the variable
         can be assigned with values of different shapes.
+      validate_shape: If `False`, allows the variable to be initialized with a
+        value of unknown shape. If `True`, the default, the shape of
+        `initial_value` must be known.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -1878,9 +1896,12 @@ class ResourceVariable(BaseResourceVariable):
           initializer_op=initializer_op,
           is_initialized_op=is_initialized_op,
           cached_value=cached_value,
-          caching_device=caching_device)
+          caching_device=caching_device,
+          validate_shape=validate_shape,
+      )
 
-  def _init_from_proto(self, variable_def, import_scope=None):
+  def _init_from_proto(self, variable_def, import_scope=None,
+                       validate_shape=True):
     """Initializes from `VariableDef` proto."""
     # Note that init_from_proto is currently not supported in Eager mode.
     assert not context.executing_eagerly()
@@ -1944,6 +1965,7 @@ class ResourceVariable(BaseResourceVariable):
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._constraint = None
+    self._validate_shape = validate_shape
 
 
 class UninitializedVariable(BaseResourceVariable):
@@ -2311,23 +2333,62 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   value_type = property(lambda self: BaseResourceVariable)
 
-  def __init__(self, shape, dtype=dtypes.float32,
-               name=None, trainable=True):
-    super(VariableSpec, self).__init__(shape, dtype=dtype, name=name)
+  def __init__(self,
+               shape,
+               dtype=dtypes.float32,
+               trainable=True):
+    super(VariableSpec, self).__init__(shape, dtype=dtype)
     self.trainable = trainable
 
+  def is_compatible_with(self, spec_or_value):
+    return (isinstance(spec_or_value, (type(self), self.value_type)) and
+            self.shape.is_compatible_with(spec_or_value.shape) and
+            self.dtype == spec_or_value.dtype and
+            self.trainable == spec_or_value.trainable)
+
+  @classmethod
+  def from_value(cls, value):
+    return cls(
+        value.shape,
+        dtype=value.dtype,
+        trainable=value.trainable)
+
   def _to_components(self, value):
-    raise NotImplementedError
+    return value.handle
 
   def _from_components(self, components):
-    raise NotImplementedError
+    return BaseResourceVariable(
+        trainable=self.trainable,
+        shape=self.shape,
+        dtype=self.dtype,
+        handle=components)
+
+  @property
+  def _component_specs(self):
+    return tensor_spec.TensorSpec(self.shape, dtypes.resource)
 
   def _from_compatible_tensor_list(self, tensor_list):
     assert len(tensor_list) == 1
     return tensor_list[0]
 
+  def _serialize(self):
+    return self.shape, self.dtype, self.trainable
+
   def __tf_tracing_type__(self, signature_context):
     return signature_context.make_reference_type(self, id(self))
+
+  def __repr__(self):
+    return (f"{type(self).__name__}(shape={self.shape}, dtype={self.dtype}, "
+            f"trainable={self.trainable})")
+
+  def __hash__(self):
+    return hash((self.shape, self.dtype, self.trainable))
+
+  def __eq__(self, other):
+    return (type(self) is type(other) and
+            self.shape == other.shape and
+            self.dtype == other.dtype and
+            self.trainable == other.trainable)
 
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 

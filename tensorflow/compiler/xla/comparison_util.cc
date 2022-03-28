@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/comparison_util.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -83,8 +86,6 @@ std::string ComparisonTypeToString(Comparison::Type type) {
       return "SIGNED";
     case Comparison::Type::kUnsigned:
       return "UNSIGNED";
-    default:
-      LOG(FATAL) << "Attempted to print incomplete comparison type";
   }
 }
 
@@ -112,8 +113,7 @@ Comparison::Type Comparison::DefaultComparisonType(PrimitiveType type) {
     case C128:
       return Type::kFloat;
     default:
-      LOG(FATAL) << "Unsupported comparison mode." << PrimitiveType_Name(type)
-                 << "\n";
+      LOG(FATAL) << "Unsupported comparison mode: " << PrimitiveType_Name(type);
   }
 }
 
@@ -199,7 +199,7 @@ bool Comparison::IsAntireflexive() const {
 
 std::string Comparison::ToString(std::string prefix1,
                                  std::string prefix2) const {
-  return prefix1 + std::string(ComparisonDirectionToString(dir_)) + prefix2 +
-         std::string(ComparisonTypeToString(type_));
+  return absl::StrCat(prefix1, ComparisonDirectionToString(dir_), prefix2,
+                      ComparisonTypeToString(type_));
 }
 }  // namespace xla

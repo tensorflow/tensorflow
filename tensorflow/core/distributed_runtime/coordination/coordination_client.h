@@ -44,7 +44,8 @@ class CoordinationClient {
                                     WaitForAllTasksResponse* response,
                                     StatusCallback done) = 0;
 
-  virtual void ShutdownTaskAsync(const ShutdownTaskRequest* request,
+  virtual void ShutdownTaskAsync(CallOptions* call_opts,
+                                 const ShutdownTaskRequest* request,
                                  ShutdownTaskResponse* response,
                                  StatusCallback done) = 0;
 
@@ -52,7 +53,8 @@ class CoordinationClient {
                               ResetTaskResponse* response,
                               StatusCallback done) = 0;
 
-  virtual void ReportErrorToTaskAsync(const ReportErrorToTaskRequest* request,
+  virtual void ReportErrorToTaskAsync(CallOptions* call_opts,
+                                      const ReportErrorToTaskRequest* request,
                                       ReportErrorToTaskResponse* response,
                                       StatusCallback done) = 0;
 

@@ -1978,10 +1978,16 @@ StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     absl::optional<ConvolutionDimensionNumbers> dnums,
     CustomCallSchedule schedule, CustomCallApiVersion api_version) {
   HloInstructionProto instr;
-  // Bit of a hack: conv-bias-activation-forward custom-calls are created
-  // through this API. Give them a user-friendly name. (This has no effect on
-  // correctness, it's just cosmetic.)
-  if (call_target_name == "__cudnn$convBiasActivationForward") {
+  // Bit of a hack: cudnn conv custom-calls are created through this API. Give
+  // them a user-friendly name. (This has no effect on correctness, it's just
+  // cosmetic.)
+  if (call_target_name == "__cudnn$convForward") {
+    instr.set_name("cudnn-conv");
+  } else if (call_target_name == "__cudnn$convBackwardInput") {
+    instr.set_name("cudnn-conv-bw-input");
+  } else if (call_target_name == "__cudnn$convBackwardFilter") {
+    instr.set_name("cudnn-conv-bw-filter");
+  } else if (call_target_name == "__cudnn$convBiasActivationForward") {
     instr.set_name("cudnn-conv-bias-activation");
   }
   *instr.mutable_shape() = shape.ToProto();

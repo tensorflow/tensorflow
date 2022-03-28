@@ -474,7 +474,7 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
            << func;
   }
 
-  FunctionType function_ty = function.getType();
+  FunctionType function_ty = function.getFunctionType();
   int func_arg_count = function_ty.getNumInputs();
   int arg_count = op.args().size();
 
@@ -2748,7 +2748,7 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
                              tf_fused_batch_norm_op.getOperands(),
                              new_result_types,
                              tf_fused_batch_norm_op->getAttrs());
-    Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
+    Operation *tf_fused_batch_norm_op_v3 = rewriter.create(new_state);
 
     rewriter.replaceOp(tf_fused_batch_norm_op,
                        tf_fused_batch_norm_op_v3->getResults().drop_back());
@@ -2827,7 +2827,7 @@ LogicalResult HoistCwiseUnaryOutOfUnpack::matchAndRewrite(
   OperationState new_unary_op_state(loc, first_user->getName().getStringRef(),
                                     op.getOperand(), op.getOperand().getType(),
                                     ArrayRef<NamedAttribute>());
-  Operation *new_unary_op = rewriter.createOperation(new_unary_op_state);
+  Operation *new_unary_op = rewriter.create(new_unary_op_state);
 
   // Unpack results after applying unary operation.
   auto unpack_unary_op = rewriter.create<UnpackOp>(
@@ -3082,8 +3082,8 @@ LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
     return emitOpError("body refers to an undefined function : ") << body();
   }
 
-  auto cond_fn_type = cond_fn.getType();
-  auto body_fn_type = body_fn.getType();
+  auto cond_fn_type = cond_fn.getFunctionType();
+  auto body_fn_type = body_fn.getFunctionType();
 
   // Verify that the cond function has exactly one result.
   if (cond_fn_type.getNumResults() != 1)
@@ -3473,7 +3473,7 @@ LogicalResult XlaReduceWindowOp::verify() {
     return op.emitOpError() << "has no reduction function specified";
   }
 
-  auto func_type = func.getType();
+  auto func_type = func.getFunctionType();
 
   if (func_type.getNumInputs() != 2) {
     return op.emitOpError()
@@ -3529,7 +3529,7 @@ LogicalResult XlaSelectAndScatterOp::verify() {
   if (!select_func) {
     return op.emitOpError() << "has no select function specified";
   }
-  auto select_func_type = select_func.getType();
+  auto select_func_type = select_func.getFunctionType();
   if (select_func_type.getNumInputs() != 2) {
     return op.emitOpError()
            << "expects select function to take 2 parameters, but has "
@@ -3546,7 +3546,7 @@ LogicalResult XlaSelectAndScatterOp::verify() {
   if (!scatter_func) {
     return op.emitOpError() << "has no scatter function specified";
   }
-  auto scatter_func_type = scatter_func.getType();
+  auto scatter_func_type = scatter_func.getFunctionType();
   if (scatter_func_type.getNumInputs() != 2) {
     return op.emitOpError()
            << "expects scatter function to take 2 parameters, but has "

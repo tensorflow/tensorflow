@@ -28,7 +28,6 @@ from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import executor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -74,23 +73,8 @@ _END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
 _CHECKPOINT_V1 = "checkpoint_v1"
 _CHECKPOINT_V2 = "checkpoint_v2"
 
-# Async eager executor used for asynchronous checkpoint.
-_ASYNC_SAVE_EXECUTOR = None
-
-
-def _get_async_save_executor():
-  """Return the async executor used for running checkpoint save op."""
-  global _ASYNC_SAVE_EXECUTOR
-  if _ASYNC_SAVE_EXECUTOR is None:
-    _ASYNC_SAVE_EXECUTOR = executor.new_executor(enable_async=True)
-  return _ASYNC_SAVE_EXECUTOR
-
-
-def _wait_for_async_save_executor():
-  """Wait for the async executor to finish ongoing checkpoint save."""
-  global _ASYNC_SAVE_EXECUTOR
-  if _ASYNC_SAVE_EXECUTOR is not None:
-    _ASYNC_SAVE_EXECUTOR.wait()
+# Async thread used for asynchronous checkpoint.
+_ASYNC_CHECKPOINT_THREAD = None
 
 
 def _get_duration_microseconds(start_time_seconds, end_time_seconds):
@@ -1221,6 +1205,7 @@ class TrackableSaver(object):
          object_graph_tensor=object_graph_tensor)
 
     def _run_save():
+      """Create and execute the SaveOp for the checkpoint."""
       if (self._last_save_object_graph != graph_proto
           # When executing eagerly, we need to re-create SaveableObjects each
           # time save() is called so they pick up new Tensors passed to their
@@ -1237,13 +1222,31 @@ class TrackableSaver(object):
       return self._cached_save_operation, feed_additions
 
     def _copy_tensors():
+      """Copy the tensors to the host CPU device."""
       for saveable in named_saveable_objects:
-        for spec in saveable.specs:
-          tensor = spec.tensor
-          device = spec.device
-          if tensor is not None:
-            with ops.device(saveable_object_util.set_cpu0(device)):
-              spec._tensor = array_ops.identity(tensor)  # pylint: disable=protected-access
+        # Pin the device according to the SaveableObject's device location to
+        # avoid unnecessary data copies when reading the variables. This is
+        # aligned with the behavior in MultiDeviceSaver.save().
+        original_device = saveable.device
+        with ops.device(original_device):
+          for spec in saveable.specs:
+            tensor = spec.tensor
+            device = spec.device
+            if tensor is not None:
+              with ops.device(saveable_object_util.set_cpu0(device)):
+                spec._tensor = array_ops.identity(tensor)  # pylint: disable=protected-access
+                # Modify the device info accordingly now that the tensors are
+                # copied to the host CPU device.
+                spec.device = saveable_object_util.set_cpu0(device)
+
+    def _async_save_fn():
+      """The thread function for executing async checkpoint save."""
+      _run_save()
+      # Update the internal checkpoint state if the checkpoint event is
+      # triggered from Checkpoint.save().
+      if update_ckpt_state:
+        _update_checkpoint_state_internal(
+            _convert_file_name_tensor_to_string(file_prefix))
 
     if options.experimental_enable_async_checkpoint:
       # Execute async-checkpoint.
@@ -1253,21 +1256,19 @@ class TrackableSaver(object):
 
       # Step-2: Execute the rest of the checkpoint operations on the host device
       #         using an async executor.
-      file_path = _convert_file_name_tensor_to_string(file_prefix)
-      with context.executor_scope(_get_async_save_executor()):
-        _run_save()
-        # Update the internal checkpoint state if the checkpoint event is
-        # triggered from Checkpoint.save().
-        if update_ckpt_state:
-          _update_checkpoint_state_internal(file_path)
+      global _ASYNC_CHECKPOINT_THREAD
+      if _ASYNC_CHECKPOINT_THREAD is not None:
+        _ASYNC_CHECKPOINT_THREAD.join()
+      _ASYNC_CHECKPOINT_THREAD = threading.Thread(target=_async_save_fn)
+      _ASYNC_CHECKPOINT_THREAD.start()
 
       # Step-3: Return the expected checkpoint file path though the save op may
       #         not have finished.
       self._cached_save_operation = file_prefix
       return self._cached_save_operation, feed_additions
-    else:
-      # Execute the normal checkpoint, i.e., synchronous.
-      return _run_save()
+
+    # Execute the normal checkpoint, i.e., synchronous.
+    return _run_save()
 
   def save(self, file_prefix, checkpoint_number=None, session=None,
            options=None, update_ckpt_state=False):
@@ -1415,7 +1416,9 @@ class TrackableSaver(object):
     #                   are still ongiing. Need to add timeout mechanism along
     #                   with conditional variables to notify when the checkpoint
     #                   file is ready.
-    _wait_for_async_save_executor()
+    global _ASYNC_CHECKPOINT_THREAD
+    if _ASYNC_CHECKPOINT_THREAD is not None:
+      _ASYNC_CHECKPOINT_THREAD.join()
 
     reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     graph_building = not context.executing_eagerly()

@@ -6,7 +6,8 @@
 
 from cpython.pycapsule cimport PyCapsule_New
 
-cdef void test_subtract_f32(void* out_ptr, void** data_ptr) nogil:
+cdef void test_subtract_f32(void* out_ptr, void** data_ptr,
+                            void* xla_custom_call_status) nogil:
   cdef float a = (<float*>(data_ptr[0]))[0]
   cdef float b = (<float*>(data_ptr[1]))[0]
   cdef float* out = <float*>(out_ptr)
