@@ -210,7 +210,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       mpr.start_single_process('worker', worker_id, cluster_spec)
     logging.info('workers restarted')
 
-    stdout = mpr.join().stdout
+    stdout = mpr.join(timeout=300).stdout
     all_start_point = []
     for msg in stdout:
       matched_group = re.search(r'.*Restored training at (\d+)', msg)
