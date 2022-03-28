@@ -147,6 +147,23 @@
          Protocol to proactively generate generalized traces similar to
          `experimental_relax_shapes` (which has now been deprecated).
 
+*   Unified eager and `tf.function` execution:
+
+    *   Eager mode can now execute each op as a `tf.function`, allowing for more
+        consistent feature support in future releases.
+    *   It is available for immediate use.
+        *   See the `TF_RUN_EAGER_OP_AS_FUNCTION` environment variable in
+            [eager context](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/eager/context.py).
+        *   Eager performance should be similar with this feature enabled.
+            *   A roughly 5us per-op overhead may be observed when running many
+                small functions.
+            *   Note a
+                [known issue](https://github.com/tensorflow/tensorflow/issues/55414)
+                with GPU performance.
+        *   The behavior of `tf.function` itself is unaffected.
+    *   Note: This feature will be enabled by default in an upcoming version of
+        TensorFlow.
+
 # Bug Fixes and Other Changes
 
 *   `tf.data`:

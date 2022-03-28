@@ -32,7 +32,7 @@ def BatchMatMulToEinsumPass : Pass<"tf-batch-matmul-to-tf-einsum", "mlir::FuncOp
   let constructor = "TF::CreateBatchMatMulToEinsumPass()";
 }
 
-def CanonicalizeCompileAndReplicateAttributesPass : Pass<"tf-canonicalize-compile-and-replicate-attributes", "ModuleOp"> {
+def CanonicalizeCompileAndReplicateAttributesPass : Pass<"tf-canonicalize-compile-and-replicate-attributes", "mlir::FuncOp"> {
   let summary = "Canonicalize compilation and replication attributes.";
 
   let description = [{
@@ -61,7 +61,7 @@ def ClusterTFOpsByHostPass : Pass<"cluster-tf-ops-by-host", "ModuleOp"> {
   let constructor = "TF::CreateClusterTFOpsByHostPass()";
 }
 
-def ConvertToLegacyCompileAndReplicateAttributesPass : Pass<"tf-convert-to-legacy-compile-and-replicate-attributes", "ModuleOp"> {
+def ConvertToLegacyCompileAndReplicateAttributesPass : Pass<"tf-convert-to-legacy-compile-and-replicate-attributes", "mlir::FuncOp"> {
   let summary = "Convert unified compilation and replication attributes back to legacy attributes.";
 
   let description = [{
