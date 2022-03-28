@@ -22,6 +22,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
@@ -66,6 +67,12 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
   def setUp(self):
     super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
     os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
+    gpus = config.list_physical_devices('GPU')
+
+    logging.info('Found the following GPUs:')
+    for gpu in gpus:
+      logging.info(f"\t- {gpu}")
+      config.set_memory_growth(gpu, True)
 
 
 if __name__ == "__main__":
