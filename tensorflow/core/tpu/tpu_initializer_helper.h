@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
@@ -29,7 +30,7 @@ namespace tpu {
 bool TryAcquireTpuLock();
 // This will initialize the TPU library.
 Status InitializeTpuLibrary(void* library_handle);
-// This will check the lock and then load the library. 
+// This will check the lock and then load the library.
 bool FindAndLoadTpuLibrary();
 // Returns arguments (e.g. flags) set in the LIBTPU_INIT_ARGS environment
 // variable. The first return value is the arguments, the second return value is

@@ -192,7 +192,7 @@ Status InitializeTpuLibrary(void* library_handle) {
   Status s = InitializeTpuStructFns(library_handle);
 
   // Retrieve arguments from environment if applicable
-  std::pair<std::vector<std::string>, std::vector<const char*> > args =
+  std::pair<std::vector<std::string>, std::vector<const char*>> args =
       GetLibTpuInitArguments();
 
   // TPU platform registration must only be performed after the library is
