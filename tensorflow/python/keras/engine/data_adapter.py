@@ -982,7 +982,7 @@ ALL_ADAPTER_CLS = [
 
 
 def select_data_adapter(x, y):
-  """Selects a data adapter than can handle a given x and y."""
+  """Selects a data adapter that can handle a given x and y."""
   adapter_cls = [cls for cls in ALL_ADAPTER_CLS if cls.can_handle(x, y)]
   if not adapter_cls:
     # TODO(scottzhu): This should be a less implementation-specific error.
