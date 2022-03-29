@@ -289,6 +289,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:tpu_computation_placer",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_on_demand_compiler",
+	"//tensorflow/core/tpu:tpu_initializer_helper",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/lib",

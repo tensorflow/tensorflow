@@ -27,9 +27,10 @@ namespace tpu {
 // This will acquire a system-wide lock on behalf of the whole process. Follow
 // up calls to this function will return true if the lock has been acquired and
 // false if we failed to acquire the lock.
-bool TryAcquireTpuLock();
-// This will check the lock and then load the library.
-bool FindAndLoadTpuLibrary();
+// This will initialize the TPU library.
+Status InitializeTpuLibrary(void* library_handle);
+// This will check the lock and then load the library. 
+Status FindAndLoadTpuLibrary();
 // Returns arguments (e.g. flags) set in the LIBTPU_INIT_ARGS environment
 // variable. The first return value is the arguments, the second return value is
 // pointers to the arguments suitable for passing into the C API.

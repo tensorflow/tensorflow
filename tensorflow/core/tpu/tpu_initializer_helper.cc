@@ -99,11 +99,11 @@ bool IsTpuUsed(int64_t pid) {
 // processes owned by another user.
 // TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for
 // this.
-bool FindAndLogLibtpuProcess() {
+std::string FindAndLogLibtpuProcess() {
   DIR* proc = opendir("/proc");
 
   if (proc == nullptr) {
-    return false;
+    return "";
   }
   std::unique_ptr<DIR, int (*)(DIR*)> proc_dir(proc, closedir);
   struct dirent* ent;
@@ -113,15 +113,14 @@ bool FindAndLogLibtpuProcess() {
 
     pid = strtol(ent->d_name, nullptr, 10);
     if (IsTpuUsed(pid)) {
-      LOG(INFO) << "libtpu.so is already in use by process with pid " << pid
-                << ". Not attempting to load libtpu.so in this process.";
-      return true;
-    }
+      std::string error_message = "libtpu.so is already in use by process with pid " + std::to_string(pid) + ". Not attempting to load libtpu.so in this process.";
+      return error_message;
+   }
   }
-  return false;
+  return "";
 }
 
-bool TryAcquireTpuLock() {
+Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
@@ -133,11 +132,10 @@ bool TryAcquireTpuLock() {
         absl::StrCat(getenv("TPU_LOAD_LIBRARY"));
 
     if (load_library_override == "1") {
-      return true;
+      return Status::OK();
     } else if (load_library_override == "0") {
-      return false;
+      return errors::FailedPrecondition("load library override is not set");
     }
-    should_load_library = true;
 
     // If TPU_CHIPS_PER_PROCESS_BOUNDS doesn't include all chips, we assume
     // we're using different chips in different processes and thus multiple
@@ -161,26 +159,21 @@ bool TryAcquireTpuLock() {
       // This lock is held until the process exits intentionally. The underlying
       // TPU device will be held on until it quits.
       if (lockf(fd, F_TLOCK, 0) != 0) {
-        if (!FindAndLogLibtpuProcess()) {
-          LOG(INFO) << "libtpu.so already in use by another process probably"
-                       " owned by another user. "
-                       "Run \"$ sudo lsof -w /dev/accel0\" to figure out "
-                       "which process is using the TPU. Not "
-                       "attempting to load libtpu.so in this process.";
-        }
-        should_load_library = false;
-      } else {
-        should_load_library = true;
+	std::string error_message = FindAndLogLibtpuProcess();
+        if (error_message == "") {
+	  error_message = "libtpu.so already in use by another process probably  owned by another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out which process is using the TPU. Not attempting to load libtpu.so in this process.";
+       }
+       return errors::Aborted(error_message);	
+     } else {
+	return Status::OK();
       }
     } else {
       VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
                  "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
                  "therefore allowing multiple libtpu.so loads.";
-      should_load_library = true;
+      return Status::OK();
     }
   }
-
-  return should_load_library;
 }
 #if defined(PLATFORM_GOOGLE)
 Status InitializeTpuLibrary(void* library_handle) {
@@ -252,7 +245,7 @@ void InitializeCreateGcsFileSystemFnPtr() {
 }
 }  // namespace
 
-bool FindAndLoadTpuLibrary() {
+Status FindAndLoadTpuLibrary() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
@@ -261,13 +254,20 @@ bool FindAndLoadTpuLibrary() {
   if (library) {
     // We can open the shared library which means we are in a TPU environment.
     // Try to acquire exclusive access.
-    if (TryAcquireTpuLock()) {
-      InitializeTpuLibrary(library);
+    Status tpu_lock_status = TryAcquireTpuLock();
+    if (tpu_lock_status == Status::OK()) {
+      Status initialize_library_status = InitializeTpuLibrary(library);
+      if (initialize_library_status != Status::OK()){
+        return initialize_library_status;
+      }
+    }
+    else{
+      return tpu_lock_status;
     }
   }
 
   InitializeCreateGcsFileSystemFnPtr();
-  return true;
+  return Status::OK();
 }
 
 #endif  // PLATFORM_GOOGLE

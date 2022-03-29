@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream.h"
@@ -246,6 +247,11 @@ GetTpuDevices(
 
 StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     int max_inflight_computations, absl::Duration init_retry_timeout) {
+  Status tpu_library_finder = tensorflow::tpu::FindAndLoadTpuLibrary();
+  if (tpu_library_finder != Status::OK()){
+    LOG(INFO) << tpu_library_finder;
+    return tpu_library_finder;
+  }
   tf_tpu::TpuPlatformInterface* platform =
       tf_tpu::TpuPlatformInterface::GetRegisteredPlatform(
           /*initialize_platform=*/true, /*num_tries=*/1);
