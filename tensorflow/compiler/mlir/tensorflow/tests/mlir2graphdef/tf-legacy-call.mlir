@@ -6,7 +6,7 @@ func.func @main() {
     %outputs_0, %control_1 = tf_executor.island wraps "tf.LegacyCall"(%outputs) {_tpu_replicate = "cluster", device = "", f = @foo0} : (tensor<i32>) -> tensor<i32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 func.func @foo0(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = tf_executor.graph {

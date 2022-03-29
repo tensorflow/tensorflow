@@ -96,7 +96,7 @@ ENTRY %conv3DBackpropInputV2(arg0.1: f32[3,3,3,2,3]) -> f32[2,4,3,3,2] {
 // CHECK:   [[INSTR_0:%[^ ]+]] =  f32[2,2,2,2,3]{3,2,1,4,0} constant({...})
 // CHECK:   [[INSTR_1:%[^ ]+]] =  f32[3,3,3,2,3]{4,3,2,1,0} parameter(0), parameter_replication={false}
 // CHECK:   [[INSTR_2:%[^ ]+]] =  f32[3,3,3,2,3]{2,1,0,3,4} copy(f32[3,3,3,2,3]{4,3,2,1,0} %arg0.1)
-// CHECK:   %custom-call.1 = (f32[2,5,3,3,2]{3,2,1,4,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[2,2,2,2,3]{3,2,1,4,0} [[INSTR_0]], f32[3,3,3,2,3]{2,1,0,3,4} [[INSTR_2]]), window={size=3x3x3 stride=2x2x2 pad=0_0x1_1x1_1}, dim_labels=b012f_012io->b012f, custom_call_target="__cudnn$convBackwardInput", metadata={op_type="Conv3DBackpropInputV2" op_name="gradients_2/Conv3DBackpropFilterV2_1_grad/Conv3DBackpropInputV2"}
+// CHECK:   [[INSTR_3:%[^ ]+]] = (f32[2,5,3,3,2]{3,2,1,4,0}, u8[{{[0-9]*}}]{0}) custom-call(f32[2,2,2,2,3]{3,2,1,4,0} [[INSTR_0]], f32[3,3,3,2,3]{2,1,0,3,4} [[INSTR_2]]), window={size=3x3x3 stride=2x2x2 pad=0_0x1_1x1_1}, dim_labels=b012f_012io->b012f, custom_call_target="__cudnn$convBackwardInput", metadata={op_type="Conv3DBackpropInputV2" op_name="gradients_2/Conv3DBackpropFilterV2_1_grad/Conv3DBackpropInputV2"}
       )");
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }

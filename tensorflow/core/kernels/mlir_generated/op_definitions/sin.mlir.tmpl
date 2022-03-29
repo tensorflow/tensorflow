@@ -1,5 +1,5 @@
 func.func @Sin_platform_elem_type_output_type(%arg0: tensor<*xelem_type>)
     -> tensor<*xoutput_type> attributes {tf_entry, llvm.emit_c_interface} {
   %0 = "tf.Sin"(%arg0) : (tensor<*xelem_type>) -> tensor<*xoutput_type>
-  return %0 : tensor<*xoutput_type>
+  func.return %0 : tensor<*xoutput_type>
 }

@@ -5,7 +5,7 @@ func.func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
   %t = arith.constant dense<true> : tensor<i1>
   // CHECK-NOT: tf.Assert
   "tf.Assert"(%t, %arg0) {summarize = 3} : (tensor<i1>, tensor<1x1x6x2xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @tfAssertFalse
@@ -13,7 +13,7 @@ func.func @tfAssertFalse(%arg0: tensor<1x1x6x2xf32>) {
   %f = arith.constant dense<false> : tensor<i1>
   // CHECK: tf.Assert
   "tf.Assert"(%f, %arg0) {summarize = 3} : (tensor<i1>, tensor<1x1x6x2xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: testGatherToV2
@@ -1548,7 +1548,7 @@ func.func @testVariableToVariableV2() {
   %1 = "tf.Variable"() {container = "", dtype = i32, shared_name = "var", shape = #tf_type.shape<>} : () -> tensor<!tf_type.int32ref>
   %2 = "tf.Assign"(%1, %0) : (tensor<!tf_type.int32ref>, tensor<i32>) -> (tensor<!tf_type.int32ref>)
 
-  return
+  func.return
 }
 
 // CHECK-LABEL: testUnpackAndCwiseUnary
@@ -1862,7 +1862,7 @@ func.func @testHashTableAndInitializeTableToV2(%arg0: tensor<!tf_type.string>) {
 
   // CHECK: "tf.InitializeTableFromTextFileV2"([[handle]]
   "tf.InitializeTableFromTextFile"(%handle, %arg0) {device = "", key_index=1, value_index=1, delimiter="\t"} : (tensor<*x!tf_type.stringref>, tensor<!tf_type.string>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: @testHashTableAndLookupTableSizeToV2

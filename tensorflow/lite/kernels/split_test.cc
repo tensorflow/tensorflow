@@ -93,7 +93,7 @@ void Check(TestType test_type, int axis, int num_splits,
     SplitOpModel m({type, input_shape}, num_splits);
     m.SetInput(input_data);
     m.SetAxis(axis);
-    m.Invoke();
+    ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
     for (int i = 0; i < num_splits; ++i) {
       EXPECT_THAT(m.GetOutput<T>(i), ElementsAreArray(output_data[i]))
           << debug(i);
@@ -103,7 +103,7 @@ void Check(TestType test_type, int axis, int num_splits,
   } else {
     SplitOpModel const_m({type, input_shape}, num_splits, axis);
     const_m.SetInput(input_data);
-    const_m.Invoke();
+    ASSERT_EQ(const_m.InvokeUnchecked(), kTfLiteOk);
     for (int i = 0; i < num_splits; ++i) {
       EXPECT_THAT(const_m.GetOutput<T>(i), ElementsAreArray(output_data[i]))
           << debug(i);

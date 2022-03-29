@@ -163,7 +163,7 @@ func.func @loop_3d_memref(%arg0: memref<?x?x?xf32>, %output: memref<?x?x?xf32>,
     "computation"(%in_slice) : (!memref_subview_type) -> memref<?x?x?xf32>
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // -----

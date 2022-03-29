@@ -129,25 +129,6 @@ module {
     func.return %14 : tensor<*xi8>
   }
 
-  // TODO(b/215620570): remove after all biases are handled as i32
-  func.func private @quantized_conv2d_relu6_f32_bias_fn(%input : tensor<*xi8>,
-    %filter : tensor<*xi8>, %bias : tensor<*xf32>,
-    %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
-    %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
-    %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
-    %bias_scale = "tf.Mul"(%input_scale, %filter_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %q_bias = "tf.Div"(%bias, %bias_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %4 = "tf.Cast"(%q_bias) : (tensor<*xf32>) -> tensor<*xi32>
-    %conv = "tf.PartitionedCall"(%input, %filter, %4,
-      %input_scale, %input_zp, %filter_scale, %filter_zp,
-      %bias_scale, %filter_zp, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@quantized_conv2d_relu6_fn
-      } : (tensor<*xi8>, tensor<*xi8>, tensor<*xi32>,
-        tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
-        tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
-    func.return %conv: tensor<*xi8>
-  }
-
   // TODO(b/220993213): factor out common logic.
   func.func private @quantized_matmul_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,

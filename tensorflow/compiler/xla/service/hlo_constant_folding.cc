@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -62,6 +63,8 @@ static bool IsOrContainsIllegalInstr(const HloInstruction* instr) {
   }
   return false;
 }
+
+/*static*/ std::atomic<int64_t> HloConstantFolding::slow_op_counter_{0};
 
 StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
   // Limit the constant folding to 0 iterations to skip folding loops. This
@@ -165,9 +168,38 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
 
       VLOG(5) << "Constant folding: " << instruction->ToString();
 
-      Literal result;
+      absl::Duration slow_timeout =
+          absl::Seconds(uint64_t{1} << slow_op_counter_.load());
+      SlowOperationAlarm slow_alarm(slow_timeout, [instruction, slow_timeout] {
+        const bool ndebug =
+#if NDEBUG
+            true;
+#else
+            false;
+#endif
+        absl::string_view explanation_msg =
+            ndebug
+                ? "This isn't necessarily a bug; constant-folding is "
+                  "inherently a trade-off between compilation time and speed "
+                  "at runtime.  XLA has some guards that attempt to keep "
+                  "constant folding from taking too long, but fundamentally "
+                  "you'll always be able to come up with an input program that "
+                  "takes a long time.\n\n"
+                  "If you'd like to file a bug, run with envvar "
+                  "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results."
+                : "XLA was built without compiler optimizations, which can be "
+                  "slow.  Try rebuilding with -c opt.";
+        return absl::StrFormat(
+            "Constant folding an instrution is taking > %s:\n\n"
+            "  %s\n\n"  // instruction->ToString()
+            "%s",       // explanation_msg
+            absl::FormatDuration(slow_timeout), instruction->ToString(),
+            explanation_msg);
+      });
+
       // Currently we skip unimplemented operations.
       // TODO(b/35975797): Fold constant computations for more operations.
+      Literal result;
       if (!evaluator->TryEvaluate(
               instruction, &result,
               /*recursively_evaluate_nonconstant_operands=*/true)) {
@@ -175,6 +207,12 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
                 << instruction->ToString();
         continue;
       }
+
+      slow_alarm.cancel();
+      if (slow_alarm.fired()) {
+        slow_op_counter_++;
+      }
+
       VLOG(4) << "Constant folded: " << instruction->ToString();
 
       TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(

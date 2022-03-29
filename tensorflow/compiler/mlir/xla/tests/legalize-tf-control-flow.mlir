@@ -219,5 +219,5 @@ func.func @whileRegionMultipleImplicitInputs() {
     "tf.Yield"() : () -> ()
   }) {is_stateless = true, parallel_iterations = 10 : i64} : () -> ()
   // CHECK: return
-  return
+  func.return
 }

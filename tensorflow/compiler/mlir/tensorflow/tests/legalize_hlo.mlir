@@ -3170,14 +3170,14 @@ func.func @torch_index_select(%arg0: tensor<2x1xf32>, %arg1: tensor<2xi32>) -> t
 // CHECK:           %[[VAL_3:.*]] = "tf.Cumsum"(%[[VAL_0]], %[[VAL_2]]) {exclusive = false, reverse = false} : (tensor<4x12xf32>, tensor<i64>) -> tensor<4x12xf32>
 // CHECK:           return %[[VAL_3]] : tensor<4x12xf32>
 // CHECK:         }
-func @lowered_cumsum(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
+func.func @lowered_cumsum(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = "mhlo.reduce_window"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %2 = mhlo.add %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<[[3, 0], [0, 0]]> : tensor<2x2xi64>, window_dilations = dense<1> : tensor<2xi64>, window_dimensions = dense<[4, 1]> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
-  return %1 : tensor<4x12xf32>
+  func.return %1 : tensor<4x12xf32>
 }
 
 // CHECK-LABEL:   func @lowered_cumprod(
@@ -3187,12 +3187,12 @@ func @lowered_cumsum(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
 // CHECK:           %[[VAL_3:.*]] = "tf.Cumprod"(%[[VAL_0]], %[[VAL_2]]) {exclusive = false, reverse = false} : (tensor<4x12xf32>, tensor<i64>) -> tensor<4x12xf32>
 // CHECK:           return %[[VAL_3]] : tensor<4x12xf32>
 // CHECK:         }
-func @lowered_cumprod(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
+func.func @lowered_cumprod(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
   %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
   %1 = "mhlo.reduce_window"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %2 = mhlo.multiply %arg1, %arg2 : tensor<f32>
     "mhlo.return"(%2) : (tensor<f32>) -> ()
   }) {base_dilations = dense<1> : tensor<2xi64>, padding = dense<[[0, 0], [11, 0]]> : tensor<2x2xi64>, window_dilations = dense<1> : tensor<2xi64>, window_dimensions = dense<[1, 12]> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>} : (tensor<4x12xf32>, tensor<f32>) -> tensor<4x12xf32>
-  return %1 : tensor<4x12xf32>
+  func.return %1 : tensor<4x12xf32>
 }

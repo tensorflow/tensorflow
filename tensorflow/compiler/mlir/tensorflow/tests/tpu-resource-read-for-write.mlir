@@ -10,7 +10,7 @@ func.func @write_only_resource(%arg0: tensor<i32>, %arg1: tensor<f32>, %arg2: te
   // CHECK-NEXT: "tf.AssignVariableOp"([[ARG2]], [[CLUSTER]]#1)
   "tf.AssignVariableOp"(%arg2, %0#1) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   // CHECK-NEXT: return
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @write_func
@@ -25,7 +25,7 @@ func.func @read_write_resource(%arg0: tensor<i32>, %arg1: tensor<f32>, %arg2: te
   %0 = "tf.ReadVariableOp"(%arg2) : (tensor<*x!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %1:2 = "tf_device.cluster_func"(%arg0, %arg1, %0) {_tpu_replicate = "read_write", func = @read_write_func} : (tensor<i32>, tensor<f32>, tensor<i32>) -> (tensor<f32>, tensor<i32>)
   "tf.AssignVariableOp"(%arg2, %1#1) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @read_write_func
@@ -40,7 +40,7 @@ func.func @multiple_write_resource(%arg0: tensor<i32>, %arg1: tensor<*x!tf_type.
   %0:2 = "tf_device.cluster_func"(%arg0) {_tpu_replicate = "multiple_write", func = @multiple_write_func} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
   "tf.AssignVariableOp"(%arg1, %0#0) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
   "tf.AssignVariableOp"(%arg1, %0#1) : (tensor<*x!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @multiple_write_func

@@ -8,13 +8,13 @@ func.func @f() {
   // CHECK: call @[[NEWG:.+]]() : () -> ()
   func.call @g() : () -> ()
   func.call @g() : () -> ()
-  return
+  func.return
 }
 
 // CHECK: func @g()
 // CHECK: func private @[[NEWG]]()
 func.func @g() {
-  return
+  func.return
 }
 
 // -----
@@ -31,17 +31,17 @@ func.func @g() {
 func.func @f() {
   func.call @g() : () -> ()
   func.call @g() : () -> ()
-  return
+  func.return
 }
 
 func.func @g() {
   func.call @h() : () -> ()
   func.call @h() : () -> ()
-  return
+  func.return
 }
 
 func.func @h() {
-  return
+  func.return
 }
 
 // -----
@@ -50,5 +50,5 @@ func.func @h() {
 func.func private @f() {
   func.call @f() : () -> ()
   func.call @f() : () -> ()
-  return
+  func.return
 }

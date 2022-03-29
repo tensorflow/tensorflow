@@ -52,7 +52,7 @@ func.func @main(%arg0: tensor<i1>) {
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   %1 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<f32>>>
   "tf.AssignVariableOp"(%1, %0) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -192,7 +192,7 @@ func.func @main(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource<tensor<f32>>>
   // CHECK-NEXT: "tf.AddV2"(%[[ARG_1]], %[[ARG_1]])
   %1 = "tf.AddV2"(%0, %0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK-NEXT: return
-  return
+  func.return
 }
 
 // -----
@@ -208,7 +208,7 @@ func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[CONST]] : tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -226,7 +226,7 @@ func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>
   %1 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[CONST]] : tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -281,7 +281,7 @@ func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>
 func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<f32>)  {
   "tf.AssignVariableOp"(%arg0, %arg1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[ARG_1]] : tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -294,7 +294,7 @@ func.func @main(%arg0: tensor<2xf32>) {
   // CHECK-NOT: tf.AssignVariableOp
   %0 = "tf.MlirLocalVarOp"() : () -> tensor<!tf_type.resource<tensor<2xf32>>>
   "tf.AssignVariableOp"(%0, %arg0) : (tensor<!tf_type.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -310,7 +310,7 @@ func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<!tf
   %1 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[ARG_1]] : tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -341,7 +341,7 @@ func.func private @callee(%arg0: tensor<!tf_type.resource<tensor<2xf32>>>) -> te
 func.func @main() {
   cf.br ^bb1
 ^bb1:
-  return
+  func.return
 }
 
 // -----
@@ -360,7 +360,7 @@ func.func @main() {
 
 // expected-error@+1 {{expects resource type of argument 0 to have one subtype, got '!tf_type.resource'}}
 func.func @main(%arg0: tensor<!tf_type.resource>) {
-  return
+  func.return
 }
 
 // -----
@@ -370,7 +370,7 @@ func.func @main(%arg0: tensor<!tf_type.resource>) {
 func.func @main() {
   // expected-error @+1 {{must have exactly one subtype in the result resource type}}
   %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf_type.resource>
-  return
+  func.return
 }
 
 // -----

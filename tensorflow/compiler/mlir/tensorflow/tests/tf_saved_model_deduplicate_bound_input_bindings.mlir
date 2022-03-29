@@ -28,6 +28,6 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     %val2 = "tf.ReadVariableOp"(%arg2) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
     %val3 = "tf.ReadVariableOp"(%arg3) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
     %val4 = "tf.ReadVariableOp"(%arg4) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    return
+    func.return
   }
 }

@@ -21,7 +21,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
     cf.br ^bb1
     ^bb1:
-    return
+    func.return
   }
 }
 
@@ -35,7 +35,7 @@ module attributes {tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() { initializers = [@init] } : () -> ()
   func.func @init() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]} {
     "tf.Const"() {value = dense<[1.0]> : tensor<1xf32> } : () -> tensor<1xf32>
-    return
+    func.return
   }
 }
 
@@ -56,7 +56,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     %3 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     "tf.AssignAddVariableOp"(%0, %2) {dtype = "tfdtype$DT_INT32"} : (tensor<*x!tf_type.resource<tensor<2x8xi32>>>, tensor<i32>) -> ()
     "tf.AssignAddVariableOp"(%1, %3) {dtype = "tfdtype$DT_INT32"} : (tensor<*x!tf_type.resource<tensor<2xi32>>>, tensor<i32>) -> ()
-    return
+    func.return
   }
 }
 
@@ -78,6 +78,6 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     %4 = "tf.Add"(%2, %3) : (tensor<i32>, tensor<i32>) -> tensor<i32>
     "tf.AssignAddVariableOp"(%0, %4) {dtype = "tfdtype$DT_INT32"} : (tensor<*x!tf_type.resource<tensor<2x8xi32>>>, tensor<i32>) -> ()
     "tf.AssignAddVariableOp"(%1, %4) {dtype = "tfdtype$DT_INT32"} : (tensor<*x!tf_type.resource<tensor<2xi32>>>, tensor<i32>) -> ()
-    return
+    func.return
   }
 }

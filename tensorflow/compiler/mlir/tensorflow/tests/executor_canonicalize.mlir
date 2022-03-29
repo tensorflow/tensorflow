@@ -13,7 +13,7 @@ func.func @graph_with_no_outputs(%arg0 : tensor<i1>) {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-NEXT: %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
@@ -172,7 +172,7 @@ func.func @empty_graph_with_no_outputs() {
   tf_executor.graph {
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-NEXT: return
@@ -258,7 +258,7 @@ func.func @single_empty_island_single_graph_control() {
     }
     tf_executor.fetch %0 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK-NEXT: return
@@ -282,7 +282,7 @@ func.func @empty_island_no_operand_no_data_result() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:        %[[ISLAND_0:.*]] = tf_executor.island
@@ -310,7 +310,7 @@ func.func @empty_island_one_operand_no_data_result() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:        %[[ISLAND_1:.*]] = tf_executor.island
@@ -339,7 +339,7 @@ func.func @empty_island_no_operand_one_data_no_control_result(%arg0 : tensor<i1>
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:        tf_executor.island
@@ -365,7 +365,7 @@ func.func @empty_control_trigger() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:        %[[ISLAND_0:.*]] = tf_executor.island

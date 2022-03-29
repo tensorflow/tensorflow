@@ -87,7 +87,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NEXT: "tf.TPUReshardVariables"(%[[V0]], %[[V1]], %[[DEFAULT]], %[[STATE]])
     // CHECK-NEXT: tf_device.return
     // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
-    return
+    func.return
   }
 }
 
@@ -153,7 +153,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
           }
           "tf.Yield"(%b1) :  (tensor<i32>) -> ()
       }) {device = "", is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
-    return
+    func.return
   }
 }
 
@@ -217,7 +217,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
           }
           "tf.Yield"(%b1) :  (tensor<i32>) -> ()
       }) {device = "", is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
-    return
+    func.return
   }
 }
 
@@ -307,6 +307,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NEXT: "tf.TPUReshardVariables"(%[[V0]], %[[V1]], %[[DEFAULT]], %[[STATE]])
     // CHECK-NEXT: tf_device.return
     // CHECK-NEXT: device = "TPU_REPLICATED_CORE_0"
-    return
+    func.return
   }
 }

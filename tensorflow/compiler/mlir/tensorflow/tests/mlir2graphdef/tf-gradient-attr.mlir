@@ -14,7 +14,7 @@ func.func @main() {
     %1:2 = tf_executor.island wraps "tf.foo"(%0#0) {device = ""} : (tensor<f32>) -> tensor<*xf32> loc("foo")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      library {

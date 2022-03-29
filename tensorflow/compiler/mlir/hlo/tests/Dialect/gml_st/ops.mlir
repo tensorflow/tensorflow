@@ -6,7 +6,7 @@ func.func @types() {
   %0 = gml_st.point [42] : !gml_st.point
   // CHECK: %{{.*}} = gml_st.tile [0] [42] [1] : !gml_st.tile<42>
   %1 = gml_st.tile [0] [42] [1] : !gml_st.tile<42>
-  return
+  func.return
 }
 
 // -----
@@ -18,7 +18,7 @@ func.func @materialize(%memref: memref<?x?xf32>, %tile: !gml_st.tile<42>, %point
   %0 = gml_st.materialize %memref at %tile : memref<?x?xf32> at !gml_st.tile<42>
   // CHECK: %{{.*}} = gml_st.materialize %[[MEMREF]] at %[[POINT]] : memref<?x?xf32> at !gml_st.point
   %1 = gml_st.materialize %memref at %point : memref<?x?xf32> at !gml_st.point
-  return
+  func.return
 }
 
 // -----
@@ -30,7 +30,7 @@ func.func @materialize(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42>, %point
   %0 = gml_st.materialize %tensor at %tile : tensor<?x?xf32> at !gml_st.tile<42>
   // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]] at %[[POINT]] : tensor<?x?xf32> at !gml_st.point
   %1 = gml_st.materialize %tensor at %point : tensor<?x?xf32> at !gml_st.point
-  return
+  func.return
 }
 
 // -----
@@ -182,7 +182,7 @@ func.func @tiled_loop_on_buffers(%input_3d: memref<16x24x32xf32>,
     }
     gml_st.yield
   }
-  return
+  func.return
 }
 // CHECK-LABEL: func @tiled_loop_on_buffers
 // CHECK: iterators[

@@ -92,7 +92,7 @@ func.func @tfrt_set_resource(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.reso
   "tf._TfrtSetResource"(%arg0) {device = "/device:CPU:0", index = 0} : (tensor<3x1xf32>) -> ()
   %0 = "tf.ReadVariableOp"(%arg1) {device = "/device:CPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
   "tf._TfrtSetResource"(%0) {device = "/device:CPU:0", index = 1} : (tensor<1x3xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @tfrt_get_resource

@@ -30,7 +30,7 @@ func.func @loop(%A: memref<192x192xf32>,
                   outs(%4 : memref<?x?xf32, #map1>)
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop
@@ -66,7 +66,7 @@ func.func @loop_reduction(%A: memref<192x192xf32>,
     linalg.fill ins(%cst : f32) outs(%A_ : memref<192x192xf32>)
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop_reduction
@@ -112,7 +112,7 @@ func.func @loop_row_reduction(%A: memref<10x8xf32>,
       }
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop_row_reduction
@@ -164,7 +164,7 @@ func.func @loop_col_reduction(%A: memref<10x8xf32>,
       }
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop_col_reduction

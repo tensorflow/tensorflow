@@ -42,8 +42,8 @@ NodeDef MakeNode(
         const std::pair<std::string, FunctionDefHelper::AttrValueWrapper>>
         attrs) {
   NodeDef node;
-  node.set_name(name);
-  node.set_op(op);
+  node.set_name(std::string(name));
+  node.set_op(std::string(op));
   for (const auto& input : inputs) node.add_input(input);
   for (const auto& attr : attrs)
     node.mutable_attr()->insert({attr.first, attr.second.proto});

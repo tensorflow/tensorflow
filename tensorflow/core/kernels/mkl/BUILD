@@ -24,7 +24,7 @@ MKL_SHORT_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:ops_util",
-    "//tensorflow/core/util:mkl_util",
+    "//tensorflow/core/util:onednn_env_vars",
 ] + mkl_deps()
 
 MKL_DEPS = MKL_SHORT_DEPS + [
@@ -54,7 +54,7 @@ MKL_TEST_DEPS = [
     "//tensorflow/core:testlib",
     "//tensorflow/core/kernels:ops_testutil",
     "//tensorflow/core/kernels:ops_util",
-    "//tensorflow/core/util:mkl_util",
+    "//tensorflow/core/util:onednn_env_vars",
 ]
 
 tf_mkl_kernel_library(
@@ -296,7 +296,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/util:image_resizer_state",
-        "//tensorflow/core/util:mkl_util",
+        "//tensorflow/core/util:onednn_env_vars",
     ] + mkl_deps(),
 )
 

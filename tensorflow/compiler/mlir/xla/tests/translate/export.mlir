@@ -282,7 +282,7 @@ func.func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
 }
 
 func.func @empty_callee() {
-  return
+  func.return
 }
 
 // CHECK:       [[CALLEE:%.*]] () -> () {
@@ -298,8 +298,8 @@ func.func @empty_callee() {
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
-  %0 = call @callee(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
-  %1 = call @callee(%0, %0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %0 = func.call @callee(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = func.call @callee(%0, %0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   func.return %1 : tensor<4xi32>
 }
 
@@ -330,7 +330,7 @@ func.func @callee(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) {
-  %0:2 = call @callee(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>)
+  %0:2 = func.call @callee(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>)
   func.return %0#0, %0#1 : tensor<4xi32>, tensor<4xi32>
 }
 
@@ -426,7 +426,7 @@ func.func @main() {
   // CHECK: c128[] constant((1, 0))
   %cst_10 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
 
-  return
+  func.return
 }
 
 // -----
@@ -1302,7 +1302,7 @@ func.func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
     %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type FLOAT">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[], {{.*}}: s32[], {{.*}}: s32[]) -> pred[] {
@@ -1321,7 +1321,7 @@ func.func @main(%input0: tensor<16x16xf32>) {
     %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type FLOAT">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>) -> (tensor<16x16xf32>)
-  return
+  func.return
 }
 
 // CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {

@@ -90,7 +90,7 @@ func.func @unreachable_loop(%arg0 : i32) {
     tf_executor.NextIteration.Sink [%0#1] %11#0 : tensor<*xi32> {T = "tfdtype$DT_INT32"}
     tf_executor.fetch %arg0 : i32
   }
-  return
+  func.return
 }
 
 // Check that NextIteration.sink and associated ops are not deleted when
@@ -127,7 +127,7 @@ func.func @reachable_loop() {
     tf_executor.NextIteration.Sink [%0#1] %11#0 : tensor<*xi32> {T = "tfdtype$DT_INT32"}
     tf_executor.fetch %8#0 : tensor<*xi32>
   }
-  return
+  func.return
 }
 
 // Check that ops leading to a fetch via a control are not removed.
@@ -149,7 +149,7 @@ func.func @control_fetch(%arg0 : i32) {
     }
     tf_executor.fetch %2 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // -----
@@ -166,7 +166,7 @@ func.func @main() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // -----
@@ -183,7 +183,7 @@ func.func @main() attributes {tf.entry_function = {control_outputs = "", inputs 
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // -----
@@ -201,6 +201,6 @@ func.func @must_execute_op() -> () {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 

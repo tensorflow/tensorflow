@@ -28,7 +28,7 @@ func.func @not_assign_var(%arg0: tensor<i1>, %arg1: tensor<!tf_type.resource>) {
   }) : () -> (tensor<i1>, tensor<i1>)
   // CHECK-NEXT: "tf.AssignAddVariableOp"([[ARG1]], [[PARALLEL_EXECUTE]]#0)
   "tf.AssignAddVariableOp"(%arg1, %0#0) : (tensor<!tf_type.resource>, tensor<i1>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @resource_handle_output
@@ -43,7 +43,7 @@ func.func @resource_handle_output(%arg0: tensor<i1>, %arg1: tensor<!tf_type.reso
   }) : () -> (tensor<!tf_type.resource>, tensor<!tf_type.resource>)
   // CHECK-NEXT: "tf.AssignVariableOp"([[PARALLEL_EXECUTE]]#0, [[ARG0]])
   "tf.AssignVariableOp"(%0#0, %arg0) : (tensor<!tf_type.resource>, tensor<i1>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @resource_handle_and_value_output
@@ -56,7 +56,7 @@ func.func @resource_handle_and_value_output(%arg0: tensor<i1>, %arg1: tensor<!tf
   }) : () -> (tensor<i1>, tensor<!tf_type.resource>)
   // CHECK: "tf.AssignVariableOp"([[PARALLEL_EXECUTE]]#1, [[PARALLEL_EXECUTE]]#0)
   "tf.AssignVariableOp"(%0#1, %0#0) : (tensor<!tf_type.resource>, tensor<i1>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @resource_handle_after_parallel_execute
@@ -72,7 +72,7 @@ func.func @resource_handle_after_parallel_execute(%arg0: tensor<i1>) {
   %1 = "tf.VarHandleOp"() {container = "", shape = #tf_type.shape<>, shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i1>>>
   // CHECK-NEXT: "tf.AssignVariableOp"([[VAR]], [[PARALLEL_EXECUTE]]#0)
   "tf.AssignVariableOp"(%1, %0#0) : (tensor<!tf_type.resource<tensor<i1>>>, tensor<i1>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @replace_single_output
@@ -91,7 +91,7 @@ func.func @replace_single_output(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: te
   }) : () -> (tensor<i1>, tensor<i1>, tensor<i1>)
   "tf.AssignVariableOp"(%arg3, %0#1) : (tensor<!tf_type.resource>, tensor<i1>) -> ()
   // CHECK-NEXT: return
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @replace_multiple_outputs
@@ -112,7 +112,7 @@ func.func @replace_multiple_outputs(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2
   "tf.AssignVariableOp"(%arg5, %0#1) : (tensor<!tf_type.resource>, tensor<i32>) -> ()
   "tf.AssignVariableOp"(%arg6, %0#3) : (tensor<!tf_type.resource>, tensor<f32>) -> ()
   // CHECK-NEXT: return
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @replace_multiple_outputs_regions
@@ -133,5 +133,5 @@ func.func @replace_multiple_outputs_regions(%arg0: tensor<i1>, %arg1: tensor<i32
   "tf.AssignVariableOp"(%arg6, %0#1) : (tensor<!tf_type.resource>, tensor<i32>) -> ()
   "tf.AssignVariableOp"(%arg7, %0#4) : (tensor<!tf_type.resource>, tensor<f32>) -> ()
   // CHECK-NEXT: return
-  return
+  func.return
 }

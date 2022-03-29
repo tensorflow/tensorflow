@@ -106,7 +106,7 @@ func.func @aliasing_reads_writes(%arg0: tensor<32xf32>) -> () {
     // expected-remark@above {{ID: 11}}
     // expected-remark@above {{Predecessors: {10}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 13}}
   // expected-remark@above {{Sinks: {12}}}
 }
@@ -163,7 +163,7 @@ func.func @unknown_side_effecting_op(%arg0: tensor<32xf32>) -> () {
     // expected-remark@above {{ID: 11}}
     // expected-remark@above {{Predecessors: {10}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 13}}
   // expected-remark@above {{Sinks: {12}}}
 }
@@ -207,7 +207,7 @@ func.func @read_only_unknown_resource(%arg0: tensor<32xf32>) -> () {
     // expected-remark@above {{ID: 7}}
     // expected-remark@above {{Predecessors: {6}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 9}}
   // expected-remark@above {{Sinks: {8}}}
 }
@@ -262,7 +262,7 @@ func.func @with_replicate(
     // expected-remark@above {{ID: 9}}
     // expected-remark@above {{Predecessors: {8}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 11}}
   // expected-remark@above {{Sinks: {10}}}
 }
@@ -303,7 +303,7 @@ func.func @stateless_if_op(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -419,7 +419,7 @@ func.func @stateless_ifregion_op(
     // expected-remark@above {{ID: 15}}
     // expected-remark@above {{Predecessors: {14}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 17}}
   // expected-remark@above {{Sinks: {16}}}
 }
@@ -460,7 +460,7 @@ func.func @stateless_if_op(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -575,7 +575,7 @@ func.func @stateless_whileregion_op(
     // expected-remark@above {{ID: 15}}
     // expected-remark@above {{Predecessors: {14}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 17}}
   // expected-remark@above {{Sinks: {16}}}
 }
@@ -655,7 +655,7 @@ func.func @output_of_if_op(
     // expected-remark@above {{ID: 9}}
     // expected-remark@above {{Predecessors: {8}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 11}}
   // expected-remark@above {{Sinks: {10}}}
 }
@@ -866,7 +866,7 @@ func.func @output_of_ifregion_op(
     // expected-remark@above {{ID: 23}}
     // expected-remark@above {{Predecessors: {22}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 25}}
   // expected-remark@above {{Sinks: {24}}}
 }
@@ -946,7 +946,7 @@ func.func @output_of_while_op(
     // expected-remark@above {{ID: 9}}
     // expected-remark@above {{Predecessors: {8}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 11}}
   // expected-remark@above {{Sinks: {10}}}
 }
@@ -1147,7 +1147,7 @@ func.func @output_of_whileregion_op(
     // expected-remark@above {{ID: 23}}
     // expected-remark@above {{Predecessors: {22}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 25}}
   // expected-remark@above {{Sinks: {24}}}
 }
@@ -1186,7 +1186,7 @@ func.func @tf_registry_ops(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1232,7 +1232,7 @@ func.func @arguments_with_unique_ids(
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Predecessors: {5}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
@@ -1268,7 +1268,7 @@ func.func @value_based_side_effect_non_resource_to_unknown(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1303,7 +1303,7 @@ func.func @value_based_side_effect_non_resource_to_known(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1341,7 +1341,7 @@ func.func @dataset_op_sequence(
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Predecessors: {5}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
@@ -1376,7 +1376,7 @@ func.func @generator_dataset_with_unknown_side_effect_ops(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1415,7 +1415,7 @@ func.func @resources_allocated_with_same_nonempty_shared_name(
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Predecessors: {5}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
@@ -1449,7 +1449,7 @@ func.func @side_effecting_ops_with_different_resources(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1487,7 +1487,7 @@ func.func @side_effecting_ops_with_different_resources_and_allocations(
     // expected-remark@above {{ID: 6}}
     // expected-remark@above {{Predecessors: {5}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 8}}
   // expected-remark@above {{Sinks: {7}}}
 }
@@ -1519,7 +1519,7 @@ func.func @embedding_effect_same_device(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1550,7 +1550,7 @@ func.func @embedding_effect_different_devices(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1586,7 +1586,7 @@ func.func @mixed_embedding_and_unknown_effects(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1622,7 +1622,7 @@ func.func @mixed_embedding_and_unknown_effects(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1654,7 +1654,7 @@ func.func @same_op_based_write_effect(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1687,7 +1687,7 @@ func.func @different_op_based_side_effects(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1725,7 +1725,7 @@ func.func @mixed_op_based_value_based_side_effects(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1761,7 +1761,7 @@ func.func @recv_equal_keys(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1797,7 +1797,7 @@ func.func @send_equal_keys(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1832,7 +1832,7 @@ func.func @recv_different_keys(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1866,7 +1866,7 @@ func.func @send_different_keys(
     // expected-remark@above {{ID: 5}}
     // expected-remark@above {{Predecessors: {4}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 7}}
   // expected-remark@above {{Sinks: {6}}}
 }
@@ -1898,7 +1898,7 @@ func.func @tpu_execute_effect(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1926,7 +1926,7 @@ func.func @tpu_compile_ops(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1955,7 +1955,7 @@ func.func @device_ordinal_placeholder_side_effect_free(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }
@@ -1986,7 +1986,7 @@ func.func @must_execute_ops(
     // expected-remark@above {{ID: 4}}
     // expected-remark@above {{Predecessors: {3}}}
   }
-  return
+  func.return
   // expected-remark@above {{ID: 6}}
   // expected-remark@above {{Sinks: {5}}}
 }

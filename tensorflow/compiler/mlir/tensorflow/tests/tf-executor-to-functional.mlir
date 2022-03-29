@@ -6,7 +6,7 @@ func.func @unsupported_op() {
     %control = tf_executor.ControlTrigger {}
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // -----
@@ -17,7 +17,7 @@ func.func @empty_graph() {
   tf_executor.graph {
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @empty_island
@@ -29,7 +29,7 @@ func.func @empty_island() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @island_forwarding_result

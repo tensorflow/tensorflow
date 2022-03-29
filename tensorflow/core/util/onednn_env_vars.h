@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_UTIL_ONEDNN_ENV_VARS_H_
+#define TENSORFLOW_CORE_UTIL_ONEDNN_ENV_VARS_H_
 #ifdef INTEL_MKL
 
-#include "tensorflow/core/util/mkl_util.h"
-
 namespace tensorflow {
-
-bool AreWeightsFrozen() {
-  static bool weights_const = false;
-  static absl::once_flag once;
-  absl::call_once(once, [&] {
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ONEDNN_ASSUME_FROZEN_WEIGHTS",
-                                   /*default_value*/ false, &weights_const));
-  });
-  return weights_const;
-}
+bool AreWeightsFrozen();
+bool UseSystemAlloc();
 }  // namespace tensorflow
 #endif  // INTEL_MKL
+#endif  // TENSORFLOW_CORE_UTIL_ONEDNN_ENV_VARS_H_

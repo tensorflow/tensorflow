@@ -10,7 +10,7 @@ func.func private @token_type() -> !tf_executor.token
 func.func @empty_graph() {
   tf_executor.graph {
   }
-  return
+  func.return
 
 // CHECK:      tf_executor.graph {
 // CHECK-NEXT:  tf_executor.fetch
@@ -501,7 +501,7 @@ func.func @control_trigger(%arg0: !tf_executor.control, %arg1: !tf_executor.cont
 // CHECK: tf_executor.ControlTrigger %{{.*}}, %{{.*}}
     %0 = tf_executor.ControlTrigger %arg0, %arg1
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @control_trigger_with_attributes(%{{.*}}: !tf_executor.control, %{{.*}}: !tf_executor.control) {
@@ -510,7 +510,7 @@ func.func @control_trigger_with_attributes(%arg0: !tf_executor.control, %arg1: !
 // CHECK: tf_executor.ControlTrigger %{{.*}}, %{{.*}} {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
     %0 = tf_executor.ControlTrigger %arg0, %arg1 {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @loop_cond(%{{.*}}: tensor<i1>, %{{.*}}: !tf_executor.control) -> tensor<i1> {

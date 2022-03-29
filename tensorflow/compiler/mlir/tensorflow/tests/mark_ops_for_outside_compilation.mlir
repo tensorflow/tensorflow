@@ -85,7 +85,7 @@ func.func @ignore_embedding_ops() -> () {
     "tf.SendTPUEmbeddingGradients"(%2#0, %2#1) {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D", operand_segment_sizes = dense<[2, 0]> : vector<2xi32>} : (tensor<2x2xf32>, tensor<4x4xf32>) -> ()
     tf_device.return
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @ignore_stack_ops
@@ -96,7 +96,7 @@ func.func @ignore_stack_ops(%arg0: tensor<i32>) -> () {
     %0 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
     tf_device.return
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @ignore_const_foldable_ops
@@ -110,7 +110,7 @@ func.func @ignore_const_foldable_ops(%arg0: tensor<i32>) -> () {
     %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) {} : (tensor<4xi32>, tensor<4xi32>) -> (tensor<1xi32>, tensor<3xi32>)
     tf_device.return
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @op_string_result
@@ -341,7 +341,7 @@ func.func @check_op_with_variant_string_subtypes_outside_compiled(%arg0: tensor<
     "tf.TensorListGetItem"(%0, %arg1, %arg2) : (tensor<!tf_type.variant<tensor<*x!tf_type.string>>>, tensor<i32>, tensor<3xi32>) -> tensor<24x24x64xui8>
     tf_device.return
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @check_op_with_resource_string_subtypes_outside_compiled
 func.func @check_op_with_resource_string_subtypes_outside_compiled(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<!tf_type.resource<tensor<!tf_type.string>>>) -> () {
@@ -351,7 +351,7 @@ func.func @check_op_with_resource_string_subtypes_outside_compiled(%arg0: tensor
     "tf.VarHandleOp"() {allowed_devices = [], container = "", device = "", shared_name = ""} : () -> tensor<!tf_type.resource<tensor<!tf_type.string>>>
     tf_device.return
   }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @single_variant_input
@@ -365,7 +365,7 @@ func.func @single_variant_input() {
     "tf.Identity"(%1) {_xla_outside_compilation = "0"} : (tensor<!tf_type.variant<tensor<f32>>>) -> (tensor<!tf_type.variant<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @chained_variant_input
@@ -382,7 +382,7 @@ func.func @chained_variant_input() {
     "tf.opC"(%2) {_xla_outside_compilation = "0"} : (tensor<!tf_type.variant<tensor<f32>>>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @single_variant_output
@@ -396,7 +396,7 @@ func.func @single_variant_output() {
     "tf.Identity"(%1) {} : (tensor<!tf_type.variant<tensor<f32>>>) -> (tensor<!tf_type.variant<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @chained_variant_output
@@ -413,7 +413,7 @@ func.func @chained_variant_output() {
     "tf.Identity"(%2) : (tensor<!tf_type.variant<tensor<f32>>>) -> (tensor<!tf_type.variant<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @variant_input_output
@@ -431,7 +431,7 @@ func.func @variant_input_output() {
     "tf.Identity"(%2) : (tensor<!tf_type.variant<tensor<f32>>>) -> (tensor<!tf_type.variant<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @variant_input_output_already_marked
@@ -445,7 +445,7 @@ func.func @variant_input_output_already_marked() {
     "tf.opB"(%1) {_xla_outside_compilation = "0"} : (tensor<!tf_type.variant<tensor<f32>>>) -> ()
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @variant_input_nested
@@ -470,7 +470,7 @@ func.func @variant_input_nested(%arg0 : tensor<*x!tf_type.resource>) {
       }) { is_stateless = true, _xla_outside_compilation = "0" } : (tensor<i1>) -> tensor<i1>
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @variant_output_nested
@@ -496,7 +496,7 @@ func.func @variant_output_nested(%arg0 : tensor<*x!tf_type.resource>) {
     "tf.Identity"(%1) : (tensor<!tf_type.variant<tensor<f32>>>) -> (tensor<!tf_type.variant<tensor<f32>>>)
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @variant_output_terminator
@@ -522,7 +522,7 @@ func.func @variant_output_terminator(%arg0 : tensor<*x!tf_type.resource>) {
       }) { is_stateless = true} : (tensor<i1>) -> tensor<!tf_type.variant<tensor<f32>>>
     tf_device.return
   }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @variant_block_arg
@@ -540,6 +540,6 @@ func.func @variant_block_arg(tensor<!tf_type.variant<tensor<f32>>>) -> () {
       "tf.Identity"(%1) : (tensor<!tf_type.variant<tensor<f32>>>) -> (tensor<!tf_type.variant<tensor<f32>>>)
       tf_device.return
     }) : () -> ()
-    return
+    func.return
 }
 

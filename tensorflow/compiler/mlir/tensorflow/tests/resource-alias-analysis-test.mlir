@@ -54,7 +54,7 @@ func.func @aliasing_reads_writes(%arg0: tensor<32xf32>) -> () {
     }
     tf_executor.fetch %island : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // -----
@@ -87,7 +87,7 @@ func.func @aliasing_tpu_replicated_input(%arg0: tensor<32xf32>) -> () {
     }
     tf_executor.fetch %island : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // -----
@@ -108,7 +108,7 @@ func.func @if_op_aliasing(%arg0: !tf_res, %arg1: !tf_res) {
   %if:3 = "tf.If"(%read0, %arg1, %vh0) {
             then_branch = @if_then, else_branch = @if_else, is_stateless = true
           } : (tensor<32xf32>, !tf_res, !tf_res) -> (!tf_res, !tf_res, !tf_res)
-  return
+  func.return
 }
 
 // expected-remark@below {{Region #0, Arg #0, ID 2 : 0, 1, 2}}
@@ -148,7 +148,7 @@ func.func @case_op_aliasing(%arg0: !tf_res, %arg1: !tf_res) {
             branches = [@case_branch0, @case_branch1, @case_branch2],
             is_stateless = true
           } : (tensor<i32>, !tf_res, !tf_res) -> (!tf_res, !tf_res, !tf_res)
-  return
+  func.return
 }
 
 // expected-remark@below {{Region #0, Arg #0, ID 2 : 0, 1, 2}}
@@ -192,7 +192,7 @@ func.func @while_op_aliasing(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) {
   %w:3 = "tf.While"(%arg0, %arg1, %arg2) {
             body = @while_body, cond = @while_cond, is_stateless = false
          } : (!tf_res, !tf_res, !tf_res) -> (!tf_res, !tf_res, !tf_res)
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @while_body
@@ -228,8 +228,8 @@ func.func @aliasing_through_calls(%arg0: tensor<32xf32>) -> () {
   %vh1 = "tf.Identity"(%vh0) : (!tf_res) -> (!tf_res)
   // expected-remark@below {{Result #0, ID 2 : Unknown}}
   // expected-remark@below {{Result #1, ID 3 : 0, 1, 2, 3}}
-  %c:2 = call @passthru(%vh1) : (!tf_res) -> (!tf_res, !tf_res)
-  return
+  %c:2 = func.call @passthru(%vh1) : (!tf_res) -> (!tf_res, !tf_res)
+  func.return
 }
 
 // expected-remark@below {{Region #0, Arg #0, ID 1 : 1}}
@@ -265,7 +265,7 @@ func.func @if_region_aliasing(%arg0: !tf_res, %arg1: !tf_res) {
             %id0 = "tf.Identity"(%vh0) : (!tf_res) -> !tf_res
             "tf.Yield"(%id0, %id0, %arg0) : (!tf_res, !tf_res, !tf_res) -> ()
           }) {is_stateless = true} : (tensor<i1>) -> (!tf_res, !tf_res, !tf_res)
-  return
+  func.return
 }
 
 // -----
@@ -296,7 +296,7 @@ func.func @case_region_aliasing(%arg0: !tf_res, %arg1: !tf_res) {
           }, {
             "tf.Yield"(%vh0, %arg1, %arg1) : (!tf_res, !tf_res, !tf_res) -> ()
           }) {is_stateless = true} : (tensor<i32>) -> (!tf_res, !tf_res, !tf_res)
-  return
+  func.return
 }
 
 // -----
@@ -329,7 +329,7 @@ func.func @while_region_aliasing(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res)
           %u0 = "tf._UnknownSideEffectingOp_"() : () -> !tf_res
           "tf.Yield"(%u0, %barg2, %barg1) : (!tf_res, !tf_res, !tf_res) -> ()
          }) {is_stateless = false} : (!tf_res, !tf_res, !tf_res) -> (!tf_res, !tf_res, !tf_res)
-  return
+  func.return
 }
 
 // -----
@@ -342,8 +342,8 @@ func.func @aliasing_through_calls(%arg0: tensor<32xf32>) -> () {
   %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
   // expected-remark@below {{Result #0, ID 1 : Unknown}}
   // expected-remark@below {{Result #1, ID 2 : 0, 1, 2}}
-  %c:2 = call @passthru(%vh0) : (!tf_res) -> (!tf_res, !tf_res)
-  return
+  %c:2 = func.call @passthru(%vh0) : (!tf_res) -> (!tf_res, !tf_res)
+  func.return
 }
 
 // expected-remark@below {{Region #0, Arg #0, ID 1 : 1}}
@@ -366,7 +366,7 @@ func.func @aliasing_through_launch(%arg0: tensor<32xf32>) {
   %launch = "tf_device.launch"() ({
     tf_device.return %vh : !tf_res
   }) {device = ""} : () -> !tf_res
-  return
+  func.return
 }
 
 // -----
@@ -382,7 +382,7 @@ func.func @aliasing_through_cluster(%arg0: tensor<32xf32>) {
   %cluster = "tf_device.cluster"() ({
     tf_device.return %vh : !tf_res
   }) : () -> !tf_res
-  return
+  func.return
 }
 
 // -----
@@ -395,7 +395,7 @@ func.func @unique_resource_allocation(%arg0: tensor<i32>) {
   %stack_handle1 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
   // expected-remark@below {{Result #0, ID 1 : 1}}
   %stack_handle2 = "tf.StackV2"(%arg0) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf_type.resource>
-  return
+  func.return
 }
 
 // -----
@@ -409,7 +409,7 @@ func.func @known_different_resource_types_unknown_instances(%arg0: tensor<i32>) 
   %iter_handle = "tf.IteratorV2"() {container = "c", shared_name = "v0", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
   // expected-remark@below {{Result #0, ID 1 : 1}}
   %seed_handle = "tf.DummySeedGenerator"() : () -> !tf_res
-  return
+  func.return
 }
 
 // -----
@@ -423,7 +423,7 @@ func.func @known_same_resource_types_unknown_instances(%arg0: tensor<i32>) {
   %iter_handle1 = "tf.IteratorV2"() {container = "c", shared_name = "v0", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
   // expected-remark@below {{Result #0, ID 1 : 0, 1}}
   %iter_handle2 = "tf.IteratorV2"() {container = "c", shared_name = "v1", output_shapes = [#tf_type.shape<>], output_types = [!tf_res]} : () -> !tf_res
-  return
+  func.return
 }
 
 // -----
@@ -444,7 +444,7 @@ func.func @allocated_resource_propagation_island_graph() {
     }
     tf_executor.fetch %island#0 : !tf_res
   }
-  return
+  func.return
 }
 
 // -----
@@ -477,5 +477,5 @@ func.func @multiple_islands() {
     }
     tf_executor.fetch %island2#0 : tensor<f32>
   }
-  return
+  func.return
 }

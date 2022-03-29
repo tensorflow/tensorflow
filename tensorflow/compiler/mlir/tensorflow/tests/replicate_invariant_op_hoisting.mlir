@@ -8,7 +8,7 @@ func.func @replicate_arg_shape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
     %2 = "tf.opA"(%1, %ri) : (tensor<?xi32>, tensor<*xf32>) -> tensor<*xi32>
     tf_device.return %1, %2 : tensor<?xi32>, tensor<*xi32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_0]])
@@ -24,7 +24,7 @@ func.func @invariant_shape(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
     %1 = "tf.Shape"(%arg1) {device = "", T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
     tf_device.return %1 : tensor<?xi32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_1]])
@@ -41,7 +41,7 @@ func.func @replicate_resource_var_arg_shape(%arg0: tensor<*x!tf_type.resource>, 
     %3 = "tf.opA"(%1, %2, %ri) : (tensor<*xf32>, tensor<?xi32>, tensor<*x!tf_type.resource>) -> tensor<*xi32>
     tf_device.return %1, %2, %3 : tensor<*xf32>, tensor<?xi32>, tensor<*xi32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[VAR_SHAPE:[0-9]*]] = "tf.VariableShape"(%[[ARG_0]])
@@ -58,7 +58,7 @@ func.func @replicate_arg_shape_with_packed(%arg0: tensor<*xf32>, %arg1: tensor<*
     %2 = "tf.opA"(%1, %rj) : (tensor<?xi32>, tensor<*xf32>) -> tensor<*xi32>
     tf_device.return %1, %2 : tensor<?xi32>, tensor<*xi32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_2]])
@@ -75,7 +75,7 @@ func.func @replicate_resource_var_arg_shape_with_packed(%arg0: tensor<*x!tf_type
     %3 = "tf.opA"(%1, %2, %rj) : (tensor<*xf32>, tensor<?xi32>, tensor<*x!tf_type.resource>) -> tensor<*xi32>
     tf_device.return %1, %2, %3 : tensor<*xf32>, tensor<?xi32>, tensor<*xi32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[VAR_SHAPE:[0-9]*]] = "tf.VariableShape"(%[[ARG_2]])
@@ -92,7 +92,7 @@ func.func @invariant_resource_var_shape(%arg0: tensor<*x!tf_type.resource>, %arg
     %2 = "tf.Shape"(%0) {device = "", T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
     tf_device.return %2 : tensor<?xi32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[READ_VAR:[0-9]*]] = "tf.ReadVariableOp"(%[[ARG_1]])
@@ -110,7 +110,7 @@ func.func @dependent_invariants(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
     %3 = "tf.opB"(%1, %2) : (tensor<?xi32>, tensor<*xi32>) -> tensor<*xf32>
     tf_device.return %1, %2, %3 : tensor<?xi32>, tensor<*xi32>, tensor<*xf32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_0]])
@@ -139,7 +139,7 @@ func.func @nested_ops(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) {
     }) {device = "c"} : () -> tensor<?xi1>
     tf_device.return %1, %2, %3, %4 : tensor<?xi32>, tensor<*xi32>, tensor<*xf32>, tensor<?xi1>
   }
-  return
+  func.return
 }
 
 // CHECK:      %[[SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_0]])
@@ -175,7 +175,7 @@ func.func @do_not_hoist_ops_with_virtual_device(%arg0: tensor<*xf32>, %arg1: ten
     }) {device = "c"} : () -> tensor<*xi32>
     tf_device.return %1, %2, %3, %4 : tensor<?xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>
   }
-  return
+  func.return
 }
 
 // CHECK:  [[SHAPE:%.*]] = "tf.Shape"([[VAL_0]])

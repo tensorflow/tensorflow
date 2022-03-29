@@ -9,7 +9,7 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
                    %size_0 : index , %size_2 : index) {
   %buf_0 = tf_framework.alloc(%ctx) : memref<10xi8>
   %buf_1 = tf_framework.alloc(%ctx, %size_0, %size_2) : memref<?x10x?xi8>
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @forwarding_alloc
@@ -19,38 +19,38 @@ func.func @forwarding_alloc(%ctx: !tf_framework.op_kernel_context,
     input_indices = [0 : i32, 1 : i32],
     output_index = 0 : i32
   } : memref<?x10x?xi8>
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @dealloc
 func.func @dealloc(%ctx: !tf_framework.op_kernel_context,
               %memref : memref<?x10xf32>) {
   tf_framework.dealloc(%ctx, %memref) : memref<?x10xf32>
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @assert
 func.func @assert(%ctx: !tf_framework.op_kernel_context, %cond: i1) {
   tf_framework.assert %ctx, %cond, "ALREADY_EXISTS", "Or maybe not"
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @report_error
 func.func @report_error(%ctx: !tf_framework.op_kernel_context) {
   tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome"
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @null_memref
 func.func @null_memref() {
   tf_framework.null_memref : memref<*xf32>
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @null_context
 func.func @null_context() {
   tf_framework.null_context : !tf_framework.op_kernel_context
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @is_valid_memref

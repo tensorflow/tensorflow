@@ -17,7 +17,7 @@ func.func @single_op_launch() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      %[[A:.*]] = "tf.opA"
@@ -45,7 +45,7 @@ func.func @multi_op_launch() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      %[[A:.*]] = "tf.opA"
@@ -71,7 +71,7 @@ func.func @empty_device_op() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      [[A:%.+]]:2 = "tf.opA"
@@ -97,7 +97,7 @@ func.func @conflicting_device() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 
@@ -117,5 +117,5 @@ func.func @bad_tf_device_attr() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }

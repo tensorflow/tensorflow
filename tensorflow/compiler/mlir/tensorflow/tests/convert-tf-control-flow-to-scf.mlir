@@ -7,11 +7,11 @@ func.func private @test_if_else1(tensor<4xf32>) -> tensor<4xf32>
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<i1>, %[[ARG1:.*]]: tensor<4xf32>)
 func.func @test_supported_lowering_of_tf_if_region1(%arg0: tensor<i1>, %arg1: tensor<4xf32>) -> (tensor<*xf32>, tensor<4xf32>) {
   %res:2 = "tf.IfRegion"(%arg0) ({
-    %call = call @test_if_then1(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
+    %call = func.call @test_if_then1(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
     %add = "tf.AddV2"(%call, %call) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
     "tf.Yield"(%call, %add) : (tensor<4xf32>, tensor<4xf32>) -> ()
   },  {
-    %call_0 = call @test_if_else1(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
+    %call_0 = func.call @test_if_else1(%arg1) : (tensor<4xf32>) -> tensor<4xf32>
     "tf.Yield"(%call_0, %call_0) : (tensor<4xf32>, tensor<4xf32>) -> ()
   }) {is_stateless = false} : (tensor<i1>) -> (tensor<*xf32>, tensor<4xf32>)
   func.return %res#0, %res#1 : tensor<*xf32>, tensor<4xf32>
@@ -43,7 +43,7 @@ func.func @test_supported_lowering_of_tf_if_region2(%arg0: tensor<i1>, %arg1: te
     func.call @test_if_else2(%arg1) : (tensor<4xf32>) -> ()
     "tf.Yield"() : () -> ()
   }) {is_stateless = false} : (tensor<i1>) -> ()
-  return
+  func.return
 
   // CHECK-NEXT: %[[COND:.*]] = tensor.extract %[[ARG0]][] : tensor<i1>
   // CHECK-NEXT: scf.if %[[COND]] {

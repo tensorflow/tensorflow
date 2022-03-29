@@ -22,7 +22,7 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-LABEL: func @init
 // CHECK-SAME: {tfrt.cost_threshold = 1 : i64}
 func.func @func_init() attributes {tf_saved_model.exported_names = ["init"]} {
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @basic

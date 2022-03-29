@@ -588,72 +588,25 @@ absl::Cord HloComputation::ToCord(
   }
   result.Append("{\n");
 
-  // There are instructions which are required to be printed. Additionally, we
-  // print some instructions before and after required ones. The resulting
-  // output has the following format.
-  //
-  //  computation {
-  //    ...
-  //    additional_instructions
-  //    required_instructions
-  //    additional_instructions
-  //    ...
-  //    additional_instructions
-  //    required_instructions
-  //    additional_instructions
-  //    ...
-  //  }
-  absl::flat_hash_set<int> instructions_to_print;
-  {
-    // Find all the instructions that should be printed.
-    const int last_instruction = instruction_order.size() - 1;
-    int first_non_printed = 0;
-    for (int i = 0; i <= last_instruction;) {
-      const HloInstruction* const instruction = instruction_order[i];
-      DCHECK_EQ(this, instruction->parent());
-      if (options.print_instruction(instruction)) {
-        // Add the instruction along with leading and trailing instructions to
-        // instructions_to_print. Avoid adding instructions multiple times.
-        const int first_to_print =
-            std::max(first_non_printed,
-                     i - options.leading_and_trailing_instructions_number());
-        const int last_to_print =
-            std::min(last_instruction,
-                     i + options.leading_and_trailing_instructions_number());
-        for (int j = first_to_print; j <= last_to_print; ++j) {
-          instructions_to_print.insert(j);
-        }
-        i = first_non_printed = last_to_print + 1;
-      } else {
-        ++i;
-      }
-    }
-  }
-
   {
     // Print the instructions in this computation.
-    HloPrintOptions new_options = options;
-    new_options.set_indent_amount(options.indent_amount() + 1)
-        .set_is_in_nested_computation(true);
+    HloPrintOptions new_options =
+        HloPrintOptions(options)
+            .set_indent_amount(options.indent_amount() + 1)
+            .set_is_in_nested_computation(true);
 
     const std::string new_tab(2 * new_options.indent_amount(), ' ');
 
     CanonicalNameMap name_map;
-    bool print_prev = true;
-    for (int index = 0; index < instruction_order.size(); ++index) {
-      if (instructions_to_print.contains(index)) {
-        const HloInstruction* const instruction = instruction_order[index];
-        result.Append(new_options.format_instruction(
-            instruction,
-            instruction->ToStringWithCanonicalNameMap(new_options, &name_map),
-            new_options.indent_amount(), instruction == root_instruction_));
-        result.Append("\n");
-        print_prev = true;
-      } else if (print_prev) {
-        result.Append(new_tab);
-        result.Append("...\n");
-        print_prev = false;
+    for (const HloInstruction* const instruction : instruction_order) {
+      DCHECK_EQ(this, instruction->parent());
+      result.Append(new_tab);
+      if (instruction == root_instruction_) {
+        result.Append("ROOT ");
       }
+      result.Append(
+          instruction->ToStringWithCanonicalNameMap(new_options, &name_map));
+      result.Append("\n");
     }
   }
 

@@ -118,7 +118,7 @@ module {
       f = @__reduce_func, f._tf_data_function = true,
       output_shapes = [#tf_type.shape<>],
       output_types = [i32], use_inter_op_parallelism = true} : (tensor<!tf_type.variant>, tensor<i32>, tensor<!tf_type.resource<tensor<4096xf32>>>) -> (tensor<*xi32>)
-    return
+    func.return
   }
 
   func private @__reduce_func(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}) -> (tensor<i32>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {

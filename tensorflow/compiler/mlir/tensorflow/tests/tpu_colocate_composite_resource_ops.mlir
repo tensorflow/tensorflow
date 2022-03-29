@@ -29,7 +29,7 @@ func.func @testReadVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tensor<
     }) {device = "TPU_REPLICATED_CORE_0"} : () -> ()
     tf_device.return
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @testReadVariableOpAfterIdentityColocated
@@ -60,7 +60,7 @@ func.func @testReadVariableOpAfterIdentityColocated(%arg0: tensor<*x!tf_type.res
     }) {device = "TPU_REPLICATED_CORE_0"} : () -> ()
     tf_device.return
   }
-  return
+  func.return
 }
 
 // Tests AssignVariable op using composite device resource is wrapped inside
@@ -89,7 +89,7 @@ func.func @testAssignVariableOpColocated(%arg0: tensor<*x!tf_type.resource<tenso
     }) {device = "TPU_REPLICATED_CORE_0"} : () -> ()
     tf_device.return
   }
-  return
+  func.return
 }
 
 // Tests tf_device.replicate op not running on TPU devices ignored.
@@ -114,5 +114,5 @@ func.func @testNonTPUDeviceReplicationIgnored(%arg0: tensor<*x!tf_type.resource<
     }) {device = "TPU_REPLICATED_HOST"} : () -> ()
     tf_device.return
   }
-  return
+  func.return
 }

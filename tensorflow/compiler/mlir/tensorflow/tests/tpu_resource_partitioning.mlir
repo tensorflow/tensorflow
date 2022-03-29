@@ -20,7 +20,7 @@ func.func @read_write_resource(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %a
   // CHECK-DAG:  "tf.AssignVariableOp"([[ARG0]], [[OUTPUT]]#0)
   // CHECK-DAG:  "tf.AssignVariableOp"([[ARG1]], [[OUTPUT]]#1)
   "tf.AssignVariableOp"(%0, %2) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @read_only_resource
@@ -56,7 +56,7 @@ func.func @partitioned_variable_multiple_users(%arg0: tensor<!tf_type.resource<t
   %2 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   // CHECK:      "tf_device.cluster_func"([[INPUT0]], [[INPUT1]])
   "tf_device.cluster_func"(%1, %2) {func = @computation_two_args, use_spmd_for_xla_partitioning = true} : (tensor<i32>, tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // Tests unsupported cases and IR are not modified.
@@ -72,7 +72,7 @@ func.func @no_spmd(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg1: tensor<
   %3 = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
   %4 = "tf.ReadVariableOp"(%3) : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
   %5 = "tf_device.cluster_func"(%4) {func = @computation, use_spmd_for_xla_partitioning = false} : (tensor<i32>) -> tensor<i32>
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @read_write_unpartitioned_resource
@@ -82,7 +82,7 @@ func.func @read_write_unpartitioned_resource(%arg0: tensor<!tf_type.resource<ten
   %1 = "tf_device.cluster_func"(%0) {func = @computation} : (tensor<i32>) -> tensor<i32>
   // CHECK-NOT:  tf.TPUPartitionedOutput
   "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf_type.resource<tensor<i32>>>, tensor<i32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @read_only_unpartitioned_resource
@@ -92,7 +92,7 @@ func.func @read_only_unpartitioned_resource(%arg0: tensor<!tf_type.resource<tens
   %1 = "tf_device.cluster_func"(%0) {func = @computation} : (tensor<i32>) -> tensor<i32>
   // CHECK-NOT:  tf.TPUPartitionedOutput
   // CHECK-NOT:  tf.AssignVariableOp
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @resource_read_multiple_users
@@ -122,5 +122,5 @@ func.func @resource_missing_subtype(%arg0: tensor<!tf_type.resource>, %arg1: ten
   %2 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
   // CHECK-NOT:  tf.TPUPartitionedOutput
   "tf.AssignVariableOp"(%0, %2) : (tensor<!tf_type.resource>, tensor<i32>) -> ()
-  return
+  func.return
 }

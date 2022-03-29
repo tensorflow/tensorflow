@@ -1,6 +1,6 @@
 // RUN: tf-tfrt-opt -tf-jitrt-tile-fill %s | FileCheck %s
 
-func @fill(%tensor : tensor<64xf32>, %value : f32) -> tensor<64xf32> {
+func.func @fill(%tensor : tensor<64xf32>, %value : f32) -> tensor<64xf32> {
   %0 = linalg.fill ins(%value : f32) outs(%tensor : tensor<64xf32>) -> tensor<64xf32>
   func.return %0 : tensor<64xf32>
 }

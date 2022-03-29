@@ -11,7 +11,7 @@ module attributes {tf_saved_model.semantics} {
     %cst_0 = arith.constant dense<["a", "b", "c", "d"]> : tensor<4x!tf_type.string>
     %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = i64, shared_name = "hash_table_dba2ccaa-f1b1-46d6-b276-98008f69da71", use_node_name_sharing = false, value_dtype = !tf_type.string} : () -> tensor<!tf_type.resource>
     "tf.LookupTableImportV2"(%0, %cst, %cst_0) {device = ""} : (tensor<!tf_type.resource>, tensor<4xi64>, tensor<4x!tf_type.string>) -> ()
-    return
+    func.return
     // CHECK-LABEL: @init_all_tables
   }
 

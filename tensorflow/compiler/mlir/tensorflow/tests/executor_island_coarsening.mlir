@@ -223,7 +223,7 @@ func.func @merge_islands_only() {
     tf_executor.NextIteration.Sink[%3#1] %12#0, %13 : tensor<*xi32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:        %[[ISLAND_0:.*]], %[[ISLAND_0_control:.*]] = tf_executor.island wraps "tf.opA"
@@ -259,7 +259,7 @@ func.func @simple_potential_cycle() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:        %[[ISLAND:.*]], %[[ISLAND_control:.*]] = tf_executor.island wraps "tf.opA"
@@ -284,7 +284,7 @@ func.func @merge_into_result() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:        %[[CT:[0-9]*]] = tf_executor.ControlTrigger
@@ -309,7 +309,7 @@ func.func @merge_into_nested_data_result() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:        tf_executor.island {
@@ -338,7 +338,7 @@ func.func @merge_islands_inner_graph() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:        tf_executor.island wraps "tf.opA"
@@ -367,7 +367,7 @@ func.func @merge_islands_closest_control() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: %[[ISLAND:.*]] = tf_executor.island
@@ -420,7 +420,7 @@ func.func @merge_independently_fetched_islands_control_and_control(%arg0: tensor
     %2 = tf_executor.island { tf_executor.yield }
     tf_executor.fetch %1, %2 : !tf_executor.control, !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK:     %[[ISLAND:.*]] = tf_executor.island

@@ -490,7 +490,7 @@ func.func @old_buffer_alias_outside_block(%arg: memref<3xf32>)
 
   } else {
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @index_element_type

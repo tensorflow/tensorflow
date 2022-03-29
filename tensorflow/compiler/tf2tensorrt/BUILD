@@ -645,6 +645,7 @@ tf_cuda_library(
     srcs = [
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
+        "convert/ops/binary_ops.cc",
         "convert/ops/data_format_vec_permute.cc",
         "convert/ops/einsum.cc",
         "convert/ops/fill_ops.cc",

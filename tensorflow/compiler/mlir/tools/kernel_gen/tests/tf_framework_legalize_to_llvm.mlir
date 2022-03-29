@@ -67,7 +67,7 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 func.func @dealloc(%ctx: !tf_framework.op_kernel_context,
                   %memref : memref<?x10xf32>) {
   tf_framework.dealloc(%ctx, %memref) : memref<?x10xf32>
-  return
+  func.return
 }
 // Extract allocated ptr from the memref descriptor.
 // CHECK: %{{.*}} = llvm.mlir.undef : [[DESC_TY:!.*]]
@@ -86,7 +86,7 @@ func.func @dealloc(%ctx: !tf_framework.op_kernel_context,
 
 func.func @report_error(%ctx: !tf_framework.op_kernel_context) {
   tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome" loc(unknown)
-  return
+  func.return
 }
 // CHECK:     llvm.func @report_error([[CTX:%.*]]: !llvm.ptr<i8>)
 // CHECK-NEXT:  [[ADDR:%.*]] = llvm.mlir.addressof [[MSG_CONST]]
@@ -99,7 +99,7 @@ func.func @report_error(%ctx: !tf_framework.op_kernel_context) {
 // CHECK-LABEL: llvm.func @unranked_null_memref()
 func.func @unranked_null_memref() {
   %null = tf_framework.null_memref : memref<*xf32>
-  return
+  func.return
 }
 // CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : index) : i64
 // CHECK: [[DESC_0:%.*]] = llvm.mlir.undef : !llvm.struct<(i64, ptr<i8>)>
@@ -112,7 +112,7 @@ func.func @unranked_null_memref() {
 // CHECK-LABEL: llvm.func @ranked_null_memref()
 func.func @ranked_null_memref() {
   %null = tf_framework.null_memref : memref<2x?xf32>
-  return
+  func.return
 }
 // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
 // CHECK-NEXT: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64

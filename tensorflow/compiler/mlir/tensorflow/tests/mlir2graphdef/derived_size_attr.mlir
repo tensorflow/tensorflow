@@ -15,5 +15,5 @@ func.func @main() {
     %split:3 = tf_executor.island wraps "tf.Split"(%dim#0, %input#0) : (tensor<i32>, tensor<4x6xf32>) -> (tensor<2x6xf32>, tensor<2x6xf32>)
     tf_executor.fetch
   }
-  return
+  func.return
 }

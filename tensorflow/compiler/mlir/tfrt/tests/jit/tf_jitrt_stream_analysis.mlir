@@ -1,21 +1,21 @@
 // RUN: tf-tfrt-opt -tfrt-print-stream -verify-diagnostics %s
 
 module @rsqrt_m attributes { tfrt.compiled } {
-  func @compute(%arg0: tensor<512xf32>) -> tensor<512xf32> {
+  func.func @compute(%arg0: tensor<512xf32>) -> tensor<512xf32> {
     %0 = "tf.Rsqrt"(%arg0): (tensor<512xf32>) -> tensor<512xf32>
     func.return %0 : tensor<512xf32>
   }
 }
 
 module @add_m attributes { tfrt.compiled } {
-  func @compute(%arg0: tensor<512x512xf32>) -> tensor<512x512xf32> {
+  func.func @compute(%arg0: tensor<512x512xf32>) -> tensor<512x512xf32> {
     %0 = "tf.Rsqrt"(%arg0): (tensor<512x512xf32>) -> tensor<512x512xf32>
     func.return %0 : tensor<512x512xf32>
   }
 }
 
 module @fusion_m attributes { tfrt.compiled } {
-  func @compute(%arg0: tensor<?x512xf32>) -> tensor<?x512xf32> {
+  func.func @compute(%arg0: tensor<?x512xf32>) -> tensor<?x512xf32> {
     %0 = "tf.Rsqrt"(%arg0): (tensor<?x512xf32>) -> tensor<?x512xf32>
     %1 = "tf.Rsqrt"(%0): (tensor<?x512xf32>) -> tensor<?x512xf32>
     %2 = "tf.Rsqrt"(%1): (tensor<?x512xf32>) -> tensor<?x512xf32>
@@ -26,7 +26,7 @@ module @fusion_m attributes { tfrt.compiled } {
 }
 
 module @dyn_m attributes {tfrt.compiled}  {
-  func @compute(%arg0: tensor<?x?xf32>,
+  func.func @compute(%arg0: tensor<?x?xf32>,
                 %arg1: tensor<?x128xf32>,
                 %arg2: tensor<?x?xf32>,
                 %arg3: tensor<*xf32> {jitrt.constraint = "rank"})
@@ -50,7 +50,7 @@ module @dyn_m attributes {tfrt.compiled}  {
 
 module @dyn_override_m attributes {tfrt.compiled,
                                    "tfrt.max-arg-size" = 1024 : i64}  {
-  func @compute(%arg0: tensor<?x?xf32>,
+  func.func @compute(%arg0: tensor<?x?xf32>,
                 %arg1: tensor<?x128xf32>,
                 %arg2: tensor<?x?xf32>,
                 %arg3: tensor<*xf32> {jitrt.constraint = "rank"})
@@ -73,7 +73,7 @@ module @dyn_override_m attributes {tfrt.compiled,
 }
 
 // expected-remark@+1 {{stream id: 0, stream cost: 515, parent stream: -1}}
-func @rsqrt(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
+func.func @rsqrt(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   // stream 0 cost = 1 (root) + 1 (%arg0) + 513 (cost @rsqrt_m)
   //               = 515
   // expected-remark@+1 {{stream id: 0, stream cost: 515, parent stream: -1}}
@@ -87,7 +87,7 @@ func @rsqrt(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
 }
 
 // expected-remark@+1 {{stream id: 0, stream cost: 262147, parent stream: -1}}
-func @add(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
+func.func @add(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   // stream 0 cost = 1 (root) + 1 (%arg0) + (1 + 512 * 512) (cost @add_m)
   //               = 262147
   // expected-remark@+1 {{stream id: 0, stream cost: 262147, parent stream: -1}}
@@ -101,7 +101,7 @@ func @add(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
 }
 
 // expected-remark@+1 {{stream id: 0, stream cost: 2567, parent stream: -1}}
-func @fusion(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
+func.func @fusion(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   // stream 0 cost = 1 (root) + 1 (%arg0) + 513 * 5 (cost @fusion_m)
   //               = 1 + 1 + 2565 = 2567
   // expected-remark@+1 {{stream id: 0, stream cost: 2567, parent stream: -1}}
@@ -115,7 +115,7 @@ func @fusion(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
 }
 
 // expected-remark@+1 {{stream id: 0, stream cost: 401, parent stream: -1}}
-func @dyn(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
+func.func @dyn(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
   // stream 0 cost = 1 (root) + 1 (%arg0) +
   //                 (1 [Const] + 130 [Mul] + 3 [Sub] + 130 [BiasAdd] + 2 [Tanh]
   //                  + 3 [Mul] + 130 [AddV2]) (cost @dyn_m)
@@ -131,7 +131,7 @@ func @dyn(%arg0: !tfrt_fallback.tf_tensor) -> !tfrt_fallback.tf_tensor {
 }
 
 // expected-remark@+1 {{stream id: 0, stream cost: 1297, parent stream: -1}}
-func @dyn_override(%arg0: !tfrt_fallback.tf_tensor)
+func.func @dyn_override(%arg0: !tfrt_fallback.tf_tensor)
   -> !tfrt_fallback.tf_tensor {
   // stream 0 cost = 1 (root) + 1 (%arg0) +
   //                 (1 [Const] + 130 [Mul] + 3 [Sub] + 1026 [BiasAdd]

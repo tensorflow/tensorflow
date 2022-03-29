@@ -350,7 +350,7 @@ func.func @if_nested_different_return_types(%pred : tensor<i1>, %branch_operand 
       }) : (tensor<i1>) -> tensor<i1>
       "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
   }) : (tensor<i1>) -> tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -362,7 +362,7 @@ func.func @if_mismatch_return_type(%pred : tensor<i1>, %branch_operand : tensor<
     }, {
       "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
     }) : (tensor<i1>) -> tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -374,7 +374,7 @@ func.func @if_mismatch_num_return_types(%pred : tensor<i1>, %branch_operand : te
     }, {
       "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
     }) : (tensor<i1>) -> tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -389,7 +389,7 @@ func.func @case_nested_different_return_types(%index : tensor<i32>, %branch_oper
       }) : (tensor<i32>) -> tensor<i32>
       "mhlo.return"(%branch_operand) : (tensor<f32>) -> ()
   }) : (tensor<i32>) -> tensor<f32>
-  return
+  func.return
 }
 
 // -----
@@ -1360,7 +1360,7 @@ func.func @constants() -> () {
 
   // CHECK: mhlo.constant {extra_attr = 3 : i32} dense<0> : tensor<i32>
   %1 = "mhlo.constant"() {extra_attr = 3 : i32, value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
-  return
+  func.return
 }
 
 // -----
@@ -1368,7 +1368,7 @@ func.func @constants() -> () {
 func.func @constant_invalid() -> () {
   // expected-error@+1 {{op failed to verify that all of {value, output} have same type}}
   %0 = "mhlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<3xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1376,7 +1376,7 @@ func.func @constant_invalid() -> () {
 func.func @constant_invalid() -> () {
   // expected-error@+1 {{op result #0 must be statically shaped tensor}}
   %0 = "mhlo.constant"() {value = dense<1> : tensor<i32>} : () -> tensor<?xi32>
-  return
+  func.return
 }
 
 // -----
@@ -1384,7 +1384,7 @@ func.func @constant_invalid() -> () {
 func.func @constant_invalid() -> () {
   // expected-error@+1 {{elements literal type must have static shape}}
   %0 = "mhlo.constant"() {value = dense<1> : tensor<?xi32>} : () -> tensor<?xi32>
-  return
+  func.return
 }
 
 // -----
@@ -1396,7 +1396,7 @@ func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1408,7 +1408,7 @@ func.func @sort_no_operands() {
     %7 = "mhlo.compare"(%arg1, %arg2) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : () -> ()
-  return
+  func.return
 }
 
 // -----
@@ -1419,7 +1419,7 @@ func.func @sort_unknown_rank(%input0: tensor<*xf32>, %input1: tensor<16x16xi32>)
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<*xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1431,7 +1431,7 @@ func.func @sort_unknown_rank(%input0: tensor<*xf32>, %input1: tensor<16x16xi32>)
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<i32>, tensor<i32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<*xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1443,7 +1443,7 @@ func.func @sort_different_dims(%input0: tensor<16x8xf32>, %input1: tensor<16x16x
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x8xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1455,7 +1455,7 @@ func.func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 10 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1467,7 +1467,7 @@ func.func @sort_dim_out_of_range(%input0: tensor<16x16xf32>, %input1: tensor<16x
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = -3 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1479,7 +1479,7 @@ func.func @sort_wrong_block_arg_count(%input0: tensor<16x16xf32>, %input1: tenso
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1491,7 +1491,7 @@ func.func @sort_wrong_block_arg_type(%input0: tensor<16x16xf32>, %input1: tensor
     %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1503,7 +1503,7 @@ func.func @sort_invalid_comparator_return_type(%input0: tensor<16x16xf32>, %inpu
     %cst = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
     "mhlo.return"(%cst) : (tensor<3xi64>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1516,7 +1516,7 @@ func.func @sort_invalid_comparator_return_type(%input0: tensor<16x16xf32>, %inpu
     %2 = "mhlo.tuple"(%1) : (tensor<i1>) -> tuple<tensor<i1>>
     "mhlo.return"(%2) : (tuple<tensor<i1>>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1528,7 +1528,7 @@ func.func @sort_invalid_comparator_return_type(%input0: tensor<16x16xf32>, %inpu
     %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type FLOAT">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7, %7) : (tensor<i1>, tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
-  return
+  func.return
 }
 
 // -----
@@ -1540,7 +1540,7 @@ func.func @sort_invalid_return_types(%input0: tensor<16x16xf32>, %input1: tensor
     %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type FLOAT">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>)
-  return
+  func.return
 }
 
 // -----
@@ -1552,7 +1552,7 @@ func.func @sort_invalid_return_types(%input0: tensor<16x16xf32>, %input1: tensor
     %7 = "mhlo.compare"(%arg0, %arg1) {compare_type = #mhlo<"comparison_type FLOAT">, comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xf32>)
-  return
+  func.return
 }
 
 // -----
@@ -1607,7 +1607,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
       rhs_contracting_dimensions = [1]
     >
   } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return
+  func.return
 }
 
 // -----
@@ -1622,7 +1622,7 @@ func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
       rhs_contracting_dimensions = [1]
     >
   } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
-  return
+  func.return
 }
 
 // -----
@@ -2230,7 +2230,7 @@ func.func @custom_call_token_with_layout(%token: !mhlo.token) {
     operand_layouts = [dense<[0, 1]> : tensor<2xindex>],
     result_layouts = []
   } : (!mhlo.token) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -2242,7 +2242,7 @@ func.func @custom_call_mismatch_tensor_and_layout_rank(%arg: tensor<2x3xf32>) {
     operand_layouts = [dense<[0, 1, 2]> : tensor<3xindex>],
     result_layouts = []
   } : (tensor<2x3xf32>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -2254,7 +2254,7 @@ func.func @custom_call_mismatch_tensor_and_layout_permutation(%arg: tensor<1x2x3
     operand_layouts = [dense<[0, 1, 3]> : tensor<3xindex>],
     result_layouts = []
   } : (tensor<1x2x3xf32>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -2263,7 +2263,7 @@ func.func @rng_normal_invalid(%arg0: tensor<f32>, %arg1: tensor<f32>) {
   %cst = "mhlo.constant"() {value = dense<7> : tensor<1xi64>} : () -> tensor<1xi64>
   // expected-error @+1 {{tensor<7xf32>}}
   %0 = "mhlo.rng_normal"(%arg0, %arg1, %cst) : (tensor<f32>, tensor<f32>, tensor<1xi64>) -> tensor<12xf32>
-  return
+  func.return
 }
 
 // -----
@@ -2271,7 +2271,7 @@ func.func @rng_normal_invalid(%arg0: tensor<f32>, %arg1: tensor<f32>) {
 func.func @rng_uniform_invalid(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<7xi64>) {
   // expected-error @+1 {{tensor<?x?x?x?x?x?x?xf32>}}
   %0 = "mhlo.rng_uniform"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<f32>, tensor<7xi64>) -> tensor<?xf32>
-  return
+  func.return
 }
 
 // -----

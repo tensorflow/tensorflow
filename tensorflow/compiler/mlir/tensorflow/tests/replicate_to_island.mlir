@@ -15,7 +15,7 @@ func.func @controls_per_replica() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: %[[CT_0:.*]] = tf_executor.ControlTrigger
@@ -40,7 +40,7 @@ func.func @no_devices() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: "tf.opA"
@@ -65,7 +65,7 @@ func.func @no_override_device() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: "tf.opA"
@@ -90,7 +90,7 @@ func.func @remap_device() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK: "tf.opA"
@@ -112,7 +112,7 @@ func.func @replicate_control() {
     }
     tf_executor.fetch %1 : !tf_executor.control
   }
-  return
+  func.return
 }
 
 // CHECK: %[[REPLICA_0:.*]] = tf_executor.island
@@ -133,7 +133,7 @@ func.func @unused_replica(%arg0: tensor<i1>) {
     }
     tf_executor.fetch %1#1 : tensor<i1>
   }
-  return
+  func.return
 }
 
 // CHECK: {{%.*}}, [[REPLICA_0_CONTROL:%.*]] = tf_executor.island
@@ -155,7 +155,7 @@ func.func @replicate_result(%arg0: tensor<i1>, %arg1: tensor<i1>) {
     }
     tf_executor.fetch %1#0, %1#1, %1#2, %1#3 : tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[REPLICA_0:.*]]:2, %{{.*}} = tf_executor.island
@@ -178,7 +178,7 @@ func.func @replicate_with_packed_input(%arg0: tensor<i1>, %arg1: tensor<i1>) {
     }
     tf_executor.fetch %1#0, %1#1, %1#2, %1#3 : tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>
   }
-  return
+  func.return
 }
 
 // CHECK: %[[REPLICA_0:.*]]:2, %{{.*}} = tf_executor.island
@@ -206,7 +206,7 @@ func.func @replica_id_attr_added(%arg0: tensor<!tf_type.string>, %arg1: tensor<!
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      tf_executor.island
@@ -244,7 +244,7 @@ func.func @device_ordinals() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      tf_executor.island
@@ -273,5 +273,5 @@ func.func @missing_device_ordinals() {
     }
     tf_executor.fetch
   }
-  return
+  func.return
 }

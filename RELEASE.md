@@ -115,12 +115,14 @@
 *   `tf.lite`:
 
     *   Added TFLite builtin op support for the following TF ops:
-    *   `tf.math.argmin`/`tf.math.argmax` for input data type `tf.bool` on CPU.
-    *   `tf.nn.gelu` op for output data type `tf.float32` and quantization on
-        CPU.
+        *   `tf.math.argmin`/`tf.math.argmax` for input data type `tf.bool` on
+            CPU.
+        *   `tf.nn.gelu` op for output data type `tf.float32` and quantization
+            on CPU.
     *   Add nominal support for unsigned 16-bit integer tensor types. Note that
         very few TFLite kernels support this type natively, so its use in mobile
         ML authoring is generally discouraged.
+    *   Add support for unsigned 16-bit integer tensor types in cast op.
     *   Experimental support for lowering `list_ops.tensor_list_set_item` with
         `DynamicUpdateSlice`.
     *   Enabled a new MLIR-based dynamic range quantization backend by default
@@ -144,6 +146,23 @@
     *    The newly introduced `reduce_retracing` option also uses the Tracing
          Protocol to proactively generate generalized traces similar to
          `experimental_relax_shapes` (which has now been deprecated).
+
+*   Unified eager and `tf.function` execution:
+
+    *   Eager mode can now execute each op as a `tf.function`, allowing for more
+        consistent feature support in future releases.
+    *   It is available for immediate use.
+        *   See the `TF_RUN_EAGER_OP_AS_FUNCTION` environment variable in
+            [eager context](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/eager/context.py).
+        *   Eager performance should be similar with this feature enabled.
+            *   A roughly 5us per-op overhead may be observed when running many
+                small functions.
+            *   Note a
+                [known issue](https://github.com/tensorflow/tensorflow/issues/55414)
+                with GPU performance.
+        *   The behavior of `tf.function` itself is unaffected.
+    *   Note: This feature will be enabled by default in an upcoming version of
+        TensorFlow.
 
 # Bug Fixes and Other Changes
 
