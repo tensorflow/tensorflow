@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -65,7 +66,7 @@ struct TestPass
     opstate.addAttribute(dialect->getNameAttrIdentifier(),
                          builder.getStringAttr("x_times_y"));
 
-    mlir::Operation* replacement = builder.createOperation(opstate);
+    mlir::Operation* replacement = builder.create(opstate);
     target->replaceAllUsesWith(replacement->getResults());
     target->erase();
   }

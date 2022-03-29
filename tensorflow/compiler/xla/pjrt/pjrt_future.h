@@ -150,6 +150,23 @@ class PjRtFuture {
         on_block_end_(std::move(on_block_end)),
         host_ctx_(nullptr) {}
 
+  // Two functions exist to know whether the future is ready, to accomodate
+  // the fact some backends (e.g. disributed ones) could take a non-trivial time
+  // to check the state of a future.
+  //
+  // `IsReady()` is guaranteed to return true if the future became ready before
+  // `IsReady()` was called. `IsReady()` will return immediately if a call to
+  // `Await()` has already returned, or any callback passed to `OnReady` has
+  // already been triggered. Otherwise IsReady() may block for the duration of a
+  // network message on some backends."
+  bool IsReady() { return promise_ref_.IsAvailable(); }
+  // `IsKnownReady()` is guaranteed to return immediately. `IsKnownReady()` will
+  // always return true if a call to `Await()` has already returned, or any
+  // callback passed to `OnReady` has already been triggered. Otherwise,
+  // `IsKnownReady()` may return false in some cases in which the future was
+  // ready before `IsKnownReady()` was called.
+  bool IsKnownReady() { return promise_ref_.IsAvailable(); }
+
   // Blocks the calling thread until the promise is ready, then returns the
   // final value.
   T Await() {

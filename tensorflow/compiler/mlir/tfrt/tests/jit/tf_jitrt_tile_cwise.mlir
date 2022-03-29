@@ -1,7 +1,7 @@
 // RUN: tf-tfrt-opt -tf-jitrt-tile-cwise %s | FileCheck %s
 
 #map = affine_map<(d0, d1) -> (d0, d1)>
-func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %dim0 = tensor.dim %input, %c0 : tensor<?x?xf32>
@@ -16,7 +16,7 @@ func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %2 = math.tanh %arg1 : f32
     linalg.yield %2 : f32
   } -> tensor<?x?xf32>
-  return %1 : tensor<?x?xf32>
+  func.return %1 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @tanh_2d(

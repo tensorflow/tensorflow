@@ -2404,13 +2404,14 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinConv2d: {
       ExpectMaxOpVersion(version, 5, &val_ctx);
+      const auto& input_tensor = context->tensors[node->inputs->data[0]];
+      const auto& filter_tensor = context->tensors[node->inputs->data[1]];
       if (android_sdk_version < kMinSdkVersionForNNAPI12) {
         Expect(!IsHybridOperator(context, builtin_code, node),
                NNAPIValidationFailureType::kUnsupportedHybridOperator,
                "Hybrid operators not supported before NNAPI 1.2", &val_ctx);
         ExpectIsFloatOrUint8Operator(context, node, &val_ctx);
 
-        const auto& filter_tensor = context->tensors[node->inputs->data[1]];
         if (filter_tensor.quantization.type == kTfLiteAffineQuantization) {
           TfLiteAffineQuantization* quantization_params =
               static_cast<TfLiteAffineQuantization*>(
@@ -2422,7 +2423,7 @@ bool NNAPIDelegateKernel::Validate(
                  &val_ctx);
         }
       }
-      const auto input_type = context->tensors[node->inputs->data[0]].type;
+      const auto input_type = input_tensor.type;
       if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
           input_type == kTfLiteUInt8) {
         ExpectIsRestrictedScalesCompliant(context, node, &val_ctx);
@@ -2437,6 +2438,12 @@ bool NNAPIDelegateKernel::Validate(
         Expect(android_sdk_version >= kMinSdkVersionForNNAPI12,
                NNAPIValidationFailureType::kUnsupportedOperandValue,
                "NNAPI supports dilated Conv2D since NNAPI 1.2.", &val_ctx);
+      }
+      if (android_sdk_version < kMinSdkVersionForNNAPI12) {
+        Expect(input_tensor.dims->data[3] == filter_tensor.dims->data[3],
+               NNAPIValidationFailureType::kUnsupportedOperandValue,
+               "Grouped convolution not supported before NNAPI < 1.2",
+               &val_ctx);
       }
     } break;
     case kTfLiteBuiltinDepthwiseConv2d: {
@@ -3634,6 +3641,21 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       mapping_args.builder->AddScalarInt32Operand(builtin->padding);
       mapping_args.builder->AddScalarInt32Operand(builtin->stride_width);
       mapping_args.builder->AddScalarInt32Operand(builtin->stride_height);
+      const int input_id = mapping_args.node->inputs->data[/*kInputTensor*/ 0];
+      const int filter_id =
+          mapping_args.node->inputs->data[/*kWeightsTensor*/ 1];
+      const auto& input_tensor = context->tensors[input_id];
+      const auto& filter_tensor = context->tensors[filter_id];
+      auto is_grouped_conv = false;
+      // Only check grouped convolution if input and filter shape is propagated.
+      if (input_tensor.dims->size != 0 && filter_tensor.dims->size != 0) {
+        is_grouped_conv =
+            input_tensor.dims->data[3] != filter_tensor.dims->data[3];
+      }
+      if (is_grouped_conv) {
+        mapping_args.builder->AddScalarInt32Operand(
+            input_tensor.dims->data[3] / filter_tensor.dims->data[3]);
+      }
       mapping_args.builder->AddScalarInt32Operand(builtin->activation);
       // NNAPI supports dilated Conv2D since NNAPI 1.2.
       if (builtin->dilation_width_factor != 1 ||
@@ -3644,7 +3666,11 @@ TfLiteStatus NNAPIDelegateKernel::Map(
         mapping_args.builder->AddScalarInt32Operand(
             builtin->dilation_height_factor);
       }
-      *nn_op_type = ANEURALNETWORKS_CONV_2D;
+      if (is_grouped_conv) {
+        *nn_op_type = ANEURALNETWORKS_GROUPED_CONV_2D;
+      } else {
+        *nn_op_type = ANEURALNETWORKS_CONV_2D;
+      }
     } break;
     case kTfLiteBuiltinDepthwiseConv2d: {
       auto builtin = reinterpret_cast<TfLiteDepthwiseConvParams*>(

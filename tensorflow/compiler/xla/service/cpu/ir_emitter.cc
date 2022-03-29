@@ -2159,7 +2159,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
     VLOG(3) << "HandleFusion FusedDynamicUpdateSliceInPlace";
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
-    FusedIrEmitter fused_emitter(&elemental_emitter);
+    FusedIrEmitter fused_emitter(elemental_emitter);
     BindFusionArguments(fusion, &fused_emitter);
 
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
@@ -2169,10 +2169,10 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   } else if (fusion->IsLoopFusion()) {
     VLOG(3) << "HandleFusion kLoop";
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
-    FusedIrEmitter fused_emitter(&elemental_emitter);
+    FusedIrEmitter fused_emitter(elemental_emitter);
     BindFusionArguments(fusion, &fused_emitter);
     TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
-                                            fusion->fused_expression_root()));
+                                            *fusion->fused_expression_root()));
     return EmitTargetElementLoop(fusion, generator);
   } else if (fusion->IsOutputFusion()) {
     VLOG(3) << "HandleFusion kOutput";
@@ -3500,7 +3500,7 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
   for (int i = 0; i < fusion->operand_count(); i++) {
     const HloInstruction* operand = fusion->operand(i);
     fused_emitter->BindGenerator(
-        fusion->fused_parameter(i),
+        *fusion->fused_parameter(i),
         [this, operand](llvm_ir::IrArray::Index index) {
           return GetIrArrayFor(operand).EmitReadArrayElement(index, &b_);
         });

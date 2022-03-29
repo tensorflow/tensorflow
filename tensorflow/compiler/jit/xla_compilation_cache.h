@@ -52,10 +52,28 @@ namespace tensorflow {
 // bound.
 class XlaCompilationCache : public ResourceBase {
  public:
-  // If persistent_cache_directory is non-empty, JIT-compiled executables are
-  // saved to and loaded from the specified file system directory path.
-  XlaCompilationCache(xla::LocalClient* client, DeviceType device_type,
-                      absl::string_view persistent_cache_directory = {});
+  struct Config {
+    Config() {}
+    explicit Config(absl::string_view persistent_cache_directory,
+                    bool disable_strict_signature_checks,
+                    absl::string_view persistance_prefix)
+        : persistent_cache_directory(persistent_cache_directory),
+          disable_strict_signature_checks(disable_strict_signature_checks),
+          persistance_prefix(persistance_prefix) {}
+
+    // If non-empty, JIT-compiled executables are saved to and loaded from the
+    // specified file system directory path.
+    std::string persistent_cache_directory;
+
+    // Disable strict signature checks for entries loaded into the cache from
+    // external sources.
+    bool disable_strict_signature_checks = false;
+
+    // The cache persistence prefix to use if serializing/deserialzing entries.
+    std::string persistance_prefix;
+  };
+  XlaCompilationCache(Config config, xla::LocalClient* client,
+                      DeviceType device_type);
   ~XlaCompilationCache() override;
 
   enum class CompileMode {
@@ -180,6 +198,8 @@ class XlaCompilationCache : public ResourceBase {
 
   xla::LocalClient* const client_;
   const DeviceType device_type_;
+  bool disable_strict_signature_checks_;
+  std::string persistance_prefix_;
 
   // The value associated with a cache entry.
   struct Entry {

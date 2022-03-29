@@ -1564,7 +1564,6 @@ Status CheckInputsWeights(
   const auto& inputs = params.inputs;
   const auto& node_def = params.node_def;
   TFTRT_CHECK_INPUT_SIZE(inputs.size(), expected_inputs.size(), node_def);
-
   for (int i = 0; i < inputs.size(); i++) {
     if (expected_inputs[i].second == TrtInputArg::kWeight &&
         inputs.at(i).is_tensor()) {
@@ -3201,8 +3200,7 @@ Status ConvertClipByValue(OpConverterParams* params) {
   return Status::OK();
 }
 
-const std::unordered_map<string, nvinfer1::ActivationType>*
-ActivationTypeMap() {
+const operationMap<nvinfer1::ActivationType>* ActivationTypeMap() {
   static auto* const m =
       new std::unordered_map<string, nvinfer1::ActivationType>({
           {"Relu", nvinfer1::ActivationType::kRELU},
@@ -3498,89 +3496,6 @@ Status ConvertIdentity(OpConverterParams* params) {
   for (int i = 0; i < params->inputs.size(); i++) {
     params->outputs->push_back(params->inputs.at(i));
   }
-  return Status::OK();
-}
-
-Status ConvertBinary(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
-
-  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
-                                   DataType::DT_INT32};
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
-
-  // Constant folding should have been done by TensorFlow
-  if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
-    return errors::Unimplemented(
-        "Constant folding is falled back to TensorFlow, binary op received "
-        "both input as constant");
-  }
-  const TRT_TensorOrWeights& operand_l = inputs.at(0);
-  const TRT_TensorOrWeights& operand_r = inputs.at(1);
-
-  auto op_pair = absl::c_find_if(
-      kBinaryOperations,
-      [&node_def](
-          const std::pair<std::string, nvinfer1::ElementWiseOperation>& x) {
-        return x.first == node_def.op();
-      });
-  if (op_pair == kBinaryOperations.end()) {
-    return errors::Unimplemented("Binary op ", node_def.op(), " not supported");
-  }
-
-  nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
-  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
-      operand_l, operand_r, /*check_feasibility=*/true,
-      params->use_implicit_batch, &broadcasted_dims_l, &broadcasted_dims_r));
-  ITensorProxyPtr tensor_l = nullptr;
-  ITensorProxyPtr tensor_r = nullptr;
-  // This will also convert constants to tensors.
-  TF_RETURN_IF_ERROR(PrepareTensorForShape(
-      params->converter, operand_l, broadcasted_dims_l, params->validation_only,
-      &tensor_l, node_def, /*op_instance=*/0));
-  TF_RETURN_IF_ERROR(PrepareTensorForShape(
-      params->converter, operand_r, broadcasted_dims_r, params->validation_only,
-      &tensor_r, node_def, /*op_instance=*/1));
-  if (params->validation_only) return Status::OK();
-
-  // Add ElementWise layer.
-  nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
-      *tensor_l->trt_tensor(), *tensor_r->trt_tensor(), op_pair->second);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-
-  if (params->use_explicit_precision) {
-    layer->setPrecision(nvinfer1::DataType::kFLOAT);
-  }
-
-  params->converter->SetLayerName(layer, node_def);
-  ITensorProxyPtr trt_tensor = layer->getOutput(0);
-
-  params->outputs->push_back(TRT_TensorOrWeights(trt_tensor));
-  return Status::OK();
-}
-
-Status ConvertRsqrt(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  if (params->validation_only) return Status::OK();
-
-  // Start conversion.
-  ITensorProxyPtr tensor = inputs.at(0).tensor();
-  // Sqrt
-  nvinfer1::IUnaryLayer* sqrt_layer = params->converter->network()->addUnary(
-      *tensor->trt_tensor(), nvinfer1::UnaryOperation::kSQRT);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(sqrt_layer, node_def.name());
-  params->converter->SetLayerName(sqrt_layer, node_def, "sqrt");
-  // Recip
-  nvinfer1::IUnaryLayer* recip_layer = params->converter->network()->addUnary(
-      *sqrt_layer->getOutput(0), nvinfer1::UnaryOperation::kRECIP);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(recip_layer, node_def.name());
-  params->converter->SetLayerName(recip_layer, node_def, "recip");
-  params->outputs->push_back(TRT_TensorOrWeights(recip_layer->getOutput(0)));
   return Status::OK();
 }
 
@@ -5815,7 +5730,6 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertResize, "ResizeNearestNeighbor");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool3D, "AvgPool3D");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool3D, "MaxPool3D");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertShape, "Shape");
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertRsqrt, "Rsqrt");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSlice, "Slice");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertSoftmax, "Softmax");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertDepthSpaceShuffle, "SpaceToDepth");
@@ -5828,8 +5742,6 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertStridedSlice, "StridedSlice");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTopK, "TopKV2");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTranspose, "Transpose");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertUnpack, "Unpack");
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBinary,
-                                  GetOperationNames(kBinaryOperations));
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertActivation,
                                   GetOperationNames(*ActivationTypeMap()));
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool, {"MaxPool", "AvgPool"});

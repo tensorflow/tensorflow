@@ -14,15 +14,15 @@
 // CHECK:   }) : (tensor<1xf32>) -> tensor<*xf32>
 // CHECK:   return %0 : tensor<*xf32>
 // CHECK: }
-func @main(%arg0: tensor<1xf32>) -> tensor<*xf32> {
+func.func @main(%arg0: tensor<1xf32>) -> tensor<*xf32> {
   %0 = "tf.While"(%arg0) {cond = @cond, body = @body, is_stateless = false} : (tensor<1xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }
 
-func @cond(%arg1: tensor<*xf32>) -> tensor<*xf32> {
-  return %arg1: tensor<*xf32>
+func.func @cond(%arg1: tensor<*xf32>) -> tensor<*xf32> {
+  func.return %arg1: tensor<*xf32>
 }
 
-func @body(%arg1: tensor<*xf32>) -> tensor<*xf32> {
-  return %arg1: tensor<*xf32>
+func.func @body(%arg1: tensor<*xf32>) -> tensor<*xf32> {
+  func.return %arg1: tensor<*xf32>
 }

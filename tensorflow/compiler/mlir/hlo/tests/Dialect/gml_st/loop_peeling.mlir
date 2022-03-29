@@ -79,7 +79,7 @@
 //      CHECK-TILE-012-SKIP-PARTIAL:   gml_st.loop {{.*}} = (%[[c0]], %[[c0]], %[[p2]]) to (%[[p0]], %[[p1]], %[[dim2]])
 //      CHECK-TILE-012-SKIP-PARTIAL:   gml_st.loop {{.*}} = (%[[c0]], %[[p1]], %[[c0]]) to (%[[p0]], %[[dim1]], %[[dim2]])
 //      CHECK-TILE-012-SKIP-PARTIAL:   gml_st.loop {{.*}} = (%[[p0]], %[[c0]], %[[c0]]) to (%[[dim0]], %[[dim1]], %[[dim2]])
-func @loop_3d_tensor(%arg0: tensor<?x?x?xf32>, %s0: index, %s1: index,
+func.func @loop_3d_tensor(%arg0: tensor<?x?x?xf32>, %s0: index, %s1: index,
                            %s2: index) -> tensor<?x?x?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
@@ -103,7 +103,7 @@ func @loop_3d_tensor(%arg0: tensor<?x?x?xf32>, %s0: index, %s1: index,
     %updated_slice = tensor.insert_slice %comp into %arg5[%arg1, %arg2, %arg3] [%min0, %min1, %min2] [1, 1, 1] : tensor<?x?x?xf32> into tensor<?x?x?xf32>
     gml_st.yield %updated_slice : tensor<?x?x?xf32>
   }
-  return %result : tensor<?x?x?xf32>
+  func.return %result : tensor<?x?x?xf32>
 }
 
 // -----
@@ -142,7 +142,7 @@ func @loop_3d_tensor(%arg0: tensor<?x?x?xf32>, %s0: index, %s1: index,
 
 !memref_subview_type = type memref<?x?x?xf32, affine_map<(d0, d1, d2)[s0, s1, s2] -> (d0 * s1 + s0 + d1 * s2 + d2)>>
 
-func @loop_3d_memref(%arg0: memref<?x?x?xf32>, %output: memref<?x?x?xf32>,
+func.func @loop_3d_memref(%arg0: memref<?x?x?xf32>, %output: memref<?x?x?xf32>,
                            %s0: index, %s1: index, %s2: index) {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
@@ -163,7 +163,7 @@ func @loop_3d_memref(%arg0: memref<?x?x?xf32>, %output: memref<?x?x?xf32>,
     "computation"(%in_slice) : (!memref_subview_type) -> memref<?x?x?xf32>
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // -----
@@ -174,7 +174,7 @@ func @loop_3d_memref(%arg0: memref<?x?x?xf32>, %output: memref<?x?x?xf32>,
 
 // CHECK-TILE-012-LABEL: func @step_1_do_not_peel
 
-func @step_1_do_not_peel(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
+func.func @step_1_do_not_peel(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -194,7 +194,7 @@ func @step_1_do_not_peel(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
     %updated_slice = tensor.insert_slice %comp into %arg5[%arg1, %arg2, %arg3] [%c1, %c1, %c1] [1, 1, 1] : tensor<?x?x?xf32> into tensor<?x?x?xf32>
     gml_st.yield %updated_slice : tensor<?x?x?xf32>
   }
-  return %result : tensor<?x?x?xf32>
+  func.return %result : tensor<?x?x?xf32>
 }
 
 // -----
@@ -205,7 +205,7 @@ func @step_1_do_not_peel(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 
 // CHECK-TILE-012-LABEL: func @divides_evenly_do_not_peel
 
-func @divides_evenly_do_not_peel(%arg0: tensor<?x?x?xf32>, %s: index)
+func.func @divides_evenly_do_not_peel(%arg0: tensor<?x?x?xf32>, %s: index)
     -> tensor<?x?x?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
@@ -227,5 +227,5 @@ func @divides_evenly_do_not_peel(%arg0: tensor<?x?x?xf32>, %s: index)
     %updated_slice = tensor.insert_slice %comp into %arg5[%arg1, %arg2, %arg3] [%c1, %c1, %c1] [1, 1, 1] : tensor<?x?x?xf32> into tensor<?x?x?xf32>
     gml_st.yield %updated_slice : tensor<?x?x?xf32>
   }
-  return %result : tensor<?x?x?xf32>
+  func.return %result : tensor<?x?x?xf32>
 }

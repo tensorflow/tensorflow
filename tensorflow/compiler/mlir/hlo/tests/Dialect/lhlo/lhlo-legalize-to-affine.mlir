@@ -2,7 +2,7 @@
 
 // Smoke test.
 // CHECK-LABEL: func @min_op
-func @min_op(%lhs: memref<4x3x2x1xf32>, %rhs: memref<4x3x2x1xf32>,
+func.func @min_op(%lhs: memref<4x3x2x1xf32>, %rhs: memref<4x3x2x1xf32>,
              %result: memref<4x3x2x1xf32>) -> () {
   // CHECK-NEXT: affine.for %[[I:.*]] = 0 to 4 {
   // CHECK-NEXT:   affine.for %[[J:.*]] = 0 to 3 {
@@ -15,133 +15,133 @@ func @min_op(%lhs: memref<4x3x2x1xf32>, %rhs: memref<4x3x2x1xf32>,
   // CHECK:      return
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"} :
       (memref<4x3x2x1xf32>, memref<4x3x2x1xf32>, memref<4x3x2x1xf32>) -> ()
-  return
+  func.return
 }
 
 // Add tests.
 // CHECK-LABEL: func @float_add_op
-func @float_add_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
+func.func @float_add_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
   // CHECK: addf %{{.*}}, %{{.*}} : f32
   "lmhlo.add"(%lhs, %rhs, %result) {name = "add.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @int_add_op
-func @int_add_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
+func.func @int_add_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
   // CHECK: addi %{{.*}}, %{{.*}} : i32
   "lmhlo.add"(%lhs, %rhs, %result) {name = "add.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // And test.
 // CHECK-LABEL: func @int_and_op
-func @int_and_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
+func.func @int_and_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
   // CHECK: arith.andi %{{.*}}, %{{.*}} : i32
   "lmhlo.and"(%lhs, %rhs, %result) {name = "and.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Div tests.
 // CHECK-LABEL: func @float_div_op
-func @float_div_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
+func.func @float_div_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
   // CHECK: divf %{{.*}}, %{{.*}} : f32
   "lmhlo.divide"(%lhs, %rhs, %result) {name = "div.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @int_div_op
-func @int_div_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
+func.func @int_div_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
   // CHECK: arith.divsi %{{.*}}, %{{.*}} : i32
   "lmhlo.divide"(%lhs, %rhs, %result) {name = "div.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Max tests.
 // CHECK-LABEL: func @float_max_op
-func @float_max_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
+func.func @float_max_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
   // CHECK: arith.maxf %{{.*}}, %{{.*}} : f32
   "lmhlo.maximum"(%lhs, %rhs, %result) {name = "max.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @int_max_op
-func @int_max_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
+func.func @int_max_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
   // CHECK: arith.maxsi %{{.*}}, %{{.*}} : i32
   "lmhlo.maximum"(%lhs, %rhs, %result) {name = "max.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Min tests.
 // CHECK-LABEL: func @float_min_op
-func @float_min_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
+func.func @float_min_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
   // CHECK: arith.minf %{{.*}}, %{{.*}} : f32
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @int_min_op
-func @int_min_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
+func.func @int_min_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
   // CHECK: arith.minsi %{{.*}}, %{{.*}} : i32
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Mul tests.
 // CHECK-LABEL: func @float_mul_op
-func @float_mul_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
+func.func @float_mul_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
   // CHECK: mulf %{{.*}}, %{{.*}} : f32
   "lmhlo.multiply"(%lhs, %rhs, %result) {name = "mul.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @int_mul_op
-func @int_mul_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
+func.func @int_mul_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
   // CHECK: muli %{{.*}}, %{{.*}} : i32
   "lmhlo.multiply"(%lhs, %rhs, %result) {name = "mul.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Sub tests.
 // CHECK-LABEL: func @float_sub_op
-func @float_sub_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
+func.func @float_sub_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
                    %result: memref<7xf32>) -> () {
   // CHECK: subf %{{.*}}, %{{.*}} : f32
   "lmhlo.subtract"(%lhs, %rhs, %result) {name = "sub.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @int_sub_op
-func @int_sub_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
+func.func @int_sub_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
   // CHECK: subi %{{.*}}, %{{.*}} : i32
   "lmhlo.subtract"(%lhs, %rhs, %result) {name = "sub.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Dot tests.
 // CHECK-LABEL: func @float_dot_op
-func @float_dot_op(%lhs: memref<7x3xf32>, %rhs:
+func.func @float_dot_op(%lhs: memref<7x3xf32>, %rhs:
                   memref<3x4xf32>, %result: memref<7x4xf32> ) -> () {
     // CHECK-NEXT: affine.for %[[I:.*]] = 0 to 7 {
     // CHECK-NEXT:  affine.for %[[J:.*]] = 0 to 4 {
@@ -160,10 +160,10 @@ func @float_dot_op(%lhs: memref<7x3xf32>, %rhs:
          lhs_contracting_dimensions = [1],
          rhs_contracting_dimensions = [0]
       >} : (memref<7x3xf32>, memref<3x4xf32>, memref<7x4xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @int_dot_op
-func @int_dot_op(%lhs: memref<7x3xi32>, %rhs:
+func.func @int_dot_op(%lhs: memref<7x3xi32>, %rhs:
                   memref<3x4xi32>, %result: memref<7x4xi32> ) -> () {
     // CHECK-NEXT: affine.for %[[I:.*]] = 0 to 7 {
     // CHECK-NEXT:  affine.for %[[J:.*]] = 0 to 4 {
@@ -180,11 +180,11 @@ func @int_dot_op(%lhs: memref<7x3xi32>, %rhs:
       lhs_contracting_dimensions = [1],
       rhs_contracting_dimensions = [0]
     >} : (memref<7x3xi32>, memref<3x4xi32>, memref<7x4xi32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @concatenate
-func @concatenate(%arg0: memref<1x1xf32>, %arg1: memref<1x100xf32>, %arg2: memref<1x200xf32>, %arg3: memref<1x301xf32>) {
+func.func @concatenate(%arg0: memref<1x1xf32>, %arg1: memref<1x100xf32>, %arg2: memref<1x200xf32>, %arg3: memref<1x301xf32>) {
     // CHECK-NEXT:    %[[RESULT:.*]] = memref.alloc() : memref<1x301xf32>
     // CHECK-NEXT:    affine.for %[[X:.*]] = 0 to 1 {
     // CHECK-NEXT:      affine.for %[[Y:.*]] = 0 to 1 {
@@ -210,7 +210,7 @@ func @concatenate(%arg0: memref<1x1xf32>, %arg1: memref<1x100xf32>, %arg2: memre
 
 // TODO(pashu123): Extend Support for dynamic dimensions.
 // CHECK-LABEL: func @concatenate_dynamic
-func @concatenate_dynamic(%arg0: memref<1x?xf32>, %arg1: memref<1x?xf32>, %arg2: memref<1x?xf32>) {
+func.func @concatenate_dynamic(%arg0: memref<1x?xf32>, %arg1: memref<1x?xf32>, %arg2: memref<1x?xf32>) {
     // CHECK: "lmhlo.concatenate"
     %cst_1 = arith.constant 1 : index
     %0 = memref.alloc(%cst_1) : memref<1x?xf32>
@@ -223,7 +223,7 @@ func @concatenate_dynamic(%arg0: memref<1x?xf32>, %arg1: memref<1x?xf32>, %arg2:
 // Test case 1: A general GatherOp test case.
 // CHECK-LABEL: func @gather_1
 // CHECK-SAME: (%[[OPERAND:.*]]: memref<28996x512xf32>, %[[START_INDICES:.*]]: memref<1x128xi32>, %[[OUTPUT:.*]]: memref<1x128x512xf32>)
-func @gather_1(%arg0: memref<28996x512xf32>, %arg1: memref<1x128xi32>, %arg2: memref<1x128x512xf32>) {
+func.func @gather_1(%arg0: memref<28996x512xf32>, %arg1: memref<1x128xi32>, %arg2: memref<1x128x512xf32>) {
   %0 = memref.alloc() : memref<1x128x512xf32>
   "lmhlo.gather"(%arg0, %arg1, %0) {
     dimension_numbers = #mhlo.gather<
@@ -267,7 +267,7 @@ func @gather_1(%arg0: memref<28996x512xf32>, %arg1: memref<1x128xi32>, %arg2: me
 // Test case 2: Checks for multi-dimensional starting indices.
 // CHECK-LABEL: func @gather_2
 // CHECK-SAME: (%[[OPERAND:.*]]: memref<16x11xf32>, %[[START_INDICES:.*]]: memref<5x2xi32>, %[[OUTPUT:.*]]: memref<5x8x6xf32>)
-func @gather_2(%arg0: memref<16x11xf32>, %arg1: memref<5x2xi32>, %arg2: memref<5x8x6xf32>) {
+func.func @gather_2(%arg0: memref<16x11xf32>, %arg1: memref<5x2xi32>, %arg2: memref<5x8x6xf32>) {
   %0 = memref.alloc() : memref<5x8x6xf32>
   "lmhlo.gather"(%arg0, %arg1, %0) {
     dimension_numbers = #mhlo.gather<
@@ -321,7 +321,7 @@ func @gather_2(%arg0: memref<16x11xf32>, %arg1: memref<5x2xi32>, %arg2: memref<5
 // Test case 3: Checks for multi-dimensional start_indices with multi-dimensional batch size. This also tests for f16 type.
 // CHECK-LABEL: func @gather_3
 // CHECK-SAME: (%[[OPERAND:.*]]: memref<16x11xf16>, %[[START_INDICES:.*]]: memref<4x2x5xi32>, %[[OUTPUT:.*]]: memref<4x5x8x6xf16>)
-func @gather_3(%arg0: memref<16x11xf16>, %arg1: memref<4x2x5xi32>, %arg2: memref<4x5x8x6xf16>) {
+func.func @gather_3(%arg0: memref<16x11xf16>, %arg1: memref<4x2x5xi32>, %arg2: memref<4x5x8x6xf16>) {
   %0 = memref.alloc() : memref<4x5x8x6xf16>
   "lmhlo.gather"(%arg0, %arg1, %0) {
     dimension_numbers = #mhlo.gather<
@@ -379,7 +379,7 @@ func @gather_3(%arg0: memref<16x11xf16>, %arg1: memref<4x2x5xi32>, %arg2: memref
 // Test case 4: Changing starting_index_map : X -> [0,X]
 // CHECK-LABEL: func @gather_4
 // CHECK-SAME: (%[[OPERAND:.*]]: memref<16x11xf32>, %[[START_INDICES:.*]]: memref<5x4xi32>, %[[OUTPUT:.*]]: memref<4x5x6xf32>)
-func @gather_4(%arg0: memref<16x11xf32>, %arg1: memref<5x4xi32>, %arg2: memref<4x5x6xf32>) {
+func.func @gather_4(%arg0: memref<16x11xf32>, %arg1: memref<5x4xi32>, %arg2: memref<4x5x6xf32>) {
   %0 = memref.alloc() : memref<4x5x6xf32>
   "lmhlo.gather"(%arg0, %arg1, %0) {
     dimension_numbers = #mhlo.gather<
@@ -422,7 +422,7 @@ func @gather_4(%arg0: memref<16x11xf32>, %arg1: memref<5x4xi32>, %arg2: memref<4
 
 // Test case 5: Testing for more than two equality checks.
 // CHECK-LABEL: func @gather_5
-func @gather_5(%arg0: memref<28996x512x256xf32>, %arg1: memref<10x3xi32>, %arg2: memref<10x20x10x5xf32>) {
+func.func @gather_5(%arg0: memref<28996x512x256xf32>, %arg1: memref<10x3xi32>, %arg2: memref<10x20x10x5xf32>) {
   %0 = memref.alloc() : memref<10x20x10x5xf32>
   "lmhlo.gather"(%arg0, %arg1, %0) {
     dimension_numbers = #mhlo.gather<
@@ -442,7 +442,7 @@ func @gather_5(%arg0: memref<28996x512x256xf32>, %arg1: memref<10x3xi32>, %arg2:
 
 // CHECK-LABEL: func @gather_6
 // CHECK-SAME: (%[[OPERAND:.*]]: memref<16x11x10x9xf32>, %[[START_INDICES:.*]]: memref<5x4xi32>, %[[OUTPUT:.*]]: memref<5x8x6x5x4xf32>)
-func @gather_6(%arg0: memref<16x11x10x9xf32>, %arg1: memref<5x4xi32>, %arg2: memref<5x8x6x5x4xf32>) {
+func.func @gather_6(%arg0: memref<16x11x10x9xf32>, %arg1: memref<5x4xi32>, %arg2: memref<5x8x6x5x4xf32>) {
    %0 = memref.alloc() : memref<5x8x6x5x4xf32>
    "lmhlo.gather"(%arg0, %arg1, %0) {dimension_numbers = #mhlo.gather<collapsed_slice_dims = [-1],
                                                               index_vector_dim = 1,
@@ -505,7 +505,7 @@ func @gather_6(%arg0: memref<16x11x10x9xf32>, %arg1: memref<5x4xi32>, %arg2: mem
 // CHECK-NEXT:                  affine.store %[[FINALVAL]], %[[RESULT]][%[[BATCH0]], %[[OFFSET0]], %[[OFFSET1]], %[[OFFSET2]], %[[OFFSET3]]] : memref<5x8x6x5x4xf32> 
 
 // CHECK-LABEL: func @log
-func @log(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
+func.func @log(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
 
 // CHECK-NEXT: %[[RES:.*]] = memref.alloc() : memref<2x2xf32>
 // CHECK-NEXT: affine.for %{{.*}} = 0 to 2 {
@@ -522,7 +522,7 @@ func @log(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @pad
 // CHECK-SAME: (%[[INPUT:.*]]: memref<1x2x3xf16>, %[[PAD_VAL_INPUT:.*]]: memref<f16>, %[[OUTPUT:.*]]: memref<2x4x5xf16>)
-func @pad(%arg0: memref<1x2x3xf16>, %arg1: memref<f16>, %arg2: memref<2x4x5xf16>) {
+func.func @pad(%arg0: memref<1x2x3xf16>, %arg1: memref<f16>, %arg2: memref<2x4x5xf16>) {
   "lmhlo.pad"(%arg0, %arg1, %arg2) {edge_padding_high = dense<[1, 1, 0]> : tensor<3xi64>, edge_padding_low = dense<[0, 1, 2]> : tensor<3xi64>, interior_padding = dense<0> : tensor<3xi64>} : (memref<1x2x3xf16>, memref<f16>, memref<2x4x5xf16>) -> ()
 // CHECK:        %[[PAD_VALUE:.*]] = affine.load %[[PAD_VAL_INPUT]][] : memref<f16>
 // CHECK-NEXT:   affine.for %[[OUTD0:.*]] = 0 to 2 {
@@ -540,5 +540,5 @@ func @pad(%arg0: memref<1x2x3xf16>, %arg1: memref<f16>, %arg2: memref<2x4x5xf16>
 // CHECK-NEXT:      }
 // CHECK-NEXT:     }
 // CHECK-NEXT:    }
-  return
+  func.return
 }

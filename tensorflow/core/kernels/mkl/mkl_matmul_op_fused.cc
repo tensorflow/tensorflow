@@ -121,7 +121,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     MklDnnMatMulFwdParams matmul_params(
         src_dims, weight_dims, bias_dims, dst_dims, src_format,
         (this->is_weight_const_) ? memory::format_tag::any : weight_format,
-        memory::format_tag::nc);
+        memory::format_tag::nc, this->is_weight_const_);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
 #ifdef DNNL_AARCH64_USE_ACL

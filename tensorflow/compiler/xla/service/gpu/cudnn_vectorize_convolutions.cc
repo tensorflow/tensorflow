@@ -47,7 +47,7 @@ namespace gpu {
 // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionForward
 //
 // For now we restrict ourselves to only the int8xN -> int8xN cases.  We could
-// allow the int8x4 -> float case in the future if desireable.
+// allow the int8x4 -> float case in the future if desirable.
 static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
     HloComputation* comp) {
   std::vector<HloCustomCallInstruction*> convs;
@@ -364,11 +364,24 @@ static StatusOr<bool> TryRevectorizeConv(
           b, Tuple(&b, {new_conv_result_unrevectorized, new_conv_scratch}),
           conv->parent()));
 
+  // Set the name on the new conv.  This is purely cosmetic, but we attempt to
+  // preserve e.g. "cudnn-conv.42" instead of "custom-call.42".
+  auto new_conv_comp_instrs = new_conv_comp->instructions();
+  auto new_conv_it =
+      absl::c_find_if(new_conv_comp_instrs, [](HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kCustomCall;
+      });
+  if (new_conv_it != new_conv_comp_instrs.end()) {
+    new_conv_comp->parent()->SetAndUniquifyInstrName(*new_conv_it,
+                                                     conv->name());
+  }
+
   // Replace the old conv with a call to the computation we just created.
   VLOG(1) << "Re-vectorized conv to " << new_conv_comp->ToString();
   TF_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
       conv, HloInstruction::CreateCall(conv->shape(), conv->operands(),
                                        new_conv_comp)));
+
   return true;
 }
 

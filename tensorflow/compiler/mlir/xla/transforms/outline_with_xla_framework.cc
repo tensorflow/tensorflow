@@ -88,7 +88,7 @@ struct OutlineXLAFunc : public RewritePattern {
     auto func = dyn_cast<FuncOp>(op);
     auto ctx = rewriter.getContext();
     auto loc = func.getLoc();
-    SmallVector<Location> locs(func.getType().getNumInputs(), loc);
+    SmallVector<Location> locs(func.getFunctionType().getNumInputs(), loc);
 
     // Functions should only be outlined once and should only use memrefs
     if (!func) return failure();
@@ -101,9 +101,9 @@ struct OutlineXLAFunc : public RewritePattern {
 
     // Prepare new func attribute information
     func.setSymNameAttr(mlir::StringAttr::get(ctx, func.getName()));
-    SmallVector<Type> operands(func.getType().getNumInputs(),
+    SmallVector<Type> operands(func.getFunctionType().getNumInputs(),
                                ::mlir::xla_framework::BufferType::get(ctx));
-    SmallVector<Type> result_array(func.getType().getNumResults(),
+    SmallVector<Type> result_array(func.getFunctionType().getNumResults(),
                                    ::mlir::xla_framework::BufferType::get(ctx));
     auto func_type = FunctionType::get(ctx, operands, result_array);
     SmallVector<NamedAttribute> attrs;
@@ -123,13 +123,13 @@ struct OutlineXLAFunc : public RewritePattern {
 
     // Unwrap arguments
     SmallVector<Value> args;
-    for (const auto &t : llvm::enumerate(func.getType().getInputs())) {
+    for (const auto &t : llvm::enumerate(func.getFunctionType().getInputs())) {
       args.push_back(rewriter.create<xla_framework::XLABufferToMemOp>(
           loc, t.value(), b->getArgument(t.index())));
     }
 
     auto call = rewriter.create<func::CallOp>(
-        loc, func.getSymName(), func.getType().getResults(), args);
+        loc, func.getSymName(), func.getFunctionType().getResults(), args);
     // Wrap results
     SmallVector<Value> results;
     for (auto t : call.getResults()) {

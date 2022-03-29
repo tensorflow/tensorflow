@@ -38,14 +38,6 @@ namespace m = match;
 using absl::optional;
 using hlo_query::ContainsInstrWithOpcode;
 
-// A helper function that copy the raw JSON-encoded backend config from the old
-// while op to the new one.
-void CopyBackendConfig(HloInstruction* old_while_op,
-                       HloInstruction* new_while_op) {
-  new_while_op->set_raw_backend_config_string(
-      old_while_op->raw_backend_config_string());
-}
-
 // A helper function that copy the frontend attributes from the old while op to
 // the new one.
 void CopyFrontendAttributes(HloInstruction* old_while_op,
@@ -179,7 +171,7 @@ static StatusOr<HloInstruction*> RemoveDeadTupleIndices(
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       new_while_init));
-  CopyBackendConfig(while_op, new_while_op);
+  new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
 
   // Create a tuple op that recreates the output of the old while op.  That is,
@@ -761,7 +753,7 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       add_new_instr(remove_constant_elems(while_init))));
-  CopyBackendConfig(while_op, new_while_op);
+  new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       while_op, add_constant_elems(new_while_op)));
@@ -1091,7 +1083,7 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       computation->AddInstruction(flattened(while_init))));
-  CopyBackendConfig(while_op, new_while_op);
+  new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   TF_RETURN_IF_ERROR(
       computation->ReplaceWithNewInstruction(while_op, nested(new_while_op)));
@@ -1330,7 +1322,7 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       get_new_while_init(while_init)));
-  CopyBackendConfig(while_op, new_while);
+  new_while->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while);
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
       while_op, convert_to_old_form(new_while)));

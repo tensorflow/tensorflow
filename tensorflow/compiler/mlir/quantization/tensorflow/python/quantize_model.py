@@ -33,7 +33,6 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model.load import load as saved_model_load
 
-
 # The signature key of the saved model init op.
 _INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
 
@@ -255,11 +254,14 @@ def _static_range_quantize(saved_model_path: str,
       for node_def in function_def.node_def:
         if node_def.op == 'CustomAggregator':
           node_id = node_def.attr['id'].s
-          min_val = quantize_model_wrapper.get_min_from_calibrator(node_id)
-          max_val = quantize_model_wrapper.get_max_from_calibrator(node_id)
-          quantize_model_wrapper.clear_data_from_calibrator(node_id)
-          node_def.attr['min'].f = float(min_val)
-          node_def.attr['max'].f = float(max_val)
+          try:
+            min_val = quantize_model_wrapper.get_min_from_calibrator(node_id)
+            max_val = quantize_model_wrapper.get_max_from_calibrator(node_id)
+            quantize_model_wrapper.clear_data_from_calibrator(node_id)
+            node_def.attr['min'].f = float(min_val)
+            node_def.attr['max'].f = float(max_val)
+          except ValueError:
+            warnings.warn('%s does not have min/max values.' % node_id)
 
     calibrated_model_dir = tempfile.mkdtemp()
     v1_builder = builder.SavedModelBuilder(calibrated_model_dir)

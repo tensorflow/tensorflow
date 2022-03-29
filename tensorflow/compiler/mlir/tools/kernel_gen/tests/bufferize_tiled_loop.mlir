@@ -3,7 +3,7 @@
 // RUN: --split-input-file | FileCheck %s
 
 //      CHECK:  func @tiled_dot
-func @tiled_dot(%A: tensor<10xf32>, %B: tensor<10xf32>,
+func.func @tiled_dot(%A: tensor<10xf32>, %B: tensor<10xf32>,
                 %C: tensor<f32>) -> tensor<f32> {
   %c0 = arith.constant 0 : index
   %c2 = arith.constant 2 : index
@@ -31,14 +31,14 @@ func @tiled_dot(%A: tensor<10xf32>, %B: tensor<10xf32>,
   // CHECK-NEXT: linalg.dot ins(%[[SV_A]], %[[SV_B]]
   // CHECK-SAME:            outs(%[[C]] : memref<f32>)
   // CHECK-NEXT: gml_st.yield
-  return %dot : tensor<f32>
+  func.return %dot : tensor<f32>
 }
 
 // -----
 
 #map0 = affine_map<(d0) -> (d0)>
 
-func @tiled_add(%A: tensor<10xf32>, %B: tensor<10xf32>,
+func.func @tiled_add(%A: tensor<10xf32>, %B: tensor<10xf32>,
                   %C: tensor<10xf32>) -> tensor<10xf32> {
   %c0 = arith.constant 0 : index
   %c2 = arith.constant 2 : index
@@ -79,12 +79,12 @@ func @tiled_add(%A: tensor<10xf32>, %B: tensor<10xf32>,
   // CHECK-SAME:    outs(%[[SV_C]] : memref<2xf32, #map{{[0-9]}}>)
   // CHECK:         linalg.yield %{{[0-9]}} : f32
   // CHECK:       gml_st.yield
-  return %sum : tensor<10xf32>
+  func.return %sum : tensor<10xf32>
 }
 
 // -----
 
-func @tiled_add_broadcast(%A: tensor<1x?x12xf32>, %B: tensor<?x?x12xf32>,
+func.func @tiled_add_broadcast(%A: tensor<1x?x12xf32>, %B: tensor<?x?x12xf32>,
                           %shape: tensor<3xi32>) -> tensor<?x?x12xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -113,5 +113,5 @@ func @tiled_add_broadcast(%A: tensor<1x?x12xf32>, %B: tensor<?x?x12xf32>,
   // CHECK: gml_st.loop
   // CHECK-SAME: ins (%[[A:arg[0-9]]] = %{{[0-9]+}}: memref<?x?x12xf32>)
   // CHECK-SAME: outs (%[[C:arg[0-9]]] = %{{arg[0-9]}}: memref<?x?x12xf32>)
-  return %sum : tensor<?x?x12xf32>
+  func.return %sum : tensor<?x?x12xf32>
 }

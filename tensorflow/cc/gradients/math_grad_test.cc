@@ -1038,6 +1038,15 @@ TEST_F(NaryGradTest, SelectV2_Broadcast) {
   RunTest({x, y}, {x_shape, y_shape}, {z}, {x_shape});
 }
 
+TEST_F(NaryGradTest, SelectV2_Broadcast2) {
+  TensorShape x_shape({2, 3});
+  auto cond = Const<bool>(scope_, {{false}, {true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto z = SelectV2(scope_, cond, x, y);
+  RunTest({x, y}, {x_shape, x_shape}, {z}, {x_shape});
+}
+
 TEST_F(NaryGradTest, Atan2Grad) {
   TensorShape shape({3, 2, 5});
   auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));

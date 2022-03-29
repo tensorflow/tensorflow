@@ -1384,16 +1384,16 @@ namespace {
 
 struct CustomCreatorSingleton {
   mutex mu;
-  CustomKernelCreator* custom_creator = nullptr;
+  std::unique_ptr<CustomKernelCreator> custom_creator = nullptr;
 
   void Set(CustomKernelCreator* cb) {
     mutex_lock l(mu);
-    custom_creator = cb;
+    custom_creator.reset(cb);
   }
 
   CustomKernelCreator* Get() {
     mutex_lock l(mu);
-    return custom_creator;
+    return custom_creator.get();
   }
 };
 

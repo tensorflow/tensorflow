@@ -796,9 +796,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           func_builder->create<mlir::mhlo::SelectAndScatterOp>(
               loc, result_type, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*select_scatter->select(),
-                                        &select_scatter_op.select()));
+                                        &select_scatter_op.select(),
+                                        /*flatten_region_arg_tuple=*/true));
       TF_RETURN_IF_ERROR(ImportAsRegion(*select_scatter->scatter(),
-                                        &select_scatter_op.scatter()));
+                                        &select_scatter_op.scatter(),
+                                        /*flatten_region_arg_tuple=*/true));
       return select_scatter_op.getOperation();
     }
     case HloOpcode::kSetDimensionSize: {
@@ -1443,7 +1445,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         result.attributes.push_back(attr);
       }
 
-      return func_builder->createOperation(result);
+      return func_builder->create(result);
     }
   }
 }

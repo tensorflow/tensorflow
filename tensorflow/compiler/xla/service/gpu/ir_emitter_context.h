@@ -40,12 +40,14 @@ class IrEmitterContext {
                    const BufferAssignment* buffer_assignment,
                    std::string platform_name, GpuDeviceInfo gpu_device_info,
                    se::CudaComputeCapability cuda_compute_capability,
+                   se::RocmComputeCapability rocm_compute_capability,
                    mlir::MLIRContext* mlir_context, llvm::Module* llvm_module)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         cuda_compute_capability_(cuda_compute_capability),
+        rocm_compute_capability_(rocm_compute_capability),
         mlir_context_(mlir_context),
         llvm_module_(llvm_module) {}
   // Disallow copy and assign.
@@ -61,6 +63,9 @@ class IrEmitterContext {
   GpuDeviceInfo gpu_device_info() const { return gpu_device_info_; }
   se::CudaComputeCapability cuda_compute_capability() const {
     return cuda_compute_capability_;
+  }
+  se::RocmComputeCapability rocm_compute_capability() const {
+    return rocm_compute_capability_;
   }
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
   llvm::Module* llvm_module() { return llvm_module_; }
@@ -87,6 +92,7 @@ class IrEmitterContext {
   std::string platform_name_;
   GpuDeviceInfo gpu_device_info_;
   se::CudaComputeCapability cuda_compute_capability_;
+  se::RocmComputeCapability rocm_compute_capability_;
   mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;

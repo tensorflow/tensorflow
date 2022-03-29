@@ -72,6 +72,7 @@ limitations under the License.
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -282,10 +283,10 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   stream_executor::PlatformKind platform_kind =
       main_stream->parent()->platform_kind();
   if (platform_kind == stream_executor::PlatformKind::kROCm) {
-    std::string stream_arch = main_stream->parent()
-                                  ->GetDeviceDescription()
-                                  .rocm_amdgpu_gcn_arch_name();
-    std::string gpu_exec_arch = absl::get<std::string>(gpu_version_);
+    auto cc = main_stream->GetRocmComputeCapability();
+    std::string stream_arch = cc.gcn_arch_name();
+    std::string gpu_exec_arch =
+        absl::get<se::RocmComputeCapability>(gpu_version_).gcn_arch_name();
     TF_RET_CHECK(stream_arch == gpu_exec_arch)
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
         << ", but was " << stream_arch;
@@ -1070,6 +1071,15 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
   }();
 
   mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  tfrt::RegisterTFRTDialects(registry);
+  tfrt::RegisterTFRTCompiledDialects(registry);
+  registry.insert<tfrt::gpu::GpuDialect>();
+  registry.insert<XlirDialect>();
+  context.appendDialectRegistry(registry);
+  for (const auto& dialect_name : context.getAvailableDialects()) {
+    context.getOrLoadDialect(dialect_name);
+  }
   context.allowUnregisteredDialects();
   mlir::Location location = mlir::UnknownLoc::get(&context);
   llvm::ArrayRef<uint8_t> bef_array(bef_buffer.get(),

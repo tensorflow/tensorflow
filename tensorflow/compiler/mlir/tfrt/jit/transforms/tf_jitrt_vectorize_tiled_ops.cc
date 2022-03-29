@@ -96,7 +96,7 @@ struct VectorizeTiledOpsPass
     auto funcOp = getOperation();
 
     // Vectorize linalg.fill and linalg.generic operations.
-    mlir::OpPassManager dynamicPM("builtin.func");
+    mlir::OpPassManager dynamicPM("func.func");
     CodegenStrategy strategy;
     strategy.vectorize(FillOp::getOperationName(), [](mlir::Operation *op) {
       auto fill = mlir::dyn_cast<FillOp>(op);
@@ -116,7 +116,7 @@ struct VectorizeTiledOpsPass
     strategy.configurePassPipeline(dynamicPM, funcOp.getContext());
     if (failed(runPipeline(dynamicPM, funcOp))) return signalPassFailure();
 
-    mlir::OpPassManager dynamicPM2("builtin.func");
+    mlir::OpPassManager dynamicPM2("func.func");
     CodegenStrategy strategy2;
     strategy2.vectorize(GenericOp::getOperationName(), [](mlir::Operation *op) {
       auto generic = mlir::dyn_cast<GenericOp>(op);

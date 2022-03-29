@@ -114,7 +114,7 @@ Status GetXlaInputShapes(
 
   mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
   TF_RET_CHECK(main_func != nullptr) << "No main function found";
-  mlir::FunctionType func_type = main_func.getType();
+  mlir::FunctionType func_type = main_func.getFunctionType();
 
   int num_args = func_type.getNumInputs();
   xla_input_shapes->reserve(num_args);
@@ -162,7 +162,7 @@ Status GetOutputInfo(
       };
 
   mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
-  mlir::FunctionType func_type = main_func.getType();
+  mlir::FunctionType func_type = main_func.getFunctionType();
 
   outputs->clear();
   outputs->reserve(func_type.getNumResults());
@@ -653,9 +653,9 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
     for (mlir::BlockArgument& arg : main_fn.getArguments())
       updated_argument_types.push_back(arg.getType());
 
-    main_fn.setType(mlir::FunctionType::get(main_fn.getContext(),
-                                            updated_argument_types,
-                                            main_fn.getType().getResults()));
+    main_fn.setType(
+        mlir::FunctionType::get(main_fn.getContext(), updated_argument_types,
+                                main_fn.getFunctionType().getResults()));
   }
 
   for (int idx : llvm::reverse(args_to_erase)) main_fn.eraseArgument(idx);

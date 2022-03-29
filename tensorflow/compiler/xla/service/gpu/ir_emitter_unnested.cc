@@ -1727,20 +1727,20 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
 
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
                                           GetNestedComputer());
-  FusedIrEmitter fused_emitter(&elemental_emitter);
+  FusedIrEmitter fused_emitter(elemental_emitter);
 
   for (int i = 0; i < fusion.getInputBuffers().size(); i++) {
     auto* builder = &b_;
     auto ir_array = operand_arrays[i];
     fused_emitter.BindGenerator(
-        fused_computation->parameter_instruction(i),
+        *fused_computation->parameter_instruction(i),
         [builder, ir_array](llvm_ir::IrArray::Index index) {
           return ir_array.EmitReadArrayElement(index, builder);
         });
   }
   TF_ASSIGN_OR_RETURN(
       auto element_generator,
-      fused_emitter.GetGenerator(fused_computation->root_instruction()));
+      fused_emitter.GetGenerator(*fused_computation->root_instruction()));
 
   llvm::Type* index_type =
       GetIndexTypeForKernel(fusion, launch_dimensions.launch_bound(), &b_);
@@ -1817,18 +1817,18 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       GpuElementalIrEmitter operand_elemental_emitter(
           hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
           GetNestedComputer());
-      FusedIrEmitter operand_fused_emitter(&operand_elemental_emitter);
+      FusedIrEmitter operand_fused_emitter(operand_elemental_emitter);
       for (int i = 0; i < fused_computation->num_parameters(); i++) {
         auto fused_operand = fused_computation->parameter_instruction(i);
         operand_fused_emitter.BindGenerator(
-            fused_operand, [this, &ir_arrays, i,
-                            fused_operand](llvm_ir::IrArray::Index index) {
+            *fused_operand, [this, &ir_arrays, i,
+                             fused_operand](llvm_ir::IrArray::Index index) {
               return ir_arrays[i].EmitReadArrayElement(index, &b_,
                                                        fused_operand->name());
             });
       }
-      TF_ASSIGN_OR_RETURN(auto generator,
-                          operand_fused_emitter.GetGenerator(root->operand(0)));
+      TF_ASSIGN_OR_RETURN(auto generator, operand_fused_emitter.GetGenerator(
+                                              *root->operand(0)));
 
       TF_RETURN_IF_ERROR(
           ParallelLoopEmitter(generator, {ir_arrays.back()}, launch_dimensions,
@@ -1855,12 +1855,12 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       GpuElementalIrEmitter scatter_elemental_emitter(
           hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
           GetNestedComputer());
-      FusedIrEmitter scatter_fused_emitter(&scatter_elemental_emitter);
+      FusedIrEmitter scatter_fused_emitter(scatter_elemental_emitter);
       for (int i = 0; i < fused_computation->num_parameters(); i++) {
         auto fused_operand = fused_computation->parameter_instruction(i);
         scatter_fused_emitter.BindGenerator(
-            fused_operand, [this, &ir_arrays, i,
-                            fused_operand](llvm_ir::IrArray::Index index) {
+            *fused_operand, [this, &ir_arrays, i,
+                             fused_operand](llvm_ir::IrArray::Index index) {
               return ir_arrays[i].EmitReadArrayElement(index, &b_,
                                                        fused_operand->name());
             });
@@ -1879,10 +1879,11 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       desc.unique_indices = root->unique_indices();
       desc.update_computation = root->called_computations()[0];
       desc.output = ir_arrays.back();
-      TF_ASSIGN_OR_RETURN(desc.scatter_indices_gen,
-                          scatter_fused_emitter.GetGenerator(root->operand(1)));
-      TF_ASSIGN_OR_RETURN(desc.updates_gen,
-                          scatter_fused_emitter.GetGenerator(root->operand(2)));
+      TF_ASSIGN_OR_RETURN(
+          desc.scatter_indices_gen,
+          scatter_fused_emitter.GetGenerator(*root->operand(1)));
+      TF_ASSIGN_OR_RETURN(desc.updates_gen, scatter_fused_emitter.GetGenerator(
+                                                *root->operand(2)));
       desc.get_index_type = [&](int64_t launch_size) {
         return GetIndexTypeForKernel(root, launch_size, &b_);
       };
@@ -1929,13 +1930,13 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
                                             ir_emitter_context_->llvm_module(),
                                             &b_, GetNestedComputer());
 
-    FusedIrEmitter fused_emitter(&elemental_emitter);
+    FusedIrEmitter fused_emitter(elemental_emitter);
 
     for (int i = 0; i < fused_computation->num_parameters(); i++) {
       auto fused_operand = fused_computation->parameter_instruction(i);
       fused_emitter.BindGenerator(
-          fused_operand, [this, &ir_arrays, i,
-                          fused_operand](const llvm_ir::IrArray::Index& index) {
+          *fused_operand, [this, &ir_arrays, i, fused_operand](
+                              const llvm_ir::IrArray::Index& index) {
             return ir_arrays[i].EmitReadArrayElement(index, &b_,
                                                      fused_operand->name());
           });
@@ -3439,10 +3440,10 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
                                           ir_emitter_context_->llvm_module(),
                                           &b_, GetNestedComputer());
 
-  FusedIrEmitter fused_emitter(&elemental_emitter);
+  FusedIrEmitter fused_emitter(elemental_emitter);
   for (int i = 0; i < fused_computation->num_parameters(); i++) {
     fused_emitter.BindGenerator(
-        fused_computation->parameter_instruction(i),
+        *fused_computation->parameter_instruction(i),
         [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
           return ir_arrays[i].EmitReadArrayElement(index, &b_);
         });
@@ -3455,7 +3456,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
   }
   TF_RET_CHECK(instr->shape().IsArray());
   TF_ASSIGN_OR_RETURN(auto generator,
-                      fused_emitter.GetGenerator(instr->operand(1)));
+                      fused_emitter.GetGenerator(*instr->operand(1)));
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(generator, {dest_array}, launch_dimensions, &b_)
           .EmitLoop(GetIrNameFromLoc(fusion.getLoc())));
@@ -3684,7 +3685,7 @@ void IrEmitterUnnested::EmitTileElementForFusion(
                                            /*is_fusion=*/true);
   GpuElementalIrEmitter elem_emitter(hlo_module_config_, module_, &b_,
                                      GetNestedComputer());
-  FusedIrEmitter fused_emitter(&elem_emitter);
+  FusedIrEmitter fused_emitter(elem_emitter);
   for (int i = 0; i < operand_arrays.size(); i++) {
     llvm_ir::ElementGenerator gen;
     if (llvm::Value* param_tile_buffer = param_shmem_buffers[i]) {
@@ -3707,13 +3708,13 @@ void IrEmitterUnnested::EmitTileElementForFusion(
         return array.EmitReadArrayElement(index, &b_, name);
       };
     }
-    fused_emitter.BindGenerator(fused_computation->parameter_instruction(i),
+    fused_emitter.BindGenerator(*fused_computation->parameter_instruction(i),
                                 std::move(gen));
   }
   IrArray::Index untiled_index = GetUnnormalizedIndex(
       index, output_arrays[0].GetShape(), &b_, tiling_scheme);
   llvm_ir::ElementGenerator output_generator =
-      *fused_emitter.GetGenerator(fused_computation->root_instruction());
+      *fused_emitter.GetGenerator(*fused_computation->root_instruction());
   llvm::Value* output_value = output_generator(untiled_index).ValueOrDie();
   if (output_arrays.size() > 1) {
     DCHECK(output_value->getType()->isStructTy());
@@ -3765,7 +3766,7 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
           reduce_hlo->init_values()[op_result_idx];
 
       // Initialize the partial result with the initial value of the reduction.
-      llvm::Value* init_ir_value = (*fused_emitter->GetGenerator(init_value))(
+      llvm::Value* init_ir_value = (*fused_emitter->GetGenerator(*init_value))(
                                        IrArray::Index(b_.getInt32Ty()))
                                        .ValueOrDie();
 
@@ -3800,7 +3801,7 @@ ReductionCodegenState IrEmitterUnnested::GenerateReductionCodegenState(
       }();
 
       llvm_ir::ElementGenerator input_gen =
-          *fused_emitter->GetGenerator(reduce_hlo->inputs()[op_result_idx]);
+          *fused_emitter->GetGenerator(*reduce_hlo->inputs()[op_result_idx]);
       reduction_codegen_state.SetCalculationStateFor(
           {shared_cache, init_ir_value, partial_result_address,
            reduction_input_address, input_gen},
@@ -5017,7 +5018,7 @@ Status IrEmitterUnnested::EmitIRForReduction(
     if (IsReductionFromOrToContiguousDimensions(*hlo)) {
       reductions.push_back(Cast<HloReduceInstruction>(hlo));
     } else {
-      extra_output_gens[hlo] = *fused_emitter->GetGenerator(hlo);
+      extra_output_gens[hlo] = *fused_emitter->GetGenerator(*hlo);
     }
   }
 
@@ -5271,13 +5272,13 @@ Status IrEmitterUnnested::EmitUnnestedReduction(mlir::lmhlo::FusionOp fusion) {
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
                                           ir_emitter_context_->llvm_module(),
                                           &b_, GetNestedComputer());
-  FusedIrEmitter fused_emitter(&elemental_emitter);
+  FusedIrEmitter fused_emitter(elemental_emitter);
   CHECK_LT(fused_computation->num_parameters(), ir_arrays.size());
   for (int i = 0; i < fused_computation->num_parameters(); i++) {
     llvm_ir::IrArray ir_array = ir_arrays[i];
     HloInstruction* fused_operand = fused_computation->parameter_instruction(i);
     fused_emitter.BindGenerator(
-        fused_operand,
+        *fused_operand,
         [this, ir_array, fused_operand](const llvm_ir::IrArray::Index& index) {
           return ir_array.EmitReadArrayElement(index, &b_,
                                                fused_operand->name());
@@ -5381,16 +5382,16 @@ Status IrEmitterUnnested::EmitElementForInputFusibleSlices(
   std::vector<llvm::Value*> input_ir_values;
   GpuElementalIrEmitter elem_emitter(hlo_module_config_, module_, &b_,
                                      GetNestedComputer());
-  FusedIrEmitter fused_emitter(&elem_emitter);
+  FusedIrEmitter fused_emitter(elem_emitter);
   for (int i = 0; i < fused_computation->num_parameters(); i++) {
     fused_emitter.BindGenerator(
-        fused_computation->parameter_instruction(i),
+        *fused_computation->parameter_instruction(i),
         [this, &ir_arrays, i](llvm_ir::IrArray::Index index) {
           return ir_arrays[i].EmitReadArrayElement(index, &b_);
         });
   }
   for (const HloInstruction* slice : slice_instructions) {
-    auto input_generator = *fused_emitter.GetGenerator(slice->operand(0));
+    auto input_generator = *fused_emitter.GetGenerator(*slice->operand(0));
     input_ir_values.push_back(input_generator(index).ValueOrDie());
   }
 

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -1344,7 +1345,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         parent_->use_fast_path_ &&
         ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
         ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) {
-      return HandleDot<ReturnT>(dot);
+      return HandleDot<ElementwiseT>(dot);
     }
     return HandleDotSlowPath(dot);
   }
@@ -1380,32 +1381,38 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         << rhs->shape().dimensions(rhs_contracting_dimension);
 
     // The fast path is for a simple rank 2 dot with default layout operands.
-    if (lhs_rank == 2 && rhs_rank == 2 && lhs_contracting_dimension == 1 &&
-        rhs_contracting_dimension == 0 &&
-        LayoutUtil::Equal(lhs->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2()) &&
-        LayoutUtil::Equal(rhs->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2()) &&
-        LayoutUtil::Equal(dot->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2())) {
-      const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-      const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-      const int64_t contracted_dimension_size =
-          lhs->shape().dimensions(lhs_contracting_dimension);
-      Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
-                                 contracted_dimension_size);
-      lhs_array.SetValues(lhs_literal.data<NativeT>());
-      Array2D<NativeT> rhs_array(contracted_dimension_size,
-                                 rhs->shape().dimensions(1));
-      rhs_array.SetValues(rhs_literal.data<NativeT>());
-      std::unique_ptr<Array2D<NativeT>> result_array =
-          HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
-      Literal result(dot->shape());
-      result.PopulateR2FromArray2D(*result_array);
-      parent_->evaluated_[dot] = std::move(result);
-      return Status::OK();
+    if (lhs_rank != 2 || rhs_rank != 2 || lhs_contracting_dimension != 1 ||
+        rhs_contracting_dimension != 0 ||
+        !LayoutUtil::Equal(lhs->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2()) ||
+        !LayoutUtil::Equal(rhs->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2()) ||
+        !LayoutUtil::Equal(dot->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2())) {
+      return HandleDotSlowPath(dot);
     }
-    return HandleDotSlowPath(dot);
+
+    const PrimitiveType native_ty =
+        primitive_util::NativeToPrimitiveType<NativeT>();
+    Literal lhs_literal =
+        parent_->GetEvaluatedLiteralFor(lhs).Convert(native_ty).ValueOrDie();
+    Literal rhs_literal =
+        parent_->GetEvaluatedLiteralFor(rhs).Convert(native_ty).ValueOrDie();
+    const int64_t contracted_dimension_size =
+        lhs->shape().dimensions(lhs_contracting_dimension);
+    Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
+                               contracted_dimension_size);
+    lhs_array.SetValues(lhs_literal.data<NativeT>());
+    Array2D<NativeT> rhs_array(contracted_dimension_size,
+                               rhs->shape().dimensions(1));
+    rhs_array.SetValues(rhs_literal.data<NativeT>());
+    std::unique_ptr<Array2D<NativeT>> result_array =
+        HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
+    Literal result(ShapeUtil::MakeShape(native_ty, dot->shape().dimensions()));
+    result.PopulateR2FromArray2D(*result_array);
+    parent_->evaluated_[dot] =
+        std::move(result).Convert(dot->shape().element_type()).ValueOrDie();
+    return Status::OK();
   }
 
   template <typename NativeT, typename std::enable_if<!std::is_same<
@@ -1428,89 +1435,77 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK_EQ(dnums.lhs_batch_dimensions_size(),
              dnums.rhs_batch_dimensions_size());
 
-    DimensionVector lhs_index(lhs_rank);
-    DimensionVector rhs_index(rhs_rank);
-
-    // result_index_locations[i] contains one or two pointers to the locations
-    // in lhs_index or rhs_index where the i'th result index should go.
-    absl::InlinedVector<std::pair<int64_t*, int64_t*>, InlineRank()>
-        result_index_locations;
-    result_index_locations.reserve(
-        (lhs_rank - dnums.lhs_contracting_dimensions_size()) +
-        (rhs_rank - dnums.rhs_contracting_dimensions_size()));
-
-    // The first components in the output shape are the LHS and RHS batch
-    // dimensions:
-    for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
-      result_index_locations.push_back(
-          {&lhs_index[dnums.lhs_batch_dimensions(i)],
-           &rhs_index[dnums.rhs_batch_dimensions(i)]});
-    }
-
-    // Then we have the LHS and RHS non-contracting dimensions, if any:
+    DimensionVector lhs_non_contracting_dims;
+    DimensionVector rhs_non_contracting_dims;
     for (int64_t i = 0; i < lhs_rank; i++) {
       if (!absl::c_linear_search(dnums.lhs_contracting_dimensions(), i) &&
           !absl::c_linear_search(dnums.lhs_batch_dimensions(), i)) {
-        result_index_locations.push_back({&lhs_index[i], nullptr});
+        lhs_non_contracting_dims.push_back(i);
       }
     }
     for (int64_t i = 0; i < rhs_rank; i++) {
       if (!absl::c_linear_search(dnums.rhs_contracting_dimensions(), i) &&
           !absl::c_linear_search(dnums.rhs_batch_dimensions(), i)) {
-        result_index_locations.push_back({&rhs_index[i], nullptr});
+        rhs_non_contracting_dims.push_back(i);
       }
     }
 
-    absl::InlinedVector<int64_t, InlineRank()> accumulate_index_sizes;
-    accumulate_index_sizes.reserve(dnums.lhs_contracting_dimensions_size());
-    absl::InlinedVector<std::pair<int64_t*, int64_t*>, InlineRank()>
-        accumulate_index_locations;
-    accumulate_index_locations.reserve(dnums.lhs_contracting_dimensions_size());
+    absl::InlinedVector<int64_t, InlineRank()> contracting_dim_sizes;
+    contracting_dim_sizes.reserve(dnums.lhs_contracting_dimensions_size());
+    DimensionVector lhs_contracting_dims;
+    DimensionVector rhs_contracting_dims;
     for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); ++i) {
       const int64_t lhs_dnum = dnums.lhs_contracting_dimensions(i);
       const int64_t rhs_dnum = dnums.rhs_contracting_dimensions(i);
-      accumulate_index_locations.push_back(
-          {&lhs_index[lhs_dnum], &rhs_index[rhs_dnum]});
+      lhs_contracting_dims.push_back(lhs_dnum);
+      rhs_contracting_dims.push_back(rhs_dnum);
       const int64_t dim_size = lhs_literal.shape().dimensions(lhs_dnum);
-      accumulate_index_sizes.push_back(dim_size);
+      contracting_dim_sizes.push_back(dim_size);
     }
-    const int64_t total_contraction_size = Product(accumulate_index_sizes);
+    const int64_t total_contraction_size = Product(contracting_dim_sizes);
     Literal result(dot->shape());
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> result_index) {
-          ElementwiseT result_val = static_cast<ElementwiseT>(0);
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> result_index) {
+          // Locations in LHS and RHS that we read from.
+          DimensionVector lhs_index(lhs_rank);
+          DimensionVector rhs_index(rhs_rank);
 
-          for (int64_t i = 0; i < result_index.size(); i++) {
-            *result_index_locations[i].first = result_index[i];
-            if (result_index_locations[i].second) {
-              *result_index_locations[i].second = result_index[i];
-            }
+          // First come the batch dimensions.
+          int64_t idx = 0;
+          for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
+            lhs_index[dnums.lhs_batch_dimensions(i)] = result_index[idx];
+            rhs_index[dnums.rhs_batch_dimensions(i)] = result_index[idx];
+            idx++;
           }
 
-          // Accumulates resulting product along the contracted dimension.
-          absl::InlinedVector<int64_t, InlineRank()> accumulate_index(
-              accumulate_index_sizes.size(), 0);
-          for (int64_t k = 0; k < total_contraction_size; k++) {
-            for (int64_t i = 0; i < accumulate_index_sizes.size(); ++i) {
-              *(accumulate_index_locations[i].first) = accumulate_index[i];
-              *(accumulate_index_locations[i].second) = accumulate_index[i];
-            }
+          // Next we have non-contracting dimensions, if any.
+          for (int64_t i = 0; i < lhs_non_contracting_dims.size(); i++) {
+            lhs_index[lhs_non_contracting_dims[i]] = result_index[idx++];
+          }
+          for (int64_t i = 0; i < rhs_non_contracting_dims.size(); i++) {
+            rhs_index[rhs_non_contracting_dims[i]] = result_index[idx++];
+          }
 
+          // Accumulate resulting product along the contracting dimensions.
+          ElementwiseT result_val = static_cast<ElementwiseT>(0);
+          for (int64_t k = 0; k < total_contraction_size; k++) {
             ElementwiseT lhs_val(lhs_literal.Get<ReturnT>(lhs_index));
             ElementwiseT rhs_val(rhs_literal.Get<ReturnT>(rhs_index));
             result_val +=
                 ToArithmeticSafeType(lhs_val) * ToArithmeticSafeType(rhs_val);
 
-            // If there are no contracting dimension accumulate_index_sizes is
-            // empty, do not try to count down from -1 to 0 since it is and
-            // infinite loop.
-            if (!accumulate_index_sizes.empty()) {
-              for (int64_t i = accumulate_index_sizes.size() - 1; i >= 0; --i) {
-                int64_t value = ++accumulate_index[i];
-                if (value != accumulate_index_sizes[i]) {
+            // If there are no contracting dimensions, do not try to count down
+            // from -1 to 0; that's an infinite loop.
+            if (!contracting_dim_sizes.empty()) {
+              for (int64_t i = contracting_dim_sizes.size() - 1; i >= 0; --i) {
+                lhs_index[lhs_contracting_dims[i]]++;
+                rhs_index[rhs_contracting_dims[i]]++;
+                if (lhs_index[lhs_contracting_dims[i]] !=
+                    contracting_dim_sizes[i]) {
                   break;
                 }
-                accumulate_index[i] = 0;
+                lhs_index[lhs_contracting_dims[i]] = 0;
+                rhs_index[rhs_contracting_dims[i]] = 0;
               }
             }
           }

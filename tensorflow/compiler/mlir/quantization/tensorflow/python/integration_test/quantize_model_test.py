@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for quantize_model."""
+import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -25,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
@@ -160,6 +162,62 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
         list(converted_model.signatures._signatures.keys()),
         ['serving_default'])
 
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  def test_model_with_uncalibrated_subgraph(self):
+
+    class IfModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+      ])
+      def model_fn(self, x):
+        if math_ops.reduce_sum(x) > 10.0:
+          filters = np.random.uniform(
+              low=-1.0, high=1.0, size=(4, 3)).astype('f4')
+          bias = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype('f4')
+          out = math_ops.matmul(x, filters)
+          out = nn_ops.bias_add(out, bias)
+          return {'output': out}
+
+        filters = np.random.uniform(
+            low=-1.0, high=1.0, size=(4, 3)).astype('f4')
+        bias = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype('f4')
+        out = math_ops.matmul(x, filters)
+        out = nn_ops.bias_add(out, bias)
+        return {'output': out}
+
+    model = IfModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    def data_gen():
+      for _ in range(10):
+        yield {
+            'x':
+                ops.convert_to_tensor(
+                    np.random.uniform(low=0.0, high=1.0,
+                                      size=(1, 4)).astype('f4')),
+        }
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    with warnings.catch_warnings(record=True) as w:
+      converted_model = quantize_model.quantize(
+          input_saved_model_path, ['serving_default'],
+          tags,
+          output_directory,
+          optimization_method=quantize_model.OptimizationMethod
+          .STATIC_RANGE_QUANT,
+          representative_dataset=data_gen)
+      self.assertGreaterEqual(len(w), 1)
+      self.assertIn('does not have min/max values', str(w[0]))
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))

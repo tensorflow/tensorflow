@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
+#include "absl/time/time.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -38,13 +41,20 @@ namespace {
 
 constexpr char kCoordinationServiceType[] = "standalone";
 
-void ConfigCoordinationService(tensorflow::ServerDef* server_def) {
+void ConfigCoordinationService(
+    tensorflow::ServerDef* server_def,
+    bool agent_destruction_without_shutdown = false) {
   auto coord_config = server_def->mutable_default_session_config()
                           ->mutable_experimental()
                           ->mutable_coordination_config();
   coord_config->set_service_type(kCoordinationServiceType);
   coord_config->set_service_leader("/job:worker/replica:0/task:0");
-  coord_config->set_heartbeat_timeout_in_ms(5 * 1000);  // 5 seconds
+  coord_config->set_agent_destruction_without_shutdown(
+      agent_destruction_without_shutdown);
+  coord_config->set_heartbeat_timeout_in_ms(
+      absl::ToInt64Milliseconds(absl::Seconds(5)));
+  coord_config->set_shutdown_barrier_timeout_in_ms(
+      absl::ToInt64Milliseconds(absl::Seconds(5)));
 }
 
 string SetConfigKeyValueFn() {
@@ -104,7 +114,10 @@ TEST(CAPI, MultiClientCoordinationService) {
   const int cluster_size = 3;
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);
-  ConfigCoordinationService(&server_def);
+  // Agent needs to be destroyed without shutdown to simulate network failure,
+  // which would trigger stale heartbeat detection on the service-side.
+  ConfigCoordinationService(&server_def,
+                            /*agent_destruction_without_shutdown=*/true);
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;
     // By default, server_def has task index set to 0.

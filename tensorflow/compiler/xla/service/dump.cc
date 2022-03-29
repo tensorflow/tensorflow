@@ -392,6 +392,7 @@ static std::vector<std::string> DumpHloModuleImpl(
                              : HloPrintOptions::ShortParsable();
     print_options.set_print_large_constants(false);
     print_options.set_print_control_dependencies(true);
+    print_options.set_print_operand_index_annotation_interval(5);
     print_options.set_print_backend_config(true);
     print_options.set_print_metadata(opts.dump_hlo_metadata);
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
