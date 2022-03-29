@@ -256,12 +256,14 @@ def contains_saved_model(export_dir):
   provides no guarantee that it can be loaded.
 
   Args:
-    export_dir: Absolute string path to possible export location. For example,
+    export_dir: Absolute path to possible export location. For example,
                 '/my/foo/model'.
 
   Returns:
     True if the export directory contains SavedModel files, False otherwise.
   """
+  if isinstance(export_dir, os.PathLike):
+    export_dir = os.fspath(export_dir)
   return maybe_saved_model_directory(export_dir)
 
 
