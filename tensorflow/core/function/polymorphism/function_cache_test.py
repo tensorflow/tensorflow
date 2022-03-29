@@ -19,7 +19,8 @@ import timeit
 from typing import Optional
 
 from tensorflow.core.function import trace_type
-from tensorflow.python.eager import function_cache
+from tensorflow.core.function.polymorphism import function_cache
+from tensorflow.python.eager import function_context
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.types import trace
@@ -101,11 +102,11 @@ class FunctionCacheTest(test.TestCase):
   def testConcreteFunctionDictRetainsInsertedKeys(self):
     cache = function_cache.FunctionCache()
 
-    key_1, deletion_observer_1 = function_cache.make_cache_key(1)
+    key_1, deletion_observer_1 = function_context.make_cache_key(1)
     self.assertIsNone(cache.lookup(key_1, False))
 
-    key_2, deletion_observer_2 = function_cache.make_cache_key(2)
-    key_3, _ = function_cache.make_cache_key(3)
+    key_2, deletion_observer_2 = function_context.make_cache_key(2)
+    key_3, _ = function_context.make_cache_key(3)
 
     cache.add(key_1, deletion_observer_1, "test_1")
     cache.add(key_2, deletion_observer_2, "test_2")
@@ -117,9 +118,9 @@ class FunctionCacheTest(test.TestCase):
   def testClearRemovesAllConcreteFunctions(self):
     cache = function_cache.FunctionCache()
 
-    key_1, deletion_observer_1 = function_cache.make_cache_key(1)
-    key_2, deletion_observer_2 = function_cache.make_cache_key(2)
-    key_3, _ = function_cache.make_cache_key(3)
+    key_1, deletion_observer_1 = function_context.make_cache_key(1)
+    key_2, deletion_observer_2 = function_context.make_cache_key(2)
+    key_3, _ = function_context.make_cache_key(3)
 
     cache.add(key_1, deletion_observer_1, "test_1")
     cache.add(key_2, deletion_observer_2, "test_2")
@@ -136,7 +137,7 @@ class FunctionCacheTest(test.TestCase):
 
   def testDeleteRemovesConcreteFunctions(self):
     cache = function_cache.FunctionCache()
-    key_1, deletion_observer_1 = function_cache.make_cache_key(1)
+    key_1, deletion_observer_1 = function_context.make_cache_key(1)
     cache.add(key_1, deletion_observer_1, "test_1")
     self.assertEqual(cache.lookup(key_1, False), "test_1")
     cache.delete(key_1)
@@ -155,7 +156,7 @@ class FunctionCacheTest(test.TestCase):
     self.assertIsNone(cache.lookup(key_3, True))
 
   def testFunctionCacheKeyRespectsEquality(self):
-    ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    ctx = function_cache.FunctionContext(0)
     generic = MockGenericType
     key_a = function_cache.FunctionCacheKey(generic(1), ctx)
     key_b = function_cache.FunctionCacheKey(generic(2), ctx)
@@ -166,7 +167,7 @@ class FunctionCacheTest(test.TestCase):
     self.assertEqual(hash(key_a), hash(key_c))
 
   def testFunctionCacheKeyRespectsSubtype(self):
-    ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    ctx = function_cache.FunctionContext(0)
     key_a = function_cache.FunctionCacheKey(MockSubtypeOf2(1), ctx)
     key_b = function_cache.FunctionCacheKey(MockSubtypeOf2(2), ctx)
     key_c = function_cache.FunctionCacheKey(MockSubtypeOf2(1), ctx)
@@ -176,7 +177,7 @@ class FunctionCacheTest(test.TestCase):
     self.assertFalse(key_a.is_subtype_of(key_c))
 
   def testFunctionCacheKeyRespectsSupertype(self):
-    ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    ctx = function_cache.FunctionContext(0)
     key_a = function_cache.FunctionCacheKey(MockSupertypes2With3(1), ctx)
     key_b = function_cache.FunctionCacheKey(MockSupertypes2With3(2), ctx)
 
@@ -186,7 +187,7 @@ class FunctionCacheTest(test.TestCase):
     self.assertIsNone(key_a.most_specific_common_supertype([key_b]))
 
   def testMostSpecificFunctionCacheKeyIsLookedUp(self):
-    ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    ctx = function_cache.FunctionContext(0)
     cache = function_cache.FunctionCache()
     cache.add(
         function_cache.FunctionCacheKey(MockShape(1, 2, None), ctx),
@@ -201,7 +202,7 @@ class FunctionCacheTest(test.TestCase):
         "b")
 
   def testFirstMostSpecificFunctionCacheKeyIsLookedUp(self):
-    ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    ctx = function_cache.FunctionContext(0)
     cache = function_cache.FunctionCache()
     cache.add(
         function_cache.FunctionCacheKey(MockShape(1, 2, None), ctx),
@@ -216,7 +217,7 @@ class FunctionCacheTest(test.TestCase):
         "a")
 
   def testMostSpecificFunctionCacheKeyIsOrderAgnostic(self):
-    ctx = function_cache.ExecutionContext(1, 1, 1, 1, 1, 1)
+    ctx = function_cache.FunctionContext(0)
     keys = [(function_cache.FunctionCacheKey(MockShape(1, 1, 1), ctx), "a"),
             (function_cache.FunctionCacheKey(MockShape(1, None, 1), ctx), "b"),
             (function_cache.FunctionCacheKey(MockShape(None, None, 1),
@@ -257,7 +258,7 @@ class FunctionCacheTest(test.TestCase):
       self.skipTest("Weakref-Based Deletion is disabled")
 
     dummy_object = DummyClass()
-    key, deletion_observer = function_cache.make_cache_key(dummy_object)
+    key, deletion_observer = function_context.make_cache_key(dummy_object)
 
     cache = function_cache.FunctionCache()
     cache.add(key, deletion_observer, "testing")
@@ -272,7 +273,7 @@ class FunctionCacheTest(test.TestCase):
 
     dummy_object_1 = DummyClass()
     dummy_object_2 = DummyClass()
-    key, deletion_observer = function_cache.make_cache_key(
+    key, deletion_observer = function_context.make_cache_key(
         (dummy_object_1, dummy_object_2))
 
     cache = function_cache.FunctionCache()
@@ -290,7 +291,7 @@ class FunctionCacheTest(test.TestCase):
       self.skipTest("Weakref-Based Deletion is disabled")
 
     def second(o):
-      return function_cache.make_cache_key(o)
+      return function_context.make_cache_key(o)
 
     def first():
       return second(DummyClass())
@@ -316,7 +317,7 @@ class FunctionCacheBenchmark(test.Benchmark):
       args = []
       for j in range(args_per_call):
         args.append(array_ops.zeros([i, j]))
-      keys.append(function_cache.make_cache_key(args))
+      keys.append(function_context.make_cache_key(args))
 
     for key in keys[:-1]:
       cache.add(*key, "testing")
@@ -355,7 +356,7 @@ class FunctionCacheBenchmark(test.Benchmark):
       args = []
       for j in range(args_per_call):
         args.append(array_ops.zeros([i, j]))
-      keys.append(function_cache.make_cache_key(args))
+      keys.append(function_context.make_cache_key(args))
 
     for key in keys:
       cache.add(*key, "testing")
@@ -394,7 +395,7 @@ class FunctionCacheBenchmark(test.Benchmark):
       args = []
       for j in range(args_per_call):
         args.append(array_ops.zeros([i, j]))
-      keys.append(function_cache.make_cache_key(args))
+      keys.append(function_context.make_cache_key(args))
 
     for key in keys:
       cache.add(*key, "testing")
@@ -430,7 +431,7 @@ class FunctionCacheBenchmark(test.Benchmark):
       args = []
       for j in range(args_per_call):
         args.append(array_ops.zeros([i, j]))
-      keys.append(function_cache.make_cache_key(args))
+      keys.append(function_context.make_cache_key(args))
 
     def setup():
       cache.clear()
