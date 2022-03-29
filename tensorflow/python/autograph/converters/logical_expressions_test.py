@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for logical_expressions module."""
 
+import tensorflow.compat.v1 as tf
+
 from tensorflow.python.autograph.converters import logical_expressions
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
@@ -24,7 +26,7 @@ from tensorflow.python.platform import test
 class LogicalExpressionTest(converter_testing.TestCase):
 
   def test_equals(self):
-
+    tf.compat.v1.enable_tensor_equality()
     def f(a, b):
       return a == b
 

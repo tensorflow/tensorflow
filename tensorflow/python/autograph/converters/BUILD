@@ -181,6 +181,7 @@ py_test(
         ":converters",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:test_lib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
