@@ -170,30 +170,40 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   return %identity : tensor<i32>
 }
 ```
+
 ### `-tf-device-mark-input-output-aliases`: Marks device cluster inputs-output pairs that read/write to the same variable as aliases
+
 This pass analyzes the inputs and outputs to device cluster and marks those
 input-output pairs as aliases (using `tf.aliasing_output` attribute) which read
 and write to the same resource. This aliasing information can then be propagated
 to XLA compiler for input/output buffer space optimizations.
-### `-tf-drop-while-shape-invariant`: Drop `shape_invariant` attrbute from While/WhileRegion ops.
-Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op. This
-would allow shape inference pass to further refine operand/result shapes of
-these ops. This is only safe to do when compiling to XLA.
-### `-tf-drop-while-shape-invariant-in-device-cluster`: Drop `shape_invariant` attrbute from While/WhileRegion ops inside device cluster.
-Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only
-inside device cluster. This would allow shape inference pass to further
-refine operand/result shapes of these ops. This is only safe to do when
-compiling to XLA.
+
+### `-tf-drop-while-shape-invariant`: Drop `shape_invariant` attribute from While/WhileRegion ops.
+
+Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op. This would
+allow shape inference pass to further refine operand/result shapes of these ops.
+This is only safe to do when compiling to XLA.
+
+### `-tf-drop-while-shape-invariant-in-device-cluster`: Drop `shape_invariant` attribute from While/WhileRegion ops inside device cluster.
+
+Drop `shape_invariant` attribute from tf.While and tf.WhileRegion op only inside
+device cluster. This would allow shape inference pass to further refine
+operand/result shapes of these ops. This is only safe to do when compiling to
+XLA.
+
 ### `-tf-einsum`: Transform Einsum to other TF Ops for the supported variants
+
 ### `-tf-executor-break-up-islands`: Transform from TF control dialect to TF executor dialect.
+
 ### `-tf-executor-convert-control-to-data-outputs`: Chain control outputs of while loop body
+
 This pass converts the control outputs of a while loop body function to data
-outputs. Thus, inter iteration control dependencies are transformed to
-data dependencies. Since data dependencies can express which particular
-operations in the while loop body are dependent on which inputs, it captures
-inter iteration parallelism in while loop. Control dependencies on the other
-hand create a barrier at the end of while loop body thus blocking any
-parallelism across iterations.
+outputs. Thus, inter iteration control dependencies are transformed to data
+dependencies. Since data dependencies can express which particular operations in
+the while loop body are dependent on which inputs, it captures inter iteration
+parallelism in while loop. Control dependencies on the other hand create a
+barrier at the end of while loop body thus blocking any parallelism across
+iterations.
 
 For example, the following while loop body has a `%barrier` at the end.
 Although there is no data/control dependency between `tf.AssignVariableOp`
@@ -489,8 +499,9 @@ a single value from first replica.
 
 The benefit of this optimization is reduced memory requirement on host. For
 multiple writes (one from each replica) to such variables, the host would
-allocate buffer space to recieve the device output from all replicas, which is
+allocate buffer space to receive the device output from all replicas, which is
 not required. We can use the output of first replica in such cases.
+
 ### `-tf-init-text-file-to-import`: convert InitializeTableFromTextFileV2 ops to LookupTableImportV2Op to remove the dependency on asset files
 
 #### Options
@@ -1429,8 +1440,8 @@ For example, given the following `cluster_func` wrapping `func`:
   }
 ```
 
-Now, cluster_func recieves the following `*_sharding_configuration`
-attributes, and `func` receives the mhlo.sharding attribute:
+Now, cluster_func receives the following `*_sharding_configuration` attributes,
+and `func` receives the mhlo.sharding attribute:
 
 ```mlir
   func @test(%arg0: tensor<*xi32>) {
