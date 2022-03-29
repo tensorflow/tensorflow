@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/stream_executor/platform.h"
 
 #if XLA_ENABLE_XLIR
@@ -734,14 +733,6 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       !memory_allocator->AllowsAsynchronousDeallocation();
 
   se::StreamExecutor* executor = run_options->stream()->parent();
-
-  // Activate the GPU context. Technically speaking this is redundant, but if we
-  // don't do this, then every call into the StreamExecutor APIs will assume
-  // the correct context is not set and will reactivate the GPU context. This
-  // appears to cost ~1us each time. By activating it ahead of each time,
-  // StreamExecutor's context caching logic will apply and it will know not to
-  // reactivate it on each call.
-  se::gpu::ScopedActivateExecutorContext activate_context(executor);
 
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA

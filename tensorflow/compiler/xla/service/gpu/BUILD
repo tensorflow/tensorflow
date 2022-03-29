@@ -740,7 +740,6 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/gpu:asm_compiler",
-        "//tensorflow/stream_executor/gpu:gpu_activation_header",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:gpu_types_header",
         "//tensorflow/stream_executor:blas",
