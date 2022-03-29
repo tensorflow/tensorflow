@@ -14,11 +14,10 @@
 # ==============================================================================
 """Tests for logical_expressions module."""
 
-import tensorflow.compat.v1 as tf
-
 from tensorflow.python.autograph.converters import logical_expressions
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
@@ -26,10 +25,11 @@ from tensorflow.python.platform import test
 class LogicalExpressionTest(converter_testing.TestCase):
 
   def test_equals(self):
-    tf.compat.v1.enable_tensor_equality()
+    
     def f(a, b):
       return a == b
-
+    
+    ops.enable_tensor_equality()
     tr = self.transform(f, logical_expressions)
 
     self.assertTrue(self.evaluate(tr(constant_op.constant(1), 1)))
