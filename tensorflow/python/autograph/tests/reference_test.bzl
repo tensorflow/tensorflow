@@ -21,5 +21,5 @@ def reference_test(name, tags = [], shard_count = 1):
         deps = [":reference_tests"],
         python_version = "PY3",
         shard_count = shard_count,
-        tags = tags + ["no_windows"],
+        tags = tags + ["no_windows", "no_pip"],
     )
