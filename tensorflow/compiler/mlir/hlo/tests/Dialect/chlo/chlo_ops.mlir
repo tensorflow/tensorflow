@@ -14,7 +14,7 @@ func.func @minimum_broadcast_shapes_mismatch_operand_and_result_count(%lhs: tens
   // expected-error @+1{{number of operand shapes (2) does not match number of result shapes (1)}}
   %0 = chlo.minimum_broadcast_shapes %lhs, %rhs :
       tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
-  return
+  func.return
 }
 
 // -----
@@ -22,7 +22,7 @@ func.func @minimum_broadcast_shapes_mismatch_operand_and_result_count(%lhs: tens
 func.func @minimum_broadcast_shapes_one_operand(%arg: tensor<?xindex>) {
   // expected-error @+1{{number of operand shapes (1) should be >= 2}}
   %0 = chlo.minimum_broadcast_shapes %arg : tensor<?xindex> -> tensor<?xindex>
-  return
+  func.return
 }
 
 // -----

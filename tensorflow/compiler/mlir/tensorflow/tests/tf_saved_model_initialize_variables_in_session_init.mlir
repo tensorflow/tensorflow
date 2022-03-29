@@ -33,7 +33,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   }
 
   func.func @Init() attributes {tf_saved_model.exported_names = ["Init"]} {
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @Init

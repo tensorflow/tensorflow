@@ -8,7 +8,7 @@
 // PerTensor-LABEL: QuantizeConv2D
 // MinElement-LABEL: QuantizeConv2D
 // Float16-LABEL: QuantizeConv2D
-func @QuantizeConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32> {
+func.func @QuantizeConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32> {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3xf32>
   %w = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
   %b = arith.constant dense<-1.23697901> : tensor<64xf32>
@@ -51,7 +51,7 @@ func @QuantizeConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32>
 // PerTensor-LABEL: QuantizeDepthwiseConv2D
 // MinElement-LABEL: QuantizeDepthwiseConv2D
 // Float16-LABEL: QuantizeDepthwiseConv2D
-func @QuantizeDepthwiseConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32> {
+func.func @QuantizeDepthwiseConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x64xf32> {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3xf32>
   %w = arith.constant dense<127.0> : tensor<64x3x3x3xf32>
   %b = arith.constant dense<0.0> : tensor<64xf32>
@@ -92,7 +92,7 @@ func @QuantizeDepthwiseConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x11
 
 // CHECK-LABEL: QuantizeFullyConnected
 // PerTensor-LABEL: QuantizeFullyConnected
-func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x512xf32> {
+func.func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x512xf32> {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3xf32>
   %w = arith.constant dense<127.0> : tensor<512x12xf32>
   %b = arith.constant dense<0.0> : tensor<512xf32>
@@ -122,7 +122,7 @@ func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112
 // CHECK-LABEL: QuantizeBatchMatmulWithActConst
 // PerTensor-LABEL: QuantizeBatchMatmulWithActConst
 // MinElement-LABEL: QuantizeBatchMatmulWithActConst
-func @QuantizeBatchMatmulWithActConst(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x3x3x12xf32> {
+func.func @QuantizeBatchMatmulWithActConst(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x3x3x12xf32> {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x3x3x512xf32>) -> tensor<1x3x3x512xf32>
   %w = arith.constant dense<127.0> : tensor<512x2xf32>
   %mm = "tfl.batch_matmul"(%0, %w) {adj_x = false, adj_y = false} : (tensor<1x3x3x512xf32>, tensor<512x2xf32>) -> tensor<1x3x3x12xf32>
@@ -150,7 +150,7 @@ func @QuantizeBatchMatmulWithActConst(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x
 
 // CHECK-LABEL: NotQuantizeBatchMatmulWithConstAct
 // PerTensor-LABEL: NotQuantizeBatchMatmulWithConstAct
-func @NotQuantizeBatchMatmulWithConstAct(%arg0: tensor<1x1x3x512xf32>) -> tensor<1x1x12x3xf32> {
+func.func @NotQuantizeBatchMatmulWithConstAct(%arg0: tensor<1x1x3x512xf32>) -> tensor<1x1x12x3xf32> {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x1x3x512xf32>) -> tensor<1x1x3x512xf32>
   %w = arith.constant dense<127.0> : tensor<1x1x12x512xf32>
   %mm = "tfl.batch_matmul"(%w, %0) {adj_x = false, adj_y = true} : (tensor<1x1x12x512xf32>, tensor<1x1x3x512xf32>) -> tensor<1x1x12x3xf32>
@@ -168,7 +168,7 @@ func @NotQuantizeBatchMatmulWithConstAct(%arg0: tensor<1x1x3x512xf32>) -> tensor
 
 // CHECK-LABEL: NotQuantizeBatchMatmulWithActAct
 // PerTensor-LABEL: NotQuantizeBatchMatmulWithActAct
-func @NotQuantizeBatchMatmulWithActAct(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x3x3x3xf32> {
+func.func @NotQuantizeBatchMatmulWithActAct(%arg0: tensor<1x3x3x512xf32>) -> tensor<1x3x3x3xf32> {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x3x3x512xf32>) -> tensor<1x3x3x512xf32>
   %mm = "tfl.batch_matmul"(%0, %0) {adj_x = false, adj_y = true} : (tensor<1x3x3x512xf32>, tensor<1x3x3x512xf32>) -> tensor<1x3x3x3xf32>
   %mm_s = "quant.stats"(%mm) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x3x3x3xf32>) -> tensor<1x3x3x3xf32>
@@ -183,7 +183,7 @@ func @NotQuantizeBatchMatmulWithActAct(%arg0: tensor<1x3x3x512xf32>) -> tensor<1
 
 // CHECK-LABEL: NotQuantizeConst
 // Float16-LABEL: NotQuantizeConst
-func @NotQuantizeConst() -> tensor<1x1x12x512xf32> {
+func.func @NotQuantizeConst() -> tensor<1x1x12x512xf32> {
   %w = arith.constant dense<-1.23697901> : tensor<1x1x12x512xf32>
   func.return %w : tensor<1x1x12x512xf32>
 
@@ -197,7 +197,7 @@ func @NotQuantizeConst() -> tensor<1x1x12x512xf32> {
 // CHECK-LABEL: QuantizeCustomOp
 // CustomOp-LABEL: QuantizeCustomOp
 // MinElement-LABEL: QuantizeCustomOp
-func @QuantizeCustomOp(%arg0: tensor<1x1x1x1xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) attributes {tf.entry_function = {inputs = "input", outputs = "custom_op"}} {
+func.func @QuantizeCustomOp(%arg0: tensor<1x1x1x1xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) attributes {tf.entry_function = {inputs = "input", outputs = "custom_op"}} {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 2.550000e+02]> : tensor<2xf32>} : (tensor<1x1x1x1xf32>) -> tensor<1x1x1x1xf32>
   %w_1 = arith.constant dense<127.0> : tensor<4096x1x1x1xf32>
   %w_2 = arith.constant dense<127.0> : tensor<128x1x1x1xf32>
@@ -240,7 +240,7 @@ func @QuantizeCustomOp(%arg0: tensor<1x1x1x1xf32>) -> (tensor<*xf32>, tensor<*xf
 
 // CHECK-LABEL: QuantizeTransposeConvWeightOnly
 // PerTensor-LABEL: QuantizeTransposeConvWeightOnly
-func @QuantizeTransposeConvWeightOnly(%arg0: tensor<32x4x4x128xf32>, %arg1: tensor<4xi32>) -> tensor<1x32x42x128xf32> {
+func.func @QuantizeTransposeConvWeightOnly(%arg0: tensor<32x4x4x128xf32>, %arg1: tensor<4xi32>) -> tensor<1x32x42x128xf32> {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<32x4x4x128xf32>) -> tensor<32x4x4x128xf32>
   %w = arith.constant dense<127.0> : tensor<1x32x42x128xf32>
   %b = arith.constant dense<0.0> : tensor<1x32x42x128xf32>
@@ -269,7 +269,7 @@ func @QuantizeTransposeConvWeightOnly(%arg0: tensor<32x4x4x128xf32>, %arg1: tens
 
 // CHECK-LABEL: QuantizeGatherWeightOnly
 // PerTensor-LABEL: QuantizeGatherWeightOnly
-func @QuantizeGatherWeightOnly(%arg0: tensor<3xi32>) -> tensor<3x3x3x3xf32> {
+func.func @QuantizeGatherWeightOnly(%arg0: tensor<3xi32>) -> tensor<3x3x3x3xf32> {
   %w = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
   %emb = "tfl.gather"(%w, %arg0) {axis = 0 : i32, batch_dims = 0 : i32} : (tensor<64x3x3x3xf32>, tensor<3xi32>) -> tensor<3x3x3x3xf32>
   %emb_s = "quant.stats"(%emb) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<3x3x3x3xf32>) -> tensor<3x3x3x3xf32>
@@ -291,7 +291,7 @@ func @QuantizeGatherWeightOnly(%arg0: tensor<3xi32>) -> tensor<3x3x3x3xf32> {
 // CHECK-LABEL: NotQuantizeConv3D
 // PerTensor-LABEL: NotQuantizeConv3D
 // Float16-LABEL: NotQuantizeConv3D
-func @NotQuantizeConv3D(%arg0: tensor<?x28x28x28x8xf32>) -> tensor<?x26x26x26x16xf32> {
+func.func @NotQuantizeConv3D(%arg0: tensor<?x28x28x28x8xf32>) -> tensor<?x26x26x26x16xf32> {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<?x28x28x28x8xf32>) -> tensor<?x28x28x28x8xf32>
   %cst = arith.constant dense<16> : tensor<1xi64>
   %cst_0 = "tfl.no_value"() {value = unit} : () -> none
@@ -351,7 +351,7 @@ func @NotQuantizeConv3D(%arg0: tensor<?x28x28x28x8xf32>) -> tensor<?x26x26x26x16
 // CHECK-LABEL: QuantizeMultiUses
 // PerTensor-LABEL: QuantizeMultiUses
 // Float16-LABEL: QuantizeMultiUses
-func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x122xf32> {
+func.func @QuantizeMultiUses(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x122xf32> {
   %0 = "quant.stats"(%arg0) {layerStats = dense<[0.000000e+00, 1.000000e+01]> : tensor<2xf32>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3xf32>
   %w = arith.constant dense<1.270000e+02> : tensor<64x3x3x3xf32>
   %b = arith.constant dense<-1.23697901> : tensor<64xf32>

@@ -15,11 +15,26 @@ package(
 )
 
 cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "tf_framework_legalize_to_llvm",
     srcs = ["tf_framework_legalize_to_llvm.cc"],
     hdrs = ["rewriters.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":utils",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
@@ -212,6 +227,7 @@ cc_library(
         ":embed_tf_framework",  # buildcleaner: keep
         ":kernel_gen_passes_inc_gen",
         ":tf_framework_legalize_to_llvm",  # buildcleaner: keep
+        ":utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:gml_st",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_memref",

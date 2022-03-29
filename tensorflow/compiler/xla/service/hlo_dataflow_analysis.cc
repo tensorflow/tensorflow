@@ -1638,6 +1638,68 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
          opcode == HloOpcode::kAsyncDone;
 }
 
+namespace {
+// Returns in-place input/output pairs for the given fusion op, according to the
+// aliasing rules for the corresponding fusion computation.
+std::vector<std::pair<HloUse, ShapeIndex>>
+GetFusionInstructionInPlaceInputOutputPairs(HloInstruction* instruction) {
+  std::vector<std::pair<HloUse, ShapeIndex>> input_output_pairs;
+  for (auto& indexed_shape : ShapeUtil::GetLeafShapes(instruction->shape())) {
+    HloInstruction* hlo_generating_output =
+        instruction->fused_expression_root();
+    ShapeIndex expected_output_index = indexed_shape.index;
+    while (hlo_generating_output->opcode() == HloOpcode::kTuple &&
+           !expected_output_index.empty()) {
+      hlo_generating_output =
+          hlo_generating_output->mutable_operand(expected_output_index.front());
+      expected_output_index.pop_front();
+    }
+    while (hlo_generating_output->opcode() == HloOpcode::kGetTupleElement) {
+      expected_output_index.push_front(hlo_generating_output->tuple_index());
+      hlo_generating_output = hlo_generating_output->mutable_operand(0);
+    }
+
+    ShapeIndex operand_index;
+    const HloInstruction* fusion_parameter = nullptr;
+    auto nested_pairs =
+        HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo_generating_output);
+    if (nested_pairs.empty()) {
+      continue;
+    }
+
+    for (const auto& pair : nested_pairs) {
+      const ShapeIndex& output_index = pair.second;
+      if (output_index == expected_output_index) {
+        CHECK(fusion_parameter == nullptr);
+        const HloUse& input = pair.first;
+        fusion_parameter = hlo_generating_output->operand(input.operand_number);
+        operand_index = input.operand_index;
+      }
+    }
+
+    if (fusion_parameter) {
+      while (fusion_parameter->opcode() == HloOpcode::kTuple &&
+             !operand_index.empty()) {
+        fusion_parameter = fusion_parameter->operand(operand_index.front());
+        operand_index.pop_front();
+      }
+      while (fusion_parameter->opcode() == HloOpcode::kGetTupleElement) {
+        operand_index.push_front(fusion_parameter->tuple_index());
+        fusion_parameter = fusion_parameter->operand(0);
+      }
+
+      if (fusion_parameter->opcode() == HloOpcode::kParameter) {
+        input_output_pairs.emplace_back(
+            HloUse{instruction, fusion_parameter->parameter_number(),
+                   operand_index},
+            indexed_shape.index);
+      }
+    }
+  }
+  return input_output_pairs;
+}
+}  // namespace
+
 /*static*/ std::vector<std::pair<HloUse, ShapeIndex>>
 HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
   if (IsInPlaceOperation(instruction->opcode())) {
@@ -1694,64 +1756,11 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(HloInstruction* instruction) {
       in_place_pairs.push_back({HloUse{instruction, i, {}}, {i}});
     }
     return in_place_pairs;
-  } else if (instruction->opcode() != HloOpcode::kFusion) {
-    return {};
+  } else if (instruction->opcode() == HloOpcode::kFusion) {
+    return GetFusionInstructionInPlaceInputOutputPairs(instruction);
   }
 
-  // Handle fusion instructions.
-  std::vector<std::pair<HloUse, ShapeIndex>> input_output_pairs;
-  for (auto& indexed_shape : ShapeUtil::GetLeafShapes(instruction->shape())) {
-    HloInstruction* hlo_generating_output =
-        instruction->fused_expression_root();
-    ShapeIndex expected_output_index = indexed_shape.index;
-    while (hlo_generating_output->opcode() == HloOpcode::kTuple &&
-           !expected_output_index.empty()) {
-      hlo_generating_output =
-          hlo_generating_output->mutable_operand(expected_output_index.front());
-      expected_output_index.pop_front();
-    }
-    while (hlo_generating_output->opcode() == HloOpcode::kGetTupleElement) {
-      expected_output_index.push_front(hlo_generating_output->tuple_index());
-      hlo_generating_output = hlo_generating_output->mutable_operand(0);
-    }
-
-    ShapeIndex operand_index;
-    const HloInstruction* fusion_parameter = nullptr;
-    auto nested_pairs = GetInPlaceInputOutputPairs(hlo_generating_output);
-    if (nested_pairs.empty()) {
-      continue;
-    }
-
-    for (const auto& pair : nested_pairs) {
-      const ShapeIndex& output_index = pair.second;
-      if (output_index == expected_output_index) {
-        CHECK(fusion_parameter == nullptr);
-        const HloUse& input = pair.first;
-        fusion_parameter = hlo_generating_output->operand(input.operand_number);
-        operand_index = input.operand_index;
-      }
-    }
-
-    if (fusion_parameter) {
-      while (fusion_parameter->opcode() == HloOpcode::kTuple &&
-             !operand_index.empty()) {
-        fusion_parameter = fusion_parameter->operand(operand_index.front());
-        operand_index.pop_front();
-      }
-      while (fusion_parameter->opcode() == HloOpcode::kGetTupleElement) {
-        operand_index.push_front(fusion_parameter->tuple_index());
-        fusion_parameter = fusion_parameter->operand(0);
-      }
-
-      if (fusion_parameter->opcode() == HloOpcode::kParameter) {
-        input_output_pairs.emplace_back(
-            HloUse{instruction, fusion_parameter->parameter_number(),
-                   operand_index},
-            indexed_shape.index);
-      }
-    }
-  }
-  return input_output_pairs;
+  return {};
 }
 
 bool HloDataflowAnalysis::HasInPlaceOperations(

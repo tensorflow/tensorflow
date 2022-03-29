@@ -794,11 +794,10 @@ func.func @test_strided_slice_dynamic_begin(%arg0: tensor<10x?x?xf32>) -> tensor
 // -----
 
 // CHECK-LABEL: test_select
-// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<false> : tensor<1x1x1xi1>}
-// CHECK: %[[VAR2:.*]] = "tosa.select"(%[[VAR0]], %arg0, %arg1)
-func.func @test_select(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-  %cst = arith.constant dense<false> : tensor<1xi1>
-  %0 = "tfl.select_v2"(%cst, %arg0, %arg1) : (tensor<1xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK: %[[VAR1:.*]] = "tosa.reshape"(%arg2) {new_shape = [1, 1, 1]} : (tensor<1xi1>) -> tensor<1x1x1xi1>
+// CHECK: %[[VAR2:.*]] = "tosa.select"(%[[VAR1]], %arg0, %arg1)
+func.func @test_select(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<1xi1>) -> tensor<13x21x3xf32> {
+  %0 = "tfl.select_v2"(%arg2, %arg0, %arg1) : (tensor<1xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   func.return %0 : tensor<13x21x3xf32>
 }
 

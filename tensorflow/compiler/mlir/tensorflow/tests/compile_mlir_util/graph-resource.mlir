@@ -6,7 +6,7 @@ module attributes {tf.versions = {producer = 511 : i32}} {
       %control = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg0) : (tensor<*x!tf_type.resource>, tensor<*xf32>) -> ()
       tf_executor.fetch %control : !tf_executor.control
     }
-    return
+    func.return
   }
 }
 

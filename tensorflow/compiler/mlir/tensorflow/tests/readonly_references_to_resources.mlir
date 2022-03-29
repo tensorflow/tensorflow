@@ -7,7 +7,7 @@ func.func @f() {
   // CHECK: "tf.ReadVariableOp"
   %val0 = "tf.VariableV2"() {_class = ["loc:@v"], container = "", device = "", shape = #tf_type.shape<96>, shared_name = ""} : () -> tensor<96x!tf_type.f32ref>
   %val1 = "tf.Identity"(%val0) : (tensor<96x!tf_type.f32ref>) -> tensor<96xf32>
-  return
+  func.return
 }
 
 // -----
@@ -19,7 +19,7 @@ func.func @f() {
   // CHECK: "tf.ReadVariableOp"
   %val0 = "tf.VariableV2"() {container = "", device = "", shape = #tf_type.shape<96>, shared_name = ""} : () -> tensor<96x!tf_type.f32ref>
   %val1 = "tf.Identity"(%val0) {_class = ["loc:@v"]} : (tensor<96x!tf_type.f32ref>) -> tensor<96xf32>
-  return
+  func.return
 }
 
 // -----
@@ -38,7 +38,7 @@ func.func @f() {
   %val0 = "tf.VariableV2"() {_class = ["loc:@v"], container = "", device = "", shape = #tf_type.shape<96>, shared_name = ""} : () -> tensor<96x!tf_type.f32ref>
   %val1 = "tf.Identity"(%val0) : (tensor<96x!tf_type.f32ref>) -> tensor<96xf32>
   %val2 = "tf.Identity"(%val0) : (tensor<96x!tf_type.f32ref>) -> tensor<96xf32>
-  return
+  func.return
 }
 
 // -----
@@ -49,7 +49,7 @@ func.func @f() {
   // CHECK-NOT: "tf.VariableV2"
   // CHECK-NOT: "tf.VarHandleOp"
   %val0 = "tf.VariableV2"() {_class = ["loc:@v"], container = "", device = "", shape = #tf_type.shape<96>, shared_name = ""} : () -> tensor<96x!tf_type.f32ref>
-  return
+  func.return
 }
 
 // -----
@@ -60,7 +60,7 @@ func.func @f() {
   // expected-error @+1 {{'tf.VariableV2' op expects all users to be 'tf.Identity', but got user tf.CustomIdentity}}
   %val0 = "tf.VariableV2"() {_class = ["loc:@v"], container = "", device = "", shape = #tf_type.shape<96>, shared_name = ""} : () -> tensor<96x!tf_type.f32ref>
   %val1 = "tf.CustomIdentity"(%val0) : (tensor<96x!tf_type.f32ref>) -> tensor<96xf32>
-  return
+  func.return
 }
 
 // -----
@@ -72,7 +72,7 @@ func.func @f() {
   // CHECK: "tf.ReadVariableOp"
   %val0 = "tf.VariableV2"() {container = "", device = "", shape = #tf_type.shape<96>, shared_name = "test"} : () -> tensor<96x!tf_type.f32ref>
   %val1 = "tf.Identity"(%val0) : (tensor<96x!tf_type.f32ref>) -> tensor<96xf32>
-  return
+  func.return
 }
 
 // -----
@@ -83,7 +83,7 @@ func.func @f() {
   // expected-error @+1 {{'tf.VariableV2' op has no '_class' and 'shared_name' attributes}}
   %val0 = "tf.VariableV2"() {container = "", device = "", shape = #tf_type.shape<96>, shared_name = ""} : () -> tensor<96x!tf_type.f32ref>
   %val1 = "tf.Identity"(%val0) : (tensor<96x!tf_type.f32ref>) -> tensor<96xf32>
-  return
+  func.return
 }
 
 // -----
@@ -94,7 +94,7 @@ func.func @f() {
   // expected-error @+1 {{'tf.VariableV2' op expects variable name in '_class' attribute, but got ["unrelated_class"]}}
   %val0 = "tf.VariableV2"() {_class = ["unrelated_class"], container = "", device = "", shape = #tf_type.shape<96>, shared_name = ""} : () -> tensor<96x!tf_type.f32ref>
   %val1 = "tf.Identity"(%val0) : (tensor<96x!tf_type.f32ref>) -> tensor<96xf32>
-  return
+  func.return
 }
 
 // -----
@@ -105,5 +105,5 @@ func.func @f() {
   // expected-error @+1 {{'tf.VariableV2' op expects only one named location in '_class' attribute, but got ["loc:@v1", "loc:@v2"]}}
   %val0 = "tf.VariableV2"() {_class = ["loc:@v1", "loc:@v2"], container = "", device = "", shape = #tf_type.shape<96>, shared_name = ""} : () -> tensor<96x!tf_type.f32ref>
   %val1 = "tf.Identity"(%val0) : (tensor<96x!tf_type.f32ref>) -> tensor<96xf32>
-  return
+  func.return
 }

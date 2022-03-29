@@ -18,7 +18,7 @@ func.func @hoist_tail_assign(%arg0: !tf_res_f32) {
     tf_device.return %op_b : tensor<i32>
   }
   // CHECK: "tf.AssignVariableOp"([[ARG0]], [[REPLICATE]]#2)
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @do_not_hoist_non_tail_assigns
@@ -36,7 +36,7 @@ func.func @do_not_hoist_non_tail_assigns(%arg0: !tf_res_f32) {
     tf_device.return
   }
   // CHECK-NOT: tf.AssignVariableOp
-  return
+  func.return
 }
 
 
@@ -55,7 +55,7 @@ func.func @do_not_hoist_writes_to_explicitly_captured_resources(%arg0: !tf_res_f
     tf_device.return %op_b : tensor<i32>
   }
   // CHECK-NOT: tf.AssignVariableOp
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @only_hoist_tail_assign
@@ -75,5 +75,5 @@ func.func @only_hoist_tail_assign(%arg0: !tf_res_f32) {
     tf_device.return
   }
   // CHECK: "tf.AssignVariableOp"([[ARG0]], [[REPLICATE]]#0)
-  return
+  func.return
 }

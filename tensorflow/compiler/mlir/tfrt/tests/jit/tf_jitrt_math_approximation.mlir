@@ -66,7 +66,7 @@
 // CHECK:  %[[VAL_55:.*]] = arith.select %[[VAL_54]], %[[VAL_53]], %[[VAL_0]] : f32
 // CHECK:  return %[[VAL_55]] : f32
 // CHECK: }
-func @exp_scalar(%arg0: f32) -> f32 {
+func.func @exp_scalar(%arg0: f32) -> f32 {
   %0 = math.exp %arg0 : f32
   func.return %0 : f32
 }

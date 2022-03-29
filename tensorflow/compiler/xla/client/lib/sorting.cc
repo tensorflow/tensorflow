@@ -61,14 +61,11 @@ XlaOp TopK(XlaOp input, int64_t k) {
     constexpr int32_t kLow16BitsMask = kLow16BitsLimit - 1;
     constexpr int32_t kHigh16BitsMask = ~kLow16BitsMask;
 
-    // Whether to use the packed sorting algorithm. It currently prevents the
-    // use of the top-k custom-call transformation, so packed sorting is limited
-    // to relatively small last dimensions. The first two conditions are for
-    // correctness, and the last is for profitability; that is why the last two
-    // are redundant with each other.
+    // Whether to use the packed sorting algorithm for BF16 data. This change is
+    // good in general, and enables a separate TPU optimization for common cases
+    // as well (top-k for small k).
     const bool use_packed_bf16_sort =
-        (input_shape.element_type() == BF16 &&
-         last_dim_size < kLow16BitsLimit && last_dim_size < 1500);
+        (input_shape.element_type() == BF16 && last_dim_size < kLow16BitsLimit);
 
     std::vector<int64_t> start_indices(input_shape.dimensions_size(), 0);
     std::vector<int64_t> limit_indices(input_dims.begin(), input_dims.end());

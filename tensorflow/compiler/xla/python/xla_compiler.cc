@@ -457,11 +457,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &HloPrintOptions::set_indent_amount)
       .def_property("is_in_nested_computation",
                     &HloPrintOptions::is_in_nested_computation,
-                    &HloPrintOptions::set_is_in_nested_computation)
-      .def_property(
-          "leading_and_trailing_instructions_number",
-          &HloPrintOptions::leading_and_trailing_instructions_number,
-          &HloPrintOptions::set_leading_and_trailing_instructions_number);
+                    &HloPrintOptions::set_is_in_nested_computation);
 
   py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
       m, "HloModule");

@@ -17,5 +17,5 @@ func.func @main() {
     %0:2 = tf_executor.island wraps "tf.Placeholder"() {name = "dummy", dtype = "tfdtype$DT_FLOAT", emptylist = [], typelist = ["tfdtype$DT_INT32", "tfdtype$DT_FLOAT"]} : () -> tensor<*xi32>
     tf_executor.fetch
   }
-  return
+  func.return
 }

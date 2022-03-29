@@ -55,6 +55,10 @@
   `tf.keras.mixed_precision.experimental` API. The symbols are still available
   under `tf.compat.v1.mixed_precision`.
 
+* The `experimental_relax_shapes` heuristic for `tf.function` has been
+  deprecated and replaced with `reduce_retracing` which encompasses broader
+  heuristics to reduce the number of retraces (see below).
+
 # Known Caveats
 
 *   <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
@@ -111,12 +115,14 @@
 *   `tf.lite`:
 
     *   Added TFLite builtin op support for the following TF ops:
-    *   `tf.math.argmin`/`tf.math.argmax` for input data type `tf.bool` on CPU.
-    *   `tf.nn.gelu` op for output data type `tf.float32` and quantization on
-        CPU.
+        *   `tf.math.argmin`/`tf.math.argmax` for input data type `tf.bool` on
+            CPU.
+        *   `tf.nn.gelu` op for output data type `tf.float32` and quantization
+            on CPU.
     *   Add nominal support for unsigned 16-bit integer tensor types. Note that
         very few TFLite kernels support this type natively, so its use in mobile
         ML authoring is generally discouraged.
+    *   Add support for unsigned 16-bit integer tensor types in cast op.
     *   Experimental support for lowering `list_ops.tensor_list_set_item` with
         `DynamicUpdateSlice`.
     *   Enabled a new MLIR-based dynamic range quantization backend by default
@@ -124,6 +130,10 @@
             quantization and post-training float16 quantization.
         *   Set `experimental_new_dynamic_range_quantizer` in
             tf.lite.TFLiteConverter to False to disable this change
+    *   Native TF Lite variables are now enabled during conversion by default
+        on all v2 TfLiteConverter entry points.
+        `experimental_enable_resource_variables` on tf.lite.TFLiteConverter
+        is now True by default and will be removed in the future.
 
 *   `tf.function`:
 
@@ -133,6 +143,26 @@
          `tf.types.experimental.SupportsTracingProtocol`.
     *    `TypeSpec` classes (as associated with `ExtensionTypes`) also implement
          the Tracing Protocol which can be overriden if necessary.
+    *    The newly introduced `reduce_retracing` option also uses the Tracing
+         Protocol to proactively generate generalized traces similar to
+         `experimental_relax_shapes` (which has now been deprecated).
+
+*   Unified eager and `tf.function` execution:
+
+    *   Eager mode can now execute each op as a `tf.function`, allowing for more
+        consistent feature support in future releases.
+    *   It is available for immediate use.
+        *   See the `TF_RUN_EAGER_OP_AS_FUNCTION` environment variable in
+            [eager context](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/eager/context.py).
+        *   Eager performance should be similar with this feature enabled.
+            *   A roughly 5us per-op overhead may be observed when running many
+                small functions.
+            *   Note a
+                [known issue](https://github.com/tensorflow/tensorflow/issues/55414)
+                with GPU performance.
+        *   The behavior of `tf.function` itself is unaffected.
+    *   Note: This feature will be enabled by default in an upcoming version of
+        TensorFlow.
 
 # Bug Fixes and Other Changes
 
@@ -147,6 +177,11 @@
         `tf.data.experimental.parse_example_dataset` to match the behavior of
         `tf.io.parse_example`.
 
+    *   Added a new field, `filter_parallelization`, to
+        `tf.data.experimental.OptimizationOptions`. If it is set to `True`,
+        tf.data will run `Filter` transformation with multiple threads. Its
+        default value is `False` if not specified.
+
 *    `tf.keras`:
 
     *   Fixed bug in optimizers that prevented them from properly checkpointing
@@ -156,6 +191,12 @@
 * `tf.random`
     * Added `tf.random.experimental.index_shuffle`, for shuffling a sequence
       without materializing the sequence in memory.
+
+*   `tf.RaggedTensor`:
+    *   Introduced `tf.experimental.RowPartition`, which encodes how one
+        dimension in a RaggedTensor relates to another, into the public API.
+    *   Introduced `tf.experimental.DynamicRaggedShape`, which represents the
+        shape of a RaggedTensor.
 
 *   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 *   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>

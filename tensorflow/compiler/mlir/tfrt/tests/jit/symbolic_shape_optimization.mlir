@@ -6,7 +6,7 @@
 // CHECK:       @optimize_1dx1d_bcast(
 // CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: tensor<?xf32>
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<?xf32>
-func @optimize_1dx1d_bcast(
+func.func @optimize_1dx1d_bcast(
   %arg0: tensor<?xf32>
     {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
   %arg1: tensor<?xf32>
@@ -40,7 +40,7 @@ func @optimize_1dx1d_bcast(
 // CHECK:       @optimize_1dx2d_bcast_const_shape(
 // CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: tensor<512xf32>
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<?x512xf32>
-func @optimize_1dx2d_bcast_const_shape(
+func.func @optimize_1dx2d_bcast_const_shape(
   %arg0: tensor<512xf32>,
   %arg1: tensor<?x512xf32>
     {jitrt.symbolic_shape = dense<[-2, 512]> : tensor<2xi64>}
@@ -73,7 +73,7 @@ func @optimize_1dx2d_bcast_const_shape(
 // CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: tensor<?xf32>
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<?xf32>
 // CHECK-SAME:    %[[ARG2:[a-z0-9]+]]: tensor<?xf32>
-func @optimize_1dx1dx1d_bcast(
+func.func @optimize_1dx1dx1d_bcast(
   %arg0: tensor<?xf32>
     {jitrt.symbolic_shape = dense<[-2]> : tensor<1xi64>},
   %arg1: tensor<?xf32>
@@ -112,7 +112,7 @@ func @optimize_1dx1dx1d_bcast(
 // CHECK:       @optimize_2dx1d_bcast(
 // CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: tensor<10x?xf32>
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<?xf32>
-func @optimize_2dx1d_bcast(
+func.func @optimize_2dx1d_bcast(
   %arg0: tensor<10x?xf32>
     {jitrt.symbolic_shape = dense<[10, -2]> : tensor<2xi64>},
   %arg1: tensor<?xf32>
@@ -160,7 +160,7 @@ func @optimize_2dx1d_bcast(
 // CHECK:       @optimize_3dx3d_bcast(
 // CHECK-SAME:    %[[ARG0:[a-z0-9]+]]: tensor<?x1x?xf32>
 // CHECK-SAME:    %[[ARG1:[a-z0-9]+]]: tensor<1x?x1xf32>
-func @optimize_3dx3d_bcast(
+func.func @optimize_3dx3d_bcast(
   %arg0: tensor<?x1x?xf32>
     {jitrt.symbolic_shape = dense<[-2, 1, -3]> : tensor<3xi64>},
   %arg1: tensor<1x?x1xf32>

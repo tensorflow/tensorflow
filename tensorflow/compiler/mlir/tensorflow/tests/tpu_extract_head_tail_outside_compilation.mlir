@@ -21,7 +21,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @head_single_outside_compiled_op_no_operands
@@ -42,7 +42,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"(%b) : (tensor<i32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @head_operand_op_outside_cluster
@@ -65,7 +65,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.D"(%c) : (tensor<i32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @head_aliased_output
@@ -141,7 +141,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.D"(%b) : (tensor<i32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @head_replicated_outside_compilation
@@ -165,7 +165,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
       tf_device.return
     }
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @head_while_op
@@ -199,7 +199,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.D"(%c) : (tensor<f32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @tail_single_outside_compiled_op
@@ -225,7 +225,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.NoOp"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @tail_single_outside_compiled_op_user
@@ -281,7 +281,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.D"(%c, %arg0, %b) {_xla_outside_compilation = "cluster1"} : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @tail_multiple_nested_outside_compiled_ops
@@ -319,7 +319,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       }) {is_stateless = true, _xla_outside_compilation = "cluster1"} : (tensor<i1>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @tail_aliased_output
@@ -379,7 +379,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
       tf_device.return
     }
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @head_tail_no_extraction_middle_outside_compiled_ops
@@ -396,7 +396,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %c = "tf.Identity"(%b) : (tensor<i32>) -> tensor<i32>
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @head_tail_simple_extraction
@@ -468,7 +468,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
       tf_device.return
     }
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @side_effect_middle
@@ -484,7 +484,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.C"() : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @side_effect_head_no_operand
@@ -507,7 +507,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.D"(%c) : (tensor<i32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // CHECK-LABEL: func @side_effect_tail_no_operand
@@ -529,7 +529,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       %cst = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // Test embedding ops can be head extracted and side effect analysis
@@ -552,7 +552,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.EnqueueTPUEmbeddingArbitraryTensorBatch"(%arg0) {_xla_outside_compilation = "cluster1", table_ids = [1, 2]} : (tensor<!tf_type.string>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // Test side effecting op after embedding op can be head extracted.
@@ -574,7 +574,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.A"() {_xla_outside_compilation = "cluster1"} : () -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 
   // Test side effecting op before embedding op can be tail extracted.
@@ -598,6 +598,6 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       "tf.SendTPUEmbeddingGradients"(%0) {N = 1 : i64, NN = 0 : i64, config = "test_config_send_embedding", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
       tf_device.return
     }) {num_cores_per_replica = 1, step_marker_location = "", topology = "", device_assignment = []} : () -> ()
-    return
+    func.return
   }
 }

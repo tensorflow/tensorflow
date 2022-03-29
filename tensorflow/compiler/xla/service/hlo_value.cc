@@ -157,10 +157,7 @@ void HloValue::SetPositions(absl::Span<const HloPosition> positions) {
   positions_.insert(positions_.end(), positions.begin(), positions.end());
   // Update liveout status of this HloValue.
   live_out_of_module_ |=
-      absl::c_any_of(positions_, [](const HloPosition& position) {
-        return position.instruction->IsRoot() &&
-               position.instruction->parent()->IsEntryComputation();
-      });
+      IsRootOf(defining_instruction()->GetModule()->entry_computation());
 }
 
 void HloValue::ComputeUses(std::vector<HloUse>& uses) const {
@@ -196,6 +193,13 @@ void HloValue::ComputeUses(std::vector<HloUse>& uses) const {
       }
     }
   }
+}
+
+bool HloValue::IsRootOf(const HloComputation* computation) const {
+  return absl::c_any_of(positions_, [&](const HloPosition& position) {
+    return position.instruction->IsRoot() &&
+           position.instruction->parent() == computation;
+  });
 }
 
 std::ostream& operator<<(std::ostream& out, const HloValue& value) {

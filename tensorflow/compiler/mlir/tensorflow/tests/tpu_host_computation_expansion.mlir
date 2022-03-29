@@ -13,7 +13,7 @@ func.func @identity_at_head_expanded(%arg0: tensor<?xi32>) {
     "tf.C"() : () -> ()
     tf_device.return
   }) : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @cast_at_head_expanded
@@ -27,7 +27,7 @@ func.func @cast_at_head_expanded(%arg0: tensor<?xi32>) {
     "tf.C"() : () -> ()
     tf_device.return
   }) {} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @check_consecutive_unary_ops_outside_compiled
@@ -45,7 +45,7 @@ func.func @check_consecutive_unary_ops_outside_compiled(%arg0: tensor<?xi32>) {
     "tf.C"() : () -> ()
     tf_device.return
   }) {} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @check_only_necesarily_ops_outside_compiled
@@ -60,7 +60,7 @@ func.func @check_only_necesarily_ops_outside_compiled(%arg0: tensor<?xi32>) {
     "tf.C"() : () -> ()
     tf_device.return
   }) {} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @check_only_necesarily_ops_outside_compiled_with_chained_ops
@@ -78,7 +78,7 @@ func.func @check_only_necesarily_ops_outside_compiled_with_chained_ops(%arg0: te
     "tf.C"() : () -> ()
     tf_device.return
   }) : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @check_op_without_usage_not_outside_compiled
@@ -91,5 +91,5 @@ func.func @check_op_without_usage_not_outside_compiled(%arg0: tensor<?xi32>) {
     "tf.C"() : () -> ()
     tf_device.return
   }) : () -> ()
-  return
+  func.return
 }

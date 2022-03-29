@@ -345,7 +345,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       ]
       if not isinstance(values, RaggedTensor):
         checks.append(check_ops.assert_rank_at_least(values, 1))
-      row_partition = row_partition.with_dependencies(checks)
+      row_partition = row_partition._with_dependencies(checks)  # pylint: disable=protected-access
     return cls(values=values, internal=True, row_partition=row_partition)
 
   @classmethod

@@ -77,7 +77,7 @@ TEST(MfccOpTest, SimpleTest) {
                           data.data() + data.size());
   m.PopulateTensor<int>(m.input2(), {22050});
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   std::vector<int> output_shape = m.GetOutputShape();
   EXPECT_THAT(output_shape, ElementsAre(1, 1, 13));
@@ -102,7 +102,7 @@ TEST(MfccOpTest, ScalarInputRateTest) {
                           data.data() + data.size());
   m.PopulateTensor<int>(m.input2(), {22050});
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   std::vector<int> output_shape = m.GetOutputShape();
   EXPECT_THAT(output_shape, ElementsAre(1, 1, 13));

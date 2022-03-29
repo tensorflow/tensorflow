@@ -41,7 +41,7 @@ func.func @testAddReluPack(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) {
   %2 = "tfl.relu"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
   // CHECK: tac.device = "CPU", tac.inference_type = "FLOAT"
   %3 = "tfl.pack"(%arg0, %arg1) {axis = 0 : i32, values_count = 2 : i32} : (tensor<1xf32>, tensor<1xf32>) -> tensor<2x1xf32>
-  return
+  func.return
 }
 
 func.func @notAnnotateConst(%arg0: tensor<256x32x32x3xf32>) -> tensor<256x30x30x16xf32> {

@@ -267,9 +267,6 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
-    if (!options.print_computation(computation)) {
-      continue;
-    }
     // Don't print async computations when the sytax sugar is enabled since that
     // is redundant information.
     if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {

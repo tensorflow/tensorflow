@@ -16,5 +16,5 @@ func.func @main() {
     %1:2 = tf_executor.island wraps "tf.Identity"(%0#0) : (tensor<!tf_type.int32ref>) -> tensor<*x!tf_type.int32ref> loc("foo")
     tf_executor.fetch
   }
-  return
+  func.return
 }

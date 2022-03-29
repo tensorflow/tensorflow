@@ -175,17 +175,18 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "f1c5a35c2c091e02417d7aa6ede83f863d35cf0ad91a132185952f5cca7b4887",
-        strip_prefix = "oneDNN-2.5.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.5.1.tar.gz"),
+        sha256 = "89495899d7cc17bef14c5dbf72070d6dfda4769fe804f8e88d86f71ad7ae0d51",
+        strip_prefix = "oneDNN-2.6-rc",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.6-rc.tar.gz"),
     )
 
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        sha256 = "d7a47caeb28d2c67dc8fa0d0f338b11fbf25b473a608f04cfed913aea88815a9",
-        strip_prefix = "oneDNN-2.5",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.5.tar.gz"),
+        patch_file = ["//third_party/mkl_dnn:onednn_acl.patch"],
+        sha256 = "89495899d7cc17bef14c5dbf72070d6dfda4769fe804f8e88d86f71ad7ae0d51",
+        strip_prefix = "oneDNN-2.6-rc",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.6-rc.tar.gz"),
     )
 
     tf_http_archive(
@@ -551,13 +552,14 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/google/boringssl/archive/80ca9f9f6ece29ab132cce4cf807a9465a18cfac.tar.gz"),
     )
 
+    # Note: if you update this, you have to update libpng too. See cl/437813808
     tf_http_archive(
         name = "zlib",
         build_file = "//third_party:zlib.BUILD",
-        sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
-        strip_prefix = "zlib-1.2.11",
+        sha256 = "91844808532e5ce316b3c010929493c0244f3d37593afd6de04f71821d5136d9",
+        strip_prefix = "zlib-1.2.12",
         system_build_file = "//third_party/systemlibs:zlib.BUILD",
-        urls = tf_mirror_urls("https://zlib.net/zlib-1.2.11.tar.gz"),
+        urls = tf_mirror_urls("https://zlib.net/zlib-1.2.12.tar.gz"),
     )
 
     # LINT.IfChange

@@ -2,7 +2,7 @@
 // RUN: tf-opt -tfl-raise-custom-ops -canonicalize -tfl-test-raise-tf-targets="tf.FakeQuantWithMinMaxVarsPerChannel" %s --split-input-file | FileCheck --check-prefix=WRAPPED %s
 
 // CHECK-LABEL: custom_op
-func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+func.func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   %0 = "arith.constant" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32>
   %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   // will be preserved since it has uses.
@@ -30,7 +30,7 @@ func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 
 // CHECK-LABEL: tf_executor_wrapper
 // WRAPPED-LABEL: tf_executor_wrapper
-func @tf_executor_wrapper(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input", outputs = "output"}} {
+func.func @tf_executor_wrapper(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input", outputs = "output"}} {
   %0 = tf_executor.graph {
     %outputs_14, %control_15 = tf_executor.island wraps "tf.Const"() {device = "", value = dense<1.0> : tensor<186xf32>} : () -> tensor<186xf32>
     %outputs_16, %control_17 = tf_executor.island wraps "tf.Const"() {device = "", value = dense<2.0> : tensor<186xf32>} : () -> tensor<186xf32>

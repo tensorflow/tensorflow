@@ -14,7 +14,7 @@ module attributes {tf_saved_model.semantics} {
     // CHECK: [[CST:%.+]] = "tf.Const"() {value = dense<"assets/table.txt"> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
     // CHECK: [[HASHTABLE:%.+]] = "tf.HashTableV2"()
     // CHECK: "tf.InitializeTableFromTextFileV2"([[HASHTABLE]], [[CST]])
-    return
+    func.return
   }
 }
 
@@ -31,7 +31,7 @@ module attributes {tf_saved_model.semantics} {
     %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
     "tf.InitializeTableFromTextFileV2"(%0, %arg0) {delimiter = "\09", device = "", key_index = -2 : i64, offset = 0 : i64, value_index = -1 : i64, vocab_size = 437 : i64} : (tensor<!tf_type.resource>, tensor<!tf_type.string>) -> ()
     // CHECK: "tf.InitializeTableFromTextFileV2"(%0, %arg0)
-    return
+    func.return
   }
 }
 
@@ -47,11 +47,11 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(%arg0: tensor<!tf_type.string> {tf_saved_model.bound_input = @v})
   attributes {tf_saved_model.exported_names = ["f"]} {
     "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @f_callee} : (tensor<!tf_type.string>) -> ()
-    return
+    func.return
   }
 
   func.func private @f_callee(%arg0: tensor<!tf_type.string>) {
-    return
+    func.return
   }
 }
 
@@ -75,7 +75,7 @@ module attributes {tf_saved_model.semantics} {
     // CHECK: "tf.InitializeTableFromTextFileV2"([[HASHTABLE]], [[CST]])
     // CHECK: [[HASHTABLE_1:%.+]] = "tf.HashTableV2"()
     // CHECK: "tf.InitializeTableFromTextFileV2"([[HASHTABLE_1]], [[CST_1]])
-    return
+    func.return
   }
 }
 

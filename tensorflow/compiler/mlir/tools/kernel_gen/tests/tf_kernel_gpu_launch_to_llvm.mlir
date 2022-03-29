@@ -32,7 +32,7 @@ func.func @launch(%ctx: !tf_framework.op_kernel_context, %memref: memref<?x10xf3
       blocks in (%c1, %c1, %c1)
       threads in (%c1, %c1, %c1)
       args(%memref: memref<?x10xf32>)
-  return
+  func.return
 }
 
 }

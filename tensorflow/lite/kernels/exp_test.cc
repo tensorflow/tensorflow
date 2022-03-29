@@ -59,7 +59,7 @@ TEST(ExpOpTest, FloatTest) {
                                        -100.0f, 0.01f, -0.01f};
   ExpOpModel m({TensorType_FLOAT32, {1, 1, 7}}, TensorType_FLOAT32);
   m.SetInput<float>(data);
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 7}));
   EXPECT_THAT(
       m.GetOutput<float>(),

@@ -8,7 +8,7 @@ linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d
     %9 = math.abs %arg1 : f64
     linalg.yield %9 : f64
   }
-  return
+  func.return
 }
 
 // CHECK: #[[$DIFF_MAP:.*]] = affine_map<()[s0, s1] -> (s0 - s1)>
@@ -75,5 +75,5 @@ func.func @Add(%lhs: memref<?x?xf64, affine_map<(d0, d1)[s0, s1] -> (d0 * s0 + d
     %65 = arith.addf %arg2, %arg3 : f64
     linalg.yield %65 : f64
   }
-  return
+  func.return
 }

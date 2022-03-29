@@ -15,8 +15,10 @@
 """A class used to partition a sequence into contiguous subsequences ("rows").
 """
 
+
 # TODO(martinz): Remove preferred_dtype
 # TODO(edloper):  Make into a ExtensionType (if possible)
+
 
 import numpy as np
 
@@ -34,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.util.tf_export import tf_export
 
 #===============================================================================
 # RowPartition
@@ -47,6 +50,7 @@ from tensorflow.python.ops.ragged import segment_id_ops
 # the from_row_starts and from_row_limits factory methods in RaggedTensor.
 
 
+@tf_export("experimental.RowPartition")
 class RowPartition(composite_tensor.CompositeTensor):
   """Partitioning of a sequence of values into contiguous subsequences ("rows").
 
@@ -719,7 +723,7 @@ class RowPartition(composite_tensor.CompositeTensor):
 
     return partition
 
-  def with_dependencies(self, dependencies):
+  def _with_dependencies(self, dependencies):
     """Returns a new RowPartition equal to self with control dependencies.
 
     Specifically, self._row_splits is gated by the given control dependencies.

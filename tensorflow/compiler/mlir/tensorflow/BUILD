@@ -1211,6 +1211,8 @@ cc_library(
         "transforms/tpu_update_embedding_enqueue_op_inputs.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
         "transforms/verify_suitable_for_graph_export_pass.cc",
+        "transforms/xla_cluster_formation.cc",
+        "transforms/xla_inline_device_ops.cc",
         "translate/breakup-islands.cc",
         "translate/tf_executor_to_functional.cc",
         "translate/tf_functional_to_executor.cc",

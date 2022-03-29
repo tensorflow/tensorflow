@@ -10,7 +10,7 @@ func.func @main() {
     %0:2 = tf_executor.island wraps "tf.foo"() {name = "tf.foo"} : () -> tensor<*xf32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:      library {
@@ -57,7 +57,7 @@ func.func @bar() {
     %1:2 = tf_executor.island wraps "tf.Empty"(%0#0) {dtype = "tfdtype$DT_FLOAT", name = "tf.Empty"} : (tensor<i32>) -> tensor<*xf32>
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // CHECK:        function {
@@ -75,5 +75,5 @@ func.func @foo() {
     %0:2 = tf_executor.island wraps "tf.bar"() {name = "tf.bar"} : () -> tensor<*xf32>
     tf_executor.fetch
   }
-  return
+  func.return
 }

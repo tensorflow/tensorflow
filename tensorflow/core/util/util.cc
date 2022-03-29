@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -142,24 +143,31 @@ bool IsMKLEnabled() {
 #else
   static bool oneDNN_enabled = false;
   absl::call_once(once, [&] {
-    TF_CHECK_OK(
-        ReadBoolFromEnvVar("TF_ENABLE_ONEDNN_OPTS", false, &oneDNN_enabled));
+    int64_t oneDNN_env = -1;
+    auto status = ReadInt64FromEnvVar("TF_ENABLE_ONEDNN_OPTS", -1, &oneDNN_env);
+    if (!status.ok() || oneDNN_env < -1 || 1 < oneDNN_env) {
+      LOG(WARNING) << "TF_ENABLE_ONEDNN_OPTS is not set to either 0 (off), "
+                   << "1 (on), or -1 (default). Using default setting.";
+      oneDNN_env = -1;
+    }
+    if (oneDNN_env == -1) {
+      // Default setting: Turns oneDNN on for CPUs with neural network features.
+      oneDNN_enabled = port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
+                       port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
+                       port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
+                       port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
+                       port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
+                       port::TestCPUFeature(port::CPUFeature::AMX_BF16);
+    } else if (oneDNN_env == 1) {
+      oneDNN_enabled = true;
+    }
+
     if (oneDNN_enabled) {
-      // Warn that this is not tested with GPU if there are GPUs available.
-      std::vector<std::string> devices;
-      Status s = DeviceFactory::ListAllPhysicalDevices(&devices);
-      std::string gpu_message = "";
-      for (const auto& device : devices) {
-        if (device.find("GPU") != std::string::npos) {
-          gpu_message =
-              "We do NOT recommend turning them on with GPUs in the system. ";
-          break;
-        }
-      }
-      LOG(INFO) << "Experimental oneDNN custom operations are on. "
-                << gpu_message
-                << "To turn them off, set the environment variable "
-                   "`TF_ENABLE_ONEDNN_OPTS=0`.";
+      LOG(INFO) << "oneDNN custom operations are on. "
+                << "You may see slightly different numerical results due to "
+                << "floating-point round-off errors from different computation "
+                << "orders. To turn them off, set the environment variable "
+                << "`TF_ENABLE_ONEDNN_OPTS=0`.";
     }
   });
   return oneDNN_enabled;

@@ -39,7 +39,7 @@ func.func @conv_forward_generic(%input : memref<1x1x8x8xf16>, %filter: memref<1x
                         result_layout = [3,2,1,0],
                         tensor_ops_enabled = true}}
     : (memref<1x1x8x8xf16>, memref<1x1x2x2xf16>, memref<1x1x7x7xf16>, memref<32xi8>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @conv_forward
@@ -64,7 +64,7 @@ func.func @conv_forward(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2xf1
                         result_layout = [3,2,1,0],
                         tensor_ops_enabled = true}}
     : (memref<1x1x8x8xf16>, memref<1x1x2x2xf16>, memref<1x1x7x7xf16>, memref<32xi8>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @conv_backfilter
@@ -90,7 +90,7 @@ func.func @conv_backfilter(%input : memref<3x56x56x16xf64>, %filter: memref<3x3x
       precision_config = [],
       result_scale = 1.000000e+00 : f64}
    : (memref<3x56x56x16xf64>, memref<3x3x3x64xf64>, memref<54x54x16x64xf64>, memref<23328xui8>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @conv_backinput
@@ -116,7 +116,7 @@ func.func @conv_backinput(%input : memref<4x5x16x16xf64>, %filter : memref<5x3x7
     precision_config = [],
     result_scale = 1.000000e+00 : f64}
   : (memref<4x5x16x16xf64>, memref<5x3x7x7xf64>, memref<4x3x16x16xf64>, memref<32xui8>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @conv_fused
@@ -143,7 +143,7 @@ func.func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32x
      precision_config = [#mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT">],
      result_scale = 1.000000e+00 : f64}
   : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<32xui8>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @conv_fused_side_input
@@ -171,7 +171,7 @@ func.func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref
      result_scale = 1.000000e+00 : f64,
      side_input_scale = 1.000000e+00 : f64}
    : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<0xui8>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @gemm
@@ -190,7 +190,7 @@ func.func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5
     rhs_stride = 20,
     algorithm = 0
   } : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
-  return
+  func.return
 }
 
 
@@ -212,7 +212,7 @@ func.func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
     rhs_stride = 20,
     algorithm = 0
   } : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>, memref<5x5xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @cholesky
@@ -221,5 +221,5 @@ func.func @cholesky(%arg : memref<10x10xf32>, %out: memref<10x10xf32>) {
   %info = memref.alloc() : memref<32xi32>
   "lmhlo_gpu.cholesky"(%arg, %out, %scratch, %info) { is_lower = true }
       : (memref<10x10xf32>, memref<10x10xf32>, memref<32xi8>, memref<32xi32>) -> ()
-  return
+  func.return
 }

@@ -24,5 +24,5 @@ func.func @main() {
     %4:2 = tf_executor.island wraps "tf.PlaceholderWithDefault"(%0#0) {type = i32} : (tensor<10xi32>) -> tensor<10xi32> loc("static_10")
     tf_executor.fetch
   }
-  return
+  func.return
 }

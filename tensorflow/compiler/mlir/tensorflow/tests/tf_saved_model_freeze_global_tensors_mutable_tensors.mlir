@@ -10,7 +10,7 @@ module attributes {tf_saved_model.semantics} {
   attributes {tf_saved_model.exported_names = ["f"]} {
     // CHECK: "tf.ReadVariableOp"
     %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    return
+    func.return
   }
 
 }

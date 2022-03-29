@@ -20,7 +20,7 @@ func.func @memref_cast_into_loop(%arg0: memref<192xf32>)  {
     linalg.fill ins(%cst : f32) outs(%16 : memref<?xf32, #map>)
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // -----
@@ -38,7 +38,7 @@ func.func @fold_loop_results(%A: memref<48xf32>, %B: tensor<48xf32>,
       outs (%B_ = %B: tensor<48xf32>,
             %CT_ = %C_tensor: tensor<48xf32>,
             %C_ = %C: memref<48xf32>) {
-        %result = call @foo(%A_, %B_, %C_)
+        %result = func.call @foo(%A_, %B_, %C_)
           : (memref<48xf32>, tensor<48xf32>, memref<48xf32>)-> (tensor<48xf32>)
     gml_st.yield %result, %CT_ : tensor<48xf32>, tensor<48xf32>
   }
@@ -75,7 +75,7 @@ func.func @fold_loop_inputs(%A: memref<192xf32>, %A_tensor: tensor<192xf32>,
   %result = gml_st.loop (%i) = (%c0) to (%c192) step (%c24)
       ins (%A_ = %A: memref<192xf32>, %AT_ = %A_tensor: tensor<192xf32>)
       outs (%BT_ = %B_tensor: tensor<192xf32>) {
-    %0 = call @foo(%A_, %BT_) : (memref<192xf32>, tensor<192xf32>) -> tensor<192xf32>
+    %0 = func.call @foo(%A_, %BT_) : (memref<192xf32>, tensor<192xf32>) -> tensor<192xf32>
     gml_st.yield %0 : tensor<192xf32>
   }
   func.return %result : tensor<192xf32>
@@ -213,7 +213,7 @@ func.func @fold_tensor_cast(%in: tensor<4x600xf32>,
       : tensor<?x600xf32> to tensor<?x4xf32>
     %out_sub = tensor.extract_slice %out_[0] [%dim_out] [1]
       : tensor<?xf32> to tensor<?xf32>
-    %result_sub = call @do(%in_sub, %out_sub):
+    %result_sub = func.call @do(%in_sub, %out_sub):
       (tensor<?x4xf32>, tensor<?xf32>) -> tensor<?xf32>
     %out_update = tensor.insert_slice %result_sub into %out_[0] [%dim_out] [1]
       : tensor<?xf32> into tensor<?xf32>

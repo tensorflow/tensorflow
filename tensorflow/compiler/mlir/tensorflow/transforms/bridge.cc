@@ -186,13 +186,15 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
 }  // namespace
 
 void CreateTPUBridgePipeline(OpPassManager &pm) {
-  pm.addPass(CreateCanonicalizeCompileAndReplicateAttributesPass());
+  pm.addNestedPass<FuncOp>(
+      CreateCanonicalizeCompileAndReplicateAttributesPass());
   CreateTPUBridgePipelineImpl(pm);
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   // Convert to unified compilation and replication attributes.
-  pm.addPass(CreateCanonicalizeCompileAndReplicateAttributesPass());
+  pm.addNestedPass<FuncOp>(
+      CreateCanonicalizeCompileAndReplicateAttributesPass());
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
@@ -211,7 +213,8 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   // attributes like we do for the V2 pipeline, so we need to convert them from
   // unified to legacy attributes before they get exposed to outside of the
   // bridge.
-  pm.addPass(CreateConvertToLegacyCompileAndReplicateAttributesPass());
+  pm.addNestedPass<FuncOp>(
+      CreateConvertToLegacyCompileAndReplicateAttributesPass());
 }
 
 tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
@@ -300,6 +303,9 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // latter pass to converge faster as it does not have to spend time folding
   // away dead ops.
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
+  // Encapsulate StatefulPartitionedCallOp within a cluster so that the
+  // composite resource ops can be decomposed.
+  pm.addPass(TFDevice::CreateXlaClusterFormationPass());
   // Place DecomposeResourceOpsPass.
   pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
   // Run another shape inference pass because resource decomposition might have
@@ -309,6 +315,8 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
+  // Inline the StatefulPartitionedCallOp op based in the parent region.
+  pm.addPass(TFDevice::CreateXlaInlineDeviceOpsPass());
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster

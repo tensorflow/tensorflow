@@ -3644,13 +3644,17 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       const int input_id = mapping_args.node->inputs->data[/*kInputTensor*/ 0];
       const int filter_id =
           mapping_args.node->inputs->data[/*kWeightsTensor*/ 1];
-      const int input_channels = context->tensors[input_id].dims->data[3];
-      const int filter_input_channels =
-          context->tensors[filter_id].dims->data[3];
-      bool is_grouped_conv = input_channels != filter_input_channels;
+      const auto& input_tensor = context->tensors[input_id];
+      const auto& filter_tensor = context->tensors[filter_id];
+      auto is_grouped_conv = false;
+      // Only check grouped convolution if input and filter shape is propagated.
+      if (input_tensor.dims->size != 0 && filter_tensor.dims->size != 0) {
+        is_grouped_conv =
+            input_tensor.dims->data[3] != filter_tensor.dims->data[3];
+      }
       if (is_grouped_conv) {
-        mapping_args.builder->AddScalarInt32Operand(input_channels /
-                                                    filter_input_channels);
+        mapping_args.builder->AddScalarInt32Operand(
+            input_tensor.dims->data[3] / filter_tensor.dims->data[3]);
       }
       mapping_args.builder->AddScalarInt32Operand(builtin->activation);
       // NNAPI supports dilated Conv2D since NNAPI 1.2.

@@ -15,7 +15,7 @@ func.func @min_op(%lhs: memref<4x3x2x1xf32>, %rhs: memref<4x3x2x1xf32>,
   // CHECK:      return
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"} :
       (memref<4x3x2x1xf32>, memref<4x3x2x1xf32>, memref<4x3x2x1xf32>) -> ()
-  return
+  func.return
 }
 
 // Add tests.
@@ -25,7 +25,7 @@ func.func @float_add_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
   // CHECK: addf %{{.*}}, %{{.*}} : f32
   "lmhlo.add"(%lhs, %rhs, %result) {name = "add.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @int_add_op
 func.func @int_add_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
@@ -33,7 +33,7 @@ func.func @int_add_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
   // CHECK: addi %{{.*}}, %{{.*}} : i32
   "lmhlo.add"(%lhs, %rhs, %result) {name = "add.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // And test.
@@ -43,7 +43,7 @@ func.func @int_and_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
   // CHECK: arith.andi %{{.*}}, %{{.*}} : i32
   "lmhlo.and"(%lhs, %rhs, %result) {name = "and.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Div tests.
@@ -53,7 +53,7 @@ func.func @float_div_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
   // CHECK: divf %{{.*}}, %{{.*}} : f32
   "lmhlo.divide"(%lhs, %rhs, %result) {name = "div.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @int_div_op
 func.func @int_div_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
@@ -61,7 +61,7 @@ func.func @int_div_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
   // CHECK: arith.divsi %{{.*}}, %{{.*}} : i32
   "lmhlo.divide"(%lhs, %rhs, %result) {name = "div.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Max tests.
@@ -71,7 +71,7 @@ func.func @float_max_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
   // CHECK: arith.maxf %{{.*}}, %{{.*}} : f32
   "lmhlo.maximum"(%lhs, %rhs, %result) {name = "max.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @int_max_op
@@ -80,7 +80,7 @@ func.func @int_max_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
   // CHECK: arith.maxsi %{{.*}}, %{{.*}} : i32
   "lmhlo.maximum"(%lhs, %rhs, %result) {name = "max.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Min tests.
@@ -90,7 +90,7 @@ func.func @float_min_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
   // CHECK: arith.minf %{{.*}}, %{{.*}} : f32
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @int_min_op
@@ -99,7 +99,7 @@ func.func @int_min_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
   // CHECK: arith.minsi %{{.*}}, %{{.*}} : i32
   "lmhlo.minimum"(%lhs, %rhs, %result) {name = "min.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Mul tests.
@@ -109,7 +109,7 @@ func.func @float_mul_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
   // CHECK: mulf %{{.*}}, %{{.*}} : f32
   "lmhlo.multiply"(%lhs, %rhs, %result) {name = "mul.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @int_mul_op
@@ -118,7 +118,7 @@ func.func @int_mul_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
   // CHECK: muli %{{.*}}, %{{.*}} : i32
   "lmhlo.multiply"(%lhs, %rhs, %result) {name = "mul.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Sub tests.
@@ -128,7 +128,7 @@ func.func @float_sub_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
   // CHECK: subf %{{.*}}, %{{.*}} : f32
   "lmhlo.subtract"(%lhs, %rhs, %result) {name = "sub.1"}
       : (memref<7xf32>, memref<7xf32>, memref<7xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @int_sub_op
 func.func @int_sub_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
@@ -136,7 +136,7 @@ func.func @int_sub_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
   // CHECK: subi %{{.*}}, %{{.*}} : i32
   "lmhlo.subtract"(%lhs, %rhs, %result) {name = "sub.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
-  return
+  func.return
 }
 
 // Dot tests.
@@ -160,7 +160,7 @@ func.func @float_dot_op(%lhs: memref<7x3xf32>, %rhs:
          lhs_contracting_dimensions = [1],
          rhs_contracting_dimensions = [0]
       >} : (memref<7x3xf32>, memref<3x4xf32>, memref<7x4xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @int_dot_op
 func.func @int_dot_op(%lhs: memref<7x3xi32>, %rhs:
@@ -180,7 +180,7 @@ func.func @int_dot_op(%lhs: memref<7x3xi32>, %rhs:
       lhs_contracting_dimensions = [1],
       rhs_contracting_dimensions = [0]
     >} : (memref<7x3xi32>, memref<3x4xi32>, memref<7x4xi32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @concatenate
@@ -540,5 +540,5 @@ func.func @pad(%arg0: memref<1x2x3xf16>, %arg1: memref<f16>, %arg2: memref<2x4x5
 // CHECK-NEXT:      }
 // CHECK-NEXT:     }
 // CHECK-NEXT:    }
-  return
+  func.return
 }

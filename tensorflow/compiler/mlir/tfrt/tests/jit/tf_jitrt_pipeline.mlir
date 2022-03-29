@@ -4,7 +4,7 @@
 
 // CHECK-LABEL: @tanh_lower_and_fuse
 // CHECK-SAME: %[[ARG:.*]]: memref<?x32xf32>
-func @tanh_lower_and_fuse(%arg0: tensor<?x32xf32>) -> tensor<?x32xf32> {
+func.func @tanh_lower_and_fuse(%arg0: tensor<?x32xf32>) -> tensor<?x32xf32> {
   // CHECK: %[[C0:.*]] = arith.constant 0 : index
   // CHECK: %[[DIM:.*]] = memref.dim %[[ARG]], %[[C0]]
   // CHECK: %[[MEMREF:.*]] = memref.alloc(%[[DIM]]) {{.*}} : memref<?x32xf32>
@@ -28,7 +28,7 @@ func @tanh_lower_and_fuse(%arg0: tensor<?x32xf32>) -> tensor<?x32xf32> {
 // CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: @sigmoid_dynamic_dim
-func @sigmoid_dynamic_dim(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
+func.func @sigmoid_dynamic_dim(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
   // CHECK: linalg.generic
   // CHECK-SAME: indexing_maps = [#map, #map]
   // CHECK-SAME: iterator_types = ["parallel", "parallel"]
@@ -42,7 +42,7 @@ func @sigmoid_dynamic_dim(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
 // CHECK: #map1 = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL: @add_scalar_with_vec
-func @add_scalar_with_vec(%arg0: tensor<f32>,
+func.func @add_scalar_with_vec(%arg0: tensor<f32>,
                           %arg1: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: linalg.generic
   // CHECK-NOT: linalg.generic
@@ -55,7 +55,7 @@ func @add_scalar_with_vec(%arg0: tensor<f32>,
 // CHECK: #map = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL: @add_vec_vec
-func @add_vec_vec(
+func.func @add_vec_vec(
   %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
   %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>}
 ) -> tensor<?xf32> {
@@ -71,7 +71,7 @@ func @add_vec_vec(
 // CHECK: #map = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL: @add_vec_vec_vec
-func @add_vec_vec_vec(
+func.func @add_vec_vec_vec(
   %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
   %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
   %arg2: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>}
@@ -97,7 +97,7 @@ func @add_vec_vec_vec(
 // CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 
 // CHECK: compute_with_bcast
-func @compute_with_bcast(
+func.func @compute_with_bcast(
   %arg0: tensor<1x?x1xf32>
     {jitrt.symbolic_shape = dense<[1, -2, 1]> : tensor<3xi64>},
   %arg1: tensor<512xf32>,
@@ -140,7 +140,7 @@ func @compute_with_bcast(
 // -----
 
 // CHECK: add_vec_vec_vec_vec
-func @add_vec_vec_vec_vec(
+func.func @add_vec_vec_vec_vec(
   %arg0: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
   %arg1: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
   %arg2: tensor<?xf32> {jitrt.symbolic_shape = dense<-2>: tensor<1xi64>},
@@ -161,7 +161,7 @@ func @add_vec_vec_vec_vec(
 // -----
 
 // CHECK: add_vec_tensor_tensor
-func @add_vec_tensor_tensor(
+func.func @add_vec_tensor_tensor(
   %arg0: tensor<512xf32>,
   %arg1: tensor<1x?x512xf32>
     {jitrt.symbolic_shape = dense<[1, -2, 512]> : tensor<3xi64>},
@@ -183,7 +183,7 @@ func @add_vec_tensor_tensor(
 // -----
 
 // CHECK-LABEL: @tf_binary_with_bcast
-func @tf_binary_with_bcast(%arg0: tensor<?x1xf32>,
+func.func @tf_binary_with_bcast(%arg0: tensor<?x1xf32>,
                            %arg1: tensor<?x4xf32>) -> tensor<?x4xf32> {
   // CHECK-NOT: shape.
   // CHECK: %[[LHS:.*]] = memref.reinterpret_cast
@@ -201,7 +201,7 @@ func @tf_binary_with_bcast(%arg0: tensor<?x1xf32>,
 // CHECK-SAME: %[[ARG0:.*]]: memref<?x4xf32>,
 // CHECK-SAME: %[[ARG1:.*]]: memref<4xf32>,
 // CHECK-SAME: %[[ARG2:.*]]: memref<4xf32>
-func @tf_binary_with_bcast_and_fusion(%arg0: tensor<?x4xf32>,
+func.func @tf_binary_with_bcast_and_fusion(%arg0: tensor<?x4xf32>,
                                       %arg1: tensor<4xf32>,
                                       %arg2: tensor<4xf32>) -> tensor<?x4xf32> {
   // CHECK:      linalg.generic
@@ -225,7 +225,7 @@ func @tf_binary_with_bcast_and_fusion(%arg0: tensor<?x4xf32>,
 // CHECK: #[[MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK: tf_binary_with_bcast_symbolic_shapes
-func @tf_binary_with_bcast_symbolic_shapes(
+func.func @tf_binary_with_bcast_symbolic_shapes(
   %arg0: tensor<?xf32>   {jitrt.symbolic_shape = dense<[   -3]>: tensor<1xi64>},
   %arg1: tensor<?x?xf32> {jitrt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
   %arg2: tensor<?x?xf32> {jitrt.symbolic_shape = dense<[-2,-3]>: tensor<2xi64>},
@@ -252,7 +252,7 @@ func @tf_binary_with_bcast_symbolic_shapes(
 // -----
 
 // CHECK-LABEL: @cast_sub
-func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
+func.func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
     -> tensor<?x?x32xf16> {
   // CHECK:      linalg.generic
   // CHECK-SAME: outs(%[[RESULT_BUF:.*]] : memref<?x?x32xf16>)
@@ -275,7 +275,7 @@ func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
 // CHECK: #map1 = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: @tf_transpose_const_perm
-func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
+func.func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc() {{.*}} : memref<3x2xf32>
   // CHECK: linalg.generic {indexing_maps = [#map0, #map1]
   // CHECK-SAME: ins(%arg0 : memref<2x3xf32>)
@@ -293,7 +293,7 @@ func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
 // CHECK: #map1 = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 
 // CHECK-LABEL: @tf_transpose_after_transpose
-func @tf_transpose_after_transpose(%arg0: tensor<?x?x?xf32>)
+func.func @tf_transpose_after_transpose(%arg0: tensor<?x?x?xf32>)
                                   -> tensor<?x?x?xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc
   // CHECK: linalg.generic {indexing_maps = [#map0, #map1]
@@ -316,7 +316,7 @@ func @tf_transpose_after_transpose(%arg0: tensor<?x?x?xf32>)
 // CHECK-LABEL: @bias_add_and_relu
 // CHECK-SAME: %[[ARG0:.*]]: memref<?x32xf32>
 // CHECK-SAME: %[[ARG1:.*]]: memref<32xf32>
-func @bias_add_and_relu(%arg0: tensor<?x32xf32>,
+func.func @bias_add_and_relu(%arg0: tensor<?x32xf32>,
                         %arg1: tensor<32xf32>) -> tensor<?x32xf32> {
   // CHECK:      linalg.generic
   // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : {{.*}})
@@ -333,7 +333,7 @@ func @bias_add_and_relu(%arg0: tensor<?x32xf32>,
 // -----
 
 // CHECK-LABEL: @sub_sub
-func @sub_sub(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>, %arg2: tensor<?x?x32xf16>) -> tensor<?x?x32xf16> {
+func.func @sub_sub(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>, %arg2: tensor<?x?x32xf16>) -> tensor<?x?x32xf16> {
   // CHECK:      linalg.generic
   // CHECK-SAME: outs(%[[RESULT_BUF:.*]] : memref<?x?x32xf16>)
   // CHECK:      ^bb0(%[[A:.*]]: f16, %[[B:.*]]: f16, %[[C:.*]]: f16, %{{.*}}: f16):
@@ -349,7 +349,7 @@ func @sub_sub(%arg0: tensor<?x32xf16>, %arg1: tensor<?x32xf16>, %arg2: tensor<?x
 // -----
 
 // CHECK-LABEL: @strided_slice_1d_to_0d
-func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
+func.func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
   %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   %cst_1 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK:      %[[SUBVIEW:.*]] = memref.subview %arg0[0] [1] [1]
@@ -373,7 +373,7 @@ func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
 // CHECK: memref.global "private" constant @__constant_2xi32 : memref<2xi32> = dense<[0, 1]>
 // CHECK-SAME: {alignment = 64 : i64}
 // CHECK-LABEL: @constant_folding
-func @constant_folding() -> tensor<2xi32> {
+func.func @constant_folding() -> tensor<2xi32> {
   %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[CONST:.*]] = memref.get_global @__constant_2xi32 : memref<2xi32>
@@ -386,7 +386,7 @@ func @constant_folding() -> tensor<2xi32> {
 // -----
 
 // CHECK-LABEL: @add_floormod_add
-func @add_floormod_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @add_floormod_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK:     linalg.generic
   // CHECK-NOT: linalg.generic
   %0 = "tf.AddV2"(%arg0, %arg0)
@@ -411,7 +411,7 @@ func.func @min_clip_by_value(%V__0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
 // -----
 
 // CHECK-LABEL: @rint_sq_sub
-func @rint_sq_sub(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @rint_sq_sub(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK:     linalg.generic
   // CHECK-NOT: linalg.generic
   %0 = "tf.Rint"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
@@ -423,7 +423,7 @@ func @rint_sq_sub(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // -----
 
 // CHECK-LABEL: @do_not_fuse_if_multiple_uses
-func @do_not_fuse_if_multiple_uses(%arg0: tensor<?x?xf32>)
+func.func @do_not_fuse_if_multiple_uses(%arg0: tensor<?x?xf32>)
     -> (tensor<?x?xf32>, tensor<?x?xf32>) {
   // CHECK:     linalg.generic
   // CHECK:       math.rsqrt

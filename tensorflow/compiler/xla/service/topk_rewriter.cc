@@ -92,6 +92,12 @@ static bool IsNanSafeGt(HloComputation* comp) {
                      param_s32);
   };
 
+  auto match_s32 = [](int64_t parameter_number) {
+    auto param = m::Parameter(parameter_number)
+                     .WithShape(m::Shape().WithElementType(S32));
+    return param;
+  };
+
   return Match(comp->root_instruction(),
                m::Gt(match_bitcast_f32(0), match_bitcast_f32(1))) ||
          Match(comp->root_instruction(),
@@ -101,7 +107,8 @@ static bool IsNanSafeGt(HloComputation* comp) {
                      match_bitcast_f32_with_convert(1))) ||
          Match(comp->root_instruction(),
                m::Gt(match_bitcast_bf16_with_convert(0),
-                     match_bitcast_bf16_with_convert(1)));
+                     match_bitcast_bf16_with_convert(1))) ||
+         Match(comp->root_instruction(), m::Gt(match_s32(0), match_s32(1)));
 }
 
 absl::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {

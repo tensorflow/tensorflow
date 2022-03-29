@@ -2120,6 +2120,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   clone->set_parent(parent_);
   clone->set_outer_dimension_partitions(outer_dimension_partitions_);
   clone->backend_config_ = backend_config_.Clone();
+  // The new instruction's name will be uniquified when it's added to a
+  // computation.
+  clone->SetAndSanitizeName(name());
   if (context != nullptr) {
     context->MapInstruction(this, clone.get());
     clone->ReplaceCalledComputations([&](HloComputation* callee) {

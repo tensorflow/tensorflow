@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -54,6 +55,9 @@ class QuantizeCompositeFunctionsPass
                                OperationPass<ModuleOp>> {
  public:
   explicit QuantizeCompositeFunctionsPass() {}
+  explicit QuantizeCompositeFunctionsPass(
+      QuantizationMethod quantization_method)
+      : quantization_method_(quantization_method) {}
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -72,6 +76,9 @@ class QuantizeCompositeFunctionsPass
 
  private:
   void runOnOperation() override;
+
+  QuantizationMethod quantization_method_ =
+      QuantizationMethod::kQuantizationAwareTraining;
 };
 
 LogicalResult CreateUniformQuantizedTypeParams(UniformQuantizedType qtype,
@@ -483,7 +490,7 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
   // This can be removed when the composite call supports quantized types.
   pm.enableVerifier(false);
 
-  pm.addNestedPass<FuncOp>(CreatePrepareQuantizePass());
+  pm.addNestedPass<FuncOp>(CreatePrepareQuantizePass(quantization_method_));
   pm.addNestedPass<FuncOp>(CreateQuantizePass());
   pm.addNestedPass<FuncOp>(CreatePostQuantizePass());
   if (failed(pm.run(module))) {
@@ -510,9 +517,9 @@ void QuantizeCompositeFunctionsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateQuantizeCompositeFunctionsPass() {
-  return std::make_unique<QuantizeCompositeFunctionsPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
+    QuantizationMethod quantization_method) {
+  return std::make_unique<QuantizeCompositeFunctionsPass>(quantization_method);
 }
 
 }  // namespace quant

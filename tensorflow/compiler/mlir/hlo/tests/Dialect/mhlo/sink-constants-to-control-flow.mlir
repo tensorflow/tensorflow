@@ -61,5 +61,5 @@ func.func @sink_const_to_sort(%arg0: tensor<16xf32>) {
     %3 = "mhlo.compare"(%1, %2) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "mhlo.return"(%3) : (tensor<i1>) -> ()
   }) {is_stable = true} : (tensor<16xf32>) -> tensor<16xf32>
-  return
+  func.return
 }

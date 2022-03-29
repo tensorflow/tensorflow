@@ -14,7 +14,7 @@ func.func @caller(%arg0: tensor<f32>, %pred: tensor<i1>) -> tensor<f32> {
     "mhlo.return"(%pred) : (tensor<i1>) -> ()
   }, {
   ^entry(%0: tensor<f32>):
-    %1 = call @callee(%0) : (tensor<f32>) -> (tensor<f32>)
+    %1 = func.call @callee(%0) : (tensor<f32>) -> (tensor<f32>)
     "mhlo.return"(%1) : (tensor<f32>) -> ()
   } ) : (tensor<f32>) -> (tensor<f32>)
   func.return %0 : tensor<f32>

@@ -3,7 +3,7 @@
 // RUN: | FileCheck %s
 
 // CHECK-LABEL: func @single_cluster_one_result
-func @single_cluster_one_result(%arg0 : tensor<i32>, %arg1 : tensor<i32>)
+func.func @single_cluster_one_result(%arg0 : tensor<i32>, %arg1 : tensor<i32>)
     -> tensor<i32> {
   // CHECK: %[[CLUSTER:.*]] = "tf_device.cluster"()
   // CHECK:                 "tf.Add"

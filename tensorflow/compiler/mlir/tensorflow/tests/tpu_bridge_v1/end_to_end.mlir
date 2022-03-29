@@ -25,6 +25,6 @@ module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0",
       %control_27 = tf_executor.island(%control_2, %control_26) wraps "tf.NoOp"() : () -> ()
       tf_executor.fetch %control_27 : !tf_executor.control
     }
-    return
+    func.return
   }
 }

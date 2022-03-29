@@ -96,7 +96,7 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePropagateShapeKnowledgeToKernels();
 
 // Pass to print content of memrefs.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateEmbedMemRefPrintsPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbedMemRefPrintsPass();
 
 /// Greedily maps loops to GPU hardware dimensions.
 std::unique_ptr<mlir::OperationPass<func::FuncOp>> CreateMapParallelLoopsPass();

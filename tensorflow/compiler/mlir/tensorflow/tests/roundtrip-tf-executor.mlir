@@ -8,7 +8,7 @@ func.func @main() {
     %0 = tf_executor.island wraps "tf.NoOp"() {} : () -> () loc("X")
     tf_executor.fetch
   }
-  return
+  func.return
 }
 
 // Check for the presence of tf.NoOp in the final output.
