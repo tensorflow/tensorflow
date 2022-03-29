@@ -408,9 +408,11 @@ class HloModule {
     module->metadata_ = std::move(metadata_);
   }
 
-  uint64_t session_id() const { return session_id_; }
+  uint64_t profile_handle() const { return profile_handle_; }
 
-  void set_session_id(uint64_t session_id) { session_id_ = session_id; }
+  void set_profile_handle(uint64_t profile_handle) {
+    profile_handle_ = profile_handle;
+  }
 
   void add_profile_info(const HloModuleProto::ProfileInfo& profile_info) {
     profile_info_list_.push_back(profile_info);
@@ -494,8 +496,8 @@ class HloModule {
   // True if the module contains dynamic computation.
   bool is_dynamic_ = false;
 
-  // A compilation session id.
-  uint64_t session_id_ = 0;
+  // Optional compilation profile handle.
+  uint64_t profile_handle_ = 0;
 
   // An array of ProfileInfo specifying what optimization profiles this module
   // contains, along with the relative speedups.
