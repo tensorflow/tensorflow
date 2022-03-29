@@ -671,6 +671,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     return obj_map, resource_map
 
   def _read_variable_op(self, no_copy = False):
+    """Reads the value of the variable. If the variable is in copy-on-read mode
+    and no_copy is True, the variable is converted to copy-on-write mode before
+    it is read."""
     variable_accessed(self)
 
     def read_and_set_handle(no_copy):
@@ -715,7 +718,8 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
   def read_value_no_copy(self):
     """Constructs an op which reads the value of this variable
     without making a copy even when the variable has been previously
-    sparsely accessed.
+    sparsely accessed. Variables that are in copy-on-read mode will
+    be converted to copy-on-write mode.
 
     Returns:
      the read operation.
