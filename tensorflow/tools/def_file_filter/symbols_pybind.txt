@@ -204,6 +204,8 @@ TFE_Py_SetCEagerContext
 tensorflow::MakeEagerContextThreadLocalData
 tensorflow::GetEagerContextThreadLocalData
 tensorflow::DestroyEagerContextThreadLocalData
+tensorflow::MaybeRaiseExceptionFromTFStatus
+tensorflow::ConvertToEagerTensor
 
 [//tensorflow/core/common_runtime/eager:eager_executor] # tfe
 tensorflow::EagerExecutor::~EagerExecutor
@@ -493,3 +495,21 @@ tensorflow::quantization::ClearCollectedInformationFromCalibrator
 tensorflow::quantization::ClearDataFromCalibrator
 tensorflow::quantization::GetMinFromCalibrator
 tensorflow::quantization::GetMaxFromCalibrator
+
+[//tensorflow/dtensor/cc:dtensor_device_cc] # DTensor
+tensorflow::dtensor::AllocateDTensorDevice
+tensorflow::dtensor::AddMesh
+tensorflow::dtensor::ExperimentalSetDefaultLayout
+tensorflow::dtensor::ExperimentalClearDefaultLayout
+tensorflow::dtensor::ExperimentalSetDefaultMesh
+tensorflow::dtensor::ExperimentalClearDefaultMesh
+tensorflow::dtensor::SetSameShapePolicy
+tensorflow::dtensor::SetTPUCoreIDs
+tensorflow::dtensor::ClearTPUCoreIDs
+tensorflow::dtensor::TPUCoreIDsToLocations
+tensorflow::dtensor::TPUCoreLocationsToIDs
+tensorflow::dtensor::Pack
+tensorflow::dtensor::Unpack
+tensorflow::dtensor::FetchLayout
+tensorflow::dtensor::SparsePack
+tensorflow::dtensor::IsSparseDTensor
