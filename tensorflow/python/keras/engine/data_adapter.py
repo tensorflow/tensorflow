@@ -82,7 +82,7 @@ class DataAdapter(object, metaclass=abc.ABCMeta):
     """Whether the current DataAdapter could handle the input x and y.
 
     Structure wise, x and y can be single object, or list of objects if there
-    multiple input/output, or dictionary of objects when the intput/output are
+    multiple input/output, or dictionary of objects when the input/output are
     named.
 
     Args:
@@ -99,7 +99,7 @@ class DataAdapter(object, metaclass=abc.ABCMeta):
     """Create a DataAdapter based on data inputs.
 
     The caller must make sure to call `can_handle()` first before invoking this
-    method. Provide unsupported data type will result into unexpected behavior.
+    method. Provide unsupported data type will result in unexpected behavior.
 
     Args:
       x: input features.
@@ -114,7 +114,7 @@ class DataAdapter(object, metaclass=abc.ABCMeta):
           `distribution_strategy` is passed, the created dataset need to respect
           the strategy.
         DataAdapter might choose to ignore any keyword argument if it doesn't
-        use it, or raise exception if any required argument is not provide.
+        use it, or raise an exception if any required argument is not provided.
     """
     if not self.can_handle(x, y):
       raise ValueError("{} Cannot handle input {}, {}".format(
@@ -142,7 +142,7 @@ class DataAdapter(object, metaclass=abc.ABCMeta):
     For certain type of the data input, the number of batches is known, eg for
     Numpy data, the size is same as (number_of_element / batch_size). Whereas
     for dataset or python generator, the size is unknown since it may or may not
-    have a end state.
+    have an end state.
 
     Returns:
       int, the number of batches for the dataset, or None if it is unknown. The
@@ -1044,7 +1044,7 @@ def _process_tensorlike(inputs):
 
 
 def is_none_or_empty(inputs):
-  # util method to check if the input is a None or a empty list.
+  # util method to check if the input is a None or an empty list.
   # the python "not" check will raise an error like below if the input is a
   # numpy array
   # "The truth value of an array with more than one element is ambiguous.
@@ -1616,7 +1616,7 @@ def pack_x_y_sample_weight(x, y=None, sample_weight=None):
     # For single x-input, we do no tuple wrapping since in this case
     # there is no ambiguity. This also makes NumPy and Dataset
     # consistent in that the user does not have to wrap their Dataset
-    # data in an unecessary tuple
+    # data in an unnecessary tuple
     if not nest.is_nested(x):
       return x
     else:
