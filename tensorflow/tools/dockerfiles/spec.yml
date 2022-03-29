@@ -190,7 +190,7 @@ slice_sets:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=20.04
               - PYTHON=python3
-        - add_to_name: "-centos-7"
+        - add_to_name: "-7"
           dockerfile_exclusive_name: "centos-7"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -207,7 +207,7 @@ slice_sets:
               - CENTOS_VERSION=7
               - PYTHON=python3
               - HOROVOD_VERSION=v0.21.1
-        - add_to_name: "-centos-8"
+        - add_to_name: "-8"
           dockerfile_exclusive_name: "centos-8"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -257,7 +257,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
               - PYTHON=python3
-        - add_to_name: "-centos-7-devel"
+        - add_to_name: "-7-devel"
           dockerfile_exclusive_name: "centos-7-devel"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -276,7 +276,7 @@ slice_sets:
               - TF_BRANCH=master
               - PYTHON=python3
               - HOROVOD_VERSION=v0.21.1
-        - add_to_name: "-centos-8-devel"
+        - add_to_name: "-8-devel"
           dockerfile_exclusive_name: "centos-8-devel"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -332,7 +332,7 @@ slice_sets:
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
               - PYTHON=python3
-        - add_to_name: "-centos-7-mpi-horovod"
+        - add_to_name: "-7-mpi-horovod"
           dockerfile_exclusive_name: "centos-7-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -351,7 +351,7 @@ slice_sets:
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
               - HOROVOD_VERSION=v0.21.1
-        - add_to_name: "-centos-8-mpi-horovod"
+        - add_to_name: "-8-mpi-horovod"
           dockerfile_exclusive_name: "centos-8-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -409,7 +409,7 @@ slice_sets:
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
               - PYTHON=python3
-        - add_to_name: "-centos-7-devel-mpi-horovod"
+        - add_to_name: "-7-devel-mpi-horovod"
           dockerfile_exclusive_name: "centos-7-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -430,7 +430,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
-        - add_to_name: "-centos-8-devel-mpi-horovod"
+        - add_to_name: "-8-devel-mpi-horovod"
           dockerfile_exclusive_name: "centos-8-devel-mpi-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -488,7 +488,7 @@ slice_sets:
               - DEBIAN_FRONTEND="noninteractive"
               - TF_PACKAGE=intel-tensorflow
               - PYTHON=python3
-        - add_to_name: "-centos-7-mpich-horovod"
+        - add_to_name: "-7-mpich-horovod"
           dockerfile_exclusive_name: "centos-7-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -507,7 +507,7 @@ slice_sets:
               - PYTHON=python3
               - TF_PACKAGE=intel-tensorflow
               - HOROVOD_VERSION=v0.21.1
-        - add_to_name: "-centos-8-mpich-horovod"
+        - add_to_name: "-8-mpich-horovod"
           dockerfile_exclusive_name: "centos-8-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -565,7 +565,7 @@ slice_sets:
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
               - PYTHON=python3
-        - add_to_name: "-centos-7-devel-mpich-horovod"
+        - add_to_name: "-7-devel-mpich-horovod"
           dockerfile_exclusive_name: "centos-7-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
@@ -586,7 +586,7 @@ slice_sets:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
               - HOROVOD_BRANCH=master
-        - add_to_name: "-centos-8-devel-mpich-horovod"
+        - add_to_name: "-8-devel-mpich-horovod"
           dockerfile_exclusive_name: "centos-8-devel-mpich-horovod"
           dockerfile_subdirectory: "onednn"
           partials:
