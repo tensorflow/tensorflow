@@ -482,16 +482,18 @@ By default, quantized inference in XNNPACK delegate is disabled, and XNNPACK is
 used only for floating-point models. Support for quantized inference in XNNPACK
 must be enabled by adding extra Bazel flags when building TensorFlow Lite.
 
-* `--define xnn_enable_qs8=true` flag enables XNNPACK inference for quantized
-operators using signed quantization schema. This schema is used by models
-produced by [Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
-through either post-training integer quantization or quantization-aware
-training. Post-training dynamic range quantization is not supported in XNNPACK.
+* `--define tflite_with_xnnpack_qs8=true` flag enables XNNPACK inference for
+  quantized operators using signed quantization schema. This schema is used by
+  models produced by [Model Optimization
+  Toolkit](https://www.tensorflow.org/model_optimization) through either
+  post-training integer quantization or quantization-aware training.
+  Post-training dynamic range quantization is not supported in XNNPACK.
 
-* `--define xnn_enable_qu8=true` flag enables XNNPACK inference for quantized
-operators using unsigned quantization schema, produced via the legacy TensorFlow
-1.X quantization tooling. This option is experimental and may perform
-suboptimally on mobile processors with NEON DOT product instructions.
+* `--define tflite_with_xnnpack_qu8=true` flag enables XNNPACK inference for
+  quantized operators using unsigned quantization schema, produced via the
+  legacy TensorFlow 1.X quantization tooling. This option is experimental and
+  may perform suboptimally on mobile processors with NEON DOT product
+  instructions.
 
 Below is the list of currently supported quantized operators:
 
