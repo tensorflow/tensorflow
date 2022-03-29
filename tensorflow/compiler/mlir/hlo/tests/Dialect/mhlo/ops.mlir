@@ -3121,3 +3121,14 @@ func.func @rfft_invalid_ret_elt(%arg0: tensor<3x9xf32>) -> tensor<3x9xf32> {
   func.return %0 : tensor<3x9xf32>
 }
 
+// -----
+
+// CHECK-LABEL: @eltwise_static_and_dynamic_type(
+//  CHECK-SAME: %[[A:.*]]: tensor<10x10xf32>, %[[B:.*]]: tensor<?x?xf32>) -> tensor<10x10xf32>
+//       CHECK: %[[R:.*]] = mhlo.add(%[[A]], %[[B]]) : (tensor<10x10xf32>, tensor<?x?xf32>) -> tensor<10x10xf32>
+//       CHECK: return %[[R]] : tensor<10x10xf32>
+func.func @eltwise_static_and_dynamic_type(%arg0: tensor<10x10xf32>, %arg1: tensor<?x?xf32>) -> tensor<10x10xf32> {
+  %0 = mhlo.add(%arg0, %arg1) : (tensor<10x10xf32>, tensor<?x?xf32>) -> tensor<10x10xf32>
+  func.return %0 : tensor<10x10xf32>
+}
+
