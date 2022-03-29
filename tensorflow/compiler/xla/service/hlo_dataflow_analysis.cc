@@ -1639,54 +1639,71 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
 }
 
 namespace {
+
+// Removes layers of tuple indirection introduced via 'tuple' and
+// 'get-tuple-element' instructions to more directly identify the source of the
+// given HLO value (identified by the given `ShapeIndex` into the output of the
+// given `HloInstruction`).
+//
+// e.g. for the following:
+//    %x = some-op(...)
+//    %foo = get-tuple-element(%x), index=0
+//    %bar = tuple(%y, %foo)
+//
+// ... FollowTupleIndirection(%bar, {1}) == {%x, {0}} (output 1 of 'bar' comes
+// from output 0 of %x).
+//
+// Note that all 'tuple' instructions are followed before all
+// 'get-tuple-element' instructions are followed. This is because it is assumed
+// that tupling a value and then extracting it from the tuple again will not
+// occur in properly-optimized IR.
+std::pair<HloInstruction*, ShapeIndex> FollowTupleIndirection(
+    HloInstruction* instruction, ShapeIndex operand_index) {
+  while (instruction->opcode() == HloOpcode::kTuple && !operand_index.empty()) {
+    instruction = instruction->mutable_operand(operand_index.front());
+    operand_index.pop_front();
+  }
+  while (instruction->opcode() == HloOpcode::kGetTupleElement) {
+    operand_index.push_front(instruction->tuple_index());
+    instruction = instruction->mutable_operand(0);
+  }
+
+  return {instruction, operand_index};
+}
+
 // Returns in-place input/output pairs for the given fusion op, according to the
 // aliasing rules for the corresponding fusion computation.
 std::vector<std::pair<HloUse, ShapeIndex>>
 GetFusionInstructionInPlaceInputOutputPairs(HloInstruction* instruction) {
   std::vector<std::pair<HloUse, ShapeIndex>> input_output_pairs;
-  for (auto& indexed_shape : ShapeUtil::GetLeafShapes(instruction->shape())) {
+  for (const auto& indexed_shape :
+       ShapeUtil::GetLeafShapes(instruction->shape())) {
+    ShapeIndex expected_output_index = indexed_shape.index;
     HloInstruction* hlo_generating_output =
         instruction->fused_expression_root();
-    ShapeIndex expected_output_index = indexed_shape.index;
-    while (hlo_generating_output->opcode() == HloOpcode::kTuple &&
-           !expected_output_index.empty()) {
-      hlo_generating_output =
-          hlo_generating_output->mutable_operand(expected_output_index.front());
-      expected_output_index.pop_front();
-    }
-    while (hlo_generating_output->opcode() == HloOpcode::kGetTupleElement) {
-      expected_output_index.push_front(hlo_generating_output->tuple_index());
-      hlo_generating_output = hlo_generating_output->mutable_operand(0);
-    }
+
+    std::tie(hlo_generating_output, expected_output_index) =
+        FollowTupleIndirection(hlo_generating_output, expected_output_index);
 
     ShapeIndex operand_index;
-    const HloInstruction* fusion_parameter = nullptr;
+    HloInstruction* fusion_parameter = nullptr;
     auto nested_pairs =
         HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo_generating_output);
-    if (nested_pairs.empty()) {
-      continue;
-    }
 
     for (const auto& pair : nested_pairs) {
+      const HloUse& input = pair.first;
       const ShapeIndex& output_index = pair.second;
       if (output_index == expected_output_index) {
         CHECK(fusion_parameter == nullptr);
-        const HloUse& input = pair.first;
-        fusion_parameter = hlo_generating_output->operand(input.operand_number);
+        fusion_parameter =
+            hlo_generating_output->mutable_operand(input.operand_number);
         operand_index = input.operand_index;
       }
     }
 
     if (fusion_parameter) {
-      while (fusion_parameter->opcode() == HloOpcode::kTuple &&
-             !operand_index.empty()) {
-        fusion_parameter = fusion_parameter->operand(operand_index.front());
-        operand_index.pop_front();
-      }
-      while (fusion_parameter->opcode() == HloOpcode::kGetTupleElement) {
-        operand_index.push_front(fusion_parameter->tuple_index());
-        fusion_parameter = fusion_parameter->operand(0);
-      }
+      std::tie(fusion_parameter, operand_index) =
+          FollowTupleIndirection(fusion_parameter, operand_index);
 
       if (fusion_parameter->opcode() == HloOpcode::kParameter) {
         input_output_pairs.emplace_back(
@@ -1698,6 +1715,7 @@ GetFusionInstructionInPlaceInputOutputPairs(HloInstruction* instruction) {
   }
   return input_output_pairs;
 }
+
 }  // namespace
 
 /*static*/ std::vector<std::pair<HloUse, ShapeIndex>>
