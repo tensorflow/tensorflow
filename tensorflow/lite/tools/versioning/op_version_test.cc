@@ -628,6 +628,14 @@ TEST(OpVersionTest, VersioningConv2DTest) {
   };
   fake_op_sig.ext_options.conv_2d.is_per_channel_quantized = true;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+
+  fake_op_sig.op = BuiltinOperator_CONV_2D;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteInt8});
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  fake_op_sig.ext_options.conv_2d.is_grouped_convolution = true;
+
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 6);
 }
 
 TEST(OpVersionTest, VersioningFloorDivOperatorTest) {
