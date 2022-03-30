@@ -63,7 +63,8 @@ TF_CAPI_EXPORT extern void TF_AssignRefVariable(
     TF_OpKernelContext* ctx, int input_ref_index, int output_ref_index,
     int value_index, bool use_locking, bool validate_shape,
     void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
-                     TF_Tensor* dest));
+                     TF_Tensor* dest),
+    TF_Status* status);
 
 TF_CAPI_EXPORT extern void TF_AssignUpdateVariable(
     TF_OpKernelContext* ctx, int input_index, int value_index, int Op,

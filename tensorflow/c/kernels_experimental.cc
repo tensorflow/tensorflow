@@ -199,8 +199,8 @@ void TF_AssignRefVariable(TF_OpKernelContext* ctx, int input_ref_index,
                           int output_ref_index, int value_index,
                           bool use_locking, bool validate_shape,
                           void (*copyFunc)(TF_OpKernelContext* ctx,
-                                           TF_Tensor* source,
-                                           TF_Tensor* dest)) {
+                                           TF_Tensor* source, TF_Tensor* dest),
+                          TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
 
   auto copy = [copyFunc, ctx](::tensorflow::OpKernelContext* cc_ctx,
@@ -219,6 +219,7 @@ void TF_AssignRefVariable(TF_OpKernelContext* ctx, int input_ref_index,
   ::tensorflow::AssignRefVariable(cc_ctx, input_ref_index, output_ref_index,
                                   value_index, use_locking, validate_shape,
                                   false, copy);
+  TF_SetStatus(status, TF_OK, "");
 }
 
 void TF_AssignUpdateVariable(TF_OpKernelContext* ctx, int input_index,
