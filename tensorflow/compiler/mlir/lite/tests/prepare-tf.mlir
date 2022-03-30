@@ -706,7 +706,7 @@ func.func @GroupConv(%arg0: tensor<?x1x26x14xf32>, %arg1: tensor<1x3x2x14xf32>) 
   // CHECK:  %1 = "tfl.conv_2d"(%arg0, %0, %[[CONSTANT]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 5 : i32} : (tensor<?x1x26x14xf32>, tensor<14x1x3x2xf32>, tensor<14xf32>) -> tensor<?x1x6x14xf32>
 }
 
-func @UnsupportedGroupConv_UnrankedTensorType(%arg0: tensor<*xf32>, %arg1: tensor<1x3x2x14xf32>) -> (tensor<?x1x6x14xf32>) {
+func.func @UnsupportedGroupConv_UnrankedTensorType(%arg0: tensor<*xf32>, %arg1: tensor<1x3x2x14xf32>) -> (tensor<?x1x6x14xf32>) {
   %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 5, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<1x3x2x14xf32>) -> tensor<?x1x6x14xf32>
   func.return %0 : tensor<?x1x6x14xf32>
 

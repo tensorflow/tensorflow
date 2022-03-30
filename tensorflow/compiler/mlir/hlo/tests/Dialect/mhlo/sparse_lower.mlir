@@ -43,11 +43,11 @@ func.func @sparse_abs_eltwise(%arg0: tensor<10x20xf32, #CSR>)
 // CHECK:           } -> tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>
 // CHECK:           return %[[VAL_10:.*]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], {{.*}} }>>
 // CHECK:         }
-func @sparse_add_eltwise(%arg0: tensor<10x20xf32, #CSR>,
-                         %arg1: tensor<10x20xf32, #DCSR>)
-                             -> tensor<10x20xf32, #CSR> {
+func.func @sparse_add_eltwise(%arg0: tensor<10x20xf32, #CSR>,
+                              %arg1: tensor<10x20xf32, #DCSR>)
+                                  -> tensor<10x20xf32, #CSR> {
   %0 = mhlo.add (%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
                                   tensor<10x20xf32, #DCSR>)
                                -> tensor<10x20xf32, #CSR>
-  return %0 : tensor<10x20xf32, #CSR>
+  func.return %0 : tensor<10x20xf32, #CSR>
 }
