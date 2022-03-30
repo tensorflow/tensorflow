@@ -20,12 +20,28 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python import tf2
+
+
 
 
 class LogicalExpressionTest(converter_testing.TestCase):
+  
+  def assertTransformedEquivalent(self, f, *inputs):
+    tr = self.transform(f, logical_expressions)
+    self.assertEqual(f(*inputs), tr(*inputs))
+  
+  def test_equals_equivalent(self):
+    logging.info("TF Enabled: " + str(tf2.enabled()))
+    def f(a, b):
+      return a == b
+    
+    self.assertTransformedEquivalent(f, constant_op.constant([1]), 1)
+    self.assertTransformedEquivalent(f, constant_op.constant([1]), 2)
 
   def test_equals(self):
-    
+    logging.info("TF Enabled: " + str(tf2.enabled()))
     def f(a, b):
       return a == b
     
