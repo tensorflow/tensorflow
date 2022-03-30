@@ -189,7 +189,7 @@ cc_library(
     srcs = [
         "dtensor_tpu_kernels.cc",
     ],
-    tags = ["no_rocm"],  # Disable building of TPU kernels on RoCM.
+    tags = ["tpu"],  # Disable building of TPU kernels on non-TPU platforms.
     deps = [
         ":dstatus",
         ":tpu_system_interface",
