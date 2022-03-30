@@ -110,10 +110,21 @@ def _find_rocm_config(rocm_install_path):
 def _find_hipruntime_config(rocm_install_path):
 
   def hipruntime_version_number(path):
-    version_file = os.path.join(path, "hip/include/hip/hip_version.h")
-    if not os.path.exists(version_file):
+    possible_version_files = [
+        "include/hip/hip_version.h",  # ROCm 5.2
+        "hip/include/hip/hip_version.h",  # ROCm 5.1 and prior
+    ]
+    version_file = None
+    for f in possible_version_files:
+      version_file_path = os.path.join(path, f)
+      if os.path.exists(version_file_path):
+        version_file = version_file_path
+        break
+    if not version_file:
       raise ConfigError(
-          'HIP Runtime version file "{}" not found'.format(version_file))
+          "HIP Runtime version file not found in {}".format(
+              possible_version_files))
+
     # This header file has an explicit #define for HIP_VERSION, whose value
     # is (HIP_VERSION_MAJOR * 100 + HIP_VERSION_MINOR)
     # Retreive the major + minor and re-calculate here, since we do not
