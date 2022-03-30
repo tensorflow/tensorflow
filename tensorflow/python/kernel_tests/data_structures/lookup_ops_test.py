@@ -3355,11 +3355,11 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
     self.assertAllEqual([0, 1, 2], sorted_values)
 
+  # (TODO Bug #24439) 
+  # Confirm unfixed https://github.com/tensorflow/tensorflow/issues/24439
   @unittest.expectedFailure
   @test_util.run_v2_only
   def testImportedHashTable(self, is_anonymous):
-    # (TODO #24439) 
-    # Confirm unfixed https://github.com/tensorflow/tensorflow/issues/24439
     g = ops.Graph()
     with g.as_default():
       default_val = -1
