@@ -342,7 +342,7 @@ PYBIND11_MODULE(_tf_stack, m) {
            [](const StackFrame& self) { return StackFrameToString(self, {}); })
       .def("__len__", [](const StackFrame&) { return 4; });
 
-  py::class_<StackTraceWrapper>(m, "StackTraceWrapper", py::module_local(true))
+  py::class_<StackTraceWrapper>(m, "StackTraceWrapper")
       // TODO(slebedev): upstream negative indexing support into pybind11.
       .def(
           "__getitem__",
@@ -406,18 +406,14 @@ PYBIND11_MODULE(_tf_stack, m) {
           [](const StackTraceWrapper& self) { return self.LastUserFrame(); },
           "Returns the last non-framework frame.");
 
-  m.def(
-      "extract_stack_for_node",
-      [](const PyBindSourceMap& source_map, const PyBindFileSet& file_set,
-         TF_Operation* op) -> const AbstractStackTrace& {
-        Node* node = reinterpret_cast<Node*>(op);
-        DCHECK(!node->GetStackTrace()) << "Should not reset the stack trace";
-        node->SetStackTrace(
-            std::make_shared<StackTraceWrapper>(StackTraceWrapper::ExtractStack(
-                source_map.source_map_, file_set.file_set_)));
-        return *node->GetStackTrace();
-      },
-      py::return_value_policy::reference);
+  m.def("extract_stack_for_op", [](const PyBindSourceMap& source_map,
+                                   const PyBindFileSet& file_set,
+                                   TF_Operation* op) {
+    DCHECK(!op->node.GetStackTrace()) << "Should not reset the stack trace";
+    op->node.SetStackTrace(
+        std::make_shared<StackTraceWrapper>(StackTraceWrapper::ExtractStack(
+            source_map.source_map_, file_set.file_set_)));
+  });
 
   m.def(
       "extract_stack",

@@ -25,6 +25,7 @@ py_library(
     deps = [
         ":_pywrap_tf_session",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/util:tf_stack",
     ],
 )
 

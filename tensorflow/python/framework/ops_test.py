@@ -1245,7 +1245,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op.control_inputs, [])
     self.assertEqual(op.graph, g)
     self.assertEqual(x.consumers(), [op])
-    self.assertIsNotNone(op.traceback)
+    self.assertNotEmpty(op.traceback)
     self.assertEqual(g.get_operation_by_name("myop"), op)
     self.assertEqual(g.get_tensor_by_name("myop:0"), op.outputs[0])
 
