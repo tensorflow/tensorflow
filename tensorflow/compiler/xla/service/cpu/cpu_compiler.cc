@@ -407,7 +407,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 
 Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool /*is_aot_compile*/,
-    LLVMTargetMachineFeatures* target_machine_features) {
+    LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
   if (module->config().use_spmd_partitioning()) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     const int64_t num_partitions = module->config().num_partitions();
@@ -546,9 +546,13 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }();
   pipeline.AddPass<BitcastDtypesExpander>();
 
-  pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
-    return sort->operand(0)->shape().element_type() == F32;
-  });
+  // XLA lowers topk to a libcall while the MLIR based pipeline does not yet
+  // support libcalls. Disable this for now.
+  if (!is_mlir_compile) {
+    pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
+      return sort->operand(0)->shape().element_type() == F32;
+    });
+  }
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot,
@@ -652,8 +656,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   }
 
   LLVMTargetMachineFeatures target_machine_features(target_machine);
-  TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
-                                                   &target_machine_features));
+  TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(
+      module, is_aot_compile, &target_machine_features, is_mlir_compile));
 
   return RunHloPassesAfterLayoutAssn(
       module, is_aot_compile, &target_machine_features,
@@ -852,6 +856,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.
   // Move up broadcasting operations to allow for more fusion opportunities.
+  pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::mhlo::CreateExpandHloTuplesPass("main"));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeGeneralDotPass());
@@ -864,6 +869,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::mhlo::createLegalizeToMemrefPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeControlFlowPass());
+  pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeHloToLinalgPass());
 
@@ -889,7 +895,6 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createLinalgBufferizePass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
-  pm.addPass(mlir::createInlinerPass());
 
   // Bufferize Linalg on tensors program.
   // Always run canonicalizer (which does dead code removal) before
@@ -913,6 +918,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass());
   pm.addPass(mlir::mhlo::CreateOutlineWithXLAFrameworkPass());
+  pm.addPass(mlir::createInlinerPass());
 
   // Deallocate all temporary buffers.
   pm.addNestedPass<mlir::func::FuncOp>(
