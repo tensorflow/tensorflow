@@ -1,7 +1,6 @@
 # DTensor C++ runtime and libraries.
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_dtensor_tpu_dependencies",
@@ -187,37 +186,34 @@ cc_library(
 
 cc_library(
     name = "dtensor_tpu_kernels",
-    srcs = if_cuda_or_rocm(
-        [],
-        ["dtensor_tpu_kernels.cc"],
-    ),  # No need to even compile the TPU kernels in GPU builds.
-    deps = if_cuda_or_rocm(
-        [],
-        [
-            ":dstatus",
-            ":tpu_system_interface",
-            "@com_google_absl//absl/cleanup",
-            "@com_google_absl//absl/time",
-            "//tensorflow/c:tf_status_headers",
-            "//tensorflow/c:tf_status_helper",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core/tpu:tpu_api",
-            "//tensorflow/core/tpu:tpu_configuration",
-            "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
-            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_interface",
-            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_local_lookup",
-            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_lookup",
-            "//tensorflow/core/tpu/kernels:tpu_configuration_ops",
-            "//tensorflow/core/tpu/kernels:tpu_embedding_engine_state_interface",
-            "//tensorflow/core/tpu/kernels:tpu_mesh_state_interface",
-            "//tensorflow/core/tpu/kernels:tpu_op_consts",
-            "//tensorflow/core/tpu/kernels:tpu_pod_state",
-            "//tensorflow/stream_executor/tpu:c_api_decl",
-            "//tensorflow/stream_executor/tpu:tpu_executor_base",
-            "//tensorflow/stream_executor/tpu:tpu_topology_external",
-        ],
-    ),
+    srcs = [
+        "dtensor_tpu_kernels.cc",
+    ],
+    tags = ["no_rocm"],  # Disable building of TPU kernels on RoCM.
+    deps = [
+        ":dstatus",
+        ":tpu_system_interface",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_compilation_cache_interface",
+        "//tensorflow/core/tpu/kernels:tpu_compilation_cache_local_lookup",
+        "//tensorflow/core/tpu/kernels:tpu_compilation_cache_lookup",
+        "//tensorflow/core/tpu/kernels:tpu_configuration_ops",
+        "//tensorflow/core/tpu/kernels:tpu_embedding_engine_state_interface",
+        "//tensorflow/core/tpu/kernels:tpu_mesh_state_interface",
+        "//tensorflow/core/tpu/kernels:tpu_op_consts",
+        "//tensorflow/core/tpu/kernels:tpu_pod_state",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
+        "//tensorflow/stream_executor/tpu:tpu_executor_base",
+        "//tensorflow/stream_executor/tpu:tpu_topology_external",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/time",
+    ],
     alwayslink = 1,
 )
 
