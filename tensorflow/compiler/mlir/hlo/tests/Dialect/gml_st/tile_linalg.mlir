@@ -2,13 +2,13 @@
 // RUN: -test-gml-st-loop-tiling="tile-sizes=2,3,4 distribution-types=block_x,block_y,none" \
 // RUN: | FileCheck %s
 
-func @matmul_tensors(
+func.func @matmul_tensors(
   %arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>)
     -> tensor<?x?xf32> {
   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<?x?xf32>, tensor<?x?xf32>)
                      outs(%arg2: tensor<?x?xf32>)
     -> tensor<?x?xf32>
-  return %0 : tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: func @matmul_tensors
@@ -46,7 +46,7 @@ func @matmul_tensors(
 
 // -----
 
-func @generic_op_tensors(
+func.func @generic_op_tensors(
   %arg0 : tensor<?x?x?xf32>, %arg1 : tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -66,7 +66,7 @@ func @generic_op_tensors(
       %5 = arith.addf %arg2, %arg3 : f32
       linalg.yield %5 : f32
     } -> tensor<?x?x?xf32>
-  return %4 : tensor<?x?x?xf32>
+  func.return %4 : tensor<?x?x?xf32>
 }
 // CHECK-LABEL: func @generic_op_tensors(
 // CHECK-SAME:    %[[ARG_0:.*]]: [[TY:.*]],

@@ -4,10 +4,10 @@
 #map1 = affine_map<(d0, d1)[s0] -> (d0 * 192 + s0 + d1)>
 #map2 = affine_map<(d0) -> (16, -d0 + 192)>
 
-func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
+func.func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
                   %C: memref<192x192xf32>) -> ()
 
-func @loop_incorrent_num_yield_operands(%A: memref<192x192xf32>,
+func.func @loop_incorrent_num_yield_operands(%A: memref<192x192xf32>,
     %B: memref<192x192xf32>, %C: memref<192x192xf32>,
     %C_tensor: tensor<192x192xf32>) {
   %c24 = arith.constant 24 : index
@@ -18,12 +18,12 @@ func @loop_incorrent_num_yield_operands(%A: memref<192x192xf32>,
       ins (%A_ = %A: memref<192x192xf32>, %B_ = %B: memref<192x192xf32>)
       outs (%CT_ = %C_tensor: tensor<192x192xf32>,
             %C_ = %C: memref<192x192xf32>) {
-        call @foo(%A_, %B_, %C_)
+        func.call @foo(%A_, %B_, %C_)
           : (memref<192x192xf32>, memref<192x192xf32>, memref<192x192xf32>)-> ()
     // expected-error @+1 {{expected number of tensor output args = 1 to match the number of yield operands = 0}}
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // -----
@@ -32,10 +32,10 @@ func @loop_incorrent_num_yield_operands(%A: memref<192x192xf32>,
 #map1 = affine_map<(d0, d1)[s0] -> (d0 * 192 + s0 + d1)>
 #map2 = affine_map<(d0) -> (16, -d0 + 192)>
 
-func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
+func.func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
                   %C: memref<192x192xf32>) -> tensor<f32>
 
-func @loop_incorrent_yield_operand_type(%A: memref<192x192xf32>,
+func.func @loop_incorrent_yield_operand_type(%A: memref<192x192xf32>,
     %B: memref<192x192xf32>, %C: memref<192x192xf32>,
     %C_tensor: tensor<192x192xf32>) {
   %c24 = arith.constant 24 : index
@@ -46,20 +46,20 @@ func @loop_incorrent_yield_operand_type(%A: memref<192x192xf32>,
       ins (%A_ = %A: memref<192x192xf32>, %B_ = %B: memref<192x192xf32>)
       outs (%CT_ = %C_tensor: tensor<192x192xf32>,
             %C_ = %C: memref<192x192xf32>) {
-        %1 = call @foo(%A_, %B_, %C_)
+        %1 = func.call @foo(%A_, %B_, %C_)
           : (memref<192x192xf32>, memref<192x192xf32>, memref<192x192xf32>)-> tensor<f32>
     // expected-error @+1 {{expected yield operand 0 with type = 'tensor<f32>' to match output arg type = 'tensor<192x192xf32>}}
     gml_st.yield %1 : tensor<f32>
   }
-  return
+  func.return
 }
 
 // -----
 
-func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
+func.func private @foo(%A: memref<192x192xf32>, %B: memref<192x192xf32>,
                   %C: memref<192x192xf32>) -> ()
 
-func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
+func.func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
     %B: memref<192x192xf32>, %C: memref<192x192xf32>,
     %C_tensor: tensor<192x192xf32>) {
   %c24 = arith.constant 24 : index
@@ -70,7 +70,7 @@ func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
     ^bb0(%arg4: index, %arg5: index, %A_: memref<192x192xf32>,
          %B_: memref<192x192xf32>, %CT_: tensor<192x192xf32>,
          %C_: memref<192x192xf32>):
-      call @foo(%A_, %B_, %C_)
+      func.call @foo(%A_, %B_, %C_)
           : (memref<192x192xf32>, memref<192x192xf32>, memref<192x192xf32>)-> ()
       gml_st.yield %CT_ : tensor<192x192xf32>
     }) {
@@ -79,26 +79,26 @@ func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
     } : (index, index, index, index, index, index, memref<192x192xf32>,
       memref<192x192xf32>, tensor<192x192xf32>, memref<192x192xf32>
     ) -> tensor<192x192xf32>
-  return
+  func.return
 }
 
 // -----
 
-func private @foo(%A: memref<100xf32>) -> ()
+func.func private @foo(%A: memref<100xf32>) -> ()
 
-func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
+func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
   %c0 = arith.constant 0 : index
   %c192 = arith.constant 192 : index
   %c24 = arith.constant 24 : index
   // expected-error @+1 {{expected output arg 0 with type = 'memref<192xf32>' to match region arg 1 type = 'memref<100xf32>'}}
   "gml_st.loop"(%c0, %c192, %c24, %A) ({
     ^bb0(%arg4: index, %A_: memref<100xf32>):
-      call @foo(%A_) : (memref<100xf32>)-> ()
+      func.call @foo(%A_) : (memref<100xf32>)-> ()
       gml_st.yield
     }) {
       iterator_types = ["parallel"],
       operand_segment_sizes = dense<[1, 1, 1, 0, 1]> : vector<5xi32>
     } : (index, index, index, memref<192xf32>) -> ()
-  return
+  func.return
 }
 

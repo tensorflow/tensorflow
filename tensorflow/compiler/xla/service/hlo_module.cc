@@ -267,9 +267,6 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
-    if (!options.print_computation(computation)) {
-      continue;
-    }
     // Don't print async computations when the sytax sugar is enabled since that
     // is redundant information.
     if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {
@@ -440,7 +437,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                                    /*preserve_entry_layouts=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
-
+  if (proto.has_schedule()) {
+    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+  }
   TF_ASSIGN_OR_RETURN(
       module->input_output_alias_config_,
       HloInputOutputAliasConfig::CreateFromProto(
@@ -738,8 +737,8 @@ bool CompareComputationsByContent(const HloComputation* a,
   if (a->instruction_count() != b->instruction_count()) {
     return a->instruction_count() < b->instruction_count();
   }
-  return a->ToString(HloPrintOptions::Fingerprint()) <
-         b->ToString(HloPrintOptions::Fingerprint());
+  return a->ToString(HloPrintOptions::ModuleFingerprint()) <
+         b->ToString(HloPrintOptions::ModuleFingerprint());
 }
 
 uint64_t GetFingerprint(
@@ -750,7 +749,7 @@ uint64_t GetFingerprint(
     return it->second;
   } else {
     const uint64_t fingerprint = tensorflow::Fingerprint64(
-        computation->ToString(HloPrintOptions::Fingerprint()));
+        computation->ToString(HloPrintOptions::ModuleFingerprint()));
     fingerprint_map[computation] = fingerprint;
     return fingerprint;
   }

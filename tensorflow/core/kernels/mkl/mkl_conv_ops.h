@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "tensorflow/core/util/onednn_env_vars.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -401,7 +402,7 @@ class MklDnnConvUtil {
 
     int64 out_rows = 0, out_cols = 0, out_planes = 0;
     int64 pad_top = 0, pad_bottom = 0, pad_left = 0, pad_right = 0;
-    int64 pad_D1, pad_D2;
+    int64 pad_front, pad_back;
 
     if (is_conv2d) {
       Padding padding_type;
@@ -423,22 +424,33 @@ class MklDnnConvUtil {
                          input_cols, filter_cols, dilation_cols, stride_cols,
                          padding_type, &out_cols, &pad_left, &pad_right));
     } else {
+      Padding padding_type;
+      if (pad_enabled) {
+        padding_type = Padding::EXPLICIT;
+        pad_front = static_cast<int64>((*pad_l)[0]);
+        pad_top = static_cast<int64>((*pad_l)[1]);
+        pad_left = static_cast<int64>((*pad_l)[2]);
+        pad_back = static_cast<int64>((*pad_r)[0]);
+        pad_bottom = static_cast<int64>((*pad_r)[1]);
+        pad_right = static_cast<int64>((*pad_r)[2]);
+      } else {
+        padding_type = padding_;
+      }
       OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerboseV2(
                                    input_planes, filter_planes, dilation_planes,
-                                   stride_planes, padding_, &out_planes,
-                                   &pad_D1, &pad_D2));
+                                   stride_planes, padding_type, &out_planes,
+                                   &pad_front, &pad_back));
       OP_REQUIRES_OK(context_,
                      GetWindowedOutputSizeVerboseV2(
                          input_rows, filter_rows, dilation_rows, stride_rows,
-                         padding_, &out_rows, &pad_top, &pad_bottom));
+                         padding_type, &out_rows, &pad_top, &pad_bottom));
       OP_REQUIRES_OK(context_,
                      GetWindowedOutputSizeVerboseV2(
                          input_cols, filter_cols, dilation_cols, stride_cols,
-                         padding_, &out_cols, &pad_left, &pad_right));
+                         padding_type, &out_cols, &pad_left, &pad_right));
     }
 
     if (is_conv2d) {
-      // Conv + pad fusion is enabled only for 2D.
       // If pad_enabled, i.e., pad and conv op are fused, then
       // all pads are already passed from pad op through
       // *pad_l and *pad_r and they don't need to be set here.
@@ -447,11 +459,15 @@ class MklDnnConvUtil {
         *pad_r = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
       }
     } else {
-      // Set padding for Conv3D here
-      *pad_l = {static_cast<int>(pad_D1), static_cast<int>(pad_top),
-                static_cast<int>(pad_left)};
-      *pad_r = {static_cast<int>(pad_D2), static_cast<int>(pad_bottom),
-                static_cast<int>(pad_right)};
+      // If pad_enabled, i.e., pad and conv op are fused, then
+      // all pads are already passed from pad op through
+      // *pad_l and *pad_r and they don't need to be set here.
+      if (!pad_enabled) {
+        *pad_l = {static_cast<int>(pad_front), static_cast<int>(pad_top),
+                  static_cast<int>(pad_left)};
+        *pad_r = {static_cast<int>(pad_back), static_cast<int>(pad_bottom),
+                  static_cast<int>(pad_right)};
+      }
     }
     // Tensorflow output is in data_format order.
     //     Conv2D: NHWC or NCHW

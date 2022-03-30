@@ -275,3 +275,15 @@ def LaunchToDeviceAttributePass : Pass<"tf-launch-to-device-attribute", "mlir::F
 
   let constructor = "TFDevice::CreateLaunchToDeviceAttributePass()";
 }
+
+def XlaClusterFormationPass : Pass<"tf-xla-cluster-formation", "ModuleOp"> {
+  let summary = "Encapsulate StatefulPartitionedCallOp within a Cluster op";
+  let constructor = "TFDevice::CreateXlaClusterFormationPass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+}
+
+def XlaInlineDeviceOpsPass : Pass<"tf-xla-inline-device-ops", "ModuleOp"> {
+  let summary = "Inline all Cluster op based in the parent region";
+  let constructor = "TFDevice::CreateXlaInlineDeviceOpsPass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+}

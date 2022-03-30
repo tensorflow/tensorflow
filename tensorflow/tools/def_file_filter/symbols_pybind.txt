@@ -256,6 +256,7 @@ tensorflow::ShapeRefiner::~ShapeRefiner
 tensorflow::AddControlInput
 tensorflow::SetAttr
 tensorflow::ClearAttr
+tensorflow::SetFullType
 tensorflow::SetRequestedDevice
 tensorflow::UpdateEdge
 tensorflow::RemoveAllControlInputs

@@ -469,6 +469,7 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
       # parallelism or asynchrony.
       options = options_lib.Options()
       options.autotune.enabled = False
+      options.experimental_optimization.filter_parallelization = False
       options.experimental_optimization.map_and_batch_fusion = False
       options.experimental_optimization.map_parallelization = False
       dataset = _OptionsDataset(self, options)

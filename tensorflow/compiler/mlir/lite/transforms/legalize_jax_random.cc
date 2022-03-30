@@ -88,7 +88,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
   auto func = getOperation();
   if (!IsJaxRandomUniform(func) && !IsJaxRandomNormal(func)) return;
   auto result_tuple_ty =
-      func.getType().getResult(0).dyn_cast_or_null<TupleType>();
+      func.getFunctionType().getResult(0).dyn_cast_or_null<TupleType>();
   if (!result_tuple_ty) return;
   if (result_tuple_ty.size() != 1) return;
   auto result_ty = result_tuple_ty.getType(0).dyn_cast<ShapedType>();

@@ -5,7 +5,7 @@ module {
   func @f() -> tensor<*xi32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
     %2 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
-    return %2 : tensor<*xi32>
+    func.return %2 : tensor<*xi32>
   }
 }
 
@@ -16,12 +16,12 @@ module {
   func @main() -> tensor<*xi32> {
     %0 = "tf.PartitionedCall"() {f = @f, config = "", config_proto = "", executor_type = ""}
       : () -> tensor<*xi32>
-    return %0 : tensor<*xi32>
+    func.return %0 : tensor<*xi32>
   }
   func @f() -> tensor<*xi32> {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
     %1 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
-    return %1 : tensor<*xi32>
+    func.return %1 : tensor<*xi32>
   }
 }
 
@@ -34,11 +34,11 @@ module {
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
     %1 = "tf.PartitionedCall"(%0) {f = @f, config = "", config_proto = "", executor_type = ""}
       : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
-    return %1 : tensor<*xi32>
+    func.return %1 : tensor<*xi32>
   }
   func @f(%arg0 : tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32> {
     %0 = "tf.ReadVariableOp"(%arg0) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
-    return %0 : tensor<*xi32>
+    func.return %0 : tensor<*xi32>
   }
 }
 
@@ -51,7 +51,7 @@ module {
     %cst = arith.constant dense<2> : tensor<4xi32>
     "tf.AssignAddVariableOp"(%0, %cst) {} : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<4xi32>) -> ()
     %1 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
-    return %1 : tensor<*xi32>
+    func.return %1 : tensor<*xi32>
   }
 }
 
@@ -73,7 +73,7 @@ module {
         (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
       "tfl.yield"(%4) : (tensor<*xi32>) -> ()
   }) : (tensor<i32>, tensor<*x!tf_type.resource<tensor<*xi32>>>) -> (tensor<i32>, tensor<*x!tf_type.resource<tensor<*xi32>>>)
-    return %1#0 : tensor<i32>
+    func.return %1#0 : tensor<i32>
   }
 }
 
@@ -96,7 +96,7 @@ module {
       %4 = "tf.ReadVariableOp"(%arg4) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
       "tfl.yield"(%4) : (tensor<*xi32>) -> ()
   }) : (tensor<i32>, tensor<*x!tf_type.resource<tensor<*xi32>>>) -> (tensor<i32>, tensor<*x!tf_type.resource<tensor<*xi32>>>)
-    return %1#0 : tensor<i32>
+    func.return %1#0 : tensor<i32>
   }
 }
 
@@ -118,11 +118,11 @@ module {
       f = @__reduce_func, f._tf_data_function = true,
       output_shapes = [#tf_type.shape<>],
       output_types = [i32], use_inter_op_parallelism = true} : (tensor<!tf_type.variant>, tensor<i32>, tensor<!tf_type.resource<tensor<4096xf32>>>) -> (tensor<*xi32>)
-    return
+    func.return
   }
 
   func private @__reduce_func(%arg0: tensor<i32> {tf._user_specified_name = "args_0"}) -> (tensor<i32>) attributes {tf._tf_data_function = true, tf.signature.is_stateful} {
     %0 = "tf.JustPretend"() : () -> (tensor<i32>)
-    return %0: tensor<i32>
+    func.return %0: tensor<i32>
   }
 }

@@ -459,7 +459,7 @@ TEST_P(AsyncUnknownRatioTest, Model) {
   async_unknown_many->record_element();
   // Estimated ratio is 2/3
   ratio = 2.0 / 3.0;
-  EXPECT_EQ(
+  EXPECT_FLOAT_EQ(
       async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr),
       ratio * (50 + 50) + 128 / 3.0);
   EXPECT_LE(async_unknown_many->OutputTime(&input_times, nullptr),

@@ -92,12 +92,13 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
-  void ShutdownTaskAsync(const ShutdownTaskRequest* request,
+  void ShutdownTaskAsync(CallOptions* call_opts,
+                         const ShutdownTaskRequest* request,
                          ShutdownTaskResponse* response,
                          StatusCallback done) override {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/ShutdownTask", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -124,12 +125,13 @@ class GrpcCoordinationClient : public CoordinationClient {
         /*fail_fast=*/true, &target_);
   }
 
-  void ReportErrorToTaskAsync(const ReportErrorToTaskRequest* request,
+  void ReportErrorToTaskAsync(CallOptions* call_opts,
+                              const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/ReportErrorToTask",
-        *request, response, std::move(done), /*call_opts=*/nullptr,
+        *request, response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }

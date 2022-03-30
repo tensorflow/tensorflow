@@ -123,6 +123,9 @@ void RecordTFDataServiceClientIterators(
     const tensorflow::data::ProcessingModeDef& processing_mode,
     bool is_coordinated_read);
 
+// Records tf.data service multi-trainer cache queries.
+void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit);
+
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").

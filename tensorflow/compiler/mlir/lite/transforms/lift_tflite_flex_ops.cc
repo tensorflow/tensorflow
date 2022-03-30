@@ -106,7 +106,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
     }
     op_state.addAttributes(attrs);
 
-    Operation* tf_op = rewriter.createOperation(op_state);
+    Operation* tf_op = rewriter.create(op_state);
     rewriter.replaceOp(op, tf_op->getResults());
 
     // Special type fixes for TF Resource Tensors that are casted to

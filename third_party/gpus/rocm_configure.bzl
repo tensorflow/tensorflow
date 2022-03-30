@@ -178,7 +178,10 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hsa/include")
 
     # Add HIP headers (needs to match $HIP_PATH)
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
+    if int(rocm_config.rocm_version_number) >= 50200:
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
+    else:
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
 
     # Add HIP-Clang headers (realpath relative to compiler binary)
     rocm_toolkit_path = realpath(repository_ctx, rocm_config.rocm_toolkit_path, bash_bin)
@@ -330,18 +333,18 @@ def _find_libs(repository_ctx, rocm_config, hipfft_or_rocfft, bash_bin):
         for name, path in [
             ("amdhip64", rocm_config.rocm_toolkit_path + "/hip"),
             ("rocblas", rocm_config.rocm_toolkit_path),
-            (hipfft_or_rocfft, rocm_config.rocm_toolkit_path + "/" + hipfft_or_rocfft),
+            (hipfft_or_rocfft, rocm_config.rocm_toolkit_path),
             ("hiprand", rocm_config.rocm_toolkit_path),
             ("MIOpen", rocm_config.rocm_toolkit_path + "/miopen"),
             ("rccl", rocm_config.rocm_toolkit_path + "/rccl"),
-            ("hipsparse", rocm_config.rocm_toolkit_path + "/hipsparse"),
+            ("hipsparse", rocm_config.rocm_toolkit_path),
             ("roctracer64", rocm_config.rocm_toolkit_path + "/roctracer"),
-            ("rocsolver", rocm_config.rocm_toolkit_path + "/rocsolver"),
+            ("rocsolver", rocm_config.rocm_toolkit_path),
         ]
     ]
     if int(rocm_config.rocm_version_number) >= 40500:
-        libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path + "/hipsolver")))
-        libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, "hipblas", rocm_config.rocm_toolkit_path + "/hipblas")))
+        libs_paths.append(("hipsolver", _rocm_lib_paths(repository_ctx, "hipsolver", rocm_config.rocm_toolkit_path)))
+        libs_paths.append(("hipblas", _rocm_lib_paths(repository_ctx, "hipblas", rocm_config.rocm_toolkit_path)))
     return _select_rocm_lib_paths(repository_ctx, libs_paths, bash_bin)
 
 def _exec_find_rocm_config(repository_ctx, script_path):
@@ -563,12 +566,6 @@ def _create_local_rocm_repository(repository_ctx):
         ),
         make_copy_dir_rule(
             repository_ctx,
-            name = hipfft_or_rocfft + "-include",
-            src_dir = rocm_toolkit_path + "/" + hipfft_or_rocfft + "/include",
-            out_dir = "rocm/include/" + hipfft_or_rocfft,
-        ),
-        make_copy_dir_rule(
-            repository_ctx,
             name = "rocblas-hsaco",
             src_dir = rocm_toolkit_path + "/rocblas/lib/library",
             out_dir = "rocm/lib/rocblas/lib/library",
@@ -584,39 +581,8 @@ def _create_local_rocm_repository(repository_ctx):
             name = "rccl-include",
             src_dir = rocm_toolkit_path + "/rccl/include",
             out_dir = "rocm/include/rccl",
-        ),
-        make_copy_dir_rule(
-            repository_ctx,
-            name = "hipsparse-include",
-            src_dir = rocm_toolkit_path + "/hipsparse/include",
-            out_dir = "rocm/include/hipsparse",
-        ),
-        make_copy_dir_rule(
-            repository_ctx,
-            name = "rocsolver-include",
-            src_dir = rocm_toolkit_path + "/rocsolver/include",
-            out_dir = "rocm/include/rocsolver",
-        ),
+        )
     ]
-
-    # Add Hipsolver on ROCm4.5+
-    if rocm_version_number >= 40500:
-        copy_rules.append(
-            make_copy_dir_rule(
-                repository_ctx,
-                name = "hipsolver-include",
-                src_dir = rocm_toolkit_path + "/hipsolver/include",
-                out_dir = "rocm/include/hipsolver",
-            ),
-        )
-        copy_rules.append(
-            make_copy_dir_rule(
-                repository_ctx,
-                name = "hipblas-include",
-                src_dir = rocm_toolkit_path + "/hipblas/include",
-                out_dir = "rocm/include/hipblas",
-            ),
-        )
 
     # explicitly copy (into the local_config_rocm repo) the $ROCM_PATH/hiprand/include and
     # $ROCM_PATH/rocrand/include dirs, only once the softlink to them in $ROCM_PATH/include
@@ -705,19 +671,14 @@ def _create_local_rocm_repository(repository_ctx):
         "%{rocsolver_lib}": rocm_libs["rocsolver"].file_name,
         "%{copy_rules}": "\n".join(copy_rules),
         "%{rocm_headers}": ('":rocm-include",\n' +
-                            '":' + hipfft_or_rocfft + '-include",\n' +
                             '":miopen-include",\n' +
                             '":rccl-include",\n' +
                             hiprand_include +
-                            rocrand_include +
-                            '":hipsparse-include",\n' +
-                            '":rocsolver-include"'),
+                            rocrand_include),
     }
     if rocm_version_number >= 40500:
         repository_dict["%{hipsolver_lib}"] = rocm_libs["hipsolver"].file_name
-        repository_dict["%{rocm_headers}"] += ',\n":hipsolver-include"'
         repository_dict["%{hipblas_lib}"] = rocm_libs["hipblas"].file_name
-        repository_dict["%{rocm_headers}"] += ',\n":hipblas-include"'
 
     repository_ctx.template(
         "rocm/BUILD",

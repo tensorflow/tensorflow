@@ -66,8 +66,9 @@ class NcclManager {
   // A participant in a Collective.
   struct Participant {
     Participant(se::StreamExecutor* executor, se::Stream* tensor_stream,
-                const DeviceBase::GpuDeviceInfo* info, const Tensor* input,
-                Tensor* output, int global_rank, DoneCallback done_callback)
+                const DeviceBase::AcceleratorDeviceInfo* info,
+                const Tensor* input, Tensor* output, int global_rank,
+                DoneCallback done_callback)
         : executor(executor),
           tensor_stream(tensor_stream),
           event_mgr(info->event_mgr),

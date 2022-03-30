@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for CoordinatedCheckpointManager."""
+"""Tests for WorkerPreemptionHandler."""
 import os
 import random
 import re
@@ -71,7 +70,7 @@ def _enable_coordination_service(cluster_spec):
 
 
 class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
-  """Integration test for CoordinatedCheckpointManager."""
+  """Integration test for WorkerPreemptionHandler."""
 
   def _mwms_write_checkpoint_dir(self, checkpoint_dir, cluster_spec, task_type,
                                  task_id):
@@ -124,12 +123,12 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         model = Model()
         # Named it fh_ckpt because it'd be better that the user have their
         # regular checkpoint separate from the checkpoint for
-        # CoordinatedCheckpointManager, since we will create CheckpointManager
+        # WorkerPreemptionHandler, since we will create CheckpointManager
         # to manage the checkpoint and only one CheckpointManager should be
         # active in a particular directory at a time.
         fh_ckpt = tracking_util.Checkpoint(model=model)
 
-        failure_handler = failure_handling.CoordinatedCheckpointManager(
+        worker_preemption_watcher = failure_handling.WorkerPreemptionHandler(
             strategy.cluster_resolver, fh_ckpt, checkpoint_dir)
 
       def distributed_train_step(current_epoch, current_step):
@@ -148,13 +147,16 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         if current_step == STEPS_PER_EPOCH - 1:
           logging.info('epoch %d finished', current_epoch)
 
-      logging.info('Restored training at %d', failure_handler.total_runs)
-      for epoch in range(failure_handler.total_runs // STEPS_PER_EPOCH,
-                         EPOCHS_TO_RUN):
+      logging.info('Restored training at %d',
+                   worker_preemption_watcher.total_runs)
+      for epoch in range(
+          worker_preemption_watcher.total_runs // STEPS_PER_EPOCH,
+          EPOCHS_TO_RUN):
 
-        for step in range(failure_handler.total_runs % STEPS_PER_EPOCH,
-                          STEPS_PER_EPOCH):
-          failure_handler.run(distributed_train_step, epoch, step)
+        for step in range(
+            worker_preemption_watcher.total_runs % STEPS_PER_EPOCH,
+            STEPS_PER_EPOCH):
+          worker_preemption_watcher.run(distributed_train_step, epoch, step)
         # Add some randomness to when preemption actually happens. We should
         # trigger it for sure if the training is coming to an end and it hasn't
         # been triggered yet.

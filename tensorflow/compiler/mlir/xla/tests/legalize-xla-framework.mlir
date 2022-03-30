@@ -1,9 +1,9 @@
 // RUN: xla-opt %s -xla-legalize-xla-framework-to-llvm | FileCheck %s
 
-func @buffer_type(%arg: !xla_framework.buffer {xla_framework.input_mapping = 0 : i64})
+func.func @buffer_type(%arg: !xla_framework.buffer {xla_framework.input_mapping = 0 : i64})
                       attributes {xla_entry} {
   %val = xla_framework.buffer_to_mem %arg : memref<f32>
-  return
+  func.return
 }
 
 // CHECK-LABEL: @buffer_type
@@ -29,9 +29,9 @@ func @buffer_type(%arg: !xla_framework.buffer {xla_framework.input_mapping = 0 :
 // CHECK: return
 
 
-func @return_tuple(%result0: !xla_framework.buffer, %result1: !xla_framework.buffer)
+func.func @return_tuple(%result0: !xla_framework.buffer, %result1: !xla_framework.buffer)
                       attributes {xla_entry, xla_framework.result_inner_mapping=[1,2], xla_framework.result_mapping=0} {
-  return
+  func.return
 }
 
 

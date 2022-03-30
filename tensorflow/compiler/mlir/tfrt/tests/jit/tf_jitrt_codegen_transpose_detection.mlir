@@ -5,7 +5,7 @@
 
 #map0 = affine_map<(d0, d1) -> (d1, d0)>
 #map1 = affine_map<(d0, d1) -> (d0, d1)>
-func @transpose_2d(%arg0: tensor<?x?xf32>)
+func.func @transpose_2d(%arg0: tensor<?x?xf32>)
     -> tensor<?x?xf32> attributes {jitrt.entrypoint} {
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
@@ -18,7 +18,7 @@ func @transpose_2d(%arg0: tensor<?x?xf32>)
   ^bb0(%arg1: f32, %arg2: f32):
     linalg.yield %arg1 : f32
   } -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  func.return %3 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_2d(
@@ -31,7 +31,7 @@ func @transpose_2d(%arg0: tensor<?x?xf32>)
 
 #map0 = affine_map<(d0, d1) -> (d0, d0)>
 #map1 = affine_map<(d0, d1) -> (d0, d1)>
-func @identity(%arg0: tensor<?x?xf32>)
+func.func @identity(%arg0: tensor<?x?xf32>)
     -> tensor<?x?xf32> attributes {jitrt.entrypoint} {
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
@@ -44,7 +44,7 @@ func @identity(%arg0: tensor<?x?xf32>)
   ^bb0(%arg1: f32, %arg2: f32):
     linalg.yield %arg1 : f32
   } -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  func.return %3 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @identity(
@@ -54,7 +54,7 @@ func @identity(%arg0: tensor<?x?xf32>)
 
 #map0 = affine_map<(d0, d1) -> (d1, d0)>
 #map1 = affine_map<(d0, d1) -> (d0, d1)>
-func @transpose_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32>{
+func.func @transpose_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32>{
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
@@ -67,7 +67,7 @@ func @transpose_add(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32>{
     %add = arith.addf %arg1, %arg1 : f32
     linalg.yield %add : f32
   } -> tensor<?x?xf32>
-  return %3 : tensor<?x?xf32>
+  func.return %3 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL:   func @transpose_add(

@@ -321,11 +321,20 @@ bool IsEmpty(const XSpace& space) {
   return true;
 }
 
-void AddFlowsToXplane(int32_t host_id, bool is_host_plane, XPlane* xplane) {
+void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,
+                      XPlane* xplane) {
   if (!xplane) return;
   XPlaneBuilder plane(xplane);
   XStatMetadata* correlation_id_stats_metadata =
       plane.GetStatMetadata(GetStatTypeStr(StatType::kCorrelationId));
+  XStatMetadata* producer_type_stats_metadata =
+      plane.GetStatMetadata(GetStatTypeStr(StatType::kProducerType));
+  XStatMetadata* consumer_type_stats_metadata =
+      plane.GetStatMetadata(GetStatTypeStr(StatType::kConsumerType));
+  XStatMetadata* producer_id_stats_metadata =
+      plane.GetStatMetadata(GetStatTypeStr(StatType::kProducerId));
+  XStatMetadata* consumer_id_stats_metadata =
+      plane.GetStatMetadata(GetStatTypeStr(StatType::kConsumerId));
   XStatMetadata* flow_stats_metadata =
       plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kFlow));
   XFlow::FlowDirection direction = is_host_plane
@@ -335,16 +344,49 @@ void AddFlowsToXplane(int32_t host_id, bool is_host_plane, XPlane* xplane) {
   plane.ForEachLine([&](XLineBuilder line) {
     line.ForEachEvent([&](XEventBuilder event) {
       absl::optional<uint64_t> correlation_id;
+      absl::optional<uint64_t> producer_type;
+      absl::optional<uint64_t> consumer_type;
+      absl::optional<uint64_t> producer_id;
+      absl::optional<uint64_t> consumer_id;
       event.ForEachStat([&](XStat* stat) {
         if (correlation_id_stats_metadata &&
             stat->metadata_id() == correlation_id_stats_metadata->id()) {
           correlation_id = stat->uint64_value();
+        } else if (connect_traceme) {
+          if (producer_type_stats_metadata &&
+              stat->metadata_id() == producer_type_stats_metadata->id()) {
+            producer_type = XStatsBuilder<XPlane>::IntOrUintValue(*stat);
+          } else if (consumer_type_stats_metadata &&
+                     stat->metadata_id() ==
+                         consumer_type_stats_metadata->id()) {
+            consumer_type = XStatsBuilder<XPlane>::IntOrUintValue(*stat);
+          } else if (producer_id_stats_metadata &&
+                     stat->metadata_id() == producer_id_stats_metadata->id()) {
+            producer_id = XStatsBuilder<XPlane>::IntOrUintValue(*stat);
+          } else if (consumer_id_stats_metadata &&
+                     stat->metadata_id() == consumer_id_stats_metadata->id()) {
+            consumer_id = XStatsBuilder<XPlane>::IntOrUintValue(*stat);
+          }
         }
       });
       if (correlation_id) {
         XFlow flow(XFlow::GetFlowId(host_id, *correlation_id), direction,
                    ContextType::kGpuLaunch);
         event.AddStatValue(*flow_stats_metadata, flow.ToStatValue());
+      }
+      if (connect_traceme) {
+        if (producer_type && producer_id) {
+          auto context_type = GetSafeContextType(*producer_type);
+          XFlow flow(XFlow::GetFlowId(host_id, *producer_id, context_type),
+                     XFlow::FlowDirection::kFlowOut, context_type);
+          event.AddStatValue(*flow_stats_metadata, flow.ToStatValue());
+        }
+        if (consumer_type && consumer_id) {
+          auto context_type = GetSafeContextType(*consumer_type);
+          XFlow flow(XFlow::GetFlowId(host_id, *consumer_id, context_type),
+                     XFlow::FlowDirection::kFlowIn, context_type);
+          event.AddStatValue(*flow_stats_metadata, flow.ToStatValue());
+        }
       }
     });
   });

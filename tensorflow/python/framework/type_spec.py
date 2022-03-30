@@ -184,6 +184,11 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
 
     return self._deserialize(serialized_supertype) if has_supertype else None
 
+  # TODO(b/223659753): Return the actual Tensor-based value instead of spec.
+  def _placeholder_value(self) -> "TypeSpec":
+    """Value used for tracing a function signature with this TraceType."""
+    return self
+
   # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):
     """Returns true if `spec_or_value` is compatible with this TypeSpec.
@@ -904,13 +909,9 @@ def _type_spec_from_value(value) -> TypeSpec:
   if isinstance(value, list) and value:
     subspecs = [_type_spec_from_value(v) for v in value]
     if isinstance(subspecs[0], BatchableTypeSpec):
-      merged_subspec = subspecs[0]
-      try:
-        for subspec in subspecs[1:]:
-          merged_subspec = merged_subspec.most_specific_compatible_type(subspec)
+      merged_subspec = subspecs[0].most_specific_common_supertype(subspecs[1:])
+      if merged_subspec is not None:
         return merged_subspec._batch(len(subspecs))  # pylint: disable=protected-access
-      except (ValueError, TypeError):
-        pass  # incompatible subspecs
 
   for entry in reversed(_TYPE_CONVERSION_FUNCTION_REGISTRY):
     type_object, converter_fn, allow_subclass = entry

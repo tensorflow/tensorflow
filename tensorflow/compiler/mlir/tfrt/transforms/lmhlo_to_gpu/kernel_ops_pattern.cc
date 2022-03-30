@@ -260,7 +260,7 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   auto rocm_compute_capability =
       (*ses)[0]->GetDeviceDescription().rocm_compute_capability();
 #else
-  stream_executor::RocmComputeCapability rocm_compute_capability("gfx900");
+  stream_executor::RocmComputeCapability rocm_compute_capability("gfx908");
 #endif
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);

@@ -24,7 +24,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
@@ -199,7 +198,7 @@ LogicalResult TryLowerTo1DOr2DReduction(
     for (int i = 0; i < dim_groups.size(); i++) {
       if (dim_groups[i].kind == trailing_dim_kind) perm.push_back(i);
     }
-    auto perm_attr = hlo::GetI64ElementsAttr(perm, &rewriter);
+    auto perm_attr = rewriter.getI64TensorAttr(perm);
     interm_result = rewriter.create<TransposeOp>(loc, interm_result, perm_attr)
                         ->getResults()
                         .front();
@@ -217,7 +216,7 @@ LogicalResult TryLowerTo1DOr2DReduction(
       requires_transpose ? prefer_columns_reductions
                          : dim_groups.front().kind == DimensionKind::kReduction;
   int64_t reduction_dim = leading_reduction ? 0 : 1;
-  auto reduction_dim_attr = hlo::GetI64ElementsAttr({reduction_dim}, &rewriter);
+  auto reduction_dim_attr = rewriter.getI64VectorAttr({reduction_dim});
   Value init_val = op.init_values().front();
   auto reduction_op = rewriter.create<ReduceOp>(loc, interm_result, init_val,
                                                 reduction_dim_attr);

@@ -16,10 +16,15 @@ limitations under the License.
 #include "tensorflow/core/data/service/data_transfer.h"
 
 #include <functional>
+#include <memory>
+#include <string>
+#include <unordered_map>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace data {
@@ -46,6 +51,24 @@ DataTransferClientFactories& transfer_client_factories() {
   return factories;
 }
 }  // namespace
+
+GetElementResult GetElementResult::Copy() const {
+  GetElementResult copy;
+  copy.components = components;
+  copy.element_index = element_index;
+  copy.end_of_sequence = end_of_sequence;
+  copy.skip = skip;
+  return copy;
+}
+
+size_t GetElementResult::EstimatedMemoryUsageBytes() const {
+  size_t size_bytes = components.size() * sizeof(Tensor) + sizeof(int64) +
+                      sizeof(bool) + sizeof(bool);
+  for (const Tensor& tensor : components) {
+    size_bytes += tensor.AllocatedBytes();
+  }
+  return size_bytes;
+}
 
 void DataTransferServer::Register(
     std::string name,

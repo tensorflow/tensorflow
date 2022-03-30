@@ -39,7 +39,7 @@ Operation *CreateOperation(
     MutableArrayRef<std::unique_ptr<Region>> regions = {}) {
   OperationState state(loc, op_name, operands, types, attributes, successors,
                        regions);
-  return builder.createOperation(state);
+  return builder.create(state);
 }
 }  // namespace
 

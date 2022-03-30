@@ -17,10 +17,6 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
-)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -173,6 +169,7 @@ filegroup(
         "mirror_pad_mode.h",
         "mkl_threadpool.h",
         "mkl_util.h",
+        "onednn_env_vars.h",
         "overflow.h",
         "padding.h",
         "permutation_input_iterator.h",
@@ -303,6 +300,7 @@ filegroup(
     srcs = [
         "mkl_threadpool.h",
         "mkl_util.h",
+        "onednn_env_vars.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -404,17 +402,16 @@ cc_library(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_util",
-    srcs = ["mkl_util.cc"],
-    hdrs = ["mkl_util.h"],
+    name = "onednn_env_vars",
+    srcs = ["onednn_env_vars.cc"],
+    hdrs = ["onednn_env_vars.h"],
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:ops_util",
-    ] + mkl_deps(),
+    ],
 )
 
 cc_library(
@@ -709,6 +706,7 @@ tf_kernel_library(
         "//tensorflow/stream_executor/rocm:rocblas_wrapper",
         "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
         "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
+	"//tensorflow/stream_executor/rocm:hipsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -731,6 +729,7 @@ tf_kernel_library(
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "//tensorflow/stream_executor/rocm:rocsolver_wrapper",
+	"//tensorflow/stream_executor/rocm:hipsolver_wrapper",
         "//tensorflow/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 
 namespace tensorflow {
 

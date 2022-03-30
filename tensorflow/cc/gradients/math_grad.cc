@@ -1199,7 +1199,7 @@ Status SelectV2Grad(const Scope& scope, const Operation& op,
   auto y = op.input(2);
 
   auto zeros = ZerosLike(scope, grad_inputs[0]);
-  auto gx = Where3(scope, c, grad_inputs[0], zeros);
+  auto gx = SelectV2(scope, c, grad_inputs[0], zeros);
   auto x_shape = Shape(scope, x);
   auto output_shape = Shape(scope, op.output(0));
 
@@ -1209,7 +1209,7 @@ Status SelectV2Grad(const Scope& scope, const Operation& op,
       ReduceSum(scope, gx, /*axis=*/reduce_x.r0, ReduceSum::KeepDims(true));
   auto gx_sum_reshape = Reshape(scope, gx_sum, x_shape);
 
-  auto gy = Where3(scope, c, zeros, grad_inputs[0]);
+  auto gy = SelectV2(scope, c, zeros, grad_inputs[0]);
   auto y_shape = Shape(scope, y);
 
   // Reduce away broadcasted leading dims.

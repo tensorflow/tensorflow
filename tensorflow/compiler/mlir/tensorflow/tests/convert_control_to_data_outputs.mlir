@@ -6,7 +6,7 @@
 
 // CHECK-LABEL: func @simple_independent_chains_while_body
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>, %[[CHAIN_0:.*]]: tensor<i32>, %[[CHAIN_1:.*]]: tensor<i32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, tensor<i32>, tensor<i32>) {
-func @simple_independent_chains_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
+func.func @simple_independent_chains_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
   // CHECK: %[[GRAPH_OUT:.*]]:6 = tf_executor.graph {
   %graph:4 = tf_executor.graph {
     // CHECK: %{{.*}}, %[[CONTROL_CHAIN_0_SRC:.*]] = tf_executor.island wraps "tf.Identity"(%[[CHAIN_0]]) : (tensor<i32>) -> tensor<i32>
@@ -26,12 +26,12 @@ func @simple_independent_chains_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2
     tf_executor.fetch %arg0, %arg1, %add, %mul, %control_barrier, %mul_control : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, !tf_executor.control, !tf_executor.control
   }
   // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2, %[[GRAPH_OUT]]#3, %[[GRAPH_OUT]]#4, %[[GRAPH_OUT]]#5
-  return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+  func.return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: func @simple_independent_chains_while_cond
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>, %[[CHAIN_0:.*]]: tensor<i32>, %[[CHAIN_1:.*]]: tensor<i32>) -> tensor<i32>
-func @simple_independent_chains_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<i32>) {
+func.func @simple_independent_chains_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<i32>) {
   %graph = tf_executor.graph {
     %island, %ctrl = tf_executor.island {
       %pred = "tf.SomeOp"(%arg2) : (tensor<f32>) -> tensor<i32>
@@ -39,12 +39,12 @@ func @simple_independent_chains_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @simple_independent_chains
 // CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>) {
-func @simple_independent_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
+func.func @simple_independent_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
   // CHECK: tf_executor.graph {
   tf_executor.graph {
     // CHECK: %[[A_CONTROL:.*]] = tf_executor.island wraps "tf.OpA"() : () -> ()
@@ -58,7 +58,7 @@ func @simple_independent_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f3
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // Tests two resources accessed by one common op (ResourceApplyAdagrad). In such
@@ -66,7 +66,7 @@ func @simple_independent_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f3
 
 // CHECK-LABEL: func @intersecting_chains_while_body
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>, %[[CHAIN:.*]]: tensor<i32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, tensor<i32>) {
-func @intersecting_chains_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
+func.func @intersecting_chains_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
   // CHECK: %[[GRAPH_OUT:.*]]:5 = tf_executor.graph {
   %graph:4 = tf_executor.graph {
     // CHECK: %{{.*}}, %[[CONTROL_CHAIN_SRC:.*]] = tf_executor.island wraps "tf.Identity"(%[[CHAIN]]) : (tensor<i32>) -> tensor<i32>
@@ -92,12 +92,12 @@ func @intersecting_chains_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tens
    tf_executor.fetch %arg0, %arg1, %add, %mul, %control_barrier : tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, !tf_executor.control
   }
   // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2, %[[GRAPH_OUT]]#3, %[[GRAPH_OUT]]#4
-  return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+  func.return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: func @intersecting_chains_while_cond
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>, %[[CHAIN:.*]]: tensor<i32>) -> tensor<i32>
-func @intersecting_chains_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<i32>) {
+func.func @intersecting_chains_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<i32>) {
   %graph = tf_executor.graph {
     %island, %ctrl = tf_executor.island {
       %pred = "tf.SomeOp"(%arg2) : (tensor<f32>) -> tensor<i32>
@@ -105,12 +105,12 @@ func @intersecting_chains_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tens
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @intersecting_chains
 // CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>) {
-func @intersecting_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
+func.func @intersecting_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
   // CHECK: tf_executor.graph {
   tf_executor.graph {
     // CHECK: %[[CHAIN_CONSTANT:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -120,14 +120,14 @@ func @intersecting_chains(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // Test presence of multiple callers of a while loop body
 
 // CHECK-LABEL: func @multiple_callers_while_body
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_0:.*]]: tensor<i32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<i32>) {
-func @multiple_callers_while_body(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_res, tensor<f32>) {
+func.func @multiple_callers_while_body(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_res, tensor<f32>) {
   // CHECK: %[[GRAPH_OUT:.*]]:3 = tf_executor.graph {
   %graph:2 = tf_executor.graph {
     // CHECK: %{{.*}}, %[[CONTROL_CHAIN_0_SRC:.*]] = tf_executor.island wraps "tf.Identity"(%[[CHAIN_0]]) : (tensor<i32>) -> tensor<i32>
@@ -138,12 +138,12 @@ func @multiple_callers_while_body(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_re
     tf_executor.fetch %arg0, %arg1, %control : tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control
   }
   // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2
-  return %graph#0, %graph#1 : !tf_res, tensor<f32>
+  func.return %graph#0, %graph#1 : !tf_res, tensor<f32>
 }
 
 // CHECK-LABEL: func @multiple_callers_while_cond
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_0:.*]]: tensor<i32>) -> tensor<i32>
-func @multiple_callers_while_cond(%arg0: !tf_res, %arg1: tensor<f32>) -> (tensor<i32>) {
+func.func @multiple_callers_while_cond(%arg0: !tf_res, %arg1: tensor<f32>) -> (tensor<i32>) {
   %graph = tf_executor.graph {
     %island, %ctrl = tf_executor.island {
       %pred = "tf.SomeOp"(%arg1) : (tensor<f32>) -> tensor<i32>
@@ -151,12 +151,12 @@ func @multiple_callers_while_cond(%arg0: !tf_res, %arg1: tensor<f32>) -> (tensor
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @multiple_callers
 // CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<f32>) {
-func @multiple_callers(%arg0: !tf_res, %arg1: tensor<f32>) {
+func.func @multiple_callers(%arg0: !tf_res, %arg1: tensor<f32>) {
   // CHECK: tf_executor.graph {
   tf_executor.graph {
     // CHECK: %[[CHAIN_CONSTANT_0:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -171,14 +171,14 @@ func @multiple_callers(%arg0: !tf_res, %arg1: tensor<f32>) {
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // Test nested while ops.
 
 // CHECK-LABEL: func @nested_loop_while_body_inner
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_0:.*]]: tensor<i32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<i32>) {
-func @nested_loop_while_body_inner(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_res, tensor<f32>) {
+func.func @nested_loop_while_body_inner(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_res, tensor<f32>) {
   // CHECK: %[[GRAPH_OUT:.*]]:3 = tf_executor.graph {
   %graph:2 = tf_executor.graph {
     // CHECK: %{{.*}}, %[[CONTROL_CHAIN_0_SRC:.*]] = tf_executor.island wraps "tf.Identity"(%[[CHAIN_0]]) : (tensor<i32>) -> tensor<i32>
@@ -189,12 +189,12 @@ func @nested_loop_while_body_inner(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_r
     tf_executor.fetch %arg0, %arg1, %control : tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control
   }
   // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2
-  return %graph#0, %graph#1 : !tf_res, tensor<f32>
+  func.return %graph#0, %graph#1 : !tf_res, tensor<f32>
 }
 
 // CHECK-LABEL: func @nested_loop_while_cond_inner
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_0:.*]]: tensor<i32>) -> tensor<i32>
-func @nested_loop_while_cond_inner(%arg0: !tf_res, %arg1: tensor<f32>) -> (tensor<i32>) {
+func.func @nested_loop_while_cond_inner(%arg0: !tf_res, %arg1: tensor<f32>) -> (tensor<i32>) {
   %graph = tf_executor.graph {
     %island, %ctrl = tf_executor.island {
       %pred = "tf.SomeOp"(%arg1) : (tensor<f32>) -> tensor<i32>
@@ -202,12 +202,12 @@ func @nested_loop_while_cond_inner(%arg0: !tf_res, %arg1: tensor<f32>) -> (tenso
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL: func @nested_loop_while_body_outer
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_0:.*]]: tensor<i32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<i32>) {
-func @nested_loop_while_body_outer(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_res, tensor<f32>) {
+func.func @nested_loop_while_body_outer(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_res, tensor<f32>) {
   // CHECK: %[[GRAPH_OUT:.*]]:3 = tf_executor.graph {
   %graph:2 = tf_executor.graph {
     // CHECK: %{{.*}}, %[[CONTROL_CHAIN_0_SRC:.*]] = tf_executor.island wraps "tf.Identity"(%[[CHAIN_0]]) : (tensor<i32>) -> tensor<i32>
@@ -219,12 +219,12 @@ func @nested_loop_while_body_outer(%arg0: !tf_res, %arg1: tensor<f32>) -> (!tf_r
     tf_executor.fetch %arg0, %while_out#1, %while_control : tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, !tf_executor.control
   }
   // CHECK: return %[[GRAPH_OUT]]#0, %[[GRAPH_OUT]]#1, %[[GRAPH_OUT]]#2
-  return %graph#0, %graph#1 : !tf_res, tensor<f32>
+  func.return %graph#0, %graph#1 : !tf_res, tensor<f32>
 }
 
 // CHECK-LABEL: func @nested_loop_while_cond_outer
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_0:.*]]: tensor<i32>) -> tensor<i32>
-func @nested_loop_while_cond_outer(%arg0: !tf_res, %arg1: tensor<f32>) -> (tensor<i32>) {
+func.func @nested_loop_while_cond_outer(%arg0: !tf_res, %arg1: tensor<f32>) -> (tensor<i32>) {
   %graph = tf_executor.graph {
     %island, %ctrl = tf_executor.island {
       %pred = "tf.SomeOp"(%arg1) : (tensor<f32>) -> tensor<i32>
@@ -232,12 +232,12 @@ func @nested_loop_while_cond_outer(%arg0: !tf_res, %arg1: tensor<f32>) -> (tenso
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @nested_while
 // CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<f32>) {
-func @nested_while(%arg0: !tf_res, %arg1: tensor<f32>) {
+func.func @nested_while(%arg0: !tf_res, %arg1: tensor<f32>) {
   // CHECK: tf_executor.graph {
   tf_executor.graph {
     // CHECK: %[[CHAIN_CONSTANT:.*]], %{{.*}} = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -247,7 +247,7 @@ func @nested_while(%arg0: !tf_res, %arg1: tensor<f32>) {
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // Do not convert control outputs to chains in the presence of an op with
@@ -257,7 +257,7 @@ func @nested_while(%arg0: !tf_res, %arg1: tensor<f32>) {
 
 // CHECK-LABEL: func @unknown_resource_op_while_body
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>) {
-func @unknown_resource_op_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
+func.func @unknown_resource_op_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
   %graph:4 = tf_executor.graph {
     %assign_control_0 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %assign_control_1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
@@ -270,12 +270,12 @@ func @unknown_resource_op_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tens
     // CHECK-SAME: tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, !tf_executor.control
     tf_executor.fetch %arg0, %arg1, %add, %mul, %control_barrier: tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>, !tf_executor.control
   }
-  return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+  func.return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: func @unknown_resource_op_while_cond
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>) -> tensor<i32>
-func @unknown_resource_op_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<i32>) {
+func.func @unknown_resource_op_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<i32>) {
   %graph = tf_executor.graph {
     %island, %ctrl = tf_executor.island {
       %pred = "tf.SomeOp"(%arg2) : (tensor<f32>) -> tensor<i32>
@@ -283,12 +283,12 @@ func @unknown_resource_op_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tens
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @unknown_resource_op
 // CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>) {
-func @unknown_resource_op(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
+func.func @unknown_resource_op(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
   // CHECK: tf_executor.graph {
   tf_executor.graph {
     // CHECK: %[[A_CONTROL:.*]] = tf_executor.island wraps "tf.OpA"() : () -> ()
@@ -302,7 +302,7 @@ func @unknown_resource_op(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // No change if the no control output in while loop body.
@@ -310,7 +310,7 @@ func @unknown_resource_op(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
 
 // CHECK-LABEL: func @no_control_output_while_body
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>) -> (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>) {
-func @no_control_output_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
+func.func @no_control_output_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (!tf_res, !tf_res, tensor<f32>, tensor<f32>) {
   %graph:4 = tf_executor.graph {
     %assign_control_0 = tf_executor.island wraps "tf.AssignVariableOp"(%arg0, %arg2) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
     %assign_control_1 = tf_executor.island wraps "tf.AssignVariableOp"(%arg1, %arg3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
@@ -318,12 +318,12 @@ func @no_control_output_while_body(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor
     %mul, %mul_control = tf_executor.island wraps "tf.Mul"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
     tf_executor.fetch %arg0, %arg1, %add, %mul: tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>, tensor<f32>
   }
-  return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
+  func.return %graph#0, %graph#1, %graph#2, %graph#3 : !tf_res, !tf_res, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: func @no_control_output_while_cond
 // CHECK-SAME: (%[[RES_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[RES_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>, %[[ARG_3:.*]]: tensor<f32>) -> tensor<i32>
-func @no_control_output_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<i32>) {
+func.func @no_control_output_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<i32>) {
   %graph = tf_executor.graph {
     %island, %ctrl = tf_executor.island {
       %pred = "tf.SomeOp"(%arg2) : (tensor<f32>) -> tensor<i32>
@@ -331,12 +331,12 @@ func @no_control_output_while_cond(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor
     }
     tf_executor.fetch %island : tensor<i32>
   }
-  return %graph : tensor<i32>
+  func.return %graph : tensor<i32>
 }
 
 // CHECK-LABEL:   func @no_control_output
 // CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_1:.*]]: tensor<!tf_type.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<f32>) {
-func @no_control_output(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
+func.func @no_control_output(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
   // CHECK: tf_executor.graph {
   tf_executor.graph {
     // CHECK: %[[A_CONTROL:.*]] = tf_executor.island wraps "tf.OpA"() : () -> ()
@@ -350,7 +350,7 @@ func @no_control_output(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
     tf_executor.fetch
   }
   // CHECK: return
-  return
+  func.return
 }
 
 // Tests loop with resource that is unique per iteration.
@@ -362,12 +362,12 @@ func @no_control_output(%arg0: !tf_res, %arg1: !tf_res, %arg2: tensor<f32>) {
 // for the same loop unrolled. In this particular case, no data chain and token
 // should be created.
 
-func @unique_resource_chain(%arg0: tensor<i32>, %arg1: tensor<f32>) {
+func.func @unique_resource_chain(%arg0: tensor<i32>, %arg1: tensor<f32>) {
   tf_executor.graph {
     %while:3 = tf_executor.island wraps "tf.While"(%arg0, %arg1) {body = @unique_resource_chain_while_body, cond = @unique_resource_chain_while_cond, is_stateless = false} : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
     tf_executor.fetch
   }
-  return
+  func.return
 }
 // CHECK-LABEL:   func @unique_resource_chain
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
@@ -377,7 +377,7 @@ func @unique_resource_chain(%arg0: tensor<i32>, %arg1: tensor<f32>) {
 // CHECK:           }
 // CHECK:           return
 
-func @unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i32>, tensor<f32>) {
+func.func @unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i32>, tensor<f32>) {
   %graph:2 = tf_executor.graph {
     %const:2 = tf_executor.island wraps "tf.Const"() { value = dense<1000> : tensor<i32> } : () -> tensor<i32>
     %stack_handle:2 = tf_executor.island wraps "tf.StackV2"(%const#0) {elem_type = f32} : (tensor<i32>) -> !tf_res
@@ -388,7 +388,7 @@ func @unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -
     %add2:2 = tf_executor.island wraps "tf.Add"(%arg0, %one#0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
     tf_executor.fetch %add2#0, %arg1, %stack_push2#1 : tensor<i32>, tensor<f32>, !tf_executor.control
   }
-  return %graph#0, %graph#1 : tensor<i32>, tensor<f32>
+  func.return %graph#0, %graph#1 : tensor<i32>, tensor<f32>
 }
 // CHECK-LABEL:   func @unique_resource_chain_while_body
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
@@ -404,13 +404,13 @@ func @unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -
 // CHECK:           }
 // CHECK:           return %[[GRAPH]]#0, %[[GRAPH]]#1 : tensor<i32>, tensor<f32>
 
-func @unique_resource_chain_while_cond(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i1>) {
+func.func @unique_resource_chain_while_cond(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i1>) {
   %graph = tf_executor.graph {
     %const:2 = tf_executor.island wraps "tf.Const"() { value = dense<1000> : tensor<i32> } : () -> tensor<i32>
     %less:2 = tf_executor.island wraps "tf.Less"(%const#0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
     tf_executor.fetch %less#0 : tensor<i1>
   }
-  return %graph : tensor<i1>
+  func.return %graph : tensor<i1>
 }
 // CHECK-LABEL:   func @unique_resource_chain_while_cond
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
@@ -426,12 +426,12 @@ func @unique_resource_chain_while_cond(%arg0: tensor<i32>, %arg1: tensor<f32>) -
 // Similar to above test but with one additional resource that is not unique per
 // iteration (created by `tf.VarHandleOp`).
 
-func @mixed_unique_resource_chain(%arg0: tensor<i32>, %arg1: tensor<f32>) {
+func.func @mixed_unique_resource_chain(%arg0: tensor<i32>, %arg1: tensor<f32>) {
   tf_executor.graph {
     %while:3 = tf_executor.island wraps "tf.While"(%arg0, %arg1) {body = @mixed_unique_resource_chain_while_body, cond = @mixed_unique_resource_chain_while_cond, is_stateless = false} : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
     tf_executor.fetch
   }
-  return
+  func.return
 }
 // CHECK-LABEL:   func @mixed_unique_resource_chain
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>
@@ -442,7 +442,7 @@ func @mixed_unique_resource_chain(%arg0: tensor<i32>, %arg1: tensor<f32>) {
 // CHECK:           }
 // CHECK:           return
 
-func @mixed_unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i32>, tensor<f32>) {
+func.func @mixed_unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i32>, tensor<f32>) {
   %graph:2 = tf_executor.graph {
     %const:2 = tf_executor.island wraps "tf.Const"() { value = dense<1000> : tensor<i32> } : () -> tensor<i32>
     %stack_handle:2 = tf_executor.island wraps "tf.StackV2"(%const#0) {elem_type = f32} : (tensor<i32>) -> !tf_res
@@ -455,7 +455,7 @@ func @mixed_unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f
     %assign = tf_executor.island wraps "tf.AssignVariableOp"(%var_handle, %arg1) : (!tf_res, tensor<f32>) -> ()
     tf_executor.fetch %add2#0, %arg1, %stack_push2#1, %assign : tensor<i32>, tensor<f32>, !tf_executor.control, !tf_executor.control
   }
-  return %graph#0, %graph#1 : tensor<i32>, tensor<f32>
+  func.return %graph#0, %graph#1 : tensor<i32>, tensor<f32>
 }
 // CHECK-LABEL:   func @mixed_unique_resource_chain_while_body
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_TOKEN:.*]]: tensor<i32>
@@ -475,13 +475,13 @@ func @mixed_unique_resource_chain_while_body(%arg0: tensor<i32>, %arg1: tensor<f
 // CHECK:           }
 // CHECK:           return %[[GRAPH]]#0, %[[GRAPH]]#1, %[[GRAPH]]#2 : tensor<i32>, tensor<f32>, tensor<i32>
 
-func @mixed_unique_resource_chain_while_cond(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i1>) {
+func.func @mixed_unique_resource_chain_while_cond(%arg0: tensor<i32>, %arg1: tensor<f32>) -> (tensor<i1>) {
   %graph = tf_executor.graph {
     %const:2 = tf_executor.island wraps "tf.Const"() { value = dense<1000> : tensor<i32> } : () -> tensor<i32>
     %less:2 = tf_executor.island wraps "tf.Less"(%const#0, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i1>
     tf_executor.fetch %less#0 : tensor<i1>
   }
-  return %graph : tensor<i1>
+  func.return %graph : tensor<i1>
 }
 // CHECK-LABEL:   func @mixed_unique_resource_chain_while_cond
 // CHECK-SAME:      %[[ARG_0:.*]]: tensor<i32>, %[[ARG_1:.*]]: tensor<f32>, %[[CHAIN_TOKEN:.*]]: tensor<i32>

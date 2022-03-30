@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -65,11 +66,12 @@ void MaterializePassthroughOpPass::runOnOperation() {
                       << main.getNumArguments() << " args)\n";
       return;
     }
-    if (main.getType().getNumResults() != op->getNumResults()) {
+    if (main.getFunctionType().getNumResults() != op->getNumResults()) {
       op->emitError() << "mismatch between MLIR Opaque Op number of results ("
                       << op->getNumResults()
                       << ") and main() entry point in the module ("
-                      << main.getType().getNumResults() << " results)\n";
+                      << main.getFunctionType().getNumResults()
+                      << " results)\n";
       return;
     }
     Region &body = main.getBody();

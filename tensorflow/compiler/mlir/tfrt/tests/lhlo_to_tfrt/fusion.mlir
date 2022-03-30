@@ -15,7 +15,7 @@
 // CHECK:  gpu.return
 // CHECK: }
 // CHECK: func @fusion(%arg0: memref<4096xf32>) {
-func @fusion(%arg0: memref<4096xf32>) {
+func.func @fusion(%arg0: memref<4096xf32>) {
 
     // CHECK-DAG: %[[bx:.*]] = arith.constant 4 : index
     // CHECK-DAG: %[[by:.*]] = arith.constant 1 : index
@@ -61,7 +61,7 @@ memref.global "private" constant @ones : memref<8xf32> = dense<
 // CHECK:   gpu.return
 // CHECK: }
 // CHECK: func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
-func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
+func.func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
 
     %zero = memref.get_global @zero : memref<f32>
     %ones = memref.get_global @ones : memref<8xf32>

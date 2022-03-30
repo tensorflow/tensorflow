@@ -71,7 +71,7 @@ void init_ops(py::module& m) {
       .def("getArguments",
            [](mlir::FuncOp& f) { return f.getArguments().vec(); })
       .def("getName", [](mlir::FuncOp& f) { return f.getName().str(); })
-      .def("getType", &mlir::FuncOp::getType);
+      .def("getType", &mlir::FuncOp::getFunctionType);
 
   py::class_<mlir::func::ReturnOp>(m, "ReturnOp")
       .def("create",

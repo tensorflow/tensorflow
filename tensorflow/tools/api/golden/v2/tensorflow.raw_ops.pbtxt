@@ -790,7 +790,7 @@ tf_module {
   }
   member_method {
     name: "CollectiveAssignGroupV2"
-    argspec: "args=[\'group_assignment\', \'device_index\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'group_assignment\', \'device_index\', \'base_key\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "CollectiveBcastRecv"

@@ -137,4 +137,32 @@ class ShapeComponentAnalysis {
 };
 }  // namespace mlir
 
+namespace llvm {
+
+template <>
+struct DenseMapInfo<mlir::ShapeComponentAnalysis::Symbol> {
+  static inline mlir::ShapeComponentAnalysis::Symbol getEmptyKey() {
+    return {mlir::ShapeComponentAnalysis::ShapeOrValueInfo::DenseMapInfo::
+                getEmptyKey(),
+            llvm::DenseMapInfo<size_t>::getEmptyKey()};
+  }
+  static inline mlir::ShapeComponentAnalysis::Symbol getTombstoneKey() {
+    return {mlir::ShapeComponentAnalysis::ShapeOrValueInfo::DenseMapInfo::
+                getTombstoneKey(),
+            llvm::DenseMapInfo<size_t>::getTombstoneKey()};
+  }
+  static unsigned getHashValue(mlir::ShapeComponentAnalysis::Symbol symbol) {
+    return llvm::hash_combine(
+        mlir::ShapeComponentAnalysis::ShapeOrValueInfo::DenseMapInfo::
+            getHashValue(symbol.source),
+        llvm::DenseMapInfo<size_t>::getHashValue(symbol.index));
+  }
+  static bool isEqual(mlir::ShapeComponentAnalysis::Symbol lhs,
+                      mlir::ShapeComponentAnalysis::Symbol rhs) {
+    return lhs == rhs;
+  }
+};
+
+}  // namespace llvm
+
 #endif  // MLIR_HLO_ANALYSIS_SHAPE_COMPONENT_ANALYSIS_H

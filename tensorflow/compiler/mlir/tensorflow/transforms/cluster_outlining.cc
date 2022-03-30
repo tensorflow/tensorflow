@@ -113,7 +113,7 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
 
   builder->setInsertionPoint(cluster_op);
   auto cluster_func_op = builder->create<tf_device::ClusterFuncOp>(
-      cluster_op.getLoc(), outlined_func.getType().getResults(),
+      cluster_op.getLoc(), outlined_func.getFunctionType().getResults(),
       live_ins.getArrayRef(), cluster_op->getAttrs());
 
   cluster_op.replaceAllUsesWith(cluster_func_op);
@@ -136,7 +136,7 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
 
   builder->setInsertionPoint(launch_op);
   auto cluster_func_op = builder->create<tf_device::LaunchFuncOp>(
-      launch_op.getLoc(), outlined_func.getType().getResults(),
+      launch_op.getLoc(), outlined_func.getFunctionType().getResults(),
       live_ins.getArrayRef(), launch_op->getAttrs());
 
   launch_op.replaceAllUsesWith(cluster_func_op);

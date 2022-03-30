@@ -35,9 +35,15 @@ tensorflow::SessionOptions CreateDefaultSessionOptions(
   // flow. Note that other function inlining (e.g. on StatefulPartitionedCall)
   // is still enabled.
   config.mutable_experimental()->set_use_tfrt(true);
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_function_optimization(tensorflow::RewriterConfig::ON);
+  if (options.enable_grappler_function_optimizer) {
+    config.mutable_graph_options()
+        ->mutable_rewrite_options()
+        ->set_function_optimization(tensorflow::RewriterConfig::ON);
+  } else {
+    config.mutable_graph_options()
+        ->mutable_rewrite_options()
+        ->set_function_optimization(tensorflow::RewriterConfig::OFF);
+  }
   // Do not skip grappler optimization even for small graphs.
   config.mutable_graph_options()
       ->mutable_rewrite_options()

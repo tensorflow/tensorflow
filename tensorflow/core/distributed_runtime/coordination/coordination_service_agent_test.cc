@@ -47,7 +47,7 @@ class TestCoordinationClient : public CoordinationClient {
                                       GetKeyValueResponse*, StatusCallback));
   MOCK_METHOD4(RegisterTaskAsync, void(CallOptions*, const RegisterTaskRequest*,
                                        RegisterTaskResponse*, StatusCallback));
-  MOCK_METHOD3(ShutdownTaskAsync, void(const ShutdownTaskRequest*,
+  MOCK_METHOD4(ShutdownTaskAsync, void(CallOptions*, const ShutdownTaskRequest*,
                                        ShutdownTaskResponse*, StatusCallback));
   MOCK_METHOD3(ResetTaskAsync, void(const ResetTaskRequest*, ResetTaskResponse*,
                                     StatusCallback));
@@ -64,12 +64,17 @@ class TestCoordinationClient : public CoordinationClient {
 
   UNIMPLEMENTED(Heartbeat);
   UNIMPLEMENTED(WaitForAllTasks);
-  UNIMPLEMENTED(ReportErrorToTask);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
+  void ReportErrorToTaskAsync(CallOptions* call_opts,
+                              const ReportErrorToTaskRequest* request,
+                              ReportErrorToTaskResponse* response,
+                              StatusCallback done) override {
+    done(errors::Unimplemented("ReportErrorToTaskAsync"));
+  }
 };
 
 class CoordinationServiceAgentTest : public ::testing::Test {
@@ -77,8 +82,8 @@ class CoordinationServiceAgentTest : public ::testing::Test {
   void SetUp() override {
     ON_CALL(*client_, RegisterTaskAsync(_, _, _, _))
         .WillByDefault(InvokeArgument<3>(Status::OK()));
-    ON_CALL(*client_, ShutdownTaskAsync(_, _, _))
-        .WillByDefault(InvokeArgument<2>(Status::OK()));
+    ON_CALL(*client_, ShutdownTaskAsync(_, _, _, _))
+        .WillByDefault(InvokeArgument<3>(Status::OK()));
     ON_CALL(*client_, ReportErrorToServiceAsync(_, _, _))
         .WillByDefault(InvokeArgument<2>(Status::OK()));
     ON_CALL(*GetClient(), ResetTaskAsync(_, _, _))
@@ -237,6 +242,18 @@ TEST_F(CoordinationServiceAgentTest, NotAllowedToConnectAfterShuttingDown) {
 
   // Not allowed to connect after shutting down.
   EXPECT_TRUE(errors::IsFailedPrecondition(status));
+}
+
+TEST_F(CoordinationServiceAgentTest, ShutdownInErrorShouldReturnError) {
+  // Connect coordination agent and set it to error.
+  InitializeAgent();
+  TF_EXPECT_OK(agent_->Connect());
+  TF_EXPECT_OK(agent_->ReportError(errors::Internal("Test Error.")));
+
+  // Shutdown should return error.
+  Status s = agent_->Shutdown();
+
+  EXPECT_TRUE(errors::IsFailedPrecondition(s));
 }
 
 TEST_F(CoordinationServiceAgentTest, Reset_ConnectedButNotInError_Fail) {

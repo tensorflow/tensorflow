@@ -36,7 +36,9 @@ namespace {
 void PrepareContext(MLIRContext *context) {
   DialectRegistry registry;
   registry.insert<TFGraphDialect>();
-  registry.addDialectInterface<TFGraphDialect, TensorFlowOpRegistryInterface>();
+  registry.addExtension(+[](mlir::MLIRContext *ctx, TFGraphDialect *dialect) {
+    dialect->addInterfaces<TensorFlowOpRegistryInterface>();
+  });
   context->appendDialectRegistry(registry);
 }
 

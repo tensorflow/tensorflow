@@ -21,7 +21,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
   // CHECK:   tfrt.return %[[CHAIN]]
 
   // CHECK: func @call
-  func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
+  func.func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
                                         outputs = "output_0"}} {
@@ -31,7 +31,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
                           {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
       tf_executor.fetch %outs: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
@@ -56,7 +56,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
   // CHECK-NOT:   tf_jitrt.fallback.compile
 
   // CHECK: func @call
-  func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
+  func.func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
                                         outputs = "output_0"}} {
@@ -72,7 +72,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
                             {device = ""} : (tensor<?x?xf32>) -> tensor<?x?xf32>
       tf_executor.fetch %outs2: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
@@ -95,7 +95,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
   // CHECK:   tf_jitrt.fallback.compile @kernel::@compute
 
   // CHECK: func @call
-  func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
+  func.func @call(%arg0: tensor<?x?xf32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
                                         outputs = "output_0"}} {
@@ -109,7 +109,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
                        : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
       tf_executor.fetch %out: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
@@ -135,7 +135,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
   // CHECK:   tf_jitrt.fallback.compile @kernel::@compute
 
   // CHECK: func @call
-  func @call(%arg0: tensor<?x?xf32>, %arg1: tensor<?xi32>) -> (tensor<?x?xf32>)
+  func.func @call(%arg0: tensor<?x?xf32>, %arg1: tensor<?xi32>) -> (tensor<?x?xf32>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0,input_1",
                                         outputs = "output_0"}} {
@@ -146,7 +146,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
                        : (tensor<?x?xf32>, tensor<?xi32>) -> tensor<?x?xf32>
       tf_executor.fetch %out: tensor<?x?xf32>
     }
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 }
 
@@ -166,7 +166,7 @@ module attributes {tf.versions = {producer = 462 : i32}} {
 // Operations with unsupported data type operands/results are not clustered.
 
 module attributes {tf.versions = {producer = 462 : i32}} {
-  func @call(%arg0: tensor<?x?x!tf_type.string>) -> (tensor<?x?x!tf_type.string>)
+  func.func @call(%arg0: tensor<?x?x!tf_type.string>) -> (tensor<?x?x!tf_type.string>)
       attributes { tf.entry_function = {control_outputs = "",
                                         inputs = "input_0",
                                         outputs = "output_0"}} {
@@ -183,6 +183,6 @@ module attributes {tf.versions = {producer = 462 : i32}} {
         : (tensor<?x?x!tf_type.string>, tensor<2xi32>) -> tensor<?x?x!tf_type.string>
       tf_executor.fetch %out: tensor<?x?x!tf_type.string>
     }
-    return %0 : tensor<?x?x!tf_type.string>
+    func.return %0 : tensor<?x?x!tf_type.string>
   }
 }
