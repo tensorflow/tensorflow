@@ -238,15 +238,22 @@ tensorflow::OpDef::`vftable'
 
 [//tensorflow/lite/kernels/shim:shape] # tf_text
 tflite::shim::Shape::AddDims
+tflite::shim::Shape::Compatible
 tflite::shim::Shape::Dim
+tflite::shim::Shape::ToString
 
 [//tensorflow/lite/kernels/shim:tf_op_shim] # tf_text
 tflite::shim::FromAbslStatus
+tflite::shim::TfInitContext::GetAttr
 tflite::shim::TfInitContext::TfInitContext
 tflite::shim::TfInvokeContext::GetInput
 tflite::shim::TfInvokeContext::GetOutput
+tflite::shim::TfInvokeContext::NumInputs
+tflite::shim::TfInvokeContext::NumOutputs
 tflite::shim::TfInvokeContext::TfInvokeContext
+tflite::shim::TfShapeInferenceContext::GetAttr
 tflite::shim::TfShapeInferenceContext::GetInputShape
+tflite::shim::TfShapeInferenceContext::NumOutputs
 tflite::shim::TfShapeInferenceContext::SetInputShape
 tflite::shim::TfShapeInferenceContext::SetOutputShape
 tflite::shim::TfShapeInferenceContext::TfShapeInferenceContext
