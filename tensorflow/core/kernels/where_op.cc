@@ -364,15 +364,15 @@ class WhereGPUOp : public AsyncOpKernel {
       Name("Where").Device(DEVICE_GPU).TypeConstraint<T>("T"), WhereGPUOp<T>);
 
 TF_CALL_WHERE_GPU_TYPES(REGISTER_GPU_WHERE_OP);
+#undef REGISTER_GPU_WHERE_OP
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 REGISTER_KERNEL_BUILDER(Name("Where")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("index"),
                         WhereCPUOp<int32>);
-
-#undef REGISTER_GPU_WHERE_OP
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
