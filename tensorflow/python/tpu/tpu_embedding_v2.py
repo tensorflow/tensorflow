@@ -57,7 +57,7 @@ _HOOK_KEY = "TPUEmbedding_saveable"
 _NAME_KEY = "_tpu_embedding_layer"
 
 
-class TPUShardedVariable(sharded_variable.ShardedVariableMixin):
+class TPUEmbeddingVariable(sharded_variable.ShardedVariableMixin):
   """A ShardedVariable class for TPU."""
 
   @property
@@ -1507,8 +1507,8 @@ def _load_variables_impl(
   Args:
     config: A serialized TPUEmbeddingConfiguration proto.
     hosts: A list of CPU devices, on per host.
-    variables: A dictionary of dictionaries of TPUShardedVariables. First key is
-      the table name, second key is 'parameters' or the optimizer slot name.
+    variables: A dictionary of dictionaries of TPUEmbeddingVariables. First key
+      is the table name, second key is 'parameters' or the optimizer slot name.
     table_config: A list of tf.tpu.experimental.embedding.TableConfig objects.
   """
   def select_fn(host_id):
@@ -1552,8 +1552,8 @@ def _retrieve_variables_impl(
   Args:
     config: A serialized TPUEmbeddingConfiguration proto.
     hosts: A list of all the host CPU devices.
-    variables: A dictionary of dictionaries of TPUShardedVariables. First key is
-      the table name, second key is 'parameters' or the optimizer slot name.
+    variables: A dictionary of dictionaries of TPUEmbeddingVariables. First key
+      is the table name, second key is 'parameters' or the optimizer slot name.
     table_config: A list of tf.tpu.experimental.embedding.TableConfig objects.
   """
   for host_id, host in enumerate(hosts):
@@ -1663,7 +1663,7 @@ def extract_variable_info(
 
 
 def make_sharded_variable_creator(
-    hosts: List[Text]) -> Callable[..., TPUShardedVariable]:
+    hosts: List[Text]) -> Callable[..., TPUEmbeddingVariable]:
   """Makes a sharded variable creator given a list of hosts.
 
   Args:
@@ -1716,5 +1716,5 @@ def make_sharded_variable_creator(
           kwargs["initial_value"] = functools.partial(
               unwrapped_initial_value, kwargs["shape"], dtype=dtype)
         variables.append(next_creator(*args, **kwargs))
-    return TPUShardedVariable(variables, name=name)
+    return TPUEmbeddingVariable(variables, name=name)
   return sharded_variable_creator

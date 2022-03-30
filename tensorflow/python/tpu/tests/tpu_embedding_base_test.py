@@ -646,7 +646,7 @@ class TPUEmbeddingBaseTest(parameterized.TestCase, test.TestCase):
     return loss
 
   def _get_variable(self, variable):
-    if isinstance(variable, tpu_embedding_v2.TPUShardedVariable):
+    if isinstance(variable, tpu_embedding_v2.TPUEmbeddingVariable):
       return variable.variables[0]
     return variable
 
