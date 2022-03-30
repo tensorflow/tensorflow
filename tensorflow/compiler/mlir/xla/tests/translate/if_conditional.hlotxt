@@ -164,8 +164,8 @@ ENTRY %tfcompile.0 {
   %arg_empty_tuple.13 = () parameter(0)
   %constant.14 = pred[] constant(false)
   %constant.15 = f32[] constant(10)
-  %tuple.16 = () tuple(), metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=8}
-  %conditional.17 = f32[] conditional(pred[] %constant.14, f32[] %constant.15, () %tuple.16), true_computation=%region_1.7, false_computation=%region_2.9, metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=8}
+  %tuple.16 = () tuple()
+  %conditional.17 = f32[] conditional(pred[] %constant.14, f32[] %constant.15, () %tuple.16), true_computation=%region_1.7, false_computation=%region_2.9
   ROOT %tuple.18 = (f32[], f32[]) tuple(f32[] %conditional.17, f32[] %conditional.17)
 }
 
@@ -197,11 +197,11 @@ ENTRY %tfcompile.0 {
 %tfcompile.3 (Arg_0.1: pred[], Arg_1.2: f32[], Arg_2.3: f32[]) -> f32[] {
   %constant.4 = f32[] constant(10)
   %Arg_0.1 = pred[] parameter(0)
-  %tuple.5 = () tuple(), metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=4}
+  %tuple.5 = () tuple()
   %Arg_1.2 = f32[] parameter(1)
   %Arg_2.3 = f32[] parameter(2)
-  %tuple.6 = (f32[], f32[]) tuple(f32[] %Arg_1.2, f32[] %Arg_2.3), metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=4}
-  %conditional.24 = (f32[], f32[]) conditional(pred[] %Arg_0.1, () %tuple.5, (f32[], f32[]) %tuple.6), true_computation=%region_0.12, false_computation=%region_3.19, metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=4}
-  %get-tuple-element.25 = f32[] get-tuple-element((f32[], f32[]) %conditional.24), index=0, metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=4}
-  ROOT %get-tuple-element.26 = f32[] get-tuple-element((f32[], f32[]) %conditional.24), index=1, metadata={source_file="/usr/local/google/home/sdasgup/Junk/test.mlir" source_line=4}
+  %tuple.6 = (f32[], f32[]) tuple(f32[] %Arg_1.2, f32[] %Arg_2.3)
+  %conditional.24 = (f32[], f32[]) conditional(pred[] %Arg_0.1, () %tuple.5, (f32[], f32[]) %tuple.6), true_computation=%region_0.12, false_computation=%region_3.19
+  %get-tuple-element.25 = f32[] get-tuple-element((f32[], f32[]) %conditional.24), index=0
+  ROOT %get-tuple-element.26 = f32[] get-tuple-element((f32[], f32[]) %conditional.24), index=1
 }
