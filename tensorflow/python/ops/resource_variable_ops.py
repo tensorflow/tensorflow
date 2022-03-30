@@ -715,7 +715,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     read the value only after some condition is true.
 
     Returns:
-     the read operation.
+      The value of the variable.
     """
     with ops.name_scope("Read"):
       value = self._read_variable_op()
@@ -724,13 +724,14 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     return array_ops.identity(value)
 
   def read_value_no_copy(self):
-    """Constructs an op which reads the value of this variable
-    without making a copy even when the variable has been previously
-    sparsely accessed. Variables that are in copy-on-read mode will
-    be converted to copy-on-write mode.
+    """Constructs an op which reads the value of this variable without copy.
+
+    The variable is read without making a copy even when it has been sparsely
+    accessed. Variables in copy-on-read mode will be converted to copy-on-write
+    mode.
 
     Returns:
-     the read operation.
+      The value of the variable.
     """
     with ops.name_scope("Read"):
       value = self._read_variable_op(no_copy=True)
