@@ -5127,51 +5127,6 @@ static Type UpdateResultElementType(Builder* builder, Type x,
 }
 }  // namespace
 
-ParseResult parseBinaryOp(OpAsmParser& parser, OperationState& result) {
-  SmallVector<OpAsmParser::UnresolvedOperand> operands;
-  Type type;
-  // If the operand list is in-between parentheses, use generic form.
-  SMLoc loc = parser.getCurrentLocation();
-  if (!parser.parseOptionalLParen()) {
-    if (parser.parseOperandList(operands) || parser.parseRParen() ||
-        parser.parseOptionalAttrDict(result.attributes) ||
-        parser.parseColon() || parser.parseType(type))
-      return failure();
-    auto fnType = type.dyn_cast<FunctionType>();
-    if (!fnType) {
-      parser.emitError(loc, "expected function type");
-      return failure();
-    }
-    if (parser.resolveOperands(operands, fnType.getInputs(), loc,
-                               result.operands))
-      return failure();
-    result.addTypes(fnType.getResults());
-    return success();
-  }
-  // Otherwise, use shorthand syntax.
-  return failure(parser.parseOperandList(operands) ||
-                 parser.parseOptionalAttrDict(result.attributes) ||
-                 parser.parseColonType(type) ||
-                 parser.resolveOperands(operands, type, result.operands) ||
-                 parser.addTypeToList(type, result.types));
-}
-
-void printBinaryOp(Operation* op, OpAsmPrinter& p) {
-  assert(op->getNumResults() == 1 && "op should have one result");
-  // If not all types are the same, use generic form.
-  auto resultType = op->getResult(0).getType();
-  if (llvm::any_of(op->getOperandTypes(),
-                   [&](Type type) { return type != resultType; })) {
-    p.printGenericOp(op, /*printOpName=*/false);
-    return;
-  }
-  // Otherwise, use the shorthand syntax.
-  p << ' ';
-  p.printOperands(op->getOperands());
-  p.printOptionalAttrDict(op->getAttrs());
-  p << " : " << resultType;
-}
-
 template <typename Op, typename ElementType = Type, typename ValType,
           typename Convert>
 static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
@@ -7703,7 +7658,7 @@ static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
 
 Type getTypeWithoutSparseEncoding(Type tp) {
   if (sparse_tensor::getSparseTensorEncoding(tp)) {
-    auto rtp = tp.cast<RankedTensorType>();
+    auto rtp = tp.dyn_cast<RankedTensorType>();
     tp = RankedTensorType::get(rtp.getShape(), rtp.getElementType());
   }
   return tp;
