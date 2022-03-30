@@ -507,7 +507,7 @@ func.func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2
 
 // Expected behavior: %2 cannot replace %1
 // CHECK-LABEL: func @noReuseOuterRegion
-func @noReuseOuterRegion(%arg0 : i1, %arg1 : memref<2xf32>) -> memref<2xf32> {
+func.func @noReuseOuterRegion(%arg0 : i1, %arg1 : memref<2xf32>) -> memref<2xf32> {
   scf.if %arg0 {
     %1 = memref.alloc() : memref<2xf32>
     memref.copy %arg1, %1 : memref<2xf32> to memref<2xf32>
