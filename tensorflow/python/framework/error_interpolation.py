@@ -314,11 +314,16 @@ def create_graph_debug_info_def(func_named_operations):
   all_file_names = set()
   node_to_trace = {}
   for func_name, op in func_named_operations:
-    if op.traceback is None:
+    try:
+      op_traceback = op.traceback
+    except AttributeError:
+      # Some ops synthesized on as part of function or control flow definition
+      # do not have tracebacks.
       continue
+
     # Gets the stack trace of the operation and then the file location.
     node_name = op.name + "@" + func_name
-    node_to_trace[node_name] = _compute_useful_frames(op.traceback, 10)
+    node_to_trace[node_name] = _compute_useful_frames(op_traceback, 10)
     for frame in node_to_trace[node_name]:
       all_file_names.add(frame.filename)
 
@@ -347,7 +352,7 @@ def _compute_field_dict(op):
   r"""Return a dictionary mapping interpolation tokens to values.
 
   Args:
-    op: op.Operation object.
+    op: op.Operation object having a _traceback member.
 
   Returns:
     A dictionary mapping string tokens to string values.  The keys are shown
@@ -380,7 +385,10 @@ def _compute_field_dict(op):
   device_summary = _compute_device_assignment_summary_from_op(op)
   combined_summary = "\n".join([colocation_summary, device_summary])
 
-  if op.traceback is None:
+  # Optional traceback info.
+  try:
+    tb = op.traceback
+  except AttributeError:
     # Some ops synthesized on as part of function or control flow definition
     # do not have tracebacks.
     filename = "<unknown>"
@@ -389,9 +397,9 @@ def _compute_field_dict(op):
     line = ""
     defined_at = "<unknown>"
   else:
-    frame = op.traceback.last_user_frame()
+    frame = tb.last_user_frame()
     filename = frame.filename
-    definition_traceback = traceback.format_list(op.traceback.get_user_frames())
+    definition_traceback = traceback.format_list(tb.get_user_frames())
     lineno = frame.lineno
     line = frame.line
     defined_at = f"{filename}:{lineno:d}"
