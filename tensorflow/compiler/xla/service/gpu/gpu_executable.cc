@@ -52,6 +52,7 @@ limitations under the License.
 
 #if XLA_ENABLE_XLIR
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
@@ -926,7 +927,7 @@ int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
 }
 
 Status GpuExecutable::SetUpMlirAllocation(
-    mlir::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
+    mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
     std::vector<BufferAllocation>* allocations,
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
     Shape* output_shape, int buffer_param_offset) {
@@ -1006,7 +1007,7 @@ Status GpuExecutable::SetUpMlirAllocation(
 
 #if XLA_ENABLE_XLIR
 static void ApplyEntryFunctionAttributes(
-    mlir::MLIRContext& context, mlir::FuncOp& func,
+    mlir::MLIRContext& context, mlir::func::FuncOp& func,
     xla::EntryFunctionAttributes entry_func_attrs, int buffer_param_offset) {
   mlir::OpBuilder builder(&context);
   llvm::SmallVector<mlir::DictionaryAttr, 8> args_attrs;
@@ -1078,7 +1079,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
   auto module = tfrt::ConvertBEFToMLIR(location, bef_array, &context);
   TF_ASSIGN_OR_RETURN(BefExecutable * bef_executable,
                       BefExecutable::Create(std::move(bef_buffer)));
-  auto func = mlir::cast<mlir::FuncOp>(
+  auto func = mlir::cast<mlir::func::FuncOp>(
       module->lookupSymbol(bef_executable->entry_point.function_name));
   // In tfrt_gpu dialect, buffer arguments start from the third parameter (after
   // tfrt::Chain and GpuStream).

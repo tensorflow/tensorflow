@@ -149,7 +149,8 @@ mlir::LogicalResult CopyLayoutsForSkippedOps(
   });
 
   // Update layouts derived from inputs
-  mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main_func =
+      module.lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_func) return mlir::success();
 
   for (auto& value : main_func.getArguments()) {
@@ -394,7 +395,7 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
 // * CopyToMesh
 // * ConstOp
 mlir::LogicalResult InsertInitialLayouts(
-    mlir::ModuleOp& module, mlir::FuncOp& main_func,
+    mlir::ModuleOp& module, mlir::func::FuncOp& main_func,
     const llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers,
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
@@ -794,7 +795,7 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
     if (mlir::isa<mlir::TF::DTensorLayout>(op)) return;
 
     // Don't print functions with empty bodies.
-    if (auto func_op = mlir::dyn_cast<mlir::FuncOp>(op))
+    if (auto func_op = mlir::dyn_cast<mlir::func::FuncOp>(op))
       if (func_op.empty()) return;
 
     // Each operation is on its own line, so we start by indenting the
@@ -1341,7 +1342,8 @@ struct DLayoutPropagationPassV2
     // during SCCP pass.
     DuplicateConstants(module);
 
-    mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+    mlir::func::FuncOp main_func =
+        module.lookupSymbol<mlir::func::FuncOp>("main");
     if (!main_func) return;
 
     mlir::Dialect* tf_dialect =

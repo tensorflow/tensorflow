@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -46,8 +47,8 @@ struct DTensorFunctionRenaming
     mlir::SymbolTableCollection symbol_table;
     mlir::SymbolUserMap symbolUsers(symbol_table, module);
 
-    for (mlir::FuncOp func_op :
-         llvm::make_early_inc_range(module.getOps<mlir::FuncOp>())) {
+    for (mlir::func::FuncOp func_op :
+         llvm::make_early_inc_range(module.getOps<mlir::func::FuncOp>())) {
       // Only rename private functions, functions which are public (i.e. the
       // main function of the module), must have stable names since they are
       // public and may be used by other modules/pieces of code.

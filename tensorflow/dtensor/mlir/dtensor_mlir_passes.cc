@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -73,11 +74,11 @@ bool MaybeEnableLogging(mlir::PassManager *pm) {
 void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
                            mlir::OpPassManager *pm) {
   // Remove ops that cannot be reached from the sink node.
-  pm->addNestedPass<mlir::FuncOp>(
+  pm->addNestedPass<mlir::func::FuncOp>(
       mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   // Remove graph-def executor dialect and represent IR as a flattened list of
   // TF ops in functions.
-  pm->addNestedPass<mlir::FuncOp>(
+  pm->addNestedPass<mlir::func::FuncOp>(
       mlir::CreateExecutorDialectToFunctionalConversionPass());
 
   // This does not guarantee that shape are inferred for all ops. For ops with
@@ -86,7 +87,7 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
   // If V2 layout propagation algorithm, layouts are expressed as DTensorLayout
   // op and Canonicalize and Inliner passes will not lose layout information.
-  pm->addNestedPass<mlir::FuncOp>(CreateDTensorPropagateDefaultLayout());
+  pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorPropagateDefaultLayout());
   pm->addPass(mlir::createSCCPPass());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
@@ -110,15 +111,15 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // or `_mesh` attributes in the re-written TF ops.
   // TODO(hongjunchoi): Remove this pass once shape inference pass no longer
   // creates unnecessary constants ops.
-  pm->addNestedPass<mlir::FuncOp>(CreateDTensorDCE());
+  pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorDCE());
 
   // Propagate mesh cluster config and cluster ops by mesh cluster so that
   // SPMD expansion can be isolated to a single device mesh.
-  pm->addNestedPass<mlir::FuncOp>(CreateDTensorOpToDeviceClusterPass());
+  pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorOpToDeviceClusterPass());
   pm->addPass(CreateDTensorMeshPropagationPass());
 
   {
-    mlir::OpPassManager &func_pm = pm->nest<mlir::FuncOp>();
+    mlir::OpPassManager &func_pm = pm->nest<mlir::func::FuncOp>();
     func_pm.addPass(CreateDTensorDeviceMeshClusterCoarsening());
     // Set empty layout to cluster wrapping `tf.VarHandleOp`. VarHandle op
     // always runs in the default device where client program executes.
@@ -166,13 +167,14 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
   // Fuses AllReduce and AllScatter into ReduceScatter.
   if (!DoNotFuseReduceScatter()) {
-    pm->addNestedPass<mlir::FuncOp>(
+    pm->addNestedPass<mlir::func::FuncOp>(
         CreateDTensorAllReduceScatterOptimization());
   }
 
   // Changes order of DTensorAllReduce + Add to Add + DTensorAllReduce to
   // minimize number of all reduce operations.
-  pm->addNestedPass<mlir::FuncOp>(CreateDTensorAllReduceSumOptimization());
+  pm->addNestedPass<mlir::func::FuncOp>(
+      CreateDTensorAllReduceSumOptimization());
 
   AddDTensorAllReduceCombineOptimization(pm);
 
@@ -184,7 +186,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // For large enough reduction groups in reduction ops, upcast the input
   // tensors to higher precision type (e.g. bfloat16 -> float32).
   if (EnableMixedPrecisionReduce()) {
-    pm->addNestedPass<mlir::FuncOp>(CreateDTensorMixedPrecisionReducePass());
+    pm->addNestedPass<mlir::func::FuncOp>(
+        CreateDTensorMixedPrecisionReducePass());
   }
 
   // Lower device-agnostic logical AllReduce ops into device-specific physical
@@ -221,17 +224,17 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // for easier analaysis.
   // This may create multiple same constants ops. Apply constant folding on
   // duplicated constant operations to reduce graph size.
-  pm->addNestedPass<mlir::FuncOp>(CreateDTensorConstantFolding());
+  pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorConstantFolding());
   // DTensor SPMD lowering passes may have created auxiliary operations that are
   // no longer used. Add additional DCE pass to remove unused non-side effecting
   // ops.
-  pm->addNestedPass<mlir::FuncOp>(CreateDTensorDCE());
+  pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorDCE());
 
   // DTensor SPMD Expansion may have caused multiple control flows and
   // duplicate ops to calculate device ordinal. Re-run SCCP and merge
   // controlflows if possible.
-  pm->addNestedPass<mlir::FuncOp>(mlir::createSCCPPass());
-  pm->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm->addNestedPass<mlir::func::FuncOp>(mlir::createSCCPPass());
+  pm->addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm->addPass(mlir::TFDevice::CreateMergeControlFlowPass());
 
   // TF2XLA Integration
@@ -241,17 +244,17 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // passes.
     pm->addPass(CreateDTensorTPUIntegration());
 
-    pm->addNestedPass<mlir::FuncOp>(
+    pm->addNestedPass<mlir::func::FuncOp>(
         mlir::TFDevice::CreateDecomposeResourceOpsPass());
     // Sink constant ops into cluster region as DecomposeResourceOpsPass() could
     // lift constant out due to folding.
-    pm->addNestedPass<mlir::FuncOp>(
+    pm->addNestedPass<mlir::func::FuncOp>(
         mlir::TFDevice::CreateClusterConstantSinkingPass());
 
     // Run another shape inference pass (and following DCE pass) because
     // resource decomposition might have created new partial types.
     pm->addPass(mlir::TF::CreateTFShapeInferencePass());
-    pm->addNestedPass<mlir::FuncOp>(CreateDTensorDCE());
+    pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorDCE());
     pm->addPass(mlir::TFDevice::CreateResourceOpLiftingPass());
     pm->addPass(mlir::TFDevice::CreateClusterOutliningPass());
 
@@ -262,7 +265,7 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // As DTensor SPMD expansion handles sharded inputs for model
     // parallelism, we set input/output sharding to maximal sharding
     // for inputs/outputs of the TPU computation.
-    pm->addNestedPass<mlir::FuncOp>(CreateDTensorSetDefaultSharding());
+    pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorSetDefaultSharding());
 
     // Creates a pass that marks TPU cluster input-output pairs reading and
     // writing to same resource variable as aliases.
@@ -301,10 +304,10 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
   // Convert graph into graph executor dialect so that transformed graph can be
   // exported back to Graphdef.
-  pm->addNestedPass<mlir::FuncOp>(
+  pm->addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm->addPass(mlir::CreateBreakUpIslandsPass());
-  pm->addNestedPass<mlir::FuncOp>(
+  pm->addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateLaunchToDeviceAttributePass());
   // Add additional BreakUpIslandPass as LaunchToDeviceAttribute pass may have
   // created additional islands.

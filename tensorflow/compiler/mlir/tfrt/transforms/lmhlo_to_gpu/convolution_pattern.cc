@@ -815,13 +815,14 @@ struct ConvolutionRewritePattern
     // Create a function that returns the convolution plan.
     mlir::SymbolTable symbol_table(
         op->template getParentOfType<mlir::ModuleOp>());
-    rewriter.setInsertionPoint(op->template getParentOfType<mlir::FuncOp>());
+    rewriter.setInsertionPoint(
+        op->template getParentOfType<mlir::func::FuncOp>());
     mlir::Type handle_type = rewriter.getType<tfrt::gpu::DnnHandleType>();
     mlir::Type conv_plan_type =
         rewriter.getType<tfrt::gpu::DnnConvolutionPlanType>();
     std::string function_name =
         absl::StrCat("get_", op->getName().stripDialect().str(), "_plan");
-    mlir::FuncOp conv_plan_func = rewriter.create<mlir::FuncOp>(
+    mlir::func::FuncOp conv_plan_func = rewriter.create<mlir::func::FuncOp>(
         loc, function_name,
         rewriter.getFunctionType(handle_type, conv_plan_type));
     symbol_table.insert(conv_plan_func);

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -60,7 +61,8 @@ typedef struct SparseTensorToComponentInfo {
   unsigned int func_op_arg_index;
 } SparseTensorToComponentInfo;
 
-void UpdateFunctionSignature(mlir::FuncOp function, mlir::OpBuilder& builder) {
+void UpdateFunctionSignature(mlir::func::FuncOp function,
+                             mlir::OpBuilder& builder) {
   function.setType(mlir::FunctionType::get(
       builder.getContext(),
       llvm::to_vector<4>(function.front().getArgumentTypes()),
@@ -82,7 +84,7 @@ void UpdateFunctionSignature(mlir::FuncOp function, mlir::OpBuilder& builder) {
 // "op_input_sparse_indices_0,op_input_sparse_dense_shapes_0,
 // "op_input_sparse_values_0"
 mlir::LogicalResult UpdateFunctionInputAttributes(
-    mlir::MLIRContext& context, mlir::FuncOp main_func,
+    mlir::MLIRContext& context, mlir::func::FuncOp main_func,
     mlir::OpBuilder& builder,
     const std::vector<SparseTensorToComponentInfo>& sparse_tensor_components) {
   llvm::SmallVector<llvm::StringRef, 2> input_names;
@@ -132,7 +134,7 @@ mlir::LogicalResult UpdateFunctionInputAttributes(
 // three of the component tensors, `indices`, `values`, and `dense_shapes`
 // and add it to `sparse_tensor_components`.
 void CreateComponentTensorsFromSparseTensors(
-    mlir::FuncOp main_func, mlir::OpBuilder& builder,
+    mlir::func::FuncOp main_func, mlir::OpBuilder& builder,
     std::vector<SparseTensorToComponentInfo>* sparse_tensor_components) {
   for (const auto block_arg : main_func.getArguments()) {
     const auto is_sparse = main_func.getArgAttrOfType<mlir::BoolAttr>(
@@ -157,7 +159,7 @@ void CreateComponentTensorsFromSparseTensors(
 // Inserts SparseTensor components `components` into `main_func` at the end
 // of block arguments list.
 void UpdateFunctionWithSparseTensorComponents(
-    mlir::MLIRContext& context, mlir::FuncOp main_func,
+    mlir::MLIRContext& context, mlir::func::FuncOp main_func,
     mlir::OpBuilder& builder, const SparseTensorToComponentInfo& component) {
   main_func.front().addArgument(component.indices, main_func.getLoc());
   main_func.front().addArgument(component.dense_shapes, main_func.getLoc());
@@ -173,7 +175,8 @@ struct DTensorSparseTensorToDenseTensor
     auto module = getOperation();
     mlir::OpBuilder builder(&context);
 
-    mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+    mlir::func::FuncOp main_func =
+        module.lookupSymbol<mlir::func::FuncOp>("main");
 
     // Save Arg Attributes for each argument for later use, this will be
     // reset and reordered after we insert sparse tensor components arguments.

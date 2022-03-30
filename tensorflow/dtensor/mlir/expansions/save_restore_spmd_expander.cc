@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -131,7 +132,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
   mlir::OpBuilder builder(original_save);
   const auto& location = original_save.getLoc();
 
-  llvm::SmallVector<mlir::FuncOp, 8> branch_funs;
+  llvm::SmallVector<mlir::func::FuncOp, 8> branch_funs;
 
   // Try to extract prefix out as constants and build new shard prefix base on
   // it.
@@ -173,7 +174,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
     if (it == saving_specs.end()) {
       // Builds place holder for the no_op function, which takes the exact same
       // args as the original save op and returns nothing.
-      mlir::FuncOp no_op = mlir::FuncOp::create(
+      mlir::func::FuncOp no_op = mlir::func::FuncOp::create(
           location,
           llvm::formatv("{0}_no_op_on_device_{1}_{2}", OpName(original_save),
                         device_id, OpHash(original_save))
@@ -196,7 +197,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
 
       // Build the new SaveV2 that contains proper SliceSpec on this device.
       // tensor_names and slice_spec would be concatted into a 1d string tensor.
-      mlir::FuncOp new_save = mlir::FuncOp::create(
+      mlir::func::FuncOp new_save = mlir::func::FuncOp::create(
           location,
           llvm::formatv("{0}_save_op_on_device_{1}_{2}", OpName(original_save),
                         device_id, OpHash(original_save))
@@ -401,7 +402,7 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
                               llvm::ArrayRef<mlir::Type>{});
   // Build then_func that is the branch of device_id != 0, which only contains a
   // single NoOp.
-  mlir::FuncOp then_func = mlir::FuncOp::create(
+  mlir::func::FuncOp then_func = mlir::func::FuncOp::create(
       location,
       llvm::formatv("{0}_then_func_{1}", OpName(merge_v2), OpHash(merge_v2))
           .str(),
@@ -417,7 +418,7 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
 
   // Build else_func that is the branch of device_id == 0.
   // The else func is just the original MergeV2 itself.
-  mlir::FuncOp else_func = mlir::FuncOp::create(
+  mlir::func::FuncOp else_func = mlir::func::FuncOp::create(
       location,
       llvm::formatv("{0}_else_func_{1}", OpName(merge_v2), OpHash(merge_v2))
           .str(),
@@ -496,7 +497,8 @@ StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
   const auto& location = restore_v2.getLoc();
 
   // Tracks case branch functions for each local_device_id.
-  llvm::SmallVector<mlir::FuncOp> branch_funcs(mesh.local_device_ids().size());
+  llvm::SmallVector<mlir::func::FuncOp> branch_funcs(
+      mesh.local_device_ids().size());
   // Stores restore ops for each device_id in a function, that is suitable for
   // feeding into a CaseOp.
 
@@ -581,7 +583,7 @@ StatusOr<mlir::Operation*> ExpandRestoreV2Op(mlir::Operation* op) {
         builder, restore_v2.getLoc(),
         llvm::SmallVector<llvm::StringRef>(new_shape_and_slices.begin(),
                                            new_shape_and_slices.end())));
-    mlir::FuncOp device_restore_fn = mlir::FuncOp::create(
+    mlir::func::FuncOp device_restore_fn = mlir::func::FuncOp::create(
         location,
         llvm::formatv("{0}_on_device_{1}_{2}", OpName(restore_v2), device_id,
                       OpHash(restore_v2))

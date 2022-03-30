@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -85,8 +86,8 @@ mlir::LogicalResult PropagateDTensorLayoutForRelayout(
 
 // Creates tf.DTensorLayout that is connected to each function argument if
 // function arg contains layout attribute.
-mlir::LogicalResult PropagateFunctionArgAttrToLayoutOp(mlir::MLIRContext& c,
-                                                       mlir::FuncOp function) {
+mlir::LogicalResult PropagateFunctionArgAttrToLayoutOp(
+    mlir::MLIRContext& c, mlir::func::FuncOp function) {
   for (int arg_index = 0; arg_index < function.getNumArguments(); ++arg_index) {
     auto layout_attr = function.getArgAttrOfType<mlir::StringAttr>(
         arg_index, kCustomDeviceAttr);
@@ -118,7 +119,7 @@ mlir::LogicalResult PropagateFunctionArgAttrToLayoutOp(mlir::MLIRContext& c,
 // function contains default layout attribute that represents layout of function
 // outputs.
 mlir::LogicalResult PropagateFunctionDefaultLayoutAttrToLayoutOp(
-    mlir::MLIRContext& c, mlir::FuncOp function) {
+    mlir::MLIRContext& c, mlir::func::FuncOp function) {
   for (int ret_index = 0; ret_index < function.getNumResults(); ++ret_index) {
     auto layout_attr_from_func_result =
         function.getResultAttrOfType<mlir::StringAttr>(
@@ -219,7 +220,7 @@ struct DTensorPropagateDefaultLayout
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorPropagateDefaultLayout() {
   return std::make_unique<DTensorPropagateDefaultLayout>();
 }

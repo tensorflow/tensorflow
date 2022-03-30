@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -313,8 +314,9 @@ StatusOr<mlir::Operation*> DTensorSendSPMDExpander::ExpandOp(
   mlir::Location loc = dtensor_send.getLoc();
   TF_ASSIGN_OR_RETURN(
       mlir::Value device_ordinal,
-      GetDeviceOrdinal(
-          *mesh, loc, send_cluster->getParentOfType<mlir::FuncOp>(), &builder));
+      GetDeviceOrdinal(*mesh, loc,
+                       send_cluster->getParentOfType<mlir::func::FuncOp>(),
+                       &builder));
   mlir::Value predicate = builder.create<mlir::TF::EqualOp>(
       loc, device_ordinal, CreateIntScalarConst(0, builder, loc),
       /*incompatible_shape_error=*/builder.getBoolAttr(true));
@@ -437,7 +439,7 @@ StatusOr<mlir::Operation*> DTensorRecvSPMDExpander::ExpandOp(
       TF_ASSIGN_OR_RETURN(
           mlir::Value device_ordinal,
           GetDeviceOrdinal(recv_mesh, loc,
-                           recv_cluster->getParentOfType<mlir::FuncOp>(),
+                           recv_cluster->getParentOfType<mlir::func::FuncOp>(),
                            &builder));
       mlir::Value predicate = builder.create<mlir::TF::EqualOp>(
           loc, device_ordinal, CreateIntScalarConst(0, builder, loc),

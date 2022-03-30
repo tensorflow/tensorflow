@@ -61,7 +61,7 @@ constexpr char kMainFunctionName[] = "main";
 // `new_shape`.
 void UpdateFunctionInputShape(const int argument_index,
                               mlir::RankedTensorType new_arg_type,
-                              mlir::FuncOp function) {
+                              mlir::func::FuncOp function) {
   auto func_type = function.getFunctionType();
   auto input_types = llvm::to_vector<8>(func_type.getInputs());
   input_types[argument_index] = new_arg_type;
@@ -100,7 +100,7 @@ mlir::Operation* NextTFOp(mlir::Operation* op) {
 // shapes or if resource argument does not have corresponding layout attribute,
 // this function is an no-op.
 mlir::LogicalResult UpdateResourceArgumentType(
-    const int arg_index, mlir::FuncOp function,
+    const int arg_index, mlir::func::FuncOp function,
     absl::optional<mlir::RankedTensorType> new_subtype = absl::nullopt) {
   auto resource_arg = function.getArgument(arg_index);
   if (new_subtype) {
@@ -189,7 +189,7 @@ bool IsValueUsedByAssignVariableOp(
 }
 
 // Updates argument shapes of `function` based on `tf._layout` attribute.
-mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::FuncOp function) {
+mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
   for (int argument_index = 0; argument_index < function.getNumArguments();
        ++argument_index) {
     auto arg_layout_attr = function.getArgAttrOfType<mlir::StringAttr>(
@@ -245,7 +245,7 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::FuncOp function) {
 // signature to reflect the local shape of `function_operands`.
 mlir::LogicalResult UpdateFunctionWithLocalInputShapes(
     mlir::MutableArrayRef<mlir::OpOperand> function_operands,
-    mlir::FuncOp function) {
+    mlir::func::FuncOp function) {
   for (auto& operand : function_operands) {
     const int index = operand.getOperandNumber();
     auto arg_type = operand.get().getType().dyn_cast<mlir::RankedTensorType>();
@@ -267,7 +267,7 @@ mlir::LogicalResult UpdateReturnValueShapes(mlir::ModuleOp module,
   if (!parent_op) return mlir::success();
 
   auto output_types = llvm::to_vector<8>(terminator_op->getOperandTypes());
-  if (auto function = llvm::dyn_cast<mlir::FuncOp>(parent_op)) {
+  if (auto function = llvm::dyn_cast<mlir::func::FuncOp>(parent_op)) {
     // Update function output type to have local shape.
     auto new_func_type = mlir::FunctionType::get(
         function.getContext(), function.getFunctionType().getInputs(),
@@ -306,7 +306,7 @@ mlir::LogicalResult UpdateReturnValueShapes(mlir::ModuleOp module,
 // functions before SPMD expansion of callsite operations is done.
 // Note that the iteration won't work with recursive function calls.
 mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
-  auto main_func = module.lookupSymbol<mlir::FuncOp>(kMainFunctionName);
+  auto main_func = module.lookupSymbol<mlir::func::FuncOp>(kMainFunctionName);
   if (!main_func)
     return module.emitOpError(
         "could not find `main` function in module for SPMD expansion.");
@@ -317,7 +317,7 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
   TopologicalIterator iterator(main_func);
   while (iterator.hasNext()) {
     mlir::Operation* op = iterator.next();
-    absl::optional<mlir::FuncOp> func = MaybeFindFunction(op);
+    absl::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
     if (func.has_value()) {
       if (mlir::failed(
               UpdateFunctionWithLocalInputShapes(op->getOpOperands(), *func)))

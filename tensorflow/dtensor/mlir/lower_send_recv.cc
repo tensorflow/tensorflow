@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -122,7 +123,7 @@ mlir::LogicalResult LowerDTensorSendRecvsOps(mlir::ModuleOp module) {
 // Adds Identity Op that uses device_id argument as inputs for clusters that
 // does not have device id usages. When send/recv operations exists in
 // tf_device.Clusters to transfer data across mesh clusters, device_id argument
-// is required. However, mlir::FuncOp's created by transforming
+// is required. However, mlir::func::FuncOp's created by transforming
 // tf_device.Cluster to tf_device.ClusterFunc during ClusterOutlining pass will
 // **not** include device_id as input argument if there are no usages within the
 // cluster op body. As so, add Identity op that uses device_id argument from
@@ -141,7 +142,8 @@ void PropagateDeviceIdToClusters(mlir::ModuleOp module) {
   const bool has_cross_mesh_send_recv = result.wasInterrupted();
   if (!has_cross_mesh_send_recv) return;
 
-  mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main_func =
+      module.lookupSymbol<mlir::func::FuncOp>("main");
   auto device_id = DeviceId(main_func);
 
   module.walk([&](mlir::tf_device::ClusterOp op) {

@@ -100,7 +100,7 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
                  pointer, index));
   }
 
-  mlir::FuncOp convertFuncOpToLLVMFuncOp(
+  mlir::func::FuncOp convertFuncOpToLLVMFuncOp(
       FuncOp funcOp, ConversionPatternRewriter &rewriter) const {
     auto loc = funcOp.getLoc();
 
@@ -130,7 +130,7 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
     if (!llvm_type) return nullptr;
 
     rewriter.setInsertionPoint(funcOp);
-    auto new_func_op = rewriter.create<mlir::FuncOp>(
+    auto new_func_op = rewriter.create<mlir::func::FuncOp>(
         loc, funcOp.getName(), llvm_type, llvm::SmallVector<NamedAttribute>());
     auto locs = llvm::SmallVector<mlir::Location>(arg_types.size(), loc);
     Block *new_entry =
@@ -259,17 +259,18 @@ class LegalizeXLAFrameworkToLLVMPass
     target.addIllegalDialect<xla_framework::XLAFrameworkDialect>();
     // Unrealized conversion casts are cleaned up by a separate pass.
     target.addLegalOp<UnrealizedConversionCastOp, ModuleOp>();
-    target.addDynamicallyLegalOp<mlir::FuncOp>([&](mlir::FuncOp op) {
-      if (llvm::any_of(op.getArgumentTypes(), [&](auto type) {
-            return type.template isa<xla_framework::BufferType>();
-          }))
-        return false;
-      if (llvm::any_of(op.getArgumentTypes(), [&](auto type) {
-            return type.template isa<xla_framework::BufferType>();
-          }))
-        return false;
-      return true;
-    });
+    target.addDynamicallyLegalOp<mlir::func::FuncOp>(
+        [&](mlir::func::FuncOp op) {
+          if (llvm::any_of(op.getArgumentTypes(), [&](auto type) {
+                return type.template isa<xla_framework::BufferType>();
+              }))
+            return false;
+          if (llvm::any_of(op.getArgumentTypes(), [&](auto type) {
+                return type.template isa<xla_framework::BufferType>();
+              }))
+            return false;
+          return true;
+        });
 
     if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
       signalPassFailure();

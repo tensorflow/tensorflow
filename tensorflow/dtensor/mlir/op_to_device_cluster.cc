@@ -136,7 +136,7 @@ struct DTensorOpToDeviceClusterPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorOpToDeviceClusterPass() {
   return std::make_unique<DTensorOpToDeviceClusterPass>();
 }

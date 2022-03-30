@@ -39,7 +39,7 @@ StatusOr<mlir::Value> DeviceId(mlir::Value val);
 // the same TF task.
 StatusOr<mlir::Value> GetDeviceOrdinal(const Mesh& mesh,
                                        const mlir::Location& loc,
-                                       mlir::FuncOp function,
+                                       mlir::func::FuncOp function,
                                        mlir::OpBuilder* builder,
                                        bool return_int64_type = true);
 

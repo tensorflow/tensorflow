@@ -57,7 +57,7 @@ mlir::Value GetOrCreateCompilationKey(mlir::Operation* op) {
 
 StatusOr<mlir::Value> GetDeviceOrdinal(const Mesh& mesh,
                                        const mlir::Location& loc,
-                                       mlir::FuncOp function,
+                                       mlir::func::FuncOp function,
                                        mlir::OpBuilder* builder,
                                        bool return_int64_type) {
   // Create as many entries as the number of devices in the entire mesh.
@@ -115,7 +115,7 @@ StatusOr<mlir::Operation*> LowerDTensorSendToXlaOp(
       if (!send_cluster) {
         return errors::InvalidArgument("DTensorSend is not inside a ClusterOp");
       }
-      auto send_func = send_cluster->getParentOfType<mlir::FuncOp>();
+      auto send_func = send_cluster->getParentOfType<mlir::func::FuncOp>();
       if (!send_func) {
         return errors::InvalidArgument("DTensorSend is not inside a FuncOp");
       }
@@ -169,7 +169,7 @@ StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
     TF_ASSIGN_OR_RETURN(
         mlir::Value device_ordinal,
         GetDeviceOrdinal(*mesh, recv_cluster.getLoc(),
-                         recv_cluster->getParentOfType<mlir::FuncOp>(),
+                         recv_cluster->getParentOfType<mlir::func::FuncOp>(),
                          &builder));
 
     auto program_key = GetOrCreateCompilationKey(dtensor_recv);

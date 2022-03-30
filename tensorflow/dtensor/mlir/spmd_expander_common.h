@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -177,7 +178,7 @@ StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value);
 // only visiting function ops once so that we don't expand multiple times.
 class TopologicalIterator {
  public:
-  explicit TopologicalIterator(mlir::FuncOp main_func);
+  explicit TopologicalIterator(mlir::func::FuncOp main_func);
 
   // Returns whether there is any further ops to visit.
   bool hasNext();

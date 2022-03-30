@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -49,7 +50,7 @@ constexpr char kSendRecvKeyPrefix[] = "compilation_send_recv_key_";
 // Identifies all StatefulPartitionedCallOps for executing computation for
 // each mesh cluster and validate that at most one TPU computation exists.
 mlir::LogicalResult IdentifyAndValidateMeshComputations(
-    mlir::FuncOp function,
+    mlir::func::FuncOp function,
     std::map<Mesh, mlir::TF::StatefulPartitionedCallOp>* function_map) {
   for (auto dtensor_function :
        function.getOps<mlir::TF::StatefulPartitionedCallOp>()) {
@@ -83,7 +84,7 @@ mlir::LogicalResult IdentifyAndValidateMeshComputations(
 // Creates Send/Recv ops to transfer TPUCompile program key from host
 // computation to XLA computation.
 mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
-    const Mesh& mesh, mlir::ModuleOp module, mlir::FuncOp function,
+    const Mesh& mesh, mlir::ModuleOp module, mlir::func::FuncOp function,
     mlir::OpBuilder::InsertPoint insertpoint,
     mlir::TF::_TPUCompileMlirOp compile_op,
     mlir::tf_device::LaunchOp compile_op_launch, int* num_send_recv,
@@ -116,7 +117,7 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
 
   // Create Recv ops to receive program key from host to each xla device
   // computation.
-  llvm::SmallVector<mlir::FuncOp, 4> compilation_key_functions;
+  llvm::SmallVector<mlir::func::FuncOp, 4> compilation_key_functions;
   compilation_key_functions.reserve(num_tpu_devices);
   mlir::SymbolTable symbol_table(module);
 
@@ -129,7 +130,7 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
         builder.getContext(), llvm::ArrayRef<mlir::Type>{},
         llvm::ArrayRef<mlir::Type>{compilation_key.getType()});
 
-    mlir::FuncOp recv_select_fn = mlir::FuncOp::create(
+    mlir::func::FuncOp recv_select_fn = mlir::func::FuncOp::create(
         compile_op.getLoc(),
         llvm::formatv("recv_compile_key_{0}_{1}", i, *num_send_recv).str(),
         func_type, llvm::ArrayRef<mlir::NamedAttribute>{});
@@ -175,7 +176,7 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
 
 struct CompilationKeyRecvInfo {
   const Mesh& receiving_function_mesh;
-  mlir::FuncOp receiving_function;
+  mlir::func::FuncOp receiving_function;
   mlir::OpBuilder::InsertPoint recv_insertion_point;
   mlir::Value program_key;
 };
@@ -219,11 +220,12 @@ mlir::LogicalResult HandleCompilationOps(
         "Found TPUCompilationKey op but XLA computation does not exist.");
   }
 
-  mlir::FuncOp tpu_function = xla_mesh->second.func();
-  mlir::FuncOp host_function;
+  mlir::func::FuncOp tpu_function = xla_mesh->second.func();
+  mlir::func::FuncOp host_function;
   Mesh host_mesh;
   for (auto compilation_key : compilation_key_ops) {
-    auto parent_function = compilation_key->getParentOfType<mlir::FuncOp>();
+    auto parent_function =
+        compilation_key->getParentOfType<mlir::func::FuncOp>();
 
     if (!host_function) {
       host_function = parent_function;
@@ -271,7 +273,7 @@ mlir::LogicalResult HandleCompilationOps(
   if (host_mesh.local_device_ids().size() > 1) {
     auto device_ordinal_host = GetDeviceOrdinal(
         host_mesh, compile_op.getLoc(),
-        first_host_op.getParentOfType<mlir::FuncOp>(), &builder);
+        first_host_op.getParentOfType<mlir::func::FuncOp>(), &builder);
     if (!device_ordinal_host.ok())
       return compile_op.emitOpError(
           llvm::formatv("error while creating TPU compilation logic. {0}",
@@ -373,7 +375,8 @@ struct DTensorMoveCompilationToHost
 
     if (compilation_key_ops.empty()) return;
 
-    mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+    mlir::func::FuncOp main_func =
+        module.lookupSymbol<mlir::func::FuncOp>("main");
     if (!main_func) return;
 
     std::map<Mesh, mlir::TF::StatefulPartitionedCallOp> computation_map;

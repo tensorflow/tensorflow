@@ -39,7 +39,7 @@ constexpr char kMainFunctionName[] = "main";
 
 // Expand every op that consumes SparseTensor operands in topological order.
 mlir::LogicalResult ConductSparseExpansion(mlir::ModuleOp module) {
-  auto main_func = module.lookupSymbol<mlir::FuncOp>(kMainFunctionName);
+  auto main_func = module.lookupSymbol<mlir::func::FuncOp>(kMainFunctionName);
   if (!main_func)
     return module.emitOpError(
         "could not find `main` function in module for SPMD expansion.");

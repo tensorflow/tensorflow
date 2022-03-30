@@ -85,7 +85,7 @@ static int64_t GetRankedTensorSize(TensorType tensor) {
   return size;
 }
 
-int64_t GetMaxArgSize(mlir::FuncOp func) {
+int64_t GetMaxArgSize(mlir::func::FuncOp func) {
   int64_t max_arg_size = 1;
   for (BlockArgument& arg : func.getArguments()) {
     auto type = arg.getType().cast<mlir::TensorType>();

@@ -96,7 +96,7 @@ struct LegalizeToTensorOpPass
 }  // namespace lmhlo
 }  // namespace mlir
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 mlir::lmhlo::createLegalizeToTensorOpPass() {
   return std::make_unique<LegalizeToTensorOpPass>();
 }

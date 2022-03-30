@@ -3467,7 +3467,7 @@ LogicalResult XlaReduceWindowOp::verify() {
   }
 
   auto module = op->getParentOfType<mlir::ModuleOp>();
-  auto func = dyn_cast_or_null<mlir::FuncOp>(
+  auto func = dyn_cast_or_null<mlir::func::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.computation()));
   if (!func) {
     return op.emitOpError() << "has no reduction function specified";
@@ -3524,7 +3524,7 @@ LogicalResult XlaSelectAndScatterOp::verify() {
   }
 
   auto module = op->getParentOfType<mlir::ModuleOp>();
-  auto select_func = dyn_cast_or_null<mlir::FuncOp>(
+  auto select_func = dyn_cast_or_null<mlir::func::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.select()));
   if (!select_func) {
     return op.emitOpError() << "has no select function specified";
@@ -3541,7 +3541,7 @@ LogicalResult XlaSelectAndScatterOp::verify() {
                                "boolean result but got "
                             << select_func_type.getResult(0);
   }
-  auto scatter_func = dyn_cast_or_null<mlir::FuncOp>(
+  auto scatter_func = dyn_cast_or_null<mlir::func::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.scatter()));
   if (!scatter_func) {
     return op.emitOpError() << "has no scatter function specified";
@@ -3642,7 +3642,7 @@ LogicalResult XlaVariadicReduceV2Op::verify() {
   }
 
   auto module = op->getParentOfType<mlir::ModuleOp>();
-  auto function = dyn_cast_or_null<mlir::FuncOp>(
+  auto function = dyn_cast_or_null<mlir::func::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.reducer()));
   if (!function) return op.emitOpError() << "No reducer";
   if (!function.getBody().hasOneBlock())
@@ -3681,7 +3681,7 @@ LogicalResult XlaVariadicSortOp::verify() {
   }
 
   auto module = op->getParentOfType<mlir::ModuleOp>();
-  auto function = dyn_cast_or_null<mlir::FuncOp>(
+  auto function = dyn_cast_or_null<mlir::func::FuncOp>(
       SymbolTable::lookupSymbolIn(module, op.comparator()));
   if (!function) return op.emitOpError() << "No comparator";
   if (!function.getBody().hasOneBlock())

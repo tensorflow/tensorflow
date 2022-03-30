@@ -568,6 +568,7 @@ cc_library(
     srcs = ["analysis/test_cost_analysis_pass.cc"],
     deps = [
         ":cost_analysis",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,

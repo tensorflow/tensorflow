@@ -6231,7 +6231,7 @@ class ConvertXlaReduceWindowOp
             .cast<DenseIntElementsAttr>());
     // Insert a call to the reducer in the region of the mhlo op.
     mlir::SymbolRefAttr func = op.computation();
-    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+    auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
         op->getParentOfType<mlir::ModuleOp>(), func));
     auto func_ty = func_op.getFunctionType();
     BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_window_op.body());
@@ -7086,7 +7086,7 @@ class ConvertXlaSelectAndScatterOp
             .cast<DenseIntElementsAttr>());
 
     auto insert_call_to = [&](const mlir::SymbolRefAttr &func, Region *region) {
-      auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+      auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
           op->getParentOfType<mlir::ModuleOp>(), func));
       auto func_ty = func_op.getFunctionType();
       BuildBodyWithCall(rewriter, loc, func, func_ty, region);
@@ -7180,7 +7180,7 @@ class ConvertXlaVariadicReduceV2Op
         loc, op.inputs(), op.init_values(),
         GetI64ElementsAttr(op.dimensions_to_reduce()));
     mlir::SymbolRefAttr func = op.reducer();
-    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+    auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
         op->getParentOfType<mlir::ModuleOp>(), func));
     auto func_ty = func_op.getFunctionType();
     // Insert a call to the reducer in the region of the mhlo op.
@@ -7208,7 +7208,7 @@ class ConvertXlaVariadicSortOp
         loc, op.inputs(), dimension.getValues<IntegerAttr>()[0].getInt(),
         op.is_stable());
     mlir::SymbolRefAttr func = op.comparator();
-    auto func_op = cast<mlir::FuncOp>(SymbolTable::lookupSymbolIn(
+    auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
         op->getParentOfType<mlir::ModuleOp>(), func));
     auto func_ty = func_op.getFunctionType();
     // Insert a call to the reducer in the region of the mhlo op.

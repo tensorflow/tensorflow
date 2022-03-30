@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -439,7 +440,7 @@ mlir::LogicalResult OptimizeWhileLoopLazyAllReduce(
 }
 
 mlir::LogicalResult ApplyOptimization(
-    mlir::FuncOp function,
+    mlir::func::FuncOp function,
     const llvm::SmallVectorImpl<mlir::Operation*>& identity_like_ops,
     const llvm::SmallVectorImpl<mlir::TF::WhileRegionOp>& while_ops,
     const llvm::SmallVectorImpl<mlir::Operation*>& add_ops, bool* changed) {
@@ -464,7 +465,7 @@ mlir::LogicalResult ApplyOptimization(
 //   b) WhileRegion op
 //   c) Add operations.
 void CollectOptimizationCandidates(
-    mlir::FuncOp func,
+    mlir::func::FuncOp func,
     llvm::SmallVectorImpl<mlir::Operation*>* identity_like_ops,
     llvm::SmallVectorImpl<mlir::Operation*>* add_ops,
     llvm::SmallVectorImpl<mlir::TF::WhileRegionOp>* while_ops) {
@@ -486,7 +487,7 @@ struct DTensorAllReduceSumOptimization
     : public DTensorAllReduceSumOptimizationBase<
           DTensorAllReduceSumOptimization> {
   void runOnOperation() override {
-    mlir::FuncOp function = getOperation();
+    mlir::func::FuncOp function = getOperation();
     bool changed = true;
     int iteration = 0;
 
@@ -509,7 +510,7 @@ struct DTensorAllReduceSumOptimization
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorAllReduceSumOptimization() {
   return std::make_unique<DTensorAllReduceSumOptimization>();
 }

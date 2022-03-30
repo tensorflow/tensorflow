@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 
 namespace mlir {
@@ -183,7 +184,7 @@ bool IsSequenceStartingWith0(Attribute attr) {
   return true;
 }
 
-int64_t getArgumentIndex(mlir::FuncOp op, Value value) {
+int64_t getArgumentIndex(mlir::func::FuncOp op, Value value) {
   BlockArgument arg = value.dyn_cast<BlockArgument>();
   if (!arg || arg.getOwner() != &op.front()) return -1;
   return arg.getArgNumber();

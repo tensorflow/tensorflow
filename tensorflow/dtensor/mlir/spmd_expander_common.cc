@@ -338,7 +338,7 @@ llvm::SmallVector<mlir::OpOperand*, 4> TraceUseToNextTFOp(
   llvm::SmallVector<mlir::Value, 4> values;
   if (mlir::isa<mlir::TF::PartitionedCallOp>(owner) ||
       mlir::isa<mlir::TF::StatefulPartitionedCallOp>(owner)) {
-    mlir::FuncOp func;
+    mlir::func::FuncOp func;
     if (mlir::isa<mlir::TF::PartitionedCallOp>(owner))
       func = mlir::cast<mlir::TF::PartitionedCallOp>(owner).func();
     else
@@ -352,7 +352,7 @@ llvm::SmallVector<mlir::OpOperand*, 4> TraceUseToNextTFOp(
         enclosing_cluster.getResult(operand->getOperandNumber()));
   } else if (mlir::isa<mlir::func::ReturnOp>(owner)) {
     auto func = mlir::cast<mlir::func::ReturnOp>(owner)
-                    ->getParentOfType<mlir::FuncOp>();
+                    ->getParentOfType<mlir::func::FuncOp>();
     // The one function we don't have a caller for is the main function.
     // In this case return the empty list as there are no consumers.
     auto caller = func_to_caller.find(func.getName());
@@ -429,7 +429,8 @@ mlir::LogicalResult GetFuncToCaller(
 mlir::LogicalResult PopulateConsumersFromModule(
     mlir::ModuleOp* module, mlir::Dialect* tf_dialect,
     llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers) {
-  mlir::FuncOp main_func = module->lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main_func =
+      module->lookupSymbol<mlir::func::FuncOp>("main");
   llvm::DenseMap<llvm::StringRef, mlir::Operation*> func_to_caller;
 
   if (mlir::failed(GetFuncToCaller(*module, func_to_caller)))
@@ -707,7 +708,7 @@ StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   return std::string(*attr.getRawStringData().begin());
 }
 
-TopologicalIterator::TopologicalIterator(mlir::FuncOp main_func)
+TopologicalIterator::TopologicalIterator(mlir::func::FuncOp main_func)
     : ops_to_visit_{&main_func.front().front()} {
   funcs_visited_.insert(main_func.getName());
   funcs_visited_in_call_stack_.insert(main_func.getName());
@@ -722,7 +723,7 @@ mlir::Operation* TopologicalIterator::next() {
 
   // If this is a function call op, push the first op of the function body so
   // that the function body is converted before the call site.
-  absl::optional<mlir::FuncOp> func = MaybeFindFunction(op);
+  absl::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
   if (func.has_value()) {
     mlir::StringRef func_name = func->getName();
 
@@ -735,7 +736,7 @@ mlir::Operation* TopologicalIterator::next() {
   // If we have reached the end of a function body, remove the function from
   // our active set.
   if (!next_op && !funcs_visited_in_call_stack_.empty())
-    if (auto func = op->getParentOfType<mlir::FuncOp>())
+    if (auto func = op->getParentOfType<mlir::func::FuncOp>())
       funcs_visited_in_call_stack_.erase(func.getName());
 
   if (auto cluster_op = mlir::dyn_cast<mlir::tf_device::ClusterOp>(op))

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Operation.h"
@@ -47,7 +48,7 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 // Removes explicit device assignment on TPUExecute and _TPUCompileMlir ops.
 // As TPU execution replication logic is delegated to DTensorDevice,
 // DTensorDevice should handle replication and Placer would assign devices.
-void UpdateTPUDeviceAssignment(mlir::FuncOp function,
+void UpdateTPUDeviceAssignment(mlir::func::FuncOp function,
                                mlir::OpBuilder* builder) {
   function.walk([&](mlir::Operation* op) {
     if (!llvm::isa<
@@ -73,7 +74,7 @@ void UpdateTPUDeviceAssignment(mlir::FuncOp function,
 // Updates `num_replicas` section of TPUCompileMetadataProto to number of
 // devices set by DTensor device.
 mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,
-                                             mlir::FuncOp function,
+                                             mlir::func::FuncOp function,
                                              mlir::OpBuilder* builder) {
   auto result = function.walk([&](mlir::TF::_TPUCompileMlirOp compile) {
     auto original_metadata = compile.metadata();
@@ -149,7 +150,7 @@ struct DTensorUpdateTPUMetadata
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);
     auto module = getOperation();
-    mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+    mlir::func::FuncOp main_func = module.lookupSymbol<mlir::func::FuncOp>("main");
     if (!main_func) return;
 
     auto result = main_func.walk([&](mlir::TF::StatefulPartitionedCallOp op) {

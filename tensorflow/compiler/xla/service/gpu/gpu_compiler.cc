@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
@@ -817,8 +818,8 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
       builder.getI64IntegerAttr(hlo_module->config().replica_count());
   mlir::IntegerAttr num_partitions_attr =
       builder.getI64IntegerAttr(hlo_module->config().num_partitions());
-  mlir::FuncOp func =
-      mlir_module.lookupSymbol<mlir::FuncOp>(entry_function_name);
+  mlir::func::FuncOp func =
+      mlir_module.lookupSymbol<mlir::func::FuncOp>(entry_function_name);
   func->setAttr("replica_count", replica_count_attr);
   func->setAttr("num_partitions", num_partitions_attr);
 
@@ -851,7 +852,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
 
 using OutputInfoMap =
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
-static Status GetMlirAllocationInfo(mlir::FuncOp func,
+static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
                                     Shape* output_shape,
@@ -951,7 +952,7 @@ static Status CompileModuleToLlvmIrImpl(
     DumpToFileInDirOrStdout(*hlo_module, "lmhlo", mlir_module.get());
   }
 
-  auto entry_function = mlir::cast<mlir::FuncOp>(
+  auto entry_function = mlir::cast<mlir::func::FuncOp>(
       mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
 
   TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
@@ -1475,7 +1476,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
 //
 // This function also serves as a half-baked verifier for function arg
 // attributes, since a full verifier doens't exist yet.
-static Status GetMlirAllocationInfo(mlir::FuncOp func,
+static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
                                     Shape* output_shape,
@@ -1551,8 +1552,9 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
     absl::string_view entry_function_name, se::StreamExecutor* stream_exec,
     std::unique_ptr<llvm::Module> llvm_module,
     IrEmitterContext* ir_emitter_context) {
-  mlir::FuncOp entry_function = mlir::cast<mlir::FuncOp>(module.lookupSymbol(
-      llvm::StringRef(entry_function_name.data(), entry_function_name.size())));
+  mlir::func::FuncOp entry_function =
+      mlir::cast<mlir::func::FuncOp>(module.lookupSymbol(llvm::StringRef(
+          entry_function_name.data(), entry_function_name.size())));
 
   std::vector<BufferAllocation> allocations;
   OutputInfoMap output_info;

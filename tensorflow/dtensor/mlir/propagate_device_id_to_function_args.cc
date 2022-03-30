@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -42,7 +43,7 @@ namespace {
 // definition or function that needs to be updated and `callsite_ops` holds a
 // list of ops that calls the `function`.
 struct FunctionToChangeInfo {
-  mlir::FuncOp function;
+  mlir::func::FuncOp function;
   llvm::SmallVector<mlir::Operation*, 4> callsite_ops;
 };
 
@@ -90,7 +91,7 @@ llvm::SmallVector<FunctionToChangeInfo, 4> FindFunctionsToRewrite(
 
 // Rewrites function such that 0th argument of type `type` is added to
 // `function`.
-void PrependArgumentToFunction(mlir::FuncOp function, mlir::Type type,
+void PrependArgumentToFunction(mlir::func::FuncOp function, mlir::Type type,
                                mlir::OpBuilder* builder) {
   auto& function_body = function.front();
   function_body.insertArgument(static_cast<unsigned>(0), type,
@@ -152,7 +153,8 @@ struct DTensorPropagateDeviceIdToFunctionArgs
     mlir::OpBuilder builder(&context);
 
     // Extracts device id argument from main function.
-    mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+    mlir::func::FuncOp main_func =
+        module.lookupSymbol<mlir::func::FuncOp>("main");
     auto device_id_or_status = DeviceId(&main_func.getBody().front().front());
     if (!device_id_or_status.ok()) {
       main_func.emitOpError(

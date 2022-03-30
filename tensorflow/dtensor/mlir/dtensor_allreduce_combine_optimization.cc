@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
@@ -543,7 +544,7 @@ struct DTensorAllReduceCombineOptimization
     : public DTensorAllReduceCombineOptimizationBase<
           DTensorAllReduceCombineOptimization> {
   void runOnOperation() override {
-    mlir::FuncOp function = getOperation();
+    mlir::func::FuncOp function = getOperation();
     function.walk([&](mlir::tf_device::ClusterOp cluster) {
       // Maintain a list of seen element types, sorted by first appearance.
       // Also find and store all-reduces by element type.
@@ -572,7 +573,7 @@ struct DTensorAllReduceCombineOptimization
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorAllReduceCombineOptimization() {
   return std::make_unique<DTensorAllReduceCombineOptimization>();
 }

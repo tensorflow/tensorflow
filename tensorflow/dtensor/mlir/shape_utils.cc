@@ -52,7 +52,7 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalInputShape(
 
   // If we reach this point, we're working with a function argument.
   auto op = input_value.getOwner();
-  auto enclosing_function = op->getParentOfType<mlir::FuncOp>();
+  auto enclosing_function = op->getParentOfType<mlir::func::FuncOp>();
   if (!enclosing_function)
     return errors::InvalidArgument(
         llvm::formatv("Could not find global shape of {0}-th input to op: {1}",

@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
@@ -347,13 +348,15 @@ struct TileReductionPass : public TileReductionBase<TileReductionPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTileReductionPass() {
   return std::make_unique<TileReductionPass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileReductionPass(
-    int64_t reduction_vector_size, int64_t reduction_1d_tile_size,
-    llvm::ArrayRef<int64_t> reduction_2d_tile_sizes) {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTileReductionPass(int64_t reduction_vector_size,
+                        int64_t reduction_1d_tile_size,
+                        llvm::ArrayRef<int64_t> reduction_2d_tile_sizes) {
   return std::make_unique<TileReductionPass>(
       reduction_vector_size, reduction_1d_tile_size, reduction_2d_tile_sizes);
 }

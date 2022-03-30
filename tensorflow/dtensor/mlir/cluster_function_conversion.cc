@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -54,7 +55,7 @@ mlir::LogicalResult AttachRetvalLayouts(
     return sp_call_op.emitOpError(
         "has no symbolRef for given StatefulPartitionedCallOp");
 
-  auto func = mlir::dyn_cast<mlir::FuncOp>(
+  auto func = mlir::dyn_cast<mlir::func::FuncOp>(
       mlir::SymbolTable::lookupNearestSymbolFrom(sp_call_op, sym));
   if (!func)
     return sp_call_op.emitOpError() << "found no FuncOp for symbol " << sym;

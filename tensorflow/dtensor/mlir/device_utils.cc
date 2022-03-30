@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/device_utils.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 
@@ -23,10 +24,10 @@ namespace dtensor {
 
 // Returns an MLIR value representing the current device ID.
 StatusOr<mlir::Value> DeviceId(mlir::Operation* op) {
-  mlir::FuncOp function = llvm::dyn_cast<mlir::FuncOp>(op);
+  mlir::func::FuncOp function = llvm::dyn_cast<mlir::func::FuncOp>(op);
   if (!function) {
     // Device ID is the 0th argument of the enclosing function.
-    function = op->getParentOfType<mlir::FuncOp>();
+    function = op->getParentOfType<mlir::func::FuncOp>();
     if (!function)
       return errors::InvalidArgument(
           "operation must be enclosed inside a function.");

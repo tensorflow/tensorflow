@@ -103,7 +103,7 @@ static StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
 Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
                                      ::xla::HloProto* hlo_proto,
                                      mlir::MlirToHloConversionOptions options) {
-  mlir::FuncOp main = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   xla::XlaBuilder builder("main");
 

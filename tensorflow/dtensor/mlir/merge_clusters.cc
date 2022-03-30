@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -476,7 +477,8 @@ mlir::LogicalResult DecomposeControlflow(mlir::MLIRContext* context,
 // Merges multiple tf_device.clusters with same mesh specification to a single
 // mesh cluster.
 mlir::LogicalResult MergeClusters(mlir::ModuleOp module) {
-  mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main_func =
+      module.lookupSymbol<mlir::func::FuncOp>("main");
 
   // Create global cluster for each mesh in entire computation.
   auto clusters = FindAllDeviceClusters(main_func);

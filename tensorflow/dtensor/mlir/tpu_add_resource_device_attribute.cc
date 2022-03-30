@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -54,7 +55,7 @@ void AddPlaceholderDeviceAttributeToResource(
       execute_op->getParentOfType<mlir::tf_device::LaunchOp>();
   mlir::StringRef tpu_device_attr = tpu_execute_device_launch.device();
 
-  auto function = execute_op->getParentOfType<mlir::FuncOp>();
+  auto function = execute_op->getParentOfType<mlir::func::FuncOp>();
   mlir::OpBuilder builder(execute_op);
   function.setArgAttr(arg.getArgNumber(), kFuncDeviceAttr,
                       builder.getStringAttr(tpu_device_attr));

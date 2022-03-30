@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -73,7 +74,7 @@ void AddMetadataToTPUCluster(const Mesh& mesh_config,
 void IdentifyTPUFunctions(
     mlir::ModuleOp module, llvm::SmallVectorImpl<Mesh>* tpu_meshs,
     llvm::SmallVectorImpl<mlir::TF::StatefulPartitionedCallOp>* tpu_functions) {
-  auto main_func = module.lookupSymbol<mlir::FuncOp>("main");
+  auto main_func = module.lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_func) return;
 
   for (auto call : main_func.getOps<mlir::TF::StatefulPartitionedCallOp>()) {

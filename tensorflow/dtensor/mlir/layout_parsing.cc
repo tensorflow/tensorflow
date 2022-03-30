@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -188,8 +189,8 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromOperand(mlir::Value operand) {
     return errors::Internal(
         "Operand is not either a OpResult or a BlockArgument. This should not "
         "happen.");
-  auto func_op =
-      mlir::dyn_cast_or_null<mlir::FuncOp>(block_arg.getOwner()->getParentOp());
+  auto func_op = mlir::dyn_cast_or_null<mlir::func::FuncOp>(
+      block_arg.getOwner()->getParentOp());
   if (!func_op) {
     return errors::InvalidArgument("op must be enclosed by a function");
   }
@@ -250,7 +251,7 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
   absl::optional<Layout> layout;
   // If value feeds into func op return op, then check to see if layout
   // attribute is set for the return value.
-  auto function = return_op->getParentOfType<mlir::FuncOp>();
+  auto function = return_op->getParentOfType<mlir::func::FuncOp>();
   auto layout_attr_from_func_result =
       function.getResultAttrOfType<mlir::StringAttr>(return_index,
                                                      kCustomDefaultLayoutAttr);

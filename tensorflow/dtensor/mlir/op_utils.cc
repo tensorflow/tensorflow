@@ -39,7 +39,7 @@ uint64_t OpHash(mlir::Operation* op) {
 }
 
 // Returns FuncOp if `op` is a callable.
-absl::optional<mlir::FuncOp> MaybeFindFunction(mlir::Operation* op) {
+absl::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op) {
   auto call_op = llvm::dyn_cast<mlir::CallOpInterface>(op);
   if (!call_op) return absl::nullopt;
 
@@ -47,7 +47,7 @@ absl::optional<mlir::FuncOp> MaybeFindFunction(mlir::Operation* op) {
   mlir::SymbolRefAttr sym = callable.dyn_cast<mlir::SymbolRefAttr>();
   if (!sym) return absl::nullopt;
 
-  mlir::FuncOp func = llvm::dyn_cast<mlir::FuncOp>(
+  mlir::func::FuncOp func = llvm::dyn_cast<mlir::func::FuncOp>(
       mlir::SymbolTable::lookupNearestSymbolFrom(op, sym));
   if (!func) return absl::nullopt;
 

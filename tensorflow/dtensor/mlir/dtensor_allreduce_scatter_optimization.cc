@@ -16,6 +16,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -73,7 +74,7 @@ mlir::DenseIntElementsAttr GetScatterGroupAssignment(
   return mlir::DenseIntElementsAttr::get(group_shaped_type, partitions_flat);
 }
 
-mlir::LogicalResult ApplyOptimization(mlir::FuncOp function) {
+mlir::LogicalResult ApplyOptimization(mlir::func::FuncOp function) {
   std::vector<mlir::Operation*> ops_to_delete;
   function.walk([&](mlir::TF::DTensorAllReduceOp all_reduce) {
     if (all_reduce->hasOneUse()) {
@@ -161,7 +162,7 @@ struct DTensorAllReduceScatterOptimization
     : public DTensorAllReduceScatterOptimizationBase<
           DTensorAllReduceScatterOptimization> {
   void runOnOperation() override {
-    mlir::FuncOp function = getOperation();
+    mlir::func::FuncOp function = getOperation();
 
     if (mlir::failed(ApplyOptimization(function))) return signalPassFailure();
   }
@@ -169,7 +170,7 @@ struct DTensorAllReduceScatterOptimization
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorAllReduceScatterOptimization() {
   return std::make_unique<DTensorAllReduceScatterOptimization>();
 }

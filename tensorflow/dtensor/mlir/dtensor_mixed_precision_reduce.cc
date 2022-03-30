@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -114,7 +115,7 @@ mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
 }
 
 template <class ReduceOpType>
-mlir::LogicalResult TryMixedPrecisionReduce(mlir::FuncOp function,
+mlir::LogicalResult TryMixedPrecisionReduce(mlir::func::FuncOp function,
                                             absl::string_view opName) {
   int32_t reduceOpsCounter = 0;
   int32_t changedReduceOpsCounter = 0;
@@ -141,7 +142,7 @@ mlir::LogicalResult TryMixedPrecisionReduce(mlir::FuncOp function,
 struct DTensorMixedPrecisionReducePass
     : public DTensorMixedPrecisionReduceBase<DTensorMixedPrecisionReducePass> {
   void runOnOperation() override {
-    mlir::FuncOp function = getOperation();
+    mlir::func::FuncOp function = getOperation();
 
     if (mlir::failed(TryMixedPrecisionReduce<mlir::TF::DTensorAllReduceOp>(
             function, "DTensorAllReduce")))
@@ -154,7 +155,7 @@ struct DTensorMixedPrecisionReducePass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorMixedPrecisionReducePass() {
   return std::make_unique<DTensorMixedPrecisionReducePass>();
 }

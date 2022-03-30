@@ -16,6 +16,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -36,7 +37,7 @@ namespace dtensor {
 namespace {
 
 // Sets `_global_shape` attributes to argument/return values of `function`.
-void AnnotateFunctionArgRetvalGlobalShapes(mlir::FuncOp function,
+void AnnotateFunctionArgRetvalGlobalShapes(mlir::func::FuncOp function,
                                            mlir::OpBuilder* builder) {
   for (const auto& argument_type_and_index :
        llvm::enumerate(function.getArgumentTypes())) {
@@ -93,7 +94,7 @@ struct DTensorAnnotateGlobalShape
     mlir::OpBuilder builder(&context);
 
     auto module = getOperation();
-    module.walk([&](mlir::FuncOp function) {
+    module.walk([&](mlir::func::FuncOp function) {
       if (function.empty()) return;
 
       auto* terminator = function.getBody().front().getTerminator();

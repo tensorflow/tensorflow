@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
@@ -39,7 +40,7 @@ struct DTensorDCE : public DTensorDCEBase<DTensorDCE> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateDTensorDCE() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateDTensorDCE() {
   return std::make_unique<DTensorDCE>();
 }
 

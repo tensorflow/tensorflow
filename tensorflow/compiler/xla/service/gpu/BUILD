@@ -1532,6 +1532,7 @@ cc_library(
         ":gpu_reduce_scatter_creator",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
+        "@llvm-project//mlir:FuncDialect",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         ":gpu_hlo_cost_analysis",
         ":horizontal_input_fusion",

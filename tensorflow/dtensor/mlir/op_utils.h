@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
@@ -34,7 +35,7 @@ inline std::string OpName(mlir::Operation* op) {
 }
 
 // Returns FuncOp if `op` is a callable.
-absl::optional<mlir::FuncOp> MaybeFindFunction(mlir::Operation* op);
+absl::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op);
 
 // Removes tf.DTensorLayout op and forwards it's input to it's users.
 // For example:

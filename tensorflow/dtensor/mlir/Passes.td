@@ -19,7 +19,7 @@ limitations under the License.
 include "mlir/Pass/PassBase.td"
 
 def DTensorOpToDeviceCluster
-    : Pass<"dtensor-op-to-device-cluster", "mlir::FuncOp"> {
+    : Pass<"dtensor-op-to-device-cluster", "mlir::func::FuncOp"> {
   let summary = "Creates and wraps tf_device.cluster op for all TF ops";
   let constructor = "CreateDTensorOpToDeviceClusterPass()";
   let dependentDialects = [
@@ -27,7 +27,7 @@ def DTensorOpToDeviceCluster
 }
 
 def DTensorDeviceMeshClusterCoarsening
-    : Pass<"dtensor-device-mesh-cluster-coarsening", "mlir::FuncOp"> {
+    : Pass<"dtensor-device-mesh-cluster-coarsening", "mlir::func::FuncOp"> {
   let summary = "Merges tf_device.cluster op with same mesh attribute.";
   let constructor = "CreateDTensorDeviceMeshClusterCoarsening()";
   let dependentDialects = [
@@ -35,7 +35,7 @@ def DTensorDeviceMeshClusterCoarsening
 }
 
 def DTensorConstantFolding
-    : Pass<"dtensor-constant-folding", "mlir::FuncOp"> {
+    : Pass<"dtensor-constant-folding", "mlir::func::FuncOp"> {
   let summary = "Folds constants operations.";
   let constructor = "CreateDTensorConstantFolding()";
   let dependentDialects = [
@@ -43,7 +43,7 @@ def DTensorConstantFolding
 }
 
 def DTensorAllReduceSumOptimization
-    : Pass<"dtensor-allreduce-sum-optimization", "mlir::FuncOp"> {
+    : Pass<"dtensor-allreduce-sum-optimization", "mlir::func::FuncOp"> {
   let summary = "Changes order of add/allreduce to minimize all reduce operations.";
   let constructor = "CreateDTensorAllReduceSumOptimization()";
   let dependentDialects = [
@@ -51,7 +51,7 @@ def DTensorAllReduceSumOptimization
 }
 
 def DTensorAllReduceScatterOptimization
-    : Pass<"dtensor-allreduce-scatter-optimization", "mlir::FuncOp"> {
+    : Pass<"dtensor-allreduce-scatter-optimization", "mlir::func::FuncOp"> {
   let summary = "Combines allreduce and scatter to reducescatter.";
   let constructor = "CreateDTensorAllReduceScatterOptimization()";
   let dependentDialects = [
@@ -59,7 +59,7 @@ def DTensorAllReduceScatterOptimization
 }
 
 def DTensorAllReduceCombineOptimization
-    : Pass<"dtensor-allreduce-combine-optimization", "mlir::FuncOp"> {
+    : Pass<"dtensor-allreduce-combine-optimization", "mlir::func::FuncOp"> {
   let summary = "Combine independent all reduce operations.";
   let constructor = "CreateDTensorAllReduceCombineOptimization()";
   let dependentDialects = [
@@ -67,7 +67,7 @@ def DTensorAllReduceCombineOptimization
 }
 
 def DTensorMixedPrecisionReduce
-    : Pass<"dtensor-mixed-precision-reduce", "mlir::FuncOp"> {
+    : Pass<"dtensor-mixed-precision-reduce", "mlir::func::FuncOp"> {
   let summary = "Upcast tensors to higher precision type for reduction ops.";
   let constructor = "CreateDTensorMixedPrecisionReducePass()";
   let dependentDialects = [
@@ -75,7 +75,7 @@ def DTensorMixedPrecisionReduce
 }
 
 def DTensorDCE
-    : Pass<"dtensor-dce", "mlir::FuncOp"> {
+    : Pass<"dtensor-dce", "mlir::func::FuncOp"> {
   let summary = "Removes unused ops from graph.";
   let constructor = "CreateDTensorDCE()";
   let dependentDialects = [
@@ -83,7 +83,7 @@ def DTensorDCE
 }
 
 def DTensorSetDefaultSharding
-    : Pass<"dtensor-set-default-sharding", "mlir::FuncOp"> {
+    : Pass<"dtensor-set-default-sharding", "mlir::func::FuncOp"> {
   let summary = "Sets default sharding of TPU computation inputs/ouputs to maximal.";
   let constructor = "CreateDTensorSetDefaultSharding()";
   let dependentDialects = [
@@ -91,7 +91,7 @@ def DTensorSetDefaultSharding
 }
 
 def DTensorDesignateResourceHandleMesh
-    : Pass<"dtensor-designate-resource-handle-mesh", "mlir::FuncOp"> {
+    : Pass<"dtensor-designate-resource-handle-mesh", "mlir::func::FuncOp"> {
   let summary = "Sets empty mesh attributes for device cluster that creates or destroys resource handles.";
   let constructor = "CreateDTensorDesignateResourceHandleMesh()";
   let dependentDialects = [
@@ -99,7 +99,7 @@ def DTensorDesignateResourceHandleMesh
 }
 
 def DTensorPropagateDefaultLayout
-    : Pass<"dtensor-propagate-default-layout", "mlir::FuncOp"> {
+    : Pass<"dtensor-propagate-default-layout", "mlir::func::FuncOp"> {
   let summary = "Converts layout attributes added by end users to DTensorLayout op.";
   let constructor = "CreateDTensorPropagateDefaultLayout()";
   let dependentDialects = [
