@@ -378,10 +378,10 @@ void DisableCopyOnReadOp::Compute(OpKernelContext* ctx) {
   }
 }
 
-REGISTER_KERNEL_BUILDER(Name("DisableCopyOnReadOp").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("DisableCopyOnRead").Device(DEVICE_CPU),
                         DisableCopyOnReadOp);
 REGISTER_KERNEL_BUILDER(
-    Name("DisableCopyOnReadOp").Device(DEVICE_DEFAULT).HostMemory("resource"),
+    Name("DisableCopyOnRead").Device(DEVICE_DEFAULT).HostMemory("resource"),
     DisableCopyOnReadOp);
 
 template <typename Device, typename T>

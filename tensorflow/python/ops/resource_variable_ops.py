@@ -672,13 +672,20 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
 
   def _read_variable_op(self, no_copy = False):
     """Reads the value of the variable. If the variable is in copy-on-read mode
-    and no_copy is True, the variable is converted to copy-on-write mode before
-    it is read."""
+    and `no_copy` is True, the variable is converted to copy-on-write mode
+    before it is read.
+
+    Args:
+      no_copy: Whether to prevent a copy of the variable.
+
+    Returns:
+      The value of the variable.
+    """
     variable_accessed(self)
 
     def read_and_set_handle(no_copy):
       if no_copy:
-        gen_resource_variable_ops.disable_copy_on_read_op(self.handle)
+        gen_resource_variable_ops.disable_copy_on_read(self.handle)
       result = gen_resource_variable_ops.read_variable_op(
           self.handle, self._dtype)
       _maybe_set_handle_data(self._dtype, self.handle, result)
