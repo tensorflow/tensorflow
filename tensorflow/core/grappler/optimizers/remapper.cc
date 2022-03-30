@@ -878,6 +878,8 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
   const auto* node_def = node_view.node();
   if (!IsAddN(*node_def) && !IsAddWithNoBroadcast(ctx, *node_def)) return false;
 
+  if (!NodeIsOnCpu(node_def)) return false;
+
   // MKL AddN ops only support float and bfloat16 data types.
   if (!HasDataType(node_def, DT_FLOAT) && !HasDataType(node_def, DT_BFLOAT16))
     return false;
@@ -922,6 +924,8 @@ bool FindContractionWithBiasAndAddActivation(
   const auto* node_def = node_view->node();
   if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
+
+  if (!NodeIsOnCpu(node_def)) return false;
 
   // Currently, Contraction + Bias + Add + Tanh pattern is not supported
   if (IsTanh(*node_def)) return false;
@@ -1138,9 +1142,12 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
       if (!VerifyConstants(ctx, matched_nodes_map, &values_map)) return false;
     }
   } else if (found_gelu_approximate) {
-    // Check if _FusedMatMul contains only BiasAdd
     NodeDef* matmul_node =
         ctx->graph_view.GetNode(matched_nodes_map->at("matmul"))->node();
+
+    if (!NodeIsOnCpu(matmul_node)) return false;
+
+    // Check if _FusedMatMul contains only BiasAdd
     auto fused_ops = matmul_node->attr().at("fused_ops").list().s();
     if (fused_ops.size() == 1) {
       if (fused_ops.at(0) != "BiasAdd") return false;
@@ -1301,6 +1308,8 @@ bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
     if (!TryGetNodeAttr(*fused_batch_norm_node, kIsTraining, &is_training) ||
         !is_training)
       return false;
+
+    if (!NodeIsOnCpu(fused_batch_norm_node)) return false;
 
     // FusedBatchNorm node should have mean/variance as empty constant
     NodeDef* empty_const_node =
