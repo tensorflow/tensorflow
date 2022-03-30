@@ -3355,7 +3355,7 @@ class MutableHashTableOpTest(test.TestCase):
     self.assertAllEqual([b"brain", b"salad", b"surgery"], sorted_keys)
     self.assertAllEqual([0, 1, 2], sorted_values)
 
-  # TODO(https://github.com/tensorflow/tensorflow/issues/24439): remove when fixed
+  # TODO(https://github.com/tensorflow/tensorflow/issues/24439): remove exepectedFailure when fixed
   @unittest.expectedFailure
   @test_util.run_v2_only
   def testImportedHashTable(self, is_anonymous):
