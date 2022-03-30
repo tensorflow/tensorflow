@@ -671,9 +671,10 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     return obj_map, resource_map
 
   def _read_variable_op(self, no_copy = False):
-    """Reads the value of the variable. If the variable is in copy-on-read mode
-    and `no_copy` is True, the variable is converted to copy-on-write mode
-    before it is read.
+    """Reads the value of the variable.
+
+    If the variable is in copy-on-read mode and `no_copy` is True, the variable
+    is converted to copy-on-write mode before it is read.
 
     Args:
       no_copy: Whether to prevent a copy of the variable.
@@ -732,7 +733,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
      the read operation.
     """
     with ops.name_scope("Read"):
-      value = self._read_variable_op(no_copy = True)
+      value = self._read_variable_op(no_copy=True)
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)
