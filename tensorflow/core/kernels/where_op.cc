@@ -351,8 +351,9 @@ class WhereGPUOp : public AsyncOpKernel {
     };
 
     auto stream = context->op_device_context()->stream();
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, create_and_check_output);
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, create_and_check_output);
   }
 
  private:
