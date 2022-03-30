@@ -1907,6 +1907,8 @@ cuda_py_test(
 tpu_py_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
+    # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
+    disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
     python_version = "PY3",
     deps = [
