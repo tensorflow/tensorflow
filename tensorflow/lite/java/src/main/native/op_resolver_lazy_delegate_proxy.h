@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_JAVA_SRC_MAIN_NATIVE_OP_RESOLVER_LAZY_DELEGATE_PROXY_H_
 
 #include <memory>
+#include <utility>
 
 #include "tensorflow/lite/op_resolver.h"
 
@@ -29,14 +30,15 @@ class OpResolverLazyDelegateProxy : public OpResolver {
                               bool use_xnnpack)
       : op_resolver_(std::move(op_resolver)), use_xnnpack_(use_xnnpack) {}
 
-  virtual const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
-                                           int version) const override;
-  virtual const TfLiteRegistration* FindOp(const char* op,
-                                           int version) const override;
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override;
+  const TfLiteRegistration* FindOp(const char* op, int version) const override;
 
   OpResolver::TfLiteDelegateCreators GetDelegateCreators() const override;
 
  private:
+  bool MayContainUserDefinedOps() const override;
+
   static std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
   createXNNPackDelegate(int num_threads);
 

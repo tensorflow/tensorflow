@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/lite/core/api/op_resolver_internal.h"
 #include "tensorflow/lite/core/shims/c/common.h"
 #include "tensorflow/lite/core/shims/cc/model_builder.h"
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
@@ -53,6 +54,10 @@ OpResolverLazyDelegateProxy::GetDelegateCreators() const {
 
   return OpResolver::TfLiteDelegateCreators{
       {&OpResolverLazyDelegateProxy::createXNNPackDelegate}};
+}
+
+bool OpResolverLazyDelegateProxy::MayContainUserDefinedOps() const {
+  return OpResolverInternal::MayContainUserDefinedOps(*op_resolver_);
 }
 
 std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
