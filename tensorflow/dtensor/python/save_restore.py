@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.util.tf_export import tf_export
 
 
 def sharded_prefix(
@@ -80,6 +81,7 @@ def sharded_prefix(
       tensors=tensors)
 
 
+@tf_export('experimental.dtensor.sharded_save', v1=[])
 def sharded_save(
     mesh: layout_lib.Mesh,
     file_prefix: Union[str, ops.Tensor],
@@ -138,6 +140,7 @@ def sharded_save(
   return merge_op
 
 
+@tf_export('experimental.dtensor.enable_save_as_bf16', v1=[])
 def enable_save_as_bf16(variables: List[tf_variables.Variable]):
   """Allows float32 DVariables to be checkpointed and restored as bfloat16.
 
@@ -154,6 +157,7 @@ def enable_save_as_bf16(variables: List[tf_variables.Variable]):
       v.save_as_bf16 = True
 
 
+@tf_export('experimental.dtensor.name_based_restore', v1=[])
 def name_based_restore(
     mesh: layout_lib.Mesh,
     checkpoint_prefix: str,
@@ -226,6 +230,7 @@ def name_based_restore(
       zip(ordered_name_tensor_dict.keys(), restored_cpu_tensors))
 
 
+@tf_export('experimental.dtensor.name_based_save', v1=[])
 def name_based_save(mesh: layout_lib.Mesh, checkpoint_prefix: Union[str,
                                                                     ops.Tensor],
                     name_tensor_dict: Dict[str, Union[ops.Tensor,

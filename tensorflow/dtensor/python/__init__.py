@@ -44,5 +44,3 @@ from tensorflow.dtensor.python.save_restore import enable_save_as_bf16
 from tensorflow.dtensor.python.save_restore import name_based_restore
 from tensorflow.dtensor.python.save_restore import name_based_save
 from tensorflow.dtensor.python.save_restore import sharded_save
-
-from tensorflow.python.eager import context

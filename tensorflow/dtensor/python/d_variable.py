@@ -27,6 +27,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util.tf_export import tf_export
 
 
 class DSaveSpec(saveable_object.SaveSpec):
@@ -135,6 +136,7 @@ class _DVariableSaveable(saveable_object.SaveableObject):
         .save_as_bf16 else tensor)
 
 
+@tf_export('experimental.dtensor.DVariable', v1=[])
 class DVariable(resource_variable_ops.ResourceVariable):
   """A replacement for tf.Variable which follows initial value placement.
 

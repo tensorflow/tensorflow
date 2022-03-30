@@ -23,14 +23,21 @@ import numpy as np
 from tensorflow.dtensor.proto import layout_pb2
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
+from tensorflow.python.util.tf_export import tf_export
 
 # UNSHARDED indicates a tensor dimension is not sharded over any mesh dimension.
 UNSHARDED = 'unsharded'
 MATCH = 'match'
 
+tf_export('experimental.dtensor.UNSHARDED', v1=[]).export_constant(
+    __name__, 'UNSHARDED')
+tf_export('experimental.dtensor.MATCH', v1=[]).export_constant(
+    __name__, 'MATCH')
+
 MeshDimension = collections.namedtuple('MeshDimension', ['name', 'size'])
 
 
+@tf_export('experimental.dtensor.Mesh', v1=[])
 class Mesh(object):
   """Represents a Mesh configuration over a certain list of Mesh Dimensions."""
 
@@ -390,6 +397,7 @@ class Mesh(object):
 
 
 # TODO(hthu): Consider making this class immutable.
+@tf_export('experimental.dtensor.Layout', v1=[])
 class Layout(object):
   """Represents the layout information for a Tensor."""
 

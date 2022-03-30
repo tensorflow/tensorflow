@@ -39,6 +39,7 @@ from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
+from tensorflow.python.util.tf_export import tf_export
 
 
 class _DSaver(functional_saver._SingleDeviceSaver):  # pylint: disable=protected-access
@@ -378,6 +379,7 @@ class DTrackableSaver(util.TrackableSaver):
     return load_status
 
 
+@tf_export("experimental.dtensor.DTensorCheckpoint", v1=[])
 class DTensorCheckpoint(util.Checkpoint):
   """Manages saving/restoring trackable values to disk, for DTensor."""
 

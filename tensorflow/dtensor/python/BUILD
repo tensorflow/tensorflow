@@ -35,7 +35,6 @@ pytype_strict_library(
         ":gen_dtensor_ops",
         ":layout",
         ":save_restore",
-        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -54,6 +53,7 @@ pytype_strict_library(
         "//tensorflow/python:device",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -74,6 +74,7 @@ pytype_strict_library(
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
         "//tensorflow/python:config",
         "//tensorflow/python:device",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -94,6 +95,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -123,6 +125,7 @@ pytype_strict_library(
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/python/training/tracking:graph_view",
         "//tensorflow/python/training/tracking:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -143,6 +146,7 @@ pytype_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

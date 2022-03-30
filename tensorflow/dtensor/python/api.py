@@ -26,6 +26,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
+from tensorflow.python.util.tf_export import tf_export
+
 
 _DT_CLIENT_ID = "DTENSOR_CLIENT_ID"
 _DT_NUM_CLIENTS = "DTENSOR_NUM_CLIENTS"
@@ -43,6 +45,7 @@ _dtensor_singleton_lock = threading.Lock()
 # Main methods to launch DTensor computations.
 
 
+@tf_export("experimental.dtensor.call_with_layout", v1=[])
 def call_with_layout(fn: Callable[...,
                                   Any], layout: Optional[layout_lib.Layout],
                      *args, **kwargs) -> Any:
@@ -81,6 +84,7 @@ def call_with_layout(fn: Callable[...,
   return fn(*args, **kwargs)
 
 
+@tf_export("experimental.dtensor.run_on", v1=[])
 @contextlib.contextmanager
 def run_on(layout_or_mesh: Union[layout_lib.Layout, layout_lib.Mesh]):
   """Runs enclosed functions in the DTensor device scope.
@@ -110,6 +114,7 @@ def run_on(layout_or_mesh: Union[layout_lib.Layout, layout_lib.Mesh]):
       yield
 
 
+@tf_export("experimental.dtensor.device_name", v1=[])
 def device_name() -> str:
   """Returns the singleton DTensor device's name.
 
@@ -129,6 +134,7 @@ def device_name() -> str:
 # Data transfer methods.
 
 
+@tf_export("experimental.dtensor.copy_to_mesh", v1=[])
 def copy_to_mesh(
     tensor: Any,
     layout: layout_lib.Layout,
@@ -151,11 +157,13 @@ def copy_to_mesh(
   return _dtensor_device().copy_to_mesh(tensor, layout, source_layout)
 
 
+@tf_export("experimental.dtensor.pack", v1=[])
 def pack(tensors: Sequence[Any], layout: layout_lib.Layout) -> Any:
   """Packs tf.Tensor components into a DTensor."""
   return _dtensor_device().pack(tensors, layout)
 
 
+@tf_export("experimental.dtensor.unpack", v1=[])
 def unpack(tensor: Any) -> Sequence[Any]:
   """Unpacks a DTensor into tf.Tensor components."""
   return _dtensor_device().unpack(tensor)
@@ -165,11 +173,13 @@ def unpack(tensor: Any) -> Sequence[Any]:
 # Layout-related methods.
 
 
+@tf_export("experimental.dtensor.fetch_layout", v1=[])
 def fetch_layout(tensor: ops.Tensor) -> layout_lib.Layout:
   """Returns the layout of a DTensor."""
   return _dtensor_device().fetch_layout(tensor)
 
 
+@tf_export("experimental.dtensor.check_layout", v1=[])
 def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
   """Asserts that the layout of `tensor` is `layout`."""
   if fetch_layout(tensor) != layout:
@@ -177,6 +187,7 @@ def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
                      ", did not match expected layout: " + str(layout))
 
 
+@tf_export("experimental.dtensor.relayout", v1=[])
 def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
   """Changes the layout of `tensor`.
 
@@ -220,18 +231,21 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
 # locally attached devices. The others are set through environment variables.
 
 
+@tf_export("experimental.dtensor.client_id", v1=[])
 def client_id() -> int:
   """Returns this client's ID."""
   # If missing, likely in unit tests and local runs, 0 is a good default.
   return int(os.environ.get(_DT_CLIENT_ID, "0"))
 
 
+@tf_export("experimental.dtensor.num_clients", v1=[])
 def num_clients() -> int:
   """Returns the number of clients in this DTensor cluster."""
   # If missing, likely in unit tests and local runs, 1 is a good default.
   return int(os.environ.get(_DT_NUM_CLIENTS, "1"))
 
 
+@tf_export("experimental.dtensor.local_devices", v1=[])
 def local_devices(
     device_type: str,
     for_client_id: Optional[int] = None) -> List[tf_device.DeviceSpec]:
@@ -265,11 +279,13 @@ def local_devices(
   ]
 
 
+@tf_export("experimental.dtensor.num_local_devices", v1=[])
 def num_local_devices(device_type: str) -> int:
   """Returns the number of devices of device_type attached to this client."""
   return len(local_devices(device_type))
 
 
+@tf_export("experimental.dtensor.num_global_devices", v1=[])
 def num_global_devices(device_type: str) -> int:
   """Returns the number of devices of device_type in this DTensor cluster."""
   num_devices = 0
@@ -291,12 +307,14 @@ def num_global_devices(device_type: str) -> int:
   return num_local_devices(device_type)
 
 
+@tf_export("experimental.dtensor.job_name", v1=[])
 def job_name() -> str:
   """Returns the job name used by all clients in this DTensor cluster."""
   # If missing, the program is likely running locally or in a unit test.
   return os.environ.get(_DT_JOB_NAME, "localhost")
 
 
+@tf_export("experimental.dtensor.full_job_name", v1=[])
 def full_job_name(task_id: Optional[int] = None) -> str:
   """Returns the fully qualified TF job name for this or another task."""
   # If task_id is None, use this client's ID, which is equal to its task ID.
@@ -327,6 +345,7 @@ def _task_id(job: str) -> Union[int, str]:
     return job
 
 
+@tf_export("experimental.dtensor.jobs", v1=[])
 def jobs() -> List[str]:
   """Returns a list of Borg job names of all clients in this DTensor cluster."""
   d_jobs = os.environ.get(_DT_JOBS)
@@ -340,6 +359,7 @@ def jobs() -> List[str]:
   return d_jobs_list
 
 
+@tf_export("experimental.dtensor.heartbeat_enabled", v1=[])
 def heartbeat_enabled() -> bool:
   """Returns true if DTensor heartbeat service is enabled."""
   return os.environ.get(_DT_HEARTBEAT_ENABLED, "true").lower() in ("true", "1")

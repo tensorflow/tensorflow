@@ -29,6 +29,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "dtensor"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "numpy"
     mtype: "<type \'module\'>"
   }
