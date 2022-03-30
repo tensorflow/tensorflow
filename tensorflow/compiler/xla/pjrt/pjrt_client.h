@@ -439,6 +439,12 @@ class PjRtClient {
     // SetTransferError may be called at most once, and may not be called unless
     // at least one buffer has not yet had its final transfer initiated.
     virtual void SetTransferError(Status error) = 0;
+
+    // Adds the specified key/value metadata for the transfer operation.
+    // This is typically used for debugging purposes, such as adding a handle
+    // that can be used to identify transfer operations.
+    using TransferMetadata = absl::flat_hash_map<std::string, std::string>;
+    virtual void AddTransferMetadata(const TransferMetadata& metadata) = 0;
   };
 
   // Returns a manager for async transfers into a set of buffers with on-host
