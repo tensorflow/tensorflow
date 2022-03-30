@@ -543,7 +543,7 @@ tf_cc_test(
 tf_cc_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
-    tags = ["no_rocm"] + tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo",
@@ -639,7 +639,7 @@ tf_cc_test(
 tf_cc_test(
     name = "gpu_atomic_test",
     srcs = ["gpu_atomic_test.cc"],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla/tests:filecheck",
