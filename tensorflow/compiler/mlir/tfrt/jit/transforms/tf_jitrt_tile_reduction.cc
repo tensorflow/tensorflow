@@ -62,7 +62,6 @@ using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingLoopType;
 using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
-using mlir::linalg::PaddingValueComputationFunction;
 using mlir::tensor::ExpandShapeOp;
 using mlir::tensor::PadOp;
 

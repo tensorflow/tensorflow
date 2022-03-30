@@ -3128,23 +3128,6 @@ LogicalResult WhileRegionOp::verify() {
 
 Region &WhileRegionOp::getLoopBody() { return body(); }
 
-bool WhileRegionOp::isDefinedOutsideOfLoop(Value value) {
-  // If the Op defining the value exists and the defining op is outside the
-  // scope of this WhileRegion, then we can infer that its defined outside.
-  // The defining Op is outside the scope of this WhileRegion if this
-  // WhileRegionOp is not an ancestor of the defining op in the parent chain.
-  Operation *def_op = value.getDefiningOp();
-  return def_op && !getOperation()->isAncestor(def_op);
-}
-
-LogicalResult WhileRegionOp::moveOutOfLoop(
-    llvm::ArrayRef<mlir::Operation *> ops) {
-  // Move the hoisted value to just before the while.
-  Operation *while_op = this->getOperation();
-  for (auto op : ops) op->moveBefore(while_op);
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // WhileRegionOp canonicalization
 //===----------------------------------------------------------------------===//

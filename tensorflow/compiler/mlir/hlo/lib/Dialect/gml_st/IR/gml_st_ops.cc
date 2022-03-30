@@ -315,15 +315,6 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
 
 Region &LoopOp::getLoopBody() { return region(); }
 
-LogicalResult LoopOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
-  for (auto *op : ops) op->moveBefore(*this);
-  return success();
-}
-
-bool LoopOp::isDefinedOutsideOfLoop(Value value) {
-  return !region().isAncestor(value.getParentRegion());
-}
-
 LogicalResult LoopOp::verify() {
   // Check if iterator types are provided for every loop dimension.
   if (iterator_types().size() != getNumLoops())
