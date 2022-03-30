@@ -36,7 +36,8 @@ class CoordinationClient {
                                  RegisterTaskResponse* response,
                                  StatusCallback done) = 0;
 
-  virtual void HeartbeatAsync(const HeartbeatRequest* request,
+  virtual void HeartbeatAsync(CallOptions* call_opts,
+                              const HeartbeatRequest* request,
                               HeartbeatResponse* response,
                               StatusCallback done) = 0;
 

@@ -62,13 +62,17 @@ class TestCoordinationClient : public CoordinationClient {
     done(errors::Unimplemented(#method "Async"));                     \
   }
 
-  UNIMPLEMENTED(Heartbeat);
   UNIMPLEMENTED(WaitForAllTasks);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
+  void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
+                      HeartbeatResponse* response,
+                      StatusCallback done) override {
+    done(errors::Unimplemented("HeartbeatAsync"));
+  }
   void ReportErrorToTaskAsync(CallOptions* call_opts,
                               const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
