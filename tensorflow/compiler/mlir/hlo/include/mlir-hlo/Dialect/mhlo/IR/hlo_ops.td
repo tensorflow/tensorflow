@@ -144,6 +144,10 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     }
     // Replace the strict default implementation with one that allows
     // for different sparsity encodings during the is-same test.
+    //
+    // TODO(ajcbik): perhaps a bit expensive to construct types just
+    //               to do the comparison: rewrite into a direct test
+    //
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
       for (auto it : llvm::zip(l, r))
@@ -441,7 +445,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
-class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
+class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
     HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
     InferShapeEqualityOpInterface, SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
@@ -472,7 +476,19 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
   }];
 
   let results = (outs HLO_Tensor:$result);
-  let assemblyFormat = "operands attr-dict `:` type($result)";
+}
+
+class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
+    HLO_BinaryElementwiseOpNoAssembly<mnemonic, traits> {
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return ::mlir::mhlo::parseBinaryOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      ::mlir::mhlo::printBinaryOp(getOperation(), p);
+    }
+  }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
@@ -497,7 +513,7 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
-def HLO_ComplexOp: HLO_BinaryElementwiseOp<"complex",
+def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
