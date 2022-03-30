@@ -82,6 +82,13 @@ void DumpProtobufToFile(const tensorflow::protobuf::Message& proto,
                         const DebugOptions& debug_options,
                         absl::string_view filename);
 
+// Similar to above, but the filename depends on module's information and the
+// given name.
+void DumpPerModuleProtobufToFile(const HloModule& module,
+                                 const tensorflow::protobuf::Message& proto,
+                                 const DebugOptions& debug_options,
+                                 absl::string_view name);
+
 // Dumps the given HLO module if dumping is enabled for the module. Exactly
 // where and in what formats it's dumped is determined by the module's config.
 //

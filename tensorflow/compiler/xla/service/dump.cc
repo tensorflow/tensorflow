@@ -647,6 +647,14 @@ void DumpProtobufToFile(const tensorflow::protobuf::Message& proto,
   }
 }
 
+void DumpPerModuleProtobufToFile(const HloModule& module,
+                                 const tensorflow::protobuf::Message& proto,
+                                 const DebugOptions& debug_options,
+                                 absl::string_view name) {
+  const std::string filename = FilenameFor(module, TimestampFor(module), name);
+  DumpProtobufToFile(proto, debug_options, filename);
+}
+
 void DumpHloModuleIfEnabled(const HloModule& module, string_view name) {
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.should_dump_module(module.name())) {
