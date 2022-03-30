@@ -43,7 +43,7 @@ def XLIR_Dialect : Dialect {
 }
 
 // Base class for XLIR dialect ops.
-class XLIR_Op<string mnemonic, list<OpTrait> traits = []> :
+class XLIR_Op<string mnemonic, list<Trait> traits = []> :
     Op<XLIR_Dialect, mnemonic, traits> {
   let summary = !strconcat("xlir.", mnemonic, " operation");
   let assemblyFormat = "operands attr-dict";
@@ -140,6 +140,34 @@ def XLIR_CustomCallOp : XLIR_Op<"custom_call"> {
   let results = (outs TFRT_ChainType);
   let assemblyFormat = [{
     $stream`,` $buffers`,` $chain attr-dict
+  }];
+}
+
+def XLIR_InfeedOp : XLIR_Op<"infeed"> {
+  let description = [{
+    xlir.infeed copies data from the streaming interface of the device to the
+    output buffers.
+  }];
+  let arguments = (ins GPU_StreamType:$stream,
+                   Variadic<GPU_BufferType>:$outputs,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream `,` ($outputs^ `,`)?  $chain attr-dict
+  }];
+}
+
+def XLIR_OutfeedOp : XLIR_Op<"outfeed"> {
+  let description = [{
+    xlir.outfeed outputs data from the input buffers to the streaming interface
+    to the host.
+  }];
+  let arguments = (ins GPU_StreamType:$stream,
+                   Variadic<GPU_BufferType>:$inputs,
+                   TFRT_ChainType:$chain);
+  let results = (outs TFRT_ChainType);
+  let assemblyFormat = [{
+    $stream `,` ($inputs^ `,`)? $chain attr-dict
   }];
 }
 

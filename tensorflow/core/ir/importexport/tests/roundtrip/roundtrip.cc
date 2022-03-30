@@ -38,7 +38,7 @@ namespace tensorflow {
 // Applies various normalization to a NodeDef to make it possible to perform
 // textual comparison (for example splat constant are detected, NaN are removed,
 // control input are alphabetically sorted, etc).
-void NormalizeNode(NodeDef* node) {
+void NormalizeNode(NodeDef* node, bool add_fulltype) {
   for (auto& named_attr : (*node->mutable_attr())) {
     AttrValue& attr_val = named_attr.second;
     if (attr_val.has_tensor()) {
@@ -95,11 +95,30 @@ void NormalizeNode(NodeDef* node) {
 
   const OpDef* op_def = nullptr;
   (void)tensorflow::OpRegistry::Global()->LookUpOpDef(node->op(), &op_def);
+
+  // Following logic in Graph::AddNode to avoid false positives due to
+  // type refinement.
+  if (add_fulltype) {
+    if (node->has_experimental_type()) {
+      VLOG(3) << "node has type set, skipping type constructor "
+              << node->name();
+    } else {
+      const OpRegistrationData* op_reg_data;
+      (void)tensorflow::OpRegistry::Global()->LookUp(node->op(), &op_reg_data);
+      if (op_reg_data && op_reg_data->type_ctor != nullptr) {
+        VLOG(3) << "found type constructor for " << node->name();
+        (void)full_type::SpecializeType(AttrSlice(*node), op_reg_data->op_def,
+                                        *(node->mutable_experimental_type()));
+      } else {
+        VLOG(3) << "no type constructor for " << node->name();
+      }
+    }
+  }
+
   if (op_def) StripDefaultsFromNodeDef(*op_def, node);
-  node->clear_experimental_type();
 }
 
-void NormalizeTensorData(GraphDef& graphdef) {
+void NormalizeTensorData(GraphDef& graphdef, bool add_fulltype) {
   FunctionDefLibrary* library = graphdef.mutable_library();
   llvm::sort(*library->mutable_function(),
              [](FunctionDef& lhs, FunctionDef& rhs) {
@@ -107,7 +126,7 @@ void NormalizeTensorData(GraphDef& graphdef) {
              });
 
   for (int i = 0; i < graphdef.node_size(); ++i)
-    NormalizeNode(graphdef.mutable_node(i));
+    NormalizeNode(graphdef.mutable_node(i), add_fulltype);
   llvm::sort(*graphdef.mutable_node(),
              [](const NodeDef& lhs, const NodeDef& rhs) {
                return lhs.name() < rhs.name();
@@ -119,7 +138,7 @@ void NormalizeTensorData(GraphDef& graphdef) {
     });
     for (int node_id = 0; node_id < func->node_def_size(); ++node_id) {
       NodeDef* node = func->mutable_node_def(node_id);
-      NormalizeNode(node);
+      NormalizeNode(node, add_fulltype);
     }
     for (const auto& it : *func->mutable_ret()) {
       func->mutable_ret()->at(it.first) = it.second;
@@ -131,6 +150,8 @@ void NormalizeTensorData(GraphDef& graphdef) {
         }
       }
       for (int idx : to_erase) func->mutable_arg_attr()->erase(idx);
+      for (int i = 0; i < func->node_def_size(); ++i)
+        NormalizeNode(func->mutable_node_def(i), add_fulltype);
     }
   }
 }
@@ -166,10 +187,11 @@ Status TestRoundTrip(GraphDef& graphdef) {
         options, std::move(preprocessed_graphdef), &graph));
     graph.ToGraphDef(&original_graph);
   }
-  NormalizeTensorData(new_graph);
-  NormalizeTensorData(original_graph);
-  if (!tensorflow::protobuf::util::MessageDifferencer::Equivalent(
-          original_graph, new_graph)) {
+  NormalizeTensorData(new_graph, /*add_fulltype=*/false);
+  NormalizeTensorData(original_graph, /*add_fulltype=*/true);
+
+  tensorflow::protobuf::util::MessageDifferencer differencer;
+  if (!differencer.Equivalent(original_graph, new_graph)) {
     LOG(ERROR) << "GraphDef didn't Roundtrip:";
     llvm::errs()
         << "\n=========\n\n"

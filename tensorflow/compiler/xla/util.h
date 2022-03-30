@@ -394,6 +394,22 @@ T RoundDownTo(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
 }
 
+template <typename T>
+struct DivMod {
+  T quotient;
+  T modulo;
+};
+
+// Divide `dividend` by `divisor` such that the quotient is rounded towards
+// negative infinity. The remainder will have the same sign as `divisor`.
+template <typename T>
+DivMod<T> FloorDivMod(T dividend, T divisor) {
+  DivMod<T> div_mod;
+  div_mod.quotient = FloorOfRatio(dividend, divisor);
+  div_mod.modulo = dividend - div_mod.quotient * divisor;
+  return div_mod;
+}
+
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
@@ -424,6 +440,16 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno);
 #define XLA_DIAGNOSE_ERROR_IF(...)
 #endif
 
+constexpr bool IsRuntimeEvaluated() {
+#ifdef __cpp_lib_is_constant_evaluated
+  return !std::is_constant_evaluated();
+#elif ABSL_HAVE_BUILTIN(__builtin_is_constant_evaluated)
+  return !__builtin_is_constant_evaluated();
+#else
+  return false;
+#endif
+}
+
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
 constexpr inline T LsbMask(int width)
@@ -431,6 +457,11 @@ constexpr inline T LsbMask(int width)
                           "width must be between [0, sizeof(T)*8)") {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
+  if (IsRuntimeEvaluated()) {
+    DCHECK_GE(width, 0) << "Unsupported width " << width;
+    DCHECK_LE(width, std::numeric_limits<T>::digits)
+        << "Unsupported width " << width;
+  }
   return width == 0
              ? 0
              : static_cast<T>(-1) >> (std::numeric_limits<T>::digits - width);
@@ -449,14 +480,37 @@ template <typename T>
 constexpr inline int Log2Ceiling(T x) {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
-  int bit_width = absl::bit_width(x);
-  return absl::popcount(x) <= 1 ? bit_width - 1 : bit_width;
+  return x == 0 ? -1 : absl::bit_width(x - 1);
 }
 
 // Returns the value with every bit except the lower 'width' bits set to zero.
 template <typename T>
 constexpr inline T ClearUpperBits(T value, int width) {
   return value & LsbMask<T>(width);
+}
+
+// Returns `base` multiplied by itself `exponent` number of times.
+//
+// Note: returns 1 when `exponent` is zero.
+// Precondition: `exponent` is non-negative.
+template <typename T>
+constexpr T IPow(T base, int exponent)
+    XLA_DIAGNOSE_ERROR_IF(exponent < 0, "exponent must be non-negative") {
+  if (IsRuntimeEvaluated()) {
+    // A negative `exponent` is indicative of a logic bug for integral `base`.
+    // We disallow it for floating-point types for symmetry.
+    DCHECK_GE(exponent, 0);
+  }
+  // We use the right-to-left binary exponentiation algorithm.
+  T result{1};
+  while (exponent > 0) {
+    if ((exponent & 1) != 0) {
+      result *= base;
+    }
+    base *= base;
+    exponent >>= 1;
+  }
+  return result;
 }
 
 template <size_t>

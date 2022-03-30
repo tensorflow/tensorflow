@@ -226,22 +226,6 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
     return HandleNumpyArray(obj, to_device, options);
   }
 
-  // Force buffers with a non-trivial lazy expression.
-  py::object forced;
-  if (!py::getattr(obj, "_lazy_expr").is_none()) {
-    if (!options.force_lazy_arrays) {
-      return InvalidArgument("Lazy arrays are not supported by device_put");
-    }
-    static py::function& force = *[]() {
-      const auto xla_module = py::module::import("jax.interpreters.xla");
-      return new py::function(
-          py::cast<py::function>(xla_module.attr("_force")));
-    }();
-    forced = force(obj);
-    buffer = forced.attr("device_buffer");
-    obj = forced;
-  }
-
   return PyBufferHelper(obj, buffer, py::cast<PyBuffer*>(buffer), to_device);
 }
 
@@ -526,7 +510,6 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
 
   // Fast-path for the most common case of PyBuffer.
   if (arg.get_type().ptr() == PyBuffer::type()) {
-    // PyBuffer necessarily has a trivial LazyExpr, no need to check it.
     TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(arg));
     bool weak_type = buffer->weak_type().has_value()
                          ? *buffer->weak_type()

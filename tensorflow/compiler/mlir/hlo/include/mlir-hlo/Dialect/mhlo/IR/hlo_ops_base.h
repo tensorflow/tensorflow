@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_H
+#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_BASE_H
 
 #include "llvm/ADT/Sequence.h"
 #include "mlir/IR/OpDefinition.h"

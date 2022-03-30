@@ -22,9 +22,9 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -38,6 +38,7 @@
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu/pattern_utils.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -47,6 +48,7 @@
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
@@ -97,14 +99,15 @@ static llvm::Error MakeError(xla::Status status) {
 
 // Clones `op` into a function within a module with `arguments`.
 // The `get_global_ops` are the def ops of `arguments`, or null otherwise.
-static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
-    Operation* op, mlir::ValueRange arguments,
-    mlir::MutableArrayRef<GetGlobalOp> get_global_ops) {
+static std::tuple<mlir::OwningOpRef<mlir::ModuleOp>, mlir::func::FuncOp>
+CloneToModule(Operation* op, mlir::ValueRange arguments,
+              mlir::MutableArrayRef<GetGlobalOp> get_global_ops) {
   auto loc = op->getLoc();
   auto* context = op->getContext();
   mlir::OpBuilder builder(context);
 
-  mlir::OwningModuleRef module_op = builder.create<mlir::ModuleOp>(loc);
+  mlir::OwningOpRef<mlir::ModuleOp> module_op =
+      builder.create<mlir::ModuleOp>(loc);
   builder.setInsertionPointToEnd(module_op->getBody());
   // Clone and annotate the memref.global ops that the memref.get_global ops
   // refer to. The lmhlo.alloc index refers to one of the function arguments.
@@ -118,8 +121,8 @@ static std::tuple<mlir::OwningModuleRef, mlir::FuncOp> CloneToModule(
 
   auto func_type = builder.getType<mlir::FunctionType>(
       mlir::TypeRange(arguments), mlir::TypeRange());
-  auto func_name = op->getParentOfType<mlir::FuncOp>().getName();
-  auto func_op = builder.create<mlir::FuncOp>(loc, func_name, func_type);
+  auto func_name = op->getParentOfType<mlir::func::FuncOp>().getName();
+  auto func_op = builder.create<mlir::func::FuncOp>(loc, func_name, func_type);
   // Annotate the function arguments if they refer to a memref.global op.
   for (auto pair : llvm::enumerate(get_global_ops)) {
     if (!pair.value()) continue;
@@ -167,7 +170,8 @@ static llvm::Expected<std::vector<xla::BufferAllocation>> GetAllocations(
 // Emits thunks and an llvm device code module for the given func_op.
 static llvm::Expected<
     std::tuple<std::unique_ptr<ThunkSequence>, std::vector<ConstantInfo>>>
-Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
+Emit(mlir::func::FuncOp func_op,
+     absl::Span<const xla::BufferAllocation> allocations,
      const stream_executor::CudaComputeCapability& cuda_compute_capability,
      const xla::HloModuleConfig& hlo_module_config, llvm::Module* llvm_module) {
   // Hardcoded values for now...
@@ -192,7 +196,8 @@ Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, func_op->getContext(),
+      gpu_device_info, cuda_compute_capability,
+      stream_executor::RocmComputeCapability("gfx000"), func_op->getContext(),
       llvm_module);
 
   ir_emitter_context.set_allocations(allocations);
@@ -201,7 +206,7 @@ Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
       IrEmitterUnnested::Create(hlo_module_config, &ir_emitter_context);
   if (!ir_emitter.ok()) return MakeError(ir_emitter.status());
 
-  auto emit_status = (*ir_emitter)->EmitLmhloRegion(&func_op.body());
+  auto emit_status = (*ir_emitter)->EmitLmhloRegion(&func_op.getBody());
   if (!emit_status.ok()) return MakeError(emit_status);
 
   return std::make_tuple((*ir_emitter)->ConsumeThunkSequence(),
@@ -236,7 +241,7 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 
   auto emit_result =
-      Emit(std::get<mlir::FuncOp>(module_op), *allocations,
+      Emit(std::get<mlir::func::FuncOp>(module_op), *allocations,
            cuda_compute_capability, hlo_module_config, llvm_module.get());
   if (!emit_result) return emit_result.takeError();
   auto thunks = std::move(std::get<0>(*emit_result));
@@ -254,11 +259,12 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
     }
   }
   if (!llvm::all_of(*thunks, [](const auto& thunk) {
-        Thunk::Kind kinds[] = {Thunk::kKernel, Thunk::kCopy};
+        Thunk::Kind kinds[] = {Thunk::kKernel, Thunk::kCopy,
+                               Thunk::kMemset32BitValue, Thunk::kMemzero};
         auto equal = [&](Thunk::Kind kind) { return thunk->kind() == kind; };
         return llvm::any_of(kinds, equal);
       })) {
-    return MakeError("Expected only kernel and copy thunks");
+    return MakeError("Expected only kernel, copy, memset, and memzero thunks");
   }
 
   auto libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module_config);
@@ -283,7 +289,7 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   auto loc = op->getLoc();
 
-  rewriter.setInsertionPoint(op->getParentOfType<mlir::FuncOp>());
+  rewriter.setInsertionPoint(op->getParentOfType<mlir::func::FuncOp>());
   auto gpu_module = rewriter.create<mlir::gpu::GPUModuleOp>(loc, "gpu_module");
   symbol_table.insert(gpu_module);
   gpu_module->setAttr(tfrt::gpu::getGpuBinaryAttrName(),
@@ -323,6 +329,32 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
           loc, mlir::TypeRange(), mlir::ValueRange(),
           get_argument(copy_thunk->destination()),
           get_argument(copy_thunk->source()));
+      continue;
+    }
+
+    auto rewrite_memset = [&](const xla::BufferAllocation::Slice& slice,
+                              uint32_t memset_value) {
+      assert(slice.offset() == 0);
+      Value buffer_arg = arguments[slice.index()];
+      auto element_type =
+          buffer_arg.getType().cast<mlir::MemRefType>().getElementType();
+      rewriter.setInsertionPoint(op);
+      Value value =
+          MakeBitPatternConstant(rewriter, loc, element_type, memset_value);
+      rewriter.create<mlir::gpu::MemsetOp>(
+          loc, mlir::TypeRange(), mlir::ValueRange(), buffer_arg, value);
+    };
+
+    if (thunk->kind() == Thunk::kMemset32BitValue) {
+      const auto* memset_thunk =
+          static_cast<const xla::gpu::Memset32BitValueThunk*>(thunk.get());
+      rewrite_memset(memset_thunk->destination(), memset_thunk->value());
+      continue;
+    }
+    if (thunk->kind() == Thunk::kMemzero) {
+      const auto* memzero_thunk =
+          static_cast<const xla::gpu::MemzeroThunk*>(thunk.get());
+      rewrite_memset(memzero_thunk->destination(), 0);
       continue;
     }
 
@@ -377,7 +409,9 @@ mlir::LogicalResult KernelOpsPattern::matchAndRewrite(
     });
   };
   if (walk(mlir::lmhlo::FusionOp()).wasInterrupted() ||
+      walk(mlir::lmhlo::RngGetAndUpdateStateOp()).wasInterrupted() ||
       walk(mlir::lmhlo::ScatterOp()).wasInterrupted() ||
+      walk(mlir::lmhlo::SelectAndScatterOp()).wasInterrupted() ||
       walk(mlir::lmhlo::SortOp()).wasInterrupted())
     return mlir::failure();
 

@@ -1,0 +1,50 @@
+op {
+  name: "CollectiveAssignGroupV2"
+  input_arg {
+    name: "group_assignment"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "device_index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "key_base"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "group_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "group_key"
+    type: DT_INT32
+  }
+  is_stateful: true
+  is_distributed_communication: true
+}
+op {
+  name: "CollectiveAssignGroupV2"
+  input_arg {
+    name: "group_assignment"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "device_index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "base_key"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "group_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "group_key"
+    type: DT_INT32
+  }
+  is_stateful: true
+  is_distributed_communication: true
+}

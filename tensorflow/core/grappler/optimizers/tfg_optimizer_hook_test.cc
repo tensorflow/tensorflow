@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
 
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -27,7 +28,6 @@ limitations under the License.
 
 namespace mlir {
 namespace tfg {
-
 // This is a MLIR TFG "test pass", it will just rename all the nodes with the
 // suffix "_visited".
 class TestPass : public PassWrapper<TestPass, OperationPass<GraphOp>> {
@@ -37,7 +37,6 @@ class TestPass : public PassWrapper<TestPass, OperationPass<GraphOp>> {
     for (TFOp op : graph.getOps()) op.setName(op.name() + "_visited");
   }
 };
-static PassRegistration<TestPass> registration;
 }  // namespace tfg
 }  // namespace mlir
 
@@ -45,7 +44,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-TEST(TfgOptimizerTest, Pipeline) {
+TEST(TFGOptimizerTest, TestCustomPipeline) {
   // Build a simple graph with two nodes, the test pass will rename them.
   Scope s = Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
@@ -53,17 +52,30 @@ TEST(TfgOptimizerTest, Pipeline) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
-  ASSERT_EQ("a", item.graph.node(0).name());
-  ASSERT_EQ("b", item.graph.node(1).name());
+  EXPECT_EQ("a", item.graph.node(0).name());
+  EXPECT_EQ("b", item.graph.node(1).name());
 
   // This is testing that we can invoke an arbitrary pipeline, here the pass
   // registered above.
-  mlir::tfg::TfgGrapplerOptimizer optimizer("grappler-hook-test-pass");
+  mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {
+    mgr.addNestedPass<mlir::tfg::GraphOp>(
+        std::make_unique<mlir::tfg::TestPass>());
+  });
   GraphDef output;
   const Status status = optimizer.Optimize(nullptr, item, &output);
-  TF_CHECK_OK(status);
-  ASSERT_EQ("a_visited", output.node(0).name());
-  ASSERT_EQ("b_visited", output.node(1).name());
+  TF_ASSERT_OK(status);
+  EXPECT_EQ("a_visited", output.node(0).name());
+  EXPECT_EQ("b_visited", output.node(1).name());
+}
+
+TEST(TFGOptimizerTest, TestCustomPipelineName) {
+  // Test printing the name of a custom pipeline.
+  mlir::tfg::TFGGrapplerOptimizer optimizer([](mlir::PassManager &mgr) {
+    mgr.addNestedPass<mlir::tfg::GraphOp>(
+        std::make_unique<mlir::tfg::TestPass>());
+  });
+  EXPECT_EQ(optimizer.name(),
+            "tfg_optimizer{tfg.graph(grappler-hook-test-pass)}");
 }
 
 }  // namespace

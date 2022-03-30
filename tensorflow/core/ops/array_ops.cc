@@ -3194,7 +3194,7 @@ REGISTER_OP("TensorScatterUpdate")
     .Input("updates: T")
     .Output("output: T")
     .Attr("T: type")
-    .Attr("Tindices: {int16, int32, int64}")
+    .Attr("Tindices: {int16, int32, int64, uint16}")
     .SetShapeFn(ScatterNdTensorShape);
 
 REGISTER_OP("TensorScatterAdd")

@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -123,7 +123,7 @@ void BreakUpIslands::runOnFunction(
       }
     }
     state.addOperands(operands);
-    Operation* new_op = builder.createOperation(state);
+    Operation* new_op = builder.create(state);
     item.replaceAllUsesWith(new_op);
     new_op->setAttrs(item.getAttrDictionary());
     item.erase();

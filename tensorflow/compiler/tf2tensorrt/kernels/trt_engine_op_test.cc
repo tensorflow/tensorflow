@@ -89,12 +89,12 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
     string segment_string;
     if (static_engine) {
-      convert::ConversionParams params;
+      convert::TRTOptimizationPass::ConversionParams params;
       convert::EngineInfo info;
       info.segment_graph_def.CopyFrom(graph_def);
       info.precision_mode = TrtPrecisionMode::FP32;
       info.max_workspace_size_bytes = 1 << 20;
-      info.engine_name = "TRTEngineOP_0_0";
+      info.engine_name = "TRTEngineOP_000_000";
       params.use_implicit_batch = use_implicit_batch;
       params.trt_logger_name = "DefaultLogger";
 
@@ -111,8 +111,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
       profile.InitProfiles({shape}, ProfileStrategy::kOptimal);
       std::vector<PartialTensorShape> shape_vec{shape, {}};
-      TF_CHECK_OK(convert::CreateStaticEngine(params, info, 1, shape_vec,
-                                              &profile, &segment_string));
+      TF_CHECK_OK(convert::CreateStaticEngine(
+          params, info, 1, shape_vec, &profile, &segment_string, nullptr));
     }
 
     // Create the op.

@@ -318,6 +318,13 @@ class OptimizationOptions(options_lib.OptionsBase):
       docstring=
       "Whether to fuse filter transformations. If None, defaults to False.")
 
+  filter_parallelization = options_lib.create_option(
+      name="filter_parallelization",
+      ty=bool,
+      docstring=
+      "Whether to parallelize stateless filter transformations. If None, "
+      "defaults to False.")
+
   map_and_batch_fusion = options_lib.create_option(
       name="map_and_batch_fusion",
       ty=bool,
@@ -369,6 +376,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       pb.apply_default_optimizations = self.apply_default_optimizations
     if self.filter_fusion is not None:
       pb.filter_fusion = self.filter_fusion
+    if self.filter_parallelization is not None:
+      pb.filter_parallelization = self.filter_parallelization
     if self.map_and_batch_fusion is not None:
       pb.map_and_batch_fusion = self.map_and_batch_fusion
     if self.map_and_filter_fusion is not None:
@@ -390,6 +399,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       self.apply_default_optimizations = pb.apply_default_optimizations
     if pb.WhichOneof("optional_filter_fusion") is not None:
       self.filter_fusion = pb.filter_fusion
+    if pb.WhichOneof("optional_filter_parallelization") is not None:
+      self.filter_parallelization = pb.filter_parallelization
     if pb.WhichOneof("optional_map_and_batch_fusion") is not None:
       self.map_and_batch_fusion = pb.map_and_batch_fusion
     if pb.WhichOneof("optional_map_and_filter_fusion") is not None:

@@ -37,6 +37,12 @@ struct TpuCompilationCacheKey {
   // Unique session identifier. It is set when `has_guaranteed_const` is true.
   std::string session_handle;
 
+  // Unique session identifier for TPU compilation; it should be a 64 bit
+  // positive integer, which can uniquely distinguish a live session.
+  // TPU compiler may use this information to choose dynamically provided
+  // compilation options without hurting reproducibility for debugging.
+  uint64_t session_id;
+
   // Fingerprint of `guaranteed_const` value. It is set when the value of the
   // `has_guaranteed_const` is true. Produce the value when necessary.
   std::function<std::string()> guaranteed_const_fingerprint;

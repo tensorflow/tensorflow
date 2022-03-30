@@ -18,12 +18,16 @@ limitations under the License.
 //
 // This is allowed to link against Tensorflow libraries.
 
+#include <string>
+
 #include "absl/strings/str_split.h"
 #include "llvm/Support/Error.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/runtime_fallback/bef_executor_flags.h"
 #include "tensorflow/core/runtime_fallback/util/fallback_test_util.h"
+#include "tensorflow/core/tfrt/utils/thread_pool.h"
 #include "tfrt/bef_executor_driver/bef_executor_driver.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
@@ -55,7 +59,14 @@ int main(int argc, char** argv) {
       run_config,
       [](tfrt::HostContext* host, tfrt::ResourceContext* resource_context)
           -> llvm::Expected<tfrt::ExecutionContext> {
+        // Initialize fallback test execution context with a user-provided
+        // intra-op thread pool, similar to the production setup.
+        auto* intra_op =
+            resource_context
+                ->GetOrCreateResource<tensorflow::tfrt_stub::TfThreadPool>(
+                    "intra_op", "tf_intra", host->GetNumWorkerThreads());
+
         return tensorflow::tfd::CreateFallbackTestExecutionContext(
-            host, resource_context);
+            host, resource_context, intra_op);
       });
 }

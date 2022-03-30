@@ -1272,7 +1272,7 @@ def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-nam
 
   Must be invoked in eager mode.
 
-  When enabled, TensorFlow runtime will collection information that can later be
+  When enabled, TensorFlow runtime will collect information that can later be
   exported and consumed by TensorBoard. The trace is activated across the entire
   TensorFlow runtime and affects all threads of execution.
 

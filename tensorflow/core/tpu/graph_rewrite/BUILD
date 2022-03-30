@@ -24,6 +24,7 @@ cc_library(
         ":distributed_tpu_rewrite_pass",
         ":encapsulate_tpu_computations_pass",
         ":tpu_embedding_software_deduplication_rewrite_pass",
+        ":update_tpu_embedding_ops_passes",
         ":variable_merger_pass",
         "//tensorflow/core:core_cpu",
     ],
@@ -333,5 +334,26 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "update_tpu_embedding_ops_passes",
+    srcs = [
+        "update_tpu_embedding_ops_passes.cc",
+    ],
+    hdrs = [
+        "update_tpu_embedding_ops_passes.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:side_effect_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
     ],
 )

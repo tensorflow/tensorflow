@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_XLA_FRAMEWORK_OPS_TD_
 #define TENSORFLOW_COMPILER_MLIR_XLA_XLA_FRAMEWORK_OPS_TD_
 
+include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 
 def XLAFramework_Dialect : Dialect {
@@ -52,10 +53,8 @@ def XLAFramework_BufferType : TypeDef<XLAFramework_Dialect, "Buffer"> {
 }
 
 // Base class for XLA Framework dialect ops.
-class XLAFramework_Op<string mnemonic, list<OpTrait> traits = []> :
-    Op<XLAFramework_Dialect, mnemonic, traits> {
-  let verifier = "return Verify<$cppClass>(*this);";
-}
+class XLAFramework_Op<string mnemonic, list<Trait> traits = []> :
+    Op<XLAFramework_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
 // XLABufferToMemOp

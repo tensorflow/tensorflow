@@ -43,7 +43,7 @@ void AttachCostPerDevice(mlir::ModuleOp module,
 
   module.walk([&](mlir::Operation* op) {
     if (!mlir::TFL::tac::IsNonConstOp(op) &&
-        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op))
+        !llvm::isa<func::ReturnOp, FuncOp, CallOpInterface>(op))
       return;
 
     // Attach cost per target.
@@ -72,7 +72,7 @@ void AttachCostPerDevice(mlir::ModuleOp module,
 }  // namespace
 
 //////////// Importer ////////////
-absl::StatusOr<OwningModuleRef> TfLiteImporter::Import() {
+absl::StatusOr<OwningOpRef<mlir::ModuleOp>> TfLiteImporter::Import() {
   source_mgr_handler_ = std::make_unique<mlir::SourceMgrDiagnosticHandler>(
       source_mgr_, &context_);
   return ImportFlatbufferOrMlir(options_.file_name, options_.input_mlir,

@@ -25,6 +25,23 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "cast_test",
+    srcs = ["cast_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "cl_test",
     testonly = 1,
@@ -705,6 +722,7 @@ test_suite(
     name = "all_tests",
     tests = [
         "add_test",
+        "cast_test",
         "concat_test",
         "conv_buffer_1x1_test",
         "conv_constants_test",

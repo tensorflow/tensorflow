@@ -51,7 +51,7 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
     min_cluster_size = cluster_min_size;
   }
 
-  void runOnFunction() override {
+  void runOnOperation() override {
     ClusteringPolicySet policies;
 
     // Parse clustering tier and operations filter from the oplist.
@@ -101,7 +101,7 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
     // Initialize a set of operations that we assume we will hoist.
     llvm::DenseSet<mlir::Operation*> hoisted_ops;
-    getFunction().walk([&](mlir::Operation* op) {
+    getOperation().walk([&](mlir::Operation* op) {
       if (mlir::isa<ReadVariableOp, ConstOp, HashTableV2Op>(op))
         hoisted_ops.insert(op);
     });
@@ -114,6 +114,9 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
     // Traverse all users until we find all operations that could be hoisted.
     while (!work_list.empty()) {
       mlir::Operation* op = work_list.pop_back_val();
+
+      // Skip operations that are already in the hoisted set.
+      if (hoisted_ops.contains(op)) continue;
 
       // Add operation to hoisted ops set if all operands can be hoisted.
       bool all_operands_hoisted =
@@ -138,7 +141,7 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
     // Annotate all formed clusters with an attribute.
     auto policy = mlir::StringAttr::get(&getContext(), "tfrt.auto-fusion");
 
-    getFunction().walk([&](mlir::Block* block) {
+    getOperation().walk([&](mlir::Block* block) {
       for (Cluster& cluster : FindClustersInTheBlock(block, policies, filter)) {
         // Do not create too small clusters.
         if (cluster.operations.size() < min_cluster_size) continue;
@@ -153,12 +156,14 @@ struct ClusteringPass : public ClusteringBase<ClusteringPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> CreateTfJitRtClusteringPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfJitRtClusteringPass() {
   return std::make_unique<ClusteringPass>();
 }
 
-std::unique_ptr<mlir::FunctionPass> CreateTfJitRtClusteringPass(
-    llvm::ArrayRef<std::string> oplist, int min_cluster_size) {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTfJitRtClusteringPass(llvm::ArrayRef<std::string> oplist,
+                            int min_cluster_size) {
   return std::make_unique<ClusteringPass>(oplist, min_cluster_size);
 }
 

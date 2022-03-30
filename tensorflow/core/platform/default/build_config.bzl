@@ -518,7 +518,6 @@ def tf_proto_library(
     # ABI violations).
     _ignore = (
         js_codegen,
-        exports,
         create_service,
         create_java_proto,
         create_grpc_library,
@@ -530,6 +529,7 @@ def tf_proto_library(
         name = name,
         srcs = srcs,
         deps = protodeps + well_known_proto_libs(),
+        exports = exports,
         visibility = visibility,
         testonly = testonly,
         tags = tags,
@@ -789,3 +789,6 @@ def if_llvm_system_z_available(then, otherwise = []):
 
 def tf_tpu_dependencies():
     return if_libtpu(["//tensorflow/core/tpu/kernels"])
+
+def tf_dtensor_tpu_dependencies():
+    return if_libtpu(["//tensorflow/dtensor/cc:dtensor_tpu_kernels"])

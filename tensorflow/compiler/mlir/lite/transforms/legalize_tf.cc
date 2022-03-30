@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Threading.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
@@ -73,7 +74,7 @@ constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
 constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
 
 // Legalize operations in functions.
-class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+class LegalizeTF : public PassWrapper<LegalizeTF, OperationPass<FuncOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<quant::QuantizationDialect, TFL::TensorFlowLiteDialect>();
   }
@@ -81,8 +82,10 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF&) {}
-  explicit LegalizeTF(bool run_tfl_runtime_verification) {
+  explicit LegalizeTF(bool run_tfl_runtime_verification,
+                      bool preserve_assert_op) {
     run_tfl_runtime_verification_ = run_tfl_runtime_verification;
+    preserve_assert_op_ = preserve_assert_op;
   }
 
   StringRef getArgument() const final {
@@ -96,12 +99,16 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   }
 
   /// Performs the lowering to TFLite dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   Option<bool> run_tfl_runtime_verification_{
       *this, "run-tfl-runtime-verification",
       llvm::cl::desc("Allow tfl runtime verification."), llvm::cl::init(true)};
+  Option<bool> preserve_assert_op_{
+      *this, "preserve-assert-op",
+      llvm::cl::desc("Preserve AssertOp during tfl legalization."),
+      llvm::cl::init(false)};
 };
 
 // Returns true if all tensor value in `values` has static shape and same shape.
@@ -264,7 +271,7 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   }
 
   Type output_type = tf_matmul_op.getResult().getType();
-  auto no_input = rewriter.create<ConstantOp>(
+  auto no_input = rewriter.create<TFL::NoValueOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
   auto fc_op = rewriter.create<FullyConnectedOp>(
       op->getLoc(), ArrayRef<Type>{output_type},
@@ -359,7 +366,7 @@ LogicalResult ConvertTFConv3DOp::matchAndRewrite(
 
   // TensorFlow Conv3D has no bias, optimization patterns will fuse Conv3D
   // with other ops can fill the bias.
-  Value none = rewriter.create<mlir::ConstantOp>(
+  Value none = rewriter.create<TFL::NoValueOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
   rewriter.replaceOpWithNewOp<TFL::Conv3DOp>(
@@ -399,7 +406,7 @@ LogicalResult ConvertTFConv3DBackpropInputV2Op::matchAndRewrite(
 
   // TensorFlow Conv3D has no bias, optimization patterns will fuse Conv3D
   // with other ops can fill the bias.
-  Value none = rewriter.create<mlir::ConstantOp>(
+  Value none = rewriter.create<TFL::NoValueOp>(
       op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
   Value output_shape =
@@ -518,7 +525,7 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
     }
 
     // Optional input placeholder.
-    Value none = rewriter.create<mlir::ConstantOp>(
+    Value none = rewriter.create<TFL::NoValueOp>(
         op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
     // Populate inputs.
@@ -901,21 +908,22 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
   }
 };
 
-void addPatterns(MLIRContext* context, RewritePatternSet& patterns) {
+void addPatterns(MLIRContext* context, RewritePatternSet& patterns,
+                 bool preserve_assert_op) {
   // Add TF->TF lowering patterns.
   TF::PopulateLoweringTFPatterns(context, &patterns);
 
   // Add the generated patterns to the list.
   populateWithGenerated(patterns);
-  patterns
-      .insert<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
-              ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
-              ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFAssertOp,
-              ConvertTFConv3DOp, ConvertTFConv3DBackpropInputV2Op>(context);
+  patterns.add<ConvertTFConcatV2Op, ConvertTFMatMulOp, ConvertTFMatrixDiagV2Op,
+               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFSplitOp,
+               ConvertTFSplitVOp, ConvertTFUnpackOp, ConvertTFConv3DOp,
+               ConvertTFConv3DBackpropInputV2Op>(context);
+  if (!preserve_assert_op) patterns.add<ConvertTFAssertOp>(context);
 
   // Ophint python converter converted tf node pattern.
-  patterns.insert<LegalizeUnidirectionalSequenceLstm,
-                  LegalizeUnidirectionalSequenceRnn>(context);
+  patterns.add<LegalizeUnidirectionalSequenceLstm,
+               LegalizeUnidirectionalSequenceRnn>(context);
 }
 
 bool applyPatterns(FuncOp func, ConversionTarget& target,
@@ -933,16 +941,17 @@ bool applyPatterns(FuncOp func, ConversionTarget& target,
   return true;
 }
 
-void LegalizeTF::runOnFunction() {
+void LegalizeTF::runOnOperation() {
   auto* context = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
 
   ConversionTarget target(*context);
   // It is legal to have TF ops in the graph still which can be
   // used later or in the case of SELECT were we allow TF ops in the final
   // graph.
   target.addLegalOp<mlir::arith::ConstantOp>();
-  target.addLegalOp<mlir::ConstantOp>();
+  target.addLegalOp<mlir::func::ConstantOp>();
+  target.addLegalOp<TFL::NoValueOp>();
   target.addLegalOp<ConstOp>();
   target.addLegalOp<DequantizeOp>();
   target.addLegalOp<QConstOp>();
@@ -959,7 +968,7 @@ void LegalizeTF::runOnFunction() {
 
   RewritePatternSet stage1Patterns(&getContext());
 
-  addPatterns(context, stage1Patterns);
+  addPatterns(context, stage1Patterns, preserve_assert_op_);
 
   FrozenRewritePatternSet stage1FrozenPatterns(std::move(stage1Patterns));
   if (!applyPatterns(func, target, stage1FrozenPatterns))
@@ -970,27 +979,27 @@ void LegalizeTF::runOnFunction() {
   // rules in order not to add unnecessary BroadcastTo ops.
   RewritePatternSet stage2Patterns(&getContext());
 
-  addPatterns(context, stage2Patterns);
+  addPatterns(context, stage2Patterns, preserve_assert_op_);
 
-  stage2Patterns.insert<ApplyExplicitBroadcasting<TF::LessEqualOp>,
-                        ApplyExplicitBroadcasting<TF::GreaterEqualOp>,
-                        ApplyExplicitBroadcasting<TF::NotEqualOp>,
-                        ApplyExplicitBroadcasting<TF::GreaterOp>,
-                        ApplyExplicitBroadcasting<TF::LessOp>,
-                        ApplyExplicitBroadcasting<TF::EqualOp>,
-                        ApplyExplicitBroadcasting<TF::AddOp>,
-                        ApplyExplicitBroadcasting<TF::AddV2Op>,
-                        ApplyExplicitBroadcasting<TF::MulOp>,
-                        ApplyExplicitBroadcasting<TF::DivOp>,
-                        ApplyExplicitBroadcasting<TF::RealDivOp>,
-                        ApplyExplicitBroadcasting<TF::SubOp>,
-                        ApplyExplicitBroadcasting<TF::FloorDivOp>,
-                        ApplyExplicitBroadcasting<TF::FloorModOp>,
-                        ApplyExplicitBroadcasting<TF::PowOp>,
-                        ApplyExplicitBroadcasting<TF::MaximumOp>,
-                        ApplyExplicitBroadcasting<TF::MinimumOp>,
-                        ApplyExplicitBroadcasting<TF::SquaredDifferenceOp>,
-                        ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
+  stage2Patterns.add<ApplyExplicitBroadcasting<TF::LessEqualOp>,
+                     ApplyExplicitBroadcasting<TF::GreaterEqualOp>,
+                     ApplyExplicitBroadcasting<TF::NotEqualOp>,
+                     ApplyExplicitBroadcasting<TF::GreaterOp>,
+                     ApplyExplicitBroadcasting<TF::LessOp>,
+                     ApplyExplicitBroadcasting<TF::EqualOp>,
+                     ApplyExplicitBroadcasting<TF::AddOp>,
+                     ApplyExplicitBroadcasting<TF::AddV2Op>,
+                     ApplyExplicitBroadcasting<TF::MulOp>,
+                     ApplyExplicitBroadcasting<TF::DivOp>,
+                     ApplyExplicitBroadcasting<TF::RealDivOp>,
+                     ApplyExplicitBroadcasting<TF::SubOp>,
+                     ApplyExplicitBroadcasting<TF::FloorDivOp>,
+                     ApplyExplicitBroadcasting<TF::FloorModOp>,
+                     ApplyExplicitBroadcasting<TF::PowOp>,
+                     ApplyExplicitBroadcasting<TF::MaximumOp>,
+                     ApplyExplicitBroadcasting<TF::MinimumOp>,
+                     ApplyExplicitBroadcasting<TF::SquaredDifferenceOp>,
+                     ApplyExplicitBroadcasting<TF::SelectV2Op>>(context);
 
   FrozenRewritePatternSet stage2FrozenPatterns(std::move(stage2Patterns));
   if (!applyPatterns(func, target, stage2FrozenPatterns))
@@ -1001,8 +1010,9 @@ void LegalizeTF::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
-    bool run_tfl_runtime_verification) {
-  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification);
+    bool run_tfl_runtime_verification, bool preserve_assert_op) {
+  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification,
+                                      preserve_assert_op);
 }
 
 static PassRegistration<LegalizeTF> pass;

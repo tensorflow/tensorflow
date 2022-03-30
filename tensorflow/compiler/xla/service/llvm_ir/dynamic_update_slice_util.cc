@@ -218,13 +218,13 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
 
   // Create element generators for update and start_indices.
   TF_ASSIGN_OR_RETURN(ElementGenerator update_array_generator,
-                      fused_emitter->GetGenerator(update));
+                      fused_emitter->GetGenerator(*update));
 
   IndexGenerator start_indices_generator =
       [&](int64_t index) -> StatusOr<llvm::Value*> {
     TF_ASSIGN_OR_RETURN(
         ElementGenerator element_generator,
-        fused_emitter->GetGenerator(dynamic_update_slice->operand(2 + index)));
+        fused_emitter->GetGenerator(*dynamic_update_slice->operand(2 + index)));
     return element_generator(IrArray::Index(b->getInt64Ty()));
   };
   bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());

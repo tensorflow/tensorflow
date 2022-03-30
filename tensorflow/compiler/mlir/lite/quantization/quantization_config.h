@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 
 // Stores information about how to quantize a user-specified custom operation.
 struct CustomOpInfo {
@@ -219,7 +219,7 @@ bool GetInputNodeQuantSpecs(
     const std::vector<llvm::Optional<double>>& node_maxs,
     tensorflow::DataType inference_type, QuantizationSpecs* quant_specs);
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_CONFIG_H_

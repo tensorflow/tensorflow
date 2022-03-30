@@ -355,8 +355,8 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
       {
           'rt_input': [[1, 2, 3]],
           'default': [0],
-          'error': r'default_value\.shape=\[1\] and '
-                   r'rt_input\.flat_values\.shape=\[3\] are incompatible: '
+          'error': r'default_value\.shape=.* and '
+                   r'rt_input\.flat_values\.shape=.* are incompatible: '
                    r'default_value\.rank = 1  must be less than '
                    r'rt_input\.flat_values\.rank = 1'
       },
@@ -364,8 +364,8 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
           'rt_input': [[[1, 2], [3, 4]], [[5, 6]]],
           'ragged_rank': 1,
           'default': [7, 8, 9],
-          'error': r'default_value\.shape=\[3\] and '
-                   r'rt_input\.flat_values\.shape=\[3,2\] are incompatible: '
+          'error': r'default_value\.shape.* and '
+                   r'rt_input\.flat_values\.shape.* are incompatible: '
                    r'default_value\.shape\[-1\] = 3 but '
                    r'rt_input\.flat_values\.shape\[-1\] = 2'
       },

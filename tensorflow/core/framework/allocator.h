@@ -98,6 +98,14 @@ struct AllocatorStats {
   std::string DebugString() const;
 };
 
+// The type of the allocated memory.
+enum class AllocatorMemoryType {
+  kUnknown = 0,       // Memory type unknown.
+  kDevice = 1,        // Memory on device.
+  kHostPageable = 2,  // Memory on host and it is pagable.
+  kHostPinned = 3,    // Memory on host and it is pinned.
+};
+
 // Allocator is an abstract interface for allocating and deallocating
 // device memory.
 class Allocator {
@@ -217,6 +225,11 @@ class Allocator {
   // stream this allocator is used for. This can also trigger memory
   // preallocation.
   virtual void SetStreamAndPreallocateMemory(void* stream) {}
+
+  // Returns the type of the memory allocated by this allocator.
+  virtual AllocatorMemoryType GetMemoryType() const {
+    return AllocatorMemoryType::kUnknown;
+  }
 };
 
 // An implementation of Allocator that delegates all calls to another Allocator.
@@ -267,6 +280,10 @@ class AllocatorWrapper : public Allocator {
 
   size_t AllocatedSizeSlow(const void* ptr) const override {
     return wrapped_->AllocatedSizeSlow(ptr);
+  }
+
+  AllocatorMemoryType GetMemoryType() const override {
+    return wrapped_->GetMemoryType();
   }
 
  private:
@@ -380,6 +397,11 @@ class SubAllocator {
   // Returns true if the BFC allocator can safely coalesce adjacent regions
   // returned by this allocator.
   virtual bool SupportsCoalescing() const = 0;
+
+  // Returns the type of the memory allocated by this SubAllocator.
+  virtual AllocatorMemoryType GetMemoryType() const {
+    return AllocatorMemoryType::kUnknown;
+  }
 
  protected:
   // Implementation of Alloc() method must call this on newly allocated

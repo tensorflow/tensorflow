@@ -16,8 +16,9 @@ limitations under the License.
 // This is the optimization pattern definition file for TensorFlow Lite.
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/lite/utils/utils.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
@@ -141,7 +142,7 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
   // Fuse for TransposeConv with no bias
   def FuseBinaryOpWithTransposeConvNoneBias#binaryOp : Pat<
     (binaryOp (TFL_TransposeConvOp:$output $output_shape, $weights, $inputs,
-                (ConstantOp $bias), $padding,
+                $bias, $padding,
                 $stride_h, $stride_w),
               (Arith_ConstantOp FloatElementsAttr:$value), TFL_AF_None),
     (TFL_TransposeConvOp $output_shape, $weights, $inputs,
@@ -224,7 +225,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
   def FuseMulOrDivWithTransposeConvWithNoneBias#BinaryOp : Pat<
     (BinaryOp (TFL_TransposeConvOp:$output $output_shape,
                 (Arith_ConstantOp FloatElementsAttr:$weights), $input,
-                (ConstantOp $bias),
+                $bias,
                 $padding, $stride_h, $stride_w),
               (Arith_ConstantOp $value), TFL_AF_None),
     (TFL_TransposeConvOp $output_shape,
@@ -232,7 +233,7 @@ multiclass FuseMulOrDivWithConv2dOrDepthwiseConv2d<Op BinaryOp> {
         (Arith_ConstantOp (ExpandTo4DForConv $value)),
         TFL_AF_None),
       $input,
-      (ConstantOp $bias),
+      $bias,
       $padding, $stride_h, $stride_w),
     [(CanFuseConvOrDepthwiseConv<"false"> $weights, $value),
      (IsNoneType $bias),
@@ -915,6 +916,12 @@ def OptimizeSliceOp : Pat<
 
 def GetNumElementsOrOne: NativeCodeCall<"GetNumElementsOrOne($0)">;
 
+def ReshapeValueDroppingLastDim : NativeCodeCall<
+  "ReshapeValueDroppingLastDim($_builder, $0, $1)">;
+
+def HasExactlyTwoElements : Constraint<CPred<
+  "TFL::HasExactlyTwoElements($0)">>;
+
 def IsLastElementEqualsOne : Constraint<CPred<
   "TFL::IsLastElementEqualsOne($0)">>;
 
@@ -924,19 +931,21 @@ def IsOneHotIndexAttribute : Constraint<CPred<
 // Replace
 //   Equal(Reshape(X, shape), indices)
 // With
-//   OneHot(X, N, true, false, -1)
+//   OneHot(Reshape(X, shape[:-1]), N, true, false, -1)
 // where
+//  - shape has length 2 (unnecessary, just to be conservative)
 //  - last value in shape is 1
 //  - indices is a incrementing series from 0 to N-1. (N elements total.)
 def ReshapeEqualOpToOneHotOp : Pat<
   (TFL_EqualOp (TFL_ReshapeOp $x, (Arith_ConstantOp $shape)),
                (Arith_ConstantOp $series)),
-  (TFL_OneHotOp $x,
+  (TFL_OneHotOp (ReshapeValueDroppingLastDim $x, $shape),
                 (Arith_ConstantOp (GetNumElementsOrOne $series)),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
                 ConstantAttr<I32Attr, "-1">),
-  [(IsLastElementEqualsOne $shape),
+  [(HasExactlyTwoElements $shape),
+   (IsLastElementEqualsOne $shape),
    (IsOneHotIndexAttribute $series)]>;
 
 def F32ElementsVal : Constraint<CPred<
@@ -1102,4 +1111,45 @@ def MatchGelu : Pat<
    (HasOneUse $add_out),
    (HasOneUse $erf_out),
    (HasOneUse $mul_out1),
+  ]>;
+
+
+// Checks if the shape has shape with last dimension equals 1.
+def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
+
+// Fetches the output of FC op, from the provided arguments.
+def GetFcOutput : NativeCodeCall<
+  "GetFcOutput(&$_builder, $0, $1, $2, $3, $4, $5, $6, $7)">;
+
+// Verifies all values in the provided argument are zero.
+def AllValuesAreZero :  Constraint<CPred<"AllValuesAreZero($0)">>;
+
+def SimplifyDoubleSelectFCZerosLHS : Pat<
+  (TFL_SelectV2Op $condition, $zeros_2,
+   (TFL_FullyConnectedOp:$results
+    (TFL_SelectV2Op $condition, $zeros_1, $input),
+    $filter, $bias, $fused_activation_function, $weights_format,
+    ConstBoolAttrTrue, $asymmetric_quantize_inputs)),
+  (TFL_SelectV2Op $condition, $zeros_2,
+   (GetFcOutput $results, $input, $filter, $bias, $fused_activation_function,
+    $weights_format, ConstBoolAttrTrue, $asymmetric_quantize_inputs)),
+  [(IsLastDimensionEqualOne $condition),
+   (AllValuesAreZero $zeros_1),
+   (AllValuesAreZero $zeros_2)
+  ]>;
+
+def SimplifyDoubleSelectFCZerosRHS : Pat<
+  (TFL_SelectV2Op $condition,
+   (TFL_FullyConnectedOp:$results
+    (TFL_SelectV2Op $condition, $input, $zeros_1),
+    $filter, $bias, $fused_activation_function, $weights_format,
+    ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+   $zeros_2),
+  (TFL_SelectV2Op $condition,
+   (GetFcOutput $results, $input, $filter, $bias, $fused_activation_function,
+    $weights_format, ConstBoolAttrTrue, $asymmetric_quantize_inputs),
+   $zeros_2),
+  [(IsLastDimensionEqualOne $condition),
+   (AllValuesAreZero $zeros_1),
+   (AllValuesAreZero $zeros_2)
   ]>;

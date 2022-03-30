@@ -26,11 +26,11 @@ class TfConstTest(test.TestCase):
 
   def test_const_i32(self):
     mlir_function = """
-      func @test() -> tensor<1xi32> {
+      func.func @test() -> tensor<1xi32> {
         %0 = "tf.Const"() {
                value = dense<1> : tensor<1xi32>
              } : () -> tensor<1xi32>
-        return %0 : tensor<1xi32>
+        func.return %0 : tensor<1xi32>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'test')
@@ -39,12 +39,12 @@ class TfConstTest(test.TestCase):
 
   def test_constant_folding_i32(self):
     mlir_function = """
-      func @test() -> tensor<2xi32> {
+      func.func @test() -> tensor<2xi32> {
         %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
         %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
         %2 = "tf.Pack"(%0, %1) {axis = 0 : i64}
              : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
-        return %2 : tensor<2xi32>
+        func.return %2 : tensor<2xi32>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'test')

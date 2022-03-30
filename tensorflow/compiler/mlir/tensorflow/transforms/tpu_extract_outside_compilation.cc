@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -96,7 +96,7 @@ FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
     results_after_mapping.push_back(mapping.lookupOrDefault(result));
   }
 
-  builder->create<ReturnOp>(ops.front()->getLoc(), results_after_mapping);
+  builder->create<func::ReturnOp>(ops.front()->getLoc(), results_after_mapping);
   return outlined_func;
 }
 
@@ -105,7 +105,7 @@ FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
 void EncapsulateFuncAndSerialize(FuncOp func,
                                  std::string* serialized_func_module) {
   // Create a new module to hold func and all referenced functions.
-  OwningModuleRef module_for_func =
+  OwningOpRef<mlir::ModuleOp> module_for_func =
       ModuleOp::create(mlir::UnknownLoc::get(func.getContext()));
   SymbolTable symbol_table(module_for_func.get());
 

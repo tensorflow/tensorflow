@@ -1213,6 +1213,7 @@ cc_library(
         ":bfc_allocator",
         ":pool_allocator",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util:onednn_env_vars",
     ],
 )
 
@@ -1997,6 +1998,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cost_constants",
+        ":cost_measurement",
         ":cost_measurement_registry",
         "@com_google_absl//absl/strings",
     ],
@@ -2378,6 +2380,7 @@ tf_cc_test_mkl(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/util:onednn_env_vars",
     ],
 )
 

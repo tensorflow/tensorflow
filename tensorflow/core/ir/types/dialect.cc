@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/ir/types/dialect.h"
 
 #include <cstdint>
+#include <string>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -38,6 +39,7 @@ limitations under the License.
 
 #define GET_ATTRDEF_CLASSES
 #include "tensorflow/core/ir/types/attributes.cc.inc"
+#include "tensorflow/core/ir/types/attributes_enum.cc.inc"
 
 #define GET_TYPEDEF_CLASSES
 #include "tensorflow/core/ir/types/types.cc.inc"
@@ -217,6 +219,73 @@ void VersionAttr::print(AsmPrinter &printer) const {
     os << "]";
   }
   os << ">";
+}
+
+FailureOr<FullTypeAttr> RawFullTypeAttrParser(AsmParser &parser) {
+  ::llvm::SmallVector<FullTypeAttr> args;
+
+  // Parse variable 'type_id'
+  llvm::StringRef type_id_str;
+  if (failed(parser.parseKeyword(&type_id_str))) {
+    parser.emitError(
+        parser.getCurrentLocation(),
+        "failed to parse TFType_FullTypeAttr parameter keyword for "
+        "'type_id'");
+    return failure();
+  }
+  Optional<FullTypeId> type_id = symbolizeFullTypeId(type_id_str);
+  if (!type_id) {
+    parser.emitError(parser.getCurrentLocation(),
+                     "failed to parse TFType_FullTypeAttr parameter "
+                     "'type_id'");
+    return failure();
+  }
+
+  // Parse variable 'args'
+  parser.parseCommaSeparatedList(
+      AsmParser::Delimiter::OptionalLessGreater, [&]() {
+        FailureOr<tf_type::FullTypeAttr> arg = RawFullTypeAttrParser(parser);
+        if (failed(arg)) return failure();
+        args.push_back(*arg);
+        return success();
+      });
+
+  // Parse variable 'attr'
+  Attribute attr;
+  parser.parseOptionalAttribute(attr);
+  return FullTypeAttr::get(parser.getContext(), static_cast<int32_t>(*type_id),
+                           args, attr);
+}
+
+Attribute FullTypeAttr::parse(AsmParser &parser, Type odsType) {
+  if (failed(parser.parseLess())) return {};
+  FailureOr<tf_type::FullTypeAttr> ret = RawFullTypeAttrParser(parser);
+  if (succeeded(ret) && failed(parser.parseGreater())) return {};
+  return ret.getValueOr(FullTypeAttr());
+}
+
+static void RawFullTypeAttrPrint(FullTypeAttr tfattr, AsmPrinter &printer) {
+  printer << stringifyFullTypeId(tf_type::FullTypeId(tfattr.getType_id()));
+  if (!tfattr.getArgs().empty()) {
+    printer << "<";
+    llvm::interleaveComma(tfattr.getArgs(), printer, [&](Attribute arg) {
+      if (auto t = arg.dyn_cast<FullTypeAttr>())
+        RawFullTypeAttrPrint(t, printer);
+      else
+        printer << "<<INVALID ARG>>";
+    });
+    printer << ">";
+  }
+  if (tfattr.getAttr()) {
+    printer << ' ';
+    printer.printStrippedAttrOrType(tfattr.getAttr());
+  }
+}
+
+void FullTypeAttr::print(AsmPrinter &printer) const {
+  printer << "<";
+  RawFullTypeAttrPrint(*this, printer);
+  printer << ">";
 }
 
 // Print a #tf.func attribute of the following format:

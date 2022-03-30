@@ -1,18 +1,44 @@
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # Values: debian:<version>, ubuntu:<version>
-BASE_IMAGE ?= debian:buster
-# Values: python, python3
-PYTHON ?= python3
+BASE_IMAGE ?= ubuntu:18.04
+PYTHON_VERSION ?= 3.9
 # Values: rpi, aarch64, native
 TENSORFLOW_TARGET ?= native
-# Values: n, y
-BUILD_DEB ?= n
+WHEEL_PROJECT_NAME ?= tflite_runtime
 # Values: according to https://www.python.org/dev/peps/pep-0440/
 VERSION_SUFFIX ?=
 
 MAKEFILE_DIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 TENSORFLOW_DIR := $(MAKEFILE_DIR)/../../../..
-OUT_DIR := $(CURDIR)/out/$(PYTHON)/$(subst :,-,$(BASE_IMAGE))
 TAG_IMAGE := "tflite-runtime-builder-$(subst :,-,$(BASE_IMAGE))"
+
+DOCKER_PARAMS := --pid=host \
+    --env "CI_BUILD_USER=$(shell id -u -n)" \
+    --env "CI_BUILD_UID=$(shell id -u)" \
+    --env "CI_BUILD_GROUP=$(shell id -g -n)" \
+    --env "CI_BUILD_GID=$(shell id -g)" \
+    --env "CI_BUILD_HOME=$(TENSORFLOW_DIR)/bazel-ci_build-cache" \
+    --env "WHEEL_PROJECT_NAME=$(WHEEL_PROJECT_NAME)" \
+    --env "VERSION_SUFFIX=$(VERSION_SUFFIX)" \
+    --volume $(TENSORFLOW_DIR):/tensorflow \
+    --workdir /tensorflow
+
+ifneq ($(WHEEL_PLATFORM_NAME),)
+	DOCKER_PARAMS += --env WHEEL_PLATFORM_NAME=$(WHEEL_PLATFORM_NAME)
+endif
 
 .PHONY: help \
         docker-image \
@@ -27,33 +53,18 @@ help:
 	@echo "make clean        -- remove wheel and deb files"
 
 docker-image:
-ifeq ($(BASE_IMAGE),ubuntu:16.04)
-	docker build -t $(TAG_IMAGE) --build-arg IMAGE=$(BASE_IMAGE) --build-arg PYTHON_VERSION=3.8 -f Dockerfile.py3 .
-else
-	docker build -t $(TAG_IMAGE) --build-arg IMAGE=$(BASE_IMAGE) .
-endif
+	docker build -t $(TAG_IMAGE) --build-arg IMAGE=$(BASE_IMAGE) --build-arg PYTHON_VERSION=$(PYTHON_VERSION) -f $(MAKEFILE_DIR)/Dockerfile.py3 $(MAKEFILE_DIR)/.
 
 docker-shell: docker-image
+	mkdir -p $(TENSORFLOW_DIR)/bazel-ci_build-cache
 	docker run --rm --interactive --tty \
-		--volume $(TENSORFLOW_DIR):/tensorflow \
-		--workdir /tensorflow \
-		$(TAG_IMAGE)
+		$(DOCKER_PARAMS) \
+		$(TAG_IMAGE) /with_the_same_user /bin/bash
 
 docker-build: docker-image
-	mkdir -p $(OUT_DIR)
-	docker run --user $(shell id -u):$(shell id -g) \
+	mkdir -p $(TENSORFLOW_DIR)/bazel-ci_build-cache
+	docker run \
 		--rm --interactive $(shell tty -s && echo --tty) \
-		--env "PYTHON=$(PYTHON)" \
-		--env "TENSORFLOW_TARGET=$(TENSORFLOW_TARGET)" \
-		--env "BUILD_DEB=$(BUILD_DEB)" \
-		--env "VERSION_SUFFIX=$(VERSION_SUFFIX)" \
-		--volume $(TENSORFLOW_DIR):/tensorflow \
-		--volume $(OUT_DIR):/out \
+		$(DOCKER_PARAMS) \
 		$(TAG_IMAGE) \
-		/bin/bash -c "/tensorflow/tensorflow/lite/tools/pip_package/build_pip_package_with_cmake.sh && \
-		              (cp /tensorflow/tensorflow/lite/tools/pip_package/gen/tflite_pip/*.deb \
-		                  /tensorflow/tensorflow/lite/tools/pip_package/gen/tflite_pip/${PYTHON}/dist/{*.whl,*.tar.gz} \
-		                  /out 2>/dev/null || true)"
-
-clean:
-	rm -rf $(CURDIR)/out
+		/with_the_same_user /bin/bash -C /tensorflow/tensorflow/lite/tools/pip_package/build_pip_package_with_cmake.sh $(TENSORFLOW_TARGET)

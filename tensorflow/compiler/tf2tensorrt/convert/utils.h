@@ -36,6 +36,18 @@ limitations under the License.
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 
+#define TFTRT_ERROR(func, ...)                                              \
+  do {                                                                      \
+    return func("TFTRT::", __FUNCTION__, ":", __LINE__, ": ", __VA_ARGS__); \
+  } while (0)
+
+#define TFTRT_CHECK_SHAPE_TENSOR(tensor)                                 \
+  if (!IsTrtShapeTensorCompatible(tensor)) {                             \
+    TFTRT_ERROR(errors::InvalidArgument, "Tensor of type ",              \
+                DebugString(tensor.dtype()), " having shape ",           \
+                tensor.shape().DebugString(), " is not TRT compatible"); \
+  }
+
 namespace tensorflow {
 namespace tensorrt {
 

@@ -118,7 +118,7 @@ Status InitializeFromSession(absl::string_view session_target,
                              const Graph* graph_to_run,
                              std::vector<Tensor>* outputs) {
   tensorflow::SessionOptions s_opts;
-  s_opts.target = session_target;
+  s_opts.target = std::string(session_target);
 
   std::unique_ptr<tensorflow::Session> sess(tensorflow::NewSession(s_opts));
 

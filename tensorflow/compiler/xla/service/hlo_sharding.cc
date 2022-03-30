@@ -182,6 +182,11 @@ HloSharding HloSharding::Subgroup(
       // Normalize to partial tile.
       return PartialTile(tiles, metadata);
     }
+    if (types.size() == 1 && types.back() == OpSharding::MANUAL &&
+        tiles.num_elements() == tiles.dimensions().back()) {
+      // Normalize to manual.
+      return Manual(metadata);
+    }
     if (!types.empty() && types.back() == OpSharding::REPLICATED) {
       // If the last type is REPLICATED, we first create a partially replicated
       // sharding without other subgroups so that the elements are sorted. Then

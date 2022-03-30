@@ -75,10 +75,12 @@ void DumpToFileInDirOrStdout(const HloModule& module,
                              absl::string_view file_prefix,
                              mlir::Operation* op);
 
-// Dumps the given execution options if dumping is enabled. Exactly
-// where and in what formats it's dumped is determined by the debug options.
-void DumpExecutionOptions(const ExecutionOptions& execution_options,
-                          const DebugOptions& debug_options);
+// Dumps the given protobuf to the given filename if dumping is enabled.
+// Exactly where and in what formats it's dumped is determined by the debug
+// options.
+void DumpProtobufToFile(const tensorflow::protobuf::Message& proto,
+                        const DebugOptions& debug_options,
+                        absl::string_view filename);
 
 // Dumps the given HLO module if dumping is enabled for the module. Exactly
 // where and in what formats it's dumped is determined by the module's config.

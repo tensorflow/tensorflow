@@ -69,7 +69,7 @@ def TestFactory(xla_backend,
     float_dtypes = [np.float32]
     complex_dtypes = [np.complex64]
     standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
-  dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_]
+  dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):
     """Base class for running an XLA Computation through the local client."""
@@ -380,7 +380,9 @@ def TestFactory(xla_backend,
           operand_shapes_with_layout=[
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
-          ])
+          ],
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_STATUS_RETURNING)
       self._ExecuteAndCompareClose(c, expected=[0.75])
 
   tests.append(ComputationsWithConstantsTest)
@@ -576,14 +578,14 @@ def TestFactory(xla_backend,
       self.assertNotEqual(hash(a), hash(c))
       self.assertNotEqual(hash(b), hash(c))
 
-    def testBlockHostUntilReadyWorks(self):
+    def testBlockUntilReadyWorks(self):
       arg = np.array([[1., 2.]], np.float32)
       arg_buffer = self.backend.buffer_from_pyval(arg)
-      arg_buffer.block_host_until_ready()
+      arg_buffer.block_until_ready()
       # This test merely checks that nothing goes awry when we call
-      # block_host_until_ready(); it's difficult to test anything else.
+      # block_until_ready(); it's difficult to test anything else.
 
-    def testBlockHostUntilReadyRaisesOnDeletedBuffer(self):
+    def testBlockUntilReadyRaisesOnDeletedBuffer(self):
       arg = np.array([[1., 2.]], np.float32)
       buffer = self.backend.buffer_from_pyval(arg)
       buffer.delete()
@@ -591,7 +593,7 @@ def TestFactory(xla_backend,
           RuntimeError,
           re.escape(
               "BlockHostUntilReady() called on deleted or donated buffer")):
-        buffer.block_host_until_ready()
+        buffer.block_until_ready()
 
     def testDeviceArrayBaseSignatures(self):
       # When extending `DeviceArrayBase`, the object behaves as a `DeviceArray`
@@ -610,9 +612,12 @@ def TestFactory(xla_backend,
       self.assertEqual(buffer.ndim, 2)
 
       self.assertIs(buffer, buffer.block_until_ready())
+      self.assertTrue(buffer.is_ready())
       buffer.delete()
       with self.assertRaises(RuntimeError):
         buffer.block_until_ready()
+      with self.assertRaises(RuntimeError):
+        buffer.is_ready()
 
     def testOnDeviceSizeInBytes(self):
       if not isinstance(self.backend, xla_client.Client):
@@ -1563,7 +1568,9 @@ def TestFactory(xla_backend,
       results = self._Execute(b, [qy_arg, db_arg])
       ground_truth_docids = [set(x) for x in results[0]]
       hits = sum(
-          len(list(x for x in approx_topk_per_q
+          len(
+              list(x
+                   for x in approx_topk_per_q
                    if x in ground_truth_docids[q]))
           for q, approx_topk_per_q in enumerate(results[1]))
       self.assertGreater(hits / (qy_size * k), recall_target)

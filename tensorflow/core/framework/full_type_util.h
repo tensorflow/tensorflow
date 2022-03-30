@@ -78,6 +78,32 @@ bool IsEqual(const FullTypeDef& lhs, const FullTypeDef& rhs);
 bool IsSubtype(const FullTypeDef& lhs, const FullTypeDef& rhs,
                bool covariant = true);
 
+uint64_t Hash(const FullTypeDef& arg);
+
+// Determine if the given fulltype is a host memory type.
+// While it is prefered that Placer (placer.cc and colocation_graph.cc) make
+// all host memory type placement decisions, any decision made elsewhere
+// should use this function (e.g. instead of assuming that all variants never
+// contain host memory types).
+inline bool IsHostMemoryType(const FullTypeDef& t) {
+  switch (t.type_id()) {
+    case TFT_TENSOR:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_ARRAY:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_DATASET:
+      return true;
+    case TFT_MUTEX_LOCK:
+      return true;
+    case TFT_RAGGED:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_STRING:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace full_type
 
 }  // namespace tensorflow

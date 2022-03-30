@@ -18,8 +18,7 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-# Update bazel
-update_bazel_linux
+install_bazelisk
 
 # Export required variables for running pip.sh
 export OS_TYPE="UBUNTU"

@@ -796,6 +796,7 @@ TEST_P(SavedModelPowTest, Pow) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   auto options = DefaultSavedModelOptions(runtime.get());
   options.graph_execution_options.compile_options.enable_grappler = true;
+  options.graph_execution_options.enable_grappler_function_optimizer = true;
   options.graph_execution_options.run_placer_grappler_on_functions =
       GetParam().run_placer_grappler_on_functions;
 

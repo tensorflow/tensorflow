@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -81,11 +82,12 @@ struct ConvertToSignlessPass
       return converter.isLegal(op->getOperandTypes()) &&
              converter.isLegal(op->getResultTypes());
     });
-    target.addDynamicallyLegalOp<FuncOp>(
-        [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
+    target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+      return converter.isSignatureLegal(op.getFunctionType());
+    });
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<ConvertToSignless>(converter, &context);
+    patterns.add<ConvertToSignless>(converter, &context);
     // FuncOp is special as it has type encoding via attributes.
     populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,
                                                              converter);

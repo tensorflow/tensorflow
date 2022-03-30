@@ -54,6 +54,8 @@ namespace tensorflow {
   REGISTER_KERNEL_BUILDER(Name("XlaDynamicUpdateSlice").Device(DEVICE),        \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaIf").Device(DEVICE), XlaCompileOnDemandOp); \
+  REGISTER_KERNEL_BUILDER(Name("XlaOptimizationBarrier").Device(DEVICE),       \
+                          XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaPad")                                       \
                               .HostMemory("padding_low")                       \
                               .HostMemory("padding_high")                      \

@@ -34,9 +34,9 @@ class TfSoftmaxTest(test.TestCase):
 
   def test_dynamic_softmax(self):
     mlir_function = """
-        func @test(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
+        func.func @test(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
           %0 = "tf.Softmax"(%input) : (tensor<?x?xf32>) -> tensor<?x?xf32>
-          return %0 : tensor<?x?xf32>
+          func.return %0 : tensor<?x?xf32>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'test', vectorize=True)
@@ -48,9 +48,9 @@ class TfSoftmaxTest(test.TestCase):
 
   def test_static_softmax(self):
     mlir_function = """
-        func @test(%input: tensor<10x8xf32>) -> tensor<10x8xf32> {
+        func.func @test(%input: tensor<10x8xf32>) -> tensor<10x8xf32> {
           %0 = "tf.Softmax"(%input) : (tensor<10x8xf32>) -> tensor<10x8xf32>
-          return %0 : tensor<10x8xf32>
+          func.return %0 : tensor<10x8xf32>
       }"""
 
     compiled = jitrt.compile(mlir_function, 'test', vectorize=True)

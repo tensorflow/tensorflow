@@ -66,6 +66,8 @@ limitations under the License.
 /// TfLiteInterpreterDelete(interpreter);
 /// TfLiteInterpreterOptionsDelete(options);
 /// TfLiteModelDelete(model);
+///
+/// </code></pre>
 
 #ifdef __cplusplus
 extern "C" {

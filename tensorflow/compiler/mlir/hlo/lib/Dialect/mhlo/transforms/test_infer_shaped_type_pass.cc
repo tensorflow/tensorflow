@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/Attributes.h"
@@ -48,7 +50,7 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
     OperationState state(op->getLoc(), "mhlo_test.return_type_components",
                          op->getOperands(), op->getResultTypes(),
                          op->getAttrs());
-    auto *new_op = rewriter.createOperation(state);
+    auto *new_op = rewriter.create(state);
     for (const auto &it : llvm::enumerate(components)) {
       if (it.value().hasRank()) {
         new_op->setAttr((StringRef("dims") + Twine(it.index())).str(),
@@ -91,9 +93,12 @@ struct TestInferShapedTypeMethodsPass
   }
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.insert<ReifyReturnTypeShapesPattern>(&getContext());
-    patterns.insert<InferReturnTypeComponentsPattern>(&getContext());
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+    patterns.add<ReifyReturnTypeShapesPattern>(&getContext());
+    patterns.add<InferReturnTypeComponentsPattern>(&getContext());
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 

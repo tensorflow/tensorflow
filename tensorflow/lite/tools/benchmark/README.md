@@ -44,10 +44,19 @@ and the following optional parameters:
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 *   `max_profiling_buffer_entries`: `int` (default=1024) \
-    The max number of profiling events that will be stored during each inference
-    run. It is only meaningful when `enable_op_profiling` is set to `true`.
-    Note, the actual value of this parameter will be adjusted if the model has
-    more nodes than the specified value of this parameter.
+    The initial max number of profiling events that will be stored during each
+    inference run. It is only meaningful when `enable_op_profiling` is set to
+     `true`. Note, the actual value of this parameter will be adjusted if the
+     model has more nodes than the specified value of this parameter. Also, when
+     `allow_dynamic_profiling_buffer_increase` is set to `true`, the number of
+     profiling buffer entries will be increased dynamically.
+*   `allow_dynamic_profiling_buffer_increase`: `bool` (default=false) \
+    Whether allowing dynamic increase on the number of profiling buffer entries.
+    It is only meaningful when `enable_op_profiling` is set to `true`.
+    Note, allowing dynamic buffer size increase may cause more profiling
+    overhead, thus it is preferred to set `max_profiling_buffer_entries` to a
+    large-enough value.
+
 *   `profiling_output_csv_file`: `str` (default="") \
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`

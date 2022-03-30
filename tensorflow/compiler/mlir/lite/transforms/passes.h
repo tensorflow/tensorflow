@@ -23,7 +23,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 
 namespace mlir {
+namespace func {
 class FuncOp;
+}
 class ModuleOp;
 template <typename T>
 class OperationPass;
@@ -31,21 +33,21 @@ class Type;
 
 namespace TFL {
 using StringSet = absl::flat_hash_set<std::string>;
-class QuantizationSpecs;
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 // When the given run_tfl_runtime_verification value is true, it will check each
 // TFL builtin op towards the TFL runtime capability and the incompatible TF ops
-// will be left in the graph without getting legalized.
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
-    bool run_tfl_runtime_verification);
+// will be left in the graph without getting legalized. If `preserve_assert_op`
+// is true, the TF::AssertOp will not be removed.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass(
+    bool run_tfl_runtime_verification, bool preserve_assert_op = false);
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
     bool enable_canonicalization);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
     bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization,
     bool use_fake_quant_num_bits = false);
 
@@ -53,42 +55,45 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
 // pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLowerStaticTensorListPass(
     bool allow_tensorlist_pass_through = false,
-    bool default_to_single_batch = false);
+    bool default_to_single_batch = false,
+    bool enable_dynamic_update_slice = false);
 
 // Creates an instance of the TensorFlow Lite dialect Quantize pass.
 // Use quant_specs.ops_blocklist and quant_specs.nodes_blocklist if possible
 // as they are now structure variables of QuantizationSpecs.
-std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
-    const QuantizationSpecs& quant_specs, const StringSet& ops_blocklist = {},
-    const StringSet& nodes_blocklist = {});
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
+    const quant::QuantizationSpecs& quant_specs,
+    const StringSet& ops_blocklist = {}, const StringSet& nodes_blocklist = {});
 
 // Overloading of CreateQuantizePass which takes only necessary flags to reduce
 // the binary size.
-std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
     bool verify_numeric = false, bool whole_model_verify = false,
     bool legacy_float_scale = false, const StringSet& ops_blocklist = {},
     const StringSet& nodes_blocklist = {});
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
-    const QuantizationSpecs& quant_specs);
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
+    const quant::QuantizationSpecs& quant_specs);
 
 // Creates an instance of the TensorFlow Lite dialect
 // PrepareDynamicRangeQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareDynamicRangeQuantizePass(
-    const QuantizationSpecs& quant_specs);
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreatePrepareDynamicRangeQuantizePass(
+    const quant::QuantizationSpecs& quant_specs);
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
-    bool emit_quant_adaptor_ops, const CustomOpMap& custom_op_map = {});
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass(
+    bool emit_quant_adaptor_ops, const quant::CustomOpMap& custom_op_map = {});
 
 // Creates an instance of the TensorFlow Lite pass that decomposes hybrid
 // quantization patterns to the same dense operation with tfl dequantization
 // and quantization patterns.
-std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeHybridQuantizationPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDecomposeHybridQuantizationPass();
 
 // Creates an instance of the TensorFlow Lite optimize op order pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateOptimizeOpOrderPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeOpOrderPass();
 
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 // pass.
@@ -100,26 +105,26 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass();
 
 // Creates an instance of the TensorFlow Lite dialect SplitMergedOperandsPass.
-std::unique_ptr<OperationPass<FuncOp>> CreateSplitMergedOperandsPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitMergedOperandsPass();
 
 // Creates an instance of the TensorFlow Lite dialect OptimizeFunctionalOpsPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass();
 
-std::unique_ptr<OperationPass<FuncOp>> CreateModifyIONodesPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateModifyIONodesPass(
     mlir::Type input_type, mlir::Type output_type);
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantizeRemoveQDQ
 // pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizeRemoveQDQPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizeRemoveQDQPass();
 
 // Creates an instance of the TensorFlow Lite dialect pass to add default
 // quantization parameters.
-std::unique_ptr<OperationPass<FuncOp>> CreateDefaultQuantParamsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
     double default_min, double default_max, bool is_signed);
 
 // Creates an instance of the TensorFlow Lite dialect pass to convert dense
 // tensor to sparse format.
-std::unique_ptr<OperationPass<FuncOp>> CreateDenseToSparsePass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDenseToSparsePass();
 
 // Creates function pass to legalize TF While to TFL While.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
@@ -128,17 +133,17 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
 
 // Creates a pass to remove operands of TFL WhileOp without changing outcomes.
-std::unique_ptr<OperationPass<FuncOp>> CreateReduceWhileOperandsPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateReduceWhileOperandsPass();
 
 // Verifies runtime constraints.
-std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRuntimeVerifyPass();
 
 // Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass(
     const std::vector<std::string>& target_ops);
 
 // Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
-std::unique_ptr<OperationPass<FuncOp>> CreateLowerCustomOpsPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerCustomOpsPass();
 
 // Inserts an TFL::CallOnce op when the tf_saved_model's session initialzer is
 // given.
@@ -146,7 +151,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateInsertCallOnceOpFromSessionInitializerPass();
 
 // Replace the tfl wrapped random function body with tfl.customOp.
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeJaxRandomPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeJaxRandomPass();
 
 // Creates a pass which is responsible for legalizing TensorFlow variables to
 // TensorFlow Lite variables.
@@ -162,7 +167,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHashTablesPass();
 
 // Creates get arithmetic count pass, which will calculate the arithmetic count
 // for each ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGetArithmeticCountPass();
 
 // Creates unfold large constant pass, which will replace large splat constant
 // tensors with fill op.

@@ -3393,13 +3393,13 @@ class ReplicaContext(ReplicaContextBase):
     `value` as a nested structure consisting of two items to all-gather, `a` and
     `b`.
 
-      On Replica 0, `value` is `{'a': [0], 'b': [[0, 1]]}`.
+    * On Replica 0, `value` is `{'a': [0], 'b': [[0, 1]]}`.
+    * On Replica 1, `value` is `{'a': [1], 'b': [[2, 3], [4, 5]]}`.
+    * Result for `all_gather` with `axis=0` (on each of the replicas) is:
 
-      On Replica 1, `value` is `{'a': [1], 'b': [[2, 3], [4, 5]]}`.
-
-      Result for `all_gather` with `axis`=0 (on each of the replicas) is:
-
-      ```{'a': [1, 2], 'b': [[0, 1], [2, 3], [4, 5]]}```
+      ```
+      {'a': [1, 2], 'b': [[0, 1], [2, 3], [4, 5]]}
+      ```
 
     Args:
       value: a nested structure of `tf.Tensor` which `tf.nest.flatten` accepts,

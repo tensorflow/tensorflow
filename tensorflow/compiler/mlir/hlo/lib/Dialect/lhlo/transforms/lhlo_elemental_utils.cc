@@ -22,10 +22,10 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "mlir-hlo/utils/codegen_utils.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
@@ -183,7 +183,7 @@ Value elementalLowerImplForBroadcastInDimOps(OpBuilder* b, Location loc,
             loc, b->getIndexType(), b->getIntegerAttr(b->getIndexType(), 0));
         auto dim_size_is_1 = b->create<arith::CmpIOp>(
             loc, arith::CmpIPredicate::eq, dim_size, one);
-        input_index.push_back(b->create<mlir::SelectOp>(
+        input_index.push_back(b->create<mlir::arith::SelectOp>(
             loc, dim_size_is_1, zero, output_index[dim]));
       } else {
         // we know this dim is not to be broadcasted at compile time

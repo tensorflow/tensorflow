@@ -16,7 +16,8 @@ limitations under the License.
 // This transformation pass transforms functional control flow operations in the
 // TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -37,7 +38,7 @@ namespace {
 
 struct FunctionalControlFlowToCFG
     : public FunctionalControlFlowToCFGPassBase<FunctionalControlFlowToCFG> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Lowers a general tensor argument that is used as a condition to a functional
@@ -56,7 +57,7 @@ static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
 // that is compatible for tensor cast.
 static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
                          FuncOp fn, OpBuilder* builder) {
-  FunctionType fn_type = fn.getType();
+  FunctionType fn_type = fn.getFunctionType();
   llvm::SmallVector<Value, 4> operands;
   int num_operands = fn_type.getNumInputs();
   operands.reserve(num_operands);
@@ -70,7 +71,7 @@ static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
     }
     operands.push_back(val);
   }
-  return builder->create<CallOp>(loc, fn, operands).getOperation();
+  return builder->create<func::CallOp>(loc, fn, operands).getOperation();
 }
 
 // Prepares for jump to the given block by introducing necessary tensor_cast
@@ -105,7 +106,7 @@ static llvm::SmallVector<Value, 4> PrepareValsForJump(
 static void JumpToBlock(Location loc, const std::function<Value(int)>& get_arg,
                         Block* block, OpBuilder* builder) {
   auto operands = PrepareValsForJump(loc, get_arg, block, builder);
-  builder->create<BranchOp>(loc, block, operands);
+  builder->create<cf::BranchOp>(loc, block, operands);
 }
 
 // Replaces all uses of the operation results in this block with block
@@ -174,9 +175,9 @@ static LogicalResult LowerIfOp(IfOp op) {
   // Now that we have the then and else blocks, replace the terminator of the
   // orig_block with a conditional branch.
   builder.setInsertionPointToEnd(orig_block);
-  builder.create<CondBranchOp>(loc, cond_i1, then_block,
-                               llvm::ArrayRef<Value>(), else_block,
-                               llvm::ArrayRef<Value>());
+  builder.create<cf::CondBranchOp>(loc, cond_i1, then_block,
+                                   llvm::ArrayRef<Value>(), else_block,
+                                   llvm::ArrayRef<Value>());
 
   // Finally, delete the op in question.
   op_inst->erase();
@@ -224,10 +225,10 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   // as the input types of the body function. Note that it is always possible
   // for body_block and orig_block_tail to have arguments of the same types as
   // they have exactly one call-site and they are sharing the operands.
-  for (Type type : cond_fn.getType().getInputs()) {
+  for (Type type : cond_fn.getFunctionType().getInputs()) {
     cond_block->addArgument(type, loc);
   }
-  for (Type type : body_fn.getType().getInputs()) {
+  for (Type type : body_fn.getFunctionType().getInputs()) {
     body_block->addArgument(type, loc);
     orig_block_tail->addArgument(type, loc);
   }
@@ -251,8 +252,8 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   Value condition = LowerCondition(loc, cond_call_op->getResult(0), &builder);
   auto br_operands =
       PrepareValsForJump(loc, get_cond_arg, body_block, &builder);
-  builder.create<CondBranchOp>(loc, condition, body_block, br_operands,
-                               orig_block_tail, br_operands);
+  builder.create<cf::CondBranchOp>(loc, condition, body_block, br_operands,
+                                   orig_block_tail, br_operands);
 
   // Call body function in the body block and then unconditionally branch back
   // to the condition block.
@@ -272,9 +273,9 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   return success();
 }
 
-void FunctionalControlFlowToCFG::runOnFunction() {
+void FunctionalControlFlowToCFG::runOnOperation() {
   // Scan the function looking for these ops.
-  for (Block& block : getFunction()) {
+  for (Block& block : getOperation()) {
     for (Operation& op : block) {
       // If the operation is one of the control flow ops we know, lower it.
       // If we lower an operation, then the current basic block will be split,

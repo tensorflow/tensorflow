@@ -49,6 +49,8 @@ GpuVendor GetGpuVendor(const std::string& gpu_description) {
 
 AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
   const std::map<std::string, AdrenoGpu> kMapping = {
+      // Adreno 7xx series
+      {"730", AdrenoGpu::kAdreno730},
       // Adreno 6xx series
       {"685", AdrenoGpu::kAdreno685},
       {"680", AdrenoGpu::kAdreno680},
@@ -193,12 +195,18 @@ bool AdrenoInfo::IsAdreno6xx() const {
          adreno_gpu == AdrenoGpu::kAdreno685;
 }
 
+bool AdrenoInfo::IsAdreno7xx() const {
+  return adreno_gpu == AdrenoGpu::kAdreno730;
+}
+
 bool AdrenoInfo::IsAdreno6xxOrHigher() const {
-  return !compiler_bugs_in_a6xx && IsAdreno6xx();
+  return (!compiler_bugs_in_a6xx && IsAdreno6xx()) || IsAdreno7xx();
 }
 
 int AdrenoInfo::GetMaximumWavesCount() const {
-  if (IsAdreno6xx()) {
+  if (IsAdreno7xx()) {
+    return 16;
+  } else if (IsAdreno6xx()) {
     if (adreno_gpu == AdrenoGpu::kAdreno640) {
       return 30;
     } else {
@@ -211,7 +219,9 @@ int AdrenoInfo::GetMaximumWavesCount() const {
 }
 
 int AdrenoInfo::GetRegisterMemorySizePerComputeUnit() const {
-  if (IsAdreno6xx()) {
+  if (IsAdreno7xx()) {
+    return 128 * 96 * 16;
+  } else if (IsAdreno6xx()) {
     if (adreno_gpu == AdrenoGpu::kAdreno640) {
       return 128 * 144 * 16;
     } else if (adreno_gpu == AdrenoGpu::kAdreno620 ||
@@ -237,7 +247,9 @@ int AdrenoInfo::GetMaximumWavesCount(int register_footprint_per_tread,
 }
 
 int AdrenoInfo::GetWaveSize(bool full_wave) const {
-  if (IsAdreno6xx()) {
+  if (IsAdreno7xx()) {
+    return full_wave ? 128 : 64;
+  } else if (IsAdreno6xx()) {
     return full_wave ? 128 : 64;
   } else if (IsAdreno5xx() || IsAdreno4xx()) {
     return full_wave ? 64 : 32;
@@ -249,6 +261,9 @@ int AdrenoInfo::GetWaveSize(bool full_wave) const {
 int AdrenoInfo::GetComputeUnitsCount() const {
   // can provide not correct numbers.
   switch (adreno_gpu) {
+    // Adreno 7xx series
+    case AdrenoGpu::kAdreno730:
+      return 4;
     // Adreno 6xx series
     case AdrenoGpu::kAdreno685:
       return 4;
@@ -326,13 +341,26 @@ int AdrenoInfo::GetComputeUnitsCount() const {
 
 AppleInfo::AppleInfo(const std::string& gpu_description) {
   const std::map<std::string, AppleGpu> kMapping = {
-      {"apple a7 gpu", AppleGpu::kA7},     {"apple a8 gpu", AppleGpu::kA8},
-      {"apple a8x gpu", AppleGpu::kA8X},   {"apple a9 gpu", AppleGpu::kA9},
-      {"apple a9x gpu", AppleGpu::kA9X},   {"apple a10 gpu", AppleGpu::kA10},
-      {"apple a10x gpu", AppleGpu::kA10X}, {"apple a11 gpu", AppleGpu::kA11},
-      {"apple a12 gpu", AppleGpu::kA12},   {"apple a12x gpu", AppleGpu::kA12X},
-      {"apple a12z gpu", AppleGpu::kA12Z}, {"apple a13 gpu", AppleGpu::kA13},
-      {"apple a14 gpu", AppleGpu::kA14},   {"apple a15 gpu", AppleGpu::kA15},
+      {"apple a7 gpu", AppleGpu::kA7},
+      {"apple a8 gpu", AppleGpu::kA8},
+      {"apple a8x gpu", AppleGpu::kA8X},
+      {"apple a9 gpu", AppleGpu::kA9},
+      {"apple a9x gpu", AppleGpu::kA9X},
+      {"apple a10 gpu", AppleGpu::kA10},
+      {"apple a10x gpu", AppleGpu::kA10X},
+      {"apple a11 gpu", AppleGpu::kA11},
+      {"apple a12 gpu", AppleGpu::kA12},
+      {"apple a12x gpu", AppleGpu::kA12X},
+      {"apple a12z gpu", AppleGpu::kA12Z},
+      {"apple a13 gpu", AppleGpu::kA13},
+      {"apple a14 gpu", AppleGpu::kA14},
+      {"apple a15 gpu", AppleGpu::kA15},
+      // on tablets we have metal device name "apple m1 gpu"
+      // and on notebooks "apple m1"
+      {"apple m1 gpu", AppleGpu::kM1},
+      {"apple m1", AppleGpu::kM1},
+      {"apple m1 pro", AppleGpu::kM1Pro},
+      {"apple m1 max", AppleGpu::kM1Max},
   };
   auto it = kMapping.find(gpu_description);
   if (it != kMapping.end()) {
@@ -355,7 +383,18 @@ bool AppleInfo::IsBionic() const {
   return gpu_type == AppleGpu::kA11 || gpu_type == AppleGpu::kA12 ||
          gpu_type == AppleGpu::kA12X || gpu_type == AppleGpu::kA12Z ||
          gpu_type == AppleGpu::kA13 || gpu_type == AppleGpu::kA14 ||
-         gpu_type == AppleGpu::kA15;
+         gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kM1 ||
+         gpu_type == AppleGpu::kM1Pro || gpu_type == AppleGpu::kM1Max;
+}
+
+bool AppleInfo::IsSIMDMatMulSupported() const {
+  return gpu_type == AppleGpu::kA14 || gpu_type == AppleGpu::kA15 ||
+         gpu_type == AppleGpu::kM1 || gpu_type == AppleGpu::kM1Pro ||
+         gpu_type == AppleGpu::kM1Max;
+}
+
+bool AppleInfo::IsSIMDMatMulFp32Perf2x() const {
+  return gpu_type == AppleGpu::kA15;
 }
 
 bool AppleInfo::IsRoundToNearestSupported() const { return IsBionic(); }
@@ -388,11 +427,22 @@ int AppleInfo::GetComputeUnitsCount() const {
       return 4;
     case AppleGpu::kA14:
       return 4;
+    // For A15, M1, M1 Pro and M1 Max we can not receive exact CU count from
+    // name. No official Metal API to receive this info.
     case AppleGpu::kA15:
       if (compute_units != -1) {
         return compute_units;
       }
       return 5;
+    case AppleGpu::kM1:
+      // approximate, can be 7 or 8
+      return 8;
+    case AppleGpu::kM1Pro:
+      // approximate, can be 14 or 16
+      return 16;
+    case AppleGpu::kM1Max:
+      // approximate, can be 24 or 32
+      return 32;
     case AppleGpu::kUnknown:
       return 4;
   }
@@ -523,6 +573,9 @@ bool VulkanInfo::SupportsExplicitFp16() const {
 
 bool OpenClInfo::IsImage2dFromBufferSupported() const {
   if (image_pitch_alignment == 0) {
+    return false;
+  }
+  if (image_base_address_alignment == 0) {
     return false;
   }
   if (cl_version == OpenClVersion::kCl2_0 ||

@@ -91,6 +91,11 @@ class HloModuleGroup {
   // Returns true if there are no modules in the module group.
   bool empty() const { return modules_.empty(); }
 
+  absl::string_view cache_key() const { return cache_key_; }
+  void set_cache_key(absl::string_view cache_key) {
+    cache_key_ = std::string(cache_key);
+  }
+
  private:
   std::string name_;
 
@@ -100,6 +105,8 @@ class HloModuleGroup {
   // Vector of modules as normal pointers. This vector is kept in sync with
   // modules_ as modules are added to the group with push_back.
   std::vector<HloModule*> module_ptrs_;
+
+  std::string cache_key_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloModuleGroup& group);

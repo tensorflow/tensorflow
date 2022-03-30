@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -44,13 +44,14 @@ namespace {
 // This transformation pass modifies the input and output types of the function
 // to what are specified. The task was not just adding cast operations, but,
 // instead, using tfl.quantize and tfl.dequantize ops to scale the tensors.
-struct ModifyIONodesPass : public PassWrapper<ModifyIONodesPass, FunctionPass> {
+struct ModifyIONodesPass
+    : public PassWrapper<ModifyIONodesPass, OperationPass<FuncOp>> {
  public:
   explicit ModifyIONodesPass() {}
   explicit ModifyIONodesPass(mlir::Type input_type, mlir::Type output_type)
       : input_type(input_type), output_type(output_type) {}
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -207,8 +208,8 @@ LogicalResult ModifyIONodesPass::ModifyOutputNodes(
   return success();
 }
 
-void ModifyIONodesPass::runOnFunction() {
-  auto func = getFunction();
+void ModifyIONodesPass::runOnOperation() {
+  auto func = getOperation();
   auto attrs = func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
 
   // Handle the entry functions only.
@@ -217,7 +218,7 @@ void ModifyIONodesPass::runOnFunction() {
   }
 
   OpBuilder builder(func);
-  FunctionType func_type = func.getType();
+  FunctionType func_type = func.getFunctionType();
   llvm::SmallVector<Type, 4> new_input_types(func_type.getInputs().begin(),
                                              func_type.getInputs().end());
   llvm::SmallVector<Type, 4> new_output_types(func_type.getResults().begin(),

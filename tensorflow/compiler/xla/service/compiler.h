@@ -26,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -89,6 +90,7 @@ class AotCompilationOptions {
   virtual int64_t replica_count() const { return 0; }
   virtual int64_t num_cores() const { return 0; }
   virtual bool use_spmd_partitioning() const { return false; }
+  virtual bool use_auto_spmd_partitioning() const { return false; }
   virtual bool deduplicate_hlo() const { return false; }
 
   // Optional allocator that may be used for allocating temp space on the device
@@ -132,6 +134,23 @@ class AotCompilationOptions {
   se::StreamExecutor* executor() const { return executor_; }
   void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
 
+  // Optional profile_handle and cache key may be used to trigger recompilation
+  // when a compilation cache is used.
+  uint64_t profile_handle() const { return profile_handle_; }
+  void set_profile_handle(uint64_t profile_handle) {
+    profile_handle_ = profile_handle;
+  }
+
+  absl::string_view cache_key() const { return cache_key_; }
+  void set_cache_key(absl::string_view cache_key) {
+    cache_key_ = std::string(cache_key);
+  }
+
+  bool run_backend_only() const { return run_backend_only_; }
+  void set_run_backend_only(bool run_backend_only) {
+    run_backend_only_ = run_backend_only;
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -144,6 +163,9 @@ class AotCompilationOptions {
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
   se::StreamExecutor* executor_ = nullptr;
+  uint64_t profile_handle_ = 0;
+  std::string cache_key_;
+  bool run_backend_only_ = false;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time

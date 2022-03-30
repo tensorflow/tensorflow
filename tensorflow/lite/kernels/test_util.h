@@ -350,6 +350,9 @@ class SingleOpModel {
 
       // Add compressed data as a Buffer to buffers list.
       buffer_id = buffers_.size();
+      // When the quantization parameter is set for the added tensor, we
+      // quantize the given data.
+      bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0);
       if (symmetric_quantize) {
         const int length = sparse_data.size();
         std::vector<int8_t> q(length);
@@ -358,6 +361,16 @@ class SingleOpModel {
             sparse_data.data(), length, q.data(), &min, &max, &scaling_factor);
         q_params = CreateQuantizationParameters(
             builder_, 0, 0, builder_.CreateVector<float>({scaling_factor}),
+            builder_.CreateVector<int64_t>({0}));
+        auto data_buffer = builder_.CreateVector(
+            reinterpret_cast<const uint8_t*>(q.data()), q.size());
+        buffers_.push_back(CreateBuffer(builder_, data_buffer));
+      } else if (is_quantized) {
+        CHECK_EQ(t.type, TensorType_INT8)
+            << "The INT8 quantization is only supported for sparsified tensor";
+        auto q = Quantize<int8_t>(sparse_data, t.scale, t.zero_point);
+        q_params = CreateQuantizationParameters(
+            builder_, t.min, t.max, builder_.CreateVector<float>({t.scale}),
             builder_.CreateVector<int64_t>({0}));
         auto data_buffer = builder_.CreateVector(
             reinterpret_cast<const uint8_t*>(q.data()), q.size());
@@ -941,6 +954,7 @@ TensorType GetTensorType() {
   if (std::is_same<T, double>::value) return TensorType_FLOAT64;
   if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, int16_t>::value) return TensorType_INT16;
+  if (std::is_same<T, uint16_t>::value) return TensorType_UINT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
   if (std::is_same<T, uint32_t>::value) return TensorType_UINT32;
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
@@ -1001,6 +1015,16 @@ struct TypeUnion<int16_t> {
   // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt16;
   typedef int16_t ScalarType;
+};
+
+template <>
+struct TypeUnion<uint16_t> {
+ public:
+  // NOLINTNEXTLINE
+  static constexpr TensorType tensor_type = TensorType::TensorType_UINT16;
+  // NOLINTNEXTLINE
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteUInt16;
+  typedef uint16_t ScalarType;
 };
 
 template <>

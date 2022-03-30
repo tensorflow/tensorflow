@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 
 const char* const kUsage = R"(
 This tool reads in an HloModule from a file, compiles it using the NVPTX
@@ -67,15 +68,21 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   tensorflow::se::CudaComputeCapability cuda_compute_capability;
   cuda_compute_capability.major = sm / 10;
   cuda_compute_capability.minor = sm % 10;
+  tensorflow::se::RocmComputeCapability rocm_compute_capability("gfx908");
   std::string target_triple = "nvptx64-nvidia-cuda";
   std::string datalayout = "nvptx64-nvidia-cuda";
+  std::string platform_name = "CUDA";
+  stream_executor::Platform::Id platform_id =
+      stream_executor::cuda::kCudaPlatformId;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
                       xla::gpu::CompileModuleToLlvmIr(
                           hlo_module.get(), &llvm_context,
                           /*target_triple=*/xla::gpu::nvptx::TargetTriple(),
                           /*data_layout=*/xla::gpu::nvptx::DataLayout(),
-                          /*platform_name=*/"CUDA", gpu_device_info,
-                          cuda_compute_capability, /*pointer_size=*/8));
+                          /*platform_name=*/platform_name,
+                          /*platform_id=*/platform_id, gpu_device_info,
+                          cuda_compute_capability, rocm_compute_capability,
+                          /*pointer_size=*/8));
 
   if (!generate_ptx) {
     llvm_module->print(llvm::outs(), nullptr);

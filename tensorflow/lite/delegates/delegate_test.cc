@@ -1079,7 +1079,9 @@ TEST_F(TestReleaseDynamicTensorWithDelegate, ShapePropagation_FlagNotSet) {
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_NE(interpreter_->tensor(1)->data.raw, nullptr);
 
-  interpreter_->EnsureDynamicTensorsAreReleased();
+  InterpreterOptions options;
+  options.SetEnsureDynamicTensorsAreReleased();
+  interpreter_->ApplyOptions(&options);
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->tensor(1)->data.raw, nullptr);

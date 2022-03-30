@@ -9,16 +9,20 @@ package_group(
     name = "friends",
     packages = [
         "//tensorflow/core/tfrt/saved_model/...",
+        "//tensorflow/core/tfrt/tfrt_session/...",
     ],
 )
 
 cc_library(
     name = "graph_execution_options",
+    srcs = ["graph_execution_options.cc"],
     hdrs = ["graph_execution_options.h"],
     deps = [
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/runtime",
+        "//tensorflow/core/tfrt/utils:bridge_graph_analysis",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -57,6 +61,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime",

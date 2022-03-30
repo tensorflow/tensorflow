@@ -123,6 +123,9 @@ void RecordTFDataServiceClientIterators(
     const tensorflow::data::ProcessingModeDef& processing_mode,
     bool is_coordinated_read);
 
+// Records tf.data service multi-trainer cache queries.
+void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit);
+
 // Records the file name read by a tf.data Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
@@ -194,6 +197,17 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs);
 // in the process the graph is at (or "ProcessingState" metric field).
 void UpdateTfMlirGraphOptimizationPassStateCounter(
     const std::string& pass_state, const std::string& processing_state);
+
+// Records the activity of the first phase of the mlir bridge using the
+// tf_metadata.tf_mlir_bridge_first_phase_count metric.
+// device_type: tpu, cpu, gpu, etc.
+// bridge_version: v1 compat, v2, etc.
+// fallback_enabled: true if fallback will happen, false if not
+// result: outcome of bridge (success, failure, disabled, invalid_graph, etc.)
+void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
+                                         const std::string& bridge_version,
+                                         bool fallback_enabled,
+                                         const std::string& result);
 
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>

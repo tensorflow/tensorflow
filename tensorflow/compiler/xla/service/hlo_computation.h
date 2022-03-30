@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/cord.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -236,6 +237,18 @@ class HloComputation {
       const HloPrintOptions& options,
       absl::Span<const HloInstruction* const> instruction_order) const;
 
+  // Returns a Cord representation of the computation.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  absl::Cord ToCord() const { return ToCord(HloPrintOptions()); }
+  absl::Cord ToCord(const HloPrintOptions& options) const;
+
+  // Overload which accepts an order to emit the instructions in.
+  absl::Cord ToCord(
+      const HloPrintOptions& options,
+      absl::Span<const HloInstruction* const> instruction_order) const;
+
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
 
@@ -355,6 +368,9 @@ class HloComputation {
   // Return whether `*this` and `other` are functionally equivalent.
   bool operator==(const HloComputation& other) const {
     return Equal(other, true);
+  }
+  bool operator!=(const HloComputation& other) const {
+    return !(*this == other);
   }
 
   // Replaces old instruction with newly created instruction. Removes old
@@ -526,6 +542,17 @@ class HloComputation {
     is_custom_call_computation_ |= (custom_call_instruction != nullptr);
   }
 
+  // Returns if this computation is an async computation.
+  bool IsAsyncComputation() const { return is_async_computation_; }
+
+  // Returns the owning async instruction, or nullptr if this is not an async
+  // computation.
+  HloInstruction* AsyncInstruction() const { return async_instruction_; }
+  void SetAsyncInstruction(HloInstruction* async_instruction) {
+    async_instruction_ = async_instruction;
+    is_async_computation_ |= (async_instruction != nullptr);
+  }
+
   // Returns if this computation is invoked by an Hlo instruction.
   bool IsCalledComputation() const {
     return IsFusionComputation() || IsCustomCallComputation();
@@ -591,9 +618,10 @@ class HloComputation {
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      const HloComputation::ChannelDependencyGroup& channel_dependency_group,
-      std::vector<HloInstruction*>* post_order, HloInstruction* root,
-      absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
+      HloInstruction* root,
+      HloComputation::ChannelDependencyGroup& channel_dependencies,
+      absl::flat_hash_map<HloInstruction*, VisitState>& visited,
+      std::vector<HloInstruction*>& post_order) const;
 
   Status RemoveUnusedParametersImpl(bool allow_non_fusion);
 
@@ -621,8 +649,15 @@ class HloComputation {
   // null.
   HloInstruction* custom_call_instruction_;
 
-  // Determines whether this computation is a custom-call computation. A
+  // Determines whether this computation is a custom-call computation.
   bool is_custom_call_computation_;
+
+  // If this computation is an async computation, this field points to the
+  // corresponding async instruction (if it is live). Otherwise, this is null.
+  HloInstruction* async_instruction_;
+
+  // Determines whether this computation is an async computation.
+  bool is_async_computation_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

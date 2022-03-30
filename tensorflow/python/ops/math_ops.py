@@ -998,7 +998,7 @@ def cast(x, dtype, name=None):
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
       x = ops.convert_to_tensor(x, name="x")
-      if x.dtype.base_dtype != base_type:
+      if x.dtype != base_type:
         x = gen_math_ops.cast(x, base_type, name=name)
     if x.dtype.is_complex and base_type.is_floating:
       logging.warn("Casting complex to real discards imaginary part.")
@@ -5541,7 +5541,7 @@ def acos(x, name=None):
   Args:
     x: A `Tensor`. Must be one of the following types: `bfloat16`, `half`,
       `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`,
-      `complex64`, `complex128`, `string`.
+      `complex64`, `complex128`.
     name: A name for the operation (optional).
 
   Returns:

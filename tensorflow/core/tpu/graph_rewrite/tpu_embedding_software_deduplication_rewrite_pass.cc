@@ -110,7 +110,8 @@ xla::StatusOr<NodeDef> MakeRecvActivationsNodeDef(
   }
 
   tpu::TPUEmbeddingConfiguration tpu_embedding_config;
-  if (!tpu_embedding_config.ParseFromStringPiece(tpu_embedding_config_str)) {
+  if (!tpu_embedding_config.ParseFromString(
+          std::string(tpu_embedding_config_str))) {  // NOLINT
     return errors::InvalidArgument(
         "Malformed config attribute in the RecvTPUEmbeddingActivations node.");
   }
@@ -166,7 +167,8 @@ xla::StatusOr<NodeDef> MakeSendGradientsNodeDef(
     absl::Span<const NodeDefBuilder::NodeOut> data_inputs,
     absl::Span<const std::string> control_inputs) {
   tpu::TPUEmbeddingConfiguration tpu_embedding_config;
-  if (!tpu_embedding_config.ParseFromStringPiece(tpu_embedding_config_str)) {
+  if (!tpu_embedding_config.ParseFromString(
+          std::string(tpu_embedding_config_str))) {  // NOLINT
     return errors::InvalidArgument(
         "Malformed config attribute in the SendTPUEmbeddingGradients node.");
   }
@@ -204,7 +206,8 @@ xla::StatusOr<NodeDef> MakeSendGradientsNodeDef(
         expected_learning_rate_tag_count, learning_rate_tag_count));
   }
 
-  if (data_inputs.size() != (num_inputs + learning_rate_tag_count)) {
+  if (data_inputs.size() !=
+      static_cast<uint64>(num_inputs + learning_rate_tag_count)) {
     return errors::InvalidArgument(absl::StrFormat(
         "Mismatch in the number of inputs for SendTPUEmbeddingGradients node, "
         "expected: %d, actual: %d",

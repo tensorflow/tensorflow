@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -32,6 +33,16 @@ TEST(HloShardingUtilTest, TransposeShardingTiled) {
   HloSharding output =
       HloSharding::Tile(Array4D<int64_t>({{{{0}, {2}}}, {{{1}, {3}}}}));
   EXPECT_EQ(TransposeSharding(input, {3, 0, 1, 2}), output);
+}
+
+TEST(HloShardingUtilTest, TransposeShardingWithCollapsedDimsSubgroupManual) {
+  HloSharding input = HloSharding::Subgroup(
+      Array3D<int64_t>({{{0, 1, 2, 3}, {4, 5, 6, 7}}}), {OpSharding::MANUAL});
+  HloSharding output = HloSharding::Subgroup(
+      Array4D<int64_t>({{{{{0, 1, 2, 3}, {4, 5, 6, 7}}}}}),
+      {OpSharding::MANUAL});
+  EXPECT_EQ(TransposeShardingWithCollapsedDims(input, {-1, 2}, {-1, -1, 1}),
+            output);
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingMaximal) {

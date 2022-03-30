@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -85,7 +86,7 @@ static bool ControlElementwiseOpsFusion(const OpResult &producer_result,
 }
 
 struct FusionPass : public FusionBase<FusionPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     Operation *op = getOperation();
 
     RewritePatternSet patterns(op->getContext());
@@ -98,7 +99,7 @@ struct FusionPass : public FusionBase<FusionPass> {
   }
 };
 
-std::unique_ptr<mlir::FunctionPass> CreateFusionPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateFusionPass() {
   return std::make_unique<FusionPass>();
 }
 

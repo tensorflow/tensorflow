@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xla_compiler.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -311,6 +312,18 @@ PYBIND11_MODULE(xla_extension, m) {
 
   TF_CHECK_OK(PyBuffer::RegisterTypes(m));
 
+  py::class_<CompiledMemoryStats>(m, "CompiledMemoryStats")
+      .def_readwrite("generated_code_size_in_bytes",
+                     &CompiledMemoryStats::generated_code_size_in_bytes)
+      .def_readwrite("argument_size_in_bytes",
+                     &CompiledMemoryStats::argument_size_in_bytes)
+      .def_readwrite("output_size_in_bytes",
+                     &CompiledMemoryStats::output_size_in_bytes)
+      .def_readwrite("alias_size_in_bytes",
+                     &CompiledMemoryStats::alias_size_in_bytes)
+      .def_readwrite("temp_size_in_bytes",
+                     &CompiledMemoryStats::temp_size_in_bytes);
+
   py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
       m, "Executable");
   executable.def_property_readonly("client", &PyExecutable::client)
@@ -328,6 +341,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_devices", &PyExecutable::AddressableDevices)
       .def("size_of_generated_code_in_bytes",
            &PyExecutable::SizeOfGeneratedCodeInBytes)
+      .def("get_compiled_memory_stats", &PyExecutable::GetCompiledMemoryStats)
       .def("delete", &PyExecutable::Delete)
       .def("execute", &PyExecutable::Execute, py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
@@ -356,6 +370,7 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildPytreeSubmodule(m);
   jax::BuildJaxjitSubmodule(m);
   jax::BuildPmapSubmodule(m);
+  jax::BuildTransferGuardSubmodule(m);
   BuildTracebackSubmodule(m);
   BuildMlirSubmodule(m);
 

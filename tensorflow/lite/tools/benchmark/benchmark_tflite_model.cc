@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -289,6 +290,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
   default_params.AddParam("max_profiling_buffer_entries",
                           BenchmarkParam::Create<int32_t>(1024));
+  default_params.AddParam("allow_dynamic_profiling_buffer_increase",
+                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
 
@@ -298,6 +301,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("release_dynamic_tensors",
                           BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("use_dynamic_tensors_for_large_tensors",
+                          BenchmarkParam::Create<int32_t>(0));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
   delegate_providers.AddAllDelegateParams();
@@ -352,7 +357,9 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                        "require delegate to run the entire graph"),
       CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
       CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
-                          "max profiling buffer entries"),
+                          "max initial profiling buffer entries"),
+      CreateFlag<bool>("allow_dynamic_profiling_buffer_increase", &params_,
+                       "allow dynamic increase on profiling buffer entries"),
       CreateFlag<std::string>(
           "profiling_output_csv_file", &params_,
           "File path to export profile data as CSV, if not set "
@@ -368,7 +375,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "include allocated memory size of each tensor etc."),
       CreateFlag<bool>("release_dynamic_tensors", &params_,
                        "Ensure dynamic tensor's memory is released when they "
-                       "are not used.")};
+                       "are not used."),
+      CreateFlag<int32_t>(
+          "use_dynamic_tensors_for_large_tensors", &params_,
+          "Use dynamic tensor for large tensors to optimize memory usage.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -397,7 +407,10 @@ void BenchmarkTfLiteModel::LogParams() {
   LOG_BENCHMARK_PARAM(bool, "enable_op_profiling", "Enable op profiling",
                       verbose);
   LOG_BENCHMARK_PARAM(int32_t, "max_profiling_buffer_entries",
-                      "Max profiling buffer entries", verbose);
+                      "Max initial profiling buffer entries", verbose);
+  LOG_BENCHMARK_PARAM(bool, "allow_dynamic_profiling_buffer_increase",
+                      "Allow dynamic increase on profiling buffer entries",
+                      verbose);
   LOG_BENCHMARK_PARAM(std::string, "profiling_output_csv_file",
                       "CSV File to export profiling data to", verbose);
   LOG_BENCHMARK_PARAM(bool, "print_preinvoke_state",
@@ -406,6 +419,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Print post-invoke interpreter state", verbose);
   LOG_BENCHMARK_PARAM(bool, "release_dynamic_tensors",
                       "Release dynamic tensor memory", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "use_dynamic_tensors_for_large_tensors",
+                      "Use dynamic tensor for large tensors", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -615,9 +630,12 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
-  if (params_.Get<bool>("release_dynamic_tensors")) {
-    interpreter_->EnsureDynamicTensorsAreReleased();
-  }
+  InterpreterOptions options;
+  options.SetEnsureDynamicTensorsAreReleased(
+      params_.Get<bool>("release_dynamic_tensors"));
+  options.SetDynamicAllocationForLargeTensors(
+      params_.Get<int32_t>("use_dynamic_tensors_for_large_tensors"));
+  interpreter_->ApplyOptions(&options);
 
   owned_delegates_.clear();
 
@@ -769,6 +787,7 @@ BenchmarkTfLiteModel::MayCreateProfilingListener() const {
 
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
       interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),
+      params_.Get<bool>("allow_dynamic_profiling_buffer_increase"),
       params_.Get<std::string>("profiling_output_csv_file"),
       CreateProfileSummaryFormatter(
           !params_.Get<std::string>("profiling_output_csv_file").empty())));

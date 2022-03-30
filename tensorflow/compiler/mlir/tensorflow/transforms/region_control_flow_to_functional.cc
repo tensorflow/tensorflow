@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -167,7 +167,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   // Replace the existing terminator with a return.
   terminator = first_block.getTerminator();
   builder.setInsertionPoint(terminator);
-  builder.create<ReturnOp>(terminator->getLoc(), return_values);
+  builder.create<func::ReturnOp>(terminator->getLoc(), return_values);
   terminator->erase();
 
   outlined_func.setPrivate();
@@ -181,8 +181,8 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
 // terminator of the region. if `allow_to_bool` is true, also allows a single
 // ToBoolOp between the region yield and the call. Returns none if the region
 // does not conform to this pattern.
-llvm::Optional<CallOp> IsSingleCallRegion(Region& region,
-                                          bool allow_to_bool = false) {
+llvm::Optional<func::CallOp> IsSingleCallRegion(Region& region,
+                                                bool allow_to_bool = false) {
   if (!llvm::hasSingleElement(region)) return llvm::None;
 
   Block& block = region.front();
@@ -203,7 +203,7 @@ llvm::Optional<CallOp> IsSingleCallRegion(Region& region,
   }
 
   // Check if there is a Call before the Yield.
-  CallOp call = dyn_cast<CallOp>(*it++);
+  func::CallOp call = dyn_cast<func::CallOp>(*it++);
   if (!call) return llvm::None;
 
   // All call results should feed into expected consumer
@@ -228,7 +228,8 @@ using ArgMatcherFn = function_ref<bool(Value, Region&, Value, Region&)>;
 // Returns whether the arguments of the given 2 calls are match (after looking
 // through cast ops). `matcher` is the predicate used to check if two arguments
 // match.
-bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
+bool MatchCallArgs(func::CallOp first, func::CallOp second,
+                   ArgMatcherFn matcher) {
   if (first.getNumOperands() != second.getNumOperands()) return false;
 
   Region& first_region = *first->getParentRegion();
@@ -277,8 +278,8 @@ struct TrivialTransformInfo {
   // If such a trivial transformation is possible, stash the relevant
   // information needed for the transformation, else indicate that a trivial
   // transformation is not possible by setting `can_transform` to false.
-  TrivialTransformInfo(llvm::Optional<CallOp> first_call,
-                       llvm::Optional<CallOp> second_call,
+  TrivialTransformInfo(llvm::Optional<func::CallOp> first_call,
+                       llvm::Optional<func::CallOp> second_call,
                        ArgMatcherFn arg_matcher) {
     if (!first_call || !second_call) return;
 

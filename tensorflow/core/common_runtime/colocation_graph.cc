@@ -142,25 +142,6 @@ bool IsCompositeDevice(absl::string_view device_type) {
   return device_type == kCompositeDeviceType;
 }
 
-inline bool IsHostMemoryType(const FullTypeDef& t) {
-  switch (t.type_id()) {
-    case TFT_TENSOR:
-      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
-    case TFT_ARRAY:
-      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
-    case TFT_DATASET:
-      return true;
-    case TFT_MUTEX_LOCK:
-      return true;
-    case TFT_RAGGED:
-      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
-    case TFT_STRING:
-      return true;
-    default:
-      return false;
-  }
-}
-
 // TODO(mdan): This is still too coarse.
 // Host-memory constraints are specific to kernel registrations, so in theory
 // they depend on the assigned device.
@@ -173,7 +154,7 @@ bool HasHostMemoryOutType(const Node& node) {
   DCHECK(ft.type_id() == TFT_PRODUCT) << ft.DebugString();
 
   for (const auto& arg : ft.args()) {
-    if (IsHostMemoryType(arg)) {
+    if (full_type::IsHostMemoryType(arg)) {
       return true;
     }
   }
@@ -430,9 +411,9 @@ Status Member::MergeDeviceNames(const Member& other,
                                        resource_device_name_copy);
 
   // We checked for all errors, now change the devices.
-  assigned_device_name_ = assigned_device_name_copy;
-  resource_device_name_ = resource_device_name_copy;
-  requested_device_name_ = requested_device_name_copy;
+  assigned_device_name_ = std::move(assigned_device_name_copy);
+  resource_device_name_ = std::move(resource_device_name_copy);
+  requested_device_name_ = std::move(requested_device_name_copy);
   return Status::OK();
 }
 

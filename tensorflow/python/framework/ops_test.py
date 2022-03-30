@@ -23,11 +23,12 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.core.function import trace_type
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -469,62 +470,6 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     # pylint: disable=invalid-unary-operand-type
     with self.assertRaises(expected_errtype):
       _ = ~constant_op.constant("a")
-
-
-@test_util.run_all_in_graph_and_eager_modes
-class TensorTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
-
-  @parameterized.parameters([True, False])
-  def testEqualTypes(self, shape_relaxation):
-    signature_context = trace_type.SignatureContext(shape_relaxation)
-    type_1 = ops.TensorType(signature_context,
-                            tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
-                            None)
-    type_2 = ops.TensorType(signature_context,
-                            tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
-                            None)
-    self.assertEqual(type_1, type_1)
-    self.assertEqual(type_1, type_2)
-    self.assertTrue(type_1.is_subtype_of(type_1))
-    self.assertTrue(type_2.is_subtype_of(type_1))
-    self.assertTrue(type_1.is_subtype_of(type_2))
-
-  @parameterized.parameters([True, False])
-  def testDtypeMismatch(self, shape_relaxation):
-    signature_context = trace_type.SignatureContext(shape_relaxation)
-    type_1 = ops.TensorType(signature_context,
-                            tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
-                            None)
-    type_2 = ops.TensorType(signature_context,
-                            tensor_shape.TensorShape([1, 2, 3]), dtypes.int32,
-                            None)
-    self.assertNotEqual(type_1, type_2)
-    self.assertFalse(type_2.is_subtype_of(type_1))
-    self.assertFalse(type_1.is_subtype_of(type_2))
-
-  @parameterized.parameters([True, False])
-  def testSubtypeOfShapeless(self, shape_relaxation):
-    signature_context = trace_type.SignatureContext(shape_relaxation)
-    type_1 = ops.TensorType(signature_context, tensor_shape.TensorShape(None),
-                            dtypes.float32, None)
-    type_2 = ops.TensorType(signature_context,
-                            tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
-                            None)
-    self.assertNotEqual(type_1, type_2)
-    self.assertFalse(type_1.is_subtype_of(type_2))
-    self.assertTrue(type_2.is_subtype_of(type_1))
-
-  def testSubtypeOfDimlessShape(self):
-    signature_context = trace_type.SignatureContext(False)
-    type_1 = ops.TensorType(signature_context,
-                            tensor_shape.TensorShape([None, None, None]),
-                            dtypes.float32, None)
-    type_2 = ops.TensorType(signature_context,
-                            tensor_shape.TensorShape([1, 2, 3]), dtypes.float32,
-                            None)
-    self.assertNotEqual(type_1, type_2)
-    self.assertFalse(type_1.is_subtype_of(type_2))
-    self.assertTrue(type_2.is_subtype_of(type_1))
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1006,6 +951,20 @@ class OperationTest(test_util.TensorFlowTestCase):
     op._set_attr("foo", attr_value_pb2.AttrValue(i=2))
     # TODO(skyewm): add node_def check
     self.assertEqual(op.get_attr("foo"), 2)
+
+  @test_util.run_v2_only
+  def testSetFullType(self):
+    @def_function.function
+    def test_fn():
+      ds = dataset_ops.Dataset.range(3)._variant_tensor
+
+      ds.op.experimental_set_type(
+          full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_PRODUCT))
+
+      self.assertEqual(ds.op.node_def.experimental_type.type_id,
+                       full_type_pb2.TFT_PRODUCT)
+
+    test_fn()
 
   # TODO(nolivia): test all error cases
   def testAddControlInput(self):

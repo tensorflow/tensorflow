@@ -49,7 +49,7 @@ class ZerosLikeOpModel : public SingleOpModel {
 TEST(ZerosLikeOpModel, ZerosLikeFloat) {
   ZerosLikeOpModel m({TensorType_FLOAT32, {2, 3}});
   m.PopulateTensor<float>(m.input(), {-2.0, -1.0, 0.0, 1.0, 2.0, 3.0});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray({0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({2, 3}));
@@ -58,7 +58,7 @@ TEST(ZerosLikeOpModel, ZerosLikeFloat) {
 TEST(ZerosLikeOpModel, ZerosLikeInt32) {
   ZerosLikeOpModel m({TensorType_INT32, {1, 2, 2, 1}});
   m.PopulateTensor<int32_t>(m.input(), {-2, -1, 0, 3});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<int32_t>(m.output()),
               ElementsAreArray({0, 0, 0, 0}));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 2, 2, 1}));
@@ -67,7 +67,7 @@ TEST(ZerosLikeOpModel, ZerosLikeInt32) {
 TEST(ZerosLikeOpModel, ZerosLikeInt64) {
   ZerosLikeOpModel m({TensorType_INT64, {1, 2, 2, 1}});
   m.PopulateTensor<int64_t>(m.input(), {-2, -1, 0, 3});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<int64_t>(m.output()),
               ElementsAreArray({0, 0, 0, 0}));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 2, 2, 1}));

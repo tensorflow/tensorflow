@@ -326,6 +326,43 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   return std::move(executables);
 }
 
+StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+Service::BuildAotResults(
+    const std::vector<const HloModuleProto*>& module_protos,
+    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
+    Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
+    const Compiler::CompileOptions& options, bool run_backend_only) {
+  VLOG(1) << StrFormat("BuildAotResults on service %p", this);
+
+  VLOG(1) << "Computations:";
+  for (const HloModuleProto* proto : module_protos) {
+    VLOG(1) << proto->name();
+  }
+
+  CHECK_EQ(module_protos.size(), module_configs.size());
+  auto module_group =
+      absl::make_unique<HloModuleGroup>(module_protos[0]->name());
+  for (int64_t i = 0, end = module_protos.size(); i < end; ++i) {
+    const HloModuleProto* proto = module_protos[i];
+    const HloModuleConfig& config = *module_configs[i];
+    TF_ASSIGN_OR_RETURN(
+        auto module, CreateModuleFromProto(*proto, config, run_backend_only));
+    DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
+    module_group->push_back(std::move(module));
+  }
+
+  AotCompilationOptions aot_options(backend->compiler()->PlatformId());
+  aot_options.set_executor(executors[0][0]);
+  aot_options.set_device_allocator(options.device_allocator);
+  aot_options.set_run_backend_only(run_backend_only);
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      backend->compiler()->CompileAheadOfTime(std::move(module_group),
+                                              aot_options));
+  return std::move(aot_results);
+}
+
 StatusOr<std::vector<GlobalDataHandle>>
 Service::ExecuteParallelAndRegisterResult(
     absl::Span<Executable* const> executables,

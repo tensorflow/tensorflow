@@ -12,4 +12,4 @@ ENTRY Test {
 // translated to a compared instead of a convert to i1 (which is truncating).
 // CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<3xi32>
 // CHECK: "mhlo.compare"(%{{.*}}, %[[ZERO]])
-// CHECK-SAME: comparison_direction = "NE"
+// CHECK-SAME: comparison_direction = #mhlo<"comparison_direction NE">

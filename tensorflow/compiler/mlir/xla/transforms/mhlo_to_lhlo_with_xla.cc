@@ -26,8 +26,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -45,7 +45,7 @@ limitations under the License.
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -175,7 +175,7 @@ class XlaHloToLhloPass
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
         .insert<arith::ArithmeticDialect, bufferization::BufferizationDialect,
-                StandardOpsDialect, memref::MemRefDialect, mhlo::MhloDialect,
+                func::FuncDialect, memref::MemRefDialect, mhlo::MhloDialect,
                 lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
   }
 
@@ -307,7 +307,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
         GetI64DenseElementsAttr(dimensions));
 
     TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
-        *instr->called_computations()[0], &reduce_op.body(), &builder_));
+        *instr->called_computations()[0], &reduce_op.body(), &builder_,
+        /*flatten_region_arg_tuple=*/true));
     op = reduce_op;
   } else {
     TF_ASSIGN_OR_RETURN(
@@ -939,8 +940,8 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         backend_config.activation_mode());
     TF_ASSIGN_OR_RETURN(mlir::lmhlo_gpu::Activation activation,
                         GetLHLOActivation(se_activation));
-    StringAttr activation_attr = builder_.getStringAttr(
-        mlir::lmhlo_gpu::stringifyActivation(activation));
+    auto activation_attr = ::mlir::lmhlo_gpu::ActivationAttr::get(
+        getLocation(custom_call).getContext(), activation);
     op.activation_modeAttr(activation_attr);
     return Status::OK();
   };
@@ -1235,9 +1236,8 @@ xla::StatusOr<lmhlo::FftOp> LhloDialectEmitter::EmitFftOp(
   TF_ASSIGN_OR_RETURN(auto fft, CreateOpWithoutAttrs<lmhlo::FftOp>(instr));
   TF_ASSIGN_OR_RETURN(mlir::mhlo::FftType fft_type,
                       xla::ConvertFftType(hlo_fft->fft_type()));
-  StringAttr fft_type_attr =
-      builder_.getStringAttr(mlir::mhlo::stringifyFftType(fft_type));
-  fft.fft_typeAttr(fft_type_attr);
+  fft.fft_typeAttr(
+      mlir::mhlo::FftTypeAttr::get(builder_.getContext(), fft_type));
   fft.fft_lengthAttr(GetI64DenseElementsAttr(instr->fft_length()));
   return fft;
 }
@@ -1257,7 +1257,7 @@ LhloDialectEmitter::EmitTriangularSolveOp(const xla::HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(mlir::mhlo::Transpose transpose,
                       xla::ConvertTranspose(options.transpose_a()));
   triangular_solve.transpose_aAttr(
-      builder_.getStringAttr(mlir::mhlo::stringifyTranspose(transpose)));
+      mlir::mhlo::TransposeAttr::get(builder_.getContext(), transpose));
   triangular_solve.layout_aAttr(
       GetLayoutAttribute(instr->operand(0)->shape().layout(), &builder_));
   triangular_solve.layout_bAttr(
@@ -1641,7 +1641,7 @@ Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
   module.getContext()
       ->loadDialect<arith::ArithmeticDialect,
-                    bufferization::BufferizationDialect, StandardOpsDialect,
+                    bufferization::BufferizationDialect, func::FuncDialect,
                     memref::MemRefDialect, mhlo::MhloDialect,
                     lmhlo::LmhloDialect, lmhlo_gpu::LmhloGpuDialect>();
 
@@ -1673,15 +1673,15 @@ Status HloToLhloModule(const BufferAssignment& assignment,
   return status_handler.ConsumeStatus();
 }
 
-OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
-                                               MLIRContext* context,
-                                               bool optimize_xla_hlo) {
+OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(
+    llvm::StringRef input, MLIRContext* context, bool optimize_xla_hlo) {
   StatusOr<std::unique_ptr<HloModule>> maybe_module =
       xla::ParseAndReturnUnverifiedModule(
           absl::string_view(input.data(), input.size()));
   TF_CHECK_OK(maybe_module.status());
 
-  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
+  OwningOpRef<mlir::ModuleOp> module =
+      ModuleOp::create(UnknownLoc::get(context));
 
   TF_CHECK_OK(OptimizeAndConvertHloToLmhlo(maybe_module.ConsumeValueOrDie(),
                                            module.get(), "Host",

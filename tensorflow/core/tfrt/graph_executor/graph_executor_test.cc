@@ -38,36 +38,6 @@ namespace tensorflow {
 namespace tfrt_stub {
 namespace {
 
-// The created `SessionOptions` contains the Grappler configs.
-static tensorflow::SessionOptions CreateSessionOptions(
-    const GraphExecutor::Options& options) {
-  tensorflow::SessionOptions session_options;
-  auto& config = session_options.config;
-
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_disable_meta_optimizer(!options.compile_options.enable_grappler);
-
-  // The following configs are constant.
-
-  // Avoid grappler logic that lowers to v1 control flow.
-  config.mutable_experimental()->set_use_tfrt(true);
-  config.mutable_graph_options()
-      ->mutable_optimizer_options()
-      ->set_do_function_inlining(false);
-  // Do not skip grappler optimization even for small graphs.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_min_graph_nodes(-1);
-  // Disable function inlining because it may cause restore graphs to be removed
-  // as we optimize all graphs together.
-  config.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_function_optimization(tensorflow::RewriterConfig::OFF);
-
-  return session_options;
-}
-
 class GraphExecutorTest : public grappler::GrapplerTest {};
 
 TEST_F(GraphExecutorTest, Vanilla) {
@@ -84,7 +54,7 @@ TEST_F(GraphExecutorTest, Vanilla) {
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   GraphExecutor::Options options(runtime.get());
   auto statusor_fallback_state = tensorflow::tfrt_stub::FallbackState::Create(
-      CreateSessionOptions(options), graph_def.library());
+      CreateDefaultSessionOptions(options), graph_def.library());
   ASSERT_TRUE(statusor_fallback_state.ok());
   tensorflow::tfrt_stub::FallbackState* fallback_state =
       statusor_fallback_state.ValueOrDie().get();
@@ -94,6 +64,60 @@ TEST_F(GraphExecutorTest, Vanilla) {
       std::move(options), *fallback_state, tpu_model_resource.get(), graph_def);
   ASSERT_TRUE(status_or_graph_executor.ok());
   GraphExecutor* graph_executor = status_or_graph_executor.ValueOrDie().get();
+
+  // Set input 'x' to [[1, 1, 1]]
+  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;
+  inputs.push_back({"input", CreateTfTensor<int32_t>(
+                                 /*shape=*/{1, 3}, /*data=*/{1, 1, 1})});
+
+  std::vector<tensorflow::Tensor> outputs;
+
+  TF_ASSERT_OK(graph_executor->Run(/*run_options=*/{}, inputs,
+                                   /*output_tensor_names=*/{"rank"},
+                                   /*target_tensor_names=*/{}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
+              ::testing::ElementsAreArray({2}));
+}
+
+TEST_F(GraphExecutorTest, Extend) {
+  GraphDef graph_def;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+    Output a = ops::Const(scope.WithOpName("a"), 0.0f, {10, 10});
+
+    Output b = ops::Const(scope.WithControlDependencies(a).WithOpName("b"),
+                          0.0f, {10, 10});
+    Output c = ops::Identity(scope.WithOpName("c"), b);
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
+  }
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            tpu_model_resource.get(), graph_def));
+
+  GraphDef extension;
+  {
+    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+    auto input = ops::Placeholder(scope.WithOpName("input"), DT_INT32);
+    auto rank = ops::Rank(scope.WithOpName("rank"), input);
+
+    TF_ASSERT_OK(scope.ToGraphDef(&extension));
+  }
+
+  TF_ASSERT_OK(graph_executor->Extend(extension));
 
   // Set input 'x' to [[1, 1, 1]]
   std::vector<std::pair<std::string, tensorflow::Tensor>> inputs;

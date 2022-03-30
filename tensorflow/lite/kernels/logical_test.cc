@@ -69,7 +69,7 @@ TEST(LogicalTest, LogicalOr) {
   LogicalOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, BuiltinOperator_LOGICAL_OR);
   model.PopulateTensor<bool>(model.input1(), {true, false, false, true});
   model.PopulateTensor<bool>(model.input2(), {true, false, true, false});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, true, true));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
@@ -79,7 +79,7 @@ TEST(LogicalTest, BroadcastLogicalOr) {
   LogicalOpModel model({1, 1, 1, 4}, {1, 1, 1, 1}, BuiltinOperator_LOGICAL_OR);
   model.PopulateTensor<bool>(model.input1(), {true, false, false, true});
   model.PopulateTensor<bool>(model.input2(), {false});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
@@ -89,7 +89,7 @@ TEST(LogicalTest, LogicalAnd) {
   LogicalOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, BuiltinOperator_LOGICAL_AND);
   model.PopulateTensor<bool>(model.input1(), {true, false, false, true});
   model.PopulateTensor<bool>(model.input2(), {true, false, true, false});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, false));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
@@ -99,7 +99,7 @@ TEST(LogicalTest, BroadcastLogicalAnd) {
   LogicalOpModel model({1, 1, 1, 4}, {1, 1, 1, 1}, BuiltinOperator_LOGICAL_AND);
   model.PopulateTensor<bool>(model.input1(), {true, false, false, true});
   model.PopulateTensor<bool>(model.input2(), {true});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));

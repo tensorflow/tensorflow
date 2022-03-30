@@ -868,7 +868,7 @@ class OpRunner;
 //
 // All OpRunners must be outlived by their parent Stream.
 template <typename... Args>
-class OpRunner<port::Status(Args...)> {
+class OpRunner<void(Args...)> {
  public:
   virtual ~OpRunner() {}
 
@@ -889,21 +889,21 @@ class OpRunner<port::Status(Args...)> {
   virtual port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const = 0;
 
   // Launch the operation, with the signature determined by `Sig`.
-  virtual port::Status operator()(Args... args) const = 0;
+  virtual port::Status operator()(Stream*, ProfileResult*,
+                                  DeviceMemoryBase scratch_memory,
+                                  Args... args) const = 0;
 };
 
-using ConvSignature = port::Status(Stream*, DeviceMemoryBase /* input_data */,
-                                   DeviceMemoryBase /* filter_data */,
-                                   DeviceMemoryBase /* output_data */,
-                                   DeviceMemoryBase /* scratch_memory */,
-                                   ProfileResult*);
+using ConvSignature = void(DeviceMemoryBase /* input_data */,
+                           DeviceMemoryBase /* filter_data */,
+                           DeviceMemoryBase /* output_data */);
 using ConvRunner = OpRunner<ConvSignature>;
 
-using FusedConvSignature = port::Status(
-    Stream*, DeviceMemoryBase /* input_data */,
-    DeviceMemoryBase /* filter_data */, DeviceMemoryBase /* side_input_data */,
-    DeviceMemoryBase /* bias_data */, DeviceMemoryBase /* output_data */,
-    DeviceMemoryBase /* scratch_memory */, ProfileResult*);
+using FusedConvSignature = void(DeviceMemoryBase /* input_data */,
+                                DeviceMemoryBase /* filter_data */,
+                                DeviceMemoryBase /* side_input_data */,
+                                DeviceMemoryBase /* bias_data */,
+                                DeviceMemoryBase /* output_data */);
 using FusedConvRunner = OpRunner<FusedConvSignature>;
 
 // Describes the configuration for the algorithms that will used.
@@ -2665,6 +2665,12 @@ class DnnSupport {
       dnn::ProfileResult* output_profile_result) {
     return false;
   }
+
+  // Notifies that a stream is being destroyed and should be invalidated from
+  // any internal caching.  This exists to allow the CUDA implementation to
+  // avoid redundant cudnnSetStream calls without risking problems when a stream
+  // is destroyed and a new stream later created in the same memory.
+  virtual void NotifyStreamDestroyed(Stream* stream) {}
 
  protected:
   // Returns whether status is 'ok', and potentially logs the error.

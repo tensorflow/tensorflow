@@ -234,6 +234,9 @@ bool IsFusedBroadcastOfConstantEffectiveScalar(const HloInstruction* instr) {
 //   "return param0 * param1;"      --> "multiply"
 //   "return min(param0, param1);"  --> "min"
 //   "return max(param0, param1);"  --> "max"
+//   "return xor(param0, param1);"  --> "xor"
+//   "return and(param0, param1);"  --> "and"
+//   "return or(param0, param1);"   --> "or"
 //   "return param0 <= param1;"     --> "less-or-equal"
 //   "return param0 >= param1;"     --> "greater-or-equal"
 //   "return param0 >  param1;"     --> "greater-than"
@@ -295,6 +298,12 @@ optional<std::string> MatchTrivialComputation(
       return "min";
     case HloOpcode::kMaximum:
       return "max";
+    case HloOpcode::kXor:
+      return "xor";
+    case HloOpcode::kAnd:
+      return "and";
+    case HloOpcode::kOr:
+      return "or";
     case HloOpcode::kCompare: {
       switch (root->comparison_direction()) {
         case ComparisonDirection::kLe:
@@ -1091,6 +1100,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       // Emphasize copy nodes, which are either physical transposes (and thus
       // significant), or copies of read-only buffers (and thus dead weight).
       return kGreen;
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+      return GetInstructionColor(instr->async_wrapped_instruction());
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
     case HloOpcode::kFft:
@@ -1899,7 +1912,11 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
   </style>
 </head>
 <body>
-  $JS_INCLUDE
+  <script src="https://www.gstatic.com/external_hosted/hpcc_js_wasm/index.min.js"
+      integrity="sha384-LigJPbR3TOfU/Xbb+PjiN1dGJYPweLk7kiGnaMgmxnUmKWaCFKbb5tH6iLlyVhPZ"
+      crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/external_hosted/svg_pan_zoom/svg-pan-zoom.js">
+  </script>
 
   <title>Fusion Explorer: $TITLE</title>
   <div id='rendered'><center>Loading...</center></div>
@@ -2040,8 +2057,7 @@ StatusOr<std::string> WrapFusionExplorer(const HloComputation& computation) {
   </body>
 </html>
   )",
-      {{"$JS_INCLUDE", kRenderDotJS},
-       {"$DOTS", dot_graphs_compressed},
+      {{"$DOTS", dot_graphs_compressed},
        {"$FRAMES", frames},
        {"$TITLE",
         absl::StrCat(computation.parent()->name(), "_", computation.name())}});

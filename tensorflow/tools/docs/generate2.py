@@ -1,4 +1,3 @@
-# lint as: python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,7 +24,7 @@ Requires a local installation of `tensorflow_docs`:
 pip install git+https://github.com/tensorflow/docs
 ```
 """
-
+import distutils
 import pathlib
 import textwrap
 
@@ -66,6 +65,7 @@ tf.__all__ = [item_name for item_name, value in tf_inspect.getmembers(tf)]
 # duplicate all the module skeleton files.
 tf.compat.v2 = tf
 
+MIN_NUM_FILES_EXPECTED = 2000
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
@@ -181,6 +181,11 @@ def build_docs(output_dir, code_url_prefix, search_hints):
     code_url_prefix: prefix for "Defined in" links.
     search_hints: Bool. Include meta-data search hints at the top of each file.
   """
+  if distutils.version.LooseVersion(tf.__version__) >= "2.9":
+    doc_controls.set_deprecated(tf.keras.preprocessing)
+    doc_controls.set_deprecated(tf.estimator)
+    doc_controls.set_deprecated(tf.feature_column)
+
   # The custom page will be used for raw_ops.md not the one generated above.
   doc_controls.set_custom_page_builder_cls(tf.raw_ops, RawOpsPageInfo)
 
@@ -239,8 +244,6 @@ def build_docs(output_dir, code_url_prefix, search_hints):
           "python/ops/nn_impl.py",
       "tf/keras/Model.md":
           "keras/engine/training.py",
-      "tf/keras/preprocessing/image/random_brightness.md":
-          "keras_preprocessing/image/affine_transformations.py"
   }
 
   all_passed = True
@@ -275,9 +278,10 @@ def build_docs(output_dir, code_url_prefix, search_hints):
     raise ValueError("\n".join(error_msg_parts))
 
   num_files = len(list(out_path.rglob("*")))
-  if num_files < 2000:
-    raise ValueError("The TensorFlow api should be more than 2000 files"
-                     "(found {}).".format(num_files))
+  if num_files < MIN_NUM_FILES_EXPECTED:
+    raise ValueError(
+        f"The TensorFlow api should be more than {MIN_NUM_FILES_EXPECTED} files"
+        f"(found {num_files}).")
 
 
 def main(argv):

@@ -43,6 +43,9 @@ namespace {
 
 bool IsCallerInstruction(HloInstruction* hlo) {
   switch (hlo->opcode()) {
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
@@ -469,12 +472,6 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
   TF_RET_CHECK(all_to_all != nullptr);
-  if (all_to_all->split_dimension()) {
-    if (hlo->replica_groups().empty()) {
-      return InternalError(
-          "An array all-to-all must have an explicit replica_groups config");
-    }
-  }
 
   // The size of each replica group must be the same (checked in
   // CheckReplicaGroups). This is the split count of the operation). In case the
@@ -1323,6 +1320,41 @@ Status ShapeVerifier::HandlePad(HloInstruction* pad) {
                                                        pad->padding_config()));
 }
 
+Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
+  return Status::OK();
+}
+
+namespace {
+Status CheckAsyncOpOperand(const HloInstruction* async_op) {
+  const HloInstruction* operand = async_op->operand(0);
+  if (operand->opcode() != HloOpcode::kAsyncStart &&
+      operand->opcode() != HloOpcode::kAsyncUpdate) {
+    return InternalError(
+        "async-update expects operand to be async-update or async-done, found "
+        "%s.",
+        HloOpcodeString(operand->opcode()));
+  }
+  if (*async_op->async_wrapped_computation() !=
+      *operand->async_wrapped_computation()) {
+    return InternalError(
+        "The %s expects its wrapped async computation to be identical to its "
+        "operand's wrapped async computation (%s vs %s).",
+        HloOpcodeString(async_op->opcode()),
+        async_op->async_wrapped_instruction()->ToString(),
+        operand->async_wrapped_instruction()->ToString());
+  }
+  return Status::OK();
+}
+}  // namespace
+
+Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
+  return CheckAsyncOpOperand(async_update);
+}
+
+Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
+  return CheckAsyncOpOperand(async_done);
+}
+
 Status ShapeVerifier::HandleCopyStart(HloInstruction* copy_start) {
   return CheckShape(copy_start,
                     ShapeUtil::MakeTupleShape({copy_start->operand(0)->shape(),
@@ -1426,12 +1458,16 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAsyncDone:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncStart:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
+    case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
@@ -1547,6 +1583,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:
+      case HloOpcode::kOptimizationBarrier:
       case HloOpcode::kParameter:
       case HloOpcode::kRecv:
       case HloOpcode::kRecvDone:
@@ -1790,31 +1827,40 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
 }
 
 Status VerifySingleUser(const HloInstruction* instruction,
-                        HloOpcode expected_user) {
+                        const absl::flat_hash_set<HloOpcode>& expected_users) {
   TF_RET_CHECK(instruction->users().size() == 1)
       << "The " << HloOpcodeString(instruction->opcode())
       << " instruction requires one consumer, found "
       << instruction->users().size();
 
   const HloInstruction* user = instruction->users().front();
-  TF_RET_CHECK(user->opcode() == expected_user)
+  TF_RET_CHECK(expected_users.contains(user->opcode()))
       << "The consumer of a " << HloOpcodeString(instruction->opcode())
-      << " instruction needs to be " << HloOpcodeString(expected_user)
-      << ", found " << HloOpcodeString(user->opcode());
+      << " instruction needs to be one of ("
+      << absl::StrJoin(expected_users, ", ",
+                       [](std::string* out, HloOpcode opcode) {
+                         out->append(HloOpcodeString(opcode));
+                       })
+      << "), found " << HloOpcodeString(user->opcode());
   return Status::OK();
 }
 
 Status VerifySingleOperand(const HloInstruction* instruction,
-                           HloOpcode expected_operand) {
+                           const std::vector<HloOpcode>& expected_operands) {
   TF_RET_CHECK(instruction->operands().size() == 1)
       << "The " << HloOpcodeString(instruction->opcode())
       << " instruction requires one consumer, found "
       << instruction->users().size();
 
   const HloInstruction* operand = instruction->operand(0);
-  TF_RET_CHECK(operand->opcode() == expected_operand)
+  TF_RET_CHECK(absl::c_find(expected_operands, operand->opcode()) !=
+               expected_operands.end())
       << "The operand of a " << HloOpcodeString(instruction->opcode())
-      << " instruction needs to be " << HloOpcodeString(expected_operand)
+      << " instruction needs to be "
+      << absl::StrJoin(expected_operands, " or ",
+                       [](std::string* out, HloOpcode opcode) {
+                         out->append(HloOpcodeString(opcode));
+                       })
       << ", found " << HloOpcodeString(operand->opcode());
   return Status::OK();
 }
@@ -1825,34 +1871,51 @@ Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
+        case HloOpcode::kAsyncStart: {
+          TF_RETURN_IF_ERROR(VerifySingleUser(
+              instruction, {HloOpcode::kAsyncUpdate, HloOpcode::kAsyncDone}));
+          break;
+        }
+        case HloOpcode::kAsyncUpdate: {
+          TF_RETURN_IF_ERROR(VerifySingleOperand(
+              instruction, {HloOpcode::kAsyncStart, HloOpcode::kAsyncUpdate}));
+          TF_RETURN_IF_ERROR(VerifySingleUser(
+              instruction, {HloOpcode::kAsyncUpdate, HloOpcode::kAsyncDone}));
+          break;
+        }
+        case HloOpcode::kAsyncDone: {
+          TF_RETURN_IF_ERROR(VerifySingleOperand(
+              instruction, {HloOpcode::kAsyncStart, HloOpcode::kAsyncUpdate}));
+          break;
+        }
         case HloOpcode::kAllReduceStart: {
           TF_RETURN_IF_ERROR(
-              VerifySingleUser(instruction, HloOpcode::kAllReduceDone));
+              VerifySingleUser(instruction, {HloOpcode::kAllReduceDone}));
           break;
         }
         case HloOpcode::kAllReduceDone: {
           TF_RETURN_IF_ERROR(
-              VerifySingleOperand(instruction, HloOpcode::kAllReduceStart));
+              VerifySingleOperand(instruction, {HloOpcode::kAllReduceStart}));
           break;
         }
         case HloOpcode::kCopyStart: {
           TF_RETURN_IF_ERROR(
-              VerifySingleUser(instruction, HloOpcode::kCopyDone));
+              VerifySingleUser(instruction, {HloOpcode::kCopyDone}));
           break;
         }
         case HloOpcode::kCopyDone: {
           TF_RETURN_IF_ERROR(
-              VerifySingleOperand(instruction, HloOpcode::kCopyStart));
+              VerifySingleOperand(instruction, {HloOpcode::kCopyStart}));
           break;
         }
         case HloOpcode::kCollectivePermuteStart: {
-          TF_RETURN_IF_ERROR(
-              VerifySingleUser(instruction, HloOpcode::kCollectivePermuteDone));
+          TF_RETURN_IF_ERROR(VerifySingleUser(
+              instruction, {HloOpcode::kCollectivePermuteDone}));
           break;
         }
         case HloOpcode::kCollectivePermuteDone: {
           TF_RETURN_IF_ERROR(VerifySingleOperand(
-              instruction, HloOpcode::kCollectivePermuteStart));
+              instruction, {HloOpcode::kCollectivePermuteStart}));
           break;
         }
         default:

@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrapper for prefetching_ops."""
-from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import options as options_lib
@@ -99,11 +98,10 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs
 
-    if use_anonymous_multi_device_iterator_v3():
-      if iterator_is_anonymous:
-        self._next_captured_args = self._next_captured_args + [
-            multi_device_iterator_resource
-        ]
+    if iterator_is_anonymous:
+      self._next_captured_args = self._next_captured_args + [
+          multi_device_iterator_resource
+      ]
 
     self._incarnation_id_index = -1
     for i, arg in enumerate(self._next_captured_args):
@@ -354,44 +352,6 @@ class MultiDeviceIterator(object):
     return self._dataset.element_spec
 
 
-class MultiDeviceIteratorResourceDeleter(object):
-  """An object which cleans up a Multi Device Iterator resource.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectible.
-  """
-
-  __slots__ = [
-      "_deleter", "_multi_device_iterator", "_iterators", "_device",
-      "_eager_mode"
-  ]
-
-  def __init__(self, multi_device_iterator, iterators, device, deleter):
-    self._deleter = deleter
-    self._multi_device_iterator = multi_device_iterator
-    self._iterators = iterators
-    self._device = device
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    with ops.device(self._device):
-      # Make sure the resource is deleted in the same mode as it was created in.
-      # We pass in the iterator handles as inputs to the op to make sure that
-      # this op runs after all the iterators are deleted.
-      if self._eager_mode:
-        with context.eager_mode():
-          gen_dataset_ops.delete_multi_device_iterator(
-              multi_device_iterator=self._multi_device_iterator,
-              iterators=self._iterators,
-              deleter=self._deleter)
-      else:
-        with context.graph_mode():
-          gen_dataset_ops.delete_multi_device_iterator(
-              multi_device_iterator=self._multi_device_iterator,
-              iterators=self._iterators,
-              deleter=self._deleter)
-
-
 class MultiDeviceIteratorSpec(type_spec.TypeSpec):
   """Type specification for `OwnedMultiDeviceIterator`."""
 
@@ -411,25 +371,16 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
 
   @property
   def _component_specs(self):
-    if use_anonymous_multi_device_iterator_v3():
-      specs = [
-          tensor_spec.TensorSpec([], dtypes.resource),
-      ]
-    else:
-      specs = [
-          tensor_spec.TensorSpec([], dtypes.resource),
-          tensor_spec.TensorSpec([], dtypes.variant)
-      ]
+    specs = [
+        tensor_spec.TensorSpec([], dtypes.resource),
+    ]
     for _ in range(len(self._devices)):
       specs.append(iterator_ops.IteratorSpec(self._element_spec))
     return specs
 
   def _to_components(self, value):
     # pylint: disable=protected-access
-    if use_anonymous_multi_device_iterator_v3():
-      c = [value._multi_device_iterator_resource]
-    else:
-      c = [value._multi_device_iterator_resource, value._deleter]
+    c = [value._multi_device_iterator_resource]
     c.extend(value._device_iterators)
     return c
 
@@ -448,10 +399,6 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
         value._devices,
         value._source_device,
         value.element_spec)
-
-
-def use_anonymous_multi_device_iterator_v3():
-  return forward_compat.forward_compatible(2021, 2, 1)
 
 
 class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
@@ -511,13 +458,8 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       self._element_spec = element_spec
       self._devices = devices
       self._source_device = source_device
-      if use_anonymous_multi_device_iterator_v3():
-        self._multi_device_iterator_resource = components[0]
-        self._device_iterators = components[1:]
-      else:
-        self._multi_device_iterator_resource = components[0]
-        self._deleter = components[1]
-        self._device_iterators = components[2:]
+      self._multi_device_iterator_resource = components[0]
+      self._device_iterators = components[1:]
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(
@@ -538,14 +480,9 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
 
       # Create the MultiDeviceIterator.
       with ops.device(self._source_device):
-        if use_anonymous_multi_device_iterator_v3():
-          self._multi_device_iterator_resource = (
-              gen_dataset_ops.anonymous_multi_device_iterator_v3(
-                  devices=self._devices, **dataset._flat_structure))  # pylint: disable=protected-access
-        else:
-          self._multi_device_iterator_resource, self._deleter = (
-              gen_dataset_ops.anonymous_multi_device_iterator(
-                  devices=self._devices, **dataset._flat_structure))  # pylint: disable=protected-access
+        self._multi_device_iterator_resource = (
+            gen_dataset_ops.anonymous_multi_device_iterator_v3(
+                devices=self._devices, **dataset._flat_structure))  # pylint: disable=protected-access
 
         # The incarnation ID is used to ensure consistency between the
         # per-device iterators and the multi-device iterator.
@@ -581,17 +518,6 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
                                       experimental_slack)
           iterator = iter(ds)
           self._device_iterators.append(iterator)
-
-    if not use_anonymous_multi_device_iterator_v3():
-      iterator_handles = []
-      for iterator in self._device_iterators:
-        iterator_handles.append(iterator._iterator_resource)  # pylint: disable=protected-access
-
-      self._resource_deleter = MultiDeviceIteratorResourceDeleter(
-          multi_device_iterator=self._multi_device_iterator_resource,
-          iterators=iterator_handles,
-          device=self._source_device,
-          deleter=self._deleter)
 
   def get_next(self, device=None):
     """Returns the next element given a `device`, else returns all in a list."""

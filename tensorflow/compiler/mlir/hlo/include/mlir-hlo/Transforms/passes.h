@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_LIB_TRANSFORMS_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_LIB_TRANSFORMS_PASSES_H_
+#ifndef MLIR_HLO_TRANSFORMS_PASSES_H
+#define MLIR_HLO_TRANSFORMS_PASSES_H
 
 #include <memory>
 
@@ -22,34 +22,40 @@ limitations under the License.
 
 namespace mlir {
 
+namespace func {
+class FuncOp;
+}  // namespace func
+
 //===----------------------------------------------------------------------===//
 // Passes
 //===----------------------------------------------------------------------===//
 
 /// Creates a pass that reuses buffers which are already allocated.
-std::unique_ptr<OperationPass<FuncOp>> createBufferReusePass();
+std::unique_ptr<OperationPass<func::FuncOp>> createBufferReusePass();
 
-/// Creates a pass that tries to simplify dynamic reshapes.
-std::unique_ptr<OperationPass<FuncOp>> createReshapeSimplifierPass();
+/// Creates a pass to analyze shapes and to use that information for
+/// shape-related optimizations.
+std::unique_ptr<OperationPass<func::FuncOp>> createSymbolicShapeOptimizationPass();
 
 /// Creates a pass that merges smaller buffer into bigger buffer to optimize
 /// memory consumption.
-std::unique_ptr<OperationPass<FuncOp>> createBufferPackingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createBufferPackingPass(
     unsigned window_size = 5);
 
 /// Creates a pass that tests the useranges of the UserangeAnalysis.
-std::unique_ptr<OperationPass<FuncOp>> createTestUserangePass();
+std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass();
 
 /// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
-std::unique_ptr<OperationPass<FuncOp>> createTestShapeComponentAnalysisPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+createTestShapeComponentAnalysisPass();
 
 /// Creates a pass that removes redundant operations that implement a
 /// CopyOpInterface.
-std::unique_ptr<OperationPass<FuncOp>> createCopyRemovalPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createCopyRemovalPass();
 
 /// Creates a pass that computes the allocated memory.
-std::unique_ptr<OperationPass<FuncOp>> createMemoryCountPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass();
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_LIB_TRANSFORMS_PASSES_H_
+#endif  // MLIR_HLO_TRANSFORMS_PASSES_H

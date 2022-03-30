@@ -128,6 +128,9 @@ struct OpKernelRunState {
     // after copying.
     params = p;
     params.inputs = &input_tf_tensor_values;
+    // Clear eigen_gpu_device to ensure OpKernelContext constructor will make a
+    // new eigen GPU device.
+    params.eigen_gpu_device = nullptr;
   }
 
   OpKernelRunState(const OpKernelRunState& other) = delete;

@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/platform/logging.h"
 
 #define DEBUG_TYPE "tf-executor-tpu-v1-island-coarsening"
@@ -55,7 +56,6 @@ namespace tf_executor {
 
 namespace {
 
-constexpr llvm::StringRef kTpuReplicateAttr = "_tpu_replicate";
 constexpr llvm::StringRef kTpuStatusAttr = "_tpu_compilation_status";
 
 // This pass is a variant of the island coarsening that is limited to
@@ -117,17 +117,17 @@ LogicalResult SortTopologically(Block::iterator begin, Block::iterator end) {
 }
 
 // Looks for an IslandOp that wraps a single operation tagged with the
-// _tpu_replicate attribute, and merges it with all the following operations in
-// the block. Sets the `changed` boolean to true if any island is merged.
+// _replication_info attribute, and merges it with all the following operations
+// in the block. Sets the `changed` boolean to true if any island is merged.
 // Returns a failure if a cycle prevents the merge from happening correctly
 // without breaking dominance. The IR is left in invalid state in case of
 // failure.
 LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
                               is_op_calling_func_for_cluster,
                           Operation* op, bool* changed) {
-  // Find the first island wrapping a single operation with the `_tpu_replicate`
-  // attribute, it'll be used as the root of the algorithm to find the other
-  // operations that are part of the same cluster.
+  // Find the first island wrapping a single operation with the
+  // `_replication_info` attribute, it'll be used as the root of the algorithm
+  // to find the other operations that are part of the same cluster.
   IslandOp island = dyn_cast<IslandOp>(*op);
   if (!island || !island.WrapsSingleOp()) return success();
   Operation& wrapped_op = island.GetBody().front();
@@ -139,12 +139,12 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
   }
 
   StringAttr cluster_name =
-      wrapped_op.getAttrOfType<StringAttr>(kTpuReplicateAttr);
+      wrapped_op.getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
   if (!cluster_name)
     cluster_name = wrapped_op.getAttrOfType<StringAttr>(kTpuStatusAttr);
   if (!cluster_name) return success();
 
-  // We found a _tpu_replicate, let's build an island for the full cluster!
+  // We found a _replication_info, let's build an island for the full cluster!
   LLVM_DEBUG(llvm::dbgs() << "Processing candidate island: "
                           << *island.getOperation() << "\n");
 
@@ -167,7 +167,8 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
     }
 
     StringAttr candidate_cluster_name =
-        candidate_wrapped_op.getAttrOfType<StringAttr>(kTpuReplicateAttr);
+        candidate_wrapped_op.getAttrOfType<StringAttr>(
+            TF::kReplicationInfoAttr);
     if (!candidate_cluster_name)
       candidate_cluster_name =
           candidate_wrapped_op.getAttrOfType<StringAttr>(kTpuStatusAttr);
@@ -324,7 +325,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
   for (FuncOp func_op : getOperation().getOps<FuncOp>()) {
     func_op.walk([&](Operation* op) {
       StringAttr cluster_name =
-          op->getAttrOfType<StringAttr>(kTpuReplicateAttr);
+          op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
       if (!cluster_name)
         cluster_name = op->getAttrOfType<StringAttr>(kTpuStatusAttr);
       if (!cluster_name) return;

@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -196,7 +196,7 @@ bool AlternativeSubgraphPass::IsAllSupportedbySpec(
   func.walk([&](Operation* op) {
     if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
         NotTFLQuantDequantizeOp(op) &&
-        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op) &&
+        !llvm::isa<func::ReturnOp, FuncOp, CallOpInterface>(op) &&
         !IsSupported(op, device_inference_type.hardware)) {
       found_unsupported = true;
     }
@@ -250,7 +250,7 @@ FuncOp AlternativeSubgraphPass::GetAlternativeViewForSpec(
   // Set device for each op.
   cloned_func.walk([&](Operation* op) {
     if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
-        !llvm::isa<ReturnOp, FuncOp, CallableOpInterface>(op)) {
+        !llvm::isa<func::ReturnOp, FuncOp, CallableOpInterface>(op)) {
       op->setAttr(kDevice, builder->getStringAttr(
                                target_device_inference_type.hardware));
       op->setAttr(kInferenceType,

@@ -181,8 +181,7 @@ IrArray::IrArray(llvm::Value* base_ptr, Shape shape)
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
   CHECK(base_ptr_->getType()->isPointerTy());
   int depth = 0;
-  element_type_ =
-      llvm::cast<llvm::PointerType>(base_ptr_->getType())->getElementType();
+  element_type_ = base_ptr_->getType()->getPointerElementType();
   while (llvm::ArrayType* array_type =
              llvm::dyn_cast<llvm::ArrayType>(element_type_)) {
     element_type_ = array_type->getElementType();

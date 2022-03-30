@@ -1,7 +1,7 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
 "builtin.module"() ({
-  "builtin.func"() ({
+  "func.func"() ({
     "tf_executor.graph"() ({
       %outputs, %control = "tf_executor.island"() ({
         %0 = "tf.Const"() {device = "", value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -52,8 +52,8 @@
       }) : () -> !tf_executor.control
       "tf_executor.fetch"() : () -> ()
     }) : () -> ()
-    "std.return"() : () -> ()
-  }) {sym_name = "main", type = () -> ()} : () -> ()
+    "func.return"() : () -> ()
+  }) {sym_name = "main", function_type = () -> ()} : () -> ()
 }) {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 126 : i32}} : () -> ()
 
 // CHECK: _SwitchN

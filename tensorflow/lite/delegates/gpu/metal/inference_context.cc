@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/serialization_base.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
@@ -65,40 +67,91 @@ void AddUsage(ValueId id, int task_index,
     (*usage_records)[id].y = task_index;
   }
 }
+
+// Calculates the total size of the assignment.
+size_t TotalSize(const ObjectsAssignment<size_t>& assignment,
+                 size_t alignment = 1) {
+  size_t total_size = 0;
+  for (auto object_size : assignment.object_sizes) {
+    total_size += AlignByN(object_size, alignment);
+  }
+  return total_size;
+}
+
+flatbuffers::Offset<data::MetalProgram> EncodeProgram(
+    const std::string& code, const std::map<std::string, std::string>& defines,
+    flatbuffers::FlatBufferBuilder* builder) {
+  std::vector<flatbuffers::Offset<flatbuffers::String>> names_fb;
+  std::vector<flatbuffers::Offset<flatbuffers::String>> expressions_fb;
+  for (auto& define : defines) {
+    names_fb.push_back(builder->CreateString(define.first));
+    expressions_fb.push_back(builder->CreateString(define.second));
+  }
+  auto names_fb_vec = builder->CreateVector(names_fb);
+  auto expressions_fb_vec = builder->CreateVector(expressions_fb);
+  auto code_fb = builder->CreateString(code);
+  data::MetalProgramBuilder program_builder(*builder);
+  program_builder.add_define_names(names_fb_vec);
+  program_builder.add_define_expressions(expressions_fb_vec);
+  program_builder.add_code(code_fb);
+  return program_builder.Finish();
+}
+
+void DecodeProgram(const data::MetalProgram* metal_program, std::string* code,
+                   std::map<std::string, std::string>* defines) {
+  *code = std::string(metal_program->code()->c_str(),
+                      metal_program->code()->size());
+  for (int i = 0; i < metal_program->define_names()->size(); ++i) {
+    std::string key((*metal_program->define_names())[i]->c_str(),
+                    (*metal_program->define_names())[i]->size());
+    std::string value((*metal_program->define_expressions())[i]->c_str(),
+                      (*metal_program->define_expressions())[i]->size());
+    (*defines)[key] = value;
+  }
+}
 }  // namespace
 
 absl::Status InferenceContext::InitFromGraphWithTransforms(
     const CreateGpuModelInfo& create_info, GraphFloat32* graph,
-    id<MTLDevice> device_id) {
+    id<MTLDevice> device_id, std::vector<uint8_t>* serialized_model) {
   RETURN_IF_ERROR(RunGraphTransformsForGpuModel(graph));
-  RETURN_IF_ERROR(InitFromGraph(create_info, *graph, device_id));
+  RETURN_IF_ERROR(
+      InitFromGraph(create_info, *graph, device_id, serialized_model));
   return absl::OkStatus();
+}
+
+void InferenceContext::CopyFromGpuModel(GpuModel* gpu_model) {
+  for (const auto& input : gpu_model->input_ids_and_refs) {
+    input_ids_.push_back(input.first);
+  }
+  for (const auto& output : gpu_model->output_ids_and_refs) {
+    output_ids_.push_back(output.first);
+  }
+  nodes_.resize(gpu_model->nodes.size());
+  for (int i = 0; i < gpu_model->nodes.size(); ++i) {
+    nodes_[i].task.Init(std::move(gpu_model->nodes[i].gpu_operation));
+    nodes_[i].inputs = gpu_model->nodes[i].inputs;
+    nodes_[i].outputs = gpu_model->nodes[i].outputs;
+    nodes_[i].name = gpu_model->nodes[i].name;
+  }
+  const_tensors_descs_ = std::move(gpu_model->const_tensors);
+  tensors_descs_ = std::move(gpu_model->tensors);
 }
 
 absl::Status InferenceContext::InitFromGraph(
     const CreateGpuModelInfo& create_info, const GraphFloat32& graph,
-    id<MTLDevice> device_id) {
+    id<MTLDevice> device_id, std::vector<uint8_t>* serialized_model) {
   device_ = device_id;
   MetalDevice metal_device(device_id);
   GpuModel gpu_model;
   RETURN_IF_ERROR(
       GraphToGpuModel(graph, create_info, metal_device.GetInfo(), &gpu_model));
-
-  for (const auto& input : gpu_model.input_ids_and_refs) {
-    input_ids_.push_back(input.first);
+  flatbuffers::FlatBufferBuilder builder;
+  flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb;
+  if (serialized_model) {
+    gpu_model_fb = tflite::gpu::Encode(gpu_model, &builder);
   }
-  for (const auto& output : gpu_model.output_ids_and_refs) {
-    output_ids_.push_back(output.first);
-  }
-  nodes_.resize(gpu_model.nodes.size());
-  for (int i = 0; i < gpu_model.nodes.size(); ++i) {
-    nodes_[i].task.Init(std::move(gpu_model.nodes[i].gpu_operation));
-    nodes_[i].inputs = gpu_model.nodes[i].inputs;
-    nodes_[i].outputs = gpu_model.nodes[i].outputs;
-    nodes_[i].name = gpu_model.nodes[i].name;
-  }
-  const_tensors_descs_ = std::move(gpu_model.const_tensors);
-  tensors_descs_ = std::move(gpu_model.tensors);
+  CopyFromGpuModel(&gpu_model);
 
   for (const auto& external_tensor : create_info.external_immutable_tensors) {
     auto* metal_spatial_tensor =
@@ -110,10 +163,10 @@ absl::Status InferenceContext::InitFromGraph(
   }
   std::map<ValueId, MetalSpatialTensor> temp_external_tensors;
   for (const auto& external_tensor : create_info.external_mutable_tensors) {
-    RETURN_IF_ERROR(
-        CreateTensor(device_id, tensors_descs_[external_tensor.first].shape,
-                     tensors_descs_[external_tensor.first],
-                     &temp_external_tensors[external_tensor.first]));
+    RETURN_IF_ERROR(CreateTensor(
+        device_id, tensors_descs_[external_tensor.first].GetBHWDCShape(),
+        tensors_descs_[external_tensor.first],
+        &temp_external_tensors[external_tensor.first]));
     external_mutable_tensors_[external_tensor.first] =
         &temp_external_tensors[external_tensor.first];
   }
@@ -126,6 +179,14 @@ absl::Status InferenceContext::InitFromGraph(
 
   for (auto& external_tensor : external_mutable_tensors_) {
     external_tensor.second = nullptr;
+  }
+
+  if (serialized_model) {
+    auto encoded_fb = Encode(&metal_device, gpu_model_fb, &builder);
+    data::FinishInferenceContextBuffer(builder, encoded_fb);
+    serialized_model->resize(builder.GetSize());
+    std::memcpy(serialized_model->data(), builder.GetBufferPointer(),
+                builder.GetSize());
   }
 
   bool add_icb_support = false && external_mutable_tensors_.empty();
@@ -149,6 +210,102 @@ absl::Status InferenceContext::InitFromGraph(
         node.task.EncodeToICB(icb_command);
       }
     }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::RestoreDeserialized(
+    const absl::Span<const uint8_t> serialized_model, id<MTLDevice> device_id,
+    CreateGpuModelInfo* create_info) {
+  flatbuffers::Verifier verifier(serialized_model.data(),
+                                 serialized_model.size());
+  if (!data::VerifyInferenceContextBuffer(verifier)) {
+    return absl::DataLossError("Deserialization failed.");
+  }
+  auto decoded_fb = data::GetInferenceContext(serialized_model.data());
+  device_ = device_id;
+  MetalDevice metal_device(device_id);
+  RETURN_IF_ERROR(Decode(&metal_device, decoded_fb));
+
+  std::map<ValueId, MetalSpatialTensor> temp_external_tensors;
+  if (create_info) {
+    for (const auto& external_tensor :
+         create_info->external_immutable_tensors) {
+      auto* cl_spatial_tensor =
+          dynamic_cast<MetalSpatialTensor*>(external_tensor.second);
+      if (!cl_spatial_tensor) {
+        return absl::InvalidArgumentError("Expected MetalSpatialTensor.");
+      }
+      external_immutable_tensors_[external_tensor.first] = cl_spatial_tensor;
+    }
+    for (const auto& external_tensor : create_info->external_mutable_tensors) {
+      RETURN_IF_ERROR(CreateTensor(
+          device_id, tensors_descs_[external_tensor.first].GetBHWDCShape(),
+          tensors_descs_[external_tensor.first],
+          &temp_external_tensors[external_tensor.first]));
+      external_mutable_tensors_[external_tensor.first] =
+          &temp_external_tensors[external_tensor.first];
+    }
+  }
+  PrepareExternal();
+
+  RETURN_IF_ERROR(AllocateTensors(&metal_device));
+  BindTensorsToOperations();
+
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.task.RestoreDeserialized(&metal_device));
+  }
+  RETURN_IF_ERROR(UpdateParams(metal_device.GetInfo()));
+  for (auto& external_tensor : external_mutable_tensors_) {
+    external_tensor.second = nullptr;
+  }
+  return absl::OkStatus();
+}
+
+flatbuffers::Offset<data::InferenceContext> InferenceContext::Encode(
+    MetalDevice* device,
+    flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
+    flatbuffers::FlatBufferBuilder* builder) {
+  std::vector<flatbuffers::Offset<tflite::gpu::data::Int3>> work_groups_fb;
+  for (int i = 0; i < nodes_.size(); ++i) {
+    auto work_group_fb =
+        tflite::gpu::Encode(nodes_[i].task.GetWorkGroupSize(), builder);
+    work_groups_fb.push_back(work_group_fb);
+  }
+  auto work_groups_fb_vec = builder->CreateVector(work_groups_fb);
+
+  std::vector<flatbuffers::Offset<data::MetalProgram>> programs_fb;
+  for (int i = 0; i < nodes_.size(); ++i) {
+    auto program_fb = EncodeProgram(nodes_[i].task.GetCode(),
+                                    nodes_[i].task.GetDefines(), builder);
+    programs_fb.push_back(program_fb);
+  }
+  auto programs_fb_vec = builder->CreateVector(programs_fb);
+
+  data::InferenceContextBuilder inf_builder(*builder);
+  inf_builder.add_gpu_model(gpu_model_fb);
+  inf_builder.add_tuned_work_group_sizes_per_node(work_groups_fb_vec);
+  inf_builder.add_metal_programs(programs_fb_vec);
+  return inf_builder.Finish();
+}
+
+absl::Status InferenceContext::Decode(
+    MetalDevice* device, const data::InferenceContext* fb_inference) {
+  GpuModel gpu_model;
+  RETURN_IF_ERROR(tflite::gpu::Decode(fb_inference->gpu_model(), &gpu_model));
+  CopyFromGpuModel(&gpu_model);
+
+  for (int i = 0; i < nodes_.size(); ++i) {
+    std::string code;
+    std::map<std::string, std::string> defines;
+    DecodeProgram((*fb_inference->metal_programs())[i], &code, &defines);
+    RETURN_IF_ERROR(nodes_[i].task.Init(device, code, defines));
+
+    int3 wg_size;
+    wg_size.x = (*fb_inference->tuned_work_group_sizes_per_node())[i]->x();
+    wg_size.y = (*fb_inference->tuned_work_group_sizes_per_node())[i]->y();
+    wg_size.z = (*fb_inference->tuned_work_group_sizes_per_node())[i]->z();
+    nodes_[i].task.SetWorkGroupSize(wg_size);
   }
   return absl::OkStatus();
 }
@@ -222,11 +379,11 @@ absl::Status InferenceContext::UpdateParams(const GpuInfo& gpu_info) {
     std::vector<BHWC> src_shapes;
     std::vector<BHWC> dst_shapes;
     for (const auto& in_id : node.inputs) {
-      const auto& shape = tensors_descs_[in_id].shape;
+      const auto& shape = tensors_descs_[in_id].GetBHWDCShape();
       src_shapes.push_back(BHWC(shape.b, shape.h, shape.w, shape.c));
     }
     for (const auto& out_id : node.outputs) {
-      const auto& shape = tensors_descs_[out_id].shape;
+      const auto& shape = tensors_descs_[out_id].GetBHWDCShape();
       dst_shapes.push_back(BHWC(shape.b, shape.h, shape.w, shape.c));
     }
     RETURN_IF_ERROR(node.task.UpdateParams());
@@ -295,10 +452,26 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
       },
       &buffer_usages);
 
+  // From Apple documentation:
+  // For buffers in the device address space, align the offset to the data type
+  // consumed by the compute function (which is always less than or equal to 16
+  // bytes).
+  // For buffers in the constant address space, align the offset to 256
+  // bytes in macOS. In iOS, align the offset to the maximum of either the data
+  // type consumed by the compute function, or 4 bytes. A 16-byte alignment is
+  // safe in iOS if you don't need to consider the data type.
+#if defined(TARGET_IOS) || defined(TARGET_TVOS)
+  const size_t kConstAlignment = 16;
+#elif defined(TARGET_MACOS)
+  const size_t kConstAlignment = 256;
+#else
+  const size_t kConstAlignment = 256;
+#endif
+  size_t min_common_alignment = kConstAlignment;
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
   for (auto& usage : buffer_usages) {
     const auto& t = tensors_descs_[usage.first];
-    const auto& shape = t.shape;
+    const auto& shape = t.GetBHWDCShape();
     const auto& descriptor = t;
     const size_t element_size =
         descriptor.data_type == DataType::FLOAT32 ? 4 : 2;
@@ -308,11 +481,15 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
                                                         descriptor.data_type,
                                                         false)];
     if (descriptor.storage_type == TensorStorageType::TEXTURE_2D) {
+      min_common_alignment =
+          std::lcm(min_common_alignment, row_bytes_alignment);
       const size_t bytes_per_row = element_size * shape.b * shape.w * 4;
       const size_t height = shape.h * DivideRoundUp(shape.c, 4);
       buffer_size = AlignByN(bytes_per_row, row_bytes_alignment) * height;
     } else if (descriptor.storage_type ==
                TensorStorageType::SINGLE_TEXTURE_2D) {
+      min_common_alignment =
+          std::lcm(min_common_alignment, row_bytes_alignment);
       const size_t bytes_per_row = element_size * shape.b * shape.w * shape.c;
       const size_t height = shape.h;
       buffer_size = AlignByN(bytes_per_row, row_bytes_alignment) * height;
@@ -331,23 +508,41 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
   RETURN_IF_ERROR(AssignObjectsToTensors(
       buffer_usage_records, MemoryStrategy::GREEDY_BEST, &buffer_assignment));
 
-  shared_buffers_.resize(buffer_assignment.object_sizes.size());
-  for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
-    // Initialize metal buffer
-    NSUInteger bufferSize = buffer_assignment.object_sizes[i];
+  OffsetsAssignment offset_assignment;
+  RETURN_IF_ERROR(AssignOffsetsToTensors(
+      buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE, &offset_assignment,
+      min_common_alignment));
 
-    if (bufferSize > device->GetInfo().GetMaxBufferSize()) {
-      std::string error("Tensor id: ");
-      error += std::to_string(buffer_assignment.object_ids[i]) +
-               " with size: " + std::to_string(bufferSize) +
-               " exceeds MTLDevice maxBufferLength: " +
-               std::to_string(device->GetInfo().GetMaxBufferSize());
-      return absl::ResourceExhaustedError(error);
-    }
+  bool use_offset_assignment = false;
+  if (offset_assignment.total_size <= TotalSize(buffer_assignment) &&
+      offset_assignment.total_size <= device->GetInfo().GetMaxBufferSize()) {
+    use_offset_assignment = true;
+  }
 
-    shared_buffers_[i] =
-        [device->device() newBufferWithLength:bufferSize
+  if (use_offset_assignment) {
+    shared_buffers_.resize(1);
+    shared_buffers_[0] =
+        [device->device() newBufferWithLength:offset_assignment.total_size
                                       options:MTLResourceStorageModeShared];
+  } else {
+    shared_buffers_.resize(buffer_assignment.object_sizes.size());
+    for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
+      // Initialize metal buffer
+      NSUInteger bufferSize = buffer_assignment.object_sizes[i];
+
+      if (bufferSize > device->GetInfo().GetMaxBufferSize()) {
+        std::string error("Tensor id: ");
+        error += std::to_string(buffer_assignment.object_ids[i]) +
+                 " with size: " + std::to_string(bufferSize) +
+                 " exceeds MTLDevice maxBufferLength: " +
+                 std::to_string(device->GetInfo().GetMaxBufferSize());
+        return absl::ResourceExhaustedError(error);
+      }
+
+      shared_buffers_[i] =
+          [device->device() newBufferWithLength:bufferSize
+                                        options:MTLResourceStorageModeShared];
+    }
   }
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
@@ -363,18 +558,28 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
       if (created_tensors[tensor_index]) continue;
       const auto& tensor_dummy = tensors_descs_[tensor_id];
       const int buffer_index = buffer_assignment.object_ids[tensor_index];
+      uint64_t base_buffer_offset = 0;
+      id<MTLBuffer> base_buffer;
+      if (use_offset_assignment) {
+        base_buffer = shared_buffers_[0];
+        base_buffer_offset = offset_assignment.offsets[tensor_index];
+      } else {
+        base_buffer = shared_buffers_[buffer_index];
+        base_buffer_offset = 0;
+      }
       if (tensor_dummy.storage_type == TensorStorageType::TEXTURE_2D ||
           tensor_dummy.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
         size_t row_bytes_alignment = [device->device()
             minimumLinearTextureAlignmentForPixelFormat:
                 DataTypeToRGBAPixelFormat(tensor_dummy.data_type, false)];
         RETURN_IF_ERROR(CreateSharedImage2DBufferTensor(
-            shared_buffers_[buffer_index], tensor_dummy.shape, tensor_dummy,
-            row_bytes_alignment, &shared_buffer_tensors_[tensor_index]));
+            base_buffer, tensor_dummy.GetBHWDCShape(), tensor_dummy,
+            row_bytes_alignment, &shared_buffer_tensors_[tensor_index],
+            base_buffer_offset));
       } else {
         RETURN_IF_ERROR(CreateSharedBufferTensor(
-            shared_buffers_[buffer_index], tensor_dummy.shape, tensor_dummy,
-            &shared_buffer_tensors_[tensor_index]));
+            base_buffer, tensor_dummy.GetBHWDCShape(), tensor_dummy,
+            &shared_buffer_tensors_[tensor_index], base_buffer_offset));
       }
       created_tensors[tensor_index] = true;
     }
@@ -398,7 +603,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       return tensor_desc.data_type == t.tensor_desc.data_type &&
              tensor_desc.storage_type == t.tensor_desc.storage_type &&
              tensor_desc.layout == t.tensor_desc.layout &&
-             tensor_desc.shape == t.tensor_desc.shape;
+             tensor_desc.GetBHWDCShape() == t.tensor_desc.GetBHWDCShape();
     }
   };
 
@@ -427,8 +632,9 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       graph_ids_to_strong_shape_tensors_[tensor_id] = id;
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
-        RETURN_IF_ERROR(CreateTensor(device->device(), tensor_dummy.shape,
-                                     tensor_dummy, &strong_shape_tensors_[id]));
+        RETURN_IF_ERROR(CreateTensor(device->device(),
+                                     tensor_dummy.GetBHWDCShape(), tensor_dummy,
+                                     &strong_shape_tensors_[id]));
       }
     }
   }
@@ -522,6 +728,9 @@ uint64_t InferenceContext::GetConstantTensorsSize() const {
   uint64_t total_size = 0;
   for (const auto& node : nodes_) {
     total_size += node.task.GetGpuOperation().const_args_size_;
+  }
+  for (const auto& t : const_tensors_) {
+    total_size += t.second.GetMemorySizeInBytes();
   }
   return total_size;
 }

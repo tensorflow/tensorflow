@@ -77,6 +77,7 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/importexport/functiondef_import.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stack_frame.h"
@@ -84,6 +85,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 #define DEBUG_TYPE "graphdef-to-mlir"
 
@@ -111,7 +113,6 @@ using tensorflow::ResourceHandleProto_DtypeAndShape;
 using tensorflow::StackFrame;
 using tensorflow::Status;
 using tensorflow::TensorProto;
-using tensorflow::TensorShapeProto;
 using tensorflow::VersionDef;
 using tensorflow::errors::AppendToMessage;
 using tensorflow::errors::Internal;
@@ -176,8 +177,21 @@ class GraphImporter {
  private:
   // Returns the inferred output type at index `idx` of the `node` in the
   // context.
-  tensorflow::StatusOr<Type> InferOutputType(const Node& node, int idx,
-                                             Builder builder);
+  Status InferOutputTypes(Builder& builder, OperationState& result,
+                          const Node& node);
+  // Try to infer the output types of a node from one of its attributes. Certain
+  // nodes have a required `output_shapes` attribute, e.g. while, if, and
+  // iterator nodes. All nodes might have an `_output_shapes` attribute.
+  Optional<Status> InferOutputTypesFromShapesAttribute(Builder& builder,
+                                                       OperationState& result,
+                                                       const Node& node);
+  // Try to infer the output types of the nodes using TF's inference context.
+  // Returns `None` if the node has inputs, if it is unregistered, or if it does
+  // not have a shape inference function.
+  Optional<Status> InferOutputTypesWithContext(Builder& builder,
+                                               OperationState& result,
+                                               const Node& node);
+
   // Most types with subtypes have only one subtype.
   using ElementSubtypes = llvm::SmallVector<TensorType, 1>;
 
@@ -234,116 +248,112 @@ class GraphImporter {
   NodeValueMap node_values_;
 };
 
-tensorflow::StatusOr<Type> GraphImporter::InferOutputType(const Node& node,
-                                                          int idx,
-                                                          Builder builder) {
-  DataType dtype = node.properties()->output_types[idx];
-
-  // Returns output type given inference context.
-  auto shape_ic = [&](InferenceContext* c) {
-    return ConvertDataTypeAndShape(dtype, c->output(idx),
-                                   c->output_handle_shapes_and_types(idx), c,
-                                   builder);
-  };
-
-  if (node.IsWhileNode()) {
-    auto* output_shapes = node.attrs().Find("output_shapes");
-    auto* element_types = node.attrs().Find("T");
-    if (output_shapes && !output_shapes->list().shape().empty()) {
-      const auto& output_shape = output_shapes->list().shape(idx);
-      const auto& element_type = element_types->list().type(idx);
-      return ConvertToMlirTensorType(output_shape, element_type, &builder);
-    }
-  }
-
-  auto type_from_array_attr = [&node, &idx, &builder](
-                                  absl::string_view output_shape_attr,
-                                  absl::string_view element_type_attr) {
-    auto* output_shapes = node.attrs().Find(output_shape_attr);
-    auto* element_types = node.attrs().Find(element_type_attr);
-    const auto& output_shape = output_shapes->list().shape(idx);
-    const auto& element_type = element_types->list().type(idx);
-    return ConvertToMlirTensorType(output_shape, element_type, &builder);
-  };
-
-  if (node.type_string() == "IteratorGetNext" ||
+Optional<Status> GraphImporter::InferOutputTypesFromShapesAttribute(
+    Builder& builder, OperationState& result, const Node& node) {
+  const AttrValue* output_shapes = nullptr;
+  if (node.IsWhileNode() || node.IsIfNode() || node.IsCaseNode() ||
+      node.type_string() == "IteratorGetNext" ||
       node.type_string() == "IteratorGetNextSync" ||
-      node.type_string() == "MultiDeviceIteratorGetNextFromShard")
-    return type_from_array_attr("output_shapes", "output_types");
-
-  if (node.type_string() == "InfeedDequeueTuple")
-    return type_from_array_attr("shapes", "dtypes");
-
-  if (node.type_string() == "InfeedDequeue") {
-    assert(idx == 0);
-    const auto& output_shape = node.attrs().Find("shape")->shape();
-    const auto& element_type = node.attrs().Find("dtype")->type();
-    return ConvertToMlirTensorType(output_shape, element_type, &builder);
+      node.type_string() == "MultiDeviceIteratorGetNextFromShard") {
+    output_shapes = node.attrs().Find("output_shapes");
+  } else if (node.type_string() == "InfeedDequeueTuple") {
+    output_shapes = node.attrs().Find("shapes");
+  } else if ((output_shapes = node.attrs().Find("_output_shapes"))) {
+    // Check for a generic `_output_shapes` attribute. Only use it if it matches
+    // the number of outputs.
+    if (output_shapes->list().shape_size() != node.num_outputs())
+      output_shapes = nullptr;
   }
+  if (!output_shapes) return {};
 
-  // Returns a simple, more conservative unranked tensor type.
-  auto default_type = [&]() -> tensorflow::StatusOr<Type> {
-    Type element_type;
-    TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
-    return UnrankedTensorType::get(element_type);
-  };
+  // The output shapes attribute is required. It may also be empty. Handle the
+  // latter case gracefully.
+  auto& shapes = output_shapes->list().shape();
+  if (shapes.empty()) return {};
+  if (shapes.size() != node.num_outputs()) {
+    return InvalidArgument("Failed to infer output shapes: expected ",
+                           node.num_outputs(), " output shapes but got ",
+                           output_shapes->list().shape_size());
+  }
+  for (auto& it : llvm::enumerate(shapes)) {
+    DataType dtype = node.properties()->output_types[it.index()];
+    TF_ASSIGN_OR_RETURN(Type output_type,
+                        ConvertToMlirTensorType(it.value(), dtype, &builder));
+    result.addTypes(output_type);
+  }
+  return Status::OK();
+}
 
+Optional<Status> GraphImporter::InferOutputTypesWithContext(
+    Builder& builder, OperationState& result, const Node& node) {
   // Below we only try and do some shape inference for "source" ops which have
   // no inputs.
-  if (node.num_inputs() > 0) return default_type();
-
-  // Do some simply inference here to get the function arguments correct for
-  // this common case.
-  // TODO(jpienaar): Reconsider post refactoring shape functions.
-  if (node.IsArg()) {
-    if (dtype == tensorflow::DT_RESOURCE) {
-      const AttrValue* dtype_attr = node.attrs().Find("_handle_dtypes");
-      const AttrValue* shape_attr = node.attrs().Find("_handle_shapes");
-      if (dtype_attr && shape_attr) {
-        if (dtype_attr->list().type().empty()) {
-          return InvalidArgument(
-              "Invalid \"_handle_dtypes\" attribute value for _Arg node: ",
-              shape_attr->DebugString());
-        }
-        if (shape_attr->list().shape().empty()) {
-          return InvalidArgument(
-              "Invalid \"_handle_shapes\" attribute value for _Arg node: ",
-              shape_attr->DebugString());
-        }
-        DataType dtype = dtype_attr->list().type(0);
-        const TensorShapeProto& shape_proto = shape_attr->list().shape(0);
-        TF_ASSIGN_OR_RETURN(
-            auto etype, ConvertToMlirTensorType(shape_proto, dtype, &builder));
-        return UnrankedTensorType::get(ResourceType::get(
-            {etype.cast<TensorType>()}, builder.getContext()));
-      } else {
-        return UnrankedTensorType::get(ResourceType::get(builder.getContext()));
-      }
-    } else if (auto shape = node.attrs().Find("_output_shapes")) {
-      if (shape->has_list() && shape->list().shape_size() == 1) {
-        return ConvertToMlirTensorType(shape->list().shape().at(0), dtype,
-                                       &builder);
-      }
-    }
-  }
+  if (node.num_inputs() > 0) return {};
 
   const tensorflow::OpRegistrationData* op_reg_data;
   TF_RETURN_IF_ERROR(
       graph_->op_registry()->LookUp(node.type_string(), &op_reg_data));
   if (!op_reg_data) {
     DVLOG(3) << "Skipping inference for unregistered op " << node.type_string();
-    return default_type();
+    return {};
   }
-  if (op_reg_data->shape_inference_fn == nullptr) {
+  if (!op_reg_data->shape_inference_fn) {
     DVLOG(3) << "Skipping inference for op without shape function "
              << node.type_string();
-    return default_type();
+    return {};
   }
   InferenceContext c(graph_->versions().producer(), node.attrs(),
                      op_reg_data->op_def, std::vector<PartialTensorShape>{}, {},
                      /*input_tensors_as_shapes=*/{}, {});
   TF_RETURN_IF_ERROR(c.Run(op_reg_data->shape_inference_fn));
-  return shape_ic(&c);
+
+  for (int idx : llvm::seq(0, node.num_outputs())) {
+    DataType dtype = node.properties()->output_types[idx];
+    TF_ASSIGN_OR_RETURN(
+        Type output_type,
+        ConvertDataTypeAndShape(dtype, c.output(idx),
+                                c.output_handle_shapes_and_types(idx), &c,
+                                builder));
+    result.addTypes(output_type);
+  }
+  return Status::OK();
+}
+
+Status GraphImporter::InferOutputTypes(Builder& builder, OperationState& result,
+                                       const Node& node) {
+  // Exit early if there are no outputs.
+  if (node.num_outputs() == 0) return Status::OK();
+
+  // Try to infer an output shape from a shapes attribute.
+  if (Optional<Status> status =
+          InferOutputTypesFromShapesAttribute(builder, result, node))
+    return *status;
+
+  // Handle a special case for `InfeedDequeue`.
+  if (node.type_string() == "InfeedDequeue") {
+    assert(node.num_outputs() == 1 && "expected 1 result");
+    const auto& output_shape = node.attrs().Find("shape")->shape();
+    const auto& element_type = node.attrs().Find("dtype")->type();
+    TF_ASSIGN_OR_RETURN(
+        Type output_type,
+        ConvertToMlirTensorType(output_shape, element_type, &builder));
+    result.addTypes(output_type);
+    return Status::OK();
+  }
+
+  // Try to infer output shapes using shape inference.
+  if (Optional<Status> status =
+          InferOutputTypesWithContext(builder, result, node))
+    return *status;
+
+  // If all else fails, fallback to importing tensors as unranked.
+  for (int idx : llvm::seq(0, node.num_outputs())) {
+    DataType dtype = node.properties()->output_types[idx];
+    Type element_type;
+    TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
+    result.addTypes(UnrankedTensorType::get(element_type));
+  }
+  return Status::OK();
 }
 
 tensorflow::StatusOr<TensorType> GraphImporter::ConvertDataTypeAndShape(
@@ -533,7 +543,7 @@ Value GraphImporter::GetOperand(const Edge& edge) {
   state.addAttribute("name", builder_.getStringAttr(input_node.name()));
   state.types.resize(input_node.num_outputs() + 1, placeholder_ty);
   state.types.back() = control_ty;
-  inst = builder_.createOperation(state);
+  inst = builder_.create(state);
   return getResult();
 }
 
@@ -549,11 +559,8 @@ Status GraphImporter::ConvertNode(const Node& node) {
   OperationState result(GetLocation(node),
                         absl::StrCat("tfg.", node.type_string()));
   // Compute the result types.
-  for (int i : llvm::seq(0, node.num_outputs())) {
-    TF_ASSIGN_OR_RETURN(auto type, InferOutputType(node, i, builder_));
-    result.types.push_back(type);
-  }
-  result.types.push_back(ControlType::get(builder_.getContext()));
+  TF_RETURN_IF_ERROR(InferOutputTypes(builder_, result, node));
+  result.addTypes(ControlType::get(builder_.getContext()));
 
   // Input edges can be nondeterministically ordered, sort them here. First the
   // data edges in the expected order and then the control edges using the
@@ -579,19 +586,25 @@ Status GraphImporter::ConvertNode(const Node& node) {
     result.operands.push_back(GetOperand(*input_edge));
   }
 
-  // Handle attributes, reserve `+2` for `device` and `name`.
-  result.attributes.reserve(node.attrs().size() + 2);
+  // Handle attributes, reserve `+3` for `device`, `name` and `fulltype`.
+  result.attributes.reserve(node.attrs().size() + 3);
   result.addAttribute(dialect_->getDeviceAttrIdentifier(),
                       builder_.getStringAttr(node.requested_device()));
   result.addAttribute(dialect_->getNameAttrIdentifier(),
                       StringAttr::get(context_, node.name()));
+  if (node.def().has_experimental_type()) {
+    TF_ASSIGN_OR_RETURN(
+        tf_type::FullTypeAttr type,
+        ConvertAttribute(node.def().experimental_type(), builder_, dialect_));
+    result.addAttribute(dialect_->getFullTypeAttrIdentifier(), type);
+  }
   for (const auto& namedAttr : node.attrs()) {
     const std::string& name = namedAttr.first;
     if (name.empty()) return InvalidArgument("empty attr name");
     const AttrValue& tf_attr = namedAttr.second;
     TF_ASSIGN_OR_RETURN(Attribute attr,
                         ConvertAttributeValue(tf_attr, builder_, dialect_));
-    result.addAttribute(name, attr);
+    result.addAttribute(PromoteToTFGAttribute(name), attr);
   }
   Attribute assigned_device =
       result.attributes.get(dialect_->getAssignedDeviceAttrIdentifier());
@@ -603,7 +616,7 @@ Status GraphImporter::ConvertNode(const Node& node) {
   }
 
   // Register the mapping between the TF node and the newly created operation.
-  Operation* operation = builder_.createOperation(result);
+  Operation* operation = builder_.create(result);
   Operation*& cached_operation = node_values_[node.id()];
   if (cached_operation) {
     // A placeholder was inserted for this op earlier to break a cycle in the
@@ -708,9 +721,7 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
   OpBuilder builder = OpBuilder::atBlockEnd(module.getBody());
   MLIRContext* context = module->getContext();
   Location unknown_loc = builder.getUnknownLoc();
-  GraphFuncOp func_op = builder.create<GraphFuncOp>(
-      unknown_loc, name, FunctionType::get(context, {}, {}),
-      /*generic=*/false);
+  GraphFuncOp func_op = builder.create<GraphFuncOp>(unknown_loc);
   TFGraphDialect* tfgDialect = cast<TFGraphDialect>(func_op->getDialect());
   const OpDef& signature = fdef.signature();
 
@@ -757,12 +768,98 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                  builder.getI32TensorAttr(resource_arg_unique_ids_values));
   }
 
-  llvm::SmallVector<Type> arg_types;
-  llvm::SmallString<8> arg_or_res_attr_name;
+  SmallVector<Value> ret_operands;
+  SmallVector<Type> ret_types;
+  SmallVector<Attribute> control_ret_attrs;
   {
-    llvm::SmallVector<Attribute> arg_attrs;
+    SmallVector<Attribute> res_attrs;
+    ret_types.reserve(fbody->ret_types.size() * 2);
+    for (Node* ret : fbody->ret_nodes) {
+      // Find node in the graph using the node id instead of using `arg`
+      // directly because the graph has been cloned.
+      Operation* ret_op = importer.GetOperationForNode(ret->id());
+      if (!ret_op) return Internal("Missing mapping for return #", ret->id());
+      if (ret_op->getName().getStringRef() != "tfg._Retval" &&
+          ret_op->getName().getStringRef() != "tfg._DeviceRetval")
+        return InvalidArgument("Expect `_Retval` node but got ",
+                               ret_op->getName().getStringRef().str());
+      if (ret_op->getNumOperands() != 1)
+        return InvalidArgument(
+            "Expect `_Retval` node to have a single input, got ",
+            ret_op->getNumOperands());
+
+      ret_operands.push_back(ret_op->getOperand(0));
+      ret_types.push_back(ret_op->getOperand(0).getType());
+      ret_op->erase();
+
+      NamedAttrList output_attrs;
+      int64_t index;
+      TF_RETURN_IF_ERROR(GetNodeAttr(ret->attrs(), "index", &index));
+      const OpDef_ArgDef& output = signature.output_arg(index);
+      output_attrs.append("tfg.name", builder.getStringAttr(output.name()));
+      Type output_type;
+      if (output.type() != tensorflow::DT_INVALID) {
+        TF_RETURN_IF_ERROR(
+            ConvertDataType(output.type(), builder, &output_type));
+        output_attrs.append("tfg.dtype", TypeAttr::get(output_type));
+      }
+      if (!output.description().empty())
+        output_attrs.append("tfg.description",
+                            builder.getStringAttr(output.description()));
+      if (output.handle_data_size()) {
+        TF_ASSIGN_OR_RETURN(Attribute handle_data,
+                            ConvertHandleData(builder, output.handle_data()));
+        output_attrs.append("tfg.handle_data", handle_data);
+      }
+      if (output.has_experimental_full_type()) {
+        TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr type,
+                            ConvertAttribute(output.experimental_full_type(),
+                                             builder, tfgDialect));
+        output_attrs.append("tfg.experimental_full_type", type);
+      }
+      res_attrs.push_back(output_attrs.getDictionary(context));
+    }
+    attrs.push_back(
+        builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
+                             builder.getArrayAttr(res_attrs)));
+    DenseMap<StringRef, Node*> control_ret_nodes;
+    for (Node* node : fbody->control_ret_nodes)
+      control_ret_nodes.insert({node->name(), node});
+
+    for (const std::string& sig_name : signature.control_output()) {
+      auto it = fdef.control_ret().find(sig_name);
+      if (it == fdef.control_ret().end())
+        return InvalidArgument(
+            "Signature control_output not found in fdef.control_ret: ",
+            sig_name);
+      Node* ret = control_ret_nodes[it->second];
+      if (!ret)
+        return InvalidArgument(
+            "Control return node '", it->second,
+            "' not found in the graph for signature control output '", sig_name,
+            "'");
+      // Find node in the graph using the node id instead of using `arg`
+      // directly because the graph has been cloned.
+      Operation* control_ret_op = importer.GetOperationForNode(ret->id());
+      if (!control_ret_op)
+        return Internal("Missing mapping for control result '", sig_name, "'");
+      ret_operands.push_back(TFOp(control_ret_op).controlRet());
+      control_ret_attrs.push_back(builder.getDictionaryAttr(
+          NamedAttribute(tfgDialect->getTfgNameAttrIdentifier(),
+                         builder.getStringAttr(sig_name))));
+    }
+  }
+
+  builder = OpBuilder::atBlockEnd(func_op.getBody());
+  builder.create<ReturnOp>(module.getLoc(), ret_operands,
+                           builder.getArrayAttr(control_ret_attrs));
+
+  SmallVector<Type> arg_types;
+  SmallString<8> arg_or_res_attr_name;
+  {
+    SmallVector<Attribute> arg_attrs;
     arg_types.reserve(fbody->arg_types.size() * 2);
-    for (auto enumerated_arg : llvm::enumerate(fbody->arg_nodes)) {
+    for (auto& enumerated_arg : llvm::enumerate(fbody->arg_nodes)) {
       int arg_id = enumerated_arg.index();
       Node* arg = enumerated_arg.value();
       // Find node in the graph using the node id instead of using `arg`
@@ -805,6 +902,13 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
         input_attrs.append("tfg.handle_data", handle_data);
       }
 
+      if (input.has_experimental_full_type()) {
+        TF_ASSIGN_OR_RETURN(tf_type::FullTypeAttr type,
+                            ConvertAttribute(input.experimental_full_type(),
+                                             builder, tfgDialect));
+        input_attrs.append("tfg.experimental_full_type", type);
+      }
+
       auto it = fbody->fdef.arg_attr().find(arg_id);
       if (it != fbody->fdef.arg_attr().end()) {
         for (const auto& namedAttr : it->second.attr()) {
@@ -824,91 +928,9 @@ tensorflow::StatusOr<GraphFuncOp> ImportFunctionDef(
                              builder.getArrayAttr(arg_attrs)));
   }
 
-  llvm::SmallVector<Value> ret_operands;
-  llvm::SmallVector<Type> ret_types;
-  NamedAttrList return_attrs;
-  {
-    llvm::SmallVector<Attribute> res_attrs;
-    ret_types.reserve(fbody->ret_types.size() * 2);
-    for (Node* ret : fbody->ret_nodes) {
-      // Find node in the graph using the node id instead of using `arg`
-      // directly because the graph has been cloned.
-      Operation* ret_op = importer.GetOperationForNode(ret->id());
-      if (!ret_op) return Internal("Missing mapping for return #", ret->id());
-      if (ret_op->getName().getStringRef() != "tfg._Retval" &&
-          ret_op->getName().getStringRef() != "tfg._DeviceRetval")
-        return InvalidArgument("Expect `_Retval` node but got ",
-                               ret_op->getName().getStringRef().str());
-      if (ret_op->getNumOperands() != 1)
-        return InvalidArgument(
-            "Expect `_Retval` node to have a single input, got ",
-            ret_op->getNumOperands());
-
-      ret_operands.push_back(ret_op->getOperand(0));
-      ret_types.push_back(ret_op->getOperand(0).getType());
-      ret_op->erase();
-
-      NamedAttrList output_attrs;
-      int64_t index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(ret->attrs(), "index", &index));
-      const OpDef_ArgDef& output = signature.output_arg(index);
-      output_attrs.append("tfg.name", builder.getStringAttr(output.name()));
-      Type output_type;
-      if (output.type() != tensorflow::DT_INVALID) {
-        TF_RETURN_IF_ERROR(
-            ConvertDataType(output.type(), builder, &output_type));
-        output_attrs.append("tfg.dtype", TypeAttr::get(output_type));
-      }
-      if (!output.description().empty())
-        output_attrs.append("tfg.description",
-                            builder.getStringAttr(output.description()));
-      if (output.handle_data_size()) {
-        TF_ASSIGN_OR_RETURN(Attribute handle_data,
-                            ConvertHandleData(builder, output.handle_data()));
-        output_attrs.append("tfg.handle_data", handle_data);
-      }
-      res_attrs.push_back(output_attrs.getDictionary(context));
-    }
-    attrs.push_back(
-        builder.getNamedAttr(function_interface_impl::getResultDictAttrName(),
-                             builder.getArrayAttr(res_attrs)));
-    DenseMap<StringRef, Node*> control_ret_nodes;
-    for (Node* node : fbody->control_ret_nodes)
-      control_ret_nodes.insert({node->name(), node});
-    for (const auto& enumerated_ret :
-         llvm::enumerate(signature.control_output())) {
-      int ret_id = enumerated_ret.index();
-      const std::string& sig_name = enumerated_ret.value();
-      auto it = fdef.control_ret().find(sig_name);
-      if (it == fdef.control_ret().end())
-        return InvalidArgument(
-            "Signature control_output not found in fdef.control_ret: ",
-            sig_name);
-      Node* ret = control_ret_nodes[it->second];
-      if (!ret)
-        return InvalidArgument(
-            "Control return node '", it->second,
-            "' not found in the graph for signature control output '", sig_name,
-            "'");
-      // Find node in the graph using the node id instead of using `arg`
-      // directly because the graph has been cloned.
-      Operation* control_ret_op = importer.GetOperationForNode(ret->id());
-      ret_operands.push_back(
-          control_ret_op->getResult(control_ret_op->getNumResults() - 1));
-      return_attrs.append(
-          absl::StrCat("tfg.control_ret_name_", res_attrs.size() + ret_id),
-          builder.getStringAttr(fdef.signature().control_output(ret_id)));
-    }
-  }
-
   func_op->setAttrs(attrs);
-
-  func_op->setAttr(
-      "type", TypeAttr::get(builder.getFunctionType(arg_types, ret_types)));
-
-  builder = OpBuilder::atBlockEnd(func_op.getBody());
-  builder.create<ReturnOp>(module.getLoc(), ret_operands)
-      ->setAttrs(return_attrs);
+  func_op->setAttr("function_type", TypeAttr::get(builder.getFunctionType(
+                                        arg_types, ret_types)));
 
   return func_op;
 }
@@ -947,12 +969,13 @@ tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
 }
 // Convert a Graph and function libs to a MLIR module containing the graph and
 // expressed in TFG dialect.
-tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
+tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphAndFunctionsToMlir(
     MLIRContext* context, const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
   LoadDialects(context);
   // Create the graph operation in which we will convert the individual nodes.
-  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
+  OwningOpRef<mlir::ModuleOp> module =
+      ModuleOp::create(UnknownLoc::get(context));
   OpBuilder builder = OpBuilder::atBlockEnd(module->getBody());
 
   auto graph_op = builder.create<GraphOp>(
@@ -965,16 +988,15 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
 
   llvm::StringMap<llvm::StringMap<SmallVector<Value, 1>>> values_map;
   for (const std::string& name : flib_def.ListFunctionNames()) {
-    const llvm::StringMap<std::string> gradients;
     const FunctionDef* fdef = flib_def.Find(name);
     if (IsGenericFunction(*fdef)) {
       TF_RETURN_IF_ERROR(ConvertGenericFunction(*fdef, builder));
     } else {
-      TF_ASSIGN_OR_RETURN(
-          GraphFuncOp imported_func,
-          ImportFunctionDef(module.get(), debug_info, flib_def, *fdef,
-                            /*instantiation_attributes=*/{}));
-      (void)imported_func;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          ImportFunctionDef(*module, debug_info, flib_def, *fdef,
+                            /*instantiation_attributes=*/{})
+              .status(),
+          "While importing FunctionDef: ", fdef->signature().name());
     }
   }
   return module;
@@ -982,7 +1004,7 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphAndFunctionsToMlir(
 
 // Convert a GraphDef to a MLIR module containing the graph and expressed in TFG
 // dialect.
-tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
+tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportGraphDefToMlir(
     MLIRContext* context, const GraphDebugInfo& debug_info,
     const GraphDef& graphdef) {
   VLOG(4) << "ConvertGraphdefToMlir begin";
@@ -995,6 +1017,24 @@ tensorflow::StatusOr<OwningModuleRef> ImportGraphDefToMlir(
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(options, graphdef, &graph));
   return ImportGraphAndFunctionsToMlir(context, graph, debug_info,
                                        graph.flib_def());
+}
+
+tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelToMlir(
+    mlir::MLIRContext* context, const tensorflow::GraphDebugInfo& debug_info,
+    const tensorflow::SavedModel& saved_model) {
+  if (saved_model.meta_graphs_size() == 0) {
+    return tensorflow::errors::InvalidArgument(
+        "Input saved model has no meta graphs");
+  }
+
+  if (saved_model.meta_graphs_size() > 1) {
+    return tensorflow::errors::InvalidArgument(
+        "Input saved model has more than one meta graph, currently not "
+        "supported");
+  }
+
+  const auto& graphdef = saved_model.meta_graphs(0).graph_def();
+  return ImportGraphDefToMlir(context, debug_info, graphdef);
 }
 
 }  // namespace tfg

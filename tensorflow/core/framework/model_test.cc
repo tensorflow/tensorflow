@@ -360,6 +360,119 @@ TEST(UnknownRatioTest, Model) {
   EXPECT_EQ(unknown_many->OutputTime(&input_times, nullptr), 200);
 }
 
+class AsyncUnknownRatioTest
+    : public ::testing::TestWithParam<std::tuple<int64_t, double>> {};
+
+TEST_P(AsyncUnknownRatioTest, Model) {
+  const int64_t parallelism = std::get<0>(GetParam());
+  const double input_time = std::get<1>(GetParam());
+  std::shared_ptr<Node> async_unknown_many = model::MakeAsyncUnknownRatioNode(
+      {0, "async_unknown_many", nullptr},
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(/*value=*/parallelism,
+                                                          nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/16)});
+  std::shared_ptr<Node> source1 =
+      model::MakeSourceNode({1, "source1", async_unknown_many});
+  async_unknown_many->add_input(source1);
+  std::shared_ptr<Node> source2 =
+      model::MakeSourceNode({2, "source2", async_unknown_many});
+  async_unknown_many->add_input(source2);
+  Model::NodeValues input_times;
+  input_times[kModelInputTimeKey] = input_time;
+  EXPECT_EQ(async_unknown_many->TotalBufferedBytes(), 0);
+  EXPECT_EQ(async_unknown_many->TotalMaximumBufferedBytes(), 0);
+  async_unknown_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_unknown_many->TotalBufferedBytes(), 110);
+  EXPECT_EQ(async_unknown_many->TotalMaximumBufferedBytes(),
+            110.0 * parallelism / 10);
+  source1->add_processing_time(100);
+  EXPECT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr), 0);
+  EXPECT_EQ(async_unknown_many->OutputTime(&input_times, nullptr), 0);
+  source2->add_processing_time(200);
+  EXPECT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr), 0);
+  EXPECT_EQ(async_unknown_many->OutputTime(&input_times, nullptr), 0);
+  source1->record_element();
+  EXPECT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr), 0);
+  EXPECT_EQ(async_unknown_many->OutputTime(&input_times, nullptr), 0);
+  async_unknown_many->record_element();
+  // Estimated ratio is 1.
+  double ratio = 1.0;
+  EXPECT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr),
+      ratio * 100);
+  EXPECT_LE(async_unknown_many->OutputTime(&input_times, nullptr), 100);
+  EXPECT_GE(async_unknown_many->OutputTime(&input_times, nullptr), 0);
+  source2->record_element();
+  EXPECT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr),
+      ratio * (100 + 200));
+  EXPECT_LE(async_unknown_many->OutputTime(&input_times, nullptr),
+            ratio * (100 + 200));
+  EXPECT_GE(async_unknown_many->OutputTime(&input_times, nullptr), 0);
+  source2->record_element();
+  EXPECT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr),
+      ratio * (100 + 100));
+  EXPECT_LE(async_unknown_many->OutputTime(&input_times, nullptr),
+            ratio * (100 + 100));
+  EXPECT_GE(async_unknown_many->OutputTime(&input_times, nullptr), 0);
+  source1->record_element();
+  // Estimated ratio is 2
+  ratio = 2.0;
+  EXPECT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr),
+      ratio * (50 + 100));
+  EXPECT_LE(async_unknown_many->OutputTime(&input_times, nullptr),
+            ratio * (50 + 100));
+  EXPECT_GE(async_unknown_many->OutputTime(&input_times, nullptr), 0);
+  source2->record_element();
+  source2->record_element();
+  EXPECT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr),
+      ratio * (50 + 50));
+  EXPECT_LE(async_unknown_many->OutputTime(&input_times, nullptr),
+            ratio * (50 + 50));
+  EXPECT_GE(async_unknown_many->OutputTime(&input_times, nullptr), 0);
+  async_unknown_many->add_processing_time(128);
+  EXPECT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr),
+      ratio * (50 + 50) + 128);
+  EXPECT_LE(async_unknown_many->OutputTime(&input_times, nullptr),
+            ratio * (50 + 50) + 128 / parallelism);
+  EXPECT_GE(async_unknown_many->OutputTime(&input_times, nullptr),
+            128 / parallelism);
+  async_unknown_many->record_element();
+  // Estimated ratio is 1.0
+  ratio = 1.0;
+  EXPECT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr),
+      ratio * (50 + 50) + 128 / 2);
+  EXPECT_LE(async_unknown_many->OutputTime(&input_times, nullptr),
+            ratio * (50 + 50) + 128 / 2 / parallelism);
+  EXPECT_GE(async_unknown_many->OutputTime(&input_times, nullptr),
+            128 / 2 / parallelism);
+  async_unknown_many->record_element();
+  // Estimated ratio is 2/3
+  ratio = 2.0 / 3.0;
+  EXPECT_FLOAT_EQ(
+      async_unknown_many->TotalProcessingTime(/*processing_times=*/nullptr),
+      ratio * (50 + 50) + 128 / 3.0);
+  EXPECT_LE(async_unknown_many->OutputTime(&input_times, nullptr),
+            ratio * (50 + 50) + 128 / 3.0 / parallelism);
+  EXPECT_GE(async_unknown_many->OutputTime(&input_times, nullptr),
+            128 / 3.0 / parallelism);
+}
+
+INSTANTIATE_TEST_SUITE_P(Test, AsyncUnknownRatioTest,
+                         ::testing::Combine(::testing::Values(1, 2, 4, 8),
+                                            ::testing::Values(0, 50, 100,
+                                                              200)));
+
 TEST(UnknownTest, Model) {
   std::shared_ptr<Node> unknown =
       model::MakeUnknownNode({0, "unknown", nullptr});

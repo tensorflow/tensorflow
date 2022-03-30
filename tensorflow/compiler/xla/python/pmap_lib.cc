@@ -433,10 +433,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
   const int num_computations =
       cache_entry.executable->AddressableDevices().size();
   std::vector<InputSpec>& input_specs = cache_entry.input_specs;
-
   const int num_args = arguments.flat_dynamic_args.size();
-  // args_buffers is `[num_args, num_devices]`.
-  std::vector<std::vector<xla::PjRtBuffer*>> arg_buffers;
 
   // We need [num_computation, num_args] for the `Execute` call bellow,
   std::vector<std::vector<xla::PjRtBuffer*>> num_computation_num_args_buffers(
@@ -464,26 +461,10 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
     }
   }
 
-  // This is a simpler version of:
-  // cache_entry.executable->ExecuteShardedOnLocalDevices().
-
   // A vector of [num_devices, num_outputs].
   std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> output_buffers;
   {
     py::gil_scoped_release gil_release;
-    for (const auto& arg : arg_buffers) {
-      if (arg.size() != num_computations) {
-        return xla::InvalidArgument(
-            "Expected args to execute_sharded_on_local_devices to have %d "
-            "shards, got: [%s]",
-            num_computations,
-            absl::StrJoin(
-                arg_buffers, ", ",
-                [](std::string* out, const std::vector<xla::PjRtBuffer*>& arg) {
-                  out->append(std::to_string(arg.size()));
-                }));
-      }
-    }
     auto pjrt_executable = cache_entry.executable->mutable_pjrt_executable();
     TF_ASSIGN_OR_RETURN(output_buffers, pjrt_executable->Execute(
                                             num_computation_num_args_buffers,

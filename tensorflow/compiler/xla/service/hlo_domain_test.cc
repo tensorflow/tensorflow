@@ -159,11 +159,11 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
   EXPECT_TRUE(inlined);
 
-  EXPECT_TRUE(HasDomainEdge(module.get(), "add", "a"));
-  EXPECT_TRUE(HasDomainEdge(module.get(), "add", "b"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "m.1", "a"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "m.1", "b"));
   EXPECT_TRUE(HasDomainEdge(module.get(), "d", "a"));
   EXPECT_TRUE(HasDomainEdge(module.get(), "d", "b"));
-  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "add"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "m.1"));
   EXPECT_FALSE(HasDomainEdge(module.get(), "e", "d"));
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
@@ -171,11 +171,11 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
-  EXPECT_FALSE(HasDomainEdge(module.get(), "add", "a"));
-  EXPECT_FALSE(HasDomainEdge(module.get(), "add", "b"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "m.1", "a"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "m.1", "b"));
   EXPECT_FALSE(HasDomainEdge(module.get(), "d", "a"));
   EXPECT_FALSE(HasDomainEdge(module.get(), "d", "b"));
-  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "add"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "m.1"));
   EXPECT_FALSE(HasDomainEdge(module.get(), "e", "d"));
 }
 

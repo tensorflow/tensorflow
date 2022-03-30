@@ -193,7 +193,7 @@ struct GlimpseExtractionOp {
                                        .template cast<float>();
 
             DSizes<Index, 3> glimpse_size(num_channels, width_, height_);
-            TensorMap<Tensor<float, 3> > tmp(NULL, glimpse_size);
+            TensorMap<Tensor<float, 3> > tmp(nullptr, glimpse_size);
             output.template chip<3>(i).device(device) =
                 mini.reshape(Sizes<1, 1, 1>()).broadcast(glimpse_size) +
                 (tmp.random(unigen) *
@@ -231,7 +231,7 @@ struct GlimpseExtractionOp {
               maxi.device(device) =
                   input.template chip<3>(i).template chip<0>(j).maximum();
 
-              TensorMap<Tensor<float, 2> > tmp(NULL, glimpse_size);
+              TensorMap<Tensor<float, 2> > tmp(nullptr, glimpse_size);
               output.template chip<3>(i).template chip<0>(j).device(device) =
                   (mean.reshape(Sizes<1, 1>()).broadcast(glimpse_size) +
                    (tmp.random(gen) *

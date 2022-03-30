@@ -565,6 +565,10 @@ class Graph {
 
   void Copy(const Graph& src);
 
+  // Removes all nodes from this graph, including all edges from or to them.
+  // No Node* references to the Graph are valid post.
+  void Clear();
+
   // Adds an edge that connects the xth output of `source` to the yth input of
   // `dest` and returns it. Does not update dest's NodeDef.
   const Edge* AddEdge(Node* source, int x, Node* dest, int y);

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
@@ -31,13 +32,9 @@ namespace tensorflow {
 
 namespace tfrt_compiler {
 
-// Create a pass to set shape_invariant attribute for all tf.While ops.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
-CreateSetShapeInvariantInWhileOps();
-
 // Create a pass to insert kernels that copy fallback tensors when they are
 // passed to multiple threads, to avoid atomic contention on their refcounts.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateInsertFallbackTensorCopyPass();
 
 // Create a pass to reorder tf.Assert ops or tf.If ops that contains only
@@ -67,11 +64,11 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
 
 // Create a pass to fuse the TPU Ops for TFRT.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateFuseTpuCompileAndExecutePass();
 
 // Create a pass to optimize TF dialect for TFRT workflow.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateOptimizeTfForTfrtPass();
 
 }  // namespace tfrt_compiler
@@ -91,7 +88,7 @@ CreateConvertReferenceVariableToResourceVariablePass();
 // Run *ToCoreRTConversionPassRun as free functions. Useful for
 // reusing the pass logic in a custom pass with additional conversions.
 mlir::LogicalResult TFSavedModelToCoreRTConversionPassRun(
-    mlir::MLIRContext* context, mlir::FuncOp func,
+    mlir::MLIRContext* context, mlir::func::FuncOp func,
     mlir::ConversionTarget* target, mlir::RewritePatternSet* patterns,
     CoreRTConverter* corert_converter);
 
@@ -108,7 +105,8 @@ CreateRemoveDeviceAttributePass();
 
 // Create an operation pass that inserts corert.transfer op to make sure any
 // argument of any op is on the same device of the op itself.
-std::unique_ptr<mlir::FunctionPass> CreateCrossDeviceTransferPass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateCrossDeviceTransferPass();
 
 struct TfrtPipelineOptions
     : public mlir::PassPipelineOptions<TfrtPipelineOptions> {
@@ -180,6 +178,12 @@ struct TfrtPipelineOptions
       llvm::cl::desc(
           "If true, use TF tensor as input/output types in func (and other "
           "control flow) ops."),
+      llvm::cl::init(false)};
+
+  Option<bool> enable_while_parallel_iterations{
+      *this, "enable-while-parallel-iterations",
+      llvm::cl::desc("If true, tf.While op will be parallelized. This is "
+                     "currently experimental."),
       llvm::cl::init(false)};
 
   Option<bool> hoist_invariant_ops{

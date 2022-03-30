@@ -92,6 +92,8 @@ CompileOnlyService::CompileAheadOfTime(
         execution_options.mutable_device_assignment()));
   }
   execution_options.set_use_spmd_partitioning(options.use_spmd_partitioning());
+  execution_options.set_use_auto_spmd_partitioning(
+      options.use_auto_spmd_partitioning());
   execution_options.set_deduplicate_hlo(options.deduplicate_hlo());
   for (const AotXlaComputationInstance& instance : computations) {
     TF_RET_CHECK(instance.computation.has_host_program_shape());
@@ -110,9 +112,6 @@ CompileOnlyService::CompileAheadOfTime(
     DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");
     hlo_modules.push_back(std::move(hlo_module));
   }
-
-  execution_options.clear_shape_with_output_layout();
-  DumpExecutionOptions(execution_options, debug_options);
 
   return compiler_->CompileAheadOfTime(
       absl::make_unique<HloModuleGroup>(hlo_modules[0]->name(),

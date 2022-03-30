@@ -55,7 +55,7 @@ namespace {
 class StripQuantTypes : public TosaStripQuantTypesPassBase<StripQuantTypes> {
  public:
   explicit StripQuantTypes() {}
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 class QuantTypeConverter : public TypeConverter {
@@ -110,7 +110,7 @@ class GenericTypeConvert : public ConversionPattern {
           newRegion->getArgumentTypes(), result);
       rewriter.applySignatureConversion(newRegion, result);
     }
-    Operation* newOp = rewriter.createOperation(state);
+    Operation* newOp = rewriter.create(state);
     rewriter.replaceOp(op, newOp->getResults());
     return success();
   }
@@ -124,7 +124,7 @@ static bool isIllegalType(Type type) {
   return false;
 }
 
-void StripQuantTypes::runOnFunction() {
+void StripQuantTypes::runOnOperation() {
   QuantTypeConverter converter;
   ConversionTarget target(getContext());
 
@@ -132,10 +132,10 @@ void StripQuantTypes::runOnFunction() {
   // Operations are legal if they don't contain any illegal type.
   target.markUnknownOpDynamicallyLegal([](Operation* op) {
     if (auto funcOp = dyn_cast<FuncOp>(op)) {
-      for (Type type : funcOp.getType().getInputs()) {
+      for (Type type : funcOp.getFunctionType().getInputs()) {
         if (isIllegalType(type)) return false;
       }
-      for (Type type : funcOp.getType().getResults()) {
+      for (Type type : funcOp.getFunctionType().getResults()) {
         if (isIllegalType(type)) return false;
       }
     }
@@ -149,10 +149,10 @@ void StripQuantTypes::runOnFunction() {
   });
 
   auto* ctx = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
 
   RewritePatternSet patterns(&getContext());
-  patterns.insert<GenericTypeConvert>(ctx, converter);
+  patterns.add<GenericTypeConvert>(ctx, converter);
   populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns, converter);
 
   if (failed(applyFullConversion(func, target, std::move(patterns)))) {

@@ -28,8 +28,8 @@ mlir::RewritePatternSet ExampleHardware::GetTransformations(
     MLIRContext* context) const {
   mlir::RewritePatternSet patterns(context);
 
-  patterns.insert<LowerPackIntoConcatReshape, UnrollSplit, UnrollSplitV,
-                  PadSlice, PadConcat>(context);
+  patterns.add<LowerPackIntoConcatReshape, UnrollSplit, UnrollSplitV, PadSlice,
+               PadConcat>(context);
   return patterns;
 }
 

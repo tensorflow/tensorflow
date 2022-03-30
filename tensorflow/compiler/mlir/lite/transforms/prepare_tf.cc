@@ -41,10 +41,10 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -98,7 +98,7 @@ static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
+class PrepareTFPass : public PassWrapper<PrepareTFPass, OperationPass<FuncOp>> {
  public:
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
@@ -121,7 +121,7 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
     return "Prepare TF for legalization to TensorFlow Lite dialect";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, quant::QuantizationDialect,
@@ -228,15 +228,14 @@ class ConvertTFConvOp : public RewritePattern {
     Value input = tf_op.input();
     RankedTensorType input_type =
         input.getType().template dyn_cast<RankedTensorType>();
-    // Safe guard for skipping grouped convolution legalization.
     // Only rank size four input will be only available by the tf.Conv2D
     // operator verification.
     if (!input_type || input_type.isDynamicDim(3)) {
       return failure();
     }
-    // Check if the given op is based on unsupported grouped convolution.
+    // Check if the given op is based on grouped convolution.
     // Dim size zero will be verified by the tf.Conv2D operator verification.
-    if (input_type.getDimSize(3) / filter_type.getDimSize(2) != 1) {
+    if (input_type.getDimSize(3) % filter_type.getDimSize(2) != 0) {
       return failure();
     }
 
@@ -1226,7 +1225,7 @@ LogicalResult ValidateOp(Operation *op) {
 LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   ConversionTarget target(*context);
   target.addLegalDialect<arith::ArithmeticDialect>();
-  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<FuncOp>();
@@ -1367,11 +1366,11 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
   }
 };
 
-void PrepareTFPass::runOnFunction() {
+void PrepareTFPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   RewritePatternSet phase_2_patterns(ctx);
-  auto func = getFunction();
+  auto func = getOperation();
 
   // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
   // PrepareTFPass is the very first TFLite pass in the pipeline.
@@ -1391,10 +1390,10 @@ void PrepareTFPass::runOnFunction() {
   // This pattern will try to identify and optimize for dilated convolution.
   // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be
   // replaced with a single Conv op with dilation parameter.
-  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
-                  ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
+  patterns.add<ConvertTFDilatedConvOp<TF::Conv2DOp>, FusedBatchNormV3Pat,
+               ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
 
-  patterns.insert<RemoveIdentity>(ctx);
+  patterns.add<RemoveIdentity>(ctx);
   TFL::populateWithGenerated(patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
@@ -1421,9 +1420,9 @@ void PrepareTFPass::runOnFunction() {
     TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }
   phase_2_patterns
-      .insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo,
-              ConvertTFStridedSlice, ConvertRfftToRfft2d, RemoveIdentity>(ctx);
-  phase_2_patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
+      .add<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFStridedSlice,
+           ConvertRfftToRfft2d, RemoveIdentity>(ctx);
+  phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));

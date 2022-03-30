@@ -484,6 +484,8 @@ TF_StringView TF_OpKernelConstruction_GetName(TF_OpKernelConstruction* ctx) {
 
 TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  CHECK_GE(i, 0);
+  CHECK_LT(i, cc_ctx->num_outputs());
   return static_cast<TF_DataType>(cc_ctx->expected_output_dtype(i));
 }
 
@@ -516,7 +518,7 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
 }
 
 TF_Tensor* TF_ForwardInputOrAllocateOutput(
-    TF_OpKernelContext* context, int* candidate_input_indices,
+    TF_OpKernelContext* context, const int* candidate_input_indices,
     int num_candidate_input_indices, int output_index,
     const int64_t* output_dims, int output_num_dims, int* forwarded_input,
     TF_Status* status) {

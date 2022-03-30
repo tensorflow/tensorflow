@@ -6,8 +6,8 @@ def repo():
     """Imports Eigen."""
 
     # Attention: TensorFlow Lite CMake build uses this variable, update only the hash content.
-    EIGEN_COMMIT = "7db0ac977acf276fb0817cfb89e490cdbae0ab56"
-    EIGEN_SHA256 = "f4697dcc5f0545cf9ab70be8f6b313bdc31c0405f0ed30f8967bc02e7d7aa12a"
+    EIGEN_COMMIT = "008ff3483a8c5604639e1c4d204eae30ad737af6"
+    EIGEN_SHA256 = "e1dd31ce174c3d26fbe38388f64b09d2adbd7557a59e90e6f545a288cc1755fc"
 
     tf_http_archive(
         name = "eigen_archive",

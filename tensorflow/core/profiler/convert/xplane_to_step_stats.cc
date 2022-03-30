@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -59,10 +59,10 @@ GpuEventType ParseMemcpyName(absl::string_view memcpy_name) {
 }
 
 void SetNodeTimes(const XEventVisitor& event, NodeExecStats* ns) {
-  ns->set_all_start_micros(NanosToMicros(event.TimestampNs()));
+  ns->set_all_start_micros(NanoToMicro(event.TimestampNs()));
   ns->set_op_start_rel_micros(0);
-  ns->set_op_end_rel_micros(NanosToMicros(event.DurationNs()));
-  ns->set_all_end_rel_micros(NanosToMicros(event.DurationNs()));
+  ns->set_op_end_rel_micros(NanoToMicro(event.DurationNs()));
+  ns->set_all_end_rel_micros(NanoToMicro(event.DurationNs()));
 }
 
 }  // namespace
@@ -160,7 +160,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
           if (it != correlation_info_map.end()) {
             const CorrelationInfo& correlation_info = it->second;
             ns->set_scheduled_micros(
-                NanosToMicros(correlation_info.enqueue_time_ns));
+                NanoToMicro(correlation_info.enqueue_time_ns));
             ns->set_thread_id(correlation_info.thread_id);
           }
         }

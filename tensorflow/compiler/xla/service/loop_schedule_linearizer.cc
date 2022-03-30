@@ -107,7 +107,7 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
       // into account.
       HloInstruction* write = value_at_root.defining_instruction();
 
-      for (const HloUse& use : value_at_input.uses()) {
+      for (const HloUse& use : value_at_input.GetUses()) {
         HloInstruction* read = use.instruction;
 
         if (read != write &&

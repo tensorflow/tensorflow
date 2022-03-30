@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OpDefinition.h"
@@ -85,7 +85,7 @@ static int64_t GetRankedTensorSize(TensorType tensor) {
   return size;
 }
 
-int64_t GetMaxArgSize(mlir::FuncOp func) {
+int64_t GetMaxArgSize(mlir::func::FuncOp func) {
   int64_t max_arg_size = 1;
   for (BlockArgument& arg : func.getArguments()) {
     auto type = arg.getType().cast<mlir::TensorType>();
@@ -121,9 +121,9 @@ int64_t FallbackExecuteOp::cost() {
   //
   // TODO(ezhulenev): Once we have a proper cost model for MLIR operations,
   // use it to compute a more precise cost estimation.
-  for (mlir::Operation& op : kernel_fn.body().getOps()) {
+  for (mlir::Operation& op : kernel_fn.getBody().getOps()) {
     // Skip return operation.
-    if (mlir::isa<mlir::ReturnOp>(op)) continue;
+    if (mlir::isa<mlir::func::ReturnOp>(op)) continue;
 
     // These ops are cheap regardless of their input sizes.
     if (mlir::isa<mlir::TF::ShapeOp, mlir::TF::StridedSliceOp,

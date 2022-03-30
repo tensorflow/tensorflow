@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -55,12 +55,10 @@ ElementsAttr GetTensorValueAsElementsAttr(const tensorflow::Tensor& tensor,
   return tensor_attr_or.ValueOrDie();
 }
 
-// Creates arith::ConstantOp which holds 'tensor_elements'.
-mlir::arith::ConstantOp GetConstOpFromElementsAttr(ElementsAttr tensor_elements,
-                                                   OpBuilder builder,
-                                                   Location loc) {
-  return builder.create<mlir::arith::ConstantOp>(loc, tensor_elements.getType(),
-                                                 tensor_elements);
+// Creates a constant op that holds 'tensor_elements'.
+TF::ConstOp GetConstOpFromElementsAttr(ElementsAttr tensor_elements,
+                                       OpBuilder builder, Location loc) {
+  return builder.create<TF::ConstOp>(loc, tensor_elements);
 }
 
 // Returns ElementsAttr which has the value held by 'resource_tensor'.
@@ -116,7 +114,8 @@ void PropagateUsage(
     (*arguments_to_erase)[if_op].push_back(argument_index);
     for (auto callee : {if_op.then_function(), if_op.else_function()}) {
       (*arguments_to_erase)[callee].push_back(argument_index - 1);
-      work_list->push_back(std::make_pair(&callee.body(), argument_index - 1));
+      work_list->push_back(
+          std::make_pair(&callee.getBody(), argument_index - 1));
     }
   } else if (auto if_op = dyn_cast<TF::IfRegionOp>(user_op)) {
     (*arguments_to_erase)[if_op].push_back(argument_index);
@@ -127,7 +126,7 @@ void PropagateUsage(
     (*arguments_to_erase)[while_op].push_back(argument_index);
     for (auto callee : {while_op.cond_function(), while_op.body_function()}) {
       (*arguments_to_erase)[callee].push_back(argument_index);
-      work_list->push_back(std::make_pair(&callee.body(), argument_index));
+      work_list->push_back(std::make_pair(&callee.getBody(), argument_index));
     }
   } else if (auto while_op = dyn_cast<TF::WhileRegionOp>(user_op)) {
     (*arguments_to_erase)[while_op].push_back(argument_index);
@@ -184,7 +183,7 @@ FuncOp GetSessionInitializerFunc(ModuleOp module) {
   auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
   SymbolTable symbol_table(module);
   if (session_init_op && !session_init_op.initializers().empty()) {
-    FuncOp init_func_op = symbol_table.lookup<mlir::FuncOp>(
+    FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
     return init_func_op;
   }
@@ -262,14 +261,14 @@ void UpdateTerminatorArguments(
   for (auto arg_index : arguments_to_erase) {
     auto argument = func.getArgument(arg_index);
     for (auto& use : argument.getUses()) {
-      if (llvm::isa<ReturnOp, TF::YieldOp>(use.getOwner())) {
+      if (llvm::isa<func::ReturnOp, TF::YieldOp>(use.getOwner())) {
         int operand_index = use.getOperandNumber();
         erase_indices.set(operand_index);
       }
     }
     func.getArgument(arg_index).dropAllUses();
   }
-  if (llvm::isa<ReturnOp, TF::YieldOp>(func.front().getTerminator())) {
+  if (llvm::isa<func::ReturnOp, TF::YieldOp>(func.front().getTerminator())) {
     terminator->eraseOperands(erase_indices);
   }
 }

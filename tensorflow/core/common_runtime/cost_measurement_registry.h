@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
@@ -37,9 +38,10 @@ class CostMeasurementRegistry {
   // TODO(b/185852990): create a non-moveable wrapper class for the returned
   // unique_ptr<CostMeasurement>.
   static std::unique_ptr<CostMeasurement> CreateByNameOrNull(
-      const std::string& name);
+      const std::string& name, const CostMeasurement::Context& context);
 
-  using Creator = std::function<std::unique_ptr<CostMeasurement>()>;
+  using Creator = std::function<std::unique_ptr<CostMeasurement>(
+      const CostMeasurement::Context&)>;
 
   // Registers a CostMeasurement type to the global map. Registering different
   // types of CostMeasurement with the same name is prohibited.
@@ -56,12 +58,13 @@ class CostMeasurementRegistrar {
   }
 };
 
-#define REGISTER_COST_MEASUREMENT(name, MyCostMeasurementClass) \
-  namespace {                                                   \
-  static ::tensorflow::CostMeasurementRegistrar                 \
-      MyCostMeasurementClass##_registrar((name), [] {           \
-        return absl::make_unique<MyCostMeasurementClass>();     \
-      });                                                       \
+#define REGISTER_COST_MEASUREMENT(name, MyCostMeasurementClass)        \
+  namespace {                                                          \
+  static ::tensorflow::CostMeasurementRegistrar                        \
+      MyCostMeasurementClass##_registrar(                              \
+          (name), [](const CostMeasurement::Context& context) {        \
+            return absl::make_unique<MyCostMeasurementClass>(context); \
+          });                                                          \
   }  // namespace
 
 }  // namespace tensorflow

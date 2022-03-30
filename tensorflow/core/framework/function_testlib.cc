@@ -113,7 +113,7 @@ FunctionDef RandomUniform() {
         "RandomUniform",
         {"random_uniform/shape"},
         {{"T", DT_INT32},
-         {"Tout", DT_FLOAT},
+         {"dtype", DT_FLOAT},
          {"seed", 87654321},
          {"seed2", 42}}}});
 }
