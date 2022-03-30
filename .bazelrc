@@ -671,6 +671,7 @@ build:experimental_enable_xlir --@rules_cuda//cuda:cuda_runtime=//tensorflow/com
 build:experimental_enable_xlir --nocheck_visibility
 build:experimental_enable_xlir --incompatible_strict_action_env
 build:experimental_enable_xlir --config=monolithic
+build:experimental_enable_xlir --//tensorflow/compiler/xla/service/gpu:enable_xlir
 
 # bazel test --config=experimental_enable_bef_thunk \
 #   //tensorflow/compiler/xla/service/gpu:bef_thunk_tests
