@@ -108,7 +108,6 @@ TENSORFLOW_API_INIT_FILES = [
     "train/experimental/__init__.py",
     "types/__init__.py",
     "types/experimental/__init__.py",
-    "types/experimental/distributed/__init__.py",
     "version/__init__.py",
     "xla/__init__.py",
     "xla/experimental/__init__.py",

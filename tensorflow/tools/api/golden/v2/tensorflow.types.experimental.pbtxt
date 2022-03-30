@@ -28,8 +28,4 @@ tf_module {
     name: "TracingContext"
     mtype: "<type \'type\'>"
   }
-  member {
-    name: "distributed"
-    mtype: "<type \'module\'>"
-  }
 }

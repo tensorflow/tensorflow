@@ -1,9 +1,0 @@
-path: "tensorflow.types.experimental.distributed.Mirrored"
-tf_class {
-  is_instance: "<class \'tensorflow.python.types.distribute.Mirrored\'>"
-  is_instance: "<class \'tensorflow.python.types.distribute.DistributedValues\'>"
-  is_instance: "<type \'object\'>"
-  member_method {
-    name: "__init__"
-  }
-}
