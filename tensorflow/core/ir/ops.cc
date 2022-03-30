@@ -832,8 +832,8 @@ static FailureOr<TypeRange> VerifyOperands(Operation *op) {
       llvm::find(op->getOperandTypes(), control_ty);
   if (!std::all_of(it, op->operand_type_end(),
                    [&](Type type) { return type == control_ty; })) {
-    return {op->emitOpError(
-        "not all control tokens come after non-control operands")};
+    return op->emitOpError(
+        "not all control tokens come after non-control operands");
   }
   return {Operation::operand_type_range(op->operand_type_begin(), it)};
 }
@@ -846,10 +846,10 @@ static FailureOr<TypeRange> VerifyResults(Operation *op) {
   Operation::result_type_iterator it =
       llvm::find(op->getResultTypes(), control_ty);
   if (it == op->result_type_end())
-    return {op->emitOpError("does not define a control result")};
+    return op->emitOpError("does not define a control result");
   if (it != std::prev(op->result_type_end())) {
-    return {op->emitOpError(
-        "must have a control token result as and only as its last result")};
+    return op->emitOpError(
+        "must have a control token result as and only as its last result");
   }
   return {Operation::result_type_range(op->result_type_begin(), it)};
 }
