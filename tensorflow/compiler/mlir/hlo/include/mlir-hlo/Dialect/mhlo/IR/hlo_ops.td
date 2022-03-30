@@ -1099,9 +1099,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
 }
 
 def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
-    SameOperandsAndResultShape, Elementwise,
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-        ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
+    SameOperandsAndResultShape, Elementwise, InferTensorTypeWithReify]> {
   let summary = "Comparison operator";
   let description = [{
     Compares `lhs` and `rhs` elementwise according to `comparison_direction`
@@ -1127,11 +1125,6 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
       "::mlir::mhlo::ComparisonDirection":$comparison_direction,
       CArg<"::mlir::mhlo::ComparisonType",
       "::mlir::mhlo::ComparisonType::NOTYPE">:$compare_type)>,
-
-    OpBuilder<(ins "Value":$lhs, "Value":$rhs,
-      "::mlir::mhlo::ComparisonDirectionAttr":$comparison_direction,
-      CArg<"::mlir::mhlo::ComparisonTypeAttr",
-      "::mlir::mhlo::ComparisonTypeAttr()">:$compare_type)>,
   ];
 
   let hasCustomHLOConverter = 1;
@@ -1891,8 +1884,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
 }
 
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
-    InferTensorTypeWithReify,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    InferTensorTypeWithReify]> {
   let summary = "Select operator";
   let description = [{
     Constructs an output tensor from the elements of `on_true` and `on_false`

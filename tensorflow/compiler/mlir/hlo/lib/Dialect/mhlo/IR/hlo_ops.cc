@@ -4486,11 +4486,11 @@ void SelectOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 // Makes it such that a SelectOp that is a non-root operation in a DRR infers
 // the return type based on operand type.
-LogicalResult SelectOp::inferReturnTypes(
-    MLIRContext*, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type>& inferredReturnTypes) {
-  SelectOp::Adaptor op(operands);
+LogicalResult SelectOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  SelectOp::Adaptor op(operands, attributes);
   auto true_type = op.on_true().getType().cast<TensorType>();
   auto false_type = op.on_true().getType().cast<TensorType>();
 
@@ -4508,11 +4508,11 @@ LogicalResult SelectOp::inferReturnTypes(
 
   // The output shape should be the most general of the operand shapes at each
   // dimension.
-  Type output_type;
+  ShapedTypeComponents& output_type = inferredReturnShapes.emplace_back();
   if (true_type == false_type || !true_type.hasRank()) {
-    output_type = true_type;
+    output_type = ShapedTypeComponents(true_type.cast<ShapedType>());
   } else if (!false_type.hasRank()) {
-    output_type = false_type;
+    output_type = ShapedTypeComponents(false_type.cast<ShapedType>());
   } else {
     assert(true_type.getRank() == false_type.getRank());
     llvm::SmallVector<int64_t, 4> dims;
@@ -4522,34 +4522,8 @@ LogicalResult SelectOp::inferReturnTypes(
                          ? std::get<0>(dim)
                          : ShapedType::kDynamicSize);
     }
-    output_type = RankedTensorType::get(dims, true_type.getElementType());
+    output_type = ShapedTypeComponents(dims, true_type.getElementType());
   }
-  inferredReturnTypes.assign({output_type});
-  return success();
-}
-
-LogicalResult SelectOp::inferReturnTypeComponents(
-    mlir::MLIRContext* ctx, llvm::Optional<mlir::Location> loc,
-    ValueShapeRange operands, mlir::DictionaryAttr attributes,
-    mlir::RegionRange regions,
-    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&
-        inferredShapedTypeComponents) {
-  llvm::SmallVector<Type, 4> inferredReturnTypes;
-  const LogicalResult infer_types_status = inferReturnTypes(
-      ctx, loc, operands, attributes, regions, inferredReturnTypes);
-  if (infer_types_status.failed()) return infer_types_status;
-
-  if (inferredReturnTypes.size() != 1) return failure();
-
-  auto result_tensor_type =
-      inferredReturnTypes[0].dyn_cast_or_null<TensorType>();
-  if (!result_tensor_type) return failure();
-
-  mlir::Type element_type =
-      operands[1].getType().cast<TensorType>().getElementType();
-  inferredShapedTypeComponents.push_back(
-      {result_tensor_type.getShape(), element_type});
-
   return success();
 }
 
@@ -6006,30 +5980,23 @@ void UnaryEinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
 void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
                       Value rhs, ComparisonDirection comparison_direction,
                       ComparisonType compare_type) {
-  Type new_type =
-      UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
   build(
-      builder, result, new_type, lhs, rhs,
+      builder, result, lhs, rhs,
       ComparisonDirectionAttr::get(builder.getContext(), comparison_direction),
       ComparisonTypeAttr::get(builder.getContext(), compare_type));
-}
-
-void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
-                      Value rhs, ComparisonDirectionAttr comparison_direction,
-                      ComparisonTypeAttr compare_type) {
-  Type new_type =
-      UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
-  build(builder, result, new_type, lhs, rhs, comparison_direction,
-        compare_type);
 }
 
 LogicalResult CompareOp::inferReturnTypeComponents(
     mlir::MLIRContext* ctx, llvm::Optional<mlir::Location>,
     ValueShapeRange operands, mlir::DictionaryAttr, mlir::RegionRange,
     llvm::SmallVectorImpl<mlir::ShapedTypeComponents>& inferredReturnTypes) {
-  OpBuilder builder(ctx);
+  ShapedTypeComponents& components =
+      inferredReturnTypes.emplace_back(IntegerType::get(ctx, /*width=*/1));
   auto arg_ty = operands.front().getType().cast<TensorType>();
-  inferredReturnTypes.push_back({arg_ty.getShape(), builder.getI1Type()});
+  if (arg_ty.hasRank()) {
+    components =
+        ShapedTypeComponents(arg_ty.getShape(), components.getElementType());
+  }
   return success();
 }
 
