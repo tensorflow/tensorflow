@@ -42,7 +42,10 @@ filegroup(
 
 filegroup(
     name = "native_hdrs",
-    srcs = ["jni_utils.h"],
+    srcs = [
+        "jni_utils.h",
+        "op_resolver_lazy_delegate_proxy.h",
+    ],
 )
 
 # Native code needed for TF Lite Java API, excluding experimental APIs;
@@ -54,9 +57,9 @@ filegroup(
         "jni_utils.cc",
         "nativeinterpreterwrapper_jni.cc",
         "nativesignaturerunner_jni.cc",
+        "op_resolver_lazy_delegate_proxy.cc",
         "tensor_jni.cc",
         "tensorflow_lite_jni.cc",
-        "xnnpackdelegate_jni.cc",
     ],
 )
 
