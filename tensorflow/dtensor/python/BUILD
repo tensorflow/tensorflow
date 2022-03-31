@@ -3,12 +3,6 @@
 load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py", "tf_py_test")
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
 ]
@@ -157,10 +151,10 @@ pytype_strict_library(
     name = "dtensor_device",
     srcs = ["dtensor_device.py"],
     deps = [
-        ":_dtensor_device",
         ":gen_dtensor_ops",
         ":layout",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:device",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:context",
@@ -169,32 +163,6 @@ pytype_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//third_party/py/numpy",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_dtensor_device",
-    srcs = ["pywrap_dtensor_device.cc"],
-    features = ["-layering_check"],
-    module_name = "_dtensor_device",
-    deps = [
-        ":pywrap_densor_device_headers",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "//tensorflow/python/lib/core:pybind11_status_headers",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
-        "@pybind11",
-    ],
-)
-
-tf_pybind_cc_library_wrapper(
-    name = "pywrap_densor_device_headers",
-    deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager:c_api_internal",
-        "//tensorflow/dtensor/cc:dtensor_device_cc",
-        "//tensorflow/python/eager:pywrap_tfe_lib",
-        "//tensorflow/python/lib/core:safe_pyobject_ptr",
     ],
 )
 

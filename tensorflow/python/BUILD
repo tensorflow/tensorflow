@@ -4097,6 +4097,32 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_dtensor_device",
+    srcs = ["pywrap_dtensor_device.cc"],
+    features = ["-layering_check"],
+    module_name = "_pywrap_dtensor_device",
+    deps = [
+        ":pywrap_densor_device_headers",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status_headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
+)
+
+tf_pybind_cc_library_wrapper(
+    name = "pywrap_densor_device_headers",
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+    ],
+)
+
 py_library(
     name = "tf2",
     srcs = ["tf2.py"],

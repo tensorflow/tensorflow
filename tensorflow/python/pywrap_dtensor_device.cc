@@ -80,7 +80,7 @@ void ConvertToTensor(TFE_Context* ctx, PyObject* input,
   output_handle->reset(EagerTensorFromHandle(handle));
 }
 
-PYBIND11_MODULE(_dtensor_device, m) {
+PYBIND11_MODULE(_pywrap_dtensor_device, m) {
   m.def("Allocate", [](const std::string& name) {
     TFE_CustomDevice* device = new TFE_CustomDevice;
     std::unique_ptr<PyObject, decltype(&PyXDecref)> device_capsule(

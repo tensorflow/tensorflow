@@ -24,9 +24,9 @@ import numpy as np
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.dtensor.python import _dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
+from tensorflow.python import _pywrap_dtensor_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.framework import device as tf_device
@@ -68,7 +68,7 @@ class DTensorDevice(object):
       self.name = "{}/device:CUSTOM:{}".format(ctx.host_address_space(),
                                                _next_device_number)
       _next_device_number += 1
-    device, device_info = _dtensor_device.Allocate(self.name)
+    device, device_info = _pywrap_dtensor_device.Allocate(self.name)
     context.register_custom_device(device, self.name, device_info)
 
     self._device_info = device_info
@@ -154,25 +154,25 @@ class DTensorDevice(object):
     """Idempotently register `mesh` with the dtensor device."""
     with self._mesh_lock:
       if mesh not in self._meshes:
-        _dtensor_device.AddMesh(self._device_info, mesh.to_string(),
-                                self._is_async, False)
+        _pywrap_dtensor_device.AddMesh(self._device_info, mesh.to_string(),
+                                       self._is_async, False)
         self._meshes.add(mesh)
         if mesh.device_type().upper() == "TPU":
           logging.info(
               "Registering virtual 1:1 mapped host mesh %s for mesh %s",
               mesh.host_mesh().to_string(), mesh.to_string())
-          _dtensor_device.AddMesh(self._device_info,
-                                  mesh.host_mesh().to_string(), self._is_async,
-                                  True)
+          _pywrap_dtensor_device.AddMesh(self._device_info,
+                                         mesh.host_mesh().to_string(),
+                                         self._is_async, True)
           self._meshes.add(mesh.host_mesh())
           embedding_host_mesh = self._create_embedding_host_mesh(mesh)
           if embedding_host_mesh:
             logging.info(
                 "Registering embedding host mesh %s on each client for mesh %s ",
                 embedding_host_mesh.to_string(), mesh.to_string())
-            _dtensor_device.AddMesh(self._device_info,
-                                    embedding_host_mesh.to_string(),
-                                    self._is_async, False)
+            _pywrap_dtensor_device.AddMesh(self._device_info,
+                                           embedding_host_mesh.to_string(),
+                                           self._is_async, False)
             self._meshes.add(embedding_host_mesh)
 
   @property
@@ -334,7 +334,7 @@ class DTensorDevice(object):
       else:
         is_sparse = False
       try:
-        return _dtensor_device.Pack(
+        return _pywrap_dtensor_device.Pack(
             context.context()._handle,  # pylint: disable=protected-access
             tensors,
             layout.to_string(),
@@ -362,14 +362,14 @@ class DTensorDevice(object):
       raise TypeError(
           "Received Variable input to unpack, Variable is not supported.")
     try:
-      tensors = _dtensor_device.Unpack(
+      tensors = _pywrap_dtensor_device.Unpack(
           context.context()._handle,  # pylint: disable=protected-access
           tensor,
           self._device_info)
     except core._NotOkStatusException as e:  # pylint: disable=protected-access
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
 
-    is_sparse = _dtensor_device.IsSparseDTensor(
+    is_sparse = _pywrap_dtensor_device.IsSparseDTensor(
         context.context()._handle,  # pylint: disable=protected-access.
         tensor,
         self._device_info)
@@ -395,7 +395,7 @@ class DTensorDevice(object):
     if issubclass(type(tensor), resource_variable_ops.BaseResourceVariable):
       tensor = tensor.read_value()
     try:
-      layout_string = _dtensor_device.FetchLayout(
+      layout_string = _pywrap_dtensor_device.FetchLayout(
           context.context()._handle,  # pylint: disable=protected-access
           tensor,
           self._device_info)
@@ -412,7 +412,7 @@ class DTensorDevice(object):
     Args:
       enabled: A boolean indicating whether to use the policy.
     """
-    _dtensor_device.SetSameShapePolicy(self._device_info, enabled)
+    _pywrap_dtensor_device.SetSameShapePolicy(self._device_info, enabled)
 
   def set_tpu_core_ids(self, mesh_name, tpu_core_ids):
     """Sets the singleton global device ID-to-physical core ID map.
@@ -421,10 +421,11 @@ class DTensorDevice(object):
       mesh_name: The name of a mesh. If empty, set the default mapping.
       tpu_core_ids: TPU core IDs sorted by TF task/device ordinal.
     """
-    _dtensor_device.SetTPUCoreIDs(self._device_info, mesh_name, tpu_core_ids)
+    _pywrap_dtensor_device.SetTPUCoreIDs(self._device_info, mesh_name,
+                                         tpu_core_ids)
 
   def clear_tpu_core_ids(self):
-    _dtensor_device.ClearTPUCoreIDs(self._device_info)
+    _pywrap_dtensor_device.ClearTPUCoreIDs(self._device_info)
 
   def tpu_core_ids_to_locations(self, tpu_core_ids):
     """Translates TPU core IDs to TPU core locations.
@@ -435,7 +436,7 @@ class DTensorDevice(object):
     Returns:
       A list of corresponding TPU core locations.
     """
-    return _dtensor_device.TPUCoreIDsToLocations(
+    return _pywrap_dtensor_device.TPUCoreIDsToLocations(
         context.context()._handle,  # pylint: disable=protected-access
         self._device_info,
         tpu_core_ids)
@@ -450,7 +451,7 @@ class DTensorDevice(object):
     Returns:
       A list of corresponding TPU core IDs.
     """
-    return _dtensor_device.TPUCoreLocationsToIDs(
+    return _pywrap_dtensor_device.TPUCoreLocationsToIDs(
         context.context()._handle,  # pylint: disable=protected-access
         self._device_info,
         tpu_core_locations)
@@ -458,10 +459,11 @@ class DTensorDevice(object):
   @contextlib.contextmanager
   def _experimental_default_mesh(self, mesh: layout_lib.Mesh):
     self._register_mesh(mesh)
-    _dtensor_device.ExperimentalSetDefaultMesh(self._device_info,
-                                               mesh.to_string().encode("utf-8"))
+    _pywrap_dtensor_device.ExperimentalSetDefaultMesh(
+        self._device_info,
+        mesh.to_string().encode("utf-8"))
     yield
-    _dtensor_device.ExperimentalClearDefaultMesh(self._device_info)
+    _pywrap_dtensor_device.ExperimentalClearDefaultMesh(self._device_info)
 
   @contextlib.contextmanager
   def _default_layout(self, layout: layout_lib.Layout):
@@ -491,8 +493,8 @@ class DTensorDevice(object):
     try:
       previous_default = self._current_output_layout
       self._current_output_layout = layout.to_string().encode("utf-8")
-      _dtensor_device.ExperimentalSetDefaultLayout(self._device_info,
-                                                   self._current_output_layout)
+      _pywrap_dtensor_device.ExperimentalSetDefaultLayout(
+          self._device_info, self._current_output_layout)
       if context.executing_eagerly():
         graph = None
         previous_graph_size = None
@@ -524,7 +526,7 @@ class DTensorDevice(object):
 
       self._current_output_layout = previous_default  # pytype: disable=name-error  # py39-upgrade
       if self._current_output_layout is None:
-        _dtensor_device.ExperimentalClearDefaultLayout(self._device_info)
+        _pywrap_dtensor_device.ExperimentalClearDefaultLayout(self._device_info)
       else:
-        _dtensor_device.ExperimentalSetDefaultLayout(
+        _pywrap_dtensor_device.ExperimentalSetDefaultLayout(
             self._device_info, self._current_output_layout.decode("utf-8"))
