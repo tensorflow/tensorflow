@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -758,6 +759,143 @@ TEST_F(HloCseTest, OptimizationBarrier) {
   HloCSE cse(/*is_layout_sensitive=*/false);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
   EXPECT_FALSE(changed);
+}
+
+class HloCseCustomCallTest
+    : public HloCseTest,
+      public ::testing::WithParamInterface<std::tuple<
+          std::string /*op1*/, std::string /*op2*/, bool /*should_cse*/>> {};
+
+TEST_P(HloCseCustomCallTest, DoIt) {
+  std::string op1 = std::get<0>(GetParam());
+  std::string op2 = std::get<1>(GetParam());
+  bool should_cse = std::get<2>(GetParam());
+
+  const char* const hlo_string_tmpl = R"(
+    HloModule m
+    ENTRY entry {
+      p0 = f32[1,1,1] parameter(0)
+
+      op0 = $0
+      op1 = $0
+      op2 = $1
+      ROOT root = tuple(op0, op1, op2)
+    }
+  )";
+  std::string hlo_string = absl::Substitute(hlo_string_tmpl, op1, op2);
+  SCOPED_TRACE(absl::StrCat("Module before CSE:\n", hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+
+  SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
+  EXPECT_EQ(changed, true);  // we always CSE op0 and op1, which are identical.
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0), root->operand(1))
+      << "Identical ops should be CSE'ed";
+  if (should_cse) {
+    EXPECT_EQ(root->operand(0), root->operand(2)) << "Ops should be CSE'ed";
+  } else {
+    EXPECT_NE(root->operand(0), root->operand(2)) << "Ops should not be CSE'ed";
+  }
+}
+
+static std::vector<
+    std::tuple<std::string /*op1*/, std::string /*op2*/, bool /*should_cse*/>>
+CustomCallTests() {
+  auto build = [](absl::string_view args1, absl::string_view args2) {
+    absl::string_view prefix =
+        "f32[] custom-call(p0), custom_call_target=\"foo\", ";
+    return std::make_tuple(absl::StrCat(prefix, args1),
+                           absl::StrCat(prefix, args2), false);
+  };
+  return {
+      {
+          // metadata shouldn't prevent CSE
+          "f32[] custom-call(p0), custom_call_target=\"foo\"",
+          "f32[] custom-call(p0), custom_call_target=\"foo\", "
+          "metadata={op_name=\"bar\"}",
+          true,
+      },
+      {
+          "f32[] custom-call(p0), custom_call_target=\"foo\"",
+          "f32[] custom-call(p0, p0), custom_call_target=\"foo\"",
+          false,
+      },
+      {
+          "f32[1] custom-call(p0), custom_call_target=\"foo\"",
+          "f32[2] custom-call(p0), custom_call_target=\"foo\"",
+          false,
+      },
+      {
+          "f32[] custom-call(p0), custom_call_target=\"foo\"",
+          "f32[] custom-call(p0), custom_call_target=\"bar\"",
+          false,
+      },
+
+      build("window={size=1}", "window={size=2}"),
+      build("dim_labels=b0f_0oi->b0f", "dim_labels=b0f_0oi->bf0"),
+      build("backend_config=\"foo\"", "backend_config=\"bar\""),
+      build("literal=s32[] 0", "literal=s32[] 1"),
+      build("literal=s32[] 0", "literal=f32[] 0"),
+      build("operand_precision={high,default}",
+            "operand_precision={high, high}"),
+      build("api_version=API_VERSION_STATUS_RETURNING",
+            "api_version=API_VERSION_ORIGINAL"),
+      build("feature_group_count=0", "feature_group_count=1"),
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(HloCseCustomCallTestSuite, HloCseCustomCallTest,
+                         ::testing::ValuesIn(CustomCallTests()));
+
+TEST_F(HloCseTest, CustomCallCalledComputations) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    comp {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT maximum = f32[] maximum(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = f32[] parameter(0)
+
+      op0 = f32[] custom-call(p0), custom_call_target="foo", called_computations={comp}
+      op1 = f32[] custom-call(p0), custom_call_target="foo", called_computations={comp, comp}
+      ROOT root = tuple(op0, op1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+
+  SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
+  EXPECT_EQ(changed, false);
+}
+
+TEST_F(HloCseTest, CustomCallSideEffects) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    ENTRY entry {
+      p0 = f32[] parameter(0)
+
+      op0 = f32[] custom-call(p0), custom_call_target="foo", custom_call_has_side_effect=true
+      op1 = f32[] custom-call(p0), custom_call_target="foo", custom_call_has_side_effect=true
+      ROOT root = tuple(op0, op1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+
+  SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
+  EXPECT_EQ(changed, false);
 }
 
 }  // namespace
