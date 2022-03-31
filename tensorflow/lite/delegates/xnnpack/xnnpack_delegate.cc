@@ -40,6 +40,8 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
+struct TfLiteXNNPackDelegateWeightsCache;
+
 namespace tflite {
 namespace xnnpack {
 namespace {
@@ -102,6 +104,14 @@ class Delegate {
 #else
     return threadpool_.get();
 #endif
+  }
+
+  xnn_weights_cache_t weights_cache() const {
+    if (options_.weights_cache == nullptr) {
+      return nullptr;
+    } else {
+      return reinterpret_cast<xnn_weights_cache_t>(options_.weights_cache);
+    }
   }
 
  private:
@@ -587,8 +597,8 @@ class Subgraph {
         }
       }
     }
-    status = xnn_create_runtime_v2(subgraph.get(), delegate.threadpool(), flags,
-                                   &runtime_ptr);
+    status = xnn_create_runtime_v3(subgraph.get(), delegate.weights_cache(),
+                                   delegate.threadpool(), flags, &runtime_ptr);
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
       return nullptr;
@@ -4712,6 +4722,26 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace
 }  // namespace xnnpack
 }  // namespace tflite
+
+TfLiteXNNPackDelegateWeightsCache* TfLiteXNNPackDelegateWeightsCacheCreate() {
+  xnn_status status = xnn_initialize(/*allocator=*/nullptr);
+  if (status != xnn_status_success) {
+    return nullptr;
+  }
+
+  xnn_weights_cache_t weights_cache;
+  xnn_create_weights_cache(&weights_cache);
+  return reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(weights_cache);
+}
+
+void TfLiteXNNPackWeightsCacheDelete(TfLiteXNNPackDelegateWeightsCache* cache) {
+  if (cache == nullptr) {
+    return;
+  }
+  auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
+  xnn_delete_weights_cache(weights_cache);
+  xnn_deinitialize();
+}
 
 TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   TfLiteXNNPackDelegateOptions options = {0};

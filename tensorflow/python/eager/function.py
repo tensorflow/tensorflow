@@ -27,6 +27,7 @@ from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
@@ -34,7 +35,7 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import function_cache
+from tensorflow.python.eager import function_context
 from tensorflow.python.eager import function_spec
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
@@ -2672,10 +2673,10 @@ class Function(object):
       filtered_flat_args = []
 
     if self.input_signature is None:
-      cache_key, cache_key_deletion_observer = function_cache.make_cache_key(
+      cache_key, cache_key_deletion_observer = function_context.make_cache_key(
           (args, kwargs))
     else:
-      cache_key, cache_key_deletion_observer = function_cache.make_cache_key(
+      cache_key, cache_key_deletion_observer = function_context.make_cache_key(
           self.flat_input_signature)
 
     try:

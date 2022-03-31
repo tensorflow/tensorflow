@@ -15,13 +15,13 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TosaLegalizeTFPass : Pass<"tosa-legalize-tf", "mlir::FuncOp"> {
+def TosaLegalizeTFPass : Pass<"tosa-legalize-tf", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow to TOSA";
   let constructor = "createLegalizeTFPass()";
   let dependentDialects = ["TosaDialect", "quant::QuantizationDialect"];
 }
 
-def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "mlir::FuncOp"> {
+def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow Lite to TOSA. Options allow selective disabling/enabling of rewrites";
   let constructor = "createLegalizeTFLPass()";
 
@@ -36,25 +36,25 @@ def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "mlir::FuncOp"> {
   ];
 }
 
-def TosaLegalizeTFTFLPass : Pass<"tosa-legalize-tf-tfl", "mlir::FuncOp"> {
+def TosaLegalizeTFTFLPass : Pass<"tosa-legalize-tf-tfl", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow / TensorFlow Lite to TOSA";
   let constructor = "createLegalizeTFTFLPass()";
   let dependentDialects = ["TosaDialect"];
 }
 
-def TosaFusebiasTFPass : Pass<"tosa-fuse-bias-tf", "mlir::FuncOp"> {
+def TosaFusebiasTFPass : Pass<"tosa-fuse-bias-tf", "mlir::func::FuncOp"> {
   let summary = "Fuse tf.Op + tf.BiasAdd and legalized to TOSA";
   let constructor = "createFuseBiasTFPass()";
   let dependentDialects = ["TosaDialect"];
 }
 
-def TosaConvertTFLUint8Pass : Pass<"tosa-convert-tfl-uint8", "mlir::FuncOp"> {
+def TosaConvertTFLUint8Pass : Pass<"tosa-convert-tfl-uint8", "mlir::func::FuncOp"> {
   let summary = "Convert uint8 graph to int8 graph";
   let constructor = "createConvertTFLUint8Pass()";
   let dependentDialects = ["TosaDialect"];
 }
 
-def TosaStripQuantTypesPass : Pass<"tosa-strip-quant-types", "mlir::FuncOp"> {
+def TosaStripQuantTypesPass : Pass<"tosa-strip-quant-types", "mlir::func::FuncOp"> {
   let summary = "Convert all quant types to their storage type.";
   let constructor = "createStripQuantTypesPass()";
   let dependentDialects = ["TosaDialect"];

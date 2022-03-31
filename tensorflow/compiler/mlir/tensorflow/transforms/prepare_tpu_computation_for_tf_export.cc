@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -125,7 +126,7 @@ class RewriteXlaHostComputeMlir
   }
 };
 
-void UpdateArgAttributes(mlir::FuncOp func) {
+void UpdateArgAttributes(mlir::func::FuncOp func) {
   OpBuilder builder(func.getBody());
   for (int i = 0; i < func.getNumArguments(); ++i) {
     constexpr char kShardingAttr[] = "mhlo.sharding";

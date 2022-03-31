@@ -155,7 +155,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   VariableAccessesForTPUExecute var_access_info;
   Attribute device_attr = execute_launch.deviceAttr();
   if (check_device && !device_attr) return var_access_info;
-  auto func = execute_launch->getParentOfType<mlir::FuncOp>();
+  auto func = execute_launch->getParentOfType<mlir::func::FuncOp>();
 
   // Track the first read op found, which is used later to check if there are
   // assign ops between it and the TPUExecute op. We will exclude reads before

@@ -95,7 +95,7 @@ void ReplaceBlockArgumentsWithImplicitOperands(
 // `tuple_arg` allows any branch that requires additional arguments to have
 // their values be tupled together. Similarly, `tuple_return` allows the results
 // of the if/while operation to be tupled together.
-void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
+void ImportXlaRegion(mlir::func::FuncOp func, Region* dest_region, Location loc,
                      bool tuple_return = true, bool tuple_arg = true) {
   OpBuilder builder(dest_region);
 
@@ -166,7 +166,7 @@ void LowerCase(TF::CaseOp op) {
 
   // Import the regions for all branches.
   for (unsigned i = 0; i < op.num_branches(); ++i) {
-    mlir::FuncOp branch_func = op.branch_function(i);
+    mlir::func::FuncOp branch_func = op.branch_function(i);
     ImportXlaRegion(branch_func, &case_op.branches()[i], loc,
                     /*tuple_return=*/false, /*tuple_arg=*/false);
   }

@@ -895,8 +895,7 @@ class DynamicRaggedShape(extension_type.ExtensionType):
       shape = tensor_shape.as_shape(shape)
       if shape.rank is None:
         row_partitions = [
-            RowPartitionSpec(is_uniform=True,
-                             dtype=dtype) for _ in range(num_row_partitions)
+            RowPartitionSpec(dtype=dtype) for _ in range(num_row_partitions)
         ]
         return cls._from_row_partitions_inner_shape_and_dtype(
             row_partitions=row_partitions,
@@ -926,8 +925,7 @@ class DynamicRaggedShape(extension_type.ExtensionType):
             nrows=num_elements_so_far,
             nvals=nvals,
             uniform_row_length=current_dim,
-            dtype=dtype,
-            is_uniform=True))
+            dtype=dtype))
         num_elements_so_far = nvals
 
       static_inner_shape = tensor_shape.TensorShape(

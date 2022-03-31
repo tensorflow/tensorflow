@@ -627,7 +627,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   });
   if (device_context == nullptr) {
     using_default_context = true;
-    auto* dev_info = device->tensorflow_gpu_device_info();
+    auto* dev_info = device->tensorflow_accelerator_device_info();
     if (dev_info) device_context = dev_info->default_context;
   }
 

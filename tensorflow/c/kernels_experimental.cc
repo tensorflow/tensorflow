@@ -381,3 +381,13 @@ void TF_OpKernelConstruction_GetAttrTensorShape(TF_OpKernelConstruction* ctx,
     dims[i] = static_cast<int64_t>(shape.dim_size(i));
   }
 }
+
+bool TF_IsRefInput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (i < 0 || i >= cc_ctx->num_inputs()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");
+    return false;
+  }
+  TF_SetStatus(status, TF_OK, "");
+  return cc_ctx->input_is_ref(i);
+}

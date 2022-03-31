@@ -55,7 +55,7 @@ TEST(LocalResponseNormOpTest, SameAsL2Norm) {
   LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/20, /*bias=*/0.0,
                              /*alpha=*/1.0, /*beta=*/0.5);
   m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   // The result is every input divided by 2.
   EXPECT_THAT(
       m.GetOutput(),
@@ -66,7 +66,7 @@ TEST(LocalResponseNormOpTest, WithAlpha) {
   LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/20, /*bias=*/0.0,
                              /*alpha=*/4.0, /*beta=*/0.5);
   m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   // The result is every input divided by 3.
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {-0.275, 0.15, 0.175, 0.3, -0.175, 0.025})));
@@ -76,7 +76,7 @@ TEST(LocalResponseNormOpTest, WithBias) {
   LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/20, /*bias=*/9.0,
                              /*alpha=*/4.0, /*beta=*/0.5);
   m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   // The result is every input divided by 5.
   EXPECT_THAT(
       m.GetOutput(),
@@ -87,7 +87,7 @@ TEST(LocalResponseNormOpTest, SmallRadius) {
   LocalResponseNormOpModel m({1, 1, 1, 6}, /*radius=*/2, /*bias=*/9.0,
                              /*alpha=*/4.0, /*beta=*/0.5);
   m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput(),
       ElementsAreArray(ArrayFloatNear(

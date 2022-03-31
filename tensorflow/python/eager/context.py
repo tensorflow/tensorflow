@@ -78,8 +78,7 @@ is_tfrt_enabled = tfrt_utils.enabled
 
 # This flag and the associated environment var are transient and will eventually
 # be removed, once this experiment is enabled by default.
-_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION",
-                                              "1") == "1"
+_RUN_EAGER_OP_AS_FUNCTION_ENABLED = os.getenv("TF_RUN_EAGER_OP_AS_FUNCTION", False)
 
 # This flag and the associated environment var are transient and will eventually
 # be removed, once this experiment is enabled by default.

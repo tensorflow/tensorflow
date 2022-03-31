@@ -427,6 +427,17 @@ class TPUStrategyV2(distribute_lib.Strategy):
     options = options or distribute_lib.RunOptions()
     return self.extended.tpu_run(fn, args, kwargs, options)
 
+  @property
+  def cluster_resolver(self):
+    """Returns the cluster resolver associated with this strategy.
+
+    `tf.distribute.TPUStrategy` provides the associated
+    `tf.distribute.cluster_resolver.ClusterResolver`. If the user provides one
+    in `__init__`, that instance is returned; if the user does not, a default
+    `tf.distribute.cluster_resolver.TPUClusterResolver` is provided.
+    """
+    return self.extended._tpu_cluster_resolver  # pylint: disable=protected-access
+
   def experimental_assign_to_logical_device(self, tensor, logical_device_id):
     """Adds annotation that `tensor` will be assigned to a logical device.
 

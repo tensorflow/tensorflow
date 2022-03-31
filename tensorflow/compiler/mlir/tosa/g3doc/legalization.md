@@ -1744,7 +1744,7 @@ DepthToSpace for tensors of type T.
 
 ### tf.DepthwiseConv2dNative
 
-Computes a 2-D depthwise convlution given 4-D input and filter tensors.
+Computes a 2-D depthwise convolution given 4-D input and filter tensors.
 
 **TensorFlow Dialect**
 
@@ -1858,7 +1858,7 @@ Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
 
 ### tf.FakeQuantWithMinMaxVars
 
-Fake-quantize the 'inputs' tensor of type float via global flats sclars min.
+Fake-quantize the 'inputs' tensor of type float via global flats scalars min.
 
 **TensorFlow Dialect**
 
@@ -2023,7 +2023,7 @@ Gather slices from params into a Tensor with shape specified by indices.
 
 ### tf.Gather
 
-Gathers slices from params according to indicies.
+Gathers slices from params according to indices.
 
 **TensorFlow Dialect**
 
@@ -2039,7 +2039,7 @@ Gathers slices from params according to indicies.
 
 ### tf.GatherV2
 
-Gathers slices from params axis according to indicies.
+Gathers slices from params axis according to indices.
 
 **TensorFlow Dialect**
 

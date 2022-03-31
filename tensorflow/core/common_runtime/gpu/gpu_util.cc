@@ -65,7 +65,7 @@ Status PrepareCopy(Device* device, const DeviceContext* ctx, const Tensor& src,
   if (device == nullptr) {
     return errors::Internal("Unexpected null device.");
   }
-  auto di = device->tensorflow_gpu_device_info();
+  auto di = device->tensorflow_accelerator_device_info();
   if (di == nullptr) {
     return errors::Internal("Unexpected null device info.");
   }
@@ -391,7 +391,7 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
 
 Status GPUUtil::Sync(Device* gpu_device) {
   VLOG(1) << "GPUUtil::Sync";
-  auto* dev_info = gpu_device->tensorflow_gpu_device_info();
+  auto* dev_info = gpu_device->tensorflow_accelerator_device_info();
   if (!dev_info) {
     return errors::Internal("Failed to find dest device GPUDeviceInfo");
   }
@@ -400,7 +400,7 @@ Status GPUUtil::Sync(Device* gpu_device) {
 
 Status GPUUtil::SyncAll(Device* gpu_device) {
   VLOG(1) << "GPUUtil::SyncAll";
-  auto* dev_info = gpu_device->tensorflow_gpu_device_info();
+  auto* dev_info = gpu_device->tensorflow_accelerator_device_info();
   if (!dev_info) {
     return errors::Internal("Failed to find dest device GPUDeviceInfo");
   }
@@ -419,7 +419,7 @@ string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
   void* ptr = (num_bytes > 0) ? GetBase(tensor) : nullptr;
   strings::Appendf(&ret, "%p:", ptr);
   if (num_bytes > 0) {
-    auto* dev_info = device->tensorflow_gpu_device_info();
+    auto* dev_info = device->tensorflow_accelerator_device_info();
     if (!dev_info) {
       strings::StrAppend(
           &ret, PrintMemory(reinterpret_cast<const char*>(ptr), num_bytes));

@@ -112,7 +112,8 @@ Status GetXlaInputShapes(
     std::vector<xla::Shape>* xla_input_shapes) {
   xla_input_shapes->clear();
 
-  mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main_func =
+      module.lookupSymbol<mlir::func::FuncOp>("main");
   TF_RET_CHECK(main_func != nullptr) << "No main function found";
   mlir::FunctionType func_type = main_func.getFunctionType();
 
@@ -161,7 +162,8 @@ Status GetOutputInfo(
                                        XlaLayoutPreference::kNoPreference);
       };
 
-  mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main_func =
+      module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::FunctionType func_type = main_func.getFunctionType();
 
   outputs->clear();
@@ -287,7 +289,7 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
     }
   }
 
-  auto main_func = module.lookupSymbol<mlir::FuncOp>("main");
+  auto main_func = module.lookupSymbol<mlir::func::FuncOp>("main");
 
   mlir::StatusScopedDiagnosticHandler error_handler(module.getContext());
   mlir::LogicalResult result = mlir::TF::InferShapeForFunction(
@@ -308,8 +310,9 @@ void CreateConvertMlirToXlaHloPipeline(
   // function call ops which get inlined by the subsequent inliner pass.
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateDropWhileShapeInvariantPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateDropWhileShapeInvariantPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   // The SCCP pass performs constant propagation across the IR, which, for
   // example, propagates constant arguments into callee functions.
   // TOOD(hinsu): Investigate if we really need SCCP pass before shape inference
@@ -331,7 +334,7 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateStackOpsDecompositionPass());
   pm.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
   pm.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
   pm.addPass(mlir::createSymbolDCEPass());
@@ -345,18 +348,18 @@ void CreateConvertMlirToXlaHloPipeline(
   // inside PromoteResourcesToArgs.
   pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
 
-  pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::TF::CreateLowerQuantizedPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTfTypesPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
   for (auto& target_pass : custom_legalization_passes) {
-    pm.addNestedPass<mlir::FuncOp>(std::move(target_pass));
+    pm.addNestedPass<mlir::func::FuncOp>(std::move(target_pass));
   }
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::CreateAdjustLayoutPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
   pm.addPass(mlir::mhlo::CreateLegalizeTFCollectivePass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   // Run shape inference pass to propagate shapes through tensor_cast operations
   // from static to dynamic shapes. This could be generated if the shape
   // inference was originally missing in a TF op but the corresponding HLO op
@@ -366,7 +369,7 @@ void CreateConvertMlirToXlaHloPipeline(
   // expose more graph pruning and canonicalization opportunities that are
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
   // invocation.
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/false, /*legalize_chlo=*/true,
       /*tf2xla_fallback_device_type=*/device_type, prefer_tf2xla));
 
@@ -375,7 +378,7 @@ void CreateConvertMlirToXlaHloPipeline(
 
   // In order to export to XLA, we must sink constants to control flow regions,
   // since XLA uses functional control flow.
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createSinkConstantsToControlFlowPass());
 }
 
@@ -424,7 +427,8 @@ Status BuildHloFromTfInner(mlir::ModuleOp module_op, xla::XlaBuilder& builder,
                                    /*prefer_tf2xla=*/false,
                                    custom_legalization_passes));
 
-  mlir::Block& block = module_op.lookupSymbol<mlir::FuncOp>("main").front();
+  mlir::Block& block =
+      module_op.lookupSymbol<mlir::func::FuncOp>("main").front();
   return mlir::BuildHloFromMlirHlo(block, builder, xla_params, returns);
 }
 
@@ -596,7 +600,8 @@ Status CompileSerializedMlirToXlaHlo(
 // Returns the original indices for the other arguments on success.
 static StatusOr<std::vector<int>> RewriteWithArgs(
     mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args) {
-  mlir::FuncOp main_fn = module_op.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main_fn =
+      module_op.lookupSymbol<mlir::func::FuncOp>("main");
   std::vector<int> params;
 
   bool has_resource_args = false;

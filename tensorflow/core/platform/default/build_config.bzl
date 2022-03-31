@@ -789,3 +789,6 @@ def if_llvm_system_z_available(then, otherwise = []):
 
 def tf_tpu_dependencies():
     return if_libtpu(["//tensorflow/core/tpu/kernels"])
+
+def tf_dtensor_tpu_dependencies():
+    return if_libtpu(["//tensorflow/dtensor/cc:dtensor_tpu_kernels"])

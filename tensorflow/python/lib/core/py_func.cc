@@ -80,7 +80,7 @@ struct PyCall {
 };
 
 bool IsCPUDevice(const Device* d) {
-  return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
+  return d == nullptr || d->tensorflow_accelerator_device_info() == nullptr;
 }
 
 // Givens the 'call', prepares the token and inputs as a python tuple

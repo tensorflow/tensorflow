@@ -256,7 +256,7 @@ class ShardedVariableMixin(trackable.Trackable):
   """Mixin for ShardedVariable."""
 
   # TODO(b/170877138): Remove this mixin once fixed. This mixin is required
-  # since TPUShardedVariable can't be a CompositeTensor.
+  # since TPUEmbeddingVariable can't be a CompositeTensor.
 
   def __init__(self,
                variables,

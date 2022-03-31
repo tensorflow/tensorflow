@@ -200,7 +200,7 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
   }
 
   if (device->IsRemoteCallAllowed()) {
-    auto* dev_info = flr->device()->tensorflow_gpu_device_info();
+    auto* dev_info = flr->device()->tensorflow_accelerator_device_info();
     if (dev_info) {
       *device_context = dev_info->default_context;
       return Status::OK();

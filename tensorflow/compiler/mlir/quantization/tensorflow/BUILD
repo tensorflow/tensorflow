@@ -137,6 +137,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:quant_spec",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:env",
@@ -154,6 +155,7 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )

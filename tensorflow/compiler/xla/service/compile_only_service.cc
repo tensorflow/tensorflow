@@ -113,9 +113,6 @@ CompileOnlyService::CompileAheadOfTime(
     hlo_modules.push_back(std::move(hlo_module));
   }
 
-  execution_options.clear_shape_with_output_layout();
-  DumpExecutionOptions(execution_options, debug_options);
-
   return compiler_->CompileAheadOfTime(
       absl::make_unique<HloModuleGroup>(hlo_modules[0]->name(),
                                         absl::MakeSpan(hlo_modules)),

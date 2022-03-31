@@ -269,7 +269,8 @@ Status DotOpEmitter::EmitLinalgMatmul() {
 
   return EmitMlirFuncAndCall(
       mlir_context_, b_, dot_info_.result_shape, operand_shapes, target_ptr,
-      operand_ptrs, name, [&](mlir::OpBuilder* builder, mlir::FuncOp function) {
+      operand_ptrs, name,
+      [&](mlir::OpBuilder* builder, mlir::func::FuncOp function) {
         CHECK_EQ(dot_info_.dim_nums.lhs_contracting_dimensions_size(), 1);
         CHECK_EQ(dot_info_.dim_nums.rhs_contracting_dimensions_size(), 1);
         mlir::MLIRContext* context = builder->getContext();

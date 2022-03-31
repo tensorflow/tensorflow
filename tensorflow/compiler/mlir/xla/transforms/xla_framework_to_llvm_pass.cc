@@ -22,22 +22,12 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Constants.h"
-#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
-#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
-#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Func/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -100,7 +90,7 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
                  pointer, index));
   }
 
-  mlir::FuncOp convertFuncOpToLLVMFuncOp(
+  mlir::func::FuncOp convertFuncOpToLLVMFuncOp(
       FuncOp funcOp, ConversionPatternRewriter &rewriter) const {
     auto loc = funcOp.getLoc();
 
@@ -130,7 +120,7 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
     if (!llvm_type) return nullptr;
 
     rewriter.setInsertionPoint(funcOp);
-    auto new_func_op = rewriter.create<mlir::FuncOp>(
+    auto new_func_op = rewriter.create<mlir::func::FuncOp>(
         loc, funcOp.getName(), llvm_type, llvm::SmallVector<NamedAttribute>());
     auto locs = llvm::SmallVector<mlir::Location>(arg_types.size(), loc);
     Block *new_entry =
@@ -231,8 +221,8 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
 class LegalizeXLAFrameworkToLLVMPass
     : public LegalizeXLAFrameworkToLLVMBase<LegalizeXLAFrameworkToLLVMPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<LLVM::LLVMDialect, arith::ArithmeticDialect,
-                    mlir::BuiltinDialect>();
+    registry.insert<func::FuncDialect, LLVM::LLVMDialect,
+                    xla_framework::XLAFrameworkDialect>();
   }
 
  public:
@@ -254,24 +244,18 @@ class LegalizeXLAFrameworkToLLVMPass
         type_converter, 2);
     //  Set target.
     ConversionTarget target(*ctx);
-    target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addLegalDialect<mlir::func::FuncDialect>();
+    target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
     target.addIllegalDialect<xla_framework::XLAFrameworkDialect>();
-    // Unrealized conversion casts are cleaned up by a separate pass.
-    target.addLegalOp<UnrealizedConversionCastOp, ModuleOp>();
-    target.addDynamicallyLegalOp<mlir::FuncOp>([&](mlir::FuncOp op) {
-      if (llvm::any_of(op.getArgumentTypes(), [&](auto type) {
-            return type.template isa<xla_framework::BufferType>();
-          }))
-        return false;
-      if (llvm::any_of(op.getArgumentTypes(), [&](auto type) {
-            return type.template isa<xla_framework::BufferType>();
-          }))
+    target.addDynamicallyLegalOp<func::FuncOp>([](func::FuncOp op) {
+      if (llvm::any_of(
+              llvm::concat<const Type>(op.getArgumentTypes(),
+                                       op.getResultTypes()),
+              [](Type type) { return type.isa<xla_framework::BufferType>(); }))
         return false;
       return true;
     });
 
-    if (failed(applyPartialConversion(m, target, std::move(patterns)))) {
+    if (failed(applyFullConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

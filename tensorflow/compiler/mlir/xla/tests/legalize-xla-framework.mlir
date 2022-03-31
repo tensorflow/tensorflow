@@ -1,8 +1,12 @@
 // RUN: xla-opt %s -xla-legalize-xla-framework-to-llvm | FileCheck %s
 
+memref.global "private" constant @__constant_xf32 : memref<f32> = dense<42.0>
+
 func.func @buffer_type(%arg: !xla_framework.buffer {xla_framework.input_mapping = 0 : i64})
                       attributes {xla_entry} {
   %val = xla_framework.buffer_to_mem %arg : memref<f32>
+  %global = memref.get_global @__constant_xf32 : memref<f32>
+  memref.copy %global, %val : memref<f32> to memref<f32>
   func.return
 }
 

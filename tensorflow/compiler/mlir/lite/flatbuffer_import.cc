@@ -84,7 +84,6 @@ limitations under the License.
 using llvm::ArrayRef;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
-using mlir::FuncOp;
 using mlir::Location;
 using mlir::MLIRContext;
 using mlir::OpBuilder;
@@ -94,6 +93,7 @@ using mlir::OwningOpRef;
 using mlir::RankedTensorType;
 using mlir::UnrankedTensorType;
 using mlir::Value;
+using mlir::func::FuncOp;
 using mlir::quant::QuantizedType;
 using tflite::OperatorT;
 using tflite::TensorT;
@@ -1418,7 +1418,7 @@ std::string SubgraphName(bool set_implicit_main_func, unsigned index,
 
 // Adds a CallOp in `region` to call the `func` and returns the results of
 // CallOp.
-void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
+void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
   OpBuilder op_builder{region};
   region.push_back(new mlir::Block());
   Location loc = region.getLoc();
@@ -1436,11 +1436,11 @@ void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::FuncOp func) {
 void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
   mlir::SymbolTable symbol_table(module);
   module.walk([&](mlir::TFL::WhileOp while_op) {
-    auto cond = symbol_table.lookup<mlir::FuncOp>(
+    auto cond = symbol_table.lookup<mlir::func::FuncOp>(
         while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
     AddCallOpInWhileOpRegion(while_op.cond(), cond);
     while_op->removeAttr("cond");
-    auto body = symbol_table.lookup<mlir::FuncOp>(
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
         while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
     AddCallOpInWhileOpRegion(while_op.body(), body);
     while_op->removeAttr("body");

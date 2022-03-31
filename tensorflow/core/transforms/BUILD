@@ -59,6 +59,7 @@ cc_library(
     deps = [
         ":PassIncGen",
         "//tensorflow/core/transforms/cf_sink:Pass",
+        "//tensorflow/core/transforms/consolidate_attrs:Pass",
         "//tensorflow/core/transforms/const_dedupe_hoist:Pass",
         "//tensorflow/core/transforms/drop_unregistered_attribute:OutputShapesPass",
         "//tensorflow/core/transforms/graph_to_func:Pass",

@@ -2385,7 +2385,7 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
              isa<TF::XlaVariadicReduceV2Op>(op) ||
              isa<TF::XlaVariadicSortOp>(op)) {
     auto propagate_shape_to = [&](mlir::SymbolRefAttr func_sym) {
-      auto func = llvm::cast<mlir::FuncOp>(
+      auto func = llvm::cast<mlir::func::FuncOp>(
           mlir::SymbolTable::lookupSymbolIn(module, func_sym));
       mlir::SmallVector<mlir::Type, 2> types;
       for (auto type : func.getFunctionType().getInputs()) {
@@ -2712,7 +2712,7 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations) {
   // it is no longer needed.
   ShapeInference context(producer, module,
                          /*propagate_caller_callee_constants=*/false);
-  if (auto main = module.lookupSymbol<mlir::FuncOp>("main"))
+  if (auto main = module.lookupSymbol<mlir::func::FuncOp>("main"))
     context.enqueue(main);
   for (auto func : module.getOps<FuncOp>()) context.enqueue(func);
   // Arbitrarily upper bound the maximum number of functions that get processed

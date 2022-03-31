@@ -21,6 +21,10 @@ module {
   }
 }
 
+// CHECK-NOT: func private @internal_conv2d_fn
+// CHECK-NOT: func private @internal_rescale_fn
+// CHECK-NOT: func private @internal_relu_fn
 // CHECK: func private @quantized_conv2d_fn
+// CHECK: func private @quantized_matmul_fn
 // CHECK: func private @quantize_i8
 // CHECK: func private @dequantize_i8

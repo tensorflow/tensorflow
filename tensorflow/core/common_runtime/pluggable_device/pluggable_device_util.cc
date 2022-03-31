@@ -60,7 +60,7 @@ static Status PrepareCopy(Device* device, const DeviceContext* ctx,
   if (device == nullptr) {
     return errors::Internal("Unexpected null device.");
   }
-  auto di = device->tensorflow_gpu_device_info();
+  auto di = device->tensorflow_accelerator_device_info();
   if (di == nullptr) {
     return errors::Internal("Unexpected null device info.");
   }
@@ -268,7 +268,7 @@ void PluggableDeviceUtil::CopyCPUTensorToPluggableDevice(
 
 Status PluggableDeviceUtil::Sync(Device* device) {
   VLOG(1) << "PluggableDeviceUtil::Sync";
-  auto* dev_info = device->tensorflow_gpu_device_info();
+  auto* dev_info = device->tensorflow_accelerator_device_info();
   if (!dev_info) {
     return errors::Internal("Failed to find dest device GPUDeviceInfo.");
   }
@@ -277,7 +277,7 @@ Status PluggableDeviceUtil::Sync(Device* device) {
 
 Status PluggableDeviceUtil::SyncAll(Device* device) {
   VLOG(1) << "PluggableDeviceUtil::SyncAll";
-  auto* dev_info = device->tensorflow_gpu_device_info();
+  auto* dev_info = device->tensorflow_accelerator_device_info();
   if (!dev_info) {
     return errors::Internal("Failed to find dest device GPUDeviceInfo.");
   }

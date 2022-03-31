@@ -2893,20 +2893,17 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
                       nrows=5,
                       nvals=15,
                       uniform_row_length=3,
-                      dtype=dtypes.int32,
-                      is_uniform=True),
+                      dtype=dtypes.int32),
                   RowPartitionSpec(
                       nrows=15,
                       nvals=None,
                       uniform_row_length=None,
-                      dtype=dtypes.int32,
-                      is_uniform=True),
+                      dtype=dtypes.int32),
                   RowPartitionSpec(
                       nrows=None,
                       nvals=None,
                       uniform_row_length=4,
-                      dtype=dtypes.int32,
-                      is_uniform=True)
+                      dtype=dtypes.int32)
               ],
               _static_inner_shape=tensor_shape.TensorShape([None, 2, 5]),
               _inner_shape=tensor_spec.TensorSpec([3], dtypes.int32))),
