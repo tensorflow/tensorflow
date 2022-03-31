@@ -113,9 +113,12 @@ std::string FindAndLogLibtpuProcess() {
 
     pid = strtol(ent->d_name, nullptr, 10);
     if (IsTpuUsed(pid)) {
-      std::string error_message = "libtpu.so is already in use by process with pid " + std::to_string(pid) + ". Not attempting to load libtpu.so in this process.";
+      std::string error_message =
+          "libtpu.so is already in use by process with pid " +
+          std::to_string(pid) +
+          ". Not attempting to load libtpu.so in this process.";
       return error_message;
-   }
+    }
   }
   return "";
 }
@@ -159,13 +162,17 @@ Status TryAcquireTpuLock() {
       // This lock is held until the process exits intentionally. The underlying
       // TPU device will be held on until it quits.
       if (lockf(fd, F_TLOCK, 0) != 0) {
-	std::string error_message = FindAndLogLibtpuProcess();
+        std::string error_message = FindAndLogLibtpuProcess();
         if (error_message == "") {
-	  error_message = "libtpu.so already in use by another process probably  owned by another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out which process is using the TPU. Not attempting to load libtpu.so in this process.";
-       }
-       return errors::Aborted(error_message);	
-     } else {
-	return Status::OK();
+          error_message =
+              "libtpu.so already in use by another process probably  owned by "
+              "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
+              "which process is using the TPU. Not attempting to load "
+              "libtpu.so in this process.";
+        }
+        return errors::Aborted(error_message);
+      } else {
+        return Status::OK();
       }
     } else {
       VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
@@ -243,8 +250,7 @@ void InitializeCreateGcsFileSystemFnPtr() {
     shm_unlink(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data());
   });
 }
-}  // namespace
-
+}  //namespace
 Status FindAndLoadTpuLibrary() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
@@ -257,11 +263,10 @@ Status FindAndLoadTpuLibrary() {
     Status tpu_lock_status = TryAcquireTpuLock();
     if (tpu_lock_status == Status::OK()) {
       Status initialize_library_status = InitializeTpuLibrary(library);
-      if (initialize_library_status != Status::OK()){
+      if (initialize_library_status != Status::OK()) {
         return initialize_library_status;
       }
-    }
-    else{
+    } else {
       return tpu_lock_status;
     }
   }
