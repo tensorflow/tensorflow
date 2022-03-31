@@ -64,10 +64,10 @@
     *   Fixed bug in `tf.data.experimental.parse_example_dataset` when `tf.io.RaggedFeatures` would specify `value_key` but no `partitions`. Before the fix, setting `value_key` but no `partitions` would result in the feature key being replaced by the value key, e.g. `{'value_key': <RaggedTensor>}` instead of `{'key': <RaggedTensor>}`. Now the correct feature key will be used. This aligns the behavior of `tf.data.experimental.parse_example_dataset` to match the behavior of `tf.io.parse_example`.
     *   Added a new field, `filter_parallelization`, to `tf.data.experimental.OptimizationOptions`. If it is set to `True`, tf.data will run `Filter` transformation with multiple threads. Its default value is `False` if not specified.
 
-*    `tf.keras`:
+*   `tf.keras`:
     *   Fixed bug in optimizers that prevented them from properly checkpointing slot variables when they are `ShardedVariable`s (used for training with `tf.distribute.experimental.ParameterServerStrategy`).
 
-* `tf.random`
+*   `tf.random`:
     * Added `tf.random.experimental.index_shuffle`, for shuffling a sequence without materializing the sequence in memory.
 
 *   `tf.RaggedTensor`:
