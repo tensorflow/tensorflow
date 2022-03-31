@@ -3,6 +3,10 @@
 # Breaking Changes
 
 *   Due to security issues in TF 2.8, all boosted trees code has now been removed (after being deprecated in TF 2.8). Users should switch to [TensorFlow Decision Forests](https://github.com/tensorflow/decision-forests).
+*   Build, Compilation and Packaging
+    * TensorFlow is now compiled with `_GLIBCXX_USE_CXX11_ABI=1`. Downstream projects that encounter `std::__cxx11` or `[abi:cxx11]` linker errors will need to adopt this compiler option. See [the GNU C++ Library docs on Dual ABI](https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html).
+    * TensorFlow Python wheels now specifically conform to [manylinux2014](https://peps.python.org/pep-0599/), an upgrade from manylinux2010. The minimum Pip version supporting manylinux2014 is Pip 19.3 (see [pypa/manylinux](https://github.com/pypa/manylinux). This change may affect you if you have been using TensorFlow on a very old platform equivalent to CentOS 6, as manylinux2014 targets CentOS 7 as a compatibility base. Note that TensorFlow does not officially support either platform.
+    * Discussion for these changes can be found on SIG Build's [TensorFlow Community Forum thread](https://discuss.tensorflow.org/t/tensorflow-linux-wheels-are-being-upgraded-to-manylinux2014/8339)
 *   The `tf.keras.mixed_precision.experimental` API has been removed. The non-experimental symbols under `tf.keras.mixed_precision` have been available since TensorFlow 2.4 and should be used instead.
     * The non-experimental API has some minor differences from the experimental API. In most cases, you only need to make three minor changes:
       * Remove the word "experimental" from `tf.keras.mixed_precision` symbols. E.g., replace `tf.keras.mixed_precision.experimental.global_policy` with `tf.keras.mixed_precision.global_policy`.
@@ -16,7 +20,7 @@
       * If you use the very rarely-used function `tf.keras.mixed_precision.experimental.get_layer_policy`:
           * Replace `tf.keras.mixed_precision.experimental.get_layer_policy(layer)` with `layer.dtype_policy`.
 * `tf.mixed_precision.experimental.LossScale` and its subclasses have been removed from the TF2 namespace. This symbols were very rarely used and were only useful in TF2 for use in the now-removed `tf.keras.mixed_precision.experimental` API. The symbols are still available under `tf.compat.v1.mixed_precision`.
-* The `experimental_relax_shapes` heuristic for `tf.function` has been deprecated and replaced with `reduce_retracing` which encompasses broader heuristics to reduce the number of retraces (see below).
+* The `experimental_relax_shapes` heuristic for `tf.function` has been deprecated and replaced with `reduce_retracing` which encompasses broader heuristics to reduce the number of retraces (see below)
 
 # Major Features and Improvements
 
