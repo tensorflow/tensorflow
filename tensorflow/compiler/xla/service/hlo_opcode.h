@@ -155,7 +155,6 @@ namespace xla {
   V(kCbrt, "cbrt", 1)                                                          \
   V(kSubtract, "subtract", 2)                                                  \
   V(kTanh, "tanh", 1)                                                          \
-  V(kTrace, "trace", 1)                                                        \
   V(kTranspose, "transpose", 1)                                                \
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \

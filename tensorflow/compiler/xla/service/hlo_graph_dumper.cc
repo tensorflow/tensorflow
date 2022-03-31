@@ -1051,7 +1051,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kYellow;
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
-    case HloOpcode::kTrace:
     case HloOpcode::kAfterAll:
     case HloOpcode::kAddDependency:
     case HloOpcode::kTuple:

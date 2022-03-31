@@ -1454,33 +1454,6 @@ std::string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
   }
 }
 
-HloTraceInstruction::HloTraceInstruction(const std::string& tag,
-                                         HloInstruction* operand)
-    : HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()),
-      literal_(LiteralUtil::CreateR1U8(tag)) {
-  AppendOperand(operand);
-  operand->set_tracing(this);
-}
-
-HloInstructionProto HloTraceInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_literal() = literal_.ToProto();
-  return proto;
-}
-
-bool HloTraceInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
-  return false;
-}
-
-std::unique_ptr<HloInstruction> HloTraceInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-    HloCloneContext* context) const {
-  LOG(FATAL) << "Not yet implemented, clone: " << ToString();
-}
-
 HloFusionInstruction::HloFusionInstruction(const Shape& shape,
                                            FusionKind fusion_kind,
                                            HloInstruction* fused_root)

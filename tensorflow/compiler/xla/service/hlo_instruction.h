@@ -547,10 +547,6 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
       HloInstruction* operand, int64_t index);
 
-  // Creates a trace instruction that logs the input operand in the computation.
-  static std::unique_ptr<HloInstruction> CreateTrace(const std::string& tag,
-                                                     HloInstruction* operand);
-
   // Creates a random number generation instruction that fills a shape with
   // random numbers from a given distribution.
   //
@@ -1489,12 +1485,6 @@ class HloInstruction {
   // or "elementwise".
   virtual std::string ToCategory() const;
 
-  // Returns a logging instruction, if the output of this instruction is logged.
-  //
-  // Postcondition: retval == nullptr || retval->opcode() == HloOpcode::kTrace
-  HloInstruction* tracing() const;
-  void set_tracing(HloInstruction* trace_instruction);
-
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
   bool IsFused() const;
@@ -1877,9 +1867,6 @@ class HloInstruction {
   // Delegate to HloConstantInstruction::RelayoutConstant.
   void RelayoutConstant(const Layout& new_layout,
                         const ShapeIndex& shape_index = {});
-
-  // Delegates to HloTraceInstruction::TracingTag.
-  std::string TracingTag() const;
 
   // Delegates to HloFusionInstruction::AddFusionOperand.
   HloInstruction* AddFusionOperand(HloInstruction* new_operand);

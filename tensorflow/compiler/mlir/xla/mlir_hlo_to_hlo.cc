@@ -1524,10 +1524,7 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
-  xla::Trace(std::string(op.tag()), operand);
+  // TODO(atondwal): remove mhlo.trace
   return success();
 }
 
