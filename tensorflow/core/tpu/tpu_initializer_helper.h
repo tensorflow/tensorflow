@@ -27,8 +27,6 @@ namespace tpu {
 // up calls to this function will return true if the lock has been acquired and
 // false if we failed to acquire the lock.
 bool TryAcquireTpuLock();
-// This will initialize the TPU library.
-Status InitializeTpuLibrary(void* library_handle);
 // This will check the lock and then load the library. 
 bool FindAndLoadTpuLibrary();
 // Returns arguments (e.g. flags) set in the LIBTPU_INIT_ARGS environment
