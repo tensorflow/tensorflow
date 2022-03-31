@@ -179,7 +179,10 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
 
     # Add HIP headers (needs to match $HIP_PATH)
     if int(rocm_config.rocm_version_number) >= 50200:
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocprim")
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocsolver")
     else:
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
 
