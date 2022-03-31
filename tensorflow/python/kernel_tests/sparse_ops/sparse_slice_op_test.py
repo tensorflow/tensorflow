@@ -317,6 +317,18 @@ class SparseSliceOpTest(test.TestCase):
                                           0, 0, 33, 0])
     # pyformat: enable
 
+    # Test empty slice of non-empty input.
+    start, size = [2, 1], [2, 1]
+    sp_output = sparse_ops.sparse_slice(sp_input, start, size)
+    input_grad_vals = sparse_ops.sparse_slice_grad(
+        sp_output.values, sp_input.indices, start, sp_output.indices)
+    # pyformat: disable
+    self.assertAllEqual(input_grad_vals, [0, 0, 0, 0,
+                                          0, 0, 0,
+                                          0, 0, 0,
+                                          0, 0, 0, 0])
+    # pyformat: enable
+
     sp_input = self._SparseTensor_4x6_empty()
     start, size = [0, 0], [4, 1]
     sp_output = sparse_ops.sparse_slice(sp_input, start, size)

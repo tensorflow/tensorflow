@@ -98,9 +98,9 @@ __global__ void SparseSliceGradKernel(int64_t input_nnz, int64_t output_nnz,
                                       const T* backprop_val_grad, T* val_grad) {
   for (int64 input_nz : GpuGridRangeX<int64>(input_nnz)) {
     // Search for the input index in the output indices.
-    // Note: It would be faster to directly test if the input index is within
-    // the slice volume (and also to use flattened indexes), but unfortunately
-    // we don't have the dense shapes so we can't do that.
+    // Note: It would be faster to first directly test if the input index is
+    // within the slice volume (and also to use flattened indexes), but
+    // unfortunately we don't have the dense shapes so we can't do that.
     const int64 output_nz = gpu_helper::lower_bound(output_indices, output_nnz,
                                                     input_indices[input_nz]);
     if (output_nz < output_nnz &&
@@ -131,7 +131,7 @@ struct SparseSliceGradFunctor<GPUDevice, T> {
     MultiIndexSearchIterator input_indices_iter(
         IndexIterator(int64_t(0)),
         MultiIndexSearchFunctor(rank, input_indices_mat.data(),
-                                input_start_flat.data()));
+                                /*input_start=*/nullptr));
     MultiIndexSearchIterator output_indices_iter(
         IndexIterator(int64_t(0)),
         MultiIndexSearchFunctor(rank, output_indices_mat.data(),
