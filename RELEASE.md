@@ -4,6 +4,22 @@
 
 # Breaking Changes
 
+*   Build, Compilation and Packaging
+    * TensorFlow is now compiled with `_GLIBCXX_USE_CXX11_ABI=1`. Downstream
+      projects that encounter `std::__cxx11` or `[abi:cxx11]` linker errors will
+      need to adopt this compiler option. See
+      [the GNU C++ Library docs on Dual ABI](https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html).
+    * TensorFlow Python wheels now specifically conform to
+      [manylinux2014](https://peps.python.org/pep-0599/), an upgrade from
+      manylinux2010. The minimum Pip version supporting manylinux2014 is Pip
+      19.3 (see [pypa/manylinux](https://github.com/pypa/manylinux). This change
+      may affect you if you have been using TensorFlow on a very old platform
+      equivalent to CentOS 6, as manylinux2014 targets CentOS 7 as a
+      compatibility base. Note that TensorFlow does not officially support
+      either platform.
+    * Discussion for these changes can be found on SIG Build's
+      [TensorFlow Community Forum thread](https://discuss.tensorflow.org/t/tensorflow-linux-wheels-are-being-upgraded-to-manylinux2014/8339)
+
 *   The `tf.keras.mixed_precision.experimental` API has been removed. The
     non-experimental symbols under `tf.keras.mixed_precision` have been
     available since TensorFlow 2.4 and should be used instead.
