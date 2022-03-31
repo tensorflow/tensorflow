@@ -210,7 +210,7 @@
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+Aaron Debattista, Abel Soares Siqueira, Abhishek Varma, Andrei Ivanov, andreii, Andrew Goodbody, angerson, apeltop, Arnab Dutta, Ashiq Imran, Banikumar Maiti (Intel Aipg), Ben Greiner, Benjamin Peterson, bhack, Christopher Bate, chunduriv, Copybara-Service, DEKHTIARJonathan, Deven Desai, Duncan Riach, Eric Kunze, Everton Constantino, Faruk D, Fredrik Knutsson, gadagashwini, Gauri1 Deshpande, gtiHibGele, Guozhong Zhuang, Islem-Esi, Ivanov Viktor, Jason Furmanek, Jason Zaman, Jim, Jinzhe Zeng, John Laxson, Jonas Eschle, Jonas Eschle 'Mayou36, Jonathan Dekhtiar, Kaixi Hou, Kanvi Khanna, KaurkerDevourer, Koan-Sin Tan, kushanam, Laramie Leavitt, Li-Wen Chang, lipracer, Louis Sugy, Lu Teng, Mahmoud Abuzaina, Malcolm Slaney, Malik Shahzad Muzaffar, Marek Šuppa, Matt Conley, Michael Melesse, Milos Puzovic, mohantym, Nathan John Sircombe, Nathan Luehr, Nilesh Agarwalla, Patrice Vignola, peterjc123, Philip Turner, Rajeshwar Reddy T, Robert Kalmar, Rodrigo Formigone, Rohit Santhanam, rui, Sachin Muradi, Saduf2019, sandip, Scott Leishman, Serge Panev, Shi,Guangyong, Srinivasan Narayanamoorthy, stanley, Steven I Reeves, stevenireeves, sushreebarsa, Tamas Bela Feher, Tao He, Thomas Schmeyer, Tiago Almeida, Trevor Morris, Uday Bondhugula, Uwe L. Korn, Varghese, Jojimon, Vishnuvardhan Janapati, William Muir, William Raveane, xutianming, Yasuhiro Matsumoto, Yimei Sun, Yong Tang, Yu Feng, Yuriy Chernyshov, zhaozheng09
 
 # Release 2.8.0
 
