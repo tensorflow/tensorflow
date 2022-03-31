@@ -1476,8 +1476,10 @@ def TFL_NonMaxSuppressionV5Op : TFL_Op<"non_max_suppression_v5", [
   // Operand 1 (scores) should be a 1-dim tensor
   TFL_OperandHasRank<1, 1>,
   // Other operands are scalar params.
-  TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
-  TFL_OperandHasRank<4, 0>, TFL_OperandHasRank<5, 0>]> {
+  TFL_OperandHasRank<2, 0>,
+  TFL_OperandHasRank<3, 0>,
+  TFL_OperandHasRank<4, 0>,
+  TFL_OperandHasRank<5, 0>,
   FixedOutputRangeInterface]> {
   let summary = [{
 Greedily selects a subset of bounding boxes in descending order of score,
