@@ -156,3 +156,76 @@ def Remapper : Pass<"remapper"> {
   ];
   let constructor = "CreateRemapperPass()";
 }
+
+def ConsolidateAttributes : Pass<"tfg-consolidate-attrs", "ModuleOp"> {
+  let summary = "Reify type data from attributes to types.";
+  let description = [{
+    The TensorFlow type system, all tensors are treated as unranked and all
+    resources are treated as opaque. However, shape and handle information can
+    be specified for certain tensors and resources through registered and
+    unregistered attributes, e.g. `_output_shapes` and `_handle_data`. TFG's
+    type system has a richer type representation; it is more consistent to store
+    information about the types in there instead of in attributes. This pass
+    uses attributes to refine function argument, function result, and operation
+    result types using these attributes. The attributes are dropped, reducing
+    the amount of book-keeping that passes need to do.
+
+    Certain ops also have registered attributes that indicate shapes. For
+    example, `If`, `Case`, and `While` have an `output_shapes` attribute. These
+    attributes are optional in TFG and are dropped by this pass, but they must
+    be present on the operation before export.
+
+    For operations, the following attributes are used to refine result shapes
+    and then are dropped:
+      * `_output_shapes`
+      * `output_shapes` (If, Case, While)
+
+    For operations, the following attributes are dropped because they contain
+    redundant data.
+      * `Tcond` (If)
+      * `Tin` (If, Case)
+      * `Tout` (If, Case)
+      * `T` (While, For)
+
+    For functions:
+      * `_input_shapes` is used to refine function argument types
+
+    For function arguments:
+      * `_output_shapes` is used to refine function argument types
+      * `tfg.handle_data` is used to refine function result types
+
+    For function results:
+      * `_output_shapes` is used to refine function result types
+      * `tfg.handle_data` is used to refine function result types
+
+    The following function argument attributes are dropped because they contain
+    redundant data:
+      * `tfg.dtype`
+      * `tfg.is_ref`
+
+    The following function result attributes are dropped because they contain
+    redundant data:
+      * `tfg.dtype`
+  }];
+
+  let constructor = "CreateConsolidateAttributesPass()";
+}
+
+def PrepareAttributesForExport : Pass<"tfg-prepare-attrs-export", "ModuleOp"> {
+  let summary = "Legalize ops' attributes for export.";
+  let description = [{
+    The canonical form of TFG for performing transformations is after running
+    the consolidate attributes pass, which minimizes the attributes in the IR,
+    including reifying type information in attributes into the types themselves.
+    The pass also removes registered attributes from operations that are
+    optional in TFG. These attributes are required for export, and this pass
+    will materialize those attributes.
+
+    The TFG exporter also expects the presence of certain `tfg.` attributes.
+    In addition, reified type information (e.g. shapes and handle data) are
+    stored as unregistered attributes. The types are not converted back to
+    unranked/opaque.
+  }];
+
+  let constructor = "CreatePrepareAttributesForExportPass()";
+}

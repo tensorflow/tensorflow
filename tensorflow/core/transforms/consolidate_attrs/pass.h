@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,21 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TRANSFORMS_PASS_DETAIL_H_
-#define TENSORFLOW_CORE_TRANSFORMS_PASS_DETAIL_H_
+#ifndef TENSORFLOW_CORE_TRANSFORMS_CONSOLIDATE_ATTRS_PASS_H_
+#define TENSORFLOW_CORE_TRANSFORMS_CONSOLIDATE_ATTRS_PASS_H_
 
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/ops.h"
+#include <memory>
 
 namespace mlir {
+class Pass;
 namespace tfg {
-
-// Include the generated base classes.
-#define GEN_PASS_CLASSES
-#include "tensorflow/core/transforms/passes.h.inc"
-
+std::unique_ptr<Pass> CreateConsolidateAttributesPass();
+std::unique_ptr<Pass> CreatePrepareAttributesForExportPass();
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_TRANSFORMS_PASS_DETAIL_H_
+#endif  // TENSORFLOW_CORE_TRANSFORMS_CONSOLIDATE_ATTRS_PASS_H_

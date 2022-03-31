@@ -907,6 +907,8 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
 // to be an array of type attributes.
 static LogicalResult VerifyTypeArray(Operation *op, ValueRange values,
                                      ArrayAttr types, StringRef kind) {
+  // Don't verify if the types are not present.
+  if (!types) return success();
   if (values.size() != types.size()) {
     return op->emitOpError("has ") << values.size() << " " << kind << "s but "
                                    << types.size() << " " << kind << " types";
@@ -935,13 +937,13 @@ using detect_has_T = llvm::is_detected<has_T, OpT>;
 // use it for both input and output. Otherwise, return separate type arrays.
 template <typename OpT, bool = detect_has_T<OpT>::value>
 struct GetTypeArray {
-  static ArrayAttr getInputTypes(OpT op) { return op.Tin(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.Tout(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.TinAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.ToutAttr(); }
 };
 template <typename OpT>
 struct GetTypeArray<OpT, true> {
-  static ArrayAttr getInputTypes(OpT op) { return op.T(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.T(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.TAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.TAttr(); }
 };
 }  // namespace detail
 

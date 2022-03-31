@@ -313,35 +313,21 @@ Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
 static Status ConvertHandleDataImpl(ArrayAttr handle_data_arr,
                                     OpDef::ArgDef *arg) {
   if (!handle_data_arr) return {};
-  for (Attribute handle_data_attr : handle_data_arr) {
-    auto handle_data_arr_attr = handle_data_attr.dyn_cast<ArrayAttr>();
-    if (!handle_data_arr_attr || handle_data_arr_attr.size() != 2)
-      return InvalidArgument(
-          "Expected an array attribute of size 2 for handle_data element "
-          "but got ",
-          debugString(handle_data_attr));
-
-    TypeAttr type_attr = handle_data_arr_attr[0].dyn_cast<TypeAttr>();
-    if (!type_attr)
-      return InvalidArgument(
-          "Expected a Type attribute for first handle_data entry but "
-          "got ",
-          debugString(handle_data_arr_attr[0]));
-
-    auto shape = handle_data_arr_attr[1].dyn_cast<tfg::ShapeAttr>();
-    if (!shape)
-      return InvalidArgument(
-          "Expected a ShapeAttr attribute for second handle_data entry but "
-          "got ",
-          debugString(handle_data_arr_attr[1]));
-
+  for (auto handle_data_attr : handle_data_arr.getAsRange<TypeAttr>()) {
+    TensorType handle_type = handle_data_attr.getValue().dyn_cast<TensorType>();
+    if (!handle_type) {
+      return InvalidArgument("Expected an array of tensor types, but got ",
+                             debugString(handle_data_arr));
+    }
     auto *handle_data = arg->add_handle_data();
-    if (shape.hasStaticShape())
-      ConvertToTensorShapeProto(shape.getShape(), handle_data->mutable_shape());
-    else
+    if (handle_type.hasRank()) {
+      ConvertToTensorShapeProto(handle_type.getShape(),
+                                handle_data->mutable_shape());
+    } else {
       handle_data->mutable_shape()->set_unknown_rank(true);
+    }
     DataType dtype;
-    TF_RETURN_IF_ERROR(ConvertToDataType(type_attr.getValue(), &dtype));
+    TF_RETURN_IF_ERROR(ConvertToDataType(handle_type.getElementType(), &dtype));
     handle_data->set_dtype(dtype);
   }
   return {};

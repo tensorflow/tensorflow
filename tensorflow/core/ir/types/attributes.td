@@ -366,8 +366,6 @@ def TFGraph_TypeOrPlaceholder
 
 def TFType_ShapeAttrDef : TFType_Attr<"Shape"> {
   let mnemonic = "shape";
-  let returnType = "ShapeAttr";
-  let convertFromStorage = "$_self.cast<ShapeAttr>()";
   let summary = "A shape either unranked or is modelled an array of int64";
   let description = [{
     This attributes matches the `ShapedType` MLIR Type content into an attribute
@@ -417,8 +415,6 @@ def TFGraph_ShapesAttr
 
 def TFType_VersionAttr : TFType_Attr<"Version"> {
   let mnemonic = "version";
-  let returnType = "VersionAttr";
-  let convertFromStorage = "$_self.cast<VersionAttr>()";
   let summary = "An Attribute describing the version for a TensorFlow Graph";
   let parameters = (ins
     "int32_t":$producer,
