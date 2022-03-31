@@ -144,15 +144,10 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     }
     // Replace the strict default implementation with one that allows
     // for different sparsity encodings during the is-same test.
-    //
-    // TODO(ajcbik): perhaps a bit expensive to construct types just
-    //               to do the comparison: rewrite into a direct test
-    //
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
       for (auto it : llvm::zip(l, r))
-        if (getTypeWithoutSparseEncoding(std::get<0>(it)) !=
-            getTypeWithoutSparseEncoding(std::get<1>(it)))
+        if (!isSameTypesWithoutSparseEncoding(std::get<0>(it), std::get<1>(it)))
           return false;
       return true;
     }
