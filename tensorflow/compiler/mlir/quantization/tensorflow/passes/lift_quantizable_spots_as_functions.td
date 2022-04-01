@@ -37,64 +37,64 @@ class IsFusedOpEndsWith<string OpName> : AttrConstraint<
 // Pattern rules for lifting as functions
 //===----------------------------------------------------------------------===//
 
-def LiftFusedConv2DRelu6 : Pat<
+def LiftFusedConv2DWithBiasAndRelu6 : Pat<
   (TF__FusedConv2DOp:$res
     $input, $filter, $bias, $strides, $padding,
     $explicit_padding, IsDataFormatNHWC:$data_format, $dilations, $use_cudnn,
     IsFusedOpEndsWith<"Relu6">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_conv2d_relu6_fn">
+  (LiftAsFunctionCall<"fused_conv2d_with_bias_and_relu6_fn">
      (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
   [(IsNotInLiftedFunc $res)]>;
 
-def LiftFusedConv2DRelu : Pat<
+def LiftFusedConv2DWithBiasAndRelu : Pat<
   (TF__FusedConv2DOp:$res
     $input, $filter, $bias, $strides, $padding,
     $explicit_padding, IsDataFormatNHWC:$data_format, $dilations, $use_cudnn,
     IsFusedOpEndsWith<"Relu">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_conv2d_relu_fn">
+  (LiftAsFunctionCall<"fused_conv2d_with_bias_and_relu_fn">
      (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
   [(IsNotInLiftedFunc $res)]>;
 
-def LiftFusedConv2D : Pat<
+def LiftFusedConv2DWithBias : Pat<
   (TF__FusedConv2DOp:$res
     $input, $filter, $bias, $strides, $padding,
     $explicit_padding, IsDataFormatNHWC:$data_format, $dilations, $use_cudnn,
     IsFusedOpEndsWith<"BiasAdd">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_conv2d_fn">
+  (LiftAsFunctionCall<"fused_conv2d_with_bias_fn">
      (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
   [(IsNotInLiftedFunc $res)]>;
 
-def LiftFusedMatMulRelu6 : Pat<
+def LiftFusedMatMulWithBiasAndRelu6 : Pat<
   (TF__FusedMatMulOp:$res
     $input, $weight, $bias, $transpose_a, $transpose_b,
     IsFusedOpEndsWith<"Relu6">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_matmul_relu6_fn">
+  (LiftAsFunctionCall<"fused_matmul_with_bias_and_relu6_fn">
      (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
      (ResultList $res),
      (AttributeList $transpose_a, $transpose_b)),
   [(IsNotInLiftedFunc $res)]>;
 
-def LiftFusedMatMulRelu : Pat<
+def LiftFusedMatMulWithBiasAndRelu : Pat<
   (TF__FusedMatMulOp:$res
     $input, $weight, $bias, $transpose_a, $transpose_b,
     IsFusedOpEndsWith<"Relu">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_matmul_relu_fn">
+  (LiftAsFunctionCall<"fused_matmul_with_bias_and_relu_fn">
      (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
      (ResultList $res),
      (AttributeList $transpose_a, $transpose_b)),
   [(IsNotInLiftedFunc $res)]>;
 
-def LiftFusedMatMul : Pat<
+def LiftFusedMatMulWithBias : Pat<
   (TF__FusedMatMulOp:$res
     $input, $weight, $bias, $transpose_a, $transpose_b,
     IsFusedOpEndsWith<"BiasAdd">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_matmul_fn">
+  (LiftAsFunctionCall<"fused_matmul_with_bias_fn">
      (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
      (ResultList $res),
      (AttributeList $transpose_a, $transpose_b)),

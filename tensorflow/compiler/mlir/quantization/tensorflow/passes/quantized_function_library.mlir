@@ -106,9 +106,9 @@ module {
   }
 
   parameters[
-    {"func_name": "conv2d", "conv_func": "internal_conv2d_fn", "act_func": "internal_no_activation_fn"},
-    {"func_name": "conv2d_relu", "conv_func": "internal_conv2d_fn", "act_func": "internal_relu_fn"},
-    {"func_name": "conv2d_relu6", "conv_func": "internal_conv2d_fn", "act_func": "internal_relu6_fn"}
+    {"func_name": "conv2d_with_bias", "conv_func": "internal_conv2d_fn", "act_func": "internal_no_activation_fn"},
+    {"func_name": "conv2d_with_bias_and_relu", "conv_func": "internal_conv2d_fn", "act_func": "internal_relu_fn"},
+    {"func_name": "conv2d_with_bias_and_relu6", "conv_func": "internal_conv2d_fn", "act_func": "internal_relu6_fn"}
   ]
   func.func @quantized_${func_name}_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
@@ -152,9 +152,9 @@ module {
   }
 
   parameters[
-    {"func_name": "matmul", "matmul_func": "internal_matmul_fn", "act_func": "internal_no_activation_fn"},
-    {"func_name": "matmul_relu", "matmul_func": "internal_matmul_fn", "act_func": "internal_relu_fn"},
-    {"func_name": "matmul_relu6", "matmul_func": "internal_matmul_fn", "act_func": "internal_relu6_fn"},
+    {"func_name": "matmul_with_bias", "matmul_func": "internal_matmul_fn", "act_func": "internal_no_activation_fn"},
+    {"func_name": "matmul_with_bias_and_relu", "matmul_func": "internal_matmul_fn", "act_func": "internal_relu_fn"},
+    {"func_name": "matmul_with_bias_and_relu6", "matmul_func": "internal_matmul_fn", "act_func": "internal_relu6_fn"},
   ]
   func.func @quantized_${func_name}_fn(%input : tensor<*xi8>,
                          %weight : tensor<*xi8>, %bias : tensor<*xi32>,
