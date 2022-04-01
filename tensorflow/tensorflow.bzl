@@ -819,10 +819,8 @@ def tf_cc_shared_library(
             deps = deps + framework_so,
             copts = copts,
             linkstatic = linkstatic,
-            win_def_file = win_def_file,
         )
 
-        win_linker_inputs = [win_def_file] if win_def_file else []
         cc_shared_library_name = get_cc_shared_library_target_name(name_os_full)
         shared_lib_name = get_sharedlibname(name_os_full)
         cc_shared_library(
@@ -837,16 +835,14 @@ def tf_cc_shared_library(
                 clean_dep("//tensorflow:macos"): [
                     "-Wl,-install_name,@rpath/" + soname,
                 ],
-                clean_dep("//tensorflow:windows"): [
-                    "/DEF:$(location :%s)" % win_def_file,
-                    "/ignore:4070",
-                ] if win_def_file else [],
+                clean_dep("//tensorflow:windows"): [],
                 "//conditions:default": [
                     "-Wl,-soname," + soname,
                 ],
             }),
-            additional_linker_inputs = additional_linker_inputs + win_linker_inputs,
+            additional_linker_inputs = additional_linker_inputs,
             visibility = visibility,
+            win_def_file = if_windows(win_def_file, otherwise = None),
         )
         native.alias(
             name = shared_lib_name,
@@ -2949,19 +2945,14 @@ def pybind_extension(
             features = features + ["-use_header_modules"],
             restricted_to = restricted_to,
             testonly = testonly,
-            win_def_file = win_def_file,
         )
 
-        win_linker_inputs = if_windows([win_def_file] if win_def_file else [])
         cc_shared_library_name = get_cc_shared_library_target_name(name)
         cc_shared_library(
             name = cc_shared_library_name,
             roots = [cc_library_name],
             static_deps = static_deps,
-            additional_linker_inputs = [
-                exported_symbols_file,
-                version_script_file,
-            ] + win_linker_inputs,
+            additional_linker_inputs = [exported_symbols_file, version_script_file],
             compatible_with = compatible_with,
             deprecation = deprecation,
             features = features + ["-use_header_modules"],
@@ -2976,16 +2967,14 @@ def pybind_extension(
                     "-Wl,-w",
                     "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
                 ],
-                clean_dep("//tensorflow:windows"): [
-                    "/DEF:$(location %s)" % win_def_file,
-                    "/ignore:4070",
-                ] if win_def_file else [],
+                clean_dep("//tensorflow:windows"): [],
                 "//conditions:default": [
                     "-Wl,--version-script",
                     "$(location %s)" % version_script_file,
                 ],
             }),
             visibility = visibility,
+            win_def_file = if_windows(win_def_file, otherwise = None),
         )
         native.alias(
             name = so_file,
