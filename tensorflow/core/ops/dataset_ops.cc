@@ -997,7 +997,6 @@ REGISTER_OP("DatasetToGraphV2")
     .Attr("external_state_policy: int = 0")
     .Attr("strip_device_assignment: bool = false")
     .Output("graph: string")
-    .SetForwardTypeFn(full_type::Encode(TFT_STRING, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("OptimizeDataset")

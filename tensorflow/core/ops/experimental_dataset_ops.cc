@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -331,7 +330,6 @@ REGISTER_OP("DatasetFromGraph")
     .Input("graph_def: string")
     .Output("handle: variant")
     .SetTypeConstructor(full_type::UnaryGeneric(TFT_DATASET))
-    .SetForwardTypeFn(full_type::Decode(TFT_STRING, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 // TODO(b/124308596): Instead of conservatively marking this op as stateful,
