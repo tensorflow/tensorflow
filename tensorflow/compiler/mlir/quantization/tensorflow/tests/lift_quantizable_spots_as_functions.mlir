@@ -135,3 +135,77 @@ func.func @float_matmul(
 // CHECK-NEXT: tf._FusedMatMul"(%arg0, %arg1, %arg2)
 // CHECK-SAME: fused_ops = ["BiasAdd"]
 }
+
+// -----
+
+// CHECK-LABEL: float_conv_no_bias
+func.func @float_conv_no_bias(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
+  %0 = "tf.Conv2D"(%arg0, %arg1) {
+    data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+    padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+  } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+  %1 = "tf.Relu6"(%0) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+
+  %3 = "tf.Conv2D"(%arg0, %arg1) {
+    data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+    padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+  } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+  %4 = "tf.Relu"(%3) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+
+  %6 = "tf.Conv2D"(%arg0, %arg1) {
+    data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [],
+    padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+  } : (tensor<1x3x4x3xf32>, tensor<2x3x3x2xf32>) -> tensor<*xf32>
+  func.return %1, %4, %6 : tensor<*xf32>, tensor<*xf32>, tensor<*xf32>
+
+// CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
+// CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
+// CHECK-SAME: f = @fused_conv2d_with_relu6_fn_1}
+// CHECK: %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
+// CHECK-SAME: f = @fused_conv2d_with_relu_fn_1}
+// CHECK: %[[PARTITIONEDCALL_2:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
+// CHECK-SAME: f = @fused_conv2d_fn_1}
+// CHECK: return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]], %[[PARTITIONEDCALL_2]]
+// CHECK: }
+
+// CHECK-LABEL: private @fused_conv2d_with_relu6_fn_1
+// CHECK-LABEL: private @fused_conv2d_with_relu_fn_1
+// CHECK-LABEL: private @fused_conv2d_fn_1
+}
+
+// -----
+
+// CHECK-LABEL: float_matmul_no_bias
+func.func @float_matmul_no_bias(
+  %arg0: tensor<1x10xf32>, %arg1: tensor<10x10xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
+  %0 = "tf.MatMul"(%arg0, %arg1) {
+    transpose_a = false, transpose_b = false
+  } : (tensor<1x10xf32>, tensor<10x10xf32>) -> tensor<*xf32>
+  %1 = "tf.Relu6"(%0) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+  %3 = "tf.MatMul"(%arg0, %arg1) {
+    transpose_a = true, transpose_b = false
+  } : (tensor<1x10xf32>, tensor<10x10xf32>) -> tensor<*xf32>
+  %4 = "tf.Relu"(%3) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+
+  %6 = "tf.MatMul"(%arg0, %arg1) {
+    transpose_a = false, transpose_b = true
+  } : (tensor<1x10xf32>, tensor<10x10xf32>) -> tensor<*xf32>
+  func.return %1, %4, %6 : tensor<*xf32>, tensor<*xf32>, tensor<*xf32>
+
+// CHECK: %[[PARTITIONEDCALL_0:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
+// CHECK-SAME: {_tfl_quant_trait = "fully_quantizable",
+// CHECK-SAME: f = @fused_matmul_with_relu6_fn_1}
+// CHECK: %[[PARTITIONEDCALL_1:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
+// CHECK-SAME: f = @fused_matmul_with_relu_fn_1}
+// CHECK: %[[PARTITIONEDCALL_2:.*]] = "tf.PartitionedCall"(%arg0, %arg1)
+// CHECK-SAME: f = @fused_matmul_fn_1}
+// CHECK: return %[[PARTITIONEDCALL_0]], %[[PARTITIONEDCALL_1]], %[[PARTITIONEDCALL_2]]
+// CHECK: }
+
+// CHECK-LABEL: private @fused_matmul_with_relu6_fn_1
+// CHECK-LABEL: private @fused_matmul_with_relu_fn_1
+// CHECK-LABEL: private @fused_matmul_fn_1
+}
