@@ -790,7 +790,7 @@ tf_module {
   }
   member_method {
     name: "CollectiveAssignGroupV2"
-    argspec: "args=[\'group_assignment\', \'device_index\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'group_assignment\', \'device_index\', \'base_key\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "CollectiveBcastRecv"
@@ -2859,6 +2859,10 @@ tf_module {
   member_method {
     name: "ParallelDynamicStitch"
     argspec: "args=[\'indices\', \'data\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ParallelFilterDataset"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'predicate\', \'output_types\', \'output_shapes\', \'deterministic\', \'metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'\', \'None\'], "
   }
   member_method {
     name: "ParallelInterleaveDataset"

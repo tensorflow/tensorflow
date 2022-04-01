@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 
 // The `returns` number indicates the number of results the function returns.

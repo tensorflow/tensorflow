@@ -675,6 +675,7 @@ void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
     // are associated with the task's thread context.
     batch_cost_measurements.clear();
     for (int i = 0; i < batch->num_tasks(); ++i) {
+      WithContext wc(batch->task(i).propagated_context);
       if (batch->task(i).is_partial) {
         batch->mutable_task(i)->status->Update(status);
       } else {

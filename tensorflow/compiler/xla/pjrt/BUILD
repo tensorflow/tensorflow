@@ -406,6 +406,7 @@ cc_library(
 cc_library(
     name = "pjrt_future",
     hdrs = ["pjrt_future.h"],
+    visibility = [":friends"],
     deps = [
         ":utils",
         "//tensorflow/core/platform:logging",

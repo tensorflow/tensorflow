@@ -2502,6 +2502,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:forward_type_inference",
     ],
 )
 
@@ -6466,6 +6467,7 @@ filegroup(
         "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
         "cwise_op_isnan.cc",
+        "cwise_op_leakyrelu_bf16.cc",
         "cwise_op_left_shift.cc",
         "cwise_op_less.cc",
         "cwise_op_less_equal.cc",
@@ -7688,6 +7690,7 @@ cc_library(
 tf_cc_shared_library(
     name = "libtfkernel_all_kernels.so",
     static_deps = [
+        # TODO(rostam): Remove Copybara transform.
         # copybara:comment_begin(oss only)
         "@bazel_tools//:__subpackages__",
         "@boringssl//:__subpackages__",
@@ -7850,6 +7853,7 @@ exports_files([
     "cwise_op_greater.cc",
     "cwise_op_greater_equal.cc",
     "cwise_op_isinf.cc",
+    "cwise_op_leakyrelu_bf16.cc",
     "cwise_op_less.cc",
     "cwise_op_less_equal.cc",
     "cwise_op_log.cc",

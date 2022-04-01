@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -60,8 +61,10 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/importexport/functiondef_export.h"
 #include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
@@ -84,6 +87,7 @@ namespace {
 
 constexpr StringRef kNameAttr = TFGraphDialect::getNameAttrKey();
 constexpr StringRef kDeviceAttr = TFGraphDialect::getDeviceAttrKey();
+constexpr StringRef kFullTypeAttr = TFGraphDialect::getFullTypeAttrKey();
 constexpr char kAliasingAttr[] = "tf.aliasing_output";
 
 // Compute the name to use in GraphDef for a given Value (either the result of
@@ -166,12 +170,19 @@ Status GetArgumentNode(GraphFuncOp func, NodeDef *node_def, unsigned index,
 
   if (auto device_attr = func.getArgAttrOfType<StringAttr>(index, kDeviceAttr))
     *node_def->mutable_device() = device_attr.getValue().str();
+  if (tf_type::FullTypeAttr fulltype_attr =
+          func.getArgAttrOfType<tf_type::FullTypeAttr>(
+              index, "tfg.experimental_full_type")) {
+    TF_ASSIGN_OR_RETURN(*node_def->mutable_experimental_type(),
+                        ConvertAttribute(fulltype_attr));
+  }
 
   ArrayRef<NamedAttribute> func_arg_i_attrs = func.getArgAttrs(index);
-  TF_RETURN_IF_ERROR(ConvertAttributes(
-      func_arg_i_attrs,
-      {kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype", "tfg.handle_data"},
-      /*remove_ref_type=*/false, node_def->mutable_attr()));
+  TF_RETURN_IF_ERROR(
+      ConvertAttributes(func_arg_i_attrs,
+                        {kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype",
+                         "tfg.experimental_full_type", "tfg.handle_data"},
+                        /*remove_ref_type=*/false, node_def->mutable_attr()));
 
   return Status::OK();
 }
@@ -199,12 +210,18 @@ Status GetReturnNode(GraphFuncOp function, Value operand, unsigned index,
   if (auto device_attr =
           function.getResultAttrOfType<StringAttr>(index, kDeviceAttr))
     *node_def->mutable_device() = device_attr.getValue().str();
+  if (auto fulltype_attr = function.getResultAttrOfType<tf_type::FullTypeAttr>(
+          index, "tfg.experimental_full_type")) {
+    TF_ASSIGN_OR_RETURN(*node_def->mutable_experimental_type(),
+                        ConvertAttribute(fulltype_attr));
+  }
 
   ArrayRef<NamedAttribute> func_res_i_attrs = function.getResultAttrs(index);
-  TF_RETURN_IF_ERROR(ConvertAttributes(
-      func_res_i_attrs,
-      {kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype", "tfg.handle_data"},
-      /*remove_ref_type=*/false, node_def->mutable_attr()));
+  TF_RETURN_IF_ERROR(
+      ConvertAttributes(func_res_i_attrs,
+                        {kDeviceAttr, kAliasingAttr, "tfg.name", "tfg.dtype",
+                         "tfg.experimental_full_type", "tfg.handle_data"},
+                        /*remove_ref_type=*/false, node_def->mutable_attr()));
 
   return Status::OK();
 }
@@ -238,6 +255,11 @@ Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
   if (nameAttr) node->set_name(nameAttr.getValue().str());
   auto deviceAttr = op.getAttrOfType<StringAttr>(kDeviceAttr);
   if (deviceAttr) node->set_device(deviceAttr.getValue().str());
+  if (auto fulltype_attr =
+          op.getAttrOfType<tf_type::FullTypeAttr>(kFullTypeAttr)) {
+    TF_ASSIGN_OR_RETURN(*node->mutable_experimental_type(),
+                        ConvertAttribute(fulltype_attr));
+  }
   std::string name;
   for (Value operand : op.getOperands()) {
     TF_RETURN_IF_ERROR(get_value_name(operand, name));
@@ -251,7 +273,7 @@ Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
     StringRef callee_name = callee.getName().getRootReference().getValue();
     node->set_op({callee_name.data(), callee_name.size()});
     TF_RETURN_IF_ERROR(ConvertAttributes(
-        callee.getAttrs().getValue(), {kNameAttr, kDeviceAttr},
+        callee.getAttrs().getValue(), {kNameAttr, kDeviceAttr, kFullTypeAttr},
         /*remove_ref_type=*/false, node->mutable_attr()));
     auto optional_device =
         op.getAttrDictionary().getNamed("_mlir_assigned_device");
@@ -264,9 +286,9 @@ Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
     }
   } else {
     node->set_op({op_name.data(), op_name.size()});
-    TF_RETURN_IF_ERROR(
-        ConvertAttributes(op.getAttrs(), {kNameAttr, kDeviceAttr},
-                          /*remove_ref_type=*/false, node->mutable_attr()));
+    TF_RETURN_IF_ERROR(ConvertAttributes(
+        op.getAttrs(), {kNameAttr, kDeviceAttr, kFullTypeAttr},
+        /*remove_ref_type=*/false, node->mutable_attr()));
   }
   // Eliminate empty "_mlir_assigned_device" from the export. This is just
   // more friendly to the serialization.
@@ -291,35 +313,21 @@ Status ConvertOperationToNodeImpl(Operation &op, NodeDef *node,
 static Status ConvertHandleDataImpl(ArrayAttr handle_data_arr,
                                     OpDef::ArgDef *arg) {
   if (!handle_data_arr) return {};
-  for (Attribute handle_data_attr : handle_data_arr) {
-    auto handle_data_arr_attr = handle_data_attr.dyn_cast<ArrayAttr>();
-    if (!handle_data_arr_attr || handle_data_arr_attr.size() != 2)
-      return InvalidArgument(
-          "Expected an array attribute of size 2 for handle_data element "
-          "but got ",
-          debugString(handle_data_attr));
-
-    TypeAttr type_attr = handle_data_arr_attr[0].dyn_cast<TypeAttr>();
-    if (!type_attr)
-      return InvalidArgument(
-          "Expected a Type attribute for first handle_data entry but "
-          "got ",
-          debugString(handle_data_arr_attr[0]));
-
-    auto shape = handle_data_arr_attr[1].dyn_cast<tfg::ShapeAttr>();
-    if (!shape)
-      return InvalidArgument(
-          "Expected a ShapeAttr attribute for second handle_data entry but "
-          "got ",
-          debugString(handle_data_arr_attr[1]));
-
+  for (auto handle_data_attr : handle_data_arr.getAsRange<TypeAttr>()) {
+    TensorType handle_type = handle_data_attr.getValue().dyn_cast<TensorType>();
+    if (!handle_type) {
+      return InvalidArgument("Expected an array of tensor types, but got ",
+                             debugString(handle_data_arr));
+    }
     auto *handle_data = arg->add_handle_data();
-    if (shape.hasStaticShape())
-      ConvertToTensorShapeProto(shape.getShape(), handle_data->mutable_shape());
-    else
+    if (handle_type.hasRank()) {
+      ConvertToTensorShapeProto(handle_type.getShape(),
+                                handle_data->mutable_shape());
+    } else {
       handle_data->mutable_shape()->set_unknown_rank(true);
+    }
     DataType dtype;
-    TF_RETURN_IF_ERROR(ConvertToDataType(type_attr.getValue(), &dtype));
+    TF_RETURN_IF_ERROR(ConvertToDataType(handle_type.getElementType(), &dtype));
     handle_data->set_dtype(dtype);
   }
   return {};
@@ -362,6 +370,11 @@ Status BuildFunctionSignature(GraphFuncOp func_op, FunctionDef &fdef) {
     if (description) arg->set_description(description.getValue().str());
     TF_RETURN_IF_ERROR(
         ConvertHandleData(attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
+    if (tf_type::FullTypeAttr full_type =
+            attrs.getAs<tf_type::FullTypeAttr>("tfg.experimental_full_type")) {
+      TF_ASSIGN_OR_RETURN(*arg->mutable_experimental_full_type(),
+                          ConvertAttribute(full_type));
+    }
   }
 
   // Export the control operands.
@@ -549,6 +562,11 @@ Status ExportFunction(GraphFuncOp func_op,
     if (description) arg->set_description(description.getValue().str());
     TF_RETURN_IF_ERROR(
         ConvertHandleData(arg_attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
+    if (auto full_type = arg_attrs.getAs<tf_type::FullTypeAttr>(
+            "tfg.experimental_full_type")) {
+      TF_ASSIGN_OR_RETURN(*arg->mutable_experimental_full_type(),
+                          ConvertAttribute(full_type));
+    }
   }
   // Handle the results now.
   // An ArgDef entry needs to be constructed for all non-control returned value,
@@ -578,6 +596,11 @@ Status ExportFunction(GraphFuncOp func_op,
     if (description) arg->set_description(description.getValue().str());
     TF_RETURN_IF_ERROR(
         ConvertHandleData(attrs.getAs<ArrayAttr>("tfg.handle_data"), arg));
+    if (auto full_type =
+            attrs.getAs<tf_type::FullTypeAttr>("tfg.experimental_full_type")) {
+      TF_ASSIGN_OR_RETURN(*arg->mutable_experimental_full_type(),
+                          ConvertAttribute(full_type));
+    }
   }
 
   std::string ret_name;

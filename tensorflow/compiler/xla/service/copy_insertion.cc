@@ -1569,6 +1569,14 @@ class CopyRemover {
     }
     VLOG(3) << "Checking live ranges before :" << ValueListToString(&a)
             << " vs " << ValueListToString(&b) << "\n";
+    // If any of the positions of the "a" value is a root of the same
+    // computation as "b", "a"'s live range cannot be before "b"'s. This catches
+    // the cases where the root may not be the last instruction in the
+    // computation.
+    if (a.value->IsRootOf(b.value->defining_instruction()->parent())) {
+      VLOG(3) << "Value is root of the same computation";
+      return false;
+    }
     return ordering_->UsesBeforeValueDefinition(
         a.uses, *b.value, dataflow_,
         /* use_is_always_before_def_in_same_instr=*/false);

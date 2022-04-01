@@ -8,6 +8,7 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/full_type_go_proto";
 
+// LINT.IfChange
 // Experimental. Represents the complete type information of a TensorFlow value.
 enum FullTypeId {
   // The default represents an uninitialized values.
@@ -274,3 +275,4 @@ message FullTypeDef {
     // TODO(mdan): list/tensor, map? Need to reconcile with TFT_RECORD, etc.
   }
 }
+// LINT.ThenChange(../ir/types/attributes.td)

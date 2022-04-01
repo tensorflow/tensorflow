@@ -19,6 +19,8 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectInterface.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
+#include "tensorflow/core/ir/dialect.h"
 
 // Include generated declarations.
 #include "tensorflow/core/ir/interfaces.h.inc"

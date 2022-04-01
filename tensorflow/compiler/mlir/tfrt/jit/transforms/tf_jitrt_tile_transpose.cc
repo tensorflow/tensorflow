@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
@@ -187,7 +188,8 @@ struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileTransposePass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTileTransposePass() {
   return std::make_unique<TileTransposePass>();
 }
 

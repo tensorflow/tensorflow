@@ -34,9 +34,20 @@ namespace tensorflow {
 // TODO(b/62899350): Refactor without proto dependencies.
 typedef std::function<Status(OpDef* c)> OpTypeConstructor;
 
+typedef std::vector<std::reference_wrapper<const FullTypeDef>> TypeRefVector;
+typedef std::map<std::string, std::reference_wrapper<const FullTypeDef>>
+    TypeRefMap;
+
+// A type inference function, called for each node during type inference
+// (possibly multiple times).
+// The first argument (input_types) will hold the type of each of the node's
+// inputs. The second argument (type_vars) will hold the return type of
+// each function referred from any type variable (e.g. `FuncVar`) present
+// in the node's corresponding op definition.
+//
 // TODO(mdan): Consider a vector-in, vector-out contract.
-typedef std::function<StatusOr<FullTypeDef>(
-    const std::vector<std::reference_wrapper<const FullTypeDef>>&)>
+typedef std::function<StatusOr<FullTypeDef>(const TypeRefVector&,
+                                            const TypeRefMap&)>
     ForwardTypeInferenceFn;
 
 class FunctionDefHelper;

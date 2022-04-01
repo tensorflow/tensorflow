@@ -161,11 +161,12 @@ static std::vector<int64_t> Convert_broadcast_dimensions(
 }
 
 // Converts StringRef to xla FftType enum
-static xla::FftType Convert_fft_type(llvm::StringRef fft_type_str) {
+static xla::FftType Convert_fft_type(mlir::mhlo::FftType fft_type) {
   xla::FftType fft_type_enum;
   // Illegal fft_type string would be caught by the verifier, so 'FftType_Parse'
   // call below should never return false.
-  if (!FftType_Parse(std::string(fft_type_str), &fft_type_enum))
+  if (!FftType_Parse(std::string(mlir::mhlo::stringifyFftType(fft_type)),
+                     &fft_type_enum))
     return xla::FftType::FFT;
   return fft_type_enum;
 }
@@ -221,8 +222,9 @@ static xla::Shape GetCustomCallResultShapeWithLayout(mlir::Type type,
 
 // Converts StringRef to xla Transpose enum.
 static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
-    llvm::StringRef transpose_str) {
-  return xla::ConvertTranspose(transpose_str).ValueOrDie();
+    mlir::mhlo::Transpose transpose) {
+  return xla::ConvertTranspose(mlir::mhlo::stringifyTranspose(transpose))
+      .ValueOrDie();
 }
 
 static xla::Layout ExtractLayout(
@@ -290,7 +292,10 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
   auto precision_config = absl::make_unique<xla::PrecisionConfig>();
   for (auto attr : optional_precision_config_attr.getValue()) {
     xla::PrecisionConfig::Precision p;
-    auto operand_precision = attr.cast<mlir::StringAttr>().getValue().str();
+    auto operand_precision =
+        mlir::mhlo::stringifyPrecision(
+            attr.cast<mlir::mhlo::PrecisionAttr>().getValue())
+            .str();
     // TODO(jpienaar): Update this to ensure this is captured by verify.
     if (xla::PrecisionConfig::Precision_Parse(operand_precision, &p)) {
       precision_config->add_operand_precision(p);
@@ -492,7 +497,7 @@ static bool AllOptionalShardingsAreSet(
 
 // Extracts argument and result shardings from function.
 static void ExtractShardingsFromFunction(
-    mlir::FuncOp function,
+    mlir::func::FuncOp function,
     llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* arg_shardings,
     llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* ret_shardings) {
   arg_shardings->resize(function.getNumArguments(),
@@ -515,7 +520,8 @@ namespace {
 class ConvertToHloModule {
  public:
   using ValueLoweringMap = llvm::DenseMap<Value, xla::XlaOp>;
-  using FunctionLoweringMap = llvm::DenseMap<mlir::FuncOp, xla::XlaComputation>;
+  using FunctionLoweringMap =
+      llvm::DenseMap<mlir::func::FuncOp, xla::XlaComputation>;
 
   // If use_tuple_args is true, then the entry function's arguments are
   // converted to a tuple and passed as a single parameter.
@@ -543,7 +549,7 @@ class ConvertToHloModule {
   //
   // TODO(hinsu): Check for dynamic shapes and exit instead of crashing.
   LogicalResult Run() {
-    auto main = module_.lookupSymbol<mlir::FuncOp>("main");
+    auto main = module_.lookupSymbol<mlir::func::FuncOp>("main");
     if (!main)
       return module_.emitError(
           "conversion requires module with `main` function");
@@ -556,7 +562,7 @@ class ConvertToHloModule {
   }
 
   // Lower a specific function to HLO.
-  LogicalResult RunOnFunction(mlir::FuncOp f);
+  LogicalResult RunOnFunction(mlir::func::FuncOp f);
 
   // Lower a `mlir::Region` to a `XlaComputation`
   LogicalResult LowerRegionAsComputation(
@@ -577,7 +583,7 @@ class ConvertToHloModule {
           llvm::None);
 
   ::xla::HloModuleProto ConsumeMainProto() {
-    auto main = module_.lookupSymbol<mlir::FuncOp>("main");
+    auto main = module_.lookupSymbol<mlir::func::FuncOp>("main");
     // This is an invariant check as Run returns failure if there is no main
     // function and so the main proto shouldn't be consumed in that case.
     CHECK(main) << "requires module to have main function";  // Crash Ok.
@@ -592,7 +598,7 @@ class ConvertToHloModule {
   // Look up a symbol with the specified name, returning null if no such name
   // exists.
   FuncOp LookUpSymbol(FlatSymbolRefAttr symbol) {
-    return module_.lookupSymbol<mlir::FuncOp>(symbol);
+    return module_.lookupSymbol<mlir::func::FuncOp>(symbol);
   }
 
   // Get Reference to lowered XLA computation for a function.
@@ -962,13 +968,15 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
   xla::XlaOp lhs, rhs;
   if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
   if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
-  auto dir = Convert_comparison_direction(op.comparison_direction());
+  auto dir = Convert_comparison_direction(
+      mlir::mhlo::stringifyComparisonDirection(op.comparison_direction()));
   auto type_attr = op.compare_typeAttr();
 
   xla::XlaOp xla_result;
-  if (type_attr) {
-    auto type =
-        xla::StringToComparisonType(type_attr.getValue().str()).ValueOrDie();
+  if (type_attr && type_attr.getValue() != mlir::mhlo::ComparisonType::NOTYPE) {
+    auto type = xla::StringToComparisonType(
+                    stringifyComparisonType(type_attr.getValue()).str())
+                    .ValueOrDie();
     xla_result = xla::Compare(lhs, rhs, /*broadcast_dimensions=*/{}, dir, type);
   } else {
     xla_result = xla::Compare(lhs, rhs, dir);
@@ -1038,7 +1046,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
 
   if (op.called_computations().size() == 1) {
-    mlir::FuncOp callee = ctx.converter->LookUpSymbol(
+    mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         op.called_computations()[0].cast<FlatSymbolRefAttr>());
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
     xla::XlaComputation& computation =
@@ -1090,10 +1098,14 @@ LogicalResult ExportXlaOp(DequantizeOp op, OpLoweringContext ctx) {
   auto casted = xla::ConvertElementType(input, xla::U32);
   if (op.is_16bits()) {
     value_map[op] = xla::Dequantize<uint16>(
-        casted, range, ConvertStringRef(op.mode()), op.transpose_output());
+        casted, range,
+        ConvertStringRef(mlir::mhlo::stringifyDequantizeMode(op.mode())),
+        op.transpose_output());
   } else {
     value_map[op] = xla::Dequantize<uint8>(
-        casted, range, ConvertStringRef(op.mode()), op.transpose_output());
+        casted, range,
+        ConvertStringRef(mlir::mhlo::stringifyDequantizeMode(op.mode())),
+        op.transpose_output());
   }
   return success();
 }
@@ -1512,10 +1524,7 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
-  xla::Trace(std::string(op.tag()), operand);
+  // TODO(atondwal): remove mhlo.trace
   return success();
 }
 
@@ -1602,9 +1611,11 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
   llvm::SmallVector<xla::XlaOp, 4> operands;
   for (auto operand : op.operands()) operands.push_back(values[operand]);
 
+  auto fusion_kind_string =
+      mlir::mhlo::stringifyFusionKind(op.fusion_kind().getValue());
   xla::XlaOp fusion = xla::internal::XlaBuilderFriend::BuildFusion(
       ctx.builder, operands,
-      absl::string_view(op.fusion_kind()->data(), op.fusion_kind()->size()),
+      absl::string_view(fusion_kind_string.data(), fusion_kind_string.size()),
       fused_computation);
   if (op.getNumResults() == 1) {
     values[op.getResult(0)] = fusion;
@@ -2117,7 +2128,8 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
     mlir::func::CallOp call_op, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
   auto& value_map = *value_lowering;
-  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op.getCallee());
+  mlir::func::FuncOp callee =
+      module_.lookupSymbol<mlir::func::FuncOp>(call_op.getCallee());
   if (failed(RunOnFunction(callee))) return failure();
   std::vector<xla::XlaOp> operands;
   for (auto operand : call_op.getOperands()) {
@@ -2146,7 +2158,7 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
   return success();
 }
 
-LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
+LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
   if (lowered_computation_.count(f)) return success();
   if (!llvm::hasSingleElement(f)) {
     return f.emitError("only single block Function supported");
@@ -2435,7 +2447,7 @@ void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,
 Status PrepareForExport(mlir::ModuleOp module) {
   // Prepare for export to XLA HLO.
   mlir::PassManager pm(module.getContext());
-  pm.addNestedPass<mlir::FuncOp>(mhlo::CreatePrepareForExport());
+  pm.addNestedPass<mlir::func::FuncOp>(mhlo::CreatePrepareForExport());
   if (failed(pm.run(module)))
     return tensorflow::errors::Internal("Unable to optimize for XLA export");
   return Status::OK();

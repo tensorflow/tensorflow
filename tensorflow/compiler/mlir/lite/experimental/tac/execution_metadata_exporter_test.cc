@@ -96,12 +96,12 @@ void Verify(const RuntimeMetadata* result, const RuntimeMetadata* expected) {
 
 TEST(ExporterTest, Valid) {
   const std::string kMLIR = R"(
-func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>, %arg3: tensor<1xf32>) -> tensor<2x1xf32> {
+func.func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>, %arg3: tensor<1xf32>) -> tensor<2x1xf32> {
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6",  per_device_costs = {CPU = 5.0 : f32, GPU = 1.0 : f32}, tac.device = "GPU"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
   %1 = "tfl.mul"(%0, %arg2) {fused_activation_function = "RELU6", per_device_costs = {CPU = 5.0 : f32, GPU = 1.0 : f32}, tac.device = "GPU"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
   %2 = "tfl.add"(%arg0, %arg3) {fused_activation_function = "RELU6", per_device_costs = {CPU = 5.0 : f32, GPU = 1.0 : f32}, tac.device = "GPU"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
   %3 = "tfl.pack"(%1, %2) {axis = 0 : i32, per_device_costs = {CPU = 2.0 : f32, GPU = -1.0 : f32}, values_count = 2 : i32, tac.device = "CPU"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<2x1xf32>
-  return %3 : tensor<2x1xf32>
+  func.return %3 : tensor<2x1xf32>
 })";
   const std::string kExpectedFB = CreateRuntimeMetadata();
   mlir::DialectRegistry registry;
@@ -109,7 +109,7 @@ func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>, %ar
                   mlir::arith::ArithmeticDialect, mlir::func::FuncDialect>();
   mlir::MLIRContext context(registry);
   auto module = mlir::OwningOpRef<mlir::ModuleOp>(
-      mlir::parseSourceString(kMLIR, &context));
+      mlir::parseSourceString<mlir::ModuleOp>(kMLIR, &context));
   auto module_op = module.get();
   auto serialized_result_fb = ExportRuntimeMetadata(module_op);
   const auto* result =

@@ -266,8 +266,8 @@ Status RingAlg::InitializeCollectiveContext(
 }
 
 string RingAlg::TensorDebugString(const Tensor& tensor) {
-  const DeviceBase::GpuDeviceInfo* gpu_device_info =
-      col_ctx_->op_ctx->device()->tensorflow_gpu_device_info();
+  const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
+      col_ctx_->op_ctx->device()->tensorflow_accelerator_device_info();
   if (gpu_device_info) {
     Tensor cpu_tensor(tensor.dtype(), tensor.shape());
     Status st = gpu_device_info->default_context->CopyDeviceTensorToCPUSync(

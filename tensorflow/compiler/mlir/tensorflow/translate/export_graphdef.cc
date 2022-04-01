@@ -72,10 +72,10 @@ using llvm::dyn_cast;
 using llvm::isa;
 using mlir::BlockArgument;
 using mlir::Dialect;
-using mlir::FuncOp;
 using mlir::Operation;
 using mlir::SymbolTable;
 using mlir::Value;
+using mlir::func::FuncOp;
 using stream_executor::port::StatusOr;
 
 namespace {

@@ -60,7 +60,7 @@ TEST(PowOpModel, Simple) {
                             {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {12, 2, 7, 8});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 1});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(12, 4, 343, 8));
 }
@@ -71,7 +71,7 @@ TEST(PowOpModel, NegativeAndZeroValue) {
                             {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {0, 2, -7, 8});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 0});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 4, -343, 1));
 }
@@ -82,7 +82,7 @@ TEST(PowOpModel, Float) {
                           {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {0.3, 0.4, 0.7, 5.8});
   model.PopulateTensor<float>(model.input2(), {0.5, 2.7, 3.1, 3.2});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
@@ -95,7 +95,7 @@ TEST(PowOpModel, NegativeFloatTest) {
                           {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {0.3, 0.4, 0.7, 5.8});
   model.PopulateTensor<float>(model.input2(), {0.5, -2.7, 3.1, -3.2});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
@@ -107,7 +107,7 @@ TEST(PowOpModel, BroadcastTest) {
                             {TensorType_INT32, {1}}, {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {12, 2, 7, 8});
   model.PopulateTensor<int32_t>(model.input2(), {4});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(20736, 16, 2401, 4096));
 }
@@ -117,7 +117,7 @@ TEST(PowOpModel, BroadcastFloatTest) {
                           {TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {12, 2, 7, 8});
   model.PopulateTensor<float>(model.input2(), {4});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(20736, 16, 2401, 4096));
 }
@@ -146,7 +146,7 @@ TEST(PowOpModel, FloatSingleIntegerExponentTest) {
     // Random deviate exponent, e.g., 1.99999 or 2.00001.
     exponent += UniformRandomInt(-1, 1) * 1e-5;
     model.PopulateTensor<float>(model.input2(), {exponent});
-    model.Invoke();
+    ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
     EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
     std::vector<float> output_data(input_size);
     CalculateTrueResults(input_data, exponent, input_size, &output_data);
@@ -167,7 +167,7 @@ TEST(PowOpModel, IntSingleIntegerExponentTest) {
     model.PopulateTensor<int32_t>(model.input1(), input_data);
     int exponent = i;
     model.PopulateTensor<int32_t>(model.input2(), {exponent});
-    model.Invoke();
+    ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
     EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
     std::vector<int32_t> output_data(input_size);
     CalculateTrueResults(input_data, exponent, input_size, &output_data);

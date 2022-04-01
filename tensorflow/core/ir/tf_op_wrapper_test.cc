@@ -39,7 +39,8 @@ TEST(TFOpWrapper, LLVMRTTI) {
   )mlir";
   MLIRContext context;
   context.getOrLoadDialect<TFGraphDialect>();
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
 
   Operation *module_op = module.get();
@@ -63,7 +64,8 @@ TEST(TFOpWrapper, ControlOperands) {
   )mlir";
   MLIRContext context;
   context.getOrLoadDialect<TFGraphDialect>();
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
 
   TFOp a_op;
@@ -164,7 +166,8 @@ TEST(TFOpWrapper, ValueControlRet) {
 
   MLIRContext context;
   context.getOrLoadDialect<TFGraphDialect>();
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);

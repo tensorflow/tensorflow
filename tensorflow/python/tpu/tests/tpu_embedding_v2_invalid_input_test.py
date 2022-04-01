@@ -49,6 +49,7 @@ class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
             tpu_embedding_v2_utils.SGD(learning_rate=0.1))
 
   def test_pass_non_tensor_to_apply_gradients(self):
+    self.skip_if_oss()
     strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
     # We aren't going to actually run anything, so the batch_size here does not
     # matter.

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/metrics.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -147,6 +149,13 @@ auto* tf_data_service_client_iterators_counter = monitoring::Counter<4>::New(
     "/tensorflow/data/service/client_iterators",
     "Number of tf.data service client iterators created.", "worker_uid",
     "deployment_mode", "processing_mode", "is_coordinated_read");
+
+auto* tf_data_service_multi_trainer_cache_queries_counter =
+    monitoring::Counter<1>::New(
+        "/tensorflow/data/service/multi_trainer_cache_queries",
+        "tf.data service multi-client cache queries counter. The result can be "
+        "hit or miss.",
+        "cache_hit");
 
 auto* tf_data_filename_counter = monitoring::Counter<2>::New(
     "/tensorflow/data/filename", "The file name read by a tf.data Dataset.",
@@ -360,6 +369,12 @@ void RecordTFDataServiceClientIterators(
   tf_data_service_client_iterators_counter
       ->GetCell(absl::StrCat(worker_uid), deployment_mode_str,
                 sharding_policy_str, coordinated_read_str)
+      ->IncrementBy(1);
+}
+
+void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit) {
+  std::string cache_hit_str = cache_hit ? "true" : "false";
+  tf_data_service_multi_trainer_cache_queries_counter->GetCell(cache_hit_str)
       ->IncrementBy(1);
 }
 

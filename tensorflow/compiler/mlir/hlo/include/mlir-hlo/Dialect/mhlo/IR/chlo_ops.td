@@ -85,8 +85,7 @@ def HLOClient_Broadcasting : HLOClient_NativeOpTrait<"Broadcasting"> {
 class HLOClient_BroadcastBinaryElementwiseOp<
   string mnemonic, list<Trait> traits> : HLOClient_Op<mnemonic, traits # [
       HLO_BroadcastingElementwise, HLOClient_Broadcasting,
-      DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
-      "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
+      InferTensorTypeWithReify]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -95,15 +94,17 @@ class HLOClient_BroadcastBinaryElementwiseOp<
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 
-  let builders = [
-    OpBuilder<(ins "Value":$left, "Value":$right,
-      "DenseIntElementsAttr":$broadcast_dimensions)>];
-
   let results = (outs HLO_Tensor);
 
   let assemblyFormat = [{
     $lhs `,` $rhs attr-dict `:`
     `(` type($lhs) `,` type($rhs) `)` `->` type(results)
+  }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
   }];
 }
 
@@ -608,10 +609,7 @@ def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan",
 
 def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
     HLOClient_Broadcasting, HLO_BroadcastingElementwise,
-    SameOperandsAndResultShape, InferTypeOpInterface,
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
-    NativeOpTrait<"InferTensorType">]> {
+    SameOperandsAndResultShape, InferTensorTypeWithReify]> {
   let summary = "Constant like operator";
 
   let description = [{
@@ -728,19 +726,19 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
   let builders = [
     OpBuilder<(ins "Value":$lhs, "Value":$rhs,
       "DenseIntElementsAttr":$broadcast_dimensions,
-      "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>];
+      "::mlir::mhlo::ComparisonDirection":$comparison_direction,
+      CArg<"::mlir::mhlo::ComparisonType",
+      "::mlir::mhlo::ComparisonType::NOTYPE">:$compare_type)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//
 // Broadcasting select op
 //===----------------------------------------------------------------------===//
 
-def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
-    NoSideEffect,
-    HLOClient_Broadcasting,
-    HLO_BroadcastingElementwise,
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
-    "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
+def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select",
+    [NoSideEffect, HLOClient_Broadcasting, HLO_BroadcastingElementwise,
+     InferTensorTypeWithReify]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";
 
   string description = [{
@@ -761,6 +759,12 @@ def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
   let assemblyFormat = [{
     $pred `,` $on_true `,` $on_false attr-dict `:`
     `(` type($pred) `,` type($on_true) `,` type($on_false) `)` `->` type(results)
+  }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
   }];
 }
 

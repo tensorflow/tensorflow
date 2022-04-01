@@ -1,5 +1,5 @@
 # Description: Operations defined for Cloud TPUs
-
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "pytype_library")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
@@ -201,8 +201,12 @@ py_library(
         ":feature_column_v2",
         ":preempted_hook_py",
         ":tpu_embedding",
+        ":tpu_embedding_base",
+        ":tpu_embedding_for_serving",
+        ":tpu_embedding_v1",
         ":tpu_embedding_v2",
         ":tpu_embedding_v2_utils",
+        ":tpu_hardware_feature",
         ":tpu_lib",
     ],
 )
@@ -477,6 +481,15 @@ pytype_library(
     ],
 )
 
+pytype_library(
+    name = "tpu_hardware_feature",
+    srcs = ["tpu_hardware_feature.py"],
+    deps = [
+        "//tensorflow/core/protobuf/tpu:topology_proto_py",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
 py_library(
     name = "tpu_name_util",
     srcs = ["tpu_name_util.py"],
@@ -592,19 +605,81 @@ pytype_library(
     ],
 )
 
+pytype_strict_library(
+    name = "tpu_embedding_base",
+    srcs = ["tpu_embedding_base.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_embedding_v2_utils",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/training/saving:saveable_hook",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/util",
+    ],
+)
+
+pytype_strict_library(
+    name = "tpu_embedding_for_serving",
+    srcs = ["tpu_embedding_for_serving.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_embedding_base",
+        ":tpu_embedding_v2_utils",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/types",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
 tf_py_test(
-    name = "tpu_embedding_v2_cpu_test",
+    name = "tpu_embedding_for_serving_test",
     srcs = [
-        "tpu_embedding_v2_cpu_test.py",
+        "tpu_embedding_for_serving_test.py",
     ],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":tpu_embedding_v2",
+        ":tpu_embedding_for_serving",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//third_party/py/numpy",
+    ],
+)
+
+pytype_strict_library(
+    name = "tpu_embedding_v1",
+    srcs = ["tpu_embedding_v1.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":tpu_embedding_base",
+        ":tpu_embedding_v2_utils",
+        ":tpu_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

@@ -114,6 +114,7 @@ class ConvertBinaryImpl {
     return Status::OK();
   }
 
+
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
     return std::array<InputArgSpec, 2>{
         InputArgSpec::Create("x", TrtInputArg::kBoth),
@@ -166,9 +167,8 @@ class ConvertBooleanBinary : public OpConverterBase<ConvertBooleanBinary>,
   Status Convert() { return ConvertImpl(*params_);  }
 };
 
-REGISTER_DEFAULT_TRT_OP_CONVERTER(
-    MakeConverterFunction<ConvertBinary>(),
-    GetOperationNames(*BinaryOperationMap()));
+REGISTER_DEFAULT_TRT_OP_CONVERTER(MakeConverterFunction<ConvertBinary>(),
+                                  GetOperationNames(*BinaryOperationMap()));
 REGISTER_DEFAULT_TRT_OP_CONVERTER(
     MakeConverterFunction<ConvertBooleanBinary>(),
     GetOperationNames(*BinaryBooleanOperationMap()));

@@ -269,7 +269,8 @@ Status DotOpEmitter::EmitLinalgMatmul() {
 
   return EmitMlirFuncAndCall(
       mlir_context_, b_, dot_info_.result_shape, operand_shapes, target_ptr,
-      operand_ptrs, name, [&](mlir::OpBuilder* builder, mlir::FuncOp function) {
+      operand_ptrs, name,
+      [&](mlir::OpBuilder* builder, mlir::func::FuncOp function) {
         CHECK_EQ(dot_info_.dim_nums.lhs_contracting_dimensions_size(), 1);
         CHECK_EQ(dot_info_.dim_nums.rhs_contracting_dimensions_size(), 1);
         mlir::MLIRContext* context = builder->getContext();
@@ -348,7 +349,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         // TODO: this should be within a pass and we should be able to create a
         // nested OpPassManager.
         // Created a nested OpPassManager, populate the strategy and run.
-        // mlir::OpPassManager dynamicPM("builtin.func");
+        // mlir::OpPassManager dynamicPM("func.func");
         // strategy.configurePassPipeline(dynamicPM, function.getContext());
         // Propagate pass failure?
         // (void)mlir::runPipeline(dynamicPM, function);

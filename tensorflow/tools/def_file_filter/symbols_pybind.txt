@@ -204,6 +204,8 @@ TFE_Py_SetCEagerContext
 tensorflow::MakeEagerContextThreadLocalData
 tensorflow::GetEagerContextThreadLocalData
 tensorflow::DestroyEagerContextThreadLocalData
+tensorflow::MaybeRaiseExceptionFromTFStatus
+tensorflow::ConvertToEagerTensor
 
 [//tensorflow/core/common_runtime/eager:eager_executor] # tfe
 tensorflow::EagerExecutor::~EagerExecutor
@@ -236,15 +238,22 @@ tensorflow::OpDef::`vftable'
 
 [//tensorflow/lite/kernels/shim:shape] # tf_text
 tflite::shim::Shape::AddDims
+tflite::shim::Shape::Compatible
 tflite::shim::Shape::Dim
+tflite::shim::Shape::ToString
 
 [//tensorflow/lite/kernels/shim:tf_op_shim] # tf_text
 tflite::shim::FromAbslStatus
+tflite::shim::TfInitContext::GetAttr
 tflite::shim::TfInitContext::TfInitContext
 tflite::shim::TfInvokeContext::GetInput
 tflite::shim::TfInvokeContext::GetOutput
+tflite::shim::TfInvokeContext::NumInputs
+tflite::shim::TfInvokeContext::NumOutputs
 tflite::shim::TfInvokeContext::TfInvokeContext
+tflite::shim::TfShapeInferenceContext::GetAttr
 tflite::shim::TfShapeInferenceContext::GetInputShape
+tflite::shim::TfShapeInferenceContext::NumOutputs
 tflite::shim::TfShapeInferenceContext::SetInputShape
 tflite::shim::TfShapeInferenceContext::SetOutputShape
 tflite::shim::TfShapeInferenceContext::TfShapeInferenceContext
@@ -256,6 +265,7 @@ tensorflow::ShapeRefiner::~ShapeRefiner
 tensorflow::AddControlInput
 tensorflow::SetAttr
 tensorflow::ClearAttr
+tensorflow::SetFullType
 tensorflow::SetRequestedDevice
 tensorflow::UpdateEdge
 tensorflow::RemoveAllControlInputs
@@ -481,6 +491,7 @@ tensorflow::config::Flag::reset
 tensorflow::AttributeTypeFromName
 tensorflow::AttrValueToPyObject
 tensorflow::ConvertPyObjectToAttributeType
+tensorflow::DataTypeToPyObject
 tensorflow::Safe_PyObjectPtr
 
 [//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc] # quantization
@@ -491,3 +502,21 @@ tensorflow::quantization::ClearCollectedInformationFromCalibrator
 tensorflow::quantization::ClearDataFromCalibrator
 tensorflow::quantization::GetMinFromCalibrator
 tensorflow::quantization::GetMaxFromCalibrator
+
+[//tensorflow/dtensor/cc:dtensor_device_cc] # DTensor
+tensorflow::dtensor::AllocateDTensorDevice
+tensorflow::dtensor::AddMesh
+tensorflow::dtensor::ExperimentalSetDefaultLayout
+tensorflow::dtensor::ExperimentalClearDefaultLayout
+tensorflow::dtensor::ExperimentalSetDefaultMesh
+tensorflow::dtensor::ExperimentalClearDefaultMesh
+tensorflow::dtensor::SetSameShapePolicy
+tensorflow::dtensor::SetTPUCoreIDs
+tensorflow::dtensor::ClearTPUCoreIDs
+tensorflow::dtensor::TPUCoreIDsToLocations
+tensorflow::dtensor::TPUCoreLocationsToIDs
+tensorflow::dtensor::Pack
+tensorflow::dtensor::Unpack
+tensorflow::dtensor::FetchLayout
+tensorflow::dtensor::SparsePack
+tensorflow::dtensor::IsSparseDTensor

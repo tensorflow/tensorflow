@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef GML_ST_OPS
 #define GML_ST_OPS
 
+include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"

@@ -155,7 +155,7 @@ StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
   mlir::FunctionType func_type =
       mlir::FunctionType::get(context, input_tys, output_tys);
   llvm::StringRef func_name_str(func_name.data(), func_name.size());
-  auto func = mlir::FuncOp::create(loc, func_name_str, func_type, {});
+  auto func = mlir::func::FuncOp::create(loc, func_name_str, func_type, {});
   module.push_back(func);
   func.addEntryBlock();
   mlir::OpBuilder op_builder(func.getBody());
@@ -166,7 +166,7 @@ StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
   op_state.addOperands(func.getArguments());
   op_state.addTypes(output_tys);
   op_state.addAttributes(attrs);
-  mlir::Operation* tf_op = op_builder.createOperation(op_state);
+  mlir::Operation* tf_op = op_builder.create(op_state);
   op_builder.create<mlir::func::ReturnOp>(loc, tf_op->getResults());
 
   // Run the decompose passes on the module
@@ -191,7 +191,7 @@ Status TFRDecomposeContext::DecomposeGraph(mlir::ModuleOp user_module) {
 // Constructor of the decompose context.
 TFRDecomposeContext::TFRDecomposeContext(mlir::ModuleOp tfr_module)
     : tfr_module_(tfr_module), pm_(tfr_module_.getContext()) {
-  mlir::OpPassManager& func_pm = pm_.nest<mlir::FuncOp>();
+  mlir::OpPassManager& func_pm = pm_.nest<mlir::func::FuncOp>();
 
   // Prepare the imported graph.
   func_pm.addPass(mlir::CreateExecutorDialectToFunctionalConversionPass());

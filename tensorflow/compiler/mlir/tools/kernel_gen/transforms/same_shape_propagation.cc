@@ -95,7 +95,7 @@ inline llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   } else {
     Value val = value.value();
     mlir::AsmState asm_state(
-        val.getParentRegion()->getParentOfType<mlir::FuncOp>());
+        val.getParentRegion()->getParentOfType<mlir::func::FuncOp>());
     val.printAsOperand(os, asm_state);
   }
   return os;

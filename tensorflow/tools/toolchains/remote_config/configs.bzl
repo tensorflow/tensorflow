@@ -110,9 +110,19 @@ def initialize_rbe_configs():
         name = "ubuntu18.04-gcc7_manylinux2010-rocm",
         compiler = "/dt7/usr/bin/gcc",
         compiler_prefix = "/usr/bin",
-        rocm_version = "3.5",  # Any version will do.
+        rocm_version = "5.0",  # Any version will do.
         os = "ubuntu18.04-manylinux2010-multipython",
-        python_versions = ["2.7", "3.5", "3.6", "3.7", "3.8"],
+        python_versions = ["2.7", "3.5", "3.6", "3.7", "3.8", "3.9"],
+        python_install_path = "/usr/local",
+    )
+
+    tensorflow_rbe_config(
+        name = "ubuntu20.04-gcc9_manylinux2014-rocm",
+        compiler = "/dt9/usr/bin/gcc",
+        compiler_prefix = "/usr/bin",
+        rocm_version = "5.0",  # Any version will do.
+        os = "ubuntu20.04-manylinux2014-multipython",
+        python_versions = ["3.7", "3.8", "3.9"],
         python_install_path = "/usr/local",
     )
 
@@ -257,30 +267,30 @@ def initialize_rbe_configs():
     # may specify a specific Python version container.
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.9": "docker://gcr.io/tensorflow-sigs/build@sha256:7d9bc0aa7527e98521047dd0b81f571ec8f9818a08a656d6daa434fd958aad47",
-            "sigbuild-r2.9-python3.7": "docker://gcr.io/tensorflow-sigs/build@sha256:595ad473b9abbd88a502bc262286aaf51079010f67b860ebb0aaf5c8f7b87e16",
-            "sigbuild-r2.9-python3.8": "docker://gcr.io/tensorflow-sigs/build@sha256:5042e48f310bd81bbf4860d9894f502d666aeab65ee401df885bdc25ba8db0ed",
-            "sigbuild-r2.9-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:7d9bc0aa7527e98521047dd0b81f571ec8f9818a08a656d6daa434fd958aad47",
-            "sigbuild-r2.9-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:d75fe1b22cd0b1309cedf3ac2a50e21f6cee8e4539224b5be9de7b7d1f91e520",
+            "sigbuild-r2.9": "docker://gcr.io/tensorflow-sigs/build@sha256:4c836a241ede4bdad462a16327bd4ee966abb0ad70753884770dd6b216878abb",
+            "sigbuild-r2.9-python3.7": "docker://gcr.io/tensorflow-sigs/build@sha256:c9fb6d88039caaae97814c0c59fbad1a4fea15c5df1268e89467161a34131e45",
+            "sigbuild-r2.9-python3.8": "docker://gcr.io/tensorflow-sigs/build@sha256:2a1ff14473df4ad6a3378a8c31d7ba093f8aef7b52cbf3cd7344ad4a7d4ffcd4",
+            "sigbuild-r2.9-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:4c836a241ede4bdad462a16327bd4ee966abb0ad70753884770dd6b216878abb",
+            "sigbuild-r2.9-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:7755add0f2839ab63ababc8f967d91be215adc8bf4bc12a50db81218eaeeec75",
         },
         # Unclear why LIBC is set to 2.19 here, and yet manylinux2010 is 2.12
         # and manylinux2014 is 2.17.
         env = {
             "ABI_LIBC_VERSION": "glibc_2.19",
             "ABI_VERSION": "gcc",
-            "BAZEL_COMPILER": "/dt7/usr/bin/gcc",
+            "BAZEL_COMPILER": "/dt9/usr/bin/gcc",
             "BAZEL_HOST_SYSTEM": "i686-unknown-linux-gnu",
             "BAZEL_TARGET_CPU": "k8",
             "BAZEL_TARGET_LIBC": "glibc_2.19",
             "BAZEL_TARGET_SYSTEM": "x86_64-unknown-linux-gnu",
-            "CC": "/dt7/usr/bin/gcc",
+            "CC": "/dt9/usr/bin/gcc",
             "CC_TOOLCHAIN_NAME": "linux_gnu_x86",
             "CLEAR_CACHE": "1",
             "CUDNN_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
-            "GCC_HOST_COMPILER_PATH": "/dt7/usr/bin/gcc",
+            "GCC_HOST_COMPILER_PATH": "/dt9/usr/bin/gcc",
             "GCC_HOST_COMPILER_PREFIX": "/usr/bin",
-            "HOST_CXX_COMPILER": "/dt7/usr/bin/gcc",
-            "HOST_C_COMPILER": "/dt7/usr/bin/gcc",
+            "HOST_CXX_COMPILER": "/dt9/usr/bin/gcc",
+            "HOST_C_COMPILER": "/dt9/usr/bin/gcc",
             "PYTHON_BIN_PATH": "/usr/bin/python3",
             "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
             "TF_CUDA_CLANG": "0",
@@ -290,44 +300,7 @@ def initialize_rbe_configs():
             "TF_ENABLE_XLA": "1",
             "TF_NEED_CUDA": "1",
             "TF_NEED_TENSORRT": "1",
-            "TF_SYSROOT": "/dt7",
-            "TF_TENSORRT_VERSION": "7.2",
-        },
-    )
-
-    # Double-experimental config for manylinux2014 PR:
-    # https://github.com/tensorflow/build/pull/57
-    sigbuild_tf_configs(
-        name_container_map = {
-            "sigbuild-57": "docker://gcr.io/tensorflow-sigs/build@sha256:0a2e12ca7ab8536a31f1854f72510986a6792413c9d5815535486571664402d8",
-            "sigbuild-57-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:0a2e12ca7ab8536a31f1854f72510986a6792413c9d5815535486571664402d8",
-        },
-        env = {
-            "ABI_LIBC_VERSION": "glibc_2.19",
-            "ABI_VERSION": "gcc",
-            "BAZEL_COMPILER": "/dt8/usr/bin/gcc",
-            "BAZEL_HOST_SYSTEM": "i686-unknown-linux-gnu",
-            "BAZEL_TARGET_CPU": "k8",
-            "BAZEL_TARGET_LIBC": "glibc_2.19",
-            "BAZEL_TARGET_SYSTEM": "x86_64-unknown-linux-gnu",
-            "CC": "/dt8/usr/bin/gcc",
-            "CC_TOOLCHAIN_NAME": "linux_gnu_x86",
-            "CLEAR_CACHE": "1",
-            "CUDNN_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
-            "GCC_HOST_COMPILER_PATH": "/dt8/usr/bin/gcc",
-            "GCC_HOST_COMPILER_PREFIX": "/usr/bin",
-            "HOST_CXX_COMPILER": "/dt8/usr/bin/gcc",
-            "HOST_C_COMPILER": "/dt8/usr/bin/gcc",
-            "PYTHON_BIN_PATH": "/usr/bin/python3",
-            "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
-            "TF_CUDA_CLANG": "0",
-            "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
-            "TF_CUDA_VERSION": "8.1",
-            "TF_CUDNN_VERSION": "11.2",
-            "TF_ENABLE_XLA": "1",
-            "TF_NEED_CUDA": "1",
-            "TF_NEED_TENSORRT": "1",
-            "TF_SYSROOT": "/dt8",
+            "TF_SYSROOT": "/dt9",
             "TF_TENSORRT_VERSION": "7.2",
         },
     )

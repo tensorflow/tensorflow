@@ -70,9 +70,9 @@ TfLiteStatus CheckDimensionsMatch(TfLiteContext* context,
       break;
     }
     default:
-      context->ReportError(
-          context, "Wrong indices dimensions %d, should be less than 3.",
-          NumDimensions(indices));
+      TF_LITE_KERNEL_LOG(context,
+                         "Wrong indices dimensions %d, should be less than 3.",
+                         NumDimensions(indices));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -117,9 +117,9 @@ TfLiteStatus GetIndicesVector(TfLiteContext* context,
       break;
     }
     default:
-      context->ReportError(context,
-                           "Indices dimensions problem, got %d dimensions",
-                           NumDimensions(indices));
+      TF_LITE_KERNEL_LOG(context,
+                         "Indices dimensions problem, got %d dimensions",
+                         NumDimensions(indices));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -133,8 +133,8 @@ TfLiteStatus ResizeOutputShape(TfLiteContext* context,
   } else if (output_shape->type == kTfLiteInt64) {
     return Resize<int64_t>(context, output_shape, output);
   } else {
-    context->ReportError(context, "Dense shape type %d not supported.",
-                         output_shape->type);
+    TF_LITE_KERNEL_LOG(context, "Dense shape type %d not supported.",
+                       output_shape->type);
     return kTfLiteError;
   }
 }

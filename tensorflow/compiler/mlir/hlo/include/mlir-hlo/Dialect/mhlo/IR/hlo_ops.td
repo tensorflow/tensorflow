@@ -142,6 +142,15 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     bool inferInputOutputShapeEquality(int input, int output) {
       return true;
     }
+    // Replace the strict default implementation with one that allows
+    // for different sparsity encodings during the is-same test.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      if (l.size() != r.size()) return false;
+      for (auto it : llvm::zip(l, r))
+        if (!isSameTypesWithoutSparseEncoding(std::get<0>(it), std::get<1>(it)))
+          return false;
+      return true;
+    }
   }];
 }
 
@@ -431,7 +440,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
-class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
+class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
     HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
     InferShapeEqualityOpInterface, SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
@@ -462,7 +471,19 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
   }];
 
   let results = (outs HLO_Tensor:$result);
-  let assemblyFormat = "operands attr-dict `:` type($result)";
+}
+
+class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
+    HLO_BinaryElementwiseOpNoAssembly<mnemonic, traits> {
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return ::mlir::mhlo::parseBinaryOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      ::mlir::mhlo::printBinaryOp(getOperation(), p);
+    }
+  }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
@@ -487,7 +508,7 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
-def HLO_ComplexOp: HLO_BinaryElementwiseOp<"complex",
+def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
@@ -1073,9 +1094,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
 }
 
 def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
-    SameOperandsAndResultShape, Elementwise,
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-        ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
+    SameOperandsAndResultShape, Elementwise, InferTensorTypeWithReify]> {
   let summary = "Comparison operator";
   let description = [{
     Compares `lhs` and `rhs` elementwise according to `comparison_direction`
@@ -1098,7 +1117,9 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
 
   let builders = [
     OpBuilder<(ins "Value":$lhs, "Value":$rhs,
-      "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>,
+      "::mlir::mhlo::ComparisonDirection":$comparison_direction,
+      CArg<"::mlir::mhlo::ComparisonType",
+      "::mlir::mhlo::ComparisonType::NOTYPE">:$compare_type)>,
   ];
 
   let hasCustomHLOConverter = 1;
@@ -1552,7 +1573,8 @@ def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
   let results = (outs HLO_Tensor);
 }
 
-def HLO_CustomCallOp: HLO_Op<"custom_call", []> {
+def HLO_CustomCallOp: HLO_Op<"custom_call",
+    [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "CustomCall operator";
   let description = [{
     A custom call invokes code external to XLA. The `args` are passed to the
@@ -1709,6 +1731,7 @@ def HLO_FftOp: HLO_Op<"fft", [NoSideEffect]> {
     I64ElementsAttr:$fft_length
   );
 
+  let hasVerifier = 1;
   let results = (outs HLO_Tensor);
 }
 
@@ -1856,8 +1879,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
 }
 
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
-    InferTensorTypeWithReify,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    InferTensorTypeWithReify]> {
   let summary = "Select operator";
   let description = [{
     Constructs an output tensor from the elements of `on_true` and `on_false`
@@ -1877,6 +1899,7 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
 
   let hasFolder = 1;
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
@@ -1911,6 +1934,7 @@ def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
 
   let results = (outs HLO_Tensor);
 
+  let hasVerifier = 1;
   let hasCustomHLOConverter = 1;
 }
 
@@ -2203,7 +2227,7 @@ def HLO_OptimizationBarrierOp : HLO_Op<"optimization_barrier",
 // MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
 
-def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify]> {
+def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify, AllElementTypesMatch<["a", "b", "result"]>]> {
   let summary = "RNG with uniform distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated
@@ -2214,12 +2238,12 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify]> {
     See https://www.tensorflow.org/xla/operation_semantics#rnguniform.
   }];
   let arguments = (ins
-    HLO_PredIntOrFpTensor:$a,
-    HLO_PredIntOrFpTensor:$b,
+    0DTensorOf<[HLO_Pred, HLO_Int, AnyFloat]>:$a,
+    0DTensorOf<[HLO_Pred, HLO_Int, AnyFloat]>:$b,
     HLO_DimensionTensor:$shape
   );
 
-  let results = (outs HLO_PredIntOrFpTensor);
+  let results = (outs HLO_PredIntOrFpTensor:$result);
 
   let hasCustomHLOConverter = 1;
 
@@ -2231,7 +2255,7 @@ def HLO_RngUniformOp : HLO_Op<"rng_uniform", [InferTensorTypeWithReify]> {
   }];
 }
 
-def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify]> {
+def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify, AllElementTypesMatch<["mu", "sigma", "result"]>]> {
   let summary = "RNG with normal distribution.";
   let description = [{
     Constructs an output of a given shape with random numbers generated
@@ -2242,12 +2266,12 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", [InferTensorTypeWithReify]> {
     See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
   }];
   let arguments = (ins
-    HLO_FpTensor:$mu,
-    HLO_FpTensor:$sigma,
+    0DTensorOf<[AnyFloat]>:$mu,
+    0DTensorOf<[AnyFloat]>:$sigma,
     HLO_DimensionTensor:$shape
   );
 
-  let results = (outs HLO_FpTensor);
+  let results = (outs HLO_FpTensor:$result);
 
   let hasCustomHLOConverter = 1;
 

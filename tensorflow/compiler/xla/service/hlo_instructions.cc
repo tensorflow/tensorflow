@@ -213,6 +213,75 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
                                               fft_length_);
 }
 
+HloAsyncInstruction::HloAsyncInstruction(
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
+    HloComputation* async_computation)
+    : HloInstruction(opcode, shape) {
+  CHECK(opcode == HloOpcode::kAsyncStart || operands.size() == 1);
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  AppendComputation(async_computation);
+  CHECK(!async_computation->IsCustomCallComputation());
+  CHECK(!async_computation->IsFusionComputation());
+  async_computation->SetAsyncInstruction(this);
+}
+
+HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                                         HloInstruction* operand,
+                                         HloComputation* async_computation)
+    : HloInstruction(opcode, shape) {
+  AppendOperand(operand);
+  AppendComputation(async_computation);
+  CHECK(!async_computation->IsCustomCallComputation());
+  CHECK(!async_computation->IsFusionComputation());
+  async_computation->SetAsyncInstruction(this);
+}
+
+HloInstruction* HloAsyncInstruction::async_wrapped_instruction() const {
+  CHECK(!called_computations().empty());
+  return called_computations()[0]->root_instruction();
+}
+
+HloOpcode HloAsyncInstruction::async_wrapped_opcode() const {
+  return async_wrapped_instruction()->opcode();
+}
+
+std::vector<std::string> HloAsyncInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (options.syntax_sugar_async_ops()) {
+    return async_wrapped_instruction()->ExtraAttributesToString(options);
+  }
+  return {};
+}
+
+bool HloAsyncInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  return opcode() == other.opcode() &&
+         eq_computations(async_wrapped_computation(),
+                         other.async_wrapped_computation());
+}
+
+std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  HloModule* module = context != nullptr ? context->module() : GetModule();
+  HloComputation* new_wrapped_computation = nullptr;
+  if (context != nullptr) {
+    new_wrapped_computation =
+        context->FindComputation(async_wrapped_computation());
+  }
+  if (new_wrapped_computation == nullptr) {
+    new_wrapped_computation = module->AddEmbeddedComputation(
+        async_wrapped_computation()->Clone("clone", context));
+  }
+  return absl::make_unique<HloAsyncInstruction>(opcode(), shape, new_operands,
+                                                new_wrapped_computation);
+}
+
 HloCopyStartInstruction::HloCopyStartInstruction(const Shape& shape,
                                                  HloInstruction* operand,
                                                  bool is_cross_program_prefetch)
@@ -937,12 +1006,11 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
 HloReverseInstruction::HloReverseInstruction(
     const Shape& shape, HloInstruction* operand,
     absl::Span<const int64_t> dimensions)
-    : HloInstruction(HloOpcode::kReverse, shape),
-      dimensions_(dimensions.begin(), dimensions.end()) {
+    : HloDimensionsInstruction(HloOpcode::kReverse, shape, dimensions) {
   AppendOperand(operand);
 }
 
-HloInstructionProto HloReverseInstruction::ToProto() const {
+HloInstructionProto HloDimensionsInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   for (int64_t dimension : dimensions_) {
     proto.add_dimensions(dimension);
@@ -950,16 +1018,17 @@ HloInstructionProto HloReverseInstruction::ToProto() const {
   return proto;
 }
 
-std::vector<std::string> HloReverseInstruction::ExtraAttributesToStringImpl(
+std::vector<std::string> HloDimensionsInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
-bool HloReverseInstruction::IdenticalSlowPath(
+bool HloDimensionsInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
-  const auto& casted_other = static_cast<const HloReverseInstruction&>(other);
+  const auto& casted_other =
+      static_cast<const HloDimensionsInstruction&>(other);
   return dimensions() == casted_other.dimensions();
 }
 
@@ -974,32 +1043,10 @@ std::unique_ptr<HloInstruction> HloReverseInstruction::CloneWithNewOperandsImpl(
 HloConcatenateInstruction::HloConcatenateInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64_t dimension)
-    : HloInstruction(HloOpcode::kConcatenate, shape), dimensions_({dimension}) {
+    : HloDimensionsInstruction(HloOpcode::kConcatenate, shape, {dimension}) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
-}
-
-HloInstructionProto HloConcatenateInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  for (int64_t dimension : dimensions_) {
-    proto.add_dimensions(dimension);
-  }
-  return proto;
-}
-
-std::vector<std::string> HloConcatenateInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
-}
-
-bool HloConcatenateInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
-  const auto& casted_other =
-      static_cast<const HloConcatenateInstruction&>(other);
-  return dimensions() == casted_other.dimensions();
 }
 
 std::unique_ptr<HloInstruction>
@@ -1007,32 +1054,19 @@ HloConcatenateInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   return absl::make_unique<HloConcatenateInstruction>(shape, new_operands,
-                                                      dimensions(0));
+                                                      concatenate_dimension());
 }
 
 HloReduceInstruction::HloReduceInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> args,
     absl::Span<const int64_t> dimensions_to_reduce,
     HloComputation* reduce_computation)
-    : HloInstruction(HloOpcode::kReduce, shape),
-      dimensions_(dimensions_to_reduce.begin(), dimensions_to_reduce.end()) {
+    : HloDimensionsInstruction(HloOpcode::kReduce, shape,
+                               dimensions_to_reduce) {
   for (HloInstruction* arg : args) {
     AppendOperand(arg);
   }
   AppendComputation(reduce_computation);
-}
-
-HloInstructionProto HloReduceInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  for (int64_t dimension : dimensions_) {
-    proto.add_dimensions(dimension);
-  }
-  return proto;
-}
-
-std::vector<std::string> HloReduceInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
 }
 
 bool HloReduceInstruction::IdenticalSlowPath(
@@ -1058,8 +1092,7 @@ HloSortInstruction::HloSortInstruction(
     const Shape& shape, int64_t dimension,
     absl::Span<HloInstruction* const> operands, HloComputation* compare,
     bool is_stable)
-    : HloInstruction(HloOpcode::kSort, shape),
-      dimensions_({dimension}),
+    : HloDimensionsInstruction(HloOpcode::kSort, shape, {dimension}),
       is_stable_(is_stable) {
   for (auto* value : operands) {
     AppendOperand(value);
@@ -1104,14 +1137,13 @@ std::unique_ptr<HloInstruction> HloSortInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   return absl::make_unique<HloSortInstruction>(
-      shape, dimensions(0), new_operands, to_apply(), is_stable());
+      shape, dimensions_[0], new_operands, to_apply(), is_stable());
 }
 
 HloTransposeInstruction::HloTransposeInstruction(
     const Shape& shape, HloInstruction* operand,
     absl::Span<const int64_t> dimensions)
-    : HloInstruction(HloOpcode::kTranspose, shape),
-      dimensions_(dimensions.begin(), dimensions.end()) {
+    : HloDimensionsInstruction(HloOpcode::kTranspose, shape, dimensions) {
   AppendOperand(operand);
 }
 
@@ -1120,27 +1152,6 @@ bool HloTransposeInstruction::IsRank2Transpose() const {
          shape().dimensions_size() == 2 &&
          std::equal(shape().dimensions().begin(), shape().dimensions().end(),
                     operand(0)->shape().dimensions().rbegin());
-}
-
-HloInstructionProto HloTransposeInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  for (int64_t dimension : dimensions_) {
-    proto.add_dimensions(dimension);
-  }
-  return proto;
-}
-
-std::vector<std::string> HloTransposeInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
-}
-
-bool HloTransposeInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
-  const auto& casted_other = static_cast<const HloTransposeInstruction&>(other);
-  return dimensions() == casted_other.dimensions();
 }
 
 std::unique_ptr<HloInstruction>
@@ -1155,30 +1166,9 @@ HloTransposeInstruction::CloneWithNewOperandsImpl(
 HloBroadcastInstruction::HloBroadcastInstruction(
     const Shape& shape, HloInstruction* operand,
     absl::Span<const int64_t> broadcast_dimension)
-    : HloInstruction(HloOpcode::kBroadcast, shape),
-      dimensions_(broadcast_dimension.begin(), broadcast_dimension.end()) {
+    : HloDimensionsInstruction(HloOpcode::kBroadcast, shape,
+                               broadcast_dimension) {
   AppendOperand(operand);
-}
-
-HloInstructionProto HloBroadcastInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  for (int64_t dimension : dimensions_) {
-    proto.add_dimensions(dimension);
-  }
-  return proto;
-}
-
-std::vector<std::string> HloBroadcastInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
-}
-
-bool HloBroadcastInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
-  const auto& casted_other = static_cast<const HloBroadcastInstruction&>(other);
-  return dimensions() == casted_other.dimensions();
 }
 
 std::unique_ptr<HloInstruction>
@@ -1420,6 +1410,9 @@ std::unique_ptr<HloInstruction>
 HloConstantInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
+  if (!literal_.has_value()) {
+    return absl::make_unique<HloConstantInstruction>(this->shape());
+  }
   CHECK(literal_.has_value());
   // Literal's shape may have no/different tiling info. Use this instruction's
   // shape instead.
@@ -1459,33 +1452,6 @@ std::string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     // Do not show large constants or tuples.
     return "{...}";
   }
-}
-
-HloTraceInstruction::HloTraceInstruction(const std::string& tag,
-                                         HloInstruction* operand)
-    : HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()),
-      literal_(LiteralUtil::CreateR1U8(tag)) {
-  AppendOperand(operand);
-  operand->set_tracing(this);
-}
-
-HloInstructionProto HloTraceInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_literal() = literal_.ToProto();
-  return proto;
-}
-
-bool HloTraceInstruction::IdenticalSlowPath(
-    const HloInstruction& other,
-    const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
-  return false;
-}
-
-std::unique_ptr<HloInstruction> HloTraceInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-    HloCloneContext* context) const {
-  LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode());
 }
 
 HloFusionInstruction::HloFusionInstruction(const Shape& shape,
@@ -2767,12 +2733,14 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
   if (custom_call_schedule_ != casted_other.custom_call_schedule()) {
     return false;
   }
-  if (HasLiteral() == casted_other.HasLiteral()) {
-    if (HasLiteral() && literal() == casted_other.literal()) {
-      return false;
-    }
-  } else {
-    return true;
+  if (HasLiteral() != casted_other.HasLiteral()) {
+    return false;
+  }
+  if (HasLiteral() && literal() != casted_other.literal()) {
+    return false;
+  }
+  if (api_version_ != casted_other.api_version_) {
+    return false;
   }
   // Note: backend_config comparison is done in Identical, which is the
   // intended/exposed way to compare computations, and so not repeated here.

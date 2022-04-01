@@ -15,7 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TestGmlStLoopPeeling : Pass<"test-gml-st-loop-peeling", "mlir::FuncOp"> {
+def TestGmlStLoopPeeling : Pass<"test-gml-st-loop-peeling", "mlir::func::FuncOp"> {
   let summary = "Peel `gml_st.loop`";
   let constructor = "::mlir::gml_st::createTestGmlStLoopPeelingPass()";
   let options = [
@@ -26,7 +26,7 @@ def TestGmlStLoopPeeling : Pass<"test-gml-st-loop-peeling", "mlir::FuncOp"> {
   ];
 }
 
-def TestGmlStLoopTiling : Pass<"test-gml-st-loop-tiling", "mlir::FuncOp"> {
+def TestGmlStLoopTiling : Pass<"test-gml-st-loop-tiling", "mlir::func::FuncOp"> {
   let summary = "Tile `gml_st.loop`.";
   let constructor = "::mlir::gml_st::createTestGmlStLoopTilingPass()";
   let dependentDialects = [

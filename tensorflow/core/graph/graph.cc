@@ -243,7 +243,10 @@ void Node::RunForwardTypeInference() {
     }
   }
 
-  const auto infer_type = props_->fwd_type_fn(input_types);
+  // TODO(b/224775462): Populate with types from function references.
+  TypeRefMap type_vars;
+
+  const auto infer_type = props_->fwd_type_fn(input_types, type_vars);
   if (!infer_type.ok()) {
     // TODO(mdan): Turn this into an error, once all offenders are clean.
     LOG(WARNING) << name()

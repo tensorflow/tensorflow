@@ -639,6 +639,7 @@ py_library(
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/tpu:device_assignment",
+        "//tensorflow/python/tpu:tpu_hardware_feature",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/tpu:tpu_py",
         "//tensorflow/python/tpu/ops",
@@ -1667,6 +1668,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_windows",  # TODO(b/227211015)
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1905,6 +1907,8 @@ cuda_py_test(
 tpu_py_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
+    # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
+    disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
     python_version = "PY3",
     deps = [

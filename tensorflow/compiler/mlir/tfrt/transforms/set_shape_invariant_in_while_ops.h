@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace tensorflow {
@@ -25,7 +26,7 @@ namespace tfrt_compiler {
 
 // Create a pass to set shape_invariant attribute for all tf.While ops except
 // those are on TPU.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateSetShapeInvariantInWhileOps();
 
 }  // namespace tfrt_compiler

@@ -58,10 +58,11 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr,
       backend_->platform()->Name(), gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
+      stream_exec->GetDeviceDescription().rocm_compute_capability(),
       /*mlir_context=*/nullptr, llvm_module.get());
 
   HloModuleConfig module_config;
-  module_config.set_debug_options(DefaultDebugOptionsIgnoringFlags());
+  module_config.set_debug_options(GetDebugOptionsFromFlags());
   return CompileLmhloToExecutable(
       static_cast<GpuCompiler*>(backend_->compiler()), module, "TestModule",
       module_config, Compiler::CompileOptions(), "main", stream_exec,
@@ -144,8 +145,9 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> MlirGpuTestBase::ParseMlirModule(
   llvm::raw_string_ostream os(diagnostic_str);
   mlir::SourceMgrDiagnosticHandler handler(source_mgr, &context, os);
 
-  mlir::OwningOpRef<mlir::ModuleOp> module = parseSourceString(
-      llvm::StringRef(module_text.data(), module_text.size()), &context);
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(
+          llvm::StringRef(module_text.data(), module_text.size()), &context);
   if (!module) {
     return InvalidArgument("Failed to parse MLIR module: %s", diagnostic_str);
   }

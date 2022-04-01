@@ -1,8 +1,9 @@
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -71,6 +72,32 @@ config_setting(
         "copt": "-DTF_LITE_STATIC_MEMORY",
         "cpu": "k8",
     },
+)
+
+# Flag to disable mmap: Fuchsia's minfs does not support mmap (blobfs
+# does, which is why we don't always disable mmap on Fuchsia).
+# TODO(b/227339138): dynamically decide depending on the filesystem.
+bool_flag(
+    name = "enable_fuchsia_mmap",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "fuchsia_mmap_disabled",
+    flag_values = if_google(
+        {
+            ":enable_fuchsia_mmap": "False",
+            "//tools/cpp:cc_target_os": "fuchsia",
+        },
+        {
+            ":enable_fuchsia_mmap": "False",
+        },
+    ),
+    values = if_oss(
+        # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
+        {"cpu": "fuchsia"},
+        {},
+    ),
 )
 
 STABLE_FRAMEWORK_LIB_HDRS = [
@@ -284,6 +311,9 @@ cc_library(
             "mmap_allocation.cc",
         ],
         "//tensorflow:windows": [
+            "mmap_allocation_disabled.cc",
+        ],
+        ":fuchsia_mmap_disabled": [
             "mmap_allocation_disabled.cc",
         ],
         "//conditions:default": [

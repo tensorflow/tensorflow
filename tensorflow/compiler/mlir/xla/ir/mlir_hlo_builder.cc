@@ -125,9 +125,11 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
     absl::Span<const int64_t> fft_length) {
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
+  auto fft_type_attr = mlir::mhlo::symbolizeFftType(FftType_Name(fft_type));
   auto op = builder_.create<mlir::mhlo::FftOp>(
       loc_, ty, GetValue(operand),
-      builder_.getStringAttr(FftType_Name(fft_type)),
+      mlir::mhlo::FftTypeAttr::get(builder_.getContext(),
+                                   fft_type_attr.getValue()),
       GetI64ElementsAttr(fft_length, &builder_));
   return MakeXlaOp(op);
 }
@@ -494,8 +496,14 @@ StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
                                          shape, builder_));
   auto op = builder_.create<mlir::mhlo::CompareOp>(
       loc_, ty, GetValue(lhs), GetValue(rhs),
-      builder_.getStringAttr(ComparisonDirectionToString(direction)),
-      builder_.getStringAttr(ComparisonTypeToString(type)));
+      mlir::mhlo::ComparisonDirectionAttr::get(
+          builder_.getContext(), mlir::mhlo::symbolizeComparisonDirection(
+                                     ComparisonDirectionToString(direction))
+                                     .getValue()),
+      mlir::mhlo::ComparisonTypeAttr::get(
+          builder_.getContext(),
+          mlir::mhlo::symbolizeComparisonType(ComparisonTypeToString(type))
+              .getValue()));
   return MakeXlaOp(op.getResult());
 }
 
@@ -529,8 +537,11 @@ StatusOr<XlaOp> MlirHloBuilder::TriangularSolveInternal(
       builder_.getBoolAttr(options.left_side()),
       builder_.getBoolAttr(options.lower()),
       builder_.getBoolAttr(options.unit_diagonal()),
-      builder_.getStringAttr(
-          TriangularSolveOptions::Transpose_Name(options.transpose_a())));
+      mlir::mhlo::TransposeAttr::get(
+          builder_.getContext(),
+          ::mlir::mhlo::symbolizeTranspose(
+              TriangularSolveOptions::Transpose_Name(options.transpose_a()))
+              .getValue()));
   return MakeXlaOp(op);
 }
 
@@ -670,7 +681,7 @@ StatusOr<XlaOp> MlirHloBuilder::CreateOp(
   TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
                                          shape, builder_));
   mlir::OperationState state(loc_, op_name, operand_values, {ty}, attributes);
-  mlir::Operation* op = builder_.createOperation(state);
+  mlir::Operation* op = builder_.create(state);
   return MakeXlaOp(op->getResult(0));
 }
 

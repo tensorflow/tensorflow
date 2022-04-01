@@ -22,6 +22,7 @@ namespace mlir {
 
 namespace func {
 class FuncDialect;
+class FuncOp;
 }  // end namespace func
 
 namespace arith {

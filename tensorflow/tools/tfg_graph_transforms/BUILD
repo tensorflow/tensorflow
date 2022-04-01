@@ -41,6 +41,8 @@ TFG_GRAPH_TRANSFORM_DEPS = [
     "//tensorflow/core/ir/importexport:import",
     "//tensorflow/core/protobuf:for_core_protos_cc",
     "//tensorflow/core/transforms:PassRegistration",
+    "//tensorflow/compiler/tf2xla/ops:xla_ops",
+    "//tensorflow/core:ops",
 ]
 
 # Description:

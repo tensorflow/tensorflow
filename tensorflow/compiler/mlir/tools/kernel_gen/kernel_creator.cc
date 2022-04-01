@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -73,8 +74,8 @@ namespace tensorflow {
 namespace kernel_gen {
 namespace {
 
-using mlir::FuncOp;
 using mlir::Value;
+using mlir::func::FuncOp;
 using mlir::memref::RankOp;
 using mlir::scf::ParallelOp;
 
@@ -401,8 +402,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // Map asserts to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
   if (embed_memref_prints) {
-    pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
+    pm.addPass(mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
   }
   if (failed(pm.run(module))) {
     return tensorflow::errors::Internal("Lowering to GPU kernels failed.");
@@ -417,6 +417,21 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
       " Did you specify either --config=rocm or --config=cuda ?");
 #endif
+
+#if TENSORFLOW_USE_ROCM
+  auto gpu_modules = module.getOps<::mlir::gpu::GPUModuleOp>();
+  for (::mlir::gpu::GPUModuleOp gpu_module : gpu_modules) {
+    gpu_module.walk([&](mlir::gpu::GPUFuncOp gpu_kernel) {
+      if (gpu_kernel.isKernel()) {
+        gpu_kernel->setAttr(
+            "rocdl.max_flat_work_group_size",
+            mlir::IntegerAttr::get(
+                mlir::IntegerType::get(module.getContext(), 32), 1024));
+      }
+    });
+  }
+#endif
+
   mlir::PassManager pm(module.getContext());
   // We cannot verify as the signature of the kernel is rewritten.
   // pm.enableVerifier(false);
@@ -503,7 +518,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
   mlir::registerROCDLDialectTranslation(registry);
   context.appendDialectRegistry(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceString(tf_code, &context);
+      mlir::parseSourceString<mlir::ModuleOp>(tf_code, &context);
   if (!module)
     return tensorflow::Status(tensorflow::error::Code::INVALID_ARGUMENT,
                               "invalid kernel IR");

@@ -19,6 +19,9 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+namespace func {
+class FuncOp;
+}  // namespace func
 namespace scf {
 class SCFDialect;
 }  // namespace scf

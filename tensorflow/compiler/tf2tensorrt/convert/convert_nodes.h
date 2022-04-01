@@ -507,17 +507,16 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims);
 
-// Map of all supported UnaryOperations
 template <typename T>
 using operationMap = std::unordered_map<std::string, T>;
-
+// Map of all supported UnaryOperations.
 typedef operationMap<nvinfer1::UnaryOperation> unaryOperationMap;
 const unaryOperationMap* UnaryOperationMap();
-// Map of all supported ActivationTypes
+// Map of all supported ActivationTypes.
 const operationMap<nvinfer1::ActivationType>* ActivationTypeMap();
-// Map of all supported BinaryOperations
+// Map of all supported BinaryOperations.
 typedef operationMap<nvinfer1::ElementWiseOperation> binaryOperationMap;
-const binaryOperationMap *BinaryOperationMap();
+const binaryOperationMap* BinaryOperationMap();
 const binaryOperationMap *BinaryBooleanOperationMap();
 
 template <typename T>

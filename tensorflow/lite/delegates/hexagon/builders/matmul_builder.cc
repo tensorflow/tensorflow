@@ -158,7 +158,7 @@ TfLiteStatus MatMulWithConstWeightsOpBuilder::PopulateSubGraph(
   int weights_tensor_id = inputs->data[1];
   const auto& weights_tensor = context->tensors[weights_tensor_id];
   if (weights_tensor.allocation_type != kTfLiteMmapRo) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "Weights tensor doesn't have correct allocation type: %s",
         weights_tensor.name);
     return kTfLiteError;

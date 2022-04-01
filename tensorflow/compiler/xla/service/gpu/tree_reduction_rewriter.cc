@@ -90,7 +90,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     bool reduce_batch_dimension = hlo->dimensions().size() > 1;
     VLOG(3) << "reduce_batch_dimension = " << reduce_batch_dimension;
 
-    std::vector<int64_t> reduced_dimensions = hlo->dimensions();
+    std::vector<int64_t> reduced_dimensions = *hlo->mutable_dimensions();
     absl::c_sort(reduced_dimensions);
     CHECK_LE(reduced_dimensions.size(), 2);
     int64_t reduced_input_dimension =

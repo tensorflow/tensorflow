@@ -1,4 +1,3 @@
-# lint as: python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +24,7 @@ Requires a local installation of `tensorflow_docs`:
 pip install git+https://github.com/tensorflow/docs
 ```
 """
+import contextlib
 import distutils
 import pathlib
 import textwrap
@@ -39,6 +39,8 @@ from tensorflow_docs.api_generator import doc_generator_visitor
 from tensorflow_docs.api_generator import generate_lib
 from tensorflow_docs.api_generator.pretty_docs import base_page
 from tensorflow_docs.api_generator.pretty_docs import module_page
+
+import yaml
 
 from tensorflow.python.framework import ops
 from tensorflow.python.util import tf_export
@@ -66,6 +68,7 @@ tf.__all__ = [item_name for item_name, value in tf_inspect.getmembers(tf)]
 # duplicate all the module skeleton files.
 tf.compat.v2 = tf
 
+MIN_NUM_FILES_EXPECTED = 2000
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string(
@@ -181,8 +184,13 @@ def build_docs(output_dir, code_url_prefix, search_hints):
     code_url_prefix: prefix for "Defined in" links.
     search_hints: Bool. Include meta-data search hints at the top of each file.
   """
+  output_dir = pathlib.Path(output_dir)
+  site_path = pathlib.Path("/", FLAGS.site_path)
+
   if distutils.version.LooseVersion(tf.__version__) >= "2.9":
     doc_controls.set_deprecated(tf.keras.preprocessing)
+    doc_controls.set_deprecated(tf.estimator)
+    doc_controls.set_deprecated(tf.feature_column)
 
   # The custom page will be used for raw_ops.md not the one generated above.
   doc_controls.set_custom_page_builder_cls(tf.raw_ops, RawOpsPageInfo)
@@ -223,15 +231,34 @@ def build_docs(output_dir, code_url_prefix, search_hints):
       base_dir=base_dirs,
       search_hints=search_hints,
       code_url_prefix=code_url_prefixes,
-      site_path=FLAGS.site_path,
+      site_path=site_path,
       visitor_cls=TfExportAwareVisitor,
       private_map=_PRIVATE_MAP,
-      extra_docs=_EXTRA_DOCS
-  )
+      extra_docs=_EXTRA_DOCS)
 
   doc_generator.build(output_dir)
 
-  out_path = pathlib.Path(output_dir)
+  @contextlib.contextmanager
+  def edit_yaml_file(path):
+    content = yaml.safe_load(path.read_text())
+    yield content
+
+    with path.open("w") as f:
+      yaml.dump(content, f, default_flow_style=False)
+
+  toc_path = output_dir / "tf/_toc.yaml"
+  with edit_yaml_file(toc_path) as toc:
+    # Replace the overview path for 'TensorFlow' to
+    # `/api_docs/python/tf_overview`. This will be redirected to
+    # `/api_docs/python/tf`.
+    toc["toc"][0]["section"][0]["path"] = str(site_path / "tf_overview")
+
+  redirects_path = output_dir / "tf/_redirects.yaml"
+  with edit_yaml_file(redirects_path) as redirects:
+    redirects["redirects"].append({
+        "from": str(site_path / "tf_overview"),
+        "to": str(site_path / "tf"),
+    })
 
   expected_path_contents = {
       "tf/summary/audio.md":
@@ -250,7 +277,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
   ]
 
   for (rel_path, contents) in expected_path_contents.items():
-    path = out_path / rel_path
+    path = output_dir / rel_path
     if contents not in path.read_text():
       all_passed = False
       error_msg_parts.append("  " + str(path))
@@ -267,7 +294,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
       'Bad "view source" links in generated files, please check:'
   ]
   for rel_path, content in rejected_path_contents.items():
-    path = out_path / rel_path
+    path = output_dir / rel_path
     if content in path.read_text():
       all_passed = False
       error_msg_parts.append("  " + str(path))
@@ -275,10 +302,11 @@ def build_docs(output_dir, code_url_prefix, search_hints):
   if not all_passed:
     raise ValueError("\n".join(error_msg_parts))
 
-  num_files = len(list(out_path.rglob("*")))
-  if num_files < 2000:
-    raise ValueError("The TensorFlow api should be more than 2000 files"
-                     "(found {}).".format(num_files))
+  num_files = len(list(output_dir.rglob("*")))
+  if num_files < MIN_NUM_FILES_EXPECTED:
+    raise ValueError(
+        f"The TensorFlow api should be more than {MIN_NUM_FILES_EXPECTED} files"
+        f"(found {num_files}).")
 
 
 def main(argv):

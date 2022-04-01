@@ -176,7 +176,6 @@ cuda_py_test(
     shard_count = 50,
     tags = [
         "no_cuda_asan",  # b/179032113
-        "no_windows",  # b/163222163
     ],
     deps = [
         "//tensorflow/python:array_ops",

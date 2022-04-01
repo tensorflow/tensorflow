@@ -392,7 +392,7 @@ class ImporterBase {
   // arguments are added as basic block argument. Also the argument types and
   // the id of the nodes from the input graph needs to be specified.
   Status ConvertFunctionArgAndRets(
-      mlir::FuncOp func, mlir::tf_executor::GraphOp graph_op,
+      mlir::func::FuncOp func, mlir::tf_executor::GraphOp graph_op,
       llvm::ArrayRef<mlir::Type> arg_types,
       const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
       const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
@@ -1547,8 +1547,8 @@ Status ImporterBase::Convert(
     const absl::InlinedVector<Node*, 4>& control_ret_nodes,
     llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   // TODO(b/122040776): Uses debug info for FunctionDef.
-  auto function = mlir::FuncOp::create(mlir::UnknownLoc::get(context_),
-                                       func_name, func_type, attrs);
+  auto function = mlir::func::FuncOp::create(mlir::UnknownLoc::get(context_),
+                                             func_name, func_type, attrs);
 
   module_.push_back(function);
   // Seeds the builder with an initial block.
@@ -1595,7 +1595,7 @@ Status ImporterBase::Convert(
 }
 
 Status ImporterBase::ConvertFunctionArgAndRets(
-    mlir::FuncOp func, mlir::tf_executor::GraphOp graph_op,
+    mlir::func::FuncOp func, mlir::tf_executor::GraphOp graph_op,
     llvm::ArrayRef<mlir::Type> arg_types,
     const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
     const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
@@ -1916,7 +1916,7 @@ mlir::Operation* ImporterBase::CreateOperation(
       mlir::OpBuilder::atBlockEnd(&island.GetBody());
 
   // Create the operation inside the island now.
-  mlir::Operation* inner_op = island_builder.createOperation(result);
+  mlir::Operation* inner_op = island_builder.create(result);
 
   // Sets operand_segment_sizes or result_segment_sizes attribute to the op.
   const auto set_segment_sizes_attr =
@@ -2253,7 +2253,7 @@ Status ImporterBase::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
   state.types.assign(dst->getResultTypes().begin(),
                      dst->getResultTypes().end());
   builder_.setInsertionPoint(dst);
-  auto* new_dst = builder_.createOperation(state);
+  auto* new_dst = builder_.create(state);
 
   // Replaces the output uses of the old operation by the corresponding
   // result of the new operation, and deletes the old operation.
@@ -2510,10 +2510,10 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   TF_RETURN_IF_ERROR(importer.ImporterBase::ConvertDeferredFunctions());
 
   // Mark main function public, others private.
-  for (auto function : module.get().getOps<mlir::FuncOp>()) {
+  for (auto function : module.get().getOps<mlir::func::FuncOp>()) {
     auto visibility = function.getName() == graph_func_name
-                          ? mlir::FuncOp::Visibility::Public
-                          : mlir::FuncOp::Visibility::Private;
+                          ? mlir::func::FuncOp::Visibility::Public
+                          : mlir::func::FuncOp::Visibility::Private;
     function.setVisibility(visibility);
   }
   return module;
@@ -3009,7 +3009,7 @@ Status DiagnoseMultipleConcreteFunctions(const SavedObjectGraph& object_graph,
 // needed to reach leaf0 is `[0, "x"]`, as it would be if you were operating on
 // a Python object (`obj[0]["x"] is leaf0`). Each leaf corresponds to a
 // linearized function argument or return on a FunctionDef, and hence to an
-// mlir::FuncOp argument / return.
+// mlir::func::FuncOp argument / return.
 //
 // This must match the linearization that happens in `tf.nest.flatten`.
 // In particular, dict values should be linearized in sorted key order.
@@ -3146,7 +3146,7 @@ void StructuredValueLinearizer::RecursivelyFindLeaves(
 // `tensor<!tf_type.resource<tensor<...>>>`.
 void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
   mlir::SymbolTable symbol_table(module);
-  for (auto func : module.getOps<mlir::FuncOp>()) {
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
     if (!mlir::tf_saved_model::IsExported(func)) continue;
     mlir::OpBuilder builder(func.getBody());
     llvm::SmallVector<mlir::Type, 4> new_input_types;
@@ -3178,16 +3178,16 @@ void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
       new_input_types.push_back(arg.getType());
     }
     func.setType(mlir::FunctionType::get(module.getContext(), new_input_types,
-                                         func.getType().getResults()));
+                                         func.getFunctionType().getResults()));
   }
 }
 
 // Marks the visibility of functions in the saved model module.
 void MarkSavedModelFunctionVisibility(mlir::ModuleOp module) {
-  for (auto func : module.getOps<mlir::FuncOp>()) {
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
     auto visibility = mlir::tf_saved_model::IsExported(func)
-                          ? mlir::FuncOp::Visibility::Public
-                          : mlir::FuncOp::Visibility::Private;
+                          ? mlir::func::FuncOp::Visibility::Public
+                          : mlir::func::FuncOp::Visibility::Private;
     func.setVisibility(visibility);
   }
 }
@@ -3223,11 +3223,11 @@ void SortSavedModelModule(mlir::ModuleOp module) {
 
   struct NamedFunc {
     llvm::StringRef name;
-    mlir::FuncOp func;
+    mlir::func::FuncOp func;
   };
   llvm::SmallVector<NamedFunc, 8> named_funcs;
-  llvm::SmallVector<mlir::FuncOp, 8> private_funcs;
-  for (auto func : module.getOps<mlir::FuncOp>()) {
+  llvm::SmallVector<mlir::func::FuncOp, 8> private_funcs;
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
     auto exported_names = mlir::tf_saved_model::GetExportedNames(func);
     if (!exported_names.empty())
       named_funcs.push_back({exported_names.front(), func});
@@ -3237,9 +3237,10 @@ void SortSavedModelModule(mlir::ModuleOp module) {
   llvm::stable_sort(named_funcs, [](const NamedFunc& a, const NamedFunc& b) {
     return a.name < b.name;
   });
-  llvm::stable_sort(private_funcs, [](mlir::FuncOp a, mlir::FuncOp b) {
-    return a.getName() < b.getName();
-  });
+  llvm::stable_sort(private_funcs,
+                    [](mlir::func::FuncOp a, mlir::func::FuncOp b) {
+                      return a.getName() < b.getName();
+                    });
 
   struct NamedAsset {
     llvm::StringRef name;
@@ -3315,9 +3316,9 @@ Status CreateSavedModelIR(
           "While importing SavedModel function '" +
           object_names.GetExportedNames(node_id)[0].str() + "': ";
       const SavedFunction& function = object.function();
-      auto orig_func = symbol_table.lookup<mlir::FuncOp>(
+      auto orig_func = symbol_table.lookup<mlir::func::FuncOp>(
           tf_name_to_mlir_name.find(function.concrete_functions(0))->second);
-      mlir::FuncOp func = orig_func;
+      mlir::func::FuncOp func = orig_func;
       // If there are potentially references to this func from within the
       // module, create a wrapper around it and decorate the wrapper with the
       // tf_saved_model attributes instead.
@@ -3334,7 +3335,8 @@ Status CreateSavedModelIR(
         }
         mlir::OpBuilder body_builder(&func.getBody());
         auto call = body_builder.create<mlir::TF::StatefulPartitionedCallOp>(
-            func.getLoc(), orig_func.getType().getResults(), args_as_values,
+            func.getLoc(), orig_func.getFunctionType().getResults(),
+            args_as_values,
             mlir::SymbolRefAttr::get(builder.getContext(), orig_func.getName()),
             /*config=*/builder.getStringAttr(""),
             /*config_proto=*/builder.getStringAttr(""),
@@ -3532,7 +3534,8 @@ SavedModelObjectGraphImporter::Convert(
   // SavedModel. This is not strictly needed, as there is a separate pass that
   // will clean them up, but this makes staring at the raw IR of minimal
   // examples quite a bit nicer.
-  for (auto func : llvm::make_early_inc_range(module->getOps<mlir::FuncOp>())) {
+  for (auto func :
+       llvm::make_early_inc_range(module->getOps<mlir::func::FuncOp>())) {
     if (func.getName().startswith("__inference__traced_save_") ||
         func.getName().startswith("__inference__traced_restore_") ||
         func.getName().startswith("__inference_signature_wrapper_")) {
@@ -3779,7 +3782,7 @@ Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
 
   // Prefix private functions with the unique signature name, so that it cannot
   // collide with private functions used in the other signatures.
-  for (auto func : sub_module.getOps<mlir::FuncOp>()) {
+  for (auto func : sub_module.getOps<mlir::func::FuncOp>()) {
     if (mlir::tf_saved_model::IsExported(func)) continue;
 
     // Skip the original functions from graphdef library
@@ -3798,7 +3801,7 @@ Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
   }
 
   // Copy all functions used by this signature to the final MLIR module.
-  for (auto func : sub_module.getOps<mlir::FuncOp>()) {
+  for (auto func : sub_module.getOps<mlir::func::FuncOp>()) {
     // The insert here is a NO-OP if the function already exists.
     symbol_table_.insert(func.clone());
   }
@@ -3825,7 +3828,8 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
 
   mlir::SymbolTable sub_symbol_table(*sub_module);
 
-  auto init_func_op = sub_symbol_table.lookup<mlir::FuncOp>(target_node_name);
+  auto init_func_op =
+      sub_symbol_table.lookup<mlir::func::FuncOp>(target_node_name);
   init_func_op->removeAttr("tf.entry_function");
 
   mlir::OpBuilder builder(module_->getBodyRegion());
@@ -3907,7 +3911,7 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
 
   // Find the FuncOp which corresponds to current SignatureDef.
   mlir::SymbolTable sub_symbol_table(*sub_module);
-  auto func_op = sub_symbol_table.lookup<mlir::FuncOp>(sig_def_key);
+  auto func_op = sub_symbol_table.lookup<mlir::func::FuncOp>(sig_def_key);
   TF_RET_CHECK(func_op)
       << "Graphdef importer should have created a function named "
       << sig_def_key << ".";
@@ -4099,13 +4103,13 @@ Status SavedModelSignatureDefImporter::LiftVariables(
 
   mlir::PassManager pm(module.getContext());
   SetCrashReproducer(pm);
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::tf_executor::CreateTFExecutorGraphPruningPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateExecutorDialectToFunctionalConversionPass());
   pm.addPass(
       mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::
           CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());
   if (mlir::failed(pm.run(module)))
@@ -4134,7 +4138,7 @@ Status SavedModelSignatureDefImporter::LiftVariables(
   }
 
   pm.clear();
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::tf_saved_model::CreateDedupBoundInputBindingPass());
   if (mlir::failed(pm.run(module)))
     return diag_handler.Combine(

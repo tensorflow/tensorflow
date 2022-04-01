@@ -95,5 +95,5 @@ tfg.func @many_args(%a0: !tf_type.tensor {tfg.name = "a0"},
 "tfg.func"() ({
 ^bb0(%arg0: tensor<*xi32>, %arg1: !tf_type.control, %arg2: tensor<*xi32>, %arg3: !tf_type.control):
   "tfg.return"(%arg0) {control_ret_attrs = []} : (tensor<*xi32>) -> ()
-}) {arg_attrs = [{}, {}, {}, {}], res_attrs = [{tfg.name = "result1"}], sym_name = "vis", sym_visibility = "private", type = (tensor<*xi32>, !tf_type.control, tensor<*xi32>, !tf_type.control) -> tensor<*xi32>} : () -> ()
+}) {arg_attrs = [{}, {}, {}, {}], res_attrs = [{tfg.name = "result1"}], sym_name = "vis", sym_visibility = "private", function_type = (tensor<*xi32>, !tf_type.control, tensor<*xi32>, !tf_type.control) -> tensor<*xi32>} : () -> ()
 

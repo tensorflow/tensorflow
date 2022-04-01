@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -31,7 +32,7 @@ using mlir::linalg::CodegenStrategy;
 
 struct LowerTransposePass : public LowerTransposeBase<LowerTransposePass> {
   void runOnOperation() override {
-    mlir::OpPassManager dynamic_pm("builtin.func");
+    mlir::OpPassManager dynamic_pm("func.func");
     auto avx_lowering_options =
         mlir::x86vector::avx2::LoweringOptions().setTransposeOptions(
             mlir::x86vector::avx2::TransposeLoweringOptions()
@@ -54,7 +55,7 @@ struct LowerTransposePass : public LowerTransposeBase<LowerTransposePass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateLowerVectorTransposePass() {
   return std::make_unique<LowerTransposePass>();
 }

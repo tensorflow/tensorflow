@@ -565,6 +565,8 @@ inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
   for (int i = 0; i < indices_dims - 1; ++i) {
     ret.n_slices *= indices_shape.Dims(i);
   }
+  if (ret.n_slices == 0) return ret;
+
   for (int i = ret.indices_nd; i < params_dims; ++i) {
     ret.slice_size *= params_shape.Dims(i);
   }

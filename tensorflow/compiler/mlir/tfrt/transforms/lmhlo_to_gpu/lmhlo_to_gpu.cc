@@ -105,9 +105,10 @@ void ConvertLmhloToGpuPass::runOnOperation() {
                                                 wrap_target);
 
   ConversionTarget target(*context);
-  target.addIllegalOp<memref::ReinterpretCastOp, memref::ViewOp>();
+  target.addIllegalOp<memref::ReinterpretCastOp, memref::ViewOp,
+                      memref::AllocaOp, memref::AllocOp, memref::DeallocOp>();
   target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-    return converter.isSignatureLegal(op.getType()) &&
+    return converter.isSignatureLegal(op.getFunctionType()) &&
            converter.isLegal(&op.getBody());
   });
   target.addDynamicallyLegalOp<tfrt::gpu::conversion::AsyncExecuteOp>(

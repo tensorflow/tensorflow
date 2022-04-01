@@ -774,6 +774,12 @@ renames = {
         'tf.compat.v1.mixed_precision.FixedLossScale',
     'tf.mixed_precision.LossScale':
         'tf.compat.v1.mixed_precision.LossScale',
+    'tf.mixed_precision.experimental.DynamicLossScale':
+        'tf.compat.v1.mixed_precision.experimental.DynamicLossScale',
+    'tf.mixed_precision.experimental.FixedLossScale':
+        'tf.compat.v1.mixed_precision.experimental.FixedLossScale',
+    'tf.mixed_precision.experimental.LossScale':
+        'tf.compat.v1.mixed_precision.experimental.LossScale',
     'tf.metrics.accuracy':
         'tf.compat.v1.metrics.accuracy',
     'tf.metrics.auc':
@@ -1498,6 +1504,12 @@ renames = {
         'tf.compat.v1.train.create_global_step',
     'tf.train.do_quantize_training_on_graphdef':
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
+    'tf.train.experimental.DynamicLossScale':
+        'tf.compat.v1.train.experimental.DynamicLossScale',
+    'tf.train.experimental.FixedLossScale':
+        'tf.compat.v1.train.experimental.FixedLossScale',
+    'tf.train.experimental.LossScale':
+        'tf.compat.v1.train.experimental.LossScale',
     'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
         'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
     'tf.train.experimental.disable_mixed_precision_graph_rewrite':

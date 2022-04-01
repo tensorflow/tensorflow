@@ -152,6 +152,19 @@ class QuantizedConv2DTester {
     return (KernelWidth() - 1) * DilationWidth() + 1;
   }
 
+  inline QuantizedConv2DTester& Groups(int32_t groups) {
+    EXPECT_EQ(InputChannels() % groups, 0);
+    EXPECT_EQ(OutputChannels() % groups, 0);
+    groups_ = groups;
+    return *this;
+  }
+
+  inline int32_t Groups() const { return groups_; }
+
+  inline int32_t KernelInputChannels() const {
+    return input_channels_ / groups_;
+  }
+
   inline QuantizedConv2DTester& InputZeroPoint(int32_t input_zero_point) {
     input_zero_point_ = input_zero_point;
     return *this;
@@ -256,6 +269,7 @@ class QuantizedConv2DTester {
   int32_t batch_size_ = 1;
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
+  int32_t groups_ = 1;
   int32_t input_height_ = 1;
   int32_t input_width_ = 1;
   int32_t kernel_height_ = 1;

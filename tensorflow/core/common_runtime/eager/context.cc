@@ -653,8 +653,14 @@ EagerContext::~EagerContext() {
     // TODO(b/136478427): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
                     "Servers don't support clean shutdown.";
+    // TODO(hanyangtay): Remove this teardown logic once gRPC server clean
+    // shutdown is supported.
     if (server_->worker_env()->session_mgr != nullptr) {
-      server_->worker_env()->session_mgr->TeardownCoordinationServiceAndAgent();
+      // Tear down coordination service.
+      Status s = server_->StopCoordinationService();
+      if (!s.ok()) {
+        LOG(ERROR) << "Failed to stop coordination service: " << s;
+      }
     }
     server_.release();
   }
@@ -949,13 +955,13 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
       registered_function->Ref();
     }
     is_first_ref = registered_function->RefCountIsOne();
-  }
-  if (is_first_ref) {
-    TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef, stack_traces));
-    TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
-    if (!add_to_local_only) {
-      return MaybeRegisterFunctionRemotely(fdef);
+    if (is_first_ref) {
+      TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef, stack_traces));
+      TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
     }
+  }
+  if (is_first_ref && !add_to_local_only) {
+    return MaybeRegisterFunctionRemotely(fdef);
   }
   return Status::OK();
 }
@@ -970,23 +976,20 @@ std::vector<string> EagerContext::ListFunctionNames() {
 
 Status EagerContext::RemoveFunction(const string& func) {
   // TODO(mdan): The context owns these functions. Why check refcount then?
-  bool is_last_ref = false;
-  {
-    mutex_lock l(cache_mu_);
-    auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
-    if (registered_function == nullptr) {
-      return errors::InvalidArgument("Tried to remove non-existent function '",
-                                     func, "'.");
-    }
-    is_last_ref = registered_function->RefCountIsOne();
-    if (is_last_ref) {
-      for (auto& key : *registered_function->cached_kernel_keys) {
-        kernel_cache_.erase(key);
-      }
-      registered_functions_.erase(func);
-    }
-    registered_function->Unref();
+  mutex_lock l(cache_mu_);
+  auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
+  if (registered_function == nullptr) {
+    return errors::InvalidArgument("Tried to remove non-existent function '",
+                                   func, "'.");
   }
+  bool is_last_ref = registered_function->RefCountIsOne();
+  if (is_last_ref) {
+    for (auto& key : *registered_function->cached_kernel_keys) {
+      kernel_cache_.erase(key);
+    }
+    registered_functions_.erase(func);
+  }
+  registered_function->Unref();
   if (is_last_ref) {
     // TODO(fishx): Remove remote function as well.
     return func_lib_def_.RemoveFunction(func);

@@ -136,14 +136,14 @@ void CollectiveRemoteAccessLocal::MemCpyAsync(
   // the OpKernelContext does not supply a DeviceContext.  It's assumed
   // that all nodes use the default context.
   if (src_dev_ctx == nullptr && src_device_type == DEVICE_GPU) {
-    const DeviceBase::GpuDeviceInfo* dev_info =
-        src_dev->tensorflow_gpu_device_info();
+    const DeviceBase::AcceleratorDeviceInfo* dev_info =
+        src_dev->tensorflow_accelerator_device_info();
     CHECK(dev_info);
     src_dev_ctx = dev_info->default_context;
   }
   if (dst_dev_ctx == nullptr && dst_device_type == DEVICE_GPU) {
-    const DeviceBase::GpuDeviceInfo* dev_info =
-        src_dev->tensorflow_gpu_device_info();
+    const DeviceBase::AcceleratorDeviceInfo* dev_info =
+        src_dev->tensorflow_accelerator_device_info();
     CHECK(dev_info);
     dst_dev_ctx = dev_info->default_context;
   }

@@ -729,8 +729,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       ClientHeartbeatResponse resp;
       Status s = dispatcher_->ClientHeartbeat(req, resp);
       if (!s.ok()) {
-        if (errors::IsAborted(s) || errors::IsUnavailable(s) ||
-            errors::IsCancelled(s)) {
+        if (IsPreemptedError(s)) {
           LOG(WARNING)
               << "Failed to heartbeat to dispatcher from job client id "
               << job_client_id_
@@ -1104,8 +1103,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         Status s = TryGetElement(*task, get_element_result);
         if (s.ok()) break;
         // Retry all errors that could indicate preemption.
-        if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
-            !errors::IsAborted(s)) {
+        if (!IsPreemptedError(s)) {
           return s;
         }
         {

@@ -27,16 +27,6 @@ def workspace():
         ],
     )
 
-    # TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
-    http_archive(
-        name = "rules_pkg",
-        sha256 = "352c090cc3d3f9a6b4e676cf42a6047c16824959b438895a76c2989c6d7c246a",
-        urls = [
-            "https://github.com/bazelbuild/rules_pkg/releases/download/0.2.5/rules_pkg-0.2.5.tar.gz",
-            "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.2.5/rules_pkg-0.2.5.tar.gz",
-        ],
-    )
-
     # Load the raw llvm-project.  llvm does not have build rules set up by default,
     # but provides a script for setting up build rules via overlays.
     llvm("llvm-raw")

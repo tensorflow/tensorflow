@@ -148,9 +148,22 @@ struct CseKey {
       }
       return H::combine(std::move(h), window_dims.size());
     };
-    for (auto operand : instruction->operands()) {
-      h = H::combine(std::move(h), operand->unique_id());
+
+    // Hash operands, ignoring operand order on commutative ops.
+    if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
+      CHECK_EQ(instruction->operand_count(), 2);
+      auto id0 = instruction->operand(0)->unique_id();
+      auto id1 = instruction->operand(1)->unique_id();
+      if (id0 > id1) {
+        std::swap(id0, id1);
+      }
+      h = H::combine(std::move(h), id0, id1);
+    } else {
+      for (auto operand : instruction->operands()) {
+        h = H::combine(std::move(h), operand->unique_id());
+      }
     }
+
     for (auto c : instruction->called_computations()) {
       h = H::combine(std::move(h), c->root_instruction()->opcode());
     }
@@ -222,8 +235,8 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
                            const HloComputation* rhs) { return *lhs == *rhs; };
 
   auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
-    return lhs.hlo->Identical(*rhs.hlo, eq_instructions, eq_computations,
-                              is_layout_sensitive_);
+    return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
+        *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_);
   };
 
   for (auto* computation : module->computations()) {

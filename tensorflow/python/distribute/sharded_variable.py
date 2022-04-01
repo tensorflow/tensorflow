@@ -256,7 +256,7 @@ class ShardedVariableMixin(trackable.Trackable):
   """Mixin for ShardedVariable."""
 
   # TODO(b/170877138): Remove this mixin once fixed. This mixin is required
-  # since TPUShardedVariable can't be a CompositeTensor.
+  # since TPUEmbeddingVariable can't be a CompositeTensor.
 
   def __init__(self,
                variables,
@@ -748,6 +748,10 @@ class ShardedVariableMixin(trackable.Trackable):
   @property
   def _shared_name(self):
     return self._name
+
+  @property
+  def is_sharded_variable(self):
+    return True
 
 
 @tf_export('__internal__.distribute.ShardedVariable', v1=[])

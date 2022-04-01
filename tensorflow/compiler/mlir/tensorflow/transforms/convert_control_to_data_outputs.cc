@@ -195,7 +195,7 @@ void AppendFunctionArguments(FuncOp func, int num_resources,
 
   FunctionType ftype =
       FunctionType::get(func.getContext(), func.getBody().getArgumentTypes(),
-                        func.getType().getResults());
+                        func.getFunctionType().getResults());
   func.setType(ftype);
 }
 
@@ -210,7 +210,8 @@ void AppendFunctionResults(FuncOp func, int num_resources,
   assert(std::equal(func->getResultTypes().begin(),
                     func->getResultTypes().end(),
                     graph_op->getResultTypes().begin()));
-  auto new_result_types = llvm::to_vector<4>(func.getType().getResults());
+  auto new_result_types =
+      llvm::to_vector<4>(func.getFunctionType().getResults());
   for (int i = 0; i < num_resources; ++i) {
     new_result_types.push_back(chaining_data_type);
   }

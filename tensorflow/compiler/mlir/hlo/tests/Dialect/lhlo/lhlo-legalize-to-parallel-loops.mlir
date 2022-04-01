@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
-func @reduce(%arg: memref<100x10x5xf32>,
+func.func @reduce(%arg: memref<100x10x5xf32>,
              %init: memref<f32>,
              %result: memref<100x5xf32>) {
   "lmhlo.reduce"(%arg, %init, %result) ({
@@ -10,7 +10,7 @@ func @reduce(%arg: memref<100x10x5xf32>,
       "lmhlo.terminator"() : () -> ()
     } ) {dimensions = dense<[1]> : tensor<1xi64>}
       : (memref<100x10x5xf32>, memref<f32>, memref<100x5xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @reduce(
 // CHECK-SAME: [[ARG_BUF:%.*]]: memref<100x10x5xf32>,
@@ -46,7 +46,7 @@ func @reduce(%arg: memref<100x10x5xf32>,
 
 // -----
 
-func @reduce_no_outer_loop(%arg: memref<100xf32>,
+func.func @reduce_no_outer_loop(%arg: memref<100xf32>,
                            %init: memref<f32>,
                            %result: memref<1xf32>) {
   "lmhlo.reduce"(%arg, %init, %result) ({
@@ -56,7 +56,7 @@ func @reduce_no_outer_loop(%arg: memref<100xf32>,
       "lmhlo.terminator"() : () -> ()
     } ) {dimensions = dense<[0]> : tensor<1xi64>}
       : (memref<100xf32>, memref<f32>, memref<1xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @reduce_no_outer_loop(
 // CHECK-SAME: [[ARG_BUF:%.*]]: memref<100xf32>,
@@ -85,7 +85,7 @@ func @reduce_no_outer_loop(%arg: memref<100xf32>,
 
 // -----
 
-func @dynamic_reduce(%arg: memref<?x?x?xf32>,
+func.func @dynamic_reduce(%arg: memref<?x?x?xf32>,
                      %init: memref<f32>,
                      %result: memref<?x?xf32>) {
   "lmhlo.reduce"(%arg, %init, %result) ({
@@ -95,7 +95,7 @@ func @dynamic_reduce(%arg: memref<?x?x?xf32>,
       "lmhlo.terminator"() : () -> ()
     } ) {dimensions = dense<[1]> : tensor<1xi64>}
       : (memref<?x?x?xf32>, memref<f32>, memref<?x?xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @dynamic_reduce(
 // CHECK-SAME: [[ARG_BUF:%.*]]: memref<?x?x?xf32>,
@@ -132,7 +132,7 @@ func @dynamic_reduce(%arg: memref<?x?x?xf32>,
 
 // -----
 
-func @reduce_window(%arg: memref<112x112xf32>,
+func.func @reduce_window(%arg: memref<112x112xf32>,
              %init: memref<f32>,
              %result: memref<56x56xf32>) {
   "lmhlo.reduce_window"(%arg, %init, %result) ({
@@ -145,7 +145,7 @@ func @reduce_window(%arg: memref<112x112xf32>,
       window_dimensions = dense<[3, 3]> : tensor<2xi64>,
       window_strides = dense<[2, 2]> : tensor<2xi64>
     } : (memref<112x112xf32>, memref<f32>, memref<56x56xf32>) -> ()
-  return
+  func.return
 }
 // CHECK-LABEL: func @reduce_window(
 // CHECK-SAME:      [[OPERAND_BUF:%.*]]: memref<112x112xf32>,

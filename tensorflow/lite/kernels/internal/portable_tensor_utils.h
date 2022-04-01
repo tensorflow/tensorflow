@@ -60,9 +60,8 @@ void VectorBatchVectorAdd(const T* vector, int v_size, int n_batch,
 
 // Cwise product of two vectors.
 template <typename T>
-inline void VectorVectorCwiseProduct(const T* __restrict__ vector1,
-                                     const T* __restrict__ vector2, int v_size,
-                                     T* __restrict__ result) {
+inline void VectorVectorCwiseProduct(const T* vector1, const T* vector2,
+                                     int v_size, T* result) {
   for (int v = 0; v < v_size; v++) {
     *result++ = *vector1++ * *vector2++;
   }
@@ -226,6 +225,20 @@ void MatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ scaling_factors, int n_batch,
     float* __restrict__ result, const float* __restrict__ per_channel_scale,
     const int32_t* __restrict__ input_offset);
+
+// Same as the function above, but the matrix is a sparse tensor with block
+// pattern 1x16.
+// This function assumes that m_cols is a multiple of the block size (16 in this
+// case) so that there's no incomplete block. Also, it assumes all offsets of
+// input, output and filter are zero.
+void SparseMatrixBatchVectorMultiplyAccumulate1x16(
+    const int8_t* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const int8_t* __restrict__ vector, const int32_t* __restrict__ bias_vector,
+    int n_batch, const int32_t input_offset, const int32_t output_multiplier,
+    const int32_t output_shift, const int32_t output_offset,
+    const int32_t output_activation_min, const int32_t output_activation_max,
+    int8_t* __restrict__ result);
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
@@ -452,9 +465,8 @@ void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size);
 
 // Layer norm for each batch.
-void MeanStddevNormalization(const float* __restrict__ input_vector,
-                             float* __restrict__ output_vector, int v_size,
-                             int n_batch);
+void MeanStddevNormalization(const float* input_vector, float* output_vector,
+                             int v_size, int n_batch);
 
 // Saturate Add with rescale on both inputs.
 void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,

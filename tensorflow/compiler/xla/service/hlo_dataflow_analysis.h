@@ -169,10 +169,26 @@ class HloDataflowAnalysis {
   static bool IsAsynchronousOperationStart(HloOpcode opcode);
   static bool IsAsynchronousOperationDone(HloOpcode opcode);
 
-  // Returns a vector consisting of the HloUse (operand number and shape index)
-  // and output shape index of the in-place operations within this HLO.
+  // Returns the pairs of inputs and outputs that must share the same buffer,
+  // according to the aliasing rules for that instruction.
+  //
+  // This function only considers array values as inputs and outputs, so
+  // when tuples are present it "sees through" to the array values inside. The
+  // HloUse describing the input parameter contains not only the operand number
+  // but also a shape index describing its position inside a nested tuple shape
+  // (if any). Similarly, the output parameter is described by a shape index
+  // into the nested tuple shape (if any) of the output value.
+  //
+  // For example, for this hypothetical op:
+  //   %foo = (f32[1], (f32[2], f32[3]))
+  //              op((f32[4], f32[5]) %arg0, f32[6] %arg1)
+  //
+  // ... the results can include any of the 3 * 3 = 9 possible pairs of
+  // input and output arrays.
   static std::vector<std::pair<HloUse, ShapeIndex>> GetInPlaceInputOutputPairs(
       HloInstruction* instruction);
+  // Whether this HLO contains any in-place operations.
+  static bool HasInPlaceOperations(const HloInstruction& instruction);
 
  private:
   static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
@@ -224,6 +240,9 @@ class HloDataflowAnalysis {
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
+  bool UpdateAsyncStartValueSet(HloInstruction* async_start);
+  bool UpdateAsyncUpdateValueSet(HloInstruction* async_update);
+  bool UpdateAsyncDoneValueSet(HloInstruction* async_done);
   bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
   bool UpdateOptimizationBarrierValueSet(HloInstruction* barrier);
