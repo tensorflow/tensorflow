@@ -931,6 +931,9 @@ class ArrayMethodsTest(test.TestCase):
               np_array_ops.repeat(arr_arg, repeats_arg, *args, **kwargs),
               np.repeat(arr_arg, repeats_arg, *args, **kwargs))
 
+    if test.is_gpu_available():
+      self.skipTest('b/227668341')
+
     run_test(1, 2)
     run_test([1, 2], 2)
     run_test([1, 2], [2])
