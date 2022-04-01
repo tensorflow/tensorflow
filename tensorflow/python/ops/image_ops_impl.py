@@ -15,6 +15,7 @@
 """Implementation of image ops."""
 
 import functools
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -2917,9 +2918,10 @@ def adjust_jpeg_quality(image, jpeg_quality, dct_method='', name=None):
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
     jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
-    dct_method: An optional string. Specifies the DCT method to use for JPEG decompression.
-      Currently available options are ["INTEGER_FAST", "INTEGER_ACCURATE"].
-      Defaults to "INTEGER_FAST", sacrificing image quality for speed.
+    dct_method: An optional string. Specifies the DCT method to use for JPEG
+      decompression. Currently available options are ["INTEGER_FAST",
+      "INTEGER_ACCURATE"]. Defaults to "" which maps to "INTEGER_FAST",
+      sacrificing image quality for speed.
     name: A name for this operation (optional).
 
   Returns:
