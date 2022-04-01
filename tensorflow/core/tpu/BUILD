@@ -155,6 +155,7 @@ cc_library(
     name = "tpu_initializer_helper",
     srcs = ["tpu_initializer_helper.cc"],
     hdrs = ["tpu_initializer_helper.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
         ":tpu_api",
