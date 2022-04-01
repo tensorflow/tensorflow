@@ -440,9 +440,9 @@ class TfrtCpuBuffer final : public PjRtBuffer {
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
-                       std::function<void(Status)> on_ready) override {
-    return Unimplemented("CopyRawToHost not implemented");
+  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+                                   int64_t transfer_size) override {
+    return PjRtFuture<Status>(Unimplemented("CopyRawToHost not implemented"));
   }
 
   void Delete() override;

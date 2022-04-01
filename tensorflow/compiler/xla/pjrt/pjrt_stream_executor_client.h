@@ -297,10 +297,11 @@ class PjRtStreamExecutorClient : public PjRtClient {
     }
   }
 
-  virtual Status CopyRawSubBufferToHost(PjRtBuffer* buffer, void* dst,
-                                        int64_t offset, int64_t transfer_size,
-                                        std::function<void(Status)> on_ready) {
-    return Unimplemented("Raw copies to host not implemented.");
+  virtual PjRtFuture<Status> CopyRawSubBufferToHost(PjRtBuffer* buffer,
+                                                    void* dst, int64_t offset,
+                                                    int64_t transfer_size) {
+    return PjRtFuture<Status>(
+        Unimplemented("Raw copies to host not implemented."));
   }
 
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies
@@ -562,8 +563,8 @@ class PjRtStreamExecutorBuffer : public PjRtBuffer {
 
   StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
-                       std::function<void(Status)> on_ready) override;
+  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+                                   int64_t transfer_size) override;
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async

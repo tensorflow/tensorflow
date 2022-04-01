@@ -661,12 +661,23 @@ class PjRtBuffer {
   virtual StatusOr<size_t> GetOnDeviceSizeInBytes() const = 0;
 
   // Transfers a sub-range of the on-device representation of the buffer.
+  // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
+  // returned future transitions to ready on error, or after the transfer has
+  // completed.
+  virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+                                           int64_t transfer_size) = 0;
+
+  // Transfers a sub-range of the on-device representation of the buffer.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. on_ready
   // is called if and only if CopyRawToHost returns OK. on_ready will be called
   // with a non-OK status if the buffer asynchronously transitions to an error
   // state.
-  virtual Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
-                               std::function<void(Status)> on_ready) = 0;
+  ABSL_DEPRECATED("Use CopyRawToHost(...).OnReady() instead")
+  Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
+                       std::function<void(Status)> on_ready) {
+    CopyRawToHost(dst, offset, transfer_size).OnReady(std::move(on_ready));
+    return Status::OK();
+  }
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
