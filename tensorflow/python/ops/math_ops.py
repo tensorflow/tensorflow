@@ -933,6 +933,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
     return gen_math_ops.round(x, name=name)
 
 
+# TODO(mdan): Include a full_type argument to replace dtype.
 @tf_export("cast", "dtypes.cast")
 @dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
