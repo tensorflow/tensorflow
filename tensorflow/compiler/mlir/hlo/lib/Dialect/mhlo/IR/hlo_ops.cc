@@ -5132,20 +5132,14 @@ ParseResult parseBinaryOp(OpAsmParser& parser, OperationState& result) {
 
 void printBinaryOp(Operation* op, OpAsmPrinter& p) {
   assert(op->getNumResults() == 1 && "op should have one result");
-  // If any type is sparse, use generic form.
+  // If not all types are the same, use generic form.
   auto resultType = op->getResult(0).getType();
-  if (sparse_tensor::getSparseTensorEncoding(resultType) ||
-      llvm::any_of(op->getOperandTypes(), [&](Type tp) {
-        return sparse_tensor::getSparseTensorEncoding(tp);
-      })) {
+  if (llvm::any_of(op->getOperandTypes(),
+                   [&](Type type) { return type != resultType; })) {
     p.printGenericOp(op, /*printOpName=*/false);
     return;
   }
-  // Otherwise, use the shorthand syntax. Note that this uses the convention
-  // that even congruent types like tensor<10xf32> and tensor<?xf32> are
-  // printed with the static tensor type as representative.
-  // TODO(ajcbik): Should we just do this when types are not the same?
-  //               This seems better, but breaks existing CHECK tests.
+  // Otherwise, use the shorthand syntax.
   p << ' ';
   p.printOperands(op->getOperands());
   p.printOptionalAttrDict(op->getAttrs());
