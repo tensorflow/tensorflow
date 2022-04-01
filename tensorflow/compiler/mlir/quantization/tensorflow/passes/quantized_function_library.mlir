@@ -13,8 +13,22 @@
 // limitations under the License.
 
 // Quantization as a function library.
+//
 // Internal functions should be marked as private. They will be inlined and
 // deleted in `InsertQuantizedFunctionsPass`.
+//
+// Function template can generate functions with different parameters. Ex:
+// ```
+// parameters[
+//   {"key1": "value11", "key2": "value21"},
+//   {"key1": "value12", "key2": "value22"},
+// ]
+// func.func func_name_${key1}_fn (...) {
+//   ...${key2}...
+// }
+// ```
+// The above template with generate two functions by substituting `key1` and
+// `key2` with given values.
 
 module {
 
@@ -91,7 +105,12 @@ module {
     func.return %6 : tensor<*xi32>
   }
 
-  func.func @quantized_conv2d_fn(%input : tensor<*xi8>,
+  parameters[
+    {"func_name": "conv2d", "conv_func": "internal_conv2d_fn", "act_func": "internal_no_activation_fn"},
+    {"func_name": "conv2d_relu", "conv_func": "internal_conv2d_fn", "act_func": "internal_relu_fn"},
+    {"func_name": "conv2d_relu6", "conv_func": "internal_conv2d_fn", "act_func": "internal_relu6_fn"}
+  ]
+  func.func @quantized_${func_name}_fn(%input : tensor<*xi8>,
                          %filter : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
@@ -99,7 +118,7 @@ module {
                          %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
     %0 = "tf.PartitionedCall"(%input, %filter, %bias, %input_scale, %input_zp,
                                 %filter_scale, %filter_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_conv2d_fn
+        config = "", config_proto = "", executor_type = "", f=@${conv_func}
       } : (tensor<*xi8>, tensor<*xi8>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
              tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
     %1 = "tf.PartitionedCall"(%0, %input_scale, %input_zp, %filter_scale, %filter_zp,
@@ -108,51 +127,7 @@ module {
       } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
              tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
     %2 = "tf.PartitionedCall"(%1, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_no_activation_fn
-      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
-    func.return %2 : tensor<*xi8>
-  }
-
-  func.func @quantized_conv2d_relu_fn(%input : tensor<*xi8>,
-                         %filter : tensor<*xi8>, %bias : tensor<*xi32>,
-                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
-                         %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
-                         %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
-                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
-    %0 = "tf.PartitionedCall"(%input, %filter, %bias, %input_scale, %input_zp,
-                                %filter_scale, %filter_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_conv2d_fn
-      } : (tensor<*xi8>, tensor<*xi8>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
-             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
-    %1 = "tf.PartitionedCall"(%0, %input_scale, %input_zp, %filter_scale, %filter_zp,
-                                %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_rescale_fn
-      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
-             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
-    %2 = "tf.PartitionedCall"(%1, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_relu_fn
-      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
-    func.return %2 : tensor<*xi8>
-  }
-
-  func.func @quantized_conv2d_relu6_fn(%input : tensor<*xi8>,
-                         %filter : tensor<*xi8>, %bias : tensor<*xi32>,
-                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
-                         %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
-                         %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
-                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
-    %0 = "tf.PartitionedCall"(%input, %filter, %bias, %input_scale, %input_zp,
-                                %filter_scale, %filter_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_conv2d_fn
-      } : (tensor<*xi8>, tensor<*xi8>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
-             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
-    %1 = "tf.PartitionedCall"(%0, %input_scale, %input_zp, %filter_scale, %filter_zp,
-                                %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_rescale_fn
-      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
-             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
-    %2 = "tf.PartitionedCall"(%1, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_relu6_fn
+        config = "", config_proto = "", executor_type = "", f=@${act_func}
       } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
     func.return %2 : tensor<*xi8>
   }
@@ -176,7 +151,12 @@ module {
     func.return %6 : tensor<*xi32>
   }
 
-  func.func @quantized_matmul_fn(%input : tensor<*xi8>,
+  parameters[
+    {"func_name": "matmul", "matmul_func": "internal_matmul_fn", "act_func": "internal_no_activation_fn"},
+    {"func_name": "matmul_relu", "matmul_func": "internal_matmul_fn", "act_func": "internal_relu_fn"},
+    {"func_name": "matmul_relu6", "matmul_func": "internal_matmul_fn", "act_func": "internal_relu6_fn"},
+  ]
+  func.func @quantized_${func_name}_fn(%input : tensor<*xi8>,
                          %weight : tensor<*xi8>, %bias : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
                          %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
@@ -184,7 +164,7 @@ module {
                          %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
     %0 = "tf.PartitionedCall"(%input, %weight, %bias, %input_scale, %input_zp,
                                 %weight_scale, %weight_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_matmul_fn
+        config = "", config_proto = "", executor_type = "", f=@${matmul_func}
       } : (tensor<*xi8>, tensor<*xi8>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
              tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
     %1 = "tf.PartitionedCall"(%0, %input_scale, %input_zp, %weight_scale, %weight_zp,
@@ -193,51 +173,7 @@ module {
       } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
              tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
     %2 = "tf.PartitionedCall"(%1, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_no_activation_fn
-      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
-    func.return %2 : tensor<*xi8>
-  }
-
-  func.func @quantized_matmul_relu_fn(%input : tensor<*xi8>,
-                         %weight : tensor<*xi8>, %bias : tensor<*xi32>,
-                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
-                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
-                         %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
-                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
-    %0 = "tf.PartitionedCall"(%input, %weight, %bias, %input_scale, %input_zp,
-                                %weight_scale, %weight_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_matmul_fn
-      } : (tensor<*xi8>, tensor<*xi8>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
-             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
-    %1 = "tf.PartitionedCall"(%0, %input_scale, %input_zp, %weight_scale, %weight_zp,
-                                %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_rescale_fn
-      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
-             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
-    %2 = "tf.PartitionedCall"(%1, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_relu_fn
-      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
-    func.return %2 : tensor<*xi8>
-  }
-
-  func.func @quantized_matmul_relu6_fn(%input : tensor<*xi8>,
-                         %weight : tensor<*xi8>, %bias : tensor<*xi32>,
-                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
-                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>,
-                         %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
-                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
-    %0 = "tf.PartitionedCall"(%input, %weight, %bias, %input_scale, %input_zp,
-                                %weight_scale, %weight_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_matmul_fn
-      } : (tensor<*xi8>, tensor<*xi8>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
-             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
-    %1 = "tf.PartitionedCall"(%0, %input_scale, %input_zp, %weight_scale, %weight_zp,
-                                %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_rescale_fn
-      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
-             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
-    %2 = "tf.PartitionedCall"(%1, %out_scale, %out_zp) {
-        config = "", config_proto = "", executor_type = "", f=@internal_relu6_fn
+        config = "", config_proto = "", executor_type = "", f=@${act_func}
       } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
     func.return %2 : tensor<*xi8>
   }
