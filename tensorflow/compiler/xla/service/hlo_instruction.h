@@ -1262,7 +1262,23 @@ class HloInstruction {
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
                              layout_sensitive,
-                             /*ignore_channel_id_values=*/false);
+                             /*ignore_channel_id_values=*/false,
+                             /*ignore_commutative_operand_order=*/false);
+  }
+
+  // Same as Identical() but ignores the order of commutative operands (e.g.
+  // considers add(a,b) equal to add(b,a)).
+  bool IdenticalIgnoringCommutativeOperandOrder(
+      const HloInstruction& other,
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
+          eq_operands = std::equal_to<const HloInstruction*>(),
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations = std::equal_to<const HloComputation*>(),
+      bool layout_sensitive = true) const {
+    return IdenticalInternal(other, eq_operands, eq_computations,
+                             layout_sensitive,
+                             /*ignore_channel_id_values=*/false,
+                             /*ignore_commutative_operand_order=*/true);
   }
 
   // Same as Identical() but ignores channel ID value mismatches, as long as
@@ -1276,7 +1292,8 @@ class HloInstruction {
       bool layout_sensitive = true) const {
     return IdenticalInternal(other, eq_operands, eq_computations,
                              layout_sensitive,
-                             /*ignore_channel_id_values=*/true);
+                             /*ignore_channel_id_values=*/true,
+                             /*ignore_commutative_operand_order=*/true);
   }
 
   // Generates a hash value of an HLO instruction. Hash considers
@@ -2169,7 +2186,8 @@ class HloInstruction {
           eq_operands,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations,
-      bool layout_sensitive, bool ignore_channel_id_values) const;
+      bool layout_sensitive, bool ignore_channel_id_values,
+      bool ignore_commutative_operand_order) const;
 
   // Implementation for non-common logic of CloneWithNewOperands.
   virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(

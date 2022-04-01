@@ -196,6 +196,22 @@ absl::optional<int> HloOpcodeArity(HloOpcode opcode);
 // kAsyncDone.
 bool HloOpcodeIsAsync(HloOpcode opcode);
 
+// True if the op takes two arguments and order doesn't matter.
+inline bool HloOpcodeIsBinaryCommutative(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAdd:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // Returns the number of HloOpcode values.
 inline const uint32_t HloOpcodeCount() {
 #define HLO_COUNT_ONE(...) +1

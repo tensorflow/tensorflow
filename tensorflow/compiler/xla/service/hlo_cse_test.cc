@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -38,10 +40,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
+namespace m = xla::match;
 
 class HloCseTest : public HloTestBase {
  protected:
@@ -897,6 +900,41 @@ TEST_F(HloCseTest, CustomCallSideEffects) {
   SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
   EXPECT_EQ(changed, false);
 }
+
+class HloCseCommutativeOpTest
+    : public HloCseTest,
+      public ::testing::WithParamInterface<std::string /*op*/> {};
+
+TEST_P(HloCseCommutativeOpTest, DoIt) {
+  std::string op = GetParam();
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0)
+      p1 = s32[10] parameter(1)
+      op1 = s32[10] $0(p0, p1)
+      op2 = s32[10] $0(p1, p0)
+      ROOT t = tuple(op1, op2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           absl::Substitute(kModuleStr, op)));
+  ASSERT_TRUE(
+      HloCSE(/*is_layout_sensitive=*/false).Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+
+  const HloInstruction* op0;
+  const HloInstruction* op1;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Op(&op0), m::Op(&op1))));
+  EXPECT_EQ(op0, op1);
+}
+
+INSTANTIATE_TEST_SUITE_P(AlgebraicSimplifierCanonicalizeCommutativeTestSuite,
+                         HloCseCommutativeOpTest,
+                         ::testing::Values("add", "multiply", "and", "or",
+                                           "xor", "minimum", "maximum"));
 
 }  // namespace
 }  // namespace xla
