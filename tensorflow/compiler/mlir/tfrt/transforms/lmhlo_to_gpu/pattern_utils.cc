@@ -63,6 +63,7 @@ const tfrt::gpu::wrapper::BlasDiagType kBlasDiagNonUnit = CUBLAS_DIAG_NON_UNIT;
 tfrt::gpu::wrapper::BlasDataType MlirTypeToBlasDataType(mlir::Type type) {
 #if TENSORFLOW_USE_ROCM
   if (type.isF16()) return rocblas_datatype_f16_r;
+  if (type.isBF16()) return rocblas_datatype_bf16_r;
   if (type.isF32()) return rocblas_datatype_f32_r;
   if (type.isF64()) return rocblas_datatype_f64_r;
   if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
