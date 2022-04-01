@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/strings/match.h"
@@ -36,8 +37,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
@@ -67,6 +66,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -1009,8 +1010,8 @@ TEST_F(ConverterTest, CreateConstantLayer) {
     ITensorProxyPtr tensor =
         converter_->CreateConstantLayer(weights, CreateDims({3, 10}));
     ASSERT_NE(nullptr, tensor->trt_tensor());
-    EXPECT_EQ(dtype, tensor->getType())
-        << "Expected " << DebugString(dtype) << " vs. actual "
+    EXPECT_EQ(dtype, tensor->getType()) 
+	<< "Expected " << DebugString(dtype) << " vs. actual "
         << DebugString(tensor->getType());
     EXPECT_THAT(tensor->getDimensions(), DimsAreArray({3, 10}));
   }
@@ -1091,19 +1092,23 @@ inline absl::Span<const T> GetSpanForData(const InputOutputData& data) {
 }
 
 std::vector<float> GetDataAsFloat(InputOutputData& data) {
-  if (data.tensor.dtype() == DT_FLOAT) {
+  const auto dType = data.tensor.dtype();
+  if (dType == DT_FLOAT) {
     auto span = GetSpanForData<float>(data);
     return std::vector<float>(span.begin(), span.end());
   }
-  if (data.tensor.dtype() == DT_HALF) {
+  if (dType == DT_HALF) {
     return CastVector<Eigen::half, float>(GetSpanForData<Eigen::half>(data));
   }
-  if (data.tensor.dtype() == DT_INT32) {
+  if (dType == DT_INT32) {
     return CastVector<int32, float>(GetSpanForData<int32>(data));
   }
-  LOG(FATAL) << "DataType not supported for testing "
-             << DataTypeString(data.tensor.dtype());
-
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+  if (dType == DT_BOOL) {
+    return CastVector<bool, float>(GetSpanForData<bool>(data));
+  }
+#endif
+  LOG(FATAL) << "DataType not supported for testing " << DataTypeString(dType);
   return {};
 }
 
@@ -1165,24 +1170,37 @@ class OpConverterTest : public ::testing::Test {
     return ret;
   }
 
+  template <typename T, typename S>
+  void transformTensor(const std::vector<T>& vals, Tensor& ret) {
+    std::transform(vals.begin(), vals.end(), ret.flat<S>().data(),
+                   [](const T in_val) -> S { return static_cast<S>(in_val); });
+  }
+
+  template <typename T, typename S>
+  void transformWeights(const std::vector<T>& vals,
+                        TRT_ShapedWeights& weights) {
+    std::transform(vals.begin(), vals.end(), weights.GetPointer<S>(),
+                   [](const T in_val) -> S { return static_cast<S>(in_val); });
+  }
+
   // Constructs a tensor with given values (vals). The tensor type is defined by
   // the tf_type argument, its shape is given by input_dims. The tensor is
   // constructed using the allocator of OpConverterTest in Unified Memory.
   template <typename T>
-  Tensor AsTensor(std::vector<T> vals, const std::vector<int> input_dims,
-                  DataType tf_type) {
+  Tensor AsTensor(const std::vector<T>& vals,
+                  const std::vector<int>& input_dims, DataType tf_type) {
     Tensor ret(tensor_buffer_allocator_.get(), tf_type,
                {static_cast<int64_t>(vals.size())});
     if (tf_type == DT_FLOAT) {
-      auto conv_vals = CastVector<T, float>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<float>().data());
+      transformTensor<T, float>(vals, ret);
     } else if (tf_type == DT_HALF) {
-      auto conv_vals = CastVector<T, Eigen::half>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(),
-                  ret.flat<Eigen::half>().data());
+      transformTensor<T, Eigen::half>(vals, ret);
     } else if (tf_type == DT_INT32) {
-      auto conv_vals = CastVector<T, int32>(vals);
-      std::copy_n(conv_vals.data(), conv_vals.size(), ret.flat<int32>().data());
+      transformTensor<T, int32>(vals, ret);
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    } else if (tf_type == DT_BOOL) {
+      transformTensor<T, bool>(vals, ret);
+#endif
     } else {
       LOG(FATAL) << "Cannot create tensor with type "
                  << DataTypeString(tf_type);
@@ -1191,6 +1209,13 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(TensorShapeUtils::MakeShape(input_dims, &shape));
     CHECK(ret.CopyFrom(ret, shape));
     return ret;
+  }
+
+  template <typename T>
+  Tensor AsTensor(const std::vector<int>& vals,
+                  const std::vector<int>& input_dims, DataType tf_type) {
+    const auto& conv_vals = CastVector<int, T>(vals);
+    return AsTensor(conv_vals, input_dims, tf_type);
   }
 
   // Constructs a flat tensor in Unified Memory.
@@ -1348,42 +1373,15 @@ class OpConverterTest : public ::testing::Test {
     }
   }
 
-  // Add weights for both validation and conversion.
-  template <typename T>
-  void AddTestWeights(const string& name, const std::vector<int>& dims,
-                      const std::vector<T>& values) {
-    // Add weights for validation.
-    TensorShape shape;
-    TF_EXPECT_OK(TensorShapeUtils::MakeShape(dims, &shape));
-    Tensor t = AsTensor<T>(values, shape);
-    node_inputs_[name] = ops::Const(scope_.WithOpName(name), t);
-
-    // Add weights for conversion.
-    nvinfer1::DataType dtype;
-    TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &dtype));
-    const DimsAdapter dims_adap(dims);
-    const int64_t num_elements = dims_adap.Volume();
-    QCHECK_EQ(num_elements, values.size())
-        << num_elements << " vs " << values.size();
-    TRT_ShapedWeights weights(dtype);
-    if (num_elements) {
-      weights =
-          converter_->weight_store_.GetTempWeights(dtype, dims_adap.AsTrtDims())
-              .ConsumeValueOrDie();
-      QCHECK_EQ(weights.size_bytes(), sizeof(T) * values.size())
-          << weights.size_bytes() << " vs " << sizeof(T) * values.size();
-      memcpy(weights.GetPointer<int8>(), values.data(), weights.size_bytes());
-    }
-    TF_EXPECT_OK(
-        converter_->AddTensorOrWeights(name, TRT_TensorOrWeights{weights}));
-  }
-
+  // Adds weights for both validation and conversion. The type of the weight is
+  // determined by tf_type. The initial value vector (values) can have any
+  // type (T) that can be static casted to tf_type.
   template <typename T = int32>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
                       const std::vector<T>& values_inp, DataType tf_type,
                       bool fix_values = true) {
-    const auto num_elements = std::accumulate(std::begin(dims), std::end(dims),
-                                              1, std::multiplies<int>());
+    const DimsAdapter dims_adap(dims);
+    const int64_t num_elements = dims_adap.Volume();
 
     std::vector<T> values(values_inp);
     if (num_elements != values.size()) {
@@ -1396,17 +1394,46 @@ class OpConverterTest : public ::testing::Test {
                << num_elements << " defined by dims";
       }
     }
+    // Add weights for validation.
+    Tensor t = AsTensor<T>(values, dims, tf_type);
+    node_inputs_[name] = ops::Const(scope_.WithOpName(name), t);
 
-    if (tf_type == DT_FLOAT) {
-      AddTestWeights(name, dims, CastVector<T, float>(values));
-    } else if (tf_type == DT_HALF) {
-      AddTestWeights(name, dims, CastVector<T, Eigen::half>(values));
-    } else if (tf_type == DT_INT32) {
-      AddTestWeights(name, dims, CastVector<T, int32>(values));
-    } else {
-      FAIL() << "Cannot create test weights with type "
-             << DataTypeString(tf_type);
+    // Add weights for conversion.
+    nvinfer1::DataType dtype;
+    TF_ASSERT_OK(TfTypeToTrtType(tf_type, &dtype));
+    QCHECK_EQ(num_elements, values.size())
+        << num_elements << " vs " << values.size();
+    TRT_ShapedWeights weights(dtype);
+    if (num_elements) {
+      weights =
+          converter_->weight_store_.GetTempWeights(dtype, dims_adap.AsTrtDims())
+              .ConsumeValueOrDie();
+
+      if (tf_type == DT_FLOAT) {
+        transformWeights<T, float>(values, weights);
+      } else if (tf_type == DT_HALF) {
+        transformWeights<T, Eigen::half>(values, weights);
+      } else if (tf_type == DT_INT32) {
+        transformWeights<T, int32>(values, weights);
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+      } else if (tf_type == DT_BOOL) {
+        transformWeights<T, bool>(values, weights);
+#endif
+      } else {
+        LOG(FATAL) << "Cannot create tensor with type "
+                   << DataTypeString(tf_type);
+      }
     }
+    TF_EXPECT_OK(
+        converter_->AddTensorOrWeights(name, TRT_TensorOrWeights{weights}));
+  }
+
+  // Adds test weight without specifying tf_type arg. In this case the initial
+  // value type (T) will determine the type of the weights.
+  template <typename T = int32>
+  void AddTestWeights(const string& name, const std::vector<int>& dims,
+                      const std::vector<T>& value, bool fix_values = true) {
+    AddTestWeights(name, dims, value, DataTypeToEnum<T>::value, fix_values);
   }
 
   // Test validation in validation-only mode.
@@ -1795,12 +1822,12 @@ class ParameterizedOpConverterTestBase
                        const Status& expected_runtime_status,
                        const Matcher<std::vector<float>>& matcher,
                        const std::vector<DataType>& out_tf_types = {}) {
-    RunValidationAndConversion(
-        node_def, expected_conversion_status, name,
-        std::vector<std::vector<int>>({expected_output_dims}));
+    const auto& exp_dims =
+        std::vector<std::vector<int>>({expected_output_dims});
+    RunValidationAndConversion(node_def, expected_conversion_status, name,
+                               exp_dims);
     if (expected_conversion_status.ok()) {
-      BuildAndRun(name, std::vector<std::vector<int>>({expected_output_dims}),
-                  expected_runtime_status,
+      BuildAndRun(name, exp_dims, expected_runtime_status,
                   std::vector<Matcher<std::vector<float>>>({matcher}),
                   out_tf_types);
     }
@@ -1811,6 +1838,83 @@ class ParameterizedOpConverterTestBase
   const DataType tf_type_;
   const TrtPrecisionMode converter_precision_;
   DataVec input_data_;
+};
+
+template <typename T>
+class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
+ public:
+  template <typename S>
+  void RunTests(
+      const operationMap<S>& map,
+      std::map<std::string,
+               std::pair<std::function<NodeDef(DataType)>, std::vector<T>>>&
+          op_test_info, const std::vector<std::vector<T>> &data) {
+    // Test combinations of tensor vs weight inputs (except when both inputs are
+    // weights).
+    const DataType tf_type = get_tf_type();
+    for (const bool operand_1_is_tensor : {true, false}) {
+      for (const bool operand_2_is_tensor : {true, false}) {
+        for (auto& iter : map) {
+          const string& op_name = iter.first;
+          SCOPED_TRACE(StrCat(op_name, "_", operand_1_is_tensor ? "T" : "W",
+                              operand_2_is_tensor ? "T" : "W"));
+
+          if (!op_test_info.count(op_name)) {
+            FAIL() << "Binary op test map does not contain op " << op_name;
+          }
+
+          if (!operand_1_is_tensor && !operand_2_is_tensor) {
+            runExpectedToFailTest(op_name);
+            continue;
+          }
+          auto conv_status = Status::OK();
+          if (tf_type == DT_BOOL) {
+            if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+              conv_status = errors::Unimplemented(
+                  "Binary op: '", op_name,
+                  "' is not supported in implicit batch mode");
+            } else
+            if (!operand_1_is_tensor || !operand_2_is_tensor) {
+              conv_status = errors::InvalidArgument(
+                  "Both inputs  of '", op_name, "' are expected to be tensors");
+            }
+          }
+
+          Reset();
+          if (operand_1_is_tensor) {
+            AddTestTensor("input1", {2, 1, 2}, data[0]);
+          } else {
+            AddTestWeights("input1", {1, 2}, data[1], tf_type);
+          }
+          if (operand_2_is_tensor) {
+            AddTestTensor("input2", {2, 2, 1}, data[2]);
+          } else {
+            AddTestWeights("input2", {2, 1}, data[3], tf_type);
+          }
+
+          const NodeDef& node_def = op_test_info[op_name].first(tf_type);
+          TestOpConverter("my_binary", node_def, {2, 2, 2}, conv_status,
+                          Status::OK(),
+                          ElementsAreArray(op_test_info[op_name].second));
+        }
+      }
+    }
+  }
+
+  void runExpectedToFailTest(const std::string& op_name) {
+    Reset();
+    AttrValue dtype;
+    dtype.set_type(tf_type_);
+
+    const auto& node_def = MakeNodeDef(
+        "my_oper", op_name, {"weights1", "weights2"}, {{"T", dtype}});
+    AddTestWeights("weights1", {1}, {1}, tf_type_);
+    AddTestWeights("weights2", {1}, {1}, tf_type_);
+    const string error =
+        "Constant folding is falled back to TensorFlow, binary op '" +
+        op_name + "' received both input as constant";
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED, error);
+  }
 };
 
 // Op converter test in FP32 mode. While for debugging purposes it might make
@@ -1825,14 +1929,16 @@ class ParameterizedOpConverterTestBase
 //   how TRT handles the precision inside the TRT network, but should not matter
 //   for the TF -> TRT conversion. Therefore it should be sufficient to test
 //   for FP32.
-class OpConverter_FP32_Test : public ParameterizedOpConverterTestBase {};
+typedef ParameterizedOpConverterTestBase OpConverter_FP32_Test;
 // Base class for tests that need to be tested for both FP32 and FP16.
-class OpConverter_FP32_FP16_Test : public ParameterizedOpConverterTestBase {};
+typedef ParameterizedOpConverterTestBase OpConverter_FP32_FP16_Test;
+// Base class for Binary tests that need to be tested
+typedef OpConverter_BinaryTest<float> OpConverter_FP32_FP16_BinaryTest;
+typedef OpConverter_BinaryTest<bool> OpConverter_BOOL_BinaryTest;
 // Base class for tests that need to be tested for FP32, FP16, and INT32
-class OpConverter_FP32_FP16_INT32_Test
-    : public ParameterizedOpConverterTestBase {};
+typedef ParameterizedOpConverterTestBase OpConverter_FP32_FP16_INT32_Test;
 // Base class for tests that need to be tested for INT32
-class OpConverter_INT32_Test : public ParameterizedOpConverterTestBase {};
+typedef ParameterizedOpConverterTestBase OpConverter_INT32_Test;
 
 // Instantiate parameter combinations to OpConverter_<DT_X...>_Test
 INSTANTIATE_TEST_CASE_P(
@@ -1857,6 +1963,18 @@ INSTANTIATE_TEST_CASE_P(
     OpConvTestInstantiation, OpConverter_INT32_Test,
     ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
                        ::testing::Values(DT_INT32),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
+
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, OpConverter_FP32_FP16_BinaryTest,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_FLOAT, DT_HALF),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
+
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, OpConverter_BOOL_BinaryTest,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_BOOL),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
 template <typename T>
@@ -1890,9 +2008,9 @@ void TestConvertConst(OpConverterTest* test) {
   node_def.set_op("Const");
 
   auto reset_and_test = [&node_def, test](
-                            const Tensor& tensor, const bool as_tensor_content,
-                            const std::vector<int>& expected_dims,
-                            const std::vector<OutputCType>& expected_value) {
+      const Tensor& tensor, const bool as_tensor_content,
+      const std::vector<int>& expected_dims,
+      const std::vector<OutputCType>& expected_value) {
     test->Reset();
 
     TensorProto* tensor_attr =
@@ -3155,22 +3273,7 @@ NodeDef GetBinaryOpNodeDef(DataType dtype) {
   return op.operation.node()->def();
 }
 
-TEST_P(OpConverter_FP32_FP16_Test, ConvertBinary) {
-  {
-    AttrValue dtype;
-    dtype.set_type(tf_type_);
-    // Both inputs are weights.
-    Reset();
-    NodeDef node_def =
-        MakeNodeDef("my_add", "Add", {"weights1", "weights2"}, {{"T", dtype}});
-    AddTestWeights<float>("weights1", {1}, {1});
-    AddTestWeights<float>("weights2", {1}, {1});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Constant folding is falled back to TensorFlow, binary op received "
-        "both input as constant");
-  }
-
+TEST_P(OpConverter_FP32_FP16_BinaryTest, ConvertBinary) {
   using OpFunc = std::function<NodeDef(DataType)>;
   std::map<std::string, std::pair<OpFunc, std::vector<float>>> op_test_info;
 #define ADD_OP(name, op, v1, v2, v3, v4, v5, v6, v7, v8) \
@@ -3188,39 +3291,22 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertBinary) {
   ADD_OP("Maximum", ops::Maximum, {3, 6, 3, 6, 3, 6, 3, 6});
   ADD_OP("Pow", ops::Pow, {9, 36, 27, 216, 9, 36, 27, 216});
 #undef ADD_OP
-  // Test combinations of tensor vs weight inputs (except when both inputs are
-  // weights).
-  for (const bool operand_1_is_tensor : {true, false}) {
-    for (const bool operand_2_is_tensor : {true, false}) {
-      if (!operand_1_is_tensor && !operand_2_is_tensor) continue;
-      for (auto& iter : kBinaryOperations) {
-        string op_name = iter.first;
-        SCOPED_TRACE(StrCat(op_name, "_", operand_1_is_tensor ? "T" : "W",
-                            operand_2_is_tensor ? "T" : "W"));
-        Reset();
-        if (!op_test_info.count(op_name)) {
-          FAIL() << "Binary op test map does not contain op " << op_name;
-        }
-        NodeDef node_def = op_test_info[op_name].first(tf_type_);
-        std::vector<std::string> input_names;
-        std::vector<std::vector<int>> input_dims;
-        std::vector<std::vector<float>> input_values;
-        if (operand_1_is_tensor) {
-          AddTestTensor("input1", {2, 1, 2}, {3, 6, 3, 6});
-        } else {
-          AddTestWeights("input1", {1, 2}, std::vector<float>{3, 6}, tf_type_);
-        }
-        if (operand_2_is_tensor) {
-          AddTestTensor("input2", {2, 2, 1}, {2, 3, 2, 3});
-        } else {
-          AddTestWeights("input2", {2, 1}, std::vector<float>{2, 3}, tf_type_);
-        }
-        TestOpConverter("my_binary", node_def, {2, 2, 2}, Status::OK(),
-                        Status::OK(),
-                        ElementsAreArray(op_test_info[op_name].second));
-      }
-    }
-  }
+  std::vector<std::vector<float>> data = {{3, 6, 3, 6}, {3, 6}, {2, 3, 2, 3}, {2, 3}};
+  RunTests(*BinaryOperationMap(), op_test_info, data);
+}
+
+TEST_P(OpConverter_BOOL_BinaryTest, ConvertBBooleanBinary) {
+  using OpFunc = std::function<NodeDef(DataType)>;
+  std::map<std::string, std::pair<OpFunc, std::vector<bool>>> op_test_info;
+#define ADD_OP(name, op, v1, v2, v3, v4, v5, v6, v7, v8) \
+  op_test_info[name] =                                   \
+      std::make_pair(GetBinaryOpNodeDef<op>,             \
+                     std::vector<bool>(v1, v2, v3, v4, v5, v6, v7, v8))
+  ADD_OP("LogicalOr", ops::LogicalOr, {1, 1, 0, 1, 1, 1, 0, 1});
+  ADD_OP("LogicalAnd", ops::LogicalAnd, {0, 1, 0, 0, 0, 1, 0, 0});
+#undef ADD_OP
+  std::vector<std::vector<bool>> data = {{0, 1, 0, 1}, {0, 1}, {1, 0, 1, 0}, {1, 0}};
+  RunTests(*BinaryBooleanOperationMap(), op_test_info, data);
 }
 
 NodeDef GetAddNNodeDef(const std::vector<string>& input_names, DataType dtype) {
