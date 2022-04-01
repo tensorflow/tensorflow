@@ -10,21 +10,35 @@ package(
 )
 
 cc_library(
-    name = "Pass",
-    srcs = ["remapper_pass.cc"],
-    hdrs = ["remapper_pass.h"],
+    name = "Impl",
+    srcs = ["impl.cc"],
+    hdrs = ["impl.h"],
     deps = [
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/transforms:PassDetail",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/transforms:Utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "Pass",
+    srcs = ["pass.cc"],
+    hdrs = ["pass.h"],
+    deps = [
+        ":Impl",
+        "//tensorflow/core/transforms:PassDetail",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
 glob_lit_tests(
     data = ["//tensorflow/core/transforms:test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = [],
     test_file_exts = ["mlir"],
 )

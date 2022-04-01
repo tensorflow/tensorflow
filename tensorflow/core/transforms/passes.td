@@ -96,7 +96,65 @@ def GraphToFunc : Pass<"tfg-lift-graph-to-func", "ModuleOp"> {
   ];
 }
 
-def ControlFlowSink : Pass<"tfg-cf-sink", "ModuleOp"> {
+def FunctionalToRegion : Pass<"tfg-functional-to-region", "ModuleOp"> {
+  let summary = "Convert functional control-flow ops to region-based.";
+  let description = [{
+    This pass converts functional TFG control-flow operations to region-based
+    forms. For example, it converts `If` and `While` to `IfRegion` and
+    `WhileRegion`.
+
+    Region-based control-flow is a more natural form for performing control-flow
+    optimizations, and it intrinsically enables inter-procedural effects in
+    those optimizations. Region-based form can be used to perform loop-invariant
+    code motion, control-flow sinking, dead-code analysis, etc.
+
+    For example, consider the following conversion of an `If`.
+
+    ```mlir
+    func @true(%a: tensor<*xi32>, %b: tensor<*xi32>) -> (tensor<*xi32>) {
+      return %a : tensor<*xi32>
+    }
+
+    func @false(%a: tensor<*xi32>, %b: tensor<*xi32>) -> (tensor<*xi32>) {
+      return %b : tensor<*xi32>
+    }
+
+    func @main(%cond: tensor<i32>, %a: tensor<*xi32>, %b: tensor<*xi32>) {
+      %If, %ctl = If(%cond, %a, %b) {
+        then_branch = #tf_type.func<@true, {}>,
+        else_branch = #tf_type.func<@false, {}>
+      } : (tensor<i32>, tensor<*ix32>, tensor<*xi32>) -> (tensor<*xi32>)
+      return
+    }
+    ```
+
+    Will become:
+
+    ```mlir
+    func @true(%a: tensor<*xi32>, %b: tensor<*xi32>) -> (tensor<*xi32>) {
+      return %a : tensor<*xi32>
+    }
+
+    func @false(%a: tensor<*xi32>, %b: tensor<*xi32>) -> (tensor<*xi32>) {
+      return %b : tensor<*xi32>
+    }
+
+    func @main(%cond: tensor<i32>, %a: tensor<*xi32>, %b: tensor<*xi32>) {
+      %If, %ctl = IfRegion %cond then {
+        yield(%a) : tensor<*xi32>
+      } else {
+        yield(%b) : tensor<*xi32>
+      } : (tensor<i32>) -> (tensor<*xi32>)
+      return
+    }
+    ```
+  }];
+
+  let constructor = "CreateFunctionalToRegionPass()";
+  let dependentDialects = ["tfg::TFGraphDialect"];
+}
+
+def ControlFlowSink : Pass<"tfg-cf-sink", "GraphFuncOp"> {
   let summary = "Perform control-flow sink on region-based control-flow ops.";
   let description = [{
     This pass implements control-flow sinking on TFG region-based control-flow
