@@ -47,8 +47,12 @@ void ControlFlowSinkPass::runOnOperation() {
   getOperation()->walk([&](RegionBranchOpInterface branch) {
     SmallVector<Region *> regions;
     getSinglyExecutedRegionsToSink(branch, regions);
-    controlFlowSink(regions, domInfo,
-                    [&](Operation *op, Region *) { return IsStateless(op); });
+    controlFlowSink(
+        regions, domInfo,
+        [&](Operation *op, Region *) { return IsStateless(op); },
+        [](Operation *op, Region *region) {
+          op->moveBefore(&region->front(), region->front().begin());
+        });
   });
 }
 

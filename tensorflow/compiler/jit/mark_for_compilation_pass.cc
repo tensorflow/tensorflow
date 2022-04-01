@@ -2130,6 +2130,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "StatelessCase",
       "StatelessIf",
       "StatelessMultinomial",
+      "StatelessParameterizedTruncatedNormal",
       "StatelessRandomGetAlg",
       "StatelessRandomGetKeyCounter",
       "StatelessRandomGetKeyCounterAlg",

@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering TensorFlow dialect's collective
 // ops (TF/XLA) to the HLO dialect.
 
+#include <numeric>
 #include <string>
 #include <utility>
 
@@ -75,7 +76,8 @@ LogicalResult SetOnceModuleAttribute(StringRef attr_name,
 }
 
 LogicalResult SetCollectiveInfo(IntegerAttr group_size, IntegerAttr group_key,
-                                Operation* op, ModuleOp& module) {
+                                Operation* op) {
+  ModuleOp module = op->getParentOfType<ModuleOp>();
   // The StringRef cast is necessary before cxx14.
   if (failed(SetOnceModuleAttribute(
           StringRef(kGroupSizeAttrName.data(), kGroupSizeAttrName.size()),
@@ -88,6 +90,17 @@ LogicalResult SetCollectiveInfo(IntegerAttr group_size, IntegerAttr group_key,
     return failure();
   }
   return success();
+}
+
+LogicalResult SetCollectiveInfo(OpBuilder& builder,
+                                DenseIntElementsAttr replica_groups,
+                                Operation* op) {
+  // Use special group_key 0 to represent "all available devices". This
+  // shall resolve to a DeviceAssignment that includes all devices intended for
+  // replica_groups.
+  IntegerAttr group_size = builder.getI32IntegerAttr(replica_groups.size());
+  IntegerAttr group_key = builder.getI32IntegerAttr(0);
+  return SetCollectiveInfo(group_size, group_key, op);
 }
 
 LogicalResult ConvertReplicaGroups(OpBuilder& builder,
@@ -123,40 +136,43 @@ ChannelHandle ConvertChannel(OpBuilder& builder, int64_t channel_id,
 LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
                                TensorType result_type,
                                DenseIntElementsAttr replica_groups,
-                               StringRef mode, Value input, StringRef reduce_op,
-                               Operation* op) {
+                               StringRef mode, Value input, StringRef merge_op,
+                               StringRef final_op, Operation* op) {
   builder.setInsertionPoint(op);
   ChannelHandle channel_handle = ConvertChannel(builder, channel_id, mode);
   Location loc = op->getLoc();
   Type element_type = getElementTypeOrSelf(input.getType());
   auto all_reduce = builder.create<AllReduceOp>(loc, result_type, input,
                                                 replica_groups, channel_handle);
-  if (reduce_op == "Add") {
+  if (merge_op == "Add") {
     BuildReduceBody<AddOp>(element_type, &all_reduce.computation(), &builder);
-  } else if (reduce_op == "Mul") {
+  } else if (merge_op == "Mul") {
     BuildReduceBody<MulOp>(element_type, &all_reduce.computation(), &builder);
-  } else if (reduce_op == "Min") {
+  } else if (merge_op == "Min") {
     BuildReduceBody<MinOp>(element_type, &all_reduce.computation(), &builder);
-  } else if (reduce_op == "Max") {
+  } else if (merge_op == "Max") {
     BuildReduceBody<MaxOp>(element_type, &all_reduce.computation(), &builder);
-  } else if (reduce_op == "Mean") {
-    // For mean, add replicas in the same group. Then divide the sum by the
-    // number of replicas in each group below.
-    BuildReduceBody<AddOp>(element_type, &all_reduce.computation(), &builder);
   } else {
-    return op->emitOpError() << "invalid reduce_op " << reduce_op
-                             << ", want one of [Add, Mul, Min, Max, Mean]";
+    return op->emitOpError() << "invalid merge_op " << merge_op
+                             << ", want one of [Add, Mul, Min, Max]";
   }
 
   Operation* result = all_reduce;
-  // For mean, divide the merge result by group size.
-  if (reduce_op == "Mean") {
+  // For "Div" final op, divide the merge result by group size.
+  if (final_op == "Div") {
     int64_t replica_group_size = replica_groups.getType().getDimSize(1);
+    if (replica_group_size == 0) {
+      op->emitOpError()
+          << "Div final_op requires a non-empty replica_groups argument.";
+    }
     auto divisor =
         GetScalarConstOfType(element_type, loc, replica_group_size, &builder);
     auto broadcast_dims = GetI64ElementsAttr({}, &builder);
     result = builder.create<chlo::BroadcastDivOp>(
         loc, all_reduce.getResult(), divisor.getResult(), broadcast_dims);
+  } else if (final_op != "Id") {
+    return op->emitOpError()
+           << "invalid final_op " << final_op << ", want one of [Id, Div]";
   }
   op->replaceAllUsesWith(result);
 
@@ -164,134 +180,183 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
   return success();
 }
 
-LogicalResult ConvertTfXlaCollective(OpBuilder& builder, int64_t channel_id,
-                                     TF::XlaAllReduceOp& all_reduce,
-                                     ModuleOp& module) {
-  DenseIntElementsAttr replica_groups;
-  if (failed(ConvertReplicaGroups(builder, all_reduce.group_assignment(),
-                                  replica_groups, all_reduce)))
-    return failure();
-  IntegerAttr group_size = builder.getI32IntegerAttr(replica_groups.size());
-  IntegerAttr group_key = builder.getI32IntegerAttr(0);
-  if (failed(SetCollectiveInfo(group_size, group_key, all_reduce, module))) {
-    return failure();
-  }
-  return ConvertAllReduce(builder, channel_id, all_reduce.getType(),
-                          replica_groups, all_reduce.mode(), all_reduce.input(),
-                          all_reduce.reduce_op(), all_reduce);
-}
-
-LogicalResult ConvertTfCollectiveReduceV2(OpBuilder& builder,
-                                          int64_t channel_id,
-                                          TF::CollectiveReduceV2Op& all_reduce,
-                                          ModuleOp& module) {
-  DenseIntElementsAttr group_size_attr;
-  if (!matchPattern(all_reduce.group_size(), m_Constant(&group_size_attr))) {
-    return all_reduce.emitOpError()
-           << "group_size must be a compile time constant";
-  }
-  if (!group_size_attr.isSplat() || group_size_attr.size() != 1) {
-    return all_reduce.emitOpError() << "group_size must be a scalar";
-  }
-  DenseIntElementsAttr group_key_attr;
-  if (!matchPattern(all_reduce.group_key(), m_Constant(&group_key_attr))) {
-    return all_reduce.emitOpError()
-           << "group_key must be a compile time constant";
-  }
-  if (!group_key_attr.isSplat() || group_key_attr.size() != 1) {
-    return all_reduce.emitOpError() << "group_key must be a scalar";
-  }
-  const auto group_size = group_size_attr.getSplatValue<IntegerAttr>();
-  const auto group_key = group_key_attr.getSplatValue<IntegerAttr>();
-
-  // Create an empty group assignment.
-  auto replica_groups = mlir::DenseIntElementsAttr::get<int64_t>(
-      mlir::RankedTensorType::get({0, 0}, builder.getI64Type()), {});
-
-  if (failed(SetCollectiveInfo(group_size, group_key, all_reduce, module))) {
-    return failure();
-  }
-
-  // CrossReplicaAndPartition:
-  // Even though TF2XLA will setup the device assignment to include
-  // devices in this group as replicas before launching this module,
-  // "CrossReplica" mode (no channel) produces a deadlock when
-  // not using XLA SPMD expansion.
-  return ConvertAllReduce(
-      builder, channel_id, all_reduce.getType(), replica_groups,
-      /* mode= */ "CrossReplicaAndPartition", all_reduce.input(),
-      all_reduce.merge_op(), all_reduce);
-}
-
-// Rewrites CollectiveAssignGroupV2 + CollectiveReduceV2 to XLAAllreduce with
-// group_assignment.
-class RewriteCollectiveAssignGroupV2CollectiveReduceV2
-    : public OpRewritePattern<TF::CollectiveReduceV2Op> {
+template <typename T>
+class CollectiveRewritePattern : public OpRewritePattern<T> {
  public:
-  using OpRewritePattern::OpRewritePattern;
-  LogicalResult matchAndRewrite(TF::CollectiveReduceV2Op op,
-                                PatternRewriter& rewriter) const override {
-    Location loc = op.getLoc();
-    Value group_size = op.group_size();
-    Value group_key = op.group_key();
-    auto assign_group_op =
-        group_size.getDefiningOp<TF::CollectiveAssignGroupV2Op>();
+  // Does not take any ownership. Caller must ensure channel_id is valid during
+  // life-cylce of this object.
+  CollectiveRewritePattern(MLIRContext* context, int64_t* channel_id)
+      : OpRewritePattern<T>(context), channel_id_(*channel_id) {}
 
-    if (!assign_group_op) {
+ protected:
+  int64_t& channel_id_;  // A unique channel_id shared by all rewrite patterns
+                         // in this pass. Not thread-safe.
+};
+
+// Converts XlaAllReduce. Not thread-safe.
+class ConvertXlaAllReduce
+    : public CollectiveRewritePattern<TF::XlaAllReduceOp> {
+ public:
+  using CollectiveRewritePattern::CollectiveRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::XlaAllReduceOp all_reduce,
+                                PatternRewriter& rewriter) const override {
+    DenseIntElementsAttr replica_groups;
+    if (failed(ConvertReplicaGroups(rewriter, all_reduce.group_assignment(),
+                                    replica_groups, all_reduce))) {
       return failure();
     }
 
-    if (assign_group_op !=
-        group_key.getDefiningOp<TF::CollectiveAssignGroupV2Op>()) {
-      return op->emitOpError() << "group_size and group_key are not from the "
-                                  "same CollectiveAssignGroupV2Op";
+    // TODO(b/226201111): Stop emitting CollectiveInfo when it is no longer
+    // needed.
+    if (failed(SetCollectiveInfo(rewriter, replica_groups, all_reduce))) {
+      return failure();
     }
 
-    Value all_reduce = rewriter.create<TF::XlaAllReduceOp>(
-        loc, op.getType(), op.input(), assign_group_op.group_assignment(),
-        op.merge_op(), "CrossReplicaAndPartition");
-    rewriter.replaceOp(op, {all_reduce});
-    return success();
+    StringRef reduce_op = all_reduce.reduce_op();
+
+    StringRef merge_op, final_op;
+    if (reduce_op == "Add") {
+      merge_op = "Add";
+      final_op = "Id";
+    } else if (reduce_op == "Mul") {
+      merge_op = "Mul";
+      final_op = "Id";
+    } else if (reduce_op == "Min") {
+      merge_op = "Min";
+      final_op = "Id";
+    } else if (reduce_op == "Max") {
+      merge_op = "Max";
+      final_op = "Id";
+    } else if (reduce_op == "Mean") {
+      merge_op = "Add";
+      final_op = "Div";
+    } else {
+      return all_reduce->emitOpError()
+             << "invalid reduce_op " << reduce_op
+             << ", want one of [Add, Mul, Min, Max, Mean]";
+    }
+
+    int64_t channel_id = channel_id_++;
+    return ConvertAllReduce(rewriter, channel_id, all_reduce.getType(),
+                            replica_groups, all_reduce.mode(),
+                            all_reduce.input(), merge_op, final_op, all_reduce);
   }
 };
 
-LogicalResult ConvertTfAssignGroup(Operation* op) {
-  MLIRContext* context = op->getContext();
-  RewritePatternSet patterns(context);
-  patterns.insert<RewriteCollectiveAssignGroupV2CollectiveReduceV2>(context);
-  return applyPatternsAndFoldGreedily(op, std::move(patterns));
-}
+// Converts CollectiveReduceV2, with or without a preceding
+// CollectiveAssignGroupV2. Not thread-safe.
+class ConvertCollectiveReduceV2
+    : public CollectiveRewritePattern<TF::CollectiveReduceV2Op> {
+ public:
+  using CollectiveRewritePattern::CollectiveRewritePattern;
 
-void LegalizeTFCollective::runOnOperation() {
-  if (failed(ConvertTfAssignGroup(getOperation()))) {
-    signalPassFailure();
-    return;
-  }
-  int64_t channel_id = 0;
-  OpBuilder builder(&getContext());
+  LogicalResult matchAndRewrite(TF::CollectiveReduceV2Op all_reduce,
+                                PatternRewriter& rewriter) const override {
+    TF::CollectiveAssignGroupV2Op assign_group =
+        all_reduce.group_size().getDefiningOp<TF::CollectiveAssignGroupV2Op>();
 
-  auto module = getOperation();
-  auto result = module.walk([&](Operation* op) {
-    if (auto all_reduce = dyn_cast<TF::XlaAllReduceOp>(op)) {
-      ++channel_id;
-      if (failed(ConvertTfXlaCollective(builder, channel_id, all_reduce,
-                                        module))) {
-        return WalkResult::interrupt();
+    if (assign_group) {
+      // Found a group assignment. Use replica_groups to represent group
+      // assignment.
+
+      if (assign_group != all_reduce.group_key()
+                              .getDefiningOp<TF::CollectiveAssignGroupV2Op>()) {
+        return all_reduce->emitOpError()
+               << "group_size and group_key are not from the "
+                  "same CollectiveAssignGroupV2Op";
       }
-    } else if (auto all_reduce = dyn_cast<TF::CollectiveReduceV2Op>(op)) {
-      ++channel_id;
-      if (failed(ConvertTfCollectiveReduceV2(builder, channel_id, all_reduce,
-                                             module))) {
-        return WalkResult::interrupt();
+
+      DenseIntElementsAttr replica_groups;
+      if (failed(ConvertReplicaGroups(rewriter, assign_group.group_assignment(),
+                                      replica_groups, all_reduce))) {
+        return failure();
       }
-    } else if (isa<TF::CollectiveAssignGroupV2Op>(op)) {
-      if (op->use_empty()) {
-        op->erase();
+
+      // TODO(b/226201111): Stop emitting CollectiveInfo when it is no longer
+      // needed.
+      if (failed(SetCollectiveInfo(rewriter, replica_groups, all_reduce))) {
+        return failure();
+      }
+
+      int64_t channel_id = channel_id_++;
+      // FIXME(b/226139061): Mode should be set to CrossReplicaAndPartition
+      // in order to use XLA:GPU for more than one workers.
+      // The mode is set to use CrossReplica to keep the
+      // behavior on the primary user of this optimized path, because
+      // CrossReplicaAndPartition triggers a conflict with the channel_id
+      // allocation in the communication lowering, and the user uses both set of
+      // ops are used.
+      return ConvertAllReduce(rewriter, channel_id, all_reduce.getType(),
+                              replica_groups, /* mode=*/"CrossReplica",
+                              all_reduce.input(), all_reduce.merge_op(),
+                              all_reduce.final_op(), all_reduce);
+    }
+
+    // No group assignment, use separate channels per group_key.
+    DenseIntElementsAttr group_size_attr;
+    if (!matchPattern(all_reduce.group_size(), m_Constant(&group_size_attr))) {
+      return all_reduce.emitOpError()
+             << "group_size must be a compile time constant";
+    }
+    if (!group_size_attr.isSplat() || group_size_attr.size() != 1) {
+      return all_reduce.emitOpError() << "group_size must be a scalar";
+    }
+    const auto group_size = group_size_attr.getSplatValue<IntegerAttr>();
+
+    // Create a full group assignment. Empty group assignment errors when
+    // final_op = "Div"
+    llvm::SmallVector<int64_t> indices(group_size.getInt());
+    std::iota(indices.begin(), indices.end(), 0);
+
+    auto replica_groups = mlir::DenseIntElementsAttr::get(
+        mlir::RankedTensorType::get({1, group_size.getInt()},
+                                    rewriter.getI64Type()),
+        indices);
+
+    {
+      // TODO(b/226201111): Stop emitting CollectiveInfo when it is no longer
+      // needed.
+      DenseIntElementsAttr group_key_attr;
+      if (!matchPattern(all_reduce.group_key(), m_Constant(&group_key_attr))) {
+        return all_reduce.emitOpError()
+               << "group_key must be a compile time constant";
+      }
+      if (failed(SetCollectiveInfo(
+              /* group_size=*/group_size,
+              /* group_key=*/group_key_attr.getSplatValue<IntegerAttr>(),
+              all_reduce))) {
+        return failure();
       }
     }
-    return WalkResult::advance();
-  });
-  if (result.wasInterrupted()) signalPassFailure();
+
+    // CrossReplicaAndPartition:
+    // Even though TF2XLA will setup the device assignment to include
+    // devices in this group as replicas before launching this module,
+    // "CrossReplica" mode (no channel) produces a deadlock when
+    // not using XLA SPMD expansion.
+    int64_t channel_id = channel_id_++;
+    return ConvertAllReduce(
+        rewriter, channel_id, all_reduce.getType(), replica_groups,
+        /* mode= */ "CrossReplicaAndPartition", all_reduce.input(),
+        all_reduce.merge_op(), all_reduce.final_op(), all_reduce);
+  }
+};
+
+void LegalizeTFCollective::runOnOperation() {
+  // FIXME(b/226139061): Figure out a way to share the channel_id with
+  // send/recv Ops.
+  int64_t channel_id = 1;
+  auto module = getOperation();
+  MLIRContext* context = module->getContext();
+
+  RewritePatternSet patterns(context);
+  patterns.insert<ConvertCollectiveReduceV2>(context, &channel_id);
+  patterns.insert<ConvertXlaAllReduce>(context, &channel_id);
+
+  if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+    signalPassFailure();
+  }
 }
 }  // namespace
 

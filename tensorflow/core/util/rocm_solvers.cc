@@ -218,7 +218,7 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
 
   solver_raw_ptr->context()
       ->device()
-      ->tensorflow_gpu_device_info()
+      ->tensorflow_accelerator_device_info()
       ->event_mgr->ThenExecute(stream, std::move(cb));
 }
 

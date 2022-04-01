@@ -58,10 +58,12 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
   // If the TensorFlow Lite thread count is explicitly configured, use it,
   // otherwise rely on the default TensorFlow threading behavior.
   tensorflow::SessionOptions session_options;
+  // We don't run multiple ops at the same time, so prefer using
+  // 1 thread for inter-op parallelism.
+  // Negative value means all are done on the caller thread.
+  session_options.config.set_inter_op_parallelism_threads(-1);
   if (context->recommended_num_threads > 0) {
     session_options.config.set_intra_op_parallelism_threads(
-        context->recommended_num_threads);
-    session_options.config.set_inter_op_parallelism_threads(
         context->recommended_num_threads);
   }
 

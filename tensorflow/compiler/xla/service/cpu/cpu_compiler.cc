@@ -407,7 +407,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 
 Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool /*is_aot_compile*/,
-    LLVMTargetMachineFeatures* target_machine_features) {
+    LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
   if (module->config().use_spmd_partitioning()) {
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     const int64_t num_partitions = module->config().num_partitions();
@@ -546,9 +546,13 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }();
   pipeline.AddPass<BitcastDtypesExpander>();
 
-  pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
-    return sort->operand(0)->shape().element_type() == F32;
-  });
+  // XLA lowers topk to a libcall while the MLIR based pipeline does not yet
+  // support libcalls. Disable this for now.
+  if (!is_mlir_compile) {
+    pipeline.AddPass<TopkRewriter>([](const HloSortInstruction* sort, int64_t) {
+      return sort->operand(0)->shape().element_type() == F32;
+    });
+  }
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot,
@@ -652,8 +656,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   }
 
   LLVMTargetMachineFeatures target_machine_features(target_machine);
-  TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(module, is_aot_compile,
-                                                   &target_machine_features));
+  TF_RETURN_IF_ERROR(RunHloPassesThroughLayoutAssn(
+      module, is_aot_compile, &target_machine_features, is_mlir_compile));
 
   return RunHloPassesAfterLayoutAssn(
       module, is_aot_compile, &target_machine_features,
@@ -852,38 +856,45 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // proved statically and changed to const witness) early to allow more
   // efficient broadcast operations moving.
   // Move up broadcasting operations to allow for more fusion opportunities.
+  pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::mhlo::CreateExpandHloTuplesPass("main"));
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeGeneralDotPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeGeneralDotPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createBroadcastPropagationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Transform HLO operations to Linalg.
   pm.addPass(mlir::mhlo::createLegalizeToMemrefPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeControlFlowPass());
+  pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeHloToLinalgPass());
 
   // Lower index cast on tensors to tensor.generate.
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::kernel_gen::transforms::CreateShapeSimplification());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createShapeToShapeLowering());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeToShapeLowering());
   pm.addPass(mlir::createConvertShapeToStandardPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createConvertShapeConstraintsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::createConvertShapeConstraintsPass());
 
   // Fuse Linalg on tensors operations.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgElementwiseOpFusionPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::createLinalgElementwiseOpFusionPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgBufferizePass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createConvertLinalgToLoopsPass());
-  pm.addPass(mlir::createInlinerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createLinalgBufferizePass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertLinalgToLoopsPass());
 
   // Bufferize Linalg on tensors program.
   // Always run canonicalizer (which does dead code removal) before
@@ -893,7 +904,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   // signature.
   pm.addPass(
       mlir::kernel_gen::transforms::CreateComputeOpAndFuncBufferizePass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::kernel_gen::transforms::CreateTiledLoopBufferizePass());
   // Turn tensor constants into global memrefs.
   // TODO(kramerb): Expose the patterns and add them to the bufferize passes.
@@ -907,36 +918,38 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass());
   pm.addPass(mlir::mhlo::CreateOutlineWithXLAFrameworkPass());
+  pm.addPass(mlir::createInlinerPass());
 
   // Deallocate all temporary buffers.
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferDeallocationPass());
 
   pm.addPass(mlir::createBufferizationToMemRefPass());
 
   // Specilize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat,
   // and immediately canonicalize to clean up not taken branches.
-  // pm.addNestedPass<mlir::FuncOp>(CreateLinalgMatmulSpecializationPass());
+  // pm.addNestedPass<mlir::func::FuncOp>(CreateLinalgMatmulSpecializationPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Tile and vectorize linalg operation using Linalg Codegen Strategy.
-  // pm.addNestedPass<mlir::FuncOp>(CreateCodegenStrategyForMatMulPass());
+  // pm.addNestedPass<mlir::func::FuncOp>(CreateCodegenStrategyForMatMulPass());
 
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   mlir::VectorTransferToSCFOptions vec_to_scf_options;
   vec_to_scf_options.unroll = true;
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
-  pm.addNestedPass<mlir::FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::memref::createExpandOpsPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createLowerAffinePass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::arith::createArithmeticExpandOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::memref::createExpandOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createLowerAffinePass());
   pm.addPass(mlir::mhlo::CreateLegalizeXLAFrameworkToLLVMPass());
   pm.addPass(mlir::createMemRefToLLVMPass());
   pm.addPass(mlir::createConvertSCFToCFPass());
-  pm.addNestedPass<mlir::FuncOp>(mlir::createConvertMathToLLVMPass());
-  pm.addNestedPass<mlir::FuncOp>(
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertMathToLLVMPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::arith::createConvertArithmeticToLLVMPass());
   pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
@@ -988,7 +1001,7 @@ StatusOr<mlir::ModuleOp> createMLIRModule(HloModule* module,
 
   auto result_mapping = builder.getI32IntegerAttr(
       static_cast<int32_t>(output_allocation->index()));
-  mlir_module->walk([&](mlir::FuncOp f) {
+  mlir_module->walk([&](mlir::func::FuncOp f) {
     if (f.getSymName() == "main") {
       for (auto& p : llvm::enumerate(operand_mapping)) {
         f.setArgAttr(p.index(), "xla_framework.input_mapping", p.value());

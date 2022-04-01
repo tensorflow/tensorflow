@@ -689,3 +689,31 @@ func.func @very_dynamic_bcast(%arg0 : tensor<?xf32>, %arg1 : tensor<?xf32>)
       -> tensor<1xindex>
   func.return %2 : tensor<1xindex>
 }
+
+// -----
+
+// CHECK-LABEL: @broadcast_w_dyn_ty
+// CHECK-SAME:  %[[ARG:.*]]: tensor<1xindex>
+func.func @broadcast_w_dyn_ty(%arg0: tensor<1xindex>) -> tensor<?xindex>{
+  // CHECK: %[[C0:.*]] = arith.constant 0
+  // CHECK: %[[D0:.*]] = tensor.extract %[[ARG]][%[[C0]]]
+  // CHECK: %[[UNCAST:.*]] = tensor.from_elements %[[D0]]
+  // CHECK: %[[CAST:.*]] = tensor.cast %[[UNCAST]] : tensor<1xindex> to tensor<?xindex>
+  // CHECK: return %[[CAST]]
+   %0 = shape.broadcast %arg0, %arg0
+       : tensor<1xindex>, tensor<1xindex> -> tensor<?xindex>
+   func.return %0 : tensor<?xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @broadcast_scalar_w_dyn_ty
+// CHECK-SAME:  %[[ARG:.*]]: tensor<0xindex>
+func.func @broadcast_scalar_w_dyn_ty(%arg0: tensor<0xindex>) -> tensor<?xindex>{
+  // CHECK: %[[UNCAST:.*]] = arith.constant dense<> : tensor<0xindex>
+  // CHECK: %[[CAST:.*]] = tensor.cast %[[UNCAST]] : tensor<0xindex> to tensor<?xindex>
+  // CHECK: return %[[CAST]]
+   %0 = shape.broadcast %arg0, %arg0
+       : tensor<0xindex>, tensor<0xindex> -> tensor<?xindex>
+   func.return %0 : tensor<?xindex>
+}

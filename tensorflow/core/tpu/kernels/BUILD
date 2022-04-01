@@ -19,6 +19,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
+        "//tensorflow/dtensor:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],

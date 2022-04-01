@@ -170,7 +170,7 @@ Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   }
 
   // Set the input names.
-  auto main_func = module->lookupSymbol<mlir::FuncOp>("main");
+  auto main_func = module->lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_func) return errors::Internal("Failed to find the main function.");
   // Retrive input names from model flags.
   std::vector<std::string> input_names;

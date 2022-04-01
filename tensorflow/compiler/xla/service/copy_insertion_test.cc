@@ -2473,6 +2473,112 @@ ENTRY TestComputation {
               op::While(op::Copy(op::Parameter())));
 }
 
+TEST_F(CopyInsertionTest, NestedWhilesWithParamRoot) {
+  // Test that when the root of a computation is before other side-effecting
+  // operation (e.g. when the while body computation parameter is the root), we
+  // introduce an interference edge and copy at the level of this outer loop
+  // body and not one level out.
+  const std::string& hlo_string = R"(
+HloModule TestModule
+
+cond.inner {
+  ROOT param.cond.inner = pred[] parameter(0)
+}
+
+body.inner {
+  param.body.inner = pred[] parameter(0)
+  ROOT not = pred[] not(param.body.inner)
+}
+
+cond.outer {
+  ROOT param.cond.outer = pred[] parameter(0)
+}
+
+body.outer {
+  ROOT param.cond.outer = pred[] parameter(0)
+  while = pred[] while(param.cond.outer), condition=cond.inner, body=body.inner
+  after-all = token[] after-all()
+  outfeed = token[] outfeed(while, after-all)
+}
+
+ENTRY TestComputation {
+  entry_param = pred[] parameter(0)
+  while = pred[] while(entry_param), condition=cond.outer, body=body.outer
+  ROOT not = pred[] not(while)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  // There should only be a single copy inserted, and it's in the outer while
+  // loop body.
+  EXPECT_EQ(CountCopies(*module), 1);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Not(op::While(op::Parameter())));
+  HloInstruction* outfeed = FindInstruction(module.get(), "outfeed");
+  EXPECT_THAT(outfeed, op::Outfeed(op::While(op::Copy(op::Parameter(0))),
+                                   op::AfterAll()));
+}
+
+TEST_F(CopyInsertionTest, NestedWhilesWithParamRoot2) {
+  // Test that when the root of a computation is before other side-effecting
+  // operation (e.g. when the while body computation parameter is the root), we
+  // introduce an interference edge and copy at the level of this outer loop
+  // body and not one level out.
+  const std::string& hlo_string = R"(
+HloModule TestModule
+
+cond.inner {
+  param.cond.inner = (pred[], pred[]) parameter(0)
+  ROOT gte = pred[] get-tuple-element(param.cond.inner), index=0
+}
+
+body.inner {
+  param.body.inner = (pred[], pred[]) parameter(0)
+  gte.0 = pred[] get-tuple-element(param.body.inner), index=0
+  gte.1 = pred[] get-tuple-element(param.body.inner), index=1
+  and = pred[] and(gte.0, gte.1)
+  not = pred[] not(gte.1)
+  ROOT root = (pred[], pred[]) tuple(and, not)
+}
+
+cond.outer {
+  param.cond.outer = (pred[], pred[]) parameter(0)
+  ROOT gte = pred[] get-tuple-element(param.cond.outer), index=0
+}
+
+body.outer {
+  param.body.outer = (pred[], pred[]) parameter(0)
+  gte.0 = pred[] get-tuple-element(param.body.outer), index=0
+  gte.1 = pred[] get-tuple-element(param.body.outer), index=1
+  while.inner = (pred[], pred[]) while(param.body.outer), condition=cond.inner, body=body.inner
+  gte.2 = pred[] get-tuple-element(while.inner), index=0
+  after-all = token[] after-all()
+  outfeed = token[] outfeed(gte.2, after-all)
+  ROOT root = (pred[], pred[]) tuple(gte.0, gte.1)
+}
+
+ENTRY TestComputation {
+  entry_param.1 = pred[] parameter(0)
+  entry_param.2 = pred[] parameter(1)
+  tuple = (pred[], pred[]) tuple(entry_param.1, entry_param.2)
+  while.outer = (pred[], pred[]) while(tuple), condition=cond.outer, body=body.outer
+  gte = pred[] get-tuple-element(while.outer), index=0
+  ROOT not = pred[] not(gte)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+
+  HloInstruction* while_inner = FindInstruction(module.get(), "while.inner");
+  EXPECT_THAT(
+      while_inner,
+      op::While(op::Tuple(op::Copy(op::GetTupleElement(op::Parameter(0))),
+                          op::Copy(op::GetTupleElement(op::Parameter(0))))));
+}
+
 TEST_F(CopyInsertionTest, NestedWhileAndConditional2) {
   const std::string& hlo_string = R"(
 HloModule TestModule

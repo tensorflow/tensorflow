@@ -468,7 +468,7 @@ bool IsConvOrMatMul(const NodeDef& node) {
          IsConv3D(node);
 }
 
-// Returns true if one input to Add is Conv2D or DepthwiseConv2dNative or
+// Returns true if one input to Add is Conv2D/3D or DepthwiseConv2dNative or
 // MatMul, and the other input is semantically equivalent to BiasAdd.
 bool IsBiasSemanticAdd(const RemapperContext& ctx,
                        const utils::MutableNodeView& node_view,
@@ -476,6 +476,7 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
   if (!IsMKLEnabled()) return false;
 
   const auto* node_def = node_view.node();
+  if (!NodeIsOnCpu(node_def)) return false;
   if (!IsAdd(*node_def) || node_view.NumRegularFanins() != 2) return false;
 
   const auto& props = ctx.graph_properties.GetInputProperties(node_def->name());
@@ -488,23 +489,25 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
   const auto* node_view_1 = regular_fanin_1.node_view();
   const auto* node_def_1 = node_view_1->node();
 
+  if (!IsConvOrMatMul(*node_def_0) && !IsConvOrMatMul(*node_def_1))
+    return false;
+
   auto is_channel_last_format = [](const NodeDef& node) -> bool {
     if (node.attr().contains("data_format")) {
       const string data_format = node.attr().at("data_format").s();
-      return (data_format == "NHWC");
+      return (data_format == "NHWC" || data_format == "NDHWC");
     }
     return true;
   };
 
-  if (!IsConvOrMatMul(*node_def_0) && !IsConvOrMatMul(*node_def_1))
-    return false;
-
+  // Currently supported data formats are NHWC and NDHWC.
   if (!is_channel_last_format(*node_def_0) ||
       !is_channel_last_format(*node_def_1))
     return false;
 
   const TensorShapeProto& prot0_shape = props[0].shape();
   const TensorShapeProto& prot1_shape = props[1].shape();
+
   if (prot0_shape.unknown_rank() || prot1_shape.unknown_rank() ||
       prot0_shape.dim_size() < 1 || prot1_shape.dim_size() < 1 ||
       !IsKnown(prot0_shape.dim(prot0_shape.dim_size() - 1)) ||
@@ -513,24 +516,37 @@ bool IsBiasSemanticAdd(const RemapperContext& ctx,
 
   // Helper function to check Add/AddV2 could be replaced with BiasAdd.
   const auto is_supported_shape =
-      [](const TensorShapeProto& shape,
-         const TensorShapeProto& bcast_shape) -> bool {
-    if (shape.dim_size() < 2 || bcast_shape.dim_size() != 1) return false;
-    int channel_dim = shape.dim(shape.dim_size() - 1).size();
-    return (channel_dim == bcast_shape.dim(0).size());
+      [&](const TensorShapeProto& shape,
+          const TensorShapeProto& bcast_shape) -> bool {
+    int conv_channel_dim;
+    conv_channel_dim = shape.dim(shape.dim_size() - 1).size();
+
+    if (shape.dim_size() == 4 && bcast_shape.dim_size() > 4) return false;
+    if (shape.dim_size() == 5 && bcast_shape.dim_size() > 5) return false;
+
+    if (shape.dim_size() < 2) return false;
+    // Check that the conv node's channel dim is equal to the 1-dim add node's
+    // dim
+    if (conv_channel_dim != bcast_shape.dim(bcast_shape.dim_size() - 1).size())
+      return false;
+
+    // Check that add nodes dims are all 1's except the channel dim
+    for (int i = 0; i < bcast_shape.dim_size() - 1; i++) {
+      if (1 != bcast_shape.dim(i).size()) return false;
+    }
+    return true;
   };
 
   if (ShapesSymbolicallyEqual(prot0_shape, prot1_shape) ||
       !ShapesBroadcastable(prot0_shape, prot1_shape))
     return false;
 
-  if (is_supported_shape(prot0_shape, prot1_shape)) {
+  if (IsConvOrMatMul(*node_def_0)) {
     bias_port = 1;
-    return true;
-  }
-  if (is_supported_shape(prot1_shape, prot0_shape)) {
+    return (is_supported_shape(prot0_shape, prot1_shape));
+  } else if (IsConvOrMatMul(*node_def_1)) {
     bias_port = 0;
-    return true;
+    return (is_supported_shape(prot1_shape, prot0_shape));
   }
   return false;
 }
@@ -862,6 +878,8 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
   const auto* node_def = node_view.node();
   if (!IsAddN(*node_def) && !IsAddWithNoBroadcast(ctx, *node_def)) return false;
 
+  if (!NodeIsOnCpu(node_def)) return false;
+
   // MKL AddN ops only support float and bfloat16 data types.
   if (!HasDataType(node_def, DT_FLOAT) && !HasDataType(node_def, DT_BFLOAT16))
     return false;
@@ -906,6 +924,8 @@ bool FindContractionWithBiasAndAddActivation(
   const auto* node_def = node_view->node();
   if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
+
+  if (!NodeIsOnCpu(node_def)) return false;
 
   // Currently, Contraction + Bias + Add + Tanh pattern is not supported
   if (IsTanh(*node_def)) return false;
@@ -1122,9 +1142,12 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
       if (!VerifyConstants(ctx, matched_nodes_map, &values_map)) return false;
     }
   } else if (found_gelu_approximate) {
-    // Check if _FusedMatMul contains only BiasAdd
     NodeDef* matmul_node =
         ctx->graph_view.GetNode(matched_nodes_map->at("matmul"))->node();
+
+    if (!NodeIsOnCpu(matmul_node)) return false;
+
+    // Check if _FusedMatMul contains only BiasAdd
     auto fused_ops = matmul_node->attr().at("fused_ops").list().s();
     if (fused_ops.size() == 1) {
       if (fused_ops.at(0) != "BiasAdd") return false;
@@ -1285,6 +1308,8 @@ bool FindMklLayerNorm(RemapperContext* ctx, int node_index,
     if (!TryGetNodeAttr(*fused_batch_norm_node, kIsTraining, &is_training) ||
         !is_training)
       return false;
+
+    if (!NodeIsOnCpu(fused_batch_norm_node)) return false;
 
     // FusedBatchNorm node should have mean/variance as empty constant
     NodeDef* empty_const_node =

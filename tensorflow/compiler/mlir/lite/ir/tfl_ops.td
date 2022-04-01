@@ -4951,7 +4951,7 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
 }
 
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
-    DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+    DeclareOpInterfaceMethods<LoopLikeOpInterface, ["isDefinedOutsideOfLoop"]>,
     SingleBlockImplicitTerminator<"YieldOp">,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = [{While loop}];

@@ -261,7 +261,7 @@ Status CompileMlirToXlaHloViaBuilder(
   // have the proper shapes.
   TF_RETURN_IF_ERROR(RefineShapes(arg_shapes, module_op));
 
-  mlir::FuncOp main = module_op.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main = module_op.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   xla::XlaBuilder builder("main");
 

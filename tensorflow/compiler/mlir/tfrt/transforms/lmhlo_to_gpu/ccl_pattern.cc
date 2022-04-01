@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -381,7 +382,8 @@ struct CclRewritePattern : tfrt::gpu::GpuAsyncOpConversionPattern<CclOpType> {
     for (auto pair : llvm::zip_first(op->getOperands(), adaptor.getOperands()))
       mapping.map(std::get<0>(pair), std::get<1>(pair));
 
-    mlir::FuncOp func = op->template getParentOfType<mlir::FuncOp>();
+    mlir::func::FuncOp func =
+        op->template getParentOfType<mlir::func::FuncOp>();
     mlir::IntegerAttr replica_count_attr =
         func->getAttrOfType<mlir::IntegerAttr>("replica_count");
     mlir::IntegerAttr num_partitions_attr =

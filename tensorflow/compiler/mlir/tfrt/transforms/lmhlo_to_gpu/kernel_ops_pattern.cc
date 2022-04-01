@@ -104,7 +104,7 @@ static llvm::Error MakeError(xla::Status status) {
 
 // Clones `op` into a function within a module with `arguments`.
 // The `get_global_ops` are the def ops of `arguments`, or null otherwise.
-static std::tuple<mlir::OwningOpRef<mlir::ModuleOp>, mlir::FuncOp>
+static std::tuple<mlir::OwningOpRef<mlir::ModuleOp>, mlir::func::FuncOp>
 CloneToModule(Operation* op, mlir::ValueRange arguments,
               mlir::MutableArrayRef<GetGlobalOp> get_global_ops) {
   auto loc = op->getLoc();
@@ -126,8 +126,8 @@ CloneToModule(Operation* op, mlir::ValueRange arguments,
 
   auto func_type = builder.getType<mlir::FunctionType>(
       mlir::TypeRange(arguments), mlir::TypeRange());
-  auto func_name = op->getParentOfType<mlir::FuncOp>().getName();
-  auto func_op = builder.create<mlir::FuncOp>(loc, func_name, func_type);
+  auto func_name = op->getParentOfType<mlir::func::FuncOp>().getName();
+  auto func_op = builder.create<mlir::func::FuncOp>(loc, func_name, func_type);
   // Annotate the function arguments if they refer to a memref.global op.
   for (auto pair : llvm::enumerate(get_global_ops)) {
     if (!pair.value()) continue;
@@ -175,7 +175,8 @@ static llvm::Expected<std::vector<xla::BufferAllocation>> GetAllocations(
 // Emits thunks and an llvm device code module for the given func_op.
 static llvm::Expected<
     std::tuple<std::unique_ptr<ThunkSequence>, std::vector<ConstantInfo>>>
-Emit(mlir::FuncOp func_op, absl::Span<const xla::BufferAllocation> allocations,
+Emit(mlir::func::FuncOp func_op,
+     absl::Span<const xla::BufferAllocation> allocations,
      const stream_executor::CudaComputeCapability& cuda_compute_capability,
      const stream_executor::RocmComputeCapability& rocm_compute_capability,
      const xla::HloModuleConfig& hlo_module_config, llvm::Module* llvm_module) {
@@ -265,7 +266,7 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 
-  auto emit_result = Emit(std::get<mlir::FuncOp>(module_op), *allocations,
+  auto emit_result = Emit(std::get<mlir::func::FuncOp>(module_op), *allocations,
                           cuda_compute_capability, rocm_compute_capability,
                           hlo_module_config, llvm_module.get());
   if (!emit_result) return emit_result.takeError();
@@ -323,7 +324,7 @@ static void Rewrite(Operation* op, mlir::PatternRewriter& rewriter,
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   auto loc = op->getLoc();
 
-  rewriter.setInsertionPoint(op->getParentOfType<mlir::FuncOp>());
+  rewriter.setInsertionPoint(op->getParentOfType<mlir::func::FuncOp>());
   auto gpu_module = rewriter.create<mlir::gpu::GPUModuleOp>(loc, "gpu_module");
   symbol_table.insert(gpu_module);
   gpu_module->setAttr(tfrt::gpu::getGpuBinaryAttrName(),

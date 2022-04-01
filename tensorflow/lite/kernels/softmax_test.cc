@@ -67,7 +67,7 @@ TEST(SoftmaxOpTest, SimpleTest) {
       -1.0, -2.0, -3.0, -4.0, -5.0,  // b = 0
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(
       m.GetOutput(),
@@ -90,7 +90,7 @@ TEST(SoftmaxOpTest, CompareWithTFminiBetaEq1) {
 
   m.SetInput(0, input_buffer, input_buffer + input_size * batch_size);
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   std::unique_ptr<float[]> output_buffer(new float[input_size * batch_size]);
   auto input_shape = RuntimeShape({batch_size, 1, 1, input_size});
@@ -119,7 +119,7 @@ TEST(SoftmaxOpTest, CompareWithTFminiBetaNotEq1) {
 
   m.SetInput(0, input_buffer, input_buffer + input_size * batch_size);
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   std::unique_ptr<float[]> output_buffer(new float[input_size * batch_size]);
   auto input_shape = RuntimeShape({batch_size, 1, 1, input_size});

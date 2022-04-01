@@ -34,7 +34,7 @@ namespace tfrt_compiler {
 //
 class CostAnalysis {
  public:
-  explicit CostAnalysis(mlir::FuncOp func_op) {
+  explicit CostAnalysis(mlir::func::FuncOp func_op) {
     AnalyzeArguments(func_op);
     AnalyzeBlock(&func_op.front());
   }
@@ -45,7 +45,7 @@ class CostAnalysis {
   }
 
  private:
-  void AnalyzeArguments(mlir::FuncOp func_op);
+  void AnalyzeArguments(mlir::func::FuncOp func_op);
   void AnalyzeBlock(mlir::Block* block);
   void EvaluateCost(mlir::Operation* op);
 

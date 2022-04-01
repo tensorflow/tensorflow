@@ -1141,6 +1141,10 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
         strategy.extended.tpu_hardware_feature.embedding_feature,
         tpu_hardware_feature.HardwareFeature.EmbeddingFeature)
 
+  def test_get_tpu_cluster_resolver(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    self.assertIsNotNone(strategy.cluster_resolver)
+
 
 @test_util.with_eager_op_as_function
 class TPUStrategyDataPrefetchTest(test.TestCase):

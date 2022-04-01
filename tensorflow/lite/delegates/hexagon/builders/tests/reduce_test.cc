@@ -56,7 +56,7 @@ void TestMeanImpl() {
   ReduceOpModel m(BuiltinOperator_MEAN, {Tensor_Type, {1, 1, 3, 2}, -1.0, 1.0},
                   {Tensor_Type, {2}, -1.0, 1.0}, {1}, {2}, false);
   m.QuantizeAndPopulate<input_type>(m.Input(), data);
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<input_type>();
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 2}));
@@ -80,7 +80,7 @@ void TestMeanKeppDimsImpl() {
   ReduceOpModel m(BuiltinOperator_MEAN, {Tensor_Type, {1, 1, 3, 2}, -1.0, 1.0},
                   {Tensor_Type, {3}, -1.0, 1.0}, {1}, {3}, true);
   m.QuantizeAndPopulate<input_type>(m.Input(), data);
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<input_type>();
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 3, 1}));

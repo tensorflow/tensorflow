@@ -404,12 +404,12 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
 namespace TFTPU {
 // Creates a pass that canonicalizes legacy compilation and replication
 // attributes.
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateCanonicalizeCompileAndReplicateAttributesPass();
 
 // Creates a pass that converts unified compilation and replication
 // attributes back to legacy attributes.
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateConvertToLegacyCompileAndReplicateAttributesPass();
 
 // Creates a pass that forms clusters from operations of the same

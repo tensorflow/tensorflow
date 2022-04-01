@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/public/version.h"
@@ -1195,6 +1196,12 @@ Status Converter::BuildCudaEngine(
   builder_config->setFlag(nvinfer1::BuilderFlag::kSPARSE_WEIGHTS);
   VLOG(1) << "Setting sparsity for TensorRT8!";
 #endif
+
+  if (tensorflow::tensor_float_32_execution_enabled()) {
+    builder_config->setFlag(nvinfer1::BuilderFlag::kTF32);
+  } else {
+    builder_config->clearFlag(nvinfer1::BuilderFlag::kTF32);
+  }
 
   if (precision_mode_ == TrtPrecisionMode::FP16) {
     builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
@@ -3501,65 +3508,6 @@ Status ConvertIdentity(OpConverterParams* params) {
   return Status::OK();
 }
 
-Status ConvertBinary(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
-  const auto& node_def = params->node_def;
-  TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
-
-  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
-                                   DataType::DT_INT32};
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
-
-  // Constant folding should have been done by TensorFlow
-  if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
-    return errors::Unimplemented(
-        "Constant folding is falled back to TensorFlow, binary op received "
-        "both input as constant");
-  }
-  const TRT_TensorOrWeights& operand_l = inputs.at(0);
-  const TRT_TensorOrWeights& operand_r = inputs.at(1);
-
-  auto op_pair = absl::c_find_if(
-      kBinaryOperations,
-      [&node_def](
-          const std::pair<std::string, nvinfer1::ElementWiseOperation>& x) {
-        return x.first == node_def.op();
-      });
-  if (op_pair == kBinaryOperations.end()) {
-    return errors::Unimplemented("Binary op ", node_def.op(), " not supported");
-  }
-
-  nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
-  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
-      operand_l, operand_r, /*check_feasibility=*/true,
-      params->use_implicit_batch, &broadcasted_dims_l, &broadcasted_dims_r));
-  ITensorProxyPtr tensor_l = nullptr;
-  ITensorProxyPtr tensor_r = nullptr;
-  // This will also convert constants to tensors.
-  TF_RETURN_IF_ERROR(PrepareTensorForShape(
-      params->converter, operand_l, broadcasted_dims_l, params->validation_only,
-      &tensor_l, node_def, /*op_instance=*/0));
-  TF_RETURN_IF_ERROR(PrepareTensorForShape(
-      params->converter, operand_r, broadcasted_dims_r, params->validation_only,
-      &tensor_r, node_def, /*op_instance=*/1));
-  if (params->validation_only) return Status::OK();
-
-  // Add ElementWise layer.
-  nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
-      *tensor_l->trt_tensor(), *tensor_r->trt_tensor(), op_pair->second);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-
-  if (params->use_explicit_precision) {
-    layer->setPrecision(nvinfer1::DataType::kFLOAT);
-  }
-
-  params->converter->SetLayerName(layer, node_def);
-  ITensorProxyPtr trt_tensor = layer->getOutput(0);
-
-  params->outputs->push_back(TRT_TensorOrWeights(trt_tensor));
-  return Status::OK();
-}
-
 Status ConvertRsqrt(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -5828,8 +5776,6 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertStridedSlice, "StridedSlice");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTopK, "TopKV2");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertTranspose, "Transpose");
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertUnpack, "Unpack");
-REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBinary,
-                                  GetOperationNames(kBinaryOperations));
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertActivation,
                                   GetOperationNames(*ActivationTypeMap()));
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertPool, {"MaxPool", "AvgPool"});

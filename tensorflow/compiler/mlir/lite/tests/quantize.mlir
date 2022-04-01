@@ -374,8 +374,8 @@ func.func @CheckLegacyQuantizeAdd() -> tensor<1x2x!quant.uniform<i8:f32, 0.00784
 // LEGACY:  "tfl.pseudo_qconst"() {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.0078431372549019607:-128>>, value = dense<{{\[\[}}-1, 127]]> : tensor<1x2xi8>}
 }
 
-func private @testIfThen(tensor<*xf32>) -> tensor<*xf32>
-func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
+func.func private @testIfThen(tensor<*xf32>) -> tensor<*xf32>
+func.func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
 
 // CHECK-LABEL: NotQuantizeIf
 func.func @NotQuantizeIf(%arg0: tensor<i1>,

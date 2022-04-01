@@ -22,9 +22,9 @@ from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
 
 def log_1d():
   return """
-  func @log_1d(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  func.func @log_1d(%arg0: tensor<?xf32>) -> tensor<?xf32> {
     %0 = "tf.Log"(%arg0): (tensor<?xf32>) -> tensor<?xf32>
-    return %0 : tensor<?xf32>
+    func.return %0 : tensor<?xf32>
   }"""
 
 

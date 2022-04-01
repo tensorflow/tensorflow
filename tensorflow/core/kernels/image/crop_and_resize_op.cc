@@ -889,8 +889,9 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
     done();
   };
 
-  context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-      stream, wrapped_callback);
+  context->device()
+      ->tensorflow_accelerator_device_info()
+      ->event_mgr->ThenExecute(stream, wrapped_callback);
 }
 
 }  // namespace

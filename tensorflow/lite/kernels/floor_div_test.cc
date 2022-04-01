@@ -57,7 +57,7 @@ TEST(FloorDivModel, Simple) {
                                {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {10, 9, 11, 3});
   model.PopulateTensor<int32_t>(model.input2(), {2, 2, 3, 4});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(5, 4, 3, 0));
 }
@@ -68,7 +68,7 @@ TEST(FloorDivModel, NegativeValue) {
                                {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
   model.PopulateTensor<int32_t>(model.input2(), {2, 2, -3, -4});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(5, -5, 3, -2));
 }
@@ -78,7 +78,7 @@ TEST(FloorDivModel, BroadcastFloorDiv) {
                                {TensorType_INT32, {1}}, {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
   model.PopulateTensor<int32_t>(model.input2(), {-3});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(-4, 3, 3, -3));
 }
@@ -89,7 +89,7 @@ TEST(FloorDivModel, SimpleFloat) {
                              {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {10.05, 9.09, 11.9, 3.01});
   model.PopulateTensor<float>(model.input2(), {2.05, 2.03, 3.03, 4.03});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(4.0, 4.0, 3.0, 0.0));
 }
@@ -100,7 +100,7 @@ TEST(FloorDivModel, NegativeValueFloat) {
                              {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {10.03, -9.9, -11.0, 7.0});
   model.PopulateTensor<float>(model.input2(), {2.0, 2.3, -3.0, -4.1});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(5.0, -5.0, 3.0, -2.0));
 }
@@ -111,7 +111,7 @@ TEST(FloorDivModel, BroadcastFloorDivFloat) {
                              {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {10.03, -9.9, -11.0, 7.0});
   model.PopulateTensor<float>(model.input2(), {-3.3});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(-4.0, 2.0, 3.0, -3.0));
 }

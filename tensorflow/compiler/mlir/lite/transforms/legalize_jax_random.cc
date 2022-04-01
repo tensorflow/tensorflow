@@ -76,11 +76,11 @@ inline OpaqueElementsAttr CustomOption(ImplicitLocOpBuilder *builder,
                                  StringRef(content.data(), content.size()));
 }
 
-inline bool IsJaxRandomUniform(mlir::FuncOp func) {
+inline bool IsJaxRandomUniform(mlir::func::FuncOp func) {
   return func.getName().contains("tfl_wrapped_jax_random_uniform");
 }
 
-inline bool IsJaxRandomNormal(mlir::FuncOp func) {
+inline bool IsJaxRandomNormal(mlir::func::FuncOp func) {
   return func.getName().contains("tfl_wrapped_jax_random_normal");
 }
 

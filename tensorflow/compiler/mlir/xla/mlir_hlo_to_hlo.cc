@@ -497,7 +497,7 @@ static bool AllOptionalShardingsAreSet(
 
 // Extracts argument and result shardings from function.
 static void ExtractShardingsFromFunction(
-    mlir::FuncOp function,
+    mlir::func::FuncOp function,
     llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* arg_shardings,
     llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* ret_shardings) {
   arg_shardings->resize(function.getNumArguments(),
@@ -520,7 +520,8 @@ namespace {
 class ConvertToHloModule {
  public:
   using ValueLoweringMap = llvm::DenseMap<Value, xla::XlaOp>;
-  using FunctionLoweringMap = llvm::DenseMap<mlir::FuncOp, xla::XlaComputation>;
+  using FunctionLoweringMap =
+      llvm::DenseMap<mlir::func::FuncOp, xla::XlaComputation>;
 
   // If use_tuple_args is true, then the entry function's arguments are
   // converted to a tuple and passed as a single parameter.
@@ -548,7 +549,7 @@ class ConvertToHloModule {
   //
   // TODO(hinsu): Check for dynamic shapes and exit instead of crashing.
   LogicalResult Run() {
-    auto main = module_.lookupSymbol<mlir::FuncOp>("main");
+    auto main = module_.lookupSymbol<mlir::func::FuncOp>("main");
     if (!main)
       return module_.emitError(
           "conversion requires module with `main` function");
@@ -561,7 +562,7 @@ class ConvertToHloModule {
   }
 
   // Lower a specific function to HLO.
-  LogicalResult RunOnFunction(mlir::FuncOp f);
+  LogicalResult RunOnFunction(mlir::func::FuncOp f);
 
   // Lower a `mlir::Region` to a `XlaComputation`
   LogicalResult LowerRegionAsComputation(
@@ -582,7 +583,7 @@ class ConvertToHloModule {
           llvm::None);
 
   ::xla::HloModuleProto ConsumeMainProto() {
-    auto main = module_.lookupSymbol<mlir::FuncOp>("main");
+    auto main = module_.lookupSymbol<mlir::func::FuncOp>("main");
     // This is an invariant check as Run returns failure if there is no main
     // function and so the main proto shouldn't be consumed in that case.
     CHECK(main) << "requires module to have main function";  // Crash Ok.
@@ -597,7 +598,7 @@ class ConvertToHloModule {
   // Look up a symbol with the specified name, returning null if no such name
   // exists.
   FuncOp LookUpSymbol(FlatSymbolRefAttr symbol) {
-    return module_.lookupSymbol<mlir::FuncOp>(symbol);
+    return module_.lookupSymbol<mlir::func::FuncOp>(symbol);
   }
 
   // Get Reference to lowered XLA computation for a function.
@@ -1045,7 +1046,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
 
   if (op.called_computations().size() == 1) {
-    mlir::FuncOp callee = ctx.converter->LookUpSymbol(
+    mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         op.called_computations()[0].cast<FlatSymbolRefAttr>());
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
     xla::XlaComputation& computation =
@@ -2130,7 +2131,8 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
     mlir::func::CallOp call_op, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
   auto& value_map = *value_lowering;
-  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op.getCallee());
+  mlir::func::FuncOp callee =
+      module_.lookupSymbol<mlir::func::FuncOp>(call_op.getCallee());
   if (failed(RunOnFunction(callee))) return failure();
   std::vector<xla::XlaOp> operands;
   for (auto operand : call_op.getOperands()) {
@@ -2159,7 +2161,7 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
   return success();
 }
 
-LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
+LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
   if (lowered_computation_.count(f)) return success();
   if (!llvm::hasSingleElement(f)) {
     return f.emitError("only single block Function supported");
@@ -2448,7 +2450,7 @@ void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,
 Status PrepareForExport(mlir::ModuleOp module) {
   // Prepare for export to XLA HLO.
   mlir::PassManager pm(module.getContext());
-  pm.addNestedPass<mlir::FuncOp>(mhlo::CreatePrepareForExport());
+  pm.addNestedPass<mlir::func::FuncOp>(mhlo::CreatePrepareForExport());
   if (failed(pm.run(module)))
     return tensorflow::errors::Internal("Unable to optimize for XLA export");
   return Status::OK();

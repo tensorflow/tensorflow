@@ -166,8 +166,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  // Prevent division by 0 in the helper
-  TF_LITE_ENSURE(context, NumElements(params) > 0);
+  // Prevent division by 0 in the helper.
+  // In TF, GatherND supports empty `params` only when `indices` is also empty.
+  TF_LITE_ENSURE(context,
+                 (NumElements(params) == 0 && NumElements(indices) == 0) ||
+                     NumElements(params) > 0);
 
   switch (indices->type) {
     case kTfLiteInt32:

@@ -169,6 +169,11 @@ class DeviceBase {
     return gpu_device_info_;
   }
 
+  virtual const AcceleratorDeviceInfo* tensorflow_accelerator_device_info()
+      const {
+    return gpu_device_info_;
+  }
+
   // The preferred thread pool for this device. If it is nullptr, the system
   // automatically assigns a thread pool for execution.
   virtual thread::ThreadPool* tensorflow_device_thread_pool() {

@@ -3314,6 +3314,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
+        "//tensorflow/dtensor/cc:dtensor_device_cc",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels/shim:tf_kernel_shim",
@@ -3420,6 +3421,7 @@ filegroup(
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc",  # quantization
+        "//tensorflow/dtensor/cc:dtensor_device_cc",  # DTensor
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "//tensorflow/compiler/xla:status_macros",  # tfcompile
@@ -4094,6 +4096,32 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_dtensor_device",
+    srcs = ["pywrap_dtensor_device.cc"],
+    features = ["-layering_check"],
+    module_name = "_pywrap_dtensor_device",
+    deps = [
+        ":pywrap_densor_device_headers",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status_headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
+)
+
+tf_pybind_cc_library_wrapper(
+    name = "pywrap_densor_device_headers",
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+    ],
+)
+
 py_library(
     name = "tf2",
     srcs = ["tf2.py"],
@@ -4583,7 +4611,14 @@ alias(
     actual = "//tensorflow/python/layers:layers",
 )
 
-py_library(name = "dtensor")
+py_library(
+    name = "dtensor",
+    deps = [
+        "//tensorflow/dtensor/python:core",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/dtensor/python:tpu_util",
+    ],
+)
 
 py_library(
     name = "learning_rate_decay",

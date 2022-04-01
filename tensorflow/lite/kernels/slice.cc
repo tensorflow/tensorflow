@@ -136,8 +136,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                      "Slice op only supports 1D-5D input arrays.");
 
   // Postpone allocation of output if any of the indexing tensors is not
-  // constant
-  if (!(IsConstantTensor(begin) && IsConstantTensor(size))) {
+  // constant, or the input tensor has dynamic dimension.
+  if (!(IsConstantTensor(begin) && IsConstantTensor(size)) ||
+      HasUnspecifiedDimension(input)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

@@ -15,7 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def TestClustering : Pass<"tf-jitrt-test-clustering", "mlir::FuncOp"> {
+def TestClustering : Pass<"tf-jitrt-test-clustering", "mlir::func::FuncOp"> {
   let summary = "Creates `tf_device.cluster` operations according to the TF "
                 "JitRt clustering policy. Add value constraints remarks to the "
                 "function inputs inferred from the clustering policy.";
@@ -30,7 +30,7 @@ def TestClustering : Pass<"tf-jitrt-test-clustering", "mlir::FuncOp"> {
   let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 }
 
-def TestClusteringPolicy : Pass<"tf-jitrt-test-clustering-policy", "mlir::FuncOp"> {
+def TestClusteringPolicy : Pass<"tf-jitrt-test-clustering-policy", "mlir::func::FuncOp"> {
   let summary = "Annotates operations with clustering constraints inferred "
                 "from the TF JitRt clustering policies";
   let constructor = "tensorflow::CreateTestTfJitRtClusteringPolicyPass()";

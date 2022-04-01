@@ -508,7 +508,6 @@ cuda_py_test(
         ":context",
         ":def_function",
         ":function",
-        ":function_cache",
         ":test",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
@@ -532,19 +531,6 @@ cuda_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:test_ops",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "function_cache_test",
-    size = "medium",
-    srcs = ["function_cache_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":function_cache",
-        "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -618,25 +604,6 @@ py_library(
 )
 
 py_library(
-    name = "function_cache",
-    srcs = ["function_cache.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":context",
-        "//tensorflow/core/function/polymorphism:type_dispatch",
-        "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python/framework:device",
-        "//tensorflow/python/framework:func_graph",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/types",
-        "//tensorflow/python/util",
-    ],
-)
-
-py_library(
     name = "function_spec",
     srcs = ["function_spec.py"],
     srcs_version = "PY3",
@@ -664,11 +631,12 @@ py_library(
         ":core",
         ":execute",
         ":forwardprop_util",
-        ":function_cache",
+        ":function_context",
         ":function_saved_model_utils",
         ":function_spec",
         ":graph_only_ops",
         ":tape",
+        "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -681,6 +649,23 @@ py_library(
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "function_context",
+    srcs = ["function_context.py"],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        "//tensorflow/core/function/polymorphism:function_cache",
+        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python/framework:device",
+        "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/saved_model:save_context",
     ],
 )
 
