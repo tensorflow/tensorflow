@@ -43,11 +43,6 @@ is identical to calling
 If `indices` contains duplicates, the associated `updates` are accumulated
 (summed) into the output tensor.
 
-**WARNING**: For floating-point data types, the output may be nondeterministic.
-This is because the order in which the updates are applied is nondeterministic
-and when floating-point numbers are added in different orders the resulting
-numerical approximation error can be slightly different.
-
 `indices` is an integer tensor containing indices into the output tensor. The
 last dimension of `indices` can be at most the rank of `shape`:
 
