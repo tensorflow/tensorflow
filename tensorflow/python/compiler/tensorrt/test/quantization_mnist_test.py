@@ -350,6 +350,11 @@ class MNISTTestV2(QuantizationAwareTrainingMNISTTest):
             dynamic_shape_profile_strategy='ImplicitBatchModeCompatible',
             **conv_params._asdict())
         converter.convert()
+        try:
+          line_length = max(160, os.get_terminal_size().columns)
+        except OSError:
+          line_length = 160
+        converter.summary(line_length=line_length, detailed=True)
         func = converter._converted_func
       else:
         saved_model_loaded = saved_model_load(
