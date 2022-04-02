@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
@@ -73,8 +74,8 @@ namespace tensorflow {
 namespace kernel_gen {
 namespace {
 
-using mlir::FuncOp;
 using mlir::Value;
+using mlir::func::FuncOp;
 using mlir::memref::RankOp;
 using mlir::scf::ParallelOp;
 
@@ -401,8 +402,7 @@ Status LowerLoopsToGPUorCPU(mlir::ModuleOp module, bool embed_memref_prints,
   // Map asserts to the tensorflow framework.
   pm.addPass(mlir::kernel_gen::tf_framework::CreateRewriteTFFrameworkAssert());
   if (embed_memref_prints) {
-    pm.addNestedPass<FuncOp>(
-        mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
+    pm.addPass(mlir::kernel_gen::transforms::CreateEmbedMemRefPrintsPass());
   }
   if (failed(pm.run(module))) {
     return tensorflow::errors::Internal("Lowering to GPU kernels failed.");

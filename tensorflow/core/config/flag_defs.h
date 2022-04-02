@@ -31,7 +31,7 @@ class Flags {
   // LINT.IfChange
   TF_DECLARE_FLAG(graph_building_optimization, false,
                   "Optimize graph building for faster tf.function tracing.");
-  // LINT.ThenChange(//tensorflow/core/config/flag_defs.h)
+  // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 
 Flags& Global();

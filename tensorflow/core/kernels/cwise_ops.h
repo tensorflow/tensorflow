@@ -1318,6 +1318,13 @@ struct UnaryFunctor {
                   typename Functor::tin_type in);
 };
 
+template <typename Device, typename Functor, typename Targ>
+struct UnaryFunctorWithArg {
+  // Computes on device "d": out[i] = Functor(in[i])
+  void operator()(const Device& d, typename Functor::tout_type out,
+                  typename Functor::tin_type in, Targ val);
+};
+
 template <typename Device, typename Functor, int NDIMS,
           bool has_errors = Functor::has_errors>
 struct BinaryFunctor {

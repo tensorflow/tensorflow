@@ -76,11 +76,11 @@ inline OpaqueElementsAttr CustomOption(ImplicitLocOpBuilder *builder,
                                  StringRef(content.data(), content.size()));
 }
 
-inline bool IsJaxRandomUniform(mlir::FuncOp func) {
+inline bool IsJaxRandomUniform(mlir::func::FuncOp func) {
   return func.getName().contains("tfl_wrapped_jax_random_uniform");
 }
 
-inline bool IsJaxRandomNormal(mlir::FuncOp func) {
+inline bool IsJaxRandomNormal(mlir::func::FuncOp func) {
   return func.getName().contains("tfl_wrapped_jax_random_normal");
 }
 
@@ -88,7 +88,7 @@ void LegalizeJaxRandomPass::runOnOperation() {
   auto func = getOperation();
   if (!IsJaxRandomUniform(func) && !IsJaxRandomNormal(func)) return;
   auto result_tuple_ty =
-      func.getType().getResult(0).dyn_cast_or_null<TupleType>();
+      func.getFunctionType().getResult(0).dyn_cast_or_null<TupleType>();
   if (!result_tuple_ty) return;
   if (result_tuple_ty.size() != 1) return;
   auto result_ty = result_tuple_ty.getType(0).dyn_cast<ShapedType>();

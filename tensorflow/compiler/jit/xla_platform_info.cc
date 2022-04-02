@@ -48,7 +48,8 @@ Status BuildXlaCompilationCache(DeviceBase* device, FunctionLibraryRuntime* flr,
                                 XlaCompilationCache** cache) {
   XlaCompilationCache::Config cache_config(
       GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_directory,
-      GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks);
+      GetMarkForCompilationPassFlags()->tf_xla_disable_strict_signature_checks,
+      GetMarkForCompilationPassFlags()->tf_xla_persistent_cache_prefix);
 
   if (platform_info.xla_device_metadata()) {
     *cache = new XlaCompilationCache(
@@ -122,7 +123,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   if (device->device_type() == DEVICE_CPU) {
     platform_id = se::host::kHostPlatformId;
   } else if (device->device_type() == DEVICE_GPU) {
-    platform_id = device->tensorflow_gpu_device_info()
+    platform_id = device->tensorflow_accelerator_device_info()
                       ->stream->parent()
                       ->platform()
                       ->id();

@@ -9,7 +9,7 @@
 
 // CHECK: ENTRY
 // CHECK-NEXT:   %[[A0:.+]] = f32[] parameter(0)
-func @main(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
+func.func @main(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
   // CHECK:   %[[VAL0:.+]] = f32[] constant(10)
   %cst = arith.constant  dense<1.000000e+01> : tensor<f32>
 
@@ -27,14 +27,14 @@ func @main(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
 
   // CHECK:   ROOT %[[VAL3:.+]] = (f32[]) tuple(f32[] %[[VAL2]])
   %3 = "mhlo.tuple"(%2) : (tensor<f32>) -> tuple<tensor<f32>>
-  return %3 : tuple<tensor<f32>>
+  func.return %3 : tuple<tensor<f32>>
 }
 
 // -----
 // Test export mhlo::IfOp with multiple args, but same numbers of args for the
 // branches.
 
-func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %cst = arith.constant  dense<1.000000e+01> : tensor<f32>
 
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -47,7 +47,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
     "mhlo.return"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>)
 
-  return %2#0 : tensor<f32>
+  func.return %2#0 : tensor<f32>
 }
 
 // CHECK-LABEL: HloModule main
@@ -73,7 +73,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // Test export mhlo::IfOp with multiple args, but different numbers of args for
 // branches.
 
-func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %cst = arith.constant  dense<1.000000e+01> : tensor<f32>
 
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -86,7 +86,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
     "mhlo.return"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>)
 
-  return %2#0 : tensor<f32>
+  func.return %2#0 : tensor<f32>
 }
 
 // CHECK-LABEL: HloModule main
@@ -112,7 +112,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // -----
 // Test export mhlo::IfOp with false branch having no implict captures.
 
-func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %cst = arith.constant  dense<1.000000e+01> : tensor<f32>
 
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -126,7 +126,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
     "mhlo.return"(%cst1, %cst1) : (tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>)
 
-  return %2#0 : tensor<f32>
+  func.return %2#0 : tensor<f32>
 }
 
 // CHECK-LABEL: HloModule main
@@ -152,7 +152,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // -----
 // Test export mhlo::IfOp with true branch having no implict captures.
 
-func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %cst = arith.constant  dense<1.000000e+01> : tensor<f32>
 
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -166,7 +166,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
     "mhlo.return"(%arg0, %add) : (tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>)
 
-  return %2#0 : tensor<f32>
+  func.return %2#0 : tensor<f32>
 }
 
 // CHECK-LABEL: HloModule main
@@ -192,7 +192,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 // -----
 // Test export mhlo::IfOp with both branches having no implict captures.
 
-func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   %cst = arith.constant  dense<1.000000e+01> : tensor<f32>
 
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -205,7 +205,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
     "mhlo.return"(%cst2, %cst2) : (tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>)
 
-  return %2#0 : tensor<f32>
+  func.return %2#0 : tensor<f32>
 }
 
 // CHECK-LABEL: HloModule main
@@ -236,7 +236,7 @@ func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 //     false-branch: Uses 2 implict captures from above; corresponding xla
 //                   parameter is of type tuple.
 
-func @main(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
+func.func @main(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<f32> {
   %cst = arith.constant  dense<1.000000e+01> : tensor<f32>
 
   %0:2 = "mhlo.if"(%arg0) ({
@@ -261,7 +261,7 @@ func @main(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<
     "mhlo.return"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> ()
   }) : (tensor<i1>) -> (tensor<f32>, tensor<f32>)
 
-  return %0#1 : tensor<f32>
+  func.return %0#1 : tensor<f32>
 }
 
 // CHECK-LABEL: HloModule main

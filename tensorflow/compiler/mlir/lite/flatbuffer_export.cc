@@ -94,7 +94,6 @@ using llvm::StringRef;
 using llvm::Twine;
 using mlir::Dialect;
 using mlir::ElementsAttr;
-using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::NoneType;
@@ -106,6 +105,7 @@ using mlir::Type;
 using mlir::UnknownLoc;
 using mlir::Value;
 using mlir::WalkResult;
+using mlir::func::FuncOp;
 using tensorflow::OpOrArgLocNameMapper;
 using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
@@ -2036,7 +2036,7 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
   for (int i = 0; i < dim_size; i++) {
     const auto dim_metadata =
         s_attr.dim_metadata()[i].dyn_cast<mlir::TFL::DimensionMetadataAttr>();
-    if (dim_metadata.format().getValue() == "DENSE") {
+    if (dim_metadata.format().getValue() == mlir::TFL::DimensionType::DENSE) {
       fb_dim_metadata[i] =
           tflite::CreateDimensionMetadata(builder_, tflite::DimensionType_DENSE,
                                           dim_metadata.dense_size().getInt());

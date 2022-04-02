@@ -21,6 +21,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -267,9 +268,6 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
-    if (!options.print_computation(computation)) {
-      continue;
-    }
     // Don't print async computations when the sytax sugar is enabled since that
     // is redundant information.
     if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {
@@ -511,6 +509,16 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
         execution_options->use_spmd_partitioning());
     module_config.set_use_auto_spmd_partitioning(
         execution_options->use_auto_spmd_partitioning());
+    std::vector<int64_t> mesh_shape;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
+      mesh_shape.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+    std::vector<int64_t> mesh_ids;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
+      mesh_ids.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     module_config.set_allow_spmd_sharding_propagation_to_output(
         execution_options->allow_spmd_sharding_propagation_to_output());
@@ -740,8 +748,8 @@ bool CompareComputationsByContent(const HloComputation* a,
   if (a->instruction_count() != b->instruction_count()) {
     return a->instruction_count() < b->instruction_count();
   }
-  return a->ToString(HloPrintOptions::Fingerprint()) <
-         b->ToString(HloPrintOptions::Fingerprint());
+  return a->ToString(HloPrintOptions::ModuleFingerprint()) <
+         b->ToString(HloPrintOptions::ModuleFingerprint());
 }
 
 uint64_t GetFingerprint(
@@ -752,7 +760,7 @@ uint64_t GetFingerprint(
     return it->second;
   } else {
     const uint64_t fingerprint = tensorflow::Fingerprint64(
-        computation->ToString(HloPrintOptions::Fingerprint()));
+        computation->ToString(HloPrintOptions::ModuleFingerprint()));
     fingerprint_map[computation] = fingerprint;
     return fingerprint;
   }

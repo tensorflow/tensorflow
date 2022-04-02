@@ -104,15 +104,15 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
            << "serialized module in attribute 'host_mlir_module' does not "
               "contain 'host_func' function.";
 
-  if (op->getNumOperands() != func.getType().getNumInputs())
+  if (op->getNumOperands() != func.getFunctionType().getNumInputs())
     return op.emitError()
-           << "'host_func' has " << func.getType().getNumInputs()
+           << "'host_func' has " << func.getFunctionType().getNumInputs()
            << " inputs and '_XlaHostComputeMlir' has " << op->getNumOperands()
            << " operands.  Number of operands/inputs should be the same.";
 
-  if (op->getNumResults() != func.getType().getNumResults())
+  if (op->getNumResults() != func.getFunctionType().getNumResults())
     return op.emitError() << "'host_func' has "
-                          << func.getType().getNumResults()
+                          << func.getFunctionType().getNumResults()
                           << " results and '_XlaHostComputeMlir' has "
                           << op->getNumResults()
                           << " results.  Number of results should be the same.";

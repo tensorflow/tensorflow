@@ -155,7 +155,6 @@ class HloPrintOptions:
   canonicalize_computations: bool
   indent_amount: int
   is_in_nested_computation: bool
-  leading_and_trailing_instructions_number: int
 
 class HloModule:
   spmd_output_sharding: Optional[OpSharding]
@@ -225,6 +224,13 @@ class DebugOptions:
   xla_llvm_disable_expensive_passes: bool
   xla_test_all_input_layouts: bool
 
+class CompiledMemoryStats:
+  generated_code_size_in_bytes: int
+  argument_size_in_bytes: int
+  output_size_in_bytes: int
+  alias_size_in_bytes: int
+  temp_size_in_bytes: int
+
 class ExecutableBuildOptions:
   def __init__(self) -> None: ...
   def __repr__(self) -> str: ...
@@ -235,6 +241,8 @@ class ExecutableBuildOptions:
   device_assignment: Optional[DeviceAssignment]
   use_spmd_partitioning: bool
   use_auto_spmd_partitioning: bool
+  auto_spmd_partitioning_mesh_shape: List[int]
+  auto_spmd_partitioning_mesh_ids: List[int]
 
 class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int
@@ -401,6 +409,8 @@ class DeviceArray(DeviceArrayBase):
   def copy_to_device(self, dst_device: Device) -> DeviceArray: ...
   def on_device_size_in_bytes(self) -> int: ...
   def delete(self) -> None: ...
+  def is_ready(self) -> bool: ...
+  def is_known_ready(self) -> bool: ...
   def block_until_ready(self) -> DeviceArray: ...
   def copy_to_host_async(self) -> _Status: ...
   def to_py(self) -> np.ndarray: ...

@@ -1,4 +1,3 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
@@ -17,7 +16,7 @@ package(
     licenses = ["notice"],
 )
 
-pytype_strict_binary(
+py_binary(
     name = "gen_quantized_function_library",
     srcs = ["gen_quantized_function_library.py"],
     deps = [
@@ -137,6 +136,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:quant_spec",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:env",
@@ -154,6 +154,7 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )

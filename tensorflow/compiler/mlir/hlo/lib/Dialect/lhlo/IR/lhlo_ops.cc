@@ -390,15 +390,6 @@ void WhileOp::getSuccessorRegions(Optional<unsigned> index,
 
 Region& WhileOp::getLoopBody() { return body(); }
 
-bool WhileOp::isDefinedOutsideOfLoop(Value value) {
-  return !body().isAncestor(value.getParentRegion());
-}
-
-LogicalResult WhileOp::moveOutOfLoop(ArrayRef<Operation*> ops) {
-  for (auto* op : ops) op->moveBefore(*this);
-  return success();
-}
-
 // suppress warning.
 
 using mlir::hlo::parseWindowAttributes;

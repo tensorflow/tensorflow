@@ -22,7 +22,7 @@ API.
     sentiment classification</a> model.
 
 *   Models with `average_word_vec` spec created by
-    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
+    [TensorFlow Lite Model Maker for text Classification](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
@@ -184,7 +184,7 @@ The compatible models should meet the following requirements:
         the file should be a plain text file with one label per line, and the
         number of labels should match the number of categories as the model
         outputs. See the
-        [exmaple label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/nl_classifier/labels.txt).
+        [example label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/nl_classifier/labels.txt).
 
 *   Output label tensor: (kTfLiteString/kTfLiteInt32)
 

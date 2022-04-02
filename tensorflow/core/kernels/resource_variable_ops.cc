@@ -890,9 +890,8 @@ bool isCPUDevice<CPUDevice>() {
 template <typename T>
 bool ValidateInput(const Tensor& updates) {
   const auto updates_flat = updates.flat<T>();
-  const T zero(0);
-  for (int i = 0; i < updates.NumElements(); i++) {
-    if (updates_flat(i) == zero) return false;
+  for (int i = 0; i < updates.NumElements(); ++i) {
+    if (updates_flat(i) == T{}) return false;
   }
   return true;
 }
@@ -959,7 +958,7 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
   // Deallocate host_params' buffer once the host-to-device copy is complete.
   // host_params is captured by value in the lambda so that its buffer is only
   // destructed once the lambda is destructed.
-  c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+  c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
       stream, [host_params] {});
   return Status::OK();
 }

@@ -125,6 +125,9 @@ Status PruneGraphDef(GraphDef& graph_def,
 // non-ref counterpart.
 Status EliminateRefVariablesFromV1ControlFlow(GraphDef& graph_def);
 
+// Removes the "_input_shapes" attribute of functions in the graph.
+void RemoveInputShapesInFunctions(tensorflow::GraphDef& graph_def);
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 

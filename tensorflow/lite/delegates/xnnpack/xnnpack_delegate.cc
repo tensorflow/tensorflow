@@ -40,6 +40,8 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
+struct TfLiteXNNPackDelegateWeightsCache;
+
 namespace tflite {
 namespace xnnpack {
 namespace {
@@ -102,6 +104,14 @@ class Delegate {
 #else
     return threadpool_.get();
 #endif
+  }
+
+  xnn_weights_cache_t weights_cache() const {
+    if (options_.weights_cache == nullptr) {
+      return nullptr;
+    } else {
+      return reinterpret_cast<xnn_weights_cache_t>(options_.weights_cache);
+    }
   }
 
  private:
@@ -587,8 +597,8 @@ class Subgraph {
         }
       }
     }
-    status = xnn_create_runtime_v2(subgraph.get(), delegate.threadpool(), flags,
-                                   &runtime_ptr);
+    status = xnn_create_runtime_v3(subgraph.get(), delegate.weights_cache(),
+                                   delegate.threadpool(), flags, &runtime_ptr);
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
       return nullptr;
@@ -2321,6 +2331,7 @@ class Subgraph {
     const int kernel_height = SizeOfDimension(&filter_tensor, 1);
     const int kernel_width = SizeOfDimension(&filter_tensor, 2);
     const int input_channels = SizeOfDimension(&filter_tensor, 3);
+    const int groups = SizeOfDimension(&input_tensor, 3) / input_channels;
 
     uint32_t flags;
     TF_LITE_ENSURE_STATUS(CalculatePadding(
@@ -2343,9 +2354,9 @@ class Subgraph {
           static_cast<uint32_t>(conv_params->stride_height),
           static_cast<uint32_t>(conv_params->stride_width),
           static_cast<uint32_t>(conv_params->dilation_height_factor),
-          static_cast<uint32_t>(conv_params->dilation_width_factor),
-          /*groups=*/1, static_cast<size_t>(input_channels),
-          static_cast<size_t>(output_channels), output_min, output_max,
+          static_cast<uint32_t>(conv_params->dilation_width_factor), groups,
+          static_cast<size_t>(input_channels),
+          static_cast<size_t>(output_channels) / groups, output_min, output_max,
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*filter_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
@@ -4711,6 +4722,26 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace
 }  // namespace xnnpack
 }  // namespace tflite
+
+TfLiteXNNPackDelegateWeightsCache* TfLiteXNNPackDelegateWeightsCacheCreate() {
+  xnn_status status = xnn_initialize(/*allocator=*/nullptr);
+  if (status != xnn_status_success) {
+    return nullptr;
+  }
+
+  xnn_weights_cache_t weights_cache;
+  xnn_create_weights_cache(&weights_cache);
+  return reinterpret_cast<TfLiteXNNPackDelegateWeightsCache*>(weights_cache);
+}
+
+void TfLiteXNNPackWeightsCacheDelete(TfLiteXNNPackDelegateWeightsCache* cache) {
+  if (cache == nullptr) {
+    return;
+  }
+  auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
+  xnn_delete_weights_cache(weights_cache);
+  xnn_deinitialize();
+}
 
 TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   TfLiteXNNPackDelegateOptions options = {0};

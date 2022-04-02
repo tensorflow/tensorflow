@@ -48,11 +48,11 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/stream_executor/platform.h"
 
 #if XLA_ENABLE_XLIR
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
@@ -72,6 +72,7 @@ limitations under the License.
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 #endif  // XLA_ENABLE_XLIR
 
 namespace xla {
@@ -282,10 +283,10 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
   stream_executor::PlatformKind platform_kind =
       main_stream->parent()->platform_kind();
   if (platform_kind == stream_executor::PlatformKind::kROCm) {
-    std::string stream_arch = main_stream->parent()
-                                  ->GetDeviceDescription()
-                                  .rocm_amdgpu_gcn_arch_name();
-    std::string gpu_exec_arch = absl::get<std::string>(gpu_version_);
+    auto cc = main_stream->GetRocmComputeCapability();
+    std::string stream_arch = cc.gcn_arch_name();
+    std::string gpu_exec_arch =
+        absl::get<se::RocmComputeCapability>(gpu_version_).gcn_arch_name();
     TF_RET_CHECK(stream_arch == gpu_exec_arch)
         << "AMDGPU GCN ISA version mismatch; expected {" << gpu_exec_arch
         << ", but was " << stream_arch;
@@ -734,14 +735,6 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
   se::StreamExecutor* executor = run_options->stream()->parent();
 
-  // Activate the GPU context. Technically speaking this is redundant, but if we
-  // don't do this, then every call into the StreamExecutor APIs will assume
-  // the correct context is not set and will reactivate the GPU context. This
-  // appears to cost ~1us each time. By activating it ahead of each time,
-  // StreamExecutor's context caching logic will apply and it will know not to
-  // reactivate it on each call.
-  se::gpu::ScopedActivateExecutorContext activate_context(executor);
-
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
   // computations to use the same GPU simultaneously.
@@ -934,7 +927,7 @@ int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
 }
 
 Status GpuExecutable::SetUpMlirAllocation(
-    mlir::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
+    mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
     std::vector<BufferAllocation>* allocations,
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
     Shape* output_shape, int buffer_param_offset) {
@@ -1014,7 +1007,7 @@ Status GpuExecutable::SetUpMlirAllocation(
 
 #if XLA_ENABLE_XLIR
 static void ApplyEntryFunctionAttributes(
-    mlir::MLIRContext& context, mlir::FuncOp& func,
+    mlir::MLIRContext& context, mlir::func::FuncOp& func,
     xla::EntryFunctionAttributes entry_func_attrs, int buffer_param_offset) {
   mlir::OpBuilder builder(&context);
   llvm::SmallVector<mlir::DictionaryAttr, 8> args_attrs;
@@ -1070,6 +1063,15 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
   }();
 
   mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  tfrt::RegisterTFRTDialects(registry);
+  tfrt::RegisterTFRTCompiledDialects(registry);
+  registry.insert<tfrt::gpu::GpuDialect>();
+  registry.insert<XlirDialect>();
+  context.appendDialectRegistry(registry);
+  for (const auto& dialect_name : context.getAvailableDialects()) {
+    context.getOrLoadDialect(dialect_name);
+  }
   context.allowUnregisteredDialects();
   mlir::Location location = mlir::UnknownLoc::get(&context);
   llvm::ArrayRef<uint8_t> bef_array(bef_buffer.get(),
@@ -1077,7 +1079,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromBef(
   auto module = tfrt::ConvertBEFToMLIR(location, bef_array, &context);
   TF_ASSIGN_OR_RETURN(BefExecutable * bef_executable,
                       BefExecutable::Create(std::move(bef_buffer)));
-  auto func = mlir::cast<mlir::FuncOp>(
+  auto func = mlir::cast<mlir::func::FuncOp>(
       module->lookupSymbol(bef_executable->entry_point.function_name));
   // In tfrt_gpu dialect, buffer arguments start from the third parameter (after
   // tfrt::Chain and GpuStream).

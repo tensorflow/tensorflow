@@ -67,7 +67,7 @@ TEST(BaseAudioSpectrogramOpModel, NonSquaredTest) {
   m.PopulateTensor<float>(m.input1(),
                           {-1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f});
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   std::vector<int> output_shape = m.GetOutputShape();
   EXPECT_EQ(3, output_shape.size());
@@ -83,7 +83,7 @@ TEST(SpectrogramOpTest, SquaredTest) {
   m.PopulateTensor<float>(m.input1(),
                           {-1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f});
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   std::vector<int> output_shape = m.GetOutputShape();
   EXPECT_EQ(3, output_shape.size());
@@ -99,7 +99,7 @@ TEST(SpectrogramOpTest, StrideTest) {
   m.PopulateTensor<float>(m.input1(), {-1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f,
                                        1.0f, 0.0f, 1.0f, 0.0f});
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   std::vector<int> output_shape = m.GetOutputShape();
   EXPECT_THAT(output_shape, ElementsAre(1, 2, 5));

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -121,7 +122,7 @@ class GpuExecutable : public Executable {
   // buffer parameters in the entry function - in tfrt_gpu dialect, buffer
   // arguments start from the third parameter (after tfrt::Chain and GpuStream).
   static Status SetUpMlirAllocation(
-      mlir::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
+      mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
       std::vector<BufferAllocation>* allocations,
       absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
       Shape* output_shape, int buffer_param_offset = 0);

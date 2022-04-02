@@ -249,7 +249,7 @@ static tensorflow::Status InjectTfGpuResourcesHelper(
                                                 /*peer_gpu_ids=*/{});
       if (!tf_allocator)
         return tensorflow::errors::NotFound("TF allocator not found");
-      auto gpu_device_info = gpu_device->tensorflow_gpu_device_info();
+      auto gpu_device_info = gpu_device->tensorflow_accelerator_device_info();
       if (!gpu_device_info)
         return tensorflow::errors::NotFound("gpu_device_info not found");
 

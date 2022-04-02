@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_OPDEFS_TF_JITRT_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_OPDEFS_TF_JITRT_OPS_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
@@ -38,7 +39,7 @@ class JitRuntimeDialect : public mlir::Dialect {
 // To get the cost of the `tf_jitrt.execute` operations, when compiled cluster
 // has unranked inputs, we use the maximum size of the arguments of the parent
 // function as an estimate (see TFRT_CostFunctionInterface).
-int64_t GetMaxArgSize(mlir::FuncOp func);
+int64_t GetMaxArgSize(mlir::func::FuncOp func);
 
 }  // namespace tf_jitrt
 }  // namespace mlir

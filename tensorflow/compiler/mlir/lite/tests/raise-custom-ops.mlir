@@ -2,14 +2,14 @@
 // RUN: tf-opt -tfl-raise-custom-ops -canonicalize -tfl-test-raise-tf-targets="tf.FakeQuantWithMinMaxVarsPerChannel" %s --split-input-file | FileCheck --check-prefix=WRAPPED %s
 
 // CHECK-LABEL: custom_op
-func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+func.func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   %0 = "arith.constant" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32>
   %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   // will be preserved since it has uses.
   %2 = "tf.MyCustomOp"(%1, %0) {fused_activation_function = "RELU", int_attr = 2 : i32}  : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   // will be preserved since it has side-effect.
   "tf.MyCustomOp"(%1, %0) {fused_activation_function = "RELU", int_attr = 2 : i32}  : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %2 : tensor<4xf32>
+  func.return %2 : tensor<4xf32>
 
 // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<4xf32>
 // CHECK-NEXT: %[[MUL:.*]] = tfl.mul %arg0, %[[CST]] {fused_activation_function = "NONE"} : tensor<4xf32>
@@ -30,14 +30,14 @@ func @custom_op(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 
 // CHECK-LABEL: tf_executor_wrapper
 // WRAPPED-LABEL: tf_executor_wrapper
-func @tf_executor_wrapper(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input", outputs = "output"}} {
+func.func @tf_executor_wrapper(%arg0: tensor<*xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input", outputs = "output"}} {
   %0 = tf_executor.graph {
     %outputs_14, %control_15 = tf_executor.island wraps "tf.Const"() {device = "", value = dense<1.0> : tensor<186xf32>} : () -> tensor<186xf32>
     %outputs_16, %control_17 = tf_executor.island wraps "tf.Const"() {device = "", value = dense<2.0> : tensor<186xf32>} : () -> tensor<186xf32>
     %outputs_18, %control_19 = tf_executor.island wraps "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %outputs_16, %outputs_14) {device = "", narrow_range = true, num_bits = 8 : i64} : (tensor<*xf32>, tensor<186xf32>, tensor<186xf32>) -> tensor<*xf32>
     tf_executor.fetch %outputs_18 : tensor<*xf32>
   }
-  return %0 : tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 
 // CHECK: tf_executor.island wraps "tf.FakeQuantWithMinMaxVarsPerChannel"
 

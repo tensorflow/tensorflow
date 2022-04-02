@@ -446,7 +446,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
                               error_regex):
     original = DynamicRaggedShape.from_lengths(lengths)
     with self.assertRaisesRegex(error_type, error_regex):
-      original.with_inner_rank(new_dense_rank)
+      original._with_inner_rank(new_dense_rank)
 
   @parameterized.parameters([
       dict(
@@ -1235,7 +1235,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
   def testWithDenseRank(self, lengths, dense_rank, lengths_e):
     # Makes little sense with from_lengths/_with_num_row_partitions.
     original = DynamicRaggedShape.from_lengths(lengths)
-    actual = original.with_inner_rank(dense_rank)
+    actual = original._with_inner_rank(dense_rank)
     self.assertAllEqual(actual.inner_rank, dense_rank)
     self.assertAllEqual(actual.static_lengths(), lengths_e)
 
@@ -2683,7 +2683,7 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
           input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
       def foo(x):
         rts = DynamicRaggedShape._from_inner_shape(x)
-        rts.with_inner_rank(1)
+        rts._with_inner_rank(1)
 
       foo([3, 7, 5])
 
@@ -2919,8 +2919,8 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
               _inner_shape=tensor_spec.TensorSpec([6], dtypes.int32))),
   ])
   def test_from_tensor_shape(self, shape, num_row_partitions, dtype, expected):
-    spec = DynamicRaggedShape.Spec.from_tensor_shape(shape, num_row_partitions,
-                                                     dtype)
+    spec = DynamicRaggedShape.Spec._from_tensor_shape(shape, num_row_partitions,
+                                                      dtype)
     self.assertDynamicRaggedShapeSpecEqual(spec, expected)
 
   @parameterized.parameters([
@@ -2949,13 +2949,13 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
   def test_from_tensor_shape_raises(self, shape, num_row_partitions, dtype,
                                     error_type, error_regex):
     with self.assertRaisesRegex(error_type, error_regex):
-      DynamicRaggedShape.Spec.from_tensor_shape(shape, num_row_partitions,
-                                                dtype)
+      DynamicRaggedShape.Spec._from_tensor_shape(shape, num_row_partitions,
+                                                 dtype)
 
   def test_from_tensor_shape_raises_dtype(self):
     with self.assertRaisesRegex(ValueError,
                                 'dtype must be tf.int32 or tf.int64'):
-      DynamicRaggedShape.Spec.from_tensor_shape(
+      DynamicRaggedShape.Spec._from_tensor_shape(
           [], tensor_shape.TensorShape([1, 2, 3]), dtypes.float32)
 
   def test_from_row_partition_inner_shape_and_dtype_raises_dtype(self):
@@ -2978,7 +2978,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
           dtype=dtypes.int32)
 
   def test_ranks(self):
-    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
         shape=tensor_shape.TensorShape([5, None, 7, 4, 2, 5]),
         num_row_partitions=2,
         dtype=dtypes.int32)
@@ -2988,7 +2988,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
     self.assertEqual(spec.rank, 6)
 
   def test_dimension_simple(self):
-    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
         shape=tensor_shape.TensorShape([5, None, 7, 4, 2, 5]),
         num_row_partitions=2,
         dtype=dtypes.int32)
@@ -3002,11 +3002,11 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
 
   @parameterized.parameters([
       dict(
-          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
               None, 0, dtypes.int32),
           dimension=0),
       dict(
-          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
               None, 0, dtypes.int32),
           dimension=1),
   ])
@@ -3017,14 +3017,14 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
   @parameterized.parameters([
       # Scalar.
       dict(
-          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
               [], 0, dtypes.int32),
           dimension=0,
           error_type=ValueError,
           error_regex='Index out of range: 0.'),
       # Scalar.
       dict(
-          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
               [], 0, dtypes.int32),
           dimension=1,
           error_type=ValueError,
@@ -3035,7 +3035,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
       spec._dimension(dimension)
 
   def test_num_slices_in_dimension_ragged(self):
-    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
         shape=tensor_shape.TensorShape([5, 3, 7, 4, None, 5]),
         num_row_partitions=2,
         dtype=dtypes.int32)
@@ -3049,7 +3049,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
     self.assertIsNone(spec._num_slices_in_dimension(-2))
 
   def test_num_slices_in_dimension_ragged_alt(self):
-    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
         shape=tensor_shape.TensorShape([5, 3, None, 2]),
         num_row_partitions=3,
         dtype=dtypes.int32)
@@ -3060,7 +3060,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
     self.assertIsNone(spec._num_slices_in_dimension(3))
 
   def test_num_slices_in_dimension_dense_known(self):
-    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
         [5, 3, 4], 0, dtypes.int32)
 
     self.assertEqual(spec._num_slices_in_dimension(0), 5)
@@ -3069,13 +3069,13 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
 
   @parameterized.parameters([
       dict(
-          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
               None, 0, dtypes.int32),
           dimension='CRAZY',
           error_type=TypeError,
           error_regex='axis must be an integer'),
       dict(
-          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+          spec=dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
               None, 0, dtypes.int32),
           dimension=-1,
           error_type=ValueError,
@@ -3088,7 +3088,7 @@ class DynamicRaggedShapeSpecTest(parameterized.TestCase):
       spec._num_slices_in_dimension(dimension)
 
   def test_truncate(self):
-    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec.from_tensor_shape(
+    spec = dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
         shape=tensor_shape.TensorShape([5, 3, 7, 4, None, 5]),
         num_row_partitions=2,
         dtype=dtypes.int32)

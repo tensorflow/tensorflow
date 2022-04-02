@@ -24,12 +24,14 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 
 void CoordinationServiceRpcHandler::SetAgentInstance(
     CoordinationServiceAgent* agent) {
+  mutex_lock l(agent_mu_);
   agent_ = agent;
 }
 
@@ -123,6 +125,12 @@ void CoordinationServiceRpcHandler::ResetTaskAsync(
 void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
     const ReportErrorToTaskRequest* request,
     ReportErrorToTaskResponse* response, StatusCallback done) {
+  tf_shared_lock l(agent_mu_);
+  if (agent_ == nullptr) {
+    done(MakeCoordinationError(errors::Internal(
+        "CoordinationServiceAgent is uninitialized or has already shutdown.")));
+    return;
+  }
   const CoordinationServiceError& error_payload = request->error_payload();
   Status error(static_cast<error::Code>(request->error_code()),
                strings::StrCat("Error reported from /job:",

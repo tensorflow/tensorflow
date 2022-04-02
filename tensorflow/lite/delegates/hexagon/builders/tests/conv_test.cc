@@ -417,7 +417,7 @@ TEST(QuantizedConvolutionOpModel, DepthwiseConv5x5) {
   m.SetBias({1, 2});
 
   // Reference output.
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -457,7 +457,7 @@ TEST(QuantizedConvolutionOpModel, DepthwiseConvWithMultiplier_InputDepth1) {
   m.SetBias({1, 2, 3});
 
   // Reference output.
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -499,7 +499,7 @@ TEST(QuantizedConvolutionOpModel,
   m.SetBias({1, 2, 3});
 
   // Reference output.
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
 
   m.ApplyDelegateAndInvoke();
@@ -587,7 +587,7 @@ TEST(QuantizedConvolutionOpModel, DepthwiseConvSimplePerTensor_Int8_RELU1) {
   m.SetPerChannelQuantizedBias({3, -2, 4, 6});
 
   // Reference output.
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<int8_t>();
 
   m.ApplyDelegateAndInvoke();

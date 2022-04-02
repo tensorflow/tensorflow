@@ -134,7 +134,8 @@ class CoordinationServiceAgent {
   // reported to other agents that did not reach the barrier on time.
   // Possible service errors:
   //   - InvalidArgument: Unexpected task request.
-  //   - FailedPrecondition: task has already disconnected.
+  //   - FailedPrecondition: Task was in error state (note: agent is still
+  //                         shut down forcefully).
   virtual Status Shutdown() = 0;
 
   // Disconnect from the service, and clean up the internal error status.

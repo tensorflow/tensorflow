@@ -345,7 +345,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
       ]
       if not isinstance(values, RaggedTensor):
         checks.append(check_ops.assert_rank_at_least(values, 1))
-      row_partition = row_partition.with_dependencies(checks)
+      row_partition = row_partition._with_dependencies(checks)  # pylint: disable=protected-access
     return cls(values=values, internal=True, row_partition=row_partition)
 
   @classmethod
@@ -1453,12 +1453,12 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     if isinstance(current_values, RaggedTensor):
       return RaggedTensor(
           values=current_values.with_row_splits_dtype(dtype),
-          row_partition=self._row_partition.with_row_splits_dtype(dtype),
+          row_partition=self._row_partition.with_dtype(dtype),
           internal=True)
     else:
       return RaggedTensor(
           values=current_values,
-          row_partition=self._row_partition.with_row_splits_dtype(dtype),
+          row_partition=self._row_partition.with_dtype(dtype),
           internal=True)
 
   def merge_dims(self, outer_axis, inner_axis):
@@ -3088,7 +3088,12 @@ def _assert_is_supported_ragged_values_type(value):
 def _formatter(x):
   """Separate Numpy array elements with comma."""
   if isinstance(x, np.ndarray):
-    return np.array2string(x, separator=", ")
+    if x.size != 0:
+      return np.array2string(x, separator=", ")
+    else:
+      # When x.size==0, np.array2string always returns `[]`.  This isn't always
+      # what we want.  E.g., if `x.shape=[0, 3]`, then we want `[[], [], []]`.
+      return repr(x.tolist())
   else:
     return str(x)
 

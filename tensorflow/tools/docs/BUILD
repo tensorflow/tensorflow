@@ -193,6 +193,7 @@ py_test(
     ],
     deps = [
         ":generate2_lib",
+        # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
     ],

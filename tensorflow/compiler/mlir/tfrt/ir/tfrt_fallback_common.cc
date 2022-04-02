@@ -46,8 +46,8 @@ mlir::ParseResult ParseExecuteOpCommon(mlir::OpAsmParser &parser,
   mlir::IntegerAttr cost;
   mlir::StringAttr device;
   mlir::StringAttr op_name;
-  llvm::SmallVector<mlir::OpAsmParser::OperandType, 4> in_chains;
-  llvm::SmallVector<mlir::OpAsmParser::OperandType, 4> operands;
+  llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4> in_chains;
+  llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand, 4> operands;
   mlir::NamedAttrList op_attrs;
   mlir::NamedAttrList op_func_attrs;
   auto loc = parser.getNameLoc();

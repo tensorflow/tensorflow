@@ -137,9 +137,10 @@ struct SignatureHashCombiner {
 
 std::string XlaSerializedCacheKeyToString(const XlaSerializedCacheKey& key) {
   return absl::StrCat(
-      kXlaSerializedCacheKeySeparator, key.signature_fingerprint(),
-      kXlaSerializedCacheKeySeparator, key.cluster_fingerprint(),
-      kXlaSerializedCacheKeySeparator, key.device_type());
+      key.prefix(), key.prefix().empty() ? "" : kXlaSerializedCacheKeySeparator,
+      key.signature_fingerprint(), kXlaSerializedCacheKeySeparator,
+      key.cluster_fingerprint(), kXlaSerializedCacheKeySeparator,
+      key.device_type());
 }
 
 }  // namespace
@@ -156,6 +157,7 @@ XlaCompilationCache::XlaCompilationCache(Config config,
     : client_(client),
       device_type_(std::move(device_type)),
       disable_strict_signature_checks_(config.disable_strict_signature_checks),
+      persistance_prefix_(config.persistance_prefix),
       persistent_cache_directory_(config.persistent_cache_directory) {}
 
 XlaCompilationCache::~XlaCompilationCache() {
@@ -433,8 +435,7 @@ Status XlaSingleOpToHlo(XlaCompiler* compiler,
       *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args), control_rets,
       options.device_type.type_string(), compile_options.use_tuple_arg,
       /*analyse_graph=*/!mlir_enabled, *options.flib_def, debug_info,
-      options.shape_determination_fns.shape_representation_fn,
-      compilation_result);
+      options.shape_determination_fns, compilation_result);
 
   if (mlir_result.ok() || mlir_enabled) {
     return mlir_result;
@@ -822,6 +823,7 @@ XlaSerializedCacheKey XlaCompilationCache::BuildSerializedCacheKey(
   serialized_cache_key.set_cluster_fingerprint(
       DeterministicProtoHash64(hlo_module));
   serialized_cache_key.set_device_type(device_type_.type_string());
+  serialized_cache_key.set_prefix(persistance_prefix_);
   return serialized_cache_key;
 }
 

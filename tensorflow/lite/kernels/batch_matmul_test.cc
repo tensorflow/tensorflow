@@ -97,7 +97,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_Simple) {
   model.PopulateTensor<float>(model.lhs(), {1, 2, 3, 4, 5, 6});
   model.PopulateTensor<float>(model.rhs(),
                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
@@ -109,7 +109,7 @@ TEST_P(BatchMatMulOpTest, Int8Test_Simple) {
   model.PopulateTensor<int8_t>(model.lhs(), {1, 2, 3, 4, 5, 6});
   model.PopulateTensor<int8_t>(model.rhs(),
                                {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({74, 80, 86, 92, 173, 188, 203, 218}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
@@ -121,7 +121,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_SimpleRHSAdjoint) {
   model.PopulateTensor<float>(model.lhs(), {1, 2, 3, 4, 5, 6});
   model.PopulateTensor<float>(model.rhs(),
                               {7, 11, 15, 8, 12, 16, 9, 13, 17, 10, 14, 18});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
@@ -133,7 +133,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_SimpleLHSAdjoint) {
   model.PopulateTensor<float>(model.lhs(), {1, 4, 2, 5, 3, 6});
   model.PopulateTensor<float>(model.rhs(),
                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
@@ -147,7 +147,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_BatchSizeTwo) {
   model.PopulateTensor<float>(model.rhs(),
                               {7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,
                                19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
       ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218., 560., 584.,
@@ -163,7 +163,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_Broadcast) {
   model.PopulateTensor<float>(model.rhs(),
                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
 
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
       ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218., 272., 296.,
@@ -179,7 +179,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_BroadcastLHSAdjoint) {
   model.PopulateTensor<float>(model.rhs(),
                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
 
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
       ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218., 272., 296.,
@@ -196,7 +196,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_Broadcast2) {
                               {7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,
                                19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30});
 
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
       ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
@@ -220,7 +220,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_Broadcast2LHSAdjoint) {
                               {7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,
                                19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30});
 
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
       ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
@@ -243,7 +243,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_Broadcast2RHSAdjoint) {
   model.PopulateTensor<float>(model.rhs(),
                               {7,  11, 8,  12, 9,  13, 10, 14, 15, 19, 16, 20,
                                17, 21, 18, 22, 23, 27, 24, 28, 25, 29, 26, 30});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
       ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
@@ -266,7 +266,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_Broadcast2BothAdjoint) {
   model.PopulateTensor<float>(model.rhs(),
                               {7,  11, 8,  12, 9,  13, 10, 14, 15, 19, 16, 20,
                                17, 21, 18, 22, 23, 27, 24, 28, 25, 29, 26, 30});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
       ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
@@ -292,7 +292,7 @@ TEST_P(BatchMatMulOpTest, Float32Test_BroadcastFromRHS) {
       {7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
        22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36});
 
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
       ElementsAreArray({185., 200., 460.,  500.,  735.,  800.,  1010., 1100.,
@@ -356,7 +356,7 @@ TEST(ConstRHSBatchMatMulOpModel, RHSNotAdjoint) {
                                    {6, 3, 7, 4, 6, 9});
   model.PopulateTensor<float>(model.lhs(),
                               {6, 3, 7, 4, 6, 9, 2, 6, 7, 4, 3, 7});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({-48, -36, -69, -58, -45, -85, -72, -72, -123,
                                 -36, -42, -68, -58, -45, -85, -46, -51, -84}));
@@ -364,7 +364,7 @@ TEST(ConstRHSBatchMatMulOpModel, RHSNotAdjoint) {
   // Eval twice to make sure constant transposed RHS is persistent.
   model.PopulateTensor<float>(model.lhs(),
                               {6, 3, 7, 4, 6, 9, 2, 6, 7, 4, 3, 7});
-  model.Invoke();
+  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({-48, -36, -69, -58, -45, -85, -72, -72, -123,
                                 -36, -42, -68, -58, -45, -85, -46, -51, -84}));
@@ -449,7 +449,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, SimpleTestQuantizedInt8) {
       11, 12, 13, 14, 15, 16, 17, -18, 19,  -20,  // batch 1, 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -483,7 +483,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, MultipleNumBatchQuantizedInt8) {
       11, 12, 13,  // batch 1, 3
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
@@ -512,7 +512,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, RegressionTestQuantizedInt8) {
       11, 12, 13,  // batch 1, 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -541,7 +541,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, QuantizedInt8BroadcastWeights) {
       11, 12, 13, 14, 15, 16, 17, -18, 19,  -20,  // batch 1, 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -575,7 +575,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, QuantizedInt8BroadcastBigWeights) {
       11, 12, 13, 14, 15, 16, 17, -18, 19,  -20,  // batch 1, 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
@@ -606,7 +606,7 @@ TEST_P(HybridAsymmetricBatchMatMulOpTest, QuantizedInt8BroadcastInputs) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // batch 0, 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -647,7 +647,7 @@ TEST_P(HybridSymmetricBatchMatMulOpTest, SimpleTestQuantizedInt8) {
       11, 12, 13, 14, 15, 16, 17, -18, 19,  -20,  // batch 1, 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -681,7 +681,7 @@ TEST_P(HybridSymmetricBatchMatMulOpTest, QuantizedInt8BroadcastWeights) {
       11, 12, 13, 14, 15, 16, 17, -18, 19,  -20,  // batch 1, 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -716,7 +716,7 @@ TEST_P(HybridSymmetricBatchMatMulOpTest, QuantizedInt8BroadcastBigWeights) {
       11, 12, 13, 14, 15, 16, 17, -18, 19,  -20,  // batch 1, 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
@@ -748,7 +748,7 @@ TEST_P(HybridSymmetricBatchMatMulOpTest, QuantizedInt8BroadcastInputs) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // batch 0, 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -846,7 +846,7 @@ TEST_P(QuantizedBatchMatMulOpTest, SimpleTestQuantizedInt8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({23, 23, 23, 57, 57, 57})));
@@ -875,7 +875,7 @@ TEST_P(QuantizedBatchMatMulOpTest, SimpleTestQuantizedInt16) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  m.Invoke();
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear({23, 23, 23, 57, 57, 57})));

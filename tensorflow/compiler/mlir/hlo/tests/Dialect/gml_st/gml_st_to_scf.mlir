@@ -4,7 +4,7 @@
 #map1 = affine_map<(d0, d1)[s0] -> (d0 * 192 + s0 + d1)>
 #map2 = affine_map<(d0) -> (16, -d0 + 192)>
 
-func @loop(%A: memref<192x192xf32>,
+func.func @loop(%A: memref<192x192xf32>,
                  %B: memref<192x192xf32>,
                  %C: memref<192x192xf32>) {
   %cst = arith.constant 0.000000e+00 : f32
@@ -30,7 +30,7 @@ func @loop(%A: memref<192x192xf32>,
                   outs(%4 : memref<?x?xf32, #map1>)
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop
@@ -50,7 +50,7 @@ func @loop(%A: memref<192x192xf32>,
 
 // -----
 
-func @loop_reduction(%A: memref<192x192xf32>,
+func.func @loop_reduction(%A: memref<192x192xf32>,
                            %B: memref<192x192xf32>,
                            %C: memref<f32>) {
    %c24 = arith.constant 24 : index
@@ -66,7 +66,7 @@ func @loop_reduction(%A: memref<192x192xf32>,
     linalg.fill ins(%cst : f32) outs(%A_ : memref<192x192xf32>)
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop_reduction
@@ -83,7 +83,7 @@ func @loop_reduction(%A: memref<192x192xf32>,
 #strided_1d = affine_map<(d0)[s0] -> (d0 + s0)>
 #strided_2d = affine_map<(d0, d1)[s0] -> (d0 * 8 + s0 + d1)>
 
-func @loop_row_reduction(%A: memref<10x8xf32>,
+func.func @loop_row_reduction(%A: memref<10x8xf32>,
                                %B: memref<8xf32>) {
    %c0 = arith.constant 0 : index
    %c2 = arith.constant 2 : index
@@ -112,7 +112,7 @@ func @loop_row_reduction(%A: memref<10x8xf32>,
       }
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop_row_reduction
@@ -135,7 +135,7 @@ func @loop_row_reduction(%A: memref<10x8xf32>,
 #strided_1d = affine_map<(d0)[s0] -> (d0 + s0)>
 #strided_2d = affine_map<(d0, d1)[s0] -> (d0 * 8 + s0 + d1)>
 
-func @loop_col_reduction(%A: memref<10x8xf32>,
+func.func @loop_col_reduction(%A: memref<10x8xf32>,
                                %B: memref<10xf32>) {
    %c0 = arith.constant 0 : index
    %c2 = arith.constant 2 : index
@@ -164,7 +164,7 @@ func @loop_col_reduction(%A: memref<10x8xf32>,
       }
     gml_st.yield
   }
-  return
+  func.return
 }
 
 // CHECK-LABEL: @loop_col_reduction

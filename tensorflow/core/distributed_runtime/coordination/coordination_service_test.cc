@@ -62,7 +62,8 @@ class TestCoordinationClient : public CoordinationClient {
     done(Status::OK());
   }
 
-  void ReportErrorToTaskAsync(const ReportErrorToTaskRequest* request,
+  void ReportErrorToTaskAsync(CallOptions* call_opts,
+                              const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
     mutex_lock l(mu_);
@@ -78,9 +79,7 @@ class TestCoordinationClient : public CoordinationClient {
     done(errors::Unimplemented(#method "Async"));                     \
   }
 
-  UNIMPLEMENTED(Heartbeat);
   UNIMPLEMENTED(WaitForAllTasks);
-  UNIMPLEMENTED(ShutdownTask);
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(InsertKeyValue);
@@ -89,6 +88,17 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
+  void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
+                      HeartbeatResponse* response,
+                      StatusCallback done) override {
+    done(errors::Unimplemented("HeartbeatAsync"));
+  }
+  void ShutdownTaskAsync(CallOptions* call_opts,
+                         const ShutdownTaskRequest* request,
+                         ShutdownTaskResponse* response,
+                         StatusCallback done) override {
+    done(errors::Unimplemented("ShutdownTaskAsync"));
+  }
 
  private:
   mutex mu_;

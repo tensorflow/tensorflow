@@ -20,7 +20,7 @@
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @conv_forward(
+func.func @conv_forward(
   %input : memref<4x256x3x3xf16>,
   %filter: memref<256x256x2x2xf16>,
   %output: memref<4x256x2x2xf16>,
@@ -75,7 +75,7 @@ func @conv_forward(
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @conv_backwardinput(
+func.func @conv_backwardinput(
   %d_output : memref<4x256x3x3xf16>,
   %filter: memref<256x256x2x2xf16>,
   %d_input: memref<4x256x2x2xf16>,
@@ -131,7 +131,7 @@ func @conv_backwardinput(
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @conv_backwardfilter(
+func.func @conv_backwardfilter(
   %input : memref<4x256x3x3xf16>,
   %d_output: memref<256x256x2x2xf16>,
   %d_filter: memref<4x256x2x2xf16>,
@@ -191,7 +191,7 @@ func @conv_backwardfilter(
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg6: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @conv_forward_fused(
+func.func @conv_forward_fused(
   %input : memref<1x17x9x9xf16>,
   %filter : memref<3x3x17x32xf16>,
   %bias : memref<32xf16>,
@@ -253,7 +253,7 @@ func @conv_forward_fused(
 // CHECK-SAME:   %arg6: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg7: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @conv_forward_fused_with_side_input(
+func.func @conv_forward_fused_with_side_input(
   %input : memref<1x17x9x9xf16>,
   %filter : memref<3x3x17x32xf16>,
   %bias : memref<32xf16>,

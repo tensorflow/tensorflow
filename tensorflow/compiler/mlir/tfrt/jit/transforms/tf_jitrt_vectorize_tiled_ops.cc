@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -96,7 +97,7 @@ struct VectorizeTiledOpsPass
     auto funcOp = getOperation();
 
     // Vectorize linalg.fill and linalg.generic operations.
-    mlir::OpPassManager dynamicPM("builtin.func");
+    mlir::OpPassManager dynamicPM("func.func");
     CodegenStrategy strategy;
     strategy.vectorize(FillOp::getOperationName(), [](mlir::Operation *op) {
       auto fill = mlir::dyn_cast<FillOp>(op);
@@ -116,7 +117,7 @@ struct VectorizeTiledOpsPass
     strategy.configurePassPipeline(dynamicPM, funcOp.getContext());
     if (failed(runPipeline(dynamicPM, funcOp))) return signalPassFailure();
 
-    mlir::OpPassManager dynamicPM2("builtin.func");
+    mlir::OpPassManager dynamicPM2("func.func");
     CodegenStrategy strategy2;
     strategy2.vectorize(GenericOp::getOperationName(), [](mlir::Operation *op) {
       auto generic = mlir::dyn_cast<GenericOp>(op);
@@ -144,7 +145,7 @@ struct VectorizeTiledOpsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateVectorizeTiledOpsPass() {
   return std::make_unique<VectorizeTiledOpsPass>();
 }

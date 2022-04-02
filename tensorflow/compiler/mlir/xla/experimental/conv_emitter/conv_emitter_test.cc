@@ -57,7 +57,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
-  mlir::FuncOp function =
+  mlir::func::FuncOp function =
       EmitConvolutionForwardAsMlir(conv, "Conv", &context).ValueOrDie();
 
   mlir_module->push_back(function);

@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
@@ -817,8 +818,8 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
       builder.getI64IntegerAttr(hlo_module->config().replica_count());
   mlir::IntegerAttr num_partitions_attr =
       builder.getI64IntegerAttr(hlo_module->config().num_partitions());
-  mlir::FuncOp func =
-      mlir_module.lookupSymbol<mlir::FuncOp>(entry_function_name);
+  mlir::func::FuncOp func =
+      mlir_module.lookupSymbol<mlir::func::FuncOp>(entry_function_name);
   func->setAttr("replica_count", replica_count_attr);
   func->setAttr("num_partitions", num_partitions_attr);
 
@@ -851,7 +852,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
 
 using OutputInfoMap =
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
-static Status GetMlirAllocationInfo(mlir::FuncOp func,
+static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
                                     Shape* output_shape,
@@ -898,6 +899,7 @@ static Status CompileModuleToLlvmIrImpl(
     const std::string& platform_name, const se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
     se::CudaComputeCapability cuda_compute_capability,
+    se::RocmComputeCapability rocm_compute_capability,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     int pointer_size, CompileModuleResults* results) {
   results->llvm_module = absl::make_unique<llvm::Module>("", *llvm_context);
@@ -950,7 +952,7 @@ static Status CompileModuleToLlvmIrImpl(
     DumpToFileInDirOrStdout(*hlo_module, "lmhlo", mlir_module.get());
   }
 
-  auto entry_function = mlir::cast<mlir::FuncOp>(
+  auto entry_function = mlir::cast<mlir::func::FuncOp>(
       mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
 
   TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
@@ -959,8 +961,8 @@ static Status CompileModuleToLlvmIrImpl(
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability, &mlir_context,
-      results->llvm_module.get());
+      gpu_device_info, cuda_compute_capability, rocm_compute_capability,
+      &mlir_context, results->llvm_module.get());
 
   ir_emitter_context.set_allocations(results->allocations);
 
@@ -974,8 +976,7 @@ static Status CompileModuleToLlvmIrImpl(
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
     bool supports_runtime_managed_constants =
-        // TODO(b/218527186): Implement this feature for BEF as well.
-        !IsBefEnabled(hlo_module->config()) &&
+        !IsBefThunkEnabled(hlo_module->config()) &&
         // TODO(b/218907125): Implement this feature for ROCm as well.
         platform_id != se::rocm::kROCmPlatformId &&
         hlo_module->config().debug_options().xla_gpu_enable_shared_constants();
@@ -1257,6 +1258,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       stream_exec->platform()->Name(), stream_exec->platform()->id(),
       gpu_device_info,
       stream_exec->GetDeviceDescription().cuda_compute_capability(),
+      stream_exec->GetDeviceDescription().rocm_compute_capability(),
       GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
   if (user_pre_optimization_hook_) {
@@ -1423,6 +1425,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         stream_exec->platform()->Name(), stream_exec->platform()->id(),
         gpu_device_info,
         stream_exec->GetDeviceDescription().cuda_compute_capability(),
+        stream_exec->GetDeviceDescription().rocm_compute_capability(),
         GetCanShareBuffer(), pointer_size_, &compile_module_results));
 
     if (!absl::holds_alternative<OwnedBefBuffer>(
@@ -1456,12 +1459,14 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, const se::Platform::Id platform_id,
     GpuDeviceInfo gpu_device_info,
-    se::CudaComputeCapability cuda_compute_capability, int pointer_size) {
+    se::CudaComputeCapability cuda_compute_capability,
+    se::RocmComputeCapability rocm_compute_capability, int pointer_size) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
       hlo_module, llvm_context, target_triple, data_layout, platform_name,
       platform_id, gpu_device_info, cuda_compute_capability,
-      DummyCanShareBufferFunction, pointer_size, &results));
+      rocm_compute_capability, DummyCanShareBufferFunction, pointer_size,
+      &results));
   return std::move(results.llvm_module);
 }
 
@@ -1470,7 +1475,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
 //
 // This function also serves as a half-baked verifier for function arg
 // attributes, since a full verifier doens't exist yet.
-static Status GetMlirAllocationInfo(mlir::FuncOp func,
+static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
                                     Shape* output_shape,
@@ -1546,8 +1551,9 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
     absl::string_view entry_function_name, se::StreamExecutor* stream_exec,
     std::unique_ptr<llvm::Module> llvm_module,
     IrEmitterContext* ir_emitter_context) {
-  mlir::FuncOp entry_function = mlir::cast<mlir::FuncOp>(module.lookupSymbol(
-      llvm::StringRef(entry_function_name.data(), entry_function_name.size())));
+  mlir::func::FuncOp entry_function =
+      mlir::cast<mlir::func::FuncOp>(module.lookupSymbol(llvm::StringRef(
+          entry_function_name.data(), entry_function_name.size())));
 
   std::vector<BufferAllocation> allocations;
   OutputInfoMap output_info;
@@ -1566,8 +1572,7 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
   bool supports_runtime_managed_constants =
-      // TODO(b/218527186): Implement this feature for BEF as well.
-      !IsBefEnabled(module_config) &&
+      !IsBefThunkEnabled(module_config) &&
       // TODO(b/218907125): Implement this feature for ROCm as well.
       compiler->PlatformId() != se::rocm::kROCmPlatformId;
   if (supports_runtime_managed_constants) {

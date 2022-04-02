@@ -26,19 +26,19 @@ class FftTest : public MlirGpuTestBase {};
 TEST_F(FftTest, SimpleCase1) {
   const char* mlir_text = R"(
       module attributes {hlo.unique_id = 0 : i32} {
-        func @main(%arg0: memref<4xf32> {
+        func.func @main(%arg0: memref<4xf32> {
                        lmhlo.params = 0 : index
                    },
-                   %arg1: memref<4xcomplex<f32>> {
+                   %arg1: memref<3xcomplex<f32>> {
                        lmhlo.output_index = dense<[0]> : tensor<1xindex>
                    }
         ) attributes {
-            result_xla_shape = "(f32[8]) "
+            result_xla_shape = "(f32[6]) "
         } {
           "lmhlo.fft"(%arg0, %arg1) {
             fft_length = dense<4> : tensor<1xi64>,
             fft_type = #mhlo<"fft_type RFFT">
-          } : (memref<4xf32>, memref<4xcomplex<f32>>) -> ()
+          } : (memref<4xf32>, memref<3xcomplex<f32>>) -> ()
           "lmhlo.terminator"() : () -> ()
         }
       })";
@@ -47,7 +47,7 @@ TEST_F(FftTest, SimpleCase1) {
                      .ConsumeValueOrDie();
   ASSERT_EQ(1, outputs.size());
   EXPECT_THAT(FromUint8Span<float>(outputs[0]),
-              ElementsAreArray<float>({2, 0, 0, 0, 2, 0, 0, 0}));
+              ElementsAreArray<float>({2, 0, 0, 0, 2, 0}));
 }
 
 }  // namespace gpu

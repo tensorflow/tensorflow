@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -52,6 +53,7 @@ namespace tensorflow {
 namespace {
 
 constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
+constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
 constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
 
@@ -146,8 +148,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void StartCheckStaleness();  // Checks both heartbeat and barrier timeouts.
   void Stop(bool shut_staleness_thread = true);
   // Report service error to a specified task.
-  void ReportServiceErrorToTask(const CoordinatedTask& destination_task,
-                                Status error);
+  void ReportServiceErrorToTaskAsync(const CoordinatedTask& destination_task,
+                                     Status error);
   // Report error from a task to all other connected tasks.
   // Note: SetTaskError() must be called before propagating its error.
   void PropagateError(const CoordinatedTask& source_task,
@@ -648,7 +650,7 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
   return s;
 }
 
-void CoordinationServiceStandaloneImpl::ReportServiceErrorToTask(
+void CoordinationServiceStandaloneImpl::ReportServiceErrorToTaskAsync(
     const CoordinatedTask& destination_task, Status error) {
   assert(!error.ok());
 
@@ -665,11 +667,14 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToTask(
   CoordinatedTask* error_source =
       request->mutable_error_payload()->mutable_source_task();
   error_source->set_job_name("coordination_service");
+  auto call_opts = std::make_shared<CallOptions>();
+  call_opts->SetTimeout(kServiceToClientTimeoutMs);
 
   const std::string task_name = GetTaskName(destination_task);
   CoordinationClient* client = client_cache_->GetClient(task_name);
   client->ReportErrorToTaskAsync(
-      request.get(), response.get(), [request, response, task_name](Status s) {
+      call_opts.get(), request.get(), response.get(),
+      [request, response, task_name, call_opts](Status s) {
         if (!s.ok()) {
           LOG(ERROR) << "Encountered another error while reporting to "
                      << task_name << ": " << s;
@@ -691,6 +696,8 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   CoordinationServiceError* payload = request.mutable_error_payload();
   *payload->mutable_source_task() = source_task;
   payload->set_is_reported_error(is_reported_by_task);
+  CallOptions call_opts;
+  call_opts.SetTimeout(kServiceToClientTimeoutMs);
   std::vector<std::shared_ptr<Notification>> notifications;
 
   std::vector<absl::string_view> task_names;
@@ -718,7 +725,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
     auto response = std::make_shared<ReportErrorToTaskResponse>();
     auto n = std::make_shared<Notification>();
     client->ReportErrorToTaskAsync(
-        &request, response.get(), [response, n, task](Status s) {
+        &call_opts, &request, response.get(), [response, n, task](Status s) {
           if (!s.ok()) {
             LOG(ERROR) << "Encountered another error while reporting to "
                        << task << ": " << s;
@@ -998,10 +1005,6 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
   if (barrier_id == device_propagation_barrier_id_) {
     SetXlaGlobalDeviceIds();
   }
-  // Propagate results to participating tasks.
-  for (const auto& callback : barrier->done_callbacks) {
-    callback(result);
-  }
   for (const auto& task_at_barrier : barrier->tasks_at_barrier) {
     // Clean up task state (used as error hooks).
     const CoordinatedTask& task = task_at_barrier.first;
@@ -1028,13 +1031,19 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
         // Propagate errors to straggling tasks that have not reached the
         // barrier. The barrier must have failed if any task did not reach the
         // barrier.
-        ReportServiceErrorToTask(task, shutdown_error);
+        ReportServiceErrorToTaskAsync(task, shutdown_error);
       }
     }
   }
   barrier->tasks_at_barrier.clear();
-  barrier->done_callbacks.clear();
   ongoing_barriers_.erase(barrier_id);
+  // Note: barrier_id shouldn't be referenced after this line as its lifetime
+  // may be tied to one of the callbacks.
+  // Propagate results to participating tasks.
+  for (const auto& callback : barrier->done_callbacks) {
+    callback(result);
+  }
+  barrier->done_callbacks.clear();
 }
 
 bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(

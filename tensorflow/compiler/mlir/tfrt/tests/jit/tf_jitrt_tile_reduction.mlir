@@ -2,7 +2,7 @@
 // RUN:   -tf-jitrt-tile-reduction="reduction-2d-tile-sizes=4,4 reduction-vector-size=8 reduction-1d-tile-size=16" \
 // RUN: | FileCheck %s
 
-func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
+func.func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
                         %rhs: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
@@ -22,7 +22,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
     %add = arith.addf %prod, %o : f32
     linalg.yield %add : f32
   } -> tensor<?xf32>
-  return %sum_of_prod : tensor<?xf32>
+  func.return %sum_of_prod : tensor<?xf32>
 }
 // CHECK-LABEL: func @reduce_row_sum_2d(
 // CHECK-SAME:    %[[LHS:.*]]: tensor<?x?xf32>,
@@ -61,7 +61,7 @@ func @reduce_row_sum_2d(%lhs: tensor<?x?xf32>,
 
 // -----
 
-func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
+func.func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %input, %c0 : tensor<8x16xf32>
@@ -78,7 +78,7 @@ func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
     %add = arith.addf %in, %out : f32
     linalg.yield %add : f32
   } -> tensor<8xf32>
-  return %sum : tensor<8xf32>
+  func.return %sum : tensor<8xf32>
 }
 // CHECK-LABEL: func @reduce_row_sum_2d_static
 // CHECK: gml_st.loop
@@ -86,7 +86,7 @@ func @reduce_row_sum_2d_static(%input: tensor<8x16xf32>) -> tensor<8xf32> {
 
 // -----
 
-func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
+func.func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %input, %c0 : tensor<?x?xf32>
@@ -103,7 +103,7 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
     %add = arith.addf %in, %out : f32
     linalg.yield %add : f32
   } -> tensor<?xf32>
-  return %sum : tensor<?xf32>
+  func.return %sum : tensor<?xf32>
 }
 // CHECK-LABEL: func @reduce_column_sum_2d
 // CHECK-SAME:    %[[INPUT:.*]]: tensor<?x?xf32>) -> tensor<?xf32>
@@ -138,7 +138,7 @@ func @reduce_column_sum_2d(%input: tensor<?x?xf32>) -> tensor<?xf32> {
 
 // -----
 
-func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
+func.func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -156,14 +156,14 @@ func @abs(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %abs = math.abs %in: f32
     linalg.yield %abs : f32
   } -> tensor<?x?xf32>
-  return %sum : tensor<?x?xf32>
+  func.return %sum : tensor<?x?xf32>
 }
 // CHECK-LABEL: func @abs
 // CHECK-NOT: gml_st.loop
 
 // -----
 
-func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
+func.func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
   %cst = arith.constant 0.000000e+00 : f32
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %lhs, %c0 : tensor<?xf32>
@@ -182,7 +182,7 @@ func @reduce_sum_1d(%lhs: tensor<?xf32>, %rhs: tensor<?xf32>) -> tensor<f32> {
     %add = arith.addf %prod, %out : f32
     linalg.yield %add : f32
   } -> tensor<f32>
-  return %sum : tensor<f32>
+  func.return %sum : tensor<f32>
 }
 
 // CHECK-LABEL: func @reduce_sum_1d(

@@ -631,7 +631,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   InterpreterOptions options;
-  options.SetPreserveAllTensors(params_.Get<bool>("release_dynamic_tensors"));
+  options.SetEnsureDynamicTensorsAreReleased(
+      params_.Get<bool>("release_dynamic_tensors"));
   options.SetDynamicAllocationForLargeTensors(
       params_.Get<int32_t>("use_dynamic_tensors_for_large_tensors"));
   interpreter_->ApplyOptions(&options);

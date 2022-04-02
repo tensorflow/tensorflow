@@ -380,7 +380,9 @@ def TestFactory(xla_backend,
           operand_shapes_with_layout=[
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
-          ])
+          ],
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_STATUS_RETURNING)
       self._ExecuteAndCompareClose(c, expected=[0.75])
 
   tests.append(ComputationsWithConstantsTest)
@@ -610,9 +612,12 @@ def TestFactory(xla_backend,
       self.assertEqual(buffer.ndim, 2)
 
       self.assertIs(buffer, buffer.block_until_ready())
+      self.assertTrue(buffer.is_ready())
       buffer.delete()
       with self.assertRaises(RuntimeError):
         buffer.block_until_ready()
+      with self.assertRaises(RuntimeError):
+        buffer.is_ready()
 
     def testOnDeviceSizeInBytes(self):
       if not isinstance(self.backend, xla_client.Client):
@@ -1563,7 +1568,9 @@ def TestFactory(xla_backend,
       results = self._Execute(b, [qy_arg, db_arg])
       ground_truth_docids = [set(x) for x in results[0]]
       hits = sum(
-          len(list(x for x in approx_topk_per_q
+          len(
+              list(x
+                   for x in approx_topk_per_q
                    if x in ground_truth_docids[q]))
           for q, approx_topk_per_q in enumerate(results[1]))
       self.assertGreater(hits / (qy_size * k), recall_target)

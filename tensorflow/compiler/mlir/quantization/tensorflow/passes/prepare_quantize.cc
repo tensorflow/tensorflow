@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -37,12 +38,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> post_training_quantize(
+static llvm::cl::opt<bool> post_training_quantize_flag(
     "quant-test-post-training-quantize", llvm::cl::value_desc("bool"),
     llvm::cl::desc("enable post training quantization. Only used in tests"),
     llvm::cl::init(false));
@@ -78,7 +80,13 @@ class PrepareQuantizePass
   // This is only used by test.
   explicit PrepareQuantizePass() {
     quant_specs_.inference_type = tensorflow::DT_QINT8;
-    quant_specs_.post_training_quantization = post_training_quantize;
+    quant_specs_.post_training_quantization = post_training_quantize_flag;
+  }
+
+  explicit PrepareQuantizePass(QuantizationMethod quantization_method) {
+    quant_specs_.inference_type = tensorflow::DT_QINT8;
+    quant_specs_.post_training_quantization =
+        (quantization_method == QuantizationMethod::kPostTrainingQuantization);
   }
 
   // Constructor used by manually creating the pass.
@@ -224,12 +232,12 @@ std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
     if (!function_name.startswith("fused_")) {
       return spec;
     }
-    if (function_name.contains("conv")) {
+    if (function_name.contains("conv2d_with_bias")) {
       spec->biases_params.emplace(std::make_pair(
           2, std::make_pair(std::initializer_list<int>({0, 1}),
                             quant::GetUniformQuantizedTypeForBias)));
       spec->coeff_op_quant_dim[0] = 3;
-    } else if (function_name.contains("matmul")) {
+    } else if (function_name.contains("matmul_with_bias")) {
       spec->biases_params.emplace(std::make_pair(
           2, std::make_pair(std::initializer_list<int>({0, 1}),
                             quant::GetUniformQuantizedTypeForBias)));
@@ -385,8 +393,9 @@ void PrepareQuantizePass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect PrepareQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass() {
-  return std::make_unique<PrepareQuantizePass>();
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
+    QuantizationMethod quantization_method) {
+  return std::make_unique<PrepareQuantizePass>(quantization_method);
 }
 
 static PassRegistration<PrepareQuantizePass> pass;

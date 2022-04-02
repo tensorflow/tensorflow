@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -2028,6 +2029,137 @@ bool IsSpatialPoolingWithoutDilation(
   return true;
 }
 
+// Convert a reduce_window operation into a cumulative operation where possible
+// for a given binary operation.
+template <class BinaryOp, class TfCumOp>
+class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  virtual bool IsInitValue(const DenseElementsAttr &attr) const = 0;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceWindowOp rw, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const final {
+    if (rw.getNumResults() != 1 || rw.inputs().size() != 1 ||
+        rw.init_values().size() != 1)
+      return failure();
+
+    if (failed(MatchBinaryReduceFunction<BinaryOp>(rw.body())))
+      return failure();
+
+    // Ensure that initial_values are as expected.
+    auto const_op = llvm::dyn_cast_or_null<mhlo::ConstOp>(
+        rw.init_values()[0].getDefiningOp());
+    if (!const_op) return failure();
+    auto const_op_dense_value = const_op.value().cast<DenseElementsAttr>();
+    if (!const_op_dense_value || !IsInitValue(const_op_dense_value)) {
+      return failure();
+    }
+
+    ShapedType input_type = rw.inputs()[0].getType().cast<ShapedType>();
+
+    // For a cumulative op, require a tensor of 1s for each dimension in
+    // input.
+    auto is_splat_int64_ones =
+        [&rewriter,
+         &input_type](const ::llvm::Optional<DenseIntElementsAttr> &attr) {
+          if (!attr.hasValue()) return false;
+          if (attr->getType().getShape()[0] != input_type.getRank())
+            return false;
+          if (!attr->isSplat()) return false;
+          if (attr->getElementType() != rewriter.getIntegerType(64))
+            return false;
+          if (attr->getSplatValue<APInt>().getSExtValue() != 1) return false;
+          return true;
+        };
+    if (!is_splat_int64_ones(rw.base_dilations()) ||
+        !is_splat_int64_ones(rw.window_dilations()) ||
+        !is_splat_int64_ones(rw.window_strides()))
+      return failure();
+
+    // Determine which axis is being used for the cumulative operation.
+    //
+    // For a cumulative op, window_dimensions should be of the form:
+    //  dense<[1, 1, N, 1]>
+    // where N is the same as the size of the corresponding input dimension
+    // and there is a 1-entry for each input dimension not being operated
+    // over.
+    const auto &window_dimensions = rw.window_dimensions();
+    if (window_dimensions.size() != input_type.getRank()) return failure();
+    int64_t cumulative_axis = -1;
+    for (int64_t i = 0, e = window_dimensions.size(); i < e; ++i) {
+      int64_t window_dimension = window_dimensions.getValues<int64_t>()[i];
+      if (window_dimension == 1) continue;
+      // Cumulative axis already set.
+      if (cumulative_axis != -1) return failure();
+      // Potential cumulative axis is not the right size.
+      if (window_dimension != input_type.getShape()[i]) return failure();
+      cumulative_axis = i;
+    }
+
+    // For a cumulative op, padding (expressed as a list of left-padding and
+    // right-padding pairs) should be of the form:
+    //  dense<[[0, 0], [0, 0], [N-1, 0], [0, 0]]>
+    // where N is the size of the input dimension being operated over.
+    if (!rw.padding()) return failure();
+    const auto &padding = rw.padding()->getValues<int64_t>();
+    if (padding.size() != input_type.getRank() * 2) return failure();
+    int64_t padding_value = input_type.getShape()[cumulative_axis] - 1;
+    for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
+      int64_t left_padding = padding[2 * dim];
+      int64_t right_padding = padding[2 * dim + 1];
+      if (dim == cumulative_axis) {
+        if (left_padding != padding_value) return failure();
+      } else {
+        if (left_padding != 0) return failure();
+      }
+      if (right_padding != 0) return failure();
+    }
+
+    auto axis = rewriter.create<TF::ConstOp>(
+        rw->getLoc(),
+        rewriter.getIntegerAttr(rewriter.getIntegerType(64), cumulative_axis));
+
+    rewriter.replaceOpWithNewOp<TfCumOp>(rw, rw.getType(0), rw.inputs()[0],
+                                         axis, /* exclusive */ false,
+                                         /* reverse */ false);
+    return success();
+  }
+};
+
+class ConvertLoweredCumSumOp
+    : public ConvertLoweredCumOp<mhlo::AddOp, TF::CumsumOp> {
+  using ConvertLoweredCumOp::ConvertLoweredCumOp;
+  bool IsInitValue(const DenseElementsAttr &attr) const override {
+    auto element_type = attr.getType().getElementType();
+    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
+      return false;
+    if (element_type.isa<FloatType>()) {
+      auto value = *attr.value_begin<APFloat>();
+      return value.isZero();
+    }
+    auto value = *attr.value_begin<APInt>();
+    return value.isZero();
+  }
+};
+
+class ConvertLoweredCumProdOp
+    : public ConvertLoweredCumOp<mhlo::MulOp, TF::CumprodOp> {
+  using ConvertLoweredCumOp::ConvertLoweredCumOp;
+  bool IsInitValue(const DenseElementsAttr &attr) const override {
+    auto element_type = attr.getType().getElementType();
+    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
+      return false;
+    if (element_type.isa<FloatType>()) {
+      auto value = *attr.value_begin<APFloat>();
+      return value.isExactlyValue(1.0);
+    }
+    auto value = *attr.value_begin<APInt>();
+    return value.getSExtValue() == 1;
+  }
+};
+
 // Maps the following representations of AvgPool in MHLO into a tf.AvgPool{3D}
 // operation when they cleanly map to 2D or 3D average pool with VALID or SAME
 // padding:
@@ -2434,7 +2566,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
   // output to the real output.
   struct TransposeParams {
     std::vector<int64_t> permutation;
-    // The following are the "canocanilzed" output shape with offset dims.
+    // The following are the "canonicalized" output shape with offset dims.
     std::vector<int64_t> canonicalized_output_shape;
     std::vector<int64_t> canonicalized_offset_dims;
   };
@@ -2894,7 +3026,8 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet *patterns,
       ConvertSliceOp, ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
       ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
       ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
-      ConvertIotaOpToTfRange, ConvertWhileOp>(context);
+      ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
+      ConvertLoweredCumProdOp>(context);
   populateWithGenerated(*patterns);
 }
 

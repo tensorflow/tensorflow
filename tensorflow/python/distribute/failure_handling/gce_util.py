@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Integration of CoordinatedCheckpointManager with GCE specific logic."""
+"""Util of GCE specifics to ingegrate with WorkerPreemptionHandler."""
 import enum
 import os
 
@@ -26,9 +25,10 @@ from tensorflow.python.eager import context
 GCP_METADATA_HEADER = {'Metadata-Flavor': 'Google'}
 _GCE_METADATA_URL_ENV_VARIABLE = 'GCE_METADATA_IP'
 _RESTARTABLE_EXIT_CODE = 143
+GRACE_PERIOD_GCE = 0
 
 
-def request_compute_metadata(path: str) -> str:
+def request_compute_metadata(path):
   """Returns GCE VM compute metadata."""
   gce_metadata_endpoint = 'http://' + os.environ.get(
       _GCE_METADATA_URL_ENV_VARIABLE, 'metadata.google.internal')
@@ -42,7 +42,7 @@ def request_compute_metadata(path: str) -> str:
     return info
 
 
-def signal_polling_fn() -> bool:
+def termination_watcher_function_gce():
   result = request_compute_metadata(
       'instance/maintenance-event') == 'TERMINATE_ON_HOST_MAINTENANCE'
   return result
@@ -75,7 +75,7 @@ class PlatformDevice(enum.Enum):
   UNSUPPORTED = 'unsupported'
 
 
-def detect_platform() -> PlatformDevice:
+def detect_platform():
   """Returns the platform and device information."""
   if on_gcp():
     if context.context().list_physical_devices('GPU'):

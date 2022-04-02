@@ -33,7 +33,7 @@ class Comparison {
     kSigned,
     kUnsigned,
   };
-  //
+
   // Represents different comparison operations.
   enum class Direction : uint8_t {
     kEq,
@@ -81,21 +81,21 @@ class Comparison {
   std::string ToString(std::string prefix1 = ".",
                        std::string prefix2 = ".") const;
 
-  template <typename T, typename Comparator = bool (*)(const T, const T)>
-  Comparator GetComparator() const {
+  template <typename T>
+  std::function<bool(T, T)> GetComparator() const {
     switch (GetDirection()) {
       case Direction::kEq:
-        return +[](const T a, const T b) { return a == b; };
+        return std::equal_to<T>();
       case Direction::kNe:
-        return +[](const T a, const T b) { return a != b; };
+        return std::not_equal_to<T>();
       case Direction::kGe:
-        return +[](const T a, const T b) { return a >= b; };
+        return std::greater_equal<T>();
       case Direction::kGt:
-        return +[](const T a, const T b) { return a > b; };
+        return std::greater<T>();
       case Direction::kLe:
-        return +[](const T a, const T b) { return a <= b; };
+        return std::less_equal<T>();
       case Direction::kLt:
-        return +[](const T a, const T b) { return a < b; };
+        return std::less<T>();
     }
   }
 

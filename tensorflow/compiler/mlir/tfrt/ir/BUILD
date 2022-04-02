@@ -98,6 +98,7 @@ cc_library(
     ],
     deps = [
         ":tfrt_fallback_async_opdefs",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
 )

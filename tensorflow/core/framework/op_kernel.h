@@ -1028,7 +1028,7 @@ class OpKernelContext {
   DeviceContext* op_device_context() {
     DeviceContext* ret = params_->op_device_context;
     if (ret == nullptr) {
-      auto* dev_info = device()->tensorflow_gpu_device_info();
+      auto* dev_info = device()->tensorflow_accelerator_device_info();
       if (dev_info) ret = dev_info->default_context;
     }
     return ret;

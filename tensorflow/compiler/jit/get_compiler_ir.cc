@@ -130,9 +130,9 @@ StatusOr<std::string> GetCompilerIr(
   core::ScopedUnref cache_ref(cache);
 
   se::Stream* stream = nullptr;
-  if (const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
-          dev->tensorflow_gpu_device_info()) {
-    stream = gpu_device_info->stream;
+  if (const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+          dev->tensorflow_accelerator_device_info()) {
+    stream = accelerator_device_info->stream;
   }
 
   XlaCompiler::Options options =

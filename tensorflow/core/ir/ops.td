@@ -93,7 +93,7 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
     // Attributes required by FunctionOpInterface. These are declared here for
     // ease of access and to cache the attribute names in the op.
     SymbolNameAttr:$sym_name,
-    TypeAttr:$type,
+    TypeAttrOf<FunctionType>:$function_type,
     ArrayAttr:$arg_attrs,
     ArrayAttr:$res_attrs,
     // Optional function attributes.
@@ -118,7 +118,7 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
       build($_builder, $_state);
       $_state.addAttribute(GraphFuncOp::sym_nameAttrName($_state.name),
                            $_builder.getStringAttr(sym_name));
-      $_state.addAttribute(GraphFuncOp::typeAttrName($_state.name),
+      $_state.addAttribute(GraphFuncOp::function_typeAttrName($_state.name),
                            TypeAttr::get(type));
       if (generic) {
         $_state.addAttribute(GraphFuncOp::genericAttrName($_state.name),
@@ -141,8 +141,8 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
 
     /// Returns the type of this function.
     /// FIXME: We should drive this via the ODS `type` param.
-    FunctionType getType() {
-      return getTypeAttr().getValue().cast<FunctionType>();
+    FunctionType getFunctionType() {
+      return getFunctionTypeAttr().getValue().cast<FunctionType>();
     }
 
     // Returns true if this function is marked for JIT compilation.
@@ -179,17 +179,17 @@ def TFGraph_GraphFuncOp : TFGraph_Op<"func", [
 
     // Returns the results types that the callable region produces when
     // executed.
-    ArrayRef<Type> getCallableResults() { return getType().getResults(); }
+    ArrayRef<Type> getCallableResults() { return getFunctionType().getResults(); }
 
     //===------------------------------------------------------------------===//
     // FunctionOpInterface Methods
     //===------------------------------------------------------------------===//
 
     /// Returns the argument types of this function.
-    ArrayRef<Type> getArgumentTypes() { return getType().getInputs(); }
+    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
 
     /// Returns the result types of this function.
-    ArrayRef<Type> getResultTypes() { return getType().getResults(); }
+    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
 
     LogicalResult verifyType();
     LogicalResult verifyBody();
@@ -283,12 +283,15 @@ class TFGraph_IfLikeOp<string mnemonic>
     I1Tensor:$cond,
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
-    TypeAttr:$Tcond,
-    TypeArrayAttr:$Tin,
-    TypeArrayAttr:$Tout,
     TFType_FuncAttr:$then_branch,
     TFType_FuncAttr:$else_branch,
-    TFGraph_ShapesAttr:$output_shapes
+    // Optional attributes. These attributes are present on import and are
+    // required for export, but can be dropped if they contain redundant type
+    // information.
+    OptionalAttr<TypeAttr>:$Tcond,
+    OptionalAttr<TypeArrayAttr>:$Tin,
+    OptionalAttr<TypeArrayAttr>:$Tout,
+    OptionalAttr<TFGraph_ShapesAttr>:$output_shapes
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
@@ -319,10 +322,13 @@ class TFGraph_CaseLikeOp<string mnemonic>
     I32Tensor:$branch_index,
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
-    TypeArrayAttr:$Tin,
-    TypeArrayAttr:$Tout,
     TypedArrayAttrBase<TFType_FuncAttr, "an array of functions">:$branches,
-    TFGraph_ShapesAttr:$output_shapes
+    // Optional attributes. These attributes are present on import and are
+    // required for export, but can be dropped if they contain redundant type
+    // information.
+    OptionalAttr<TypeArrayAttr>:$Tin,
+    OptionalAttr<TypeArrayAttr>:$Tout,
+    OptionalAttr<TFGraph_ShapesAttr>:$output_shapes
   );
 
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
@@ -353,11 +359,14 @@ class TFGraph_WhileLikeOp<string mnemonic>
     // Op operands.
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
-    TypeArrayAttr:$T,
     TFType_FuncAttr:$cond,
     TFType_FuncAttr:$body,
-    TFGraph_ShapesAttr:$output_shapes,
-    I64Attr:$parallel_iterations
+    I64Attr:$parallel_iterations,
+    // Optional attributes. These attributes are present on import and are
+    // required for export, but can be dropped if they contain redundant type
+    // information.
+    OptionalAttr<TypeArrayAttr>:$T,
+    OptionalAttr<TFGraph_ShapesAttr>:$output_shapes
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
@@ -392,8 +401,11 @@ def TFGraph_ForOp
     I32Tensor:$delta,
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
-    TypeArrayAttr:$T,
-    TFType_FuncAttr:$body
+    TFType_FuncAttr:$body,
+    // Optional attributes. These attributes are present on import and are
+    // required for export, but can be dropped if they contain redundant type
+    // information.
+    OptionalAttr<TypeArrayAttr>:$T
   );
 
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);

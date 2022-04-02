@@ -66,7 +66,7 @@ struct TestPass
     opstate.addAttribute(dialect->getNameAttrIdentifier(),
                          builder.getStringAttr("x_times_y"));
 
-    mlir::Operation* replacement = builder.createOperation(opstate);
+    mlir::Operation* replacement = builder.create(opstate);
     target->replaceAllUsesWith(replacement->getResults());
     target->erase();
   }

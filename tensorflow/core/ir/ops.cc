@@ -264,7 +264,7 @@ static ParseResult ParseCustomTfOp(OpAsmParser &parser,
                                    OperationState &result) {
   MLIRContext *context = parser.getBuilder().getContext();
   // Parse optional argument list
-  SmallVector<OpAsmParser::OperandType, 4> op_infos;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> op_infos;
   if (parser.parseOperandList(op_infos, AsmParser::Delimiter::OptionalParen))
     return failure();
   unsigned numNonControlOperands = op_infos.size();
@@ -369,7 +369,7 @@ bool GraphFuncOp::isMarkedForCompilation() {
 // attribute is present and checks if it holds a function type. Ensures
 // getType, getNumFuncArguments, and getNumFuncResults can be called safely
 LogicalResult GraphFuncOp::verifyType() {
-  auto type = getTypeAttr().getValue();
+  auto type = getFunctionTypeAttr().getValue();
   if (!type.isa<FunctionType>())
     return emitOpError("requires '" + getTypeAttrName() +
                        "' attribute of function type");
@@ -379,17 +379,18 @@ LogicalResult GraphFuncOp::verifyType() {
 // Hook for OpTrait::FunctionLike, called after verifying the function
 // type and the presence of the (potentially empty) function body.
 LogicalResult GraphFuncOp::verifyBody() {
+  FunctionType type = getFunctionType();
   // Check that the body is terminated with a tfg.return.
   if (getRegion().empty() || getBody()->empty())
     return emitOpError() << "expects a non empty body";
 
-  if (getBody()->getNumArguments() != getType().getNumInputs())
-    return emitOpError() << "function type indicated "
-                         << getType().getNumInputs() << " args but block has "
+  if (getBody()->getNumArguments() != type.getNumInputs())
+    return emitOpError() << "function type indicated " << type.getNumInputs()
+                         << " args but block has "
                          << getBody()->getNumArguments();
 
   for (auto &arg_types : llvm::enumerate(
-           llvm::zip(getType().getInputs(), getBody()->getArgumentTypes()))) {
+           llvm::zip(type.getInputs(), getBody()->getArgumentTypes()))) {
     Type signature_arg = std::get<0>(arg_types.value());
     Type block_arg = std::get<1>(arg_types.value());
     if (signature_arg != block_arg)
@@ -404,7 +405,6 @@ LogicalResult GraphFuncOp::verifyBody() {
            << getBody()->back().getName().getStringRef();
 
   ReturnOp return_op = cast<ReturnOp>(getBody()->getTerminator());
-  FunctionType type = getType();
 
   if (type.getNumResults() > return_op->getNumOperands())
     return emitOpError() << "expects " << type.getNumResults()
@@ -482,7 +482,7 @@ LogicalResult GraphFuncOp::verify() {
 }
 
 ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
-  SmallVector<OpAsmParser::OperandType> entry_args;
+  SmallVector<OpAsmParser::UnresolvedOperand> entry_args;
   SmallVector<Attribute> arg_attrs;
   SmallVector<Attribute> result_attrs;
   SmallVector<Type> arg_types;
@@ -535,7 +535,7 @@ ParseResult GraphFuncOp::parse(OpAsmParser &parser, OperationState &result) {
     // implementation of:
     //   TFGraphOpAsmInterface::getAsmBlockArgumentNames()
     // at the top of this file.
-    OpAsmParser::OperandType control_operand = entry_args.back();
+    OpAsmParser::UnresolvedOperand control_operand = entry_args.back();
     control_operand_names.push_back((control_operand.name + ".ctl").str());
     control_operand.name = control_operand_names.back();
     entry_args.push_back(control_operand);
@@ -620,7 +620,7 @@ void GraphFuncOp::print(OpAsmPrinter &p) {
   p.printSymbolName(funcName);
   argIndentSize += funcName.size();
   std::string indent(argIndentSize, ' ');
-  FunctionType fnType = getType();
+  FunctionType fnType = getFunctionType();
   ArrayRef<Type> arg_types = fnType.getInputs();
   ArrayRef<Type> result_types = fnType.getResults();
   assert((arg_types.size() % 2) == 0);
@@ -747,13 +747,13 @@ ParseResult ReturnOp::parse(OpAsmParser &parser, OperationState &result) {
   // ReturnOp has the same assembly format as generic TFG ops except that the
   // control result attributes are embedded with the control operands:
   // [%ctl {tfg.name = "foo"}, %ctl_0 {tfg.name = "bar"}]
-  SmallVector<OpAsmParser::OperandType> operands;
+  SmallVector<OpAsmParser::UnresolvedOperand> operands;
   if (parser.parseOperandList(operands, AsmParser::Delimiter::OptionalParen))
     return failure();
 
   SmallVector<Attribute> control_ret_attrs;
   if (succeeded(parser.parseOptionalLSquare())) {
-    OpAsmParser::OperandType operand;
+    OpAsmParser::UnresolvedOperand operand;
     do {
       NamedAttrList attrs;
       OptionalParseResult parse_result = parser.parseOptionalOperand(operand);
@@ -832,8 +832,8 @@ static FailureOr<TypeRange> VerifyOperands(Operation *op) {
       llvm::find(op->getOperandTypes(), control_ty);
   if (!std::all_of(it, op->operand_type_end(),
                    [&](Type type) { return type == control_ty; })) {
-    return {op->emitOpError(
-        "not all control tokens come after non-control operands")};
+    return op->emitOpError(
+        "not all control tokens come after non-control operands");
   }
   return {Operation::operand_type_range(op->operand_type_begin(), it)};
 }
@@ -846,10 +846,10 @@ static FailureOr<TypeRange> VerifyResults(Operation *op) {
   Operation::result_type_iterator it =
       llvm::find(op->getResultTypes(), control_ty);
   if (it == op->result_type_end())
-    return {op->emitOpError("does not define a control result")};
+    return op->emitOpError("does not define a control result");
   if (it != std::prev(op->result_type_end())) {
-    return {op->emitOpError(
-        "must have a control token result as and only as its last result")};
+    return op->emitOpError(
+        "must have a control token result as and only as its last result");
   }
   return {Operation::result_type_range(op->result_type_begin(), it)};
 }
@@ -864,8 +864,8 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
            << "\nsee referenced function";
   };
 
-  ArrayRef<Type> arguments = func.getType().getInputs();
-  ArrayRef<Type> returns = func.getType().getResults();
+  ArrayRef<Type> arguments = func.getFunctionType().getInputs();
+  ArrayRef<Type> returns = func.getFunctionType().getResults();
   if (operands.size() * 2 != arguments.size()) {
     return attach_func(op->emitOpError(func_name)
                        << " function has " << arguments.size() / 2
@@ -907,6 +907,8 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
 // to be an array of type attributes.
 static LogicalResult VerifyTypeArray(Operation *op, ValueRange values,
                                      ArrayAttr types, StringRef kind) {
+  // Don't verify if the types are not present.
+  if (!types) return success();
   if (values.size() != types.size()) {
     return op->emitOpError("has ") << values.size() << " " << kind << "s but "
                                    << types.size() << " " << kind << " types";
@@ -935,13 +937,13 @@ using detect_has_T = llvm::is_detected<has_T, OpT>;
 // use it for both input and output. Otherwise, return separate type arrays.
 template <typename OpT, bool = detect_has_T<OpT>::value>
 struct GetTypeArray {
-  static ArrayAttr getInputTypes(OpT op) { return op.Tin(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.Tout(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.TinAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.ToutAttr(); }
 };
 template <typename OpT>
 struct GetTypeArray<OpT, true> {
-  static ArrayAttr getInputTypes(OpT op) { return op.T(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.T(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.TAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.TAttr(); }
 };
 }  // namespace detail
 

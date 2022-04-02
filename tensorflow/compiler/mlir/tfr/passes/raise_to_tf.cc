@@ -229,7 +229,8 @@ LogicalResult RewriteTFRCallOp::CollectInputsAndAttributes(
     PatternRewriter& rewriter, TFRFuncOp signature, CallOp call_op,
     SmallVectorImpl<Value>* inputs, NamedAttrList* arg_attrs,
     llvm::StringMap<Attribute>* derived_attrs) const {
-  for (const auto& operand : llvm::enumerate(signature.getType().getInputs())) {
+  for (const auto& operand :
+       llvm::enumerate(signature.getFunctionType().getInputs())) {
     // If the index is larger than the operand number of the call_op, the
     // default value of the operand needs to be used.
     if (operand.index() >= call_op.getNumOperands()) {
@@ -245,7 +246,8 @@ LogicalResult RewriteTFRCallOp::CollectInputsAndAttributes(
     // The index is valid for the call_op.
     Value input = call_op.getOperand(operand.index());
     Operation* input_op = input.getDefiningOp();
-    auto input_tfr_type = signature.getType().getInputs()[operand.index()];
+    auto input_tfr_type =
+        signature.getFunctionType().getInputs()[operand.index()];
 
     // There are three cases for the preceding input_op:
 
@@ -379,7 +381,7 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
   rewriter.setInsertionPointAfter(call_op);
   std::string tf_op_name = GetTFOpName(call_op.callee());
   OperationState new_state(loc, tf_op_name, inputs, output_types, attr_list);
-  Operation* new_op = rewriter.createOperation(new_state);
+  Operation* new_op = rewriter.create(new_state);
   if (materialize_derived_attrs_) {
     for (const auto& attr : derived_attrs) {
       // Add or update the derived attribute with the value. Skip the fixed
@@ -451,8 +453,8 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
 
   // Derive the output types by using the attributes attached to the tfr
   // types.
-  if (failed(DeriveOutputTypes(call_op->getLoc(), func.getType(), derived_attrs,
-                               &output_types))) {
+  if (failed(DeriveOutputTypes(call_op->getLoc(), func.getFunctionType(),
+                               derived_attrs, &output_types))) {
     return failure();
   }
 

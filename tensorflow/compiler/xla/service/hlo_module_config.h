@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -164,6 +165,20 @@ class HloModuleConfig {
   }
   bool use_auto_spmd_partitioning() const {
     return use_auto_spmd_partitioning_;
+  }
+
+  void set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t> mesh_shape) {
+    auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+  }
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+    return auto_spmd_partitioning_mesh_shape_;
+  }
+
+  void set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t> mesh_ids) {
+    auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+  }
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+    return auto_spmd_partitioning_mesh_ids_;
   }
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
@@ -343,6 +358,11 @@ class HloModuleConfig {
 
   // Whether to automatically generate XLA shardings for SPMD partitioner.
   bool use_auto_spmd_partitioning_ = false;
+
+  // Mesh shape and mesh ids used by auto spmd partitioning.
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
+
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.

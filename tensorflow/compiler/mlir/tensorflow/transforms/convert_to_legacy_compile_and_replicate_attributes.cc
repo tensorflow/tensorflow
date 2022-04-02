@@ -40,9 +40,8 @@ struct ConvertToLegacyCompileAndReplicateAttributesPass
   void runOnOperation() override;
 };
 
-LogicalResult ConvertToLegacyAttributes(ModuleOp module_op) {
-  mlir::OpBuilder builder(module_op.getContext());
-  auto result = module_op->walk([&](mlir::Operation* op) {
+LogicalResult ConvertToLegacyAttributes(FuncOp func_op) {
+  auto result = func_op->walk([&](mlir::Operation* op) {
     if (failed(TF::HasValidCompilationAndReplicationAttributes(*op)))
       return WalkResult::interrupt();
     if (op->hasAttr(TF::kReplicationInfoAttr)) {
@@ -56,13 +55,13 @@ LogicalResult ConvertToLegacyAttributes(ModuleOp module_op) {
 }
 
 void ConvertToLegacyCompileAndReplicateAttributesPass::runOnOperation() {
-  auto module_op = getOperation();
-  if (failed(ConvertToLegacyAttributes(module_op))) return signalPassFailure();
+  FuncOp func_op = getOperation();
+  if (failed(ConvertToLegacyAttributes(func_op))) return signalPassFailure();
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateConvertToLegacyCompileAndReplicateAttributesPass() {
   return std::make_unique<ConvertToLegacyCompileAndReplicateAttributesPass>();
 }

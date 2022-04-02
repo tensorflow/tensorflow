@@ -285,7 +285,7 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
   return kTfLiteOk;
 }
 
-void SingleOpModel::Invoke() { ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk); }
+TfLiteStatus SingleOpModel::Invoke() { return interpreter_->Invoke(); }
 
 TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
 
