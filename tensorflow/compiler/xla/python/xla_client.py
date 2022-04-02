@@ -100,8 +100,7 @@ def make_tpu_client():
       'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS', '32')
   try:
     max_inflight_computations = int(max_inflight_computations)
-    assert isinstance(max_inflight_computations, int)
-  except (ValueError, AssertionError) as e:
+  except ValueError as e:
     raise ValueError(
         f'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS env var must be an int, '
         f'got {max_inflight_computations}') from e
