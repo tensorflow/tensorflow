@@ -37,65 +37,69 @@ class IsFusedOpEndsWith<string OpName> : AttrConstraint<
 // Pattern rules for lifting as functions
 //===----------------------------------------------------------------------===//
 
-def LiftFusedConv2DRelu6 : Pat<
+// TODO(b/227709630): Rename the term `fused` to `composite`.
+multiclass LiftCompositeOpsWithBiasAndActivation<string LastFusedOp, string FusedOps> {
+def LiftFusedConv2DWith#LastFusedOp : Pat<
   (TF__FusedConv2DOp:$res
     $input, $filter, $bias, $strides, $padding,
     $explicit_padding, IsDataFormatNHWC:$data_format, $dilations, $use_cudnn,
-    IsFusedOpEndsWith<"Relu6">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_conv2d_relu6_fn">
+    IsFusedOpEndsWith<LastFusedOp>:$fused_ops, $epsilon, $leakyrelu_alpha),
+  (LiftAsFunctionCall<"fused_conv2d_with_"# FusedOps #"_fn">
      (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
   [(IsNotInLiftedFunc $res)]>;
 
-def LiftFusedConv2DRelu : Pat<
-  (TF__FusedConv2DOp:$res
-    $input, $filter, $bias, $strides, $padding,
-    $explicit_padding, IsDataFormatNHWC:$data_format, $dilations, $use_cudnn,
-    IsFusedOpEndsWith<"Relu">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_conv2d_relu_fn">
-     (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
+def LiftFusedMatMulWith#LastFusedOp : Pat<
+  (TF__FusedMatMulOp:$res
+    $input, $weight, $bias, $transpose_a, $transpose_b,
+    IsFusedOpEndsWith<LastFusedOp>:$fused_ops, $epsilon, $leakyrelu_alpha),
+  (LiftAsFunctionCall<"fused_matmul_with_"# FusedOps #"_fn">
+     (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
      (ResultList $res),
-     (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
+     (AttributeList $transpose_a, $transpose_b)),
   [(IsNotInLiftedFunc $res)]>;
+}
+defm : LiftCompositeOpsWithBiasAndActivation<"BiasAdd", "bias">;
+defm : LiftCompositeOpsWithBiasAndActivation<"Relu", "bias_and_relu">;
+defm : LiftCompositeOpsWithBiasAndActivation<"Relu6", "bias_and_relu6">;
 
-def LiftFusedConv2D : Pat<
-  (TF__FusedConv2DOp:$res
-    $input, $filter, $bias, $strides, $padding,
-    $explicit_padding, IsDataFormatNHWC:$data_format, $dilations, $use_cudnn,
-    IsFusedOpEndsWith<"BiasAdd">:$fused_ops, $epsilon, $leakyrelu_alpha),
+multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName> {
+  def LiftConvWith#ActivationOp : Pat<
+    (ActivationOp:$res
+      (TF_Conv2DOp $input, $filter, $strides, $use_cudnn, $padding,
+         $explicit_padding, IsDataFormatNHWC:$data_format, $dilations)),
+    (LiftAsFunctionCall<"fused_conv2d_with_"# ActivationName #"_fn">
+       (ArgumentList $input, $filter),
+       (ResultList $res),
+       (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftMatmulWith#ActivationOp : Pat<
+    (ActivationOp:$res
+      (TF_MatMulOp $a, $b, $transpose_a, $transpose_b)),
+    (LiftAsFunctionCall<"fused_matmul_with_"# ActivationName #"_fn">
+       (ArgumentList $a, $b),
+       (ResultList $res),
+       (AttributeList $transpose_a, $transpose_b)),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+}
+defm : LiftCompositeOpsWithActivation<TF_ReluOp, "relu">;
+defm : LiftCompositeOpsWithActivation<TF_Relu6Op, "relu6">;
+
+def LiftConv : Pat<
+  (TF_Conv2DOp:$res $input, $filter, $strides, $use_cudnn, $padding,
+     $explicit_padding, IsDataFormatNHWC:$data_format, $dilations),
   (LiftAsFunctionCall<"fused_conv2d_fn">
-     (ArgumentList $input, $filter, (ExtractVariadic<0> $bias)),
+     (ArgumentList $input, $filter),
      (ResultList $res),
      (AttributeList $strides, $use_cudnn, $padding, $explicit_padding, $dilations)),
-  [(IsNotInLiftedFunc $res)]>;
+  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
 
-def LiftFusedMatMulRelu6 : Pat<
-  (TF__FusedMatMulOp:$res
-    $input, $weight, $bias, $transpose_a, $transpose_b,
-    IsFusedOpEndsWith<"Relu6">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_matmul_relu6_fn">
-     (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
-     (ResultList $res),
-     (AttributeList $transpose_a, $transpose_b)),
-  [(IsNotInLiftedFunc $res)]>;
-
-def LiftFusedMatMulRelu : Pat<
-  (TF__FusedMatMulOp:$res
-    $input, $weight, $bias, $transpose_a, $transpose_b,
-    IsFusedOpEndsWith<"Relu">:$fused_ops, $epsilon, $leakyrelu_alpha),
-  (LiftAsFunctionCall<"fused_matmul_relu_fn">
-     (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
-     (ResultList $res),
-     (AttributeList $transpose_a, $transpose_b)),
-  [(IsNotInLiftedFunc $res)]>;
-
-def LiftFusedMatMul : Pat<
-  (TF__FusedMatMulOp:$res
-    $input, $weight, $bias, $transpose_a, $transpose_b,
-    IsFusedOpEndsWith<"BiasAdd">:$fused_ops, $epsilon, $leakyrelu_alpha),
+def LiftMatMul : Pat<
+  (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b),
   (LiftAsFunctionCall<"fused_matmul_fn">
-     (ArgumentList $input, $weight, (ExtractVariadic<0> $bias)),
+     (ArgumentList $a, $b),
      (ResultList $res),
      (AttributeList $transpose_a, $transpose_b)),
-  [(IsNotInLiftedFunc $res)]>;
+  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;

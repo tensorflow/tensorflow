@@ -94,6 +94,12 @@ CompileOnlyService::CompileAheadOfTime(
   execution_options.set_use_spmd_partitioning(options.use_spmd_partitioning());
   execution_options.set_use_auto_spmd_partitioning(
       options.use_auto_spmd_partitioning());
+  for (auto t : options.auto_spmd_partitioning_mesh_shape()) {
+    execution_options.mutable_auto_spmd_partitioning_mesh_shape()->Add(t);
+  }
+  for (auto t : options.auto_spmd_partitioning_mesh_ids()) {
+    execution_options.mutable_auto_spmd_partitioning_mesh_ids()->Add(t);
+  }
   execution_options.set_deduplicate_hlo(options.deduplicate_hlo());
   for (const AotXlaComputationInstance& instance : computations) {
     TF_RET_CHECK(instance.computation.has_host_program_shape());

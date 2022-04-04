@@ -1351,6 +1351,7 @@ tf_xla_py_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
+        "no_gpu",  # TODO(b/227775473)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],

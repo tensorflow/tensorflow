@@ -242,7 +242,7 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
       // Extract slice of input.
       Value slice = mlir::linalg::makeTiledShape(
           b, nested_loc, input, tile_size_value, identity_1d_map, iv,
-          input_size, tile_sizes);
+          input_size, tile_sizes, /*omitPartialTileCheck=*/false);
       auto element_type = slice.getType().cast<ShapedType>().getElementType();
 
       // Pad input tile.

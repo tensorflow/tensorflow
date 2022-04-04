@@ -276,17 +276,16 @@ com.google.android.gms.dynamite.DynamiteModule$LoadingException:
   Local version is 0 and remote version is 0.
 ```
 
-This means that the TensorFlow Lite in Google Play services API is not yet
-available on your test device. You can resolve this exception by requesting
-access to the access group for the beta API. Fill out the
-[form to request access](https://services.google.com/fb/forms/tflite-play-manual-access/),
-and *be sure to provide the user account that you are using to test your
-device*. Once you have been added to the beta access group, this exception
-should be resolved.
+This error means that the TensorFlow Lite in Google Play services API is not yet
+available on your test device. You can resolve this exception by joining this
+Google group [tflite-play-services-beta-access](https://groups.google.com/g/tflite-play-services-beta-access)
+with *the user account you are using to test on your device.* Once you have
+been added to the beta access group, this exception should be resolved.
 
-Allow at least one business day for the request to be received and access
-granted. If you continue to experience this error, report it using the channels
-outlined in the [Support and feedback](#support) section below.
+Allow at least one business day after you join this group for access to be
+granted and the error to clear. If you continue to experience this error, report
+it using the channels outlined in the [Support and feedback](#support) section
+below.
 
 Note: This error only occurs when testing this API in a development environment.
 Apps that use this API and are installed or updated on a device through the

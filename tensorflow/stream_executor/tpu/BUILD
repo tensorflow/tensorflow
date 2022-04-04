@@ -61,6 +61,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

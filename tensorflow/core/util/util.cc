@@ -141,27 +141,29 @@ bool IsMKLEnabled() {
   });
   return (!oneDNN_disabled);
 #else
-  static bool oneDNN_enabled = false;
+  // Linux: Turn oneDNN on by default for CPUs with neural network features.
+  // Windows: oneDNN is off by default.
+  // No need to guard for other platforms here because INTEL_MKL is only defined
+  // for non-mobile Linux or Windows.
+  static bool oneDNN_enabled =
+#ifdef __linux__
+      port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
+      port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
+      port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
+      port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
+      port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
+      port::TestCPUFeature(port::CPUFeature::AMX_BF16);
+#else
+      false;
+#endif  // __linux__
   absl::call_once(once, [&] {
-    int64_t oneDNN_env = -1;
-    auto status = ReadInt64FromEnvVar("TF_ENABLE_ONEDNN_OPTS", -1, &oneDNN_env);
-    if (!status.ok() || oneDNN_env < -1 || 1 < oneDNN_env) {
-      LOG(WARNING) << "TF_ENABLE_ONEDNN_OPTS is not set to either 0 (off), "
-                   << "1 (on), or -1 (default). Using default setting.";
-      oneDNN_env = -1;
+    auto status = ReadBoolFromEnvVar("TF_ENABLE_ONEDNN_OPTS", oneDNN_enabled,
+                                     &oneDNN_enabled);
+    if (!status.ok()) {
+      LOG(WARNING) << "TF_ENABLE_ONEDNN_OPTS is not set to either '0', 'false',"
+                   << " '1', or 'true'. Using the default setting: "
+                   << oneDNN_enabled;
     }
-    if (oneDNN_env == -1) {
-      // Default setting: Turns oneDNN on for CPUs with neural network features.
-      oneDNN_enabled = port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
-                       port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
-                       port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
-                       port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
-                       port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
-                       port::TestCPUFeature(port::CPUFeature::AMX_BF16);
-    } else if (oneDNN_env == 1) {
-      oneDNN_enabled = true;
-    }
-
     if (oneDNN_enabled) {
       LOG(INFO) << "oneDNN custom operations are on. "
                 << "You may see slightly different numerical results due to "

@@ -1395,11 +1395,9 @@ StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes() const {
   return device_buffer_->device_memory()[0].size();
 }
 
-Status PjRtStreamExecutorBuffer::CopyRawToHost(
-    void* dst, int64_t offset, int64_t transfer_size,
-    std::function<void(Status)> on_ready) {
-  return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size,
-                                         std::move(on_ready));
+PjRtFuture<Status> PjRtStreamExecutorBuffer::CopyRawToHost(
+    void* dst, int64_t offset, int64_t transfer_size) {
+  return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size);
 }
 
 StatusOr<ShapedBuffer> PjRtStreamExecutorBuffer::AsShapedBuffer() const {

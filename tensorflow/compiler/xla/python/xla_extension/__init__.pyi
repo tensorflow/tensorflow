@@ -241,6 +241,8 @@ class ExecutableBuildOptions:
   device_assignment: Optional[DeviceAssignment]
   use_spmd_partitioning: bool
   use_auto_spmd_partitioning: bool
+  auto_spmd_partitioning_mesh_shape: List[int]
+  auto_spmd_partitioning_mesh_ids: List[int]
 
 class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int

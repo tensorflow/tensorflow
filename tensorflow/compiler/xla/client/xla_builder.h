@@ -497,8 +497,6 @@ class XlaBuilder {
                                               absl::Span<const XlaOp> operands,
                                               int64_t dimension);
 
-  void Trace(const std::string& tag, XlaOp operand);
-
   XlaOp Select(XlaOp pred, XlaOp on_true, XlaOp on_false);
 
   XlaOp Tuple(absl::Span<const XlaOp> elements);
@@ -1125,7 +1123,6 @@ class XlaBuilder {
   friend XlaOp ConcatInDim(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands, int64_t dimension);
 
-  friend void Trace(const std::string& tag, XlaOp operand);
 
   friend XlaOp Select(XlaOp pred, XlaOp on_true, XlaOp on_false);
   friend XlaOp Tuple(XlaBuilder* builder, absl::Span<const XlaOp> elements);
@@ -1858,10 +1855,6 @@ XlaOp DynamicUpdateSlice(XlaOp operand, XlaOp update,
 // have >= 1 entry.
 XlaOp ConcatInDim(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                   int64_t dimension);
-
-// Enqueue a tracing operation onto the computation; the computation will emit
-// a logging message with the operand.
-void Trace(const std::string& tag, XlaOp operand);
 
 // Enqueues a conditional-move-like select operation onto the computation;
 // predicated on pred, selects between on_true and on_false.

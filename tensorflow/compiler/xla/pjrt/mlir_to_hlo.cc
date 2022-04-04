@@ -63,7 +63,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   options.legalize_node_names = false;
   TF_RETURN_IF_ERROR(
       ConvertMlirHloToHlo(module, &proto, use_tuple_args, return_tuple,
-                          /*shape_representation_fn=*/nullptr, options));
+                          /*shape_determination_fns=*/{}, options));
 
   xla_computation = XlaComputation(std::move(*proto.mutable_hlo_module()));
   return Status::OK();

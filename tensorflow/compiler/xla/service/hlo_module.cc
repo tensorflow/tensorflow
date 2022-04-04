@@ -21,6 +21,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -508,6 +509,16 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
         execution_options->use_spmd_partitioning());
     module_config.set_use_auto_spmd_partitioning(
         execution_options->use_auto_spmd_partitioning());
+    std::vector<int64_t> mesh_shape;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
+      mesh_shape.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+    std::vector<int64_t> mesh_ids;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
+      mesh_ids.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     module_config.set_allow_spmd_sharding_propagation_to_output(
         execution_options->allow_spmd_sharding_propagation_to_output());

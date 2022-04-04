@@ -100,7 +100,7 @@ func.func @sparse_add_eltwise1(%arg0: tensor<10x20xf32, #CSR>,
 //       CHECK: return %[[T]] : tensor<10x20xf32>
 func.func @sparse_add_eltwise2(%arg0: tensor<10x20xf32, #CSR>,
                                %arg1: tensor<10x20xf32, #DCSR>)
-			           -> tensor<10x20xf32> {
+                                   -> tensor<10x20xf32> {
   %0 = mhlo.add(%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
                                  tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32>
   func.return %0 : tensor<10x20xf32>
@@ -113,7 +113,7 @@ func.func @sparse_add_eltwise2(%arg0: tensor<10x20xf32, #CSR>,
 //       CHECK: return %[[T]] : tensor<10x20xf32, #{{.*}}>
 func.func @sparse_add_eltwise3(%arg0: tensor<10x20xf32, #CSR>,
                                %arg1: tensor<10x20xf32, #DCSR>)
-			           -> tensor<10x20xf32, #CSR> {
+                                   -> tensor<10x20xf32, #CSR> {
   %0 = mhlo.add(%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
                                  tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32, #CSR>
   func.return %0 : tensor<10x20xf32, #CSR>
@@ -126,8 +126,20 @@ func.func @sparse_add_eltwise3(%arg0: tensor<10x20xf32, #CSR>,
 //       CHECK: return %[[T]] : tensor<10x20xf32, #{{.*}}>
 func.func @sparse_add_eltwise4(%arg0: tensor<10x20xf32>,
                                %arg1: tensor<10x20xf32>)
-			           -> tensor<10x20xf32, #CSR> {
+                                   -> tensor<10x20xf32, #CSR> {
   %0 = mhlo.add(%arg0, %arg1) : (tensor<10x20xf32>,
                                  tensor<10x20xf32>) -> tensor<10x20xf32, #CSR>
+  func.return %0 : tensor<10x20xf32, #CSR>
+}
+
+// CHECK-LABEL: func @sparse_add_eltwise5(
+//  CHECK-SAME: %[[A:.*]]: tensor<10x20xf32, #{{.*}}>,
+//  CHECK-SAME: %[[B:.*]]: tensor<10x20xf32, #{{.*}}>)
+//       CHECK: %[[T:.*]] = mhlo.add %[[A]], %[[B]] : tensor<10x20xf32, #{{.*}}>
+//       CHECK: return %[[T]] : tensor<10x20xf32, #{{.*}}>
+func.func @sparse_add_eltwise5(%arg0: tensor<10x20xf32, #CSR>,
+                               %arg1: tensor<10x20xf32, #CSR>)
+                                   -> tensor<10x20xf32, #CSR> {
+  %0 = mhlo.add %arg0, %arg1 : tensor<10x20xf32, #CSR>
   func.return %0 : tensor<10x20xf32, #CSR>
 }

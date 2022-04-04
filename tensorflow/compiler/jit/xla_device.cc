@@ -375,22 +375,22 @@ StatusOr<std::vector<XlaDeviceContext*>> XlaDevice::GetDeviceContextLocked() {
     device_contexts_.emplace_back(device_context);
   }
 
-  // Create and set a new GpuDeviceInfo, if necessary.
+  // Create and set a new AcceleratorDeviceInfo, if necessary.
   //
   // TODO(b/78232898): This isn't thread-safe; there is a race between the call
-  // to set_tensorflow_gpu_device_info() with ops that call the getter
-  // tensorflow_gpu_device_info(). This isn't trivially fixed by adding locking
-  // to those methods; see the bug for details. Our only saving grace at the
-  // moment is that this race doesn't seem to occur in practice.
-  if (use_gpu_device_info_) {
-    auto gpu_device_info =
+  // to set_tensorflow_accelerator_device_info() with ops that call the getter
+  // tensorflow_accelerator_device_info(). This isn't trivially fixed by adding
+  // locking to those methods; see the bug for details. Our only saving grace at
+  // the moment is that this race doesn't seem to occur in practice.
+  if (use_accelerator_device_info_) {
+    auto accelerator_device_info =
         absl::make_unique<DeviceBase::AcceleratorDeviceInfo>();
-    gpu_device_info->stream = stream_.get();
-    gpu_device_info->default_context = device_contexts_.at(0);
-    set_tensorflow_accelerator_device_info(gpu_device_info.get());
-    gpu_device_info_ = std::move(gpu_device_info);
-    VLOG(1) << "XlaDevice " << this << " new GpuDeviceInfo "
-            << gpu_device_info_.get();
+    accelerator_device_info->stream = stream_.get();
+    accelerator_device_info->default_context = device_contexts_.at(0);
+    set_tensorflow_accelerator_device_info(accelerator_device_info.get());
+    accelerator_device_info_ = std::move(accelerator_device_info);
+    VLOG(1) << "XlaDevice " << this << " new AcceleratorDeviceInfo "
+            << accelerator_device_info_.get();
   }
 
   return device_contexts_;
@@ -406,9 +406,9 @@ StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextDefault() {
   return GetDeviceContextWithIndex(0);
 }
 
-Status XlaDevice::UseGpuDeviceInfo() {
+Status XlaDevice::UseAcceleratorDeviceInfo() {
   mutex_lock lock(mu_);
-  use_gpu_device_info_ = true;
+  use_accelerator_device_info_ = true;
   return GetDeviceContextLocked().status();
 }
 
