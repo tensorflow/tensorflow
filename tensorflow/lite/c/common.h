@@ -173,8 +173,9 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                 \
   } while (false)
 #else  // TF_LITE_STRIP_ERROR_STRINGS
-#define TF_LITE_KERNEL_LOG(context, ...)
-#define TF_LITE_MAYBE_KERNEL_LOG(context, ...)
+#define UNUSED(...) (void)sizeof(__VA_ARGS__)
+#define TF_LITE_KERNEL_LOG(context, ...) UNUSED(__VA_ARGS__)
+#define TF_LITE_MAYBE_KERNEL_LOG(context, ...) UNUSED(__VA_ARGS__)
 #endif  // TF_LITE_STRIP_ERROR_STRINGS
 
 // Check whether value is true, and if not return kTfLiteError from
