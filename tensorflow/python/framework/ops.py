@@ -1972,7 +1972,7 @@ def _create_c_op(graph,
   # Record the current Python stack trace as the creating stacktrace of this
   # TF_Operation.
   if extract_traceback:
-    tf_stack.extract_stack_for_op(c_op)
+    tf_stack.extract_stack_for_op(c_op, stacklevel=3)
 
   return c_op
 
