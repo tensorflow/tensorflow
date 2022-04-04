@@ -314,6 +314,29 @@ int64_t MinAlignmentOf(Args... args) {
   return std::min({alignment_of(args)...});
 }
 
+namespace detail {
+
+template <int64_t VecSize, template <int vec_size> class Functor>
+struct DispatchToVectorizedHelper {
+  template <typename... Args>
+  Status operator()(int64_t max_vec_size, Args&&... args) const {
+    if (max_vec_size >= VecSize) {
+      return Functor<VecSize>()(std::forward<Args>(args)...);
+    }
+    return DispatchToVectorizedHelper<VecSize / 2, Functor>()(
+        max_vec_size, std::forward<Args>(args)...);
+  }
+};
+template <template <int vec_size> class Functor>
+struct DispatchToVectorizedHelper<0, Functor> {
+  template <typename... Args>
+  Status operator()(int64_t max_vec_size, Args&&... args) const {
+    return Functor<1>()(std::forward<Args>(args)...);
+  }
+};
+
+}  // namespace detail
+
 // Calls Functor<vec_size>()(args...) with vec_size set to the optimal GPU
 // vector instruction size for type T that is <= max_vec_size. The max_vec_size
 // argument should be set to the minimum alignment of all relevant parameters.
@@ -324,18 +347,8 @@ Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
   // single instruction inside a kernel.
   constexpr const int optimal_vec_size =
       (kOptimalVecSizeBytes - 1) / sizeof(T) + 1;
-  int64_t vec_size = std::min((int64_t)optimal_vec_size, max_vec_size);
-  if (vec_size >= 16) {
-    return Functor<16>()(std::forward<Args>(args)...);
-  } else if (vec_size >= 8) {
-    return Functor<8>()(std::forward<Args>(args)...);
-  } else if (vec_size >= 4) {
-    return Functor<4>()(std::forward<Args>(args)...);
-  } else if (vec_size >= 2) {
-    return Functor<2>()(std::forward<Args>(args)...);
-  } else {
-    return Functor<1>()(std::forward<Args>(args)...);
-  }
+  return detail::DispatchToVectorizedHelper<optimal_vec_size, Functor>()(
+      max_vec_size, std::forward<Args>(args)...);
 }
 
 // Similar to std::upper_bound, this returns the index of the first element in
