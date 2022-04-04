@@ -64,6 +64,24 @@ class TFStackTest(test.TestCase):
     self.assertRegex(frames[-1].line, "# COMMENT")
     self.assertRegex(frames[-2].line, "# CALLSITE")
 
+  def testDelItem(self):
+
+    def func(n):
+      if n == 0:
+        return tf_stack.extract_stack()  # COMMENT
+      else:
+        return func(n - 1)
+
+    trace = func(5)
+    self.assertGreater(len(trace), 5)
+
+    full_list = list(trace)
+    del trace[-5:]
+    head_list = list(trace)
+
+    self.assertLen(head_list, len(full_list) - 5)
+    self.assertEqual(head_list, full_list[:-5])
+
 
 if __name__ == "__main__":
   test.main()

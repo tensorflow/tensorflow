@@ -167,6 +167,7 @@ class StackTraceWrapper : public AbstractStackTrace {
     stack_frames_cache_ = captured_.ToStackFrames(
         *source_map_, [&](const char* f) { return StackTraceFiltering(f); });
     stack_frames_cache_->pop_back();  // Drop last stack frame.
+
     PyGILState_Release(state);
     return *stack_frames_cache_;
   }
@@ -203,6 +204,19 @@ class StackTraceWrapper : public AbstractStackTrace {
     }
     PyGILState_Release(state);
     return *last_stack_frame_cache_;
+  }
+
+  // Erases a section of the stack trace.
+  void Erase(int first, int last) {
+    if (!stack_frames_cache_) {
+      ToFrames();
+    }
+    DCHECK_GE(first, 0);
+    DCHECK_LT(first, stack_frames_cache_->size());
+    DCHECK_GE(last, 0);
+    DCHECK_LE(last, stack_frames_cache_->size());
+    auto it = stack_frames_cache_->begin();
+    stack_frames_cache_->erase(it + first, it + last);
   }
 
   std::string ToString(const TracePrintingOptions& opts) const override {
@@ -342,7 +356,7 @@ PYBIND11_MODULE(_tf_stack, m) {
            [](const StackFrame& self) { return StackFrameToString(self, {}); })
       .def("__len__", [](const StackFrame&) { return 4; });
 
-  py::class_<StackTraceWrapper>(m, "StackTraceWrapper", py::module_local(true))
+  py::class_<StackTraceWrapper>(m, "StackTraceWrapper")
       // TODO(slebedev): upstream negative indexing support into pybind11.
       .def(
           "__getitem__",
@@ -379,6 +393,21 @@ PYBIND11_MODULE(_tf_stack, m) {
             return StackTraceWrapper{out};
           },
           py::return_value_policy::reference_internal)
+      .def("__delitem__",
+           [](StackTraceWrapper& self, py::slice slice) {
+             absl::Span<StackFrame const> frames = self.ToFrames();
+             py::ssize_t start, stop, step, slicelength;
+             if (!slice.compute(frames.size(), &start, &stop, &step,
+                                &slicelength)) {
+               throw py::error_already_set();
+             }
+             if (step != 1) {
+               throw py::index_error();
+             }
+             if (stop > start) {
+               self.Erase(start, stop);
+             }
+           })
       .def("__len__",
            [](const StackTraceWrapper& self) { return self.ToFrames().size(); })
       .def("__eq__",
@@ -406,18 +435,14 @@ PYBIND11_MODULE(_tf_stack, m) {
           [](const StackTraceWrapper& self) { return self.LastUserFrame(); },
           "Returns the last non-framework frame.");
 
-  m.def(
-      "extract_stack_for_node",
-      [](const PyBindSourceMap& source_map, const PyBindFileSet& file_set,
-         TF_Operation* op) -> const AbstractStackTrace& {
-        Node* node = reinterpret_cast<Node*>(op);
-        DCHECK(!node->GetStackTrace()) << "Should not reset the stack trace";
-        node->SetStackTrace(
-            std::make_shared<StackTraceWrapper>(StackTraceWrapper::ExtractStack(
-                source_map.source_map_, file_set.file_set_)));
-        return *node->GetStackTrace();
-      },
-      py::return_value_policy::reference);
+  m.def("extract_stack_for_op", [](const PyBindSourceMap& source_map,
+                                   const PyBindFileSet& file_set,
+                                   TF_Operation* op) {
+    DCHECK(!op->node.GetStackTrace()) << "Should not reset the stack trace";
+    op->node.SetStackTrace(
+        std::make_shared<StackTraceWrapper>(StackTraceWrapper::ExtractStack(
+            source_map.source_map_, file_set.file_set_)));
+  });
 
   m.def(
       "extract_stack",
