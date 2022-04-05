@@ -28,7 +28,9 @@ pytype_strict_library(
         ":d_variable",
         ":gen_dtensor_ops",
         ":layout",
+        ":mesh_util",
         ":save_restore",
+        ":tpu_util",
     ],
 )
 
@@ -176,10 +178,12 @@ pytype_strict_library(
         "//tensorflow/dtensor:dtensor-users",
     ],
     deps = [
-        ":core",
+        ":api",
+        ":layout",
         ":tpu_util",
         "//tensorflow/python:config",
         "//tensorflow/python:device",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
     ],
@@ -192,9 +196,11 @@ pytype_strict_library(
         "//tensorflow/dtensor:dtensor-users",
     ],
     deps = [
-        ":core",
+        ":api",
         ":dtensor_device",
+        ":gen_dtensor_ops",
         ":heartbeat",
+        ":layout",
         ":multi_client_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:device",
@@ -207,6 +213,7 @@ pytype_strict_library(
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/tpu:topology",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -215,7 +222,7 @@ pytype_strict_library(
     name = "heartbeat",
     srcs = ["heartbeat.py"],
     deps = [
-        ":core",
+        ":api",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
         "//tensorflow/python:framework_ops",
