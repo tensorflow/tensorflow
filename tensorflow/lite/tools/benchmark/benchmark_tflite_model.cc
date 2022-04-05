@@ -119,32 +119,30 @@ class InterpreterStatePrinter : public BenchmarkListener {
 };
 
 class OutputSaver : public BenchmarkListener {
-  public:
-    OutputSaver(Interpreter* interpreter) : interpreter_(interpreter) {}
+ public:
+  OutputSaver(Interpreter* interpreter) : interpreter_(interpreter) {}
 
-    void OnBenchmarkStart(const BenchmarkParams& params) override {
-      params_ = &params;
-    }
+  void OnBenchmarkStart(const BenchmarkParams& params) override {
+    params_ = &params;
+  }
 
-    void OnBenchmarkEnd(const BenchmarkResults& results) override {
-      std::string path = params_->Get<std::string>("save_outputs_in_file");
-      if (path == "") return;
+  void OnBenchmarkEnd(const BenchmarkResults& results) override {
+    std::string path = params_->Get<std::string>("save_outputs_in_file");
+    if (path == "") return;
 
-      std::ofstream ofs(path, std::ofstream::out);
-      if (ofs.good()) {
-        for (int i = 0; i < interpreter_->outputs().size(); i++) {
-          ofs.write(
-            interpreter_->output_tensor(i)->data.raw,
-            interpreter_->output_tensor(i)->bytes
-          );
-        }
-        ofs.close();
+    std::ofstream ofs(path, std::ofstream::out);
+    if (ofs.good()) {
+      for (int i = 0; i < interpreter_->outputs().size(); i++) {
+        ofs.write(interpreter_->output_tensor(i)->data.raw,
+                  interpreter_->output_tensor(i)->bytes);
       }
+      ofs.close();
     }
+  }
 
-  private:
-    Interpreter* const interpreter_ = nullptr;
-    const BenchmarkParams* params_ = nullptr;
+ private:
+  Interpreter* const interpreter_ = nullptr;
+  const BenchmarkParams* params_ = nullptr;
 };
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
