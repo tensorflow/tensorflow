@@ -139,7 +139,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
     options.shape_determination_fns = {shape_representation_fns};
     auto device = absl::make_unique<XlaDevice>(session_options, options);
 
-    Status status = device->UseGpuDeviceInfo();
+    Status status = device->UseAcceleratorDeviceInfo();
     if (!status.ok()) {
       LOG(INFO) << "Ignoring visible " << DEVICE_GPU_XLA_JIT
                 << " device. Device number is " << i << ", reason: " << status;

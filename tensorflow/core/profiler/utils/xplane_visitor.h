@@ -165,7 +165,7 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   int64_t LineTimestampNs() const { return line_->timestamp_ns(); }
 
-  double TimestampNs() const { return line_->timestamp_ns() + OffsetNs(); }
+  int64_t TimestampNs() const { return line_->timestamp_ns() + OffsetNs(); }
 
   int64_t TimestampPs() const {
     return NanoToPico(line_->timestamp_ns()) + event_->offset_ps();
@@ -221,7 +221,7 @@ class XLineVisitor {
                                           : line_->name();
   }
 
-  double TimestampNs() const { return line_->timestamp_ns(); }
+  int64_t TimestampNs() const { return line_->timestamp_ns(); }
 
   int64_t DurationPs() const { return line_->duration_ps(); }
 

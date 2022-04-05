@@ -525,10 +525,10 @@ TEST_F(GPUDeviceTest, DeviceDetails) {
   for (int i = 0; i < devices.size(); i++) {
     std::unordered_map<string, string> details;
     TF_ASSERT_OK(factory->GetDeviceDetails(i, &details));
-    EXPECT_NE(details["device_name"], "");
 #if TENSORFLOW_USE_ROCM
     EXPECT_EQ(details.count("compute_capability"), 0);
 #else
+    EXPECT_NE(details["device_name"], "");
     EXPECT_NE(details["compute_capability"], "");
 #endif
   }

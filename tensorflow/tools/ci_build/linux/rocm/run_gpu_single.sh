@@ -44,7 +44,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=gpu,-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-v1only \
+      --test_tag_filters=gpu,-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-tpu,-v1only \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_TEST_JOBS} \
       --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \

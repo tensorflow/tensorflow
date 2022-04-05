@@ -54,10 +54,6 @@ def comparison(x, y, z):
 
 class ReferenceTest(reference_test_base.TestCase):
 
-  def setUp(self):
-    super(ReferenceTest, self).setUp()
-    self.autograph_opts = tf.autograph.experimental.Feature.EQUALITY_OPERATORS
-
   def test_basic(self):
     self.assertFunctionMatchesEager(composite_ors, False, True, False)
     self.assertFunctionMatchesEager(composite_ors, False, False, False)
@@ -70,13 +66,6 @@ class ReferenceTest(reference_test_base.TestCase):
                                     True)
     self.assertFunctionMatchesEager(composite_ors_with_callable, False, False,
                                     False)
-
-    self.assertFunctionMatchesEager(equality, 1, 1)
-    self.assertFunctionMatchesEager(equality, 1, 2)
-    self.assertFunctionMatchesEager(inequality, 1, 1)
-    self.assertFunctionMatchesEager(inequality, 1, 2)
-    self.assertFunctionMatchesEager(multiple_equality, 1, 1, 2)
-    self.assertFunctionMatchesEager(multiple_equality, 1, 1, 1)
 
     self.assertFunctionMatchesEager(comparison, 1, 2, 3)
     self.assertFunctionMatchesEager(comparison, 2, 1, 3)
@@ -99,6 +88,14 @@ class ReferenceTest(reference_test_base.TestCase):
     self.assertFunctionMatchesEager(composite_ors_with_callable, False, False,
                                     False)
 
+    self.assertFunctionMatchesEager(comparison, 1, 2, 3)
+    self.assertFunctionMatchesEager(comparison, 2, 1, 3)
+    self.assertFunctionMatchesEager(comparison, 3, 2, 1)
+    self.assertFunctionMatchesEager(comparison, 3, 1, 2)
+    self.assertFunctionMatchesEager(comparison, 1, 3, 2)
+    self.assertFunctionMatchesEager(comparison, 2, 3, 1)
+
+  def test_equality(self):
     self.assertFunctionMatchesEager(equality, 1, 1)
     self.assertFunctionMatchesEager(equality, 1, 2)
     self.assertFunctionMatchesEager(inequality, 1, 1)
@@ -106,12 +103,16 @@ class ReferenceTest(reference_test_base.TestCase):
     self.assertFunctionMatchesEager(multiple_equality, 1, 1, 2)
     self.assertFunctionMatchesEager(multiple_equality, 1, 1, 1)
 
-    self.assertFunctionMatchesEager(comparison, 1, 2, 3)
-    self.assertFunctionMatchesEager(comparison, 2, 1, 3)
-    self.assertFunctionMatchesEager(comparison, 3, 2, 1)
-    self.assertFunctionMatchesEager(comparison, 3, 1, 2)
-    self.assertFunctionMatchesEager(comparison, 1, 3, 2)
-    self.assertFunctionMatchesEager(comparison, 2, 3, 1)
+  def test_equality_tensor(self):
+    self.autograph_opts = tf.autograph.experimental.Feature.EQUALITY_OPERATORS
+    self.all_inputs_tensors = True
+
+    self.assertFunctionMatchesEager(equality, 1, 1)
+    self.assertFunctionMatchesEager(equality, 1, 2)
+    self.assertFunctionMatchesEager(inequality, 1, 1)
+    self.assertFunctionMatchesEager(inequality, 1, 2)
+    self.assertFunctionMatchesEager(multiple_equality, 1, 1, 2)
+    self.assertFunctionMatchesEager(multiple_equality, 1, 1, 1)
 
 
 if __name__ == '__main__':

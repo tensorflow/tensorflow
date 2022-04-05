@@ -72,8 +72,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteType type = input1->type;
   if (type != kTfLiteInt32 && type != kTfLiteFloat32 && type != kTfLiteInt64) {
-    context->ReportError(context, "Type '%s' is not supported by floor_mod.",
-                         TfLiteTypeGetName(type));
+    TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by floor_mod.",
+                       TfLiteTypeGetName(type));
     return kTfLiteError;
   }
   output->type = type;
@@ -102,7 +102,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
     const int num_elements = NumElements(input2);
     for (int i = 0; i < num_elements; ++i) {
       if (denominator_data[i] == 0) {
-        context->ReportError(context, "Division by 0");
+        TF_LITE_KERNEL_LOG(context, "Division by 0");
         return kTfLiteError;
       }
     }
@@ -150,8 +150,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                              output);
     }
     default: {
-      context->ReportError(context, "Type '%s' is not supported by floor_mod.",
-                           TfLiteTypeGetName(input1->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by floor_mod.",
+                         TfLiteTypeGetName(input1->type));
       return kTfLiteError;
     }
   }

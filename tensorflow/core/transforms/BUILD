@@ -49,6 +49,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/ir:Dialect",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -62,6 +63,7 @@ cc_library(
         "//tensorflow/core/transforms/consolidate_attrs:Pass",
         "//tensorflow/core/transforms/const_dedupe_hoist:Pass",
         "//tensorflow/core/transforms/drop_unregistered_attribute:OutputShapesPass",
+        "//tensorflow/core/transforms/functional_to_region:Pass",
         "//tensorflow/core/transforms/graph_to_func:Pass",
         "//tensorflow/core/transforms/remapper:Pass",
         "//tensorflow/core/transforms/toposort:Pass",

@@ -232,12 +232,12 @@ std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
     if (!function_name.startswith("fused_")) {
       return spec;
     }
-    if (function_name.contains("conv")) {
+    if (function_name.contains("conv2d_with_bias")) {
       spec->biases_params.emplace(std::make_pair(
           2, std::make_pair(std::initializer_list<int>({0, 1}),
                             quant::GetUniformQuantizedTypeForBias)));
       spec->coeff_op_quant_dim[0] = 3;
-    } else if (function_name.contains("matmul")) {
+    } else if (function_name.contains("matmul_with_bias")) {
       spec->biases_params.emplace(std::make_pair(
           2, std::make_pair(std::initializer_list<int>({0, 1}),
                             quant::GetUniformQuantizedTypeForBias)));

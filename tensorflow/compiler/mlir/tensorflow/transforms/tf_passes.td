@@ -523,8 +523,7 @@ def ExecutorGraphPruningPass : Pass<"tf-executor-graph-pruning", "mlir::func::Fu
   let options = [
    ListOption<"ops_to_preserve_", "ops-to-preserve", "std::string",
                "Comma separated list of ops that should not be pruned "
-               "regardless of reachability",
-               "llvm::cl::MiscFlags::CommaSeparated">
+               "regardless of reachability">
   ];
 }
 
@@ -1507,8 +1506,7 @@ def PromoteResourcesToArgsPass : Pass<"tf-promote-resources-to-args", "ModuleOp"
 let options = [
     ListOption<"functions_", "functions", "std::string",
                "Comma separated list of functions whose resources "
-               "read/writes should be promoted to function inputs/outputs.",
-               "llvm::cl::MiscFlags::CommaSeparated">
+               "read/writes should be promoted to function inputs/outputs.">
   ];
 }
 

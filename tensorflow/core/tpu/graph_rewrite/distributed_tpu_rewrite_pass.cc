@@ -1642,7 +1642,8 @@ static Status ParseTopologyAttr(const string& topology_attr,
                                    kTPUTopologyRank);
   }
   if (proto.num_tasks() != num_tasks) {
-    return errors::InvalidArgument("Mismatched number of TPU tasks");
+    return errors::InvalidArgument("Mismatched number of TPU tasks (",
+                                   proto.num_tasks(), " != ", num_tasks, ")");
   }
   if (proto.num_tpu_devices_per_task() != num_tpus_per_task) {
     return errors::InvalidArgument("Mismatched number of TPUs per task (",

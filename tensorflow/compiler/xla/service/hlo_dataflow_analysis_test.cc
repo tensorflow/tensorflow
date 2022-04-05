@@ -2224,7 +2224,7 @@ std::unique_ptr<HloDataflowAnalysis> RunAnalysis(
       .ConsumeValueOrDie();
 }
 
-class DoesNotUseOperandBufferTest : public HloTestBase {};
+using DoesNotUseOperandBufferTest = HloTestBase;
 
 TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
   auto builder = HloComputation::Builder(TestName());
@@ -2336,7 +2336,7 @@ TEST_F(DoesNotUseOperandBufferTest, IndirectUses) {
       dataflow_analysis->DoesNotUseOperandBuffer(tuple_param, {0}, fusion));
 }
 
-class CanShareOperandBufferWithUserTest : public HloTestBase {};
+using CanShareOperandBufferWithUserTest = HloTestBase;
 
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseSameShape) {
   auto builder = HloComputation::Builder(TestName());
@@ -3099,7 +3099,7 @@ TEST_F(CanShareOperandBufferWithUserTest, MultipleConcatenates) {
                                                                 fusion, {2}));
 }
 
-class GetInPlaceInputOutputPairsTest : public HloTestBase {};
+using GetInPlaceInputOutputPairsTest = HloTestBase;
 
 TEST_F(GetInPlaceInputOutputPairsTest, DUS) {
   const char* kModule = R"(

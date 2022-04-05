@@ -150,6 +150,13 @@ Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
   return Status::OK();
 }
 
+StatusOr<xla::Shape> TensorShapeToXLAShape(DataType dtype,
+                                           const TensorShape& tensor_shape) {
+  xla::Shape out;
+  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, tensor_shape, &out));
+  return out;
+}
+
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
                                  const TensorShape& tensor_shape) {
   int rank = tensor_shape.dims();

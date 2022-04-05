@@ -52,9 +52,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt32:
       break;
     default:
-      context->ReportError(
-          context, "Positions of type '%s' are not supported by gather.",
-          TfLiteTypeGetName(positions->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Positions of type '%s' are not supported by gather.",
+                         TfLiteTypeGetName(positions->type));
       return kTfLiteError;
   }
 
@@ -76,8 +76,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_EQ(context, NumDimensions(input), 1);
     } break;
     default:
-      context->ReportError(context, "Type '%s' is not supported by gather.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 
@@ -209,8 +209,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteString:
         return GatherStrings<int32_t>(context, input, positions, output);
       default:
-        context->ReportError(context, "Type '%s' is not supported by gather.",
-                             TfLiteTypeGetName(input->type));
+        TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
+                           TfLiteTypeGetName(input->type));
         return kTfLiteError;
     }
   }
@@ -240,14 +240,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteString:
         return GatherStrings<int64_t>(context, input, positions, output);
       default:
-        context->ReportError(context, "Type '%s' is not supported by gather.",
-                             TfLiteTypeGetName(input->type));
+        TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by gather.",
+                           TfLiteTypeGetName(input->type));
         return kTfLiteError;
     }
   }
-  context->ReportError(context,
-                       "Positions of type '%s' are not supported by gather.",
-                       TfLiteTypeGetName(positions->type));
+  TF_LITE_KERNEL_LOG(context,
+                     "Positions of type '%s' are not supported by gather.",
+                     TfLiteTypeGetName(positions->type));
   return kTfLiteError;
 }
 }  // namespace gather

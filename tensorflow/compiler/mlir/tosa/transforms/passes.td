@@ -28,11 +28,9 @@ def TosaLegalizeTFLPass : Pass<"tosa-legalize-tfl", "mlir::func::FuncOp"> {
   let dependentDialects = ["TosaDialect"];
   let options = [
     ListOption<"disabled_patterns_", "disable-patterns", "std::string",
-               "Labels of patterns that should be filtered out during application",
-               "llvm::cl::MiscFlags::CommaSeparated">,
+               "Labels of patterns that should be filtered out during application">,
     ListOption<"enabled_patterns_", "enable-patterns", "std::string",
-               "Labels of patterns that should be used during application, all other patterns are filtered out",
-               "llvm::cl::MiscFlags::CommaSeparated">,
+               "Labels of patterns that should be used during application, all other patterns are filtered out">,
   ];
 }
 

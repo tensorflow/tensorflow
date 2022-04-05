@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_H_
 
 #include <atomic>
+#include <functional>
 #include <list>
 #include <memory>
 #include <random>
@@ -44,6 +45,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+
+using LayoutCanonicalizationCallback =
+    std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+        const HloModule& module)>;
 
 // Describes a compilation unit at the HLO level.
 //
@@ -148,6 +153,21 @@ class HloModule {
 
   const ComputationLayout& entry_computation_layout() const {
     return config_.entry_computation_layout();
+  }
+
+  // Based on module's entry_computation sharded shapes,
+  // layout_canonicalization_callback_ computes and
+  // returns <argument_layouts, result_layout> for module's entry computation.
+  // argument_layouts is std::vector<Shape> and results_layout is Shape.
+  // layout_canonicalization_callback_ is used only when
+  // use_auto_spmd_partitioning_ = true.
+  void set_layout_canonicalization_callback(
+      LayoutCanonicalizationCallback callback) {
+    layout_canonicalization_callback_ = std::move(callback);
+  }
+
+  LayoutCanonicalizationCallback layout_canonicalization_callback() const {
+    return layout_canonicalization_callback_;
   }
 
   // Generates a hash value of an HLO module. Hash considers
@@ -508,6 +528,10 @@ class HloModule {
 
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
+
+  // Layout canonicalization callback, used only when
+  // use_auto_spmd_partitioning_ = true.
+  LayoutCanonicalizationCallback layout_canonicalization_callback_;
 };
 
 }  // namespace xla
