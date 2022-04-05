@@ -106,6 +106,21 @@ def TF_DTensorEmbeddingEnqueueOp : TF_Op<"DTensorEmbeddingEnqueue", [SameVariadi
   TF_DerivedOperandSizeAttr num_inputs = TF_DerivedOperandSizeAttr<0>;
 }
 
+def TF_DTensorEmbeddingDequeueOp : TF_Op<"DTensorEmbeddingDequeue", [NoSideEffect]> {
+  let summary = "DTensor TPU Embedding activation dequeue virtual op";
+
+  let arguments = (ins
+    StrAttr:$config,
+    StrArrayAttr:$output_layouts
+  );
+
+  let results = (outs
+    Variadic<TF_Float32Tensor>:$outputs
+  );
+
+  TF_DerivedResultSizeAttr num_outputs = TF_DerivedResultSizeAttr<0>;
+}
+
 def TF_RelayoutOp : TF_Op<"Relayout", [NoSideEffect, TF_AllTypesMatch<["input", "output"]>, TF_NoConstantFold]> {
   let summary = "Change layout of input to target layout inside the same mesh cluster.";
 
