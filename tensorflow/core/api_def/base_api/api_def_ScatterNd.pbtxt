@@ -43,6 +43,13 @@ is identical to calling
 If `indices` contains duplicates, the associated `updates` are accumulated
 (summed) into the output tensor.
 
+**WARNING**: For floating-point data types, the output may be nondeterministic.
+This is because the order in which the updates are applied is nondeterministic
+and when floating-point numbers are added in different orders the resulting
+numerical approximation error can be slightly different. However, the output
+will be deterministic if op determinism is enabled via
+`tf.config.experimental.enable_op_determinism`.
+
 `indices` is an integer tensor containing indices into the output tensor. The
 last dimension of `indices` can be at most the rank of `shape`:
 
@@ -50,8 +57,8 @@ last dimension of `indices` can be at most the rank of `shape`:
 
 The last dimension of `indices` corresponds to indices of elements
 (if `indices.shape[-1] = shape.rank`) or slices
-(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]`
-(counting from 1) of `shape`.
+(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
+`shape`.
 
 `updates` is a tensor with shape:
 
