@@ -118,6 +118,35 @@ class InterpreterStatePrinter : public BenchmarkListener {
   const BenchmarkParams* params_ = nullptr;   // not own the memory.
 };
 
+class OutputSaver : public BenchmarkListener {
+  public:
+    OutputSaver(Interpreter* interpreter) : interpreter_(interpreter) {}
+
+    void OnBenchmarkStart(const BenchmarkParams& params) override {
+      params_ = &params;
+    }
+
+    void OnBenchmarkEnd(const BenchmarkResults& results) override {
+      std::string path = params_->Get<std::string>("save_outputs_in_file");
+      if (path == "") return;
+
+      std::ofstream ofs(path, std::ofstream::out);
+      if (ofs.good()) {
+        for (int i = 0; i < interpreter_->outputs().size(); i++) {
+          ofs.write(
+            interpreter_->output_tensor(i)->data.raw,
+            interpreter_->output_tensor(i)->bytes
+          );
+        }
+        ofs.close();
+      }
+    }
+
+  private:
+    Interpreter* const interpreter_ = nullptr;
+    const BenchmarkParams* params_ = nullptr;
+};
+
 std::vector<std::string> Split(const std::string& str, const char delim) {
   if (str.empty()) {
     return {};
@@ -303,6 +332,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("use_dynamic_tensors_for_large_tensors",
                           BenchmarkParam::Create<int32_t>(0));
+  default_params.AddParam("save_outputs_in_file",
+                          BenchmarkParam::Create<std::string>(""));
 
   tools::ProvidedDelegateList delegate_providers(&default_params);
   delegate_providers.AddAllDelegateParams();
@@ -378,7 +409,11 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                        "are not used."),
       CreateFlag<int32_t>(
           "use_dynamic_tensors_for_large_tensors", &params_,
-          "Use dynamic tensor for large tensors to optimize memory usage.")};
+          "Use dynamic tensor for large tensors to optimize memory usage."),
+      CreateFlag<std::string>(
+          "save_outputs_in_file", &params_,
+          "File path to export outputs layer as binary data."),
+  };
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -421,6 +456,8 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Release dynamic tensor memory", verbose);
   LOG_BENCHMARK_PARAM(int32_t, "use_dynamic_tensors_for_large_tensors",
                       "Use dynamic tensor for large tensors", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "save_outputs_in_file",
+                      "File path to export outputs layer to", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -748,6 +785,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   AddOwnedListener(
       std::unique_ptr<BenchmarkListener>(new RuyProfileListener()));
+  AddOwnedListener(
+      std::unique_ptr<BenchmarkListener>(new OutputSaver(interpreter_.get())));
 
   return kTfLiteOk;
 }
