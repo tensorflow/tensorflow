@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/common_runtime/lower_while_op.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/common_runtime/placer_device_propagation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -1363,7 +1362,7 @@ const string& AssignedOrRequestedDevice(const Node* node) {
   return node->requested_device();
 }
 
-bool IsTpuDevice(StringPiece device_string) {
+bool IsTpuDevice(const string& device_string) {
   DeviceNameUtils::ParsedName device;
   return DeviceNameUtils::ParseFullName(device_string, &device) &&
          device.type == DEVICE_TPU_NODE;
@@ -1378,6 +1377,49 @@ const absl::flat_hash_set<std::string>& PlaceOnTPUOpList() {
       {"Identity", "IdentityN", "Enter", "Exit", "Switch", "Merge",
        "NextIteration", "Shape", "_Retval"});
   return *place_on_tpu_ops;
+}
+
+// If an op satisfies the following conditions, it will be placed on the same
+// TPU device as its inputs:
+//   (1) The op can be placed on TPU (in the PlaceOnTPUOpList)
+//   (2) The op itself has no requested or assigned devices.
+//   (3) All the data inputs of this op are placed on the same device on TPUs.
+//       There are exceptions like the NextIterations input of Switch node can
+//       be placed on CPU as it is just a boolean.
+//
+// Returns true if the node device has been changed, otherwise returns false.
+bool PlaceOpsOnTPU(Node* node) {
+  if (!AssignedOrRequestedDevice(node).empty() ||
+      !PlaceOnTPUOpList().contains(node->type_string())) {
+    return false;
+  }
+  string src_tpu_device = "";
+  Node* src_node;
+  for (const Edge* e : node->in_edges()) {
+    if (e->IsControlEdge()) {
+      continue;
+    }
+    Node* src = e->src();
+    const string& src_device = AssignedOrRequestedDevice(src);
+
+    // Make exceptions that we don't force the some inputs to place on TPUs.
+    if ((node->IsSwitch() && src->IsLoopCond()) ||
+        (node->IsMerge() && src->IsEnter())) {
+      continue;
+    }
+
+    if (!IsTpuDevice(src_device) ||
+        (!src_tpu_device.empty() && src_device != src_tpu_device)) {
+      return false;
+    }
+    if (src_tpu_device.empty()) {
+      src_tpu_device = src_device;
+      src_node = src;
+    }
+  }
+  node->set_assigned_device_name(src_node->assigned_device_name());
+  node->set_requested_device(src_node->requested_device());
+  return true;
 }
 
 xla::OpMetadata CreateOpMetadataFromNode(const Node& node) {
@@ -4912,7 +4954,7 @@ DistributedTPURewritePass::PerformHostTrainingLoopOptimization(
 
 Status DistributedTPURewritePass::PlaceUnassignedDeviceNodesOnTPUIfPossible(
     Graph* graph) {
-  PropagateDevices(PlaceOnTPUOpList(), IsTpuDevice, graph);
+  ReverseDFS(*graph, {}, PlaceOpsOnTPU);
   return Status::OK();
 }
 

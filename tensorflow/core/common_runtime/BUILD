@@ -1366,7 +1366,6 @@ cc_library(
         ":colocation_graph",
         ":device",
         ":device_set",
-        ":placer_device_propagation",
         ":session_options",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -2073,18 +2072,6 @@ cc_library(
     hdrs = ["cost_constants.h"],
     visibility = ["//visibility:public"],
     deps = [],
-)
-
-cc_library(
-    name = "placer_device_propagation",
-    srcs = ["placer_device_propagation.cc"],
-    hdrs = ["placer_device_propagation.h"],
-    deps = [
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:portable_jpeg_internal",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
 )
 
 # -----------------------------------------------------------------------------
@@ -3158,22 +3145,5 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "placer_device_propagation_test",
-    size = "small",
-    srcs = ["placer_device_propagation_test.cc"],
-    deps = [
-        ":placer_device_propagation",
-        "//tensorflow/cc:array_ops",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

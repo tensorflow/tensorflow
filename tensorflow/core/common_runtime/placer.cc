@@ -16,12 +16,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/placer.h"
 
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/placer_device_propagation.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -30,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/port.h"
 
@@ -142,19 +139,6 @@ Status AssignAndLog(int assigned_device, Node* node,
   return Status::OK();
 }
 
-const absl::flat_hash_set<std::string>& DevicePropagationOpList() {
-  static const auto op_list = new absl::flat_hash_set<std::string>(
-      {"Identity", "IdentityN", "Enter", "Exit", "Switch", "Merge",
-       "NextIteration", "Shape"});
-  return *op_list;
-}
-
-bool IsPropagatableDevice(StringPiece device_string) {
-  DeviceNameUtils::ParsedName device;
-  return DeviceNameUtils::ParseFullName(device_string, &device) &&
-         device.type == DEVICE_TPU;
-}
-
 }  // namespace
 
 Placer::Placer(Graph* graph, const string& function_name,
@@ -196,9 +180,6 @@ Status Placer::Run() {
               << node->assigned_device_name() << "'";
     }
   }
-
-  // Propagates device assignments for control flow ops.
-  PropagateDevices(DevicePropagationOpList(), IsPropagatableDevice, graph_);
 
   FunctionStack stack(function_name_);
   ColocationGraph colocation_graph(graph_, stack, flib_def_, devices_,
