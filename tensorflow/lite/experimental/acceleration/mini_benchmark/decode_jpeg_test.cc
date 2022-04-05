@@ -85,7 +85,7 @@ TEST(DecodeJpegTest, TestMultipleJPEGImages) {
   model.PopulateStringTensor(model.input_buffer_id(),
                              {chessboard_image, test_card_image});
 
-  ASSERT_EQ(model.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   // Check output values and shape.
   ASSERT_THAT(model.GetOutputShape(),
