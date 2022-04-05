@@ -49,10 +49,16 @@
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
+
+#if TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/core/platform/rocm_rocdl_path.h"
+#else
+#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
+#endif
 
 namespace tensorflow {
 
@@ -173,11 +179,20 @@ static llvm::Expected<
 Emit(mlir::func::FuncOp func_op,
      absl::Span<const xla::BufferAllocation> allocations,
      const stream_executor::CudaComputeCapability& cuda_compute_capability,
+     const stream_executor::RocmComputeCapability& rocm_compute_capability,
      const xla::HloModuleConfig& hlo_module_config, llvm::Module* llvm_module) {
-  // Hardcoded values for now...
+#if TENSORFLOW_USE_ROCM
+  const char target_triple[] = "amdgcn-amd-amdhsa";
+  const char data_layout[] =
+      "e-p:64:64-p1:64:64-p2:64:64-p3:32:32-p4:32:32-p5:32:32-i64:64-v16:16-"
+      "v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-"
+      "v2048:2048-n32:64-A5";
+  const char platform_name[] = "ROCm";
+#else
   const char target_triple[] = "nvptx64-nvidia-cuda";
   const char data_layout[] = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
   const char platform_name[] = "CUDA";
+#endif
   xla::gpu::GpuDeviceInfo gpu_device_info = {};
   gpu_device_info.threads_per_block_limit = 1024;
   gpu_device_info.threads_per_warp = 32;
@@ -196,9 +211,8 @@ Emit(mlir::func::FuncOp func_op,
 
   IrEmitterContext ir_emitter_context(
       /*hlo_module=*/nullptr, /*buffer_assignment=*/nullptr, platform_name,
-      gpu_device_info, cuda_compute_capability,
-      stream_executor::RocmComputeCapability("gfx000"), func_op->getContext(),
-      llvm_module);
+      gpu_device_info, cuda_compute_capability, rocm_compute_capability,
+      func_op->getContext(), llvm_module);
 
   ir_emitter_context.set_allocations(allocations);
 
@@ -236,13 +250,25 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   xla::HloModuleConfig hlo_module_config;
   xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
   hlo_module_config.set_debug_options(options);
+  // TODO(b/228163857): pass down capability from CompileModuleToLlvmIrImpl().
   stream_executor::CudaComputeCapability cuda_compute_capability = {5, 2};
+  stream_executor::RocmComputeCapability rocm_compute_capability("gfx900");
+#if TENSORFLOW_USE_ROCM
+  auto platform = xla::PlatformUtil::GetPlatform("gpu");
+  if (!platform.ok()) return MakeError(platform.status());
+  auto stream_executors = xla::PlatformUtil::GetStreamExecutors(*platform);
+  if (!stream_executors.ok()) return MakeError(stream_executors.status());
+  if (stream_executors->empty()) return MakeError("No gpu stream executors");
+  rocm_compute_capability = stream_executors->front()
+                                ->GetDeviceDescription()
+                                .rocm_compute_capability();
+#endif
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 
-  auto emit_result =
-      Emit(std::get<mlir::func::FuncOp>(module_op), *allocations,
-           cuda_compute_capability, hlo_module_config, llvm_module.get());
+  auto emit_result = Emit(std::get<mlir::FuncOp>(module_op), *allocations,
+                          cuda_compute_capability, rocm_compute_capability,
+                          hlo_module_config, llvm_module.get());
   if (!emit_result) return emit_result.takeError();
   auto thunks = std::move(std::get<0>(*emit_result));
   auto constants = std::move(std::get<1>(*emit_result));
@@ -267,11 +293,20 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
     return MakeError("Expected only kernel, copy, memset, and memzero thunks");
   }
 
+#if TENSORFLOW_USE_ROCM
+  auto libdevice_dir = tensorflow::RocdlRoot();
+  xla::gpu::GpuVersion gpu_version{rocm_compute_capability};
+  auto hsaco = xla::gpu::amdgpu::CompileToHsaco(
+      llvm_module.get(), gpu_version, hlo_module_config, libdevice_dir);
+  if (!hsaco.ok()) return MakeError(hsaco.status());
+  StatusOr<std::string> ptx(std::string(hsaco->begin(), hsaco->end()));
+#else
   auto libdevice_dir = xla::gpu::GetLibdeviceDir(hlo_module_config);
   auto ptx =
       xla::gpu::nvptx::CompileToPtx(llvm_module.get(), cuda_compute_capability,
                                     hlo_module_config, libdevice_dir);
   if (!ptx.ok()) return MakeError(ptx.status());
+#endif
 
   return RewriteData{op,
                      std::move(arguments),
