@@ -11068,7 +11068,7 @@ func DepthToSpaceDataFormat(value string) DepthToSpaceAttr {
 //
 //   * Chunks of data of size `block_size * block_size` from depth are rearranged
 //     into non-overlapping blocks of size `block_size x block_size`
-//   * The width the output tensor is `input_depth * block_size`, whereas the
+//   * The width of the output tensor is `input_depth * block_size`, whereas the
 //     height is `input_height * block_size`.
 //   * The Y, X coordinates within each block of the output image are determined
 //     by the high order component of the input channel index.
