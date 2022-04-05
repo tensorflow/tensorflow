@@ -2114,6 +2114,10 @@ class Operation(object):
     # Post process for control flows.
     self._control_flow_post_processing(input_tensors=inputs)
 
+    # Removes this frame from the Python traceback.
+    # We adjust stacklevel directly to avoid triggering serialization.
+    self.traceback._stacklevel += 1  # pylint: disable=protected-access
+
   @classmethod
   def _from_c_op(cls, c_op, g):
     """Create an Operation from a TF_Operation.

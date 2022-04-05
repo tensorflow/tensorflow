@@ -663,6 +663,13 @@ def _apply_op(g, *args, **kwargs):
 
 class OperationTest(test_util.TensorFlowTestCase):
 
+  def testTraceback(self):
+    g = ops.Graph()
+    op1 = ops.Operation(
+        ops._NodeDef("None", "op1"), g, [],
+        [dtypes.float32_ref, dtypes.float32])
+    self.assertIn("testTraceback", op1.traceback[-1])
+
   @test_util.run_deprecated_v1
   def testNoInputs(self):
     op = test_ops.float_output_string_output(name="myop").a.op
