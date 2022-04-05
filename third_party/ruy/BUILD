@@ -6,4 +6,3 @@ package(
 )
 
 # The LICENSE from this package is used during pip package generation.
-exports_files(["LICENSE"])
