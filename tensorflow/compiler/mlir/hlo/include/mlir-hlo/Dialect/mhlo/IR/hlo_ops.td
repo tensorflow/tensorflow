@@ -1123,6 +1123,12 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
   ];
 
   let hasCustomHLOConverter = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1617,9 +1623,10 @@ def HLO_CustomCallOp: HLO_Op<"custom_call",
     DefaultValuedStrAttr<StrAttr, "">:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
-    DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
-                      "CustomCallApiVersion::API_VERSION_ORIGINAL">:
-                      $api_version,
+    DefaultValuedAttr<
+        HLO_CustomCallApiVersionAttr,
+        "::mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
+        $api_version,
     DefaultValuedAttr<HLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$operand_layouts,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$result_layouts

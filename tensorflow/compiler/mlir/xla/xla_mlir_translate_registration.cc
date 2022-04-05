@@ -147,9 +147,9 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   Status status =
       via_builder
           ? ConvertMlirHloToHloViaBuilder(module, &hloProto, options)
-          : mlir::ConvertMlirHloToHlo(
-                module, &hloProto, emit_use_tuple_arg, emit_return_tuple,
-                /*shape_representation_fn=*/nullptr, options);
+          : mlir::ConvertMlirHloToHlo(module, &hloProto, emit_use_tuple_arg,
+                                      emit_return_tuple,
+                                      /*shape_determination_fns=*/{}, options);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();

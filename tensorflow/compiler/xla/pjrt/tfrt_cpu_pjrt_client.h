@@ -83,6 +83,11 @@ class TfrtCpuDevice final : public PjRtDevice {
     return max_inflight_computations_semaphore_;
   }
 
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
+
  private:
   int id_;
   PjRtClient* client_ = nullptr;

@@ -68,8 +68,7 @@ def DropOutputShapesAttr : Pass<"tfg-drop-unregistered-output-shapes"> {
 
   let options = [
    ListOption<"skip_", "skip", "std::string",
-              "Comma separated list of ops that will be skipped.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "Comma separated list of ops that will be skipped.">,
   ];
   let constructor = "CreateDropOutputShapesAttrPass()";
 }
@@ -84,15 +83,12 @@ def GraphToFunc : Pass<"tfg-lift-graph-to-func", "ModuleOp"> {
   let constructor = "CreateGraphToFuncPass()";
   let options = [
    ListOption<"feeds_", "feeds", "std::string",
-              "Comma separated list of ops that will be turned into arguments.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "Comma separated list of ops that will be turned into arguments.">,
    ListOption<"fetches_", "fetches", "std::string",
-              "Comma separated list of ops that will be turned into results.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "Comma separated list of ops that will be turned into results.">,
    ListOption<"control_rets_", "control_rets", "std::string",
               "Comma separated list of ops that will be turned into control "
-              "returned.",
-              "llvm::cl::MiscFlags::CommaSeparated">
+              "returned.">
   ];
 }
 

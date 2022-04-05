@@ -701,6 +701,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util:overflow",
         "//third_party/eigen3",
     ],

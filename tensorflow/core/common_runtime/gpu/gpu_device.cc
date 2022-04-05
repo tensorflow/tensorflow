@@ -119,11 +119,15 @@ using se::rocm::ScopedActivateExecutorContext;
 class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
  public:
   EigenGpuStreamDevice()
-      : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {}
+      : scratch_(nullptr),
+        semaphore_(nullptr),
+        context_(nullptr),
+        device_(this) {}
   ~EigenGpuStreamDevice() override {}
+
   void Reinitialize(OpKernelContext* context, const gpuStream_t* gpu_stream,
-                    TfDeviceId tf_device_id, ::tensorflow::Allocator* alloc,
-                    char* scratch) {
+                    PlatformDeviceId platform_device_id,
+                    ::tensorflow::Allocator* alloc, char* scratch) {
     if (LogMemory::IsEnabled()) {
       operation_ = context->op_kernel().name() + "/EigenAllocator";
       step_id_ = context->step_id();
@@ -134,9 +138,6 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
         reinterpret_cast<unsigned int*>(scratch + Eigen::kGpuScratchSize);
     stream_ = gpu_stream;
     allocator_ = alloc;
-    PlatformDeviceId platform_device_id;
-    TF_CHECK_OK(
-        GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
     device_prop_ = &Eigen::GetGpuDeviceProperties(platform_device_id.value());
   }
 
@@ -190,6 +191,8 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   // each kernel start.
   unsigned int* semaphore() const override { return semaphore_; }
 
+  const Eigen::GpuDevice& device() const { return device_; }
+
  private:
   struct AsyncFreeData {
     AsyncFreeData(::tensorflow::Allocator* a, void* p, const string& o,
@@ -225,6 +228,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   mutable char* scratch_;
   mutable unsigned int* semaphore_;
   OpKernelContext* context_;
+  Eigen::GpuDevice device_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenGpuStreamDevice);
 };
@@ -892,24 +896,37 @@ void BaseGPUDevice::CopyTensorInSameDevice(const Tensor* input_tensor,
                                   input_tensor, output_tensor, std::move(done));
 }
 
+ConcretePerOpGpuDevice::ConcretePerOpGpuDevice()
+    : stream_device_(std::make_unique<EigenGpuStreamDevice>()) {}
+
+void ConcretePerOpGpuDevice::Reinitialize(OpKernelContext* context,
+                                          const void* gpu_stream,
+                                          TfDeviceId tf_device_id,
+                                          Allocator* base_allocator,
+                                          char* scratch) {
+  PlatformDeviceId platform_device_id;
+  TF_CHECK_OK(
+      GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
+  static_cast<EigenGpuStreamDevice*>(stream_device_.get())
+      ->Reinitialize(context, static_cast<const gpuStream_t*>(gpu_stream),
+                     platform_device_id, base_allocator, scratch);
+}
+
+void ConcretePerOpGpuDevice::Reinitialize(OpKernelContext* context,
+                                          const void* gpu_stream,
+                                          PlatformDeviceId platform_device_id,
+                                          Allocator* base_allocator,
+                                          char* scratch) {
+  static_cast<EigenGpuStreamDevice*>(stream_device_.get())
+      ->Reinitialize(context, static_cast<const gpuStream_t*>(gpu_stream),
+                     platform_device_id, base_allocator, scratch);
+}
+
+const Eigen::GpuDevice& ConcretePerOpGpuDevice::device() const {
+  return static_cast<EigenGpuStreamDevice*>(stream_device_.get())->device();
+}
+
 namespace {
-class ConcretePerOpGpuDevice : public PerOpGpuDevice {
- public:
-  ConcretePerOpGpuDevice() : device_(&stream_device_) {}
-
-  void Reinitialize(OpKernelContext* context, const gpuStream_t* gpu_stream,
-                    TfDeviceId tf_device_id, Allocator* base_allocator,
-                    char* scratch) {
-    stream_device_.Reinitialize(context, gpu_stream, tf_device_id,
-                                base_allocator, scratch);
-  }
-
-  const Eigen::GpuDevice& device() const override { return device_; }
-
- private:
-  EigenGpuStreamDevice stream_device_;
-  Eigen::GpuDevice device_;
-};
 
 Status VerifyVirtualDeviceSettings(
     const size_t num_gpus_to_use, const GPUOptions& gpu_options,
