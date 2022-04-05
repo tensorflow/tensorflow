@@ -18,6 +18,11 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+*   `tf.keras`:
+    * `EinsumDense` layer moved from experimental to core. Its import path moved
+      from `tf.keras.layers.experimental.EinsumDense` to
+      `tf.keras.layers.EinsumDense`.
+
 # Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
