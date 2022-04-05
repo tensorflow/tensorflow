@@ -297,6 +297,10 @@ class alignas(alignof(T) * N) AlignedVector {
 // Returns the maximum power-of-two alignment (in units of elements, not bytes)
 // of a stride or pointer value.
 inline int64_t alignment_of(int64_t element_stride) {
+  // A zero/nullptr value means that the stride/pointer is not used, so it
+  // effectively has infinite alignment.
+  constexpr int64_t kMaxAlignment = 512;
+  if (element_stride == 0) return kMaxAlignment;
   return element_stride & -element_stride;
 }
 
@@ -328,7 +332,7 @@ struct DispatchToVectorizedHelper {
   }
 };
 template <template <int vec_size> class Functor>
-struct DispatchToVectorizedHelper<0, Functor> {
+struct DispatchToVectorizedHelper<1, Functor> {
   template <typename... Args>
   Status operator()(int64_t max_vec_size, Args&&... args) const {
     return Functor<1>()(std::forward<Args>(args)...);
@@ -340,8 +344,16 @@ struct DispatchToVectorizedHelper<0, Functor> {
 // Calls Functor<vec_size>()(args...) with vec_size set to the optimal GPU
 // vector instruction size for type T that is <= max_vec_size. The max_vec_size
 // argument should be set to the minimum alignment of all relevant parameters.
+// Requires sizeof(T) to be a power of 2.
 template <typename T, template <int vec_size> class Functor, typename... Args>
 Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
+  static_assert((sizeof(T) & (sizeof(T) - 1)) == 0,
+                "sizeof(T) must be a power of 2");
+  if (max_vec_size <= 0) {
+    return errors::InvalidArgument("DispatchToVectorized: max_vec_size (",
+                                   max_vec_size,
+                                   ") must be greater than zero.");
+  }
   constexpr const int kOptimalVecSizeBytes = 16;
   // The optimal number of (aligned) elements of T to load/store in a
   // single instruction inside a kernel.
