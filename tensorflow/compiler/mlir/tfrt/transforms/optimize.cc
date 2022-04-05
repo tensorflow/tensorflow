@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -57,7 +58,7 @@ class FoldDeviceIndex : public mlir::OpRewritePattern<mlir::TF::DeviceIndexOp> {
 // Optimization pass for TFRT-specific rewrite patterns.
 class OptimizeTfForTfrt
     : public mlir::PassWrapper<OptimizeTfForTfrt,
-                               mlir::OperationPass<mlir::FuncOp>> {
+                               mlir::OperationPass<mlir::func::FuncOp>> {
  public:
   llvm::StringRef getArgument() const final { return "optimize-tf-for-tfrt"; }
 
@@ -84,7 +85,7 @@ class OptimizeTfForTfrt
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateOptimizeTfForTfrtPass() {
   return std::make_unique<OptimizeTfForTfrt>();
 }

@@ -72,7 +72,7 @@ TEST(SliceOpTest, Input_2D_Uint8) {
       /*output=*/{TensorType_UINT8, {1, 2}, -10, 10}, {TensorType_INT32, {2}},
       {TensorType_INT32, {2}}, {1, 0}, {1, 2});
   m.SetInput<uint8_t>({1, 2, 3, 4, 5, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
   auto reference_output_shape = m.GetOutputShape();
   m.ApplyDelegateAndInvoke();
@@ -87,7 +87,7 @@ TEST(SliceOpTest, SizeInt64_Uint8) {
                           {TensorType_INT64, {4}}, {TensorType_INT64, {4}},
                           {1, 0, 0, 0}, {3, 1, 1, 1});
   m.SetInput<uint8_t>({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
   auto reference_output_shape = m.GetOutputShape();
   m.ApplyDelegateAndInvoke();
@@ -103,7 +103,7 @@ TEST(SliceOpTest, SizeMinus1) {
       {TensorType_INT64, {4}}, {TensorType_INT64, {4}}, {1, 0, 0, 0},
       {2, 1, -1, 1});
   m.SetInput<uint8_t>({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
   auto reference_output_shape = m.GetOutputShape();
   m.ApplyDelegateAndInvoke();
@@ -119,7 +119,7 @@ TEST(SliceOpTest, BeginNonZeroSizeMinus1Axis1) {
       {TensorType_INT64, {4}}, {TensorType_INT64, {4}}, {1, 1, 0, 0},
       {2, -1, 1, 1});
   m.SetInput<uint8_t>({1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
   auto reference_output_shape = m.GetOutputShape();
   m.ApplyDelegateAndInvoke();
@@ -135,7 +135,7 @@ TEST(SliceOpTest, BeginNonZeroSizeMinus1Axis2) {
       {TensorType_INT64, {4}}, {TensorType_INT64, {4}}, {1, 0, 1, 0},
       {2, 1, -1, 1});
   m.SetInput<uint8_t>({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<uint8_t>();
   auto reference_output_shape = m.GetOutputShape();
   m.ApplyDelegateAndInvoke();
@@ -151,7 +151,7 @@ TEST(SliceOpTest, BeginNonZeroSizeMinus1Axis2_Int8) {
       {TensorType_INT64, {4}}, {TensorType_INT64, {4}}, {1, 0, 1, 0},
       {2, 1, -1, 1});
   m.SetInput<int8_t>({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<int8_t>();
   auto reference_output_shape = m.GetOutputShape();
   m.ApplyDelegateAndInvoke();

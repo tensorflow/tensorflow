@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/public/version.h"
@@ -378,15 +379,20 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
 
 // Prepares a dynamic shape tensor for broadcast by adding leading 1 dimensions.
 Status DynamicBroadcast(ITensorProxyPtr operand, OpConverterParams* params,
-                        ITensorProxyPtr* output, int broadcasted_nbDims) {
+                        ITensorProxyPtr* output, int broadcasted_nbDims,
+                        absl::optional<int> op_instance) {
   int operand_nbDims = operand->getDimensions().nbDims;
   if (broadcasted_nbDims > operand_nbDims) {
     if (params->validation_only) return Status::OK();
     int n_extra_dims = broadcasted_nbDims - operand_nbDims;
     VLOG(2) << "Dynamic broadcast adding " << n_extra_dims << " leading 1s";
     TF_RETURN_IF_ERROR(params->converter->DynamicReshape(
-        operand, {std::make_pair(0, operand_nbDims)}, params, output,
-        {n_extra_dims}));
+        /*input=*/operand,
+        /*slices=*/{std::make_pair(0, operand_nbDims)},
+        /*params=*/params,
+        /*output=*/output,
+        /*size_for_added_dims*/ {n_extra_dims},
+        /*op_instance=*/op_instance));
   } else {
     *output = operand;
   }
@@ -406,7 +412,8 @@ Status BroadcastWeights(std::unique_ptr<TRT_TensorOrWeights>& p,
 
 Status ApplyBroadcast(std::unique_ptr<TRT_TensorOrWeights>& operand,
                       const DimsAdapter& broadcasted_dims,
-                      OpConverterParams* params) {
+                      OpConverterParams* params,
+                      absl::optional<int> op_instance) {
   if (operand->is_weights()) {
     TF_RETURN_IF_ERROR(BroadcastWeights(operand, broadcasted_dims));
   } else {
@@ -419,8 +426,12 @@ Status ApplyBroadcast(std::unique_ptr<TRT_TensorOrWeights>& operand,
           params->converter, *operand, broadcasted_dims,
           params->validation_only, &tensor, params->node_def));
     } else {
-      TF_RETURN_IF_ERROR(DynamicBroadcast(operand->tensor(), params, &tensor,
-                                          broadcasted_dims.NumDims()));
+      TF_RETURN_IF_ERROR(DynamicBroadcast(
+          /*operand=*/operand->tensor(),
+          /*params=*/params,
+          /*output=*/&tensor,
+          /*broadcasted_nbDims*/ broadcasted_dims.NumDims(),
+          /*op_instance=*/op_instance));
     }
     operand = std::make_unique<TRT_TensorOrWeights>(tensor);
   }
@@ -444,8 +455,17 @@ Status BroadcastTensors(std::unique_ptr<TRT_TensorOrWeights>& operand_l,
 
   if (params->validation_only) return Status::OK();
 
-  TF_RETURN_IF_ERROR(ApplyBroadcast(operand_l, broadcasted_dims_l, params));
-  TF_RETURN_IF_ERROR(ApplyBroadcast(operand_r, broadcasted_dims_r, params));
+  TF_RETURN_IF_ERROR(ApplyBroadcast(
+      /*operand=*/operand_l,
+      /*broadcasted_dims=*/broadcasted_dims_l,
+      /*params=*/params,
+      /*op_instance=*/0));
+
+  TF_RETURN_IF_ERROR(ApplyBroadcast(
+      /*operand=*/operand_r,
+      /*broadcasted_dims=*/broadcasted_dims_r,
+      /*params=*/params,
+      /*op_instance=*/1));
 
   return Status::OK();
 }
@@ -1196,6 +1216,12 @@ Status Converter::BuildCudaEngine(
   VLOG(1) << "Setting sparsity for TensorRT8!";
 #endif
 
+  if (tensorflow::tensor_float_32_execution_enabled()) {
+    builder_config->setFlag(nvinfer1::BuilderFlag::kTF32);
+  } else {
+    builder_config->clearFlag(nvinfer1::BuilderFlag::kTF32);
+  }
+
   if (precision_mode_ == TrtPrecisionMode::FP16) {
     builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
   } else if (precision_mode_ == TrtPrecisionMode::INT8) {
@@ -1401,10 +1427,10 @@ void Converter::SetLayerName(nvinfer1::ILayer* layer, const NodeDef& node_def,
   if (sub_op_suffix.empty()) {
     SetLayerNameHelper(layer, engine_name_, node_def.name());
   } else if (origin_node_name.has_value()) {
-    SetLayerNameHelper(layer, engine_name_,
-                       absl::StrCat(node_def.name(), "-",
-                                    absl::string_view(origin_node_name.value()),
-                                    "-", sub_op_suffix));
+    auto layer_name = absl::StrCat(node_def.name(), "-",
+                                   absl::string_view(origin_node_name.value()),
+                                   "-", sub_op_suffix);
+    SetLayerNameHelper(layer, engine_name_, layer_name);
   } else {
     SetLayerNameHelper(layer, engine_name_,
                        absl::StrCat(node_def.name(), "-", sub_op_suffix));
@@ -2192,7 +2218,11 @@ Status ConvertExpandDims(OpConverterParams* params) {
 
   if (!params->use_implicit_batch && !HasStaticShape(input_dims)) {
     TF_RETURN_IF_ERROR(params->converter->DynamicExpandDims(
-        input_tensor.tensor(), dims, trt_axis, params, &output_tensor));
+        /*input=*/input_tensor.tensor(),
+        /*dims=*/dims,
+        /*axis=*/trt_axis,
+        /*params=*/params,
+        /*output=*/&output_tensor));
   } else {
     // ExpandDims: Insert new dim of size 1.
     input_dims.insert(input_dims.begin() + trt_axis, 1);
@@ -2224,9 +2254,9 @@ Status Converter::DynamicReshape(ITensorProxyPtr input,
   std::vector<ITensorProxyPtr> concat_inputs;
   int max_num_slices = std::max(slices.size(), size_for_added_dims.size());
   int op_instance_value = op_instance.has_value() ? op_instance.value() : 0;
+
   for (int i = 0; i < max_num_slices; i++) {
     ITensorProxyPtr tensor;
-    int slice_instance = i * max_num_slices + op_instance_value;
     // maybe_add_a_dimension(i);
     if (i < size_for_added_dims.size() && size_for_added_dims[i] >= 0) {
       nvinfer1::Dims dims{1, {1}};
@@ -2243,7 +2273,9 @@ Status Converter::DynamicReshape(ITensorProxyPtr input,
           *shape->trt_tensor(), {1, {slices[i].first}},
           {1, {slices[i].second - slices[i].first}}, {1, {1}});
       concat_inputs.push_back(slice_layer->getOutput(0));
-      SetLayerName(slice_layer, params->node_def, "slice", slice_instance);
+      string slice_name = StrCat("slice_", op_instance_value);
+      SetLayerName(slice_layer, params->node_def, slice_name,
+                   /*op_instance=*/i);
     }
   }
   std::vector<nvinfer1::ITensor*> trt_concat_inputs;
@@ -2285,13 +2317,20 @@ Status Converter::DynamicExpandDims(ITensorProxyPtr input,
   if (axis != dims.nbDims) {
     slices.push_back(std::pair<int, int>{axis, dims.nbDims});
   }
-  return DynamicReshape(input, slices, params, output, extra_dims, op_instance);
+  return DynamicReshape(
+      /*input=*/input,
+      /*slices=*/slices,
+      /*params=*/params,
+      /*output=*/output,
+      /*size_for_added_dims=*/extra_dims,
+      /*op_instance=*/op_instance);
 }
 
 Status Converter::SqueezeTensor(ITensorProxyPtr input,
                                 std::vector<int>* input_dims,
                                 OpConverterParams* params,
-                                ITensorProxyPtr* output) {
+                                ITensorProxyPtr* output,
+                                absl::optional<int> op_instance) {
   // If the remaining dimensions of a squeeze operation have dynamic sizes, we
   // need to use TRT ops to build the result shape for the squeeze operation.
   // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
@@ -2303,7 +2342,13 @@ Status Converter::SqueezeTensor(ITensorProxyPtr input,
         slices.push_back(std::pair<int, int>(i, i + 1));
       }
     }
-    return DynamicReshape(input, slices, params, output);
+    return DynamicReshape(
+        /*input=*/input,
+        /*slices=*/slices,
+        /*params=*/params,
+        /*output=*/output,
+        /*size_for_added_dims=*/{},
+        /*op_instance=*/op_instance);
   }
   // Remove all dims which are equal to 0.
   input_dims->erase(std::remove(input_dims->begin(), input_dims->end(), 0),
@@ -2368,7 +2413,10 @@ Status ConvertSqueeze(OpConverterParams* params) {
 
   ITensorProxyPtr output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
-      input_tensor.tensor(), &input_dims, params, &output_tensor));
+      /*input=*/input_tensor.tensor(),
+      /*input_dims=*/&input_dims,
+      /*params=*/params,
+      /*output=*/&output_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
@@ -2454,6 +2502,7 @@ Status ConvertSlice(OpConverterParams* params) {
   auto end_vec = end_tensor.flat<int32>();
   auto size_vec = size_tensor.flat<int32>();
   auto begin_vec = begin_weights.GetTensor().flat<int32>();
+
   for (int i = 0; i < input_shape.dims(); i++) {
     strides_vec(i) = 1;
     begin_mask[i] = false;
@@ -3677,6 +3726,7 @@ Status ConvertPack(OpConverterParams* params) {
   std::vector<int64_t> tensor_dims(dims.begin(), dims.end());
   tensor_dims.insert(tensor_dims.begin() + trt_axis, 1);
   std::vector<ITensorProxyPtr> expanded_tensors;
+
   int input_index = 0;
   for (const TRT_TensorOrWeights& input : inputs) {
     ITensorProxyPtr expanded_tensor = nullptr;
@@ -3684,13 +3734,22 @@ Status ConvertPack(OpConverterParams* params) {
         !HasStaticShape(dims)) {
       if (!params->validation_only) {
         TF_RETURN_IF_ERROR(params->converter->DynamicExpandDims(
-            input.tensor(), dims.AsTrtDims(), trt_axis, params,
-            &expanded_tensor, input_index));
+            /*input=*/input.tensor(),
+            /*dims=*/dims.AsTrtDims(),
+            /*axis=*/trt_axis,
+            /*params=*/params,
+            /*output=*/&expanded_tensor,
+            /*op_instance=*/input_index));
       }
     } else {
       TF_RETURN_IF_ERROR(PrepareTensorForShape(
-          params->converter, input, DimsAdapter(tensor_dims),
-          params->validation_only, &expanded_tensor, node_def, input_index));
+          /*converter=*/params->converter,
+          /*input=*/input,
+          /*dims=*/DimsAdapter(tensor_dims),
+          /*validation_only=*/params->validation_only,
+          /*tensor=*/&expanded_tensor,
+          /*node_def=*/node_def,
+          /*op_instance=*/input_index));
     }
     if (!params->validation_only) {
       expanded_tensors.push_back(expanded_tensor);
@@ -3956,7 +4015,11 @@ Status ConvertSplitHelper(OpConverterParams* params,
       std::vector<int> in_dims(dims.d, dims.d + dims.nbDims);
       input_dims[trt_axis] = 0;
       TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
-          params->outputs->at(i).tensor(), &in_dims, params, &output_tensor));
+          /*input=*/params->outputs->at(i).tensor(),
+          /*input_dims=*/&in_dims,
+          /*params=*/params,
+          /*output=*/&output_tensor,
+          /*op_instance=*/i));
       (*params->outputs)[i] = TRT_TensorOrWeights(output_tensor);
     }
   }
@@ -4796,7 +4859,10 @@ Status ConvertArgMinMax(OpConverterParams* params) {
   input_dims[trt_axis] = 0;
   ITensorProxyPtr output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
-      output_indices_tensor, &input_dims, params, &output_tensor));
+      /*input=*/output_indices_tensor,
+      /*input_dims=*/&input_dims,
+      /*params=*/params,
+      /*output=*/&output_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
 
   return Status::OK();
@@ -5311,7 +5377,10 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   // The plugin produces a [N, 1] tensor for the num output, squeeze it to [N]
   std::vector<int> input_dims{output_num_detections->getDimensions().d[0], 0};
   TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
-      output_num_detections, &input_dims, params, &output_num_detections));
+      /*input=*/output_num_detections,
+      /*input_dims=*/&input_dims,
+      /*params=*/params,
+      /*output=*/&output_num_detections));
 
   // Final outputs
   params->outputs->push_back(TRT_TensorOrWeights(output_detection_boxes));

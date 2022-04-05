@@ -15,6 +15,7 @@ package(
         "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/profiler/internal/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
+        "//tensorflow/dtensor:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],

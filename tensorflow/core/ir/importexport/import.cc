@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/import.h"
 
-#include <assert.h>
-
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -959,11 +958,15 @@ tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
     Type dtype;
     TF_RETURN_IF_ERROR(ConvertDataType(handle.dtype(), builder, &dtype));
     TF_ASSIGN_OR_RETURN(
-        Attribute shape,
+        ShapeAttr shape,
         ConvertTensorShapeProto(handle.shape(), builder.getContext()));
-
-    dtype_and_shape.push_back(
-        builder.getArrayAttr({TypeAttr::get(dtype), shape}));
+    TensorType handle_type;
+    if (shape.hasRank()) {
+      handle_type = RankedTensorType::get(shape.getShape(), dtype);
+    } else {
+      handle_type = UnrankedTensorType::get(dtype);
+    }
+    dtype_and_shape.push_back(TypeAttr::get(handle_type));
   }
   return builder.getArrayAttr(dtype_and_shape);
 }

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -308,6 +309,7 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// Fill `*proto` from `*this`.
   void AsProto(TensorShapeProto* proto) const;
+  TensorShapeProto AsProto() const;
 
   /// For iterating through the dimensions.
   TensorShapeIter<Shape> begin() const;
@@ -372,6 +374,12 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   static Status BuildTensorShape(const TensorShapeProto& proto,
                                  TensorShape* out) {
     return BuildTensorShapeBase(proto, out);
+  }
+
+  static StatusOr<TensorShape> BuildTensorShape(const TensorShapeProto& proto) {
+    TensorShape out;
+    TF_RETURN_IF_ERROR(BuildTensorShape(proto, &out));
+    return out;
   }
 
   /// Allow a TensorShape to be used as a PartialTensorShape without copying
@@ -541,6 +549,13 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
   static Status BuildPartialTensorShape(const TensorShapeProto& proto,
                                         PartialTensorShape* out) {
     return BuildTensorShapeBase(proto, out);
+  }
+
+  static StatusOr<PartialTensorShape> BuildPartialTensorShape(
+      const TensorShapeProto& proto) {
+    PartialTensorShape out;
+    TF_RETURN_IF_ERROR(BuildTensorShapeBase(proto, &out));
+    return out;
   }
 
   /// Add a dimension to the end ("inner-most"), returns a new

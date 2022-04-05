@@ -931,9 +931,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         }
         break;
       default:
-        context->ReportError(context,
-                             "Quantized FullyConnected expects output data "
-                             "type uint8, int8 or int16");
+        TF_LITE_KERNEL_LOG(context,
+                           "Quantized FullyConnected expects output data "
+                           "type uint8, int8 or int16");
         return kTfLiteError;
     }
   }
@@ -952,7 +952,7 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
   // TODO(b/110697972) decide more consistently if / how / where we want
   // to perform this kind of runtime data type checks.
   if (shuffled_input_workspace->type != kTfLiteUInt8) {
-    context->ReportError(context, "Unexpected data type");
+    TF_LITE_KERNEL_LOG(context, "Unexpected data type");
     return kTfLiteError;
   }
 
@@ -1124,8 +1124,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return EvalQuantized<kernel_type>(context, node, params, data, input,
                                           filter, bias, output);
       } else {
-        context->ReportError(context,
-                             "Unhandled fully-connected weights format");
+        TF_LITE_KERNEL_LOG(context, "Unhandled fully-connected weights format");
         return kTfLiteError;
       }
     case kTfLiteInt8:
@@ -1133,14 +1132,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return EvalQuantized<kernel_type>(context, node, params, data, input,
                                           filter, bias, output);
       } else {
-        context->ReportError(context,
-                             "Unhandled fully-connected weights format");
+        TF_LITE_KERNEL_LOG(context, "Unhandled fully-connected weights format");
         return kTfLiteError;
       }
     default:
-      context->ReportError(context,
-                           "Filter data type %s currently not supported.",
-                           TfLiteTypeGetName(filter->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Filter data type %s currently not supported.",
+                         TfLiteTypeGetName(filter->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

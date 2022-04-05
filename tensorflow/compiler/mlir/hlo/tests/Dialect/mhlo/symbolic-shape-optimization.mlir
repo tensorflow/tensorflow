@@ -702,7 +702,7 @@ func.func @broadcast_w_dyn_ty(%arg0: tensor<1xindex>) -> tensor<?xindex>{
   // CHECK: return %[[CAST]]
    %0 = shape.broadcast %arg0, %arg0
        : tensor<1xindex>, tensor<1xindex> -> tensor<?xindex>
-   return %0 : tensor<?xindex>
+   func.return %0 : tensor<?xindex>
 }
 
 // -----
@@ -715,5 +715,5 @@ func.func @broadcast_scalar_w_dyn_ty(%arg0: tensor<0xindex>) -> tensor<?xindex>{
   // CHECK: return %[[CAST]]
    %0 = shape.broadcast %arg0, %arg0
        : tensor<0xindex>, tensor<0xindex> -> tensor<?xindex>
-   return %0 : tensor<?xindex>
+   func.return %0 : tensor<?xindex>
 }

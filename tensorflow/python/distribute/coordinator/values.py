@@ -445,6 +445,7 @@ class PerWorkerDatasetFromDataset(PerWorkerDatasetFromDatasetFunction):
 
 
 def get_per_worker_dataset(dataset_or_dataset_fn, coordinator):
+  """Returns a per-worker dataset from a dataset or a dataset function."""
   if callable(dataset_or_dataset_fn):
     return PerWorkerDatasetFromDatasetFunction(dataset_or_dataset_fn,
                                                coordinator)

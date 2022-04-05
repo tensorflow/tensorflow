@@ -147,8 +147,7 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
       if (l.size() != r.size()) return false;
       for (auto it : llvm::zip(l, r))
-        if (getTypeWithoutSparseEncoding(std::get<0>(it)) !=
-            getTypeWithoutSparseEncoding(std::get<1>(it)))
+        if (!isSameTypesWithoutSparseEncoding(std::get<0>(it), std::get<1>(it)))
           return false;
       return true;
     }
@@ -441,7 +440,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
-class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
+class HLO_BinaryElementwiseOpNoAssembly<string mnemonic, list<Trait> traits> :
     HLO_Op<mnemonic, traits # [InferShapedTypeOpInterface,
     InferShapeEqualityOpInterface, SameOperandsAndResultShape, Elementwise]> {
   let arguments = (ins
@@ -472,7 +471,19 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
   }];
 
   let results = (outs HLO_Tensor:$result);
-  let assemblyFormat = "operands attr-dict `:` type($result)";
+}
+
+class HLO_BinaryElementwiseOp<string mnemonic, list<Trait> traits> :
+    HLO_BinaryElementwiseOpNoAssembly<mnemonic, traits> {
+  let extraClassDefinition = [{
+    ParseResult $cppClass::parse(OpAsmParser &parser, OperationState &result) {
+      return ::mlir::mhlo::parseBinaryOp(parser, result);
+    }
+    void $cppClass::print(OpAsmPrinter &p) {
+      ::mlir::mhlo::printBinaryOp(getOperation(), p);
+    }
+  }];
+  let hasCustomAssemblyFormat = 1;
 }
 
 def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
@@ -497,7 +508,7 @@ def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
-def HLO_ComplexOp: HLO_BinaryElementwiseOp<"complex",
+def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex",
     [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Complex operator";
   let description = [{
@@ -1083,9 +1094,7 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
 }
 
 def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
-    SameOperandsAndResultShape, Elementwise,
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-        ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
+    SameOperandsAndResultShape, Elementwise, InferTensorTypeWithReify]> {
   let summary = "Comparison operator";
   let description = [{
     Compares `lhs` and `rhs` elementwise according to `comparison_direction`
@@ -1111,14 +1120,15 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
       "::mlir::mhlo::ComparisonDirection":$comparison_direction,
       CArg<"::mlir::mhlo::ComparisonType",
       "::mlir::mhlo::ComparisonType::NOTYPE">:$compare_type)>,
-
-    OpBuilder<(ins "Value":$lhs, "Value":$rhs,
-      "::mlir::mhlo::ComparisonDirectionAttr":$comparison_direction,
-      CArg<"::mlir::mhlo::ComparisonTypeAttr",
-      "::mlir::mhlo::ComparisonTypeAttr()">:$compare_type)>,
   ];
 
   let hasCustomHLOConverter = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1613,9 +1623,10 @@ def HLO_CustomCallOp: HLO_Op<"custom_call",
     DefaultValuedStrAttr<StrAttr, "">:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
-    DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
-                      "CustomCallApiVersion::API_VERSION_ORIGINAL">:
-                      $api_version,
+    DefaultValuedAttr<
+        HLO_CustomCallApiVersionAttr,
+        "::mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
+        $api_version,
     DefaultValuedAttr<HLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$operand_layouts,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$result_layouts
@@ -1875,8 +1886,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]> {
 }
 
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
-    InferTensorTypeWithReify,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+    InferTensorTypeWithReify]> {
   let summary = "Select operator";
   let description = [{
     Constructs an output tensor from the elements of `on_true` and `on_false`

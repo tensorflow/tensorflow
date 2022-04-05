@@ -307,7 +307,6 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
-    case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kTuple:

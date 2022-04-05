@@ -378,9 +378,7 @@ message DebugOptions {
   bool xla_gpu_enable_shared_constants = 165;
 
   // Whether to use cuBLASLt for GEMMs on GPUs.
-  // This was rolled back. For compatibility reasons, we should not reuse this
-  // tag for something else.
-  // bool xla_gpu_enable_cublaslt = 166;
+  bool xla_gpu_enable_cublaslt = 166;
 
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
@@ -447,6 +445,14 @@ message ExecutionOptions {
 
   // Whether to automatically generate XLA shardings for SPMD partitioner.
   bool use_auto_spmd_partitioning = 15;
+
+  // Device mesh shape used to create the sharding search space when
+  // use_auto_spmd_partitioning=true.
+  repeated int64 auto_spmd_partitioning_mesh_shape = 16;
+
+  // Device mesh ids compatible with the above mesh_shape used when
+  // use_auto_spmd_partitioning=true.
+  repeated int64 auto_spmd_partitioning_mesh_ids = 17;
 
   // If set, deduplicate hlo into function calls to reduce binary size. Only
   // works on TPU.

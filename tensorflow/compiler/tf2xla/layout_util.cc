@@ -21,6 +21,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+XlaShapeLayoutHelpers::ShapeDeterminationFns::ShapeDeterminationFns() {
+  layout_preference_fn = UseNoPreferenceLayoutFn();
+  shape_representation_fn = IdentityShapeRepresentationFn();
+}
+
 XlaShapeLayoutHelpers::LayoutPreferenceFn UseNoPreferenceLayoutFn() {
   return [](const TensorShape& shape, DataType dtype,
             absl::optional<XlaArgument::Kind>) -> XlaLayoutPreference {
@@ -72,16 +77,6 @@ Status RewriteLayoutWithShardedShape(
   return Status::OK();
 }
 
-Status RewriteLayoutWithShardedShape(
-    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-    xla::Shape* xla_shape) {
-  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
-      UseNoPreferenceLayoutFn(), shape_representation_fn};
-  return RewriteLayoutWithShardedShape(sharding, use_fast_memory,
-                                       shape_determination_fns, xla_shape);
-}
-
 // There is a shape_representation_fn or sharding for an output, this function
 // uses a reshape to fix the layout.
 StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
@@ -124,17 +119,6 @@ StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     }
   }
   return xla::Reshape(to_shape, original);
-}
-
-StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
-    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-    absl::optional<xla::OpSharding> sharding, bool fast_mem) {
-  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
-      UseNoPreferenceLayoutFn(), shape_representation_fn};
-  return ReshapeWithCorrectRepresentationAndSharding(
-      builder, original, original_shape, shape_determination_fns, sharding,
-      fast_mem);
 }
 
 }  // namespace tensorflow

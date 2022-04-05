@@ -220,10 +220,6 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(strategy_with_var_policy())
   def testValueInReplicaContext(self, distribution):
-    if isinstance(distribution.extended,
-                  collective_all_reduce_strategy.CollectiveAllReduceExtended):
-      self.skipTest("b/162916064 direct value assignment fails for MWMS."
-                    "Re-enable the test after the it's fixed.")
     with distribution.scope():
       v = variables_lib.Variable(
           1., aggregation=variables_lib.VariableAggregation.MEAN)
@@ -242,7 +238,6 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
   @combinations.generate(strategy_with_var_policy())
   def testValueInReplicaContextAssignDirectValue(self, distribution,
                                                  use_var_policy):
-    self.skipTest("Test to reproduce b/162916064.")
     with distribution.scope():
       v = variables_lib.Variable(
           1., aggregation=variables_lib.VariableAggregation.MEAN)
@@ -250,7 +245,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
       @def_function.function
       def f():
-        with ops.control_dependencies([v.assign_add(1)]):
+        with ops.control_dependencies([v.assign_add(1.)]):
           return v.value()
 
       results = self.evaluate(
@@ -366,10 +361,6 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(strategy_with_var_policy())
   def testInitScope(self, distribution):
-    if isinstance(distribution.extended,
-                  collective_all_reduce_strategy.CollectiveAllReduceExtended):
-      self.skipTest("b/162916064 direct value assignment fails for MWMS."
-                    "Re-enable the test after the it's fixed.")
     if not context.executing_eagerly(): self.skipTest("eager only")
 
     class C(object):

@@ -12,3 +12,5 @@ filegroup(
     name = "symbols_pybind",
     srcs = ["symbols_pybind.txt"],
 )
+
+exports_files(["def_file_empty.def"])

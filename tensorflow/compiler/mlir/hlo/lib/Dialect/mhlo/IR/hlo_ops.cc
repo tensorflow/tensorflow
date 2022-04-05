@@ -4486,11 +4486,11 @@ void SelectOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 // Makes it such that a SelectOp that is a non-root operation in a DRR infers
 // the return type based on operand type.
-LogicalResult SelectOp::inferReturnTypes(
-    MLIRContext*, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type>& inferredReturnTypes) {
-  SelectOp::Adaptor op(operands);
+LogicalResult SelectOp::inferReturnTypeComponents(
+    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  SelectOp::Adaptor op(operands, attributes);
   auto true_type = op.on_true().getType().cast<TensorType>();
   auto false_type = op.on_true().getType().cast<TensorType>();
 
@@ -4508,11 +4508,11 @@ LogicalResult SelectOp::inferReturnTypes(
 
   // The output shape should be the most general of the operand shapes at each
   // dimension.
-  Type output_type;
+  ShapedTypeComponents& output_type = inferredReturnShapes.emplace_back();
   if (true_type == false_type || !true_type.hasRank()) {
-    output_type = true_type;
+    output_type = ShapedTypeComponents(true_type.cast<ShapedType>());
   } else if (!false_type.hasRank()) {
-    output_type = false_type;
+    output_type = ShapedTypeComponents(false_type.cast<ShapedType>());
   } else {
     assert(true_type.getRank() == false_type.getRank());
     llvm::SmallVector<int64_t, 4> dims;
@@ -4522,34 +4522,8 @@ LogicalResult SelectOp::inferReturnTypes(
                          ? std::get<0>(dim)
                          : ShapedType::kDynamicSize);
     }
-    output_type = RankedTensorType::get(dims, true_type.getElementType());
+    output_type = ShapedTypeComponents(dims, true_type.getElementType());
   }
-  inferredReturnTypes.assign({output_type});
-  return success();
-}
-
-LogicalResult SelectOp::inferReturnTypeComponents(
-    mlir::MLIRContext* ctx, llvm::Optional<mlir::Location> loc,
-    ValueShapeRange operands, mlir::DictionaryAttr attributes,
-    mlir::RegionRange regions,
-    llvm::SmallVectorImpl<mlir::ShapedTypeComponents>&
-        inferredShapedTypeComponents) {
-  llvm::SmallVector<Type, 4> inferredReturnTypes;
-  const LogicalResult infer_types_status = inferReturnTypes(
-      ctx, loc, operands, attributes, regions, inferredReturnTypes);
-  if (infer_types_status.failed()) return infer_types_status;
-
-  if (inferredReturnTypes.size() != 1) return failure();
-
-  auto result_tensor_type =
-      inferredReturnTypes[0].dyn_cast_or_null<TensorType>();
-  if (!result_tensor_type) return failure();
-
-  mlir::Type element_type =
-      operands[1].getType().cast<TensorType>().getElementType();
-  inferredShapedTypeComponents.push_back(
-      {result_tensor_type.getShape(), element_type});
-
   return success();
 }
 
@@ -5126,6 +5100,51 @@ static Type UpdateResultElementType(Builder* builder, Type x,
   return RankedTensorType::get(shape_x, element_type);
 }
 }  // namespace
+
+ParseResult parseBinaryOp(OpAsmParser& parser, OperationState& result) {
+  SmallVector<OpAsmParser::UnresolvedOperand> operands;
+  Type type;
+  // If the operand list is in-between parentheses, use generic form.
+  SMLoc loc = parser.getCurrentLocation();
+  if (!parser.parseOptionalLParen()) {
+    if (parser.parseOperandList(operands) || parser.parseRParen() ||
+        parser.parseOptionalAttrDict(result.attributes) ||
+        parser.parseColon() || parser.parseType(type))
+      return failure();
+    auto fnType = type.dyn_cast<FunctionType>();
+    if (!fnType) {
+      parser.emitError(loc, "expected function type");
+      return failure();
+    }
+    if (parser.resolveOperands(operands, fnType.getInputs(), loc,
+                               result.operands))
+      return failure();
+    result.addTypes(fnType.getResults());
+    return success();
+  }
+  // Otherwise, use shorthand syntax.
+  return failure(parser.parseOperandList(operands) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperands(operands, type, result.operands) ||
+                 parser.addTypeToList(type, result.types));
+}
+
+void printBinaryOp(Operation* op, OpAsmPrinter& p) {
+  assert(op->getNumResults() == 1 && "op should have one result");
+  // If not all types are the same, use generic form.
+  auto resultType = op->getResult(0).getType();
+  if (llvm::any_of(op->getOperandTypes(),
+                   [&](Type type) { return type != resultType; })) {
+    p.printGenericOp(op, /*printOpName=*/false);
+    return;
+  }
+  // Otherwise, use the shorthand syntax.
+  p << ' ';
+  p.printOperands(op->getOperands());
+  p.printOptionalAttrDict(op->getAttrs());
+  p << " : " << resultType;
+}
 
 template <typename Op, typename ElementType = Type, typename ValType,
           typename Convert>
@@ -5955,30 +5974,23 @@ void UnaryEinsumOp::getCanonicalizationPatterns(RewritePatternSet& results,
 void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
                       Value rhs, ComparisonDirection comparison_direction,
                       ComparisonType compare_type) {
-  Type new_type =
-      UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
   build(
-      builder, result, new_type, lhs, rhs,
+      builder, result, lhs, rhs,
       ComparisonDirectionAttr::get(builder.getContext(), comparison_direction),
       ComparisonTypeAttr::get(builder.getContext(), compare_type));
-}
-
-void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
-                      Value rhs, ComparisonDirectionAttr comparison_direction,
-                      ComparisonTypeAttr compare_type) {
-  Type new_type =
-      UpdateResultElementType(&builder, lhs.getType(), builder.getI1Type());
-  build(builder, result, new_type, lhs, rhs, comparison_direction,
-        compare_type);
 }
 
 LogicalResult CompareOp::inferReturnTypeComponents(
     mlir::MLIRContext* ctx, llvm::Optional<mlir::Location>,
     ValueShapeRange operands, mlir::DictionaryAttr, mlir::RegionRange,
     llvm::SmallVectorImpl<mlir::ShapedTypeComponents>& inferredReturnTypes) {
-  OpBuilder builder(ctx);
+  ShapedTypeComponents& components =
+      inferredReturnTypes.emplace_back(IntegerType::get(ctx, /*width=*/1));
   auto arg_ty = operands.front().getType().cast<TensorType>();
-  inferredReturnTypes.push_back({arg_ty.getShape(), builder.getI1Type()});
+  if (arg_ty.hasRank()) {
+    components =
+        ShapedTypeComponents(arg_ty.getShape(), components.getElementType());
+  }
   return success();
 }
 
@@ -7656,12 +7668,17 @@ static LogicalResult VerifyArgResultAliasAttr(StringAttr attr_name,
 // Type utilities for ignoring sparsity encoding
 //===----------------------------------------------------------------------===//
 
-Type getTypeWithoutSparseEncoding(Type tp) {
-  if (sparse_tensor::getSparseTensorEncoding(tp)) {
-    auto rtp = tp.dyn_cast<RankedTensorType>();
-    tp = RankedTensorType::get(rtp.getShape(), rtp.getElementType());
+bool isSameTypesWithoutSparseEncoding(Type tp1, Type tp2) {
+  // Only ranked types can have sparse encoding, so look "under the hood"
+  // when comparing two ranked tensor types.
+  if (auto rtp1 = tp1.dyn_cast<RankedTensorType>()) {
+    if (auto rtp2 = tp2.dyn_cast<RankedTensorType>())
+      return rtp1.getShape() == rtp2.getShape() &&
+             rtp1.getElementType() == rtp2.getElementType();
+    return false;
   }
-  return tp;
+  // Default implementation.
+  return tp1 == tp2;
 }
 
 //===----------------------------------------------------------------------===//

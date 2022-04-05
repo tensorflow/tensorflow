@@ -53,7 +53,7 @@ tf_class {
   }
   member_method {
     name: "add_variable_from_reference"
-    argspec: "args=[\'self\', \'model_variable\', \'variable_name\', \'initial_value\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'model_variable\', \'variable_name\', \'shape\', \'initial_value\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "aggregate_gradients"

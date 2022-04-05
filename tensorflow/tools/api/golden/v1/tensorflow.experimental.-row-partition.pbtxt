@@ -25,27 +25,27 @@ tf_class {
   }
   member_method {
     name: "from_row_lengths"
-    argspec: "args=[\'cls\', \'row_lengths\', \'validate\', \'preferred_dtype\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'cls\', \'row_lengths\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "from_row_limits"
-    argspec: "args=[\'cls\', \'row_limits\', \'validate\', \'preferred_dtype\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'cls\', \'row_limits\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "from_row_splits"
-    argspec: "args=[\'cls\', \'row_splits\', \'validate\', \'preferred_dtype\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'cls\', \'row_splits\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "from_row_starts"
-    argspec: "args=[\'cls\', \'row_starts\', \'nvals\', \'validate\', \'preferred_dtype\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'cls\', \'row_starts\', \'nvals\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "from_uniform_row_length"
-    argspec: "args=[\'cls\', \'uniform_row_length\', \'nvals\', \'nrows\', \'validate\', \'preferred_dtype\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'cls\', \'uniform_row_length\', \'nvals\', \'nrows\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "from_value_rowids"
-    argspec: "args=[\'cls\', \'value_rowids\', \'nrows\', \'validate\', \'preferred_dtype\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'cls\', \'value_rowids\', \'nrows\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "is_uniform"

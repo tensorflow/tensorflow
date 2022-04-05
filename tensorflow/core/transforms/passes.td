@@ -68,8 +68,7 @@ def DropOutputShapesAttr : Pass<"tfg-drop-unregistered-output-shapes"> {
 
   let options = [
    ListOption<"skip_", "skip", "std::string",
-              "Comma separated list of ops that will be skipped.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "Comma separated list of ops that will be skipped.">,
   ];
   let constructor = "CreateDropOutputShapesAttrPass()";
 }
@@ -84,19 +83,74 @@ def GraphToFunc : Pass<"tfg-lift-graph-to-func", "ModuleOp"> {
   let constructor = "CreateGraphToFuncPass()";
   let options = [
    ListOption<"feeds_", "feeds", "std::string",
-              "Comma separated list of ops that will be turned into arguments.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "Comma separated list of ops that will be turned into arguments.">,
    ListOption<"fetches_", "fetches", "std::string",
-              "Comma separated list of ops that will be turned into results.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "Comma separated list of ops that will be turned into results.">,
    ListOption<"control_rets_", "control_rets", "std::string",
               "Comma separated list of ops that will be turned into control "
-              "returned.",
-              "llvm::cl::MiscFlags::CommaSeparated">
+              "returned.">
   ];
 }
 
-def ControlFlowSink : Pass<"tfg-cf-sink", "ModuleOp"> {
+def FunctionalToRegion : Pass<"tfg-functional-to-region", "ModuleOp"> {
+  let summary = "Convert functional control-flow ops to region-based.";
+  let description = [{
+    This pass converts functional TFG control-flow operations to region-based
+    forms. For example, it converts `If` and `While` to `IfRegion` and
+    `WhileRegion`.
+
+    Region-based control-flow is a more natural form for performing control-flow
+    optimizations, and it intrinsically enables inter-procedural effects in
+    those optimizations. Region-based form can be used to perform loop-invariant
+    code motion, control-flow sinking, dead-code analysis, etc.
+
+    For example, consider the following conversion of an `If`.
+
+    ```mlir
+    func @true(%a: tensor<*xi32>, %b: tensor<*xi32>) -> (tensor<*xi32>) {
+      return %a : tensor<*xi32>
+    }
+
+    func @false(%a: tensor<*xi32>, %b: tensor<*xi32>) -> (tensor<*xi32>) {
+      return %b : tensor<*xi32>
+    }
+
+    func @main(%cond: tensor<i32>, %a: tensor<*xi32>, %b: tensor<*xi32>) {
+      %If, %ctl = If(%cond, %a, %b) {
+        then_branch = #tf_type.func<@true, {}>,
+        else_branch = #tf_type.func<@false, {}>
+      } : (tensor<i32>, tensor<*ix32>, tensor<*xi32>) -> (tensor<*xi32>)
+      return
+    }
+    ```
+
+    Will become:
+
+    ```mlir
+    func @true(%a: tensor<*xi32>, %b: tensor<*xi32>) -> (tensor<*xi32>) {
+      return %a : tensor<*xi32>
+    }
+
+    func @false(%a: tensor<*xi32>, %b: tensor<*xi32>) -> (tensor<*xi32>) {
+      return %b : tensor<*xi32>
+    }
+
+    func @main(%cond: tensor<i32>, %a: tensor<*xi32>, %b: tensor<*xi32>) {
+      %If, %ctl = IfRegion %cond then {
+        yield(%a) : tensor<*xi32>
+      } else {
+        yield(%b) : tensor<*xi32>
+      } : (tensor<i32>) -> (tensor<*xi32>)
+      return
+    }
+    ```
+  }];
+
+  let constructor = "CreateFunctionalToRegionPass()";
+  let dependentDialects = ["tfg::TFGraphDialect"];
+}
+
+def ControlFlowSink : Pass<"tfg-cf-sink", "GraphFuncOp"> {
   let summary = "Perform control-flow sink on region-based control-flow ops.";
   let description = [{
     This pass implements control-flow sinking on TFG region-based control-flow
@@ -155,4 +209,77 @@ def Remapper : Pass<"remapper"> {
     "Enable the the MKL related patterns.">,
   ];
   let constructor = "CreateRemapperPass()";
+}
+
+def ConsolidateAttributes : Pass<"tfg-consolidate-attrs", "ModuleOp"> {
+  let summary = "Reify type data from attributes to types.";
+  let description = [{
+    The TensorFlow type system, all tensors are treated as unranked and all
+    resources are treated as opaque. However, shape and handle information can
+    be specified for certain tensors and resources through registered and
+    unregistered attributes, e.g. `_output_shapes` and `_handle_data`. TFG's
+    type system has a richer type representation; it is more consistent to store
+    information about the types in there instead of in attributes. This pass
+    uses attributes to refine function argument, function result, and operation
+    result types using these attributes. The attributes are dropped, reducing
+    the amount of book-keeping that passes need to do.
+
+    Certain ops also have registered attributes that indicate shapes. For
+    example, `If`, `Case`, and `While` have an `output_shapes` attribute. These
+    attributes are optional in TFG and are dropped by this pass, but they must
+    be present on the operation before export.
+
+    For operations, the following attributes are used to refine result shapes
+    and then are dropped:
+      * `_output_shapes`
+      * `output_shapes` (If, Case, While)
+
+    For operations, the following attributes are dropped because they contain
+    redundant data.
+      * `Tcond` (If)
+      * `Tin` (If, Case)
+      * `Tout` (If, Case)
+      * `T` (While, For)
+
+    For functions:
+      * `_input_shapes` is used to refine function argument types
+
+    For function arguments:
+      * `_output_shapes` is used to refine function argument types
+      * `tfg.handle_data` is used to refine function result types
+
+    For function results:
+      * `_output_shapes` is used to refine function result types
+      * `tfg.handle_data` is used to refine function result types
+
+    The following function argument attributes are dropped because they contain
+    redundant data:
+      * `tfg.dtype`
+      * `tfg.is_ref`
+
+    The following function result attributes are dropped because they contain
+    redundant data:
+      * `tfg.dtype`
+  }];
+
+  let constructor = "CreateConsolidateAttributesPass()";
+}
+
+def PrepareAttributesForExport : Pass<"tfg-prepare-attrs-export", "ModuleOp"> {
+  let summary = "Legalize ops' attributes for export.";
+  let description = [{
+    The canonical form of TFG for performing transformations is after running
+    the consolidate attributes pass, which minimizes the attributes in the IR,
+    including reifying type information in attributes into the types themselves.
+    The pass also removes registered attributes from operations that are
+    optional in TFG. These attributes are required for export, and this pass
+    will materialize those attributes.
+
+    The TFG exporter also expects the presence of certain `tfg.` attributes.
+    In addition, reified type information (e.g. shapes and handle data) are
+    stored as unregistered attributes. The types are not converted back to
+    unranked/opaque.
+  }];
+
+  let constructor = "CreatePrepareAttributesForExportPass()";
 }

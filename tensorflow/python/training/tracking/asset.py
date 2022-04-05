@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Asset-type Trackable object."""
+import os
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -68,11 +69,13 @@ class Asset(base.Trackable):
   ```
 
   Attributes:
-    asset_path: A 0-D `tf.string` tensor with path to the asset.
+    asset_path: A path, or a 0-D `tf.string` tensor with path to the asset.
   """
 
   def __init__(self, path):
     """Record the full path to the asset."""
+    if isinstance(path, os.PathLike):
+      path = os.fspath(path)
     # The init_scope prevents functions from capturing `path` in an
     # initialization graph, since it is transient and should not end up in a
     # serialized function body.

@@ -374,8 +374,8 @@ func.func @CheckLegacyQuantizeAdd() -> tensor<1x2x!quant.uniform<i8:f32, 0.00784
 // LEGACY:  "tfl.pseudo_qconst"() {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.0078431372549019607:-128>>, value = dense<{{\[\[}}-1, 127]]> : tensor<1x2xi8>}
 }
 
-func private @testIfThen(tensor<*xf32>) -> tensor<*xf32>
-func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
+func.func private @testIfThen(tensor<*xf32>) -> tensor<*xf32>
+func.func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
 
 // CHECK-LABEL: NotQuantizeIf
 func.func @NotQuantizeIf(%arg0: tensor<i1>,
@@ -390,4 +390,16 @@ func.func @NotQuantizeIf(%arg0: tensor<i1>,
 // CHECK-NEXT: %[[if:.*]] = "tf.If"(%arg0, %[[dq]]
 // CHECK-NEXT: %[[q:.*]] = "tfl.quantize"(%[[if]])
 // CHECK-NEXT: return %[[q]]
+}
+
+// CHECK-LABEL: NotQuantizeReadVariable
+func.func @NotQuantizeReadVariable() -> tensor<1x2x3x!quant.uniform<u8<1:255>:f32, 0.047244094488188976:128>> {
+  %0 = "tfl.var_handle"() {container = "", shared_name = "states"} : () -> tensor<!tf_type.resource<tensor<1x2x3xf32>>>
+  %1 = "tfl.read_variable"(%0) : (tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
+  %2 = "tfl.quantize"(%1) {qtype = tensor<1x2x3x!quant.uniform<u8<1:255>:f32, 0.047244094488188976:128>>} : (tensor<1x2x3xf32>) -> tensor<1x2x3x!quant.uniform<u8<1:255>:f32, 0.047244094488188976:128>>
+  func.return %2 : tensor<1x2x3x!quant.uniform<u8<1:255>:f32, 0.047244094488188976:128>>
+  // CHECK: %[[handle:.*]] = "tfl.var_handle"() {container = "", shared_name = "states"} : () -> tensor<!tf_type.resource<tensor<1x2x3xf32>>>
+  // CHECK-NEXT: %[[read:.*]] = "tfl.read_variable"(%[[handle]]) : (tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
+  // CHECK-NEXT: %[[quantize:.*]] = "tfl.quantize"(%[[read]]) {qtype = tensor<1x2x3x!quant.uniform<u8<1:255>:f32, 0.047244094488188976:128>>} : (tensor<1x2x3xf32>) -> tensor<1x2x3x!quant.uniform<u8<1:255>:f32, 0.047244094488188976:128>>
+  // CHECK-NEXT: return %[[quantize]]
 }

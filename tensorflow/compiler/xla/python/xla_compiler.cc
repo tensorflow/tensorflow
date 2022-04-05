@@ -711,6 +711,14 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &ExecutableBuildOptions::use_auto_spmd_partitioning,
                     &ExecutableBuildOptions::set_use_auto_spmd_partitioning)
       .def_property(
+          "auto_spmd_partitioning_mesh_shape",
+          &ExecutableBuildOptions::auto_spmd_partitioning_mesh_shape,
+          &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_shape)
+      .def_property(
+          "auto_spmd_partitioning_mesh_ids",
+          &ExecutableBuildOptions::auto_spmd_partitioning_mesh_ids,
+          &ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids)
+      .def_property(
           "allow_spmd_sharding_propagation_to_output",
           &ExecutableBuildOptions::allow_spmd_sharding_propagation_to_output,
           &ExecutableBuildOptions::

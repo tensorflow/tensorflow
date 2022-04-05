@@ -217,6 +217,7 @@ cc_library(
 tf_native_cc_shared_library(
     name = "_cpu_feature_guard.so",
     static_deps = [
+        # TODO(rostam): Remove Copybara transform.
         # copybara:comment_begin(oss only)
         "@bazel_tools//:__subpackages__",
         "@com_google_absl//:__subpackages__",
@@ -1156,6 +1157,12 @@ alias(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "tensor_float_32_hdr_lib",
+    hdrs = [":tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
 )
 

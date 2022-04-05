@@ -103,7 +103,7 @@ static StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
 Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
                                      ::xla::HloProto* hlo_proto,
                                      mlir::MlirToHloConversionOptions options) {
-  mlir::FuncOp main = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
   mlir::Block& block = main.getRegion().front();
   xla::XlaBuilder builder("main");
 
@@ -147,9 +147,9 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   Status status =
       via_builder
           ? ConvertMlirHloToHloViaBuilder(module, &hloProto, options)
-          : mlir::ConvertMlirHloToHlo(
-                module, &hloProto, emit_use_tuple_arg, emit_return_tuple,
-                /*shape_representation_fn=*/nullptr, options);
+          : mlir::ConvertMlirHloToHlo(module, &hloProto, emit_use_tuple_arg,
+                                      emit_return_tuple,
+                                      /*shape_determination_fns=*/{}, options);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();

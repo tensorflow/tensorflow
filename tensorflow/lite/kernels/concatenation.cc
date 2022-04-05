@@ -106,8 +106,8 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node, int axis,
       TF_LITE_CONCATENATION(bool);
       break;
     default:
-      context->ReportError(context, "Type '%s' is not supported currently.",
-                           TfLiteTypeGetName(output->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported currently.",
+                         TfLiteTypeGetName(output->type));
       return kTfLiteError;
   }
 

@@ -91,6 +91,12 @@ class AotCompilationOptions {
   virtual int64_t num_cores() const { return 0; }
   virtual bool use_spmd_partitioning() const { return false; }
   virtual bool use_auto_spmd_partitioning() const { return false; }
+  virtual std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+    return {};
+  }
+  virtual std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+    return {};
+  }
   virtual bool deduplicate_hlo() const { return false; }
 
   // Optional allocator that may be used for allocating temp space on the device
@@ -134,10 +140,12 @@ class AotCompilationOptions {
   se::StreamExecutor* executor() const { return executor_; }
   void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
 
-  // Optional session_id and cache key may be used to trigger recompilation
+  // Optional profile_handle and cache key may be used to trigger recompilation
   // when a compilation cache is used.
-  uint64_t session_id() const { return session_id_; }
-  void set_session_id(uint64_t session_id) { session_id_ = session_id; }
+  uint64_t profile_handle() const { return profile_handle_; }
+  void set_profile_handle(uint64_t profile_handle) {
+    profile_handle_ = profile_handle;
+  }
 
   absl::string_view cache_key() const { return cache_key_; }
   void set_cache_key(absl::string_view cache_key) {
@@ -161,7 +169,7 @@ class AotCompilationOptions {
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
   se::StreamExecutor* executor_ = nullptr;
-  uint64_t session_id_ = 0;
+  uint64_t profile_handle_ = 0;
   std::string cache_key_;
   bool run_backend_only_ = false;
 };

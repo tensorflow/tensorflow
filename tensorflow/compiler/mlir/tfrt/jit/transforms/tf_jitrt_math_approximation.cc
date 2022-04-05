@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -271,8 +272,8 @@ void MathApproximationPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateMathApproximationPass(
-    ArrayRef<std::string> oplist) {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateMathApproximationPass(ArrayRef<std::string> oplist) {
   return std::make_unique<MathApproximationPass>(oplist);
 }
 

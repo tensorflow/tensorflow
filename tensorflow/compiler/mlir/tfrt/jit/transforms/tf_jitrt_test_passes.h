@@ -25,9 +25,9 @@ limitations under the License.
 namespace tensorflow {
 
 // See `tf_jitrt_test_passes.td` for the passes documentation.
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTestTfJitRtClusteringPass();
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateTestTfJitRtClusteringPolicyPass();
 
 }  // namespace tensorflow

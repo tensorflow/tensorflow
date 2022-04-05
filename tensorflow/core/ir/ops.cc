@@ -832,8 +832,8 @@ static FailureOr<TypeRange> VerifyOperands(Operation *op) {
       llvm::find(op->getOperandTypes(), control_ty);
   if (!std::all_of(it, op->operand_type_end(),
                    [&](Type type) { return type == control_ty; })) {
-    return {op->emitOpError(
-        "not all control tokens come after non-control operands")};
+    return op->emitOpError(
+        "not all control tokens come after non-control operands");
   }
   return {Operation::operand_type_range(op->operand_type_begin(), it)};
 }
@@ -846,10 +846,10 @@ static FailureOr<TypeRange> VerifyResults(Operation *op) {
   Operation::result_type_iterator it =
       llvm::find(op->getResultTypes(), control_ty);
   if (it == op->result_type_end())
-    return {op->emitOpError("does not define a control result")};
+    return op->emitOpError("does not define a control result");
   if (it != std::prev(op->result_type_end())) {
-    return {op->emitOpError(
-        "must have a control token result as and only as its last result")};
+    return op->emitOpError(
+        "must have a control token result as and only as its last result");
   }
   return {Operation::result_type_range(op->result_type_begin(), it)};
 }
@@ -907,6 +907,8 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
 // to be an array of type attributes.
 static LogicalResult VerifyTypeArray(Operation *op, ValueRange values,
                                      ArrayAttr types, StringRef kind) {
+  // Don't verify if the types are not present.
+  if (!types) return success();
   if (values.size() != types.size()) {
     return op->emitOpError("has ") << values.size() << " " << kind << "s but "
                                    << types.size() << " " << kind << " types";
@@ -935,13 +937,13 @@ using detect_has_T = llvm::is_detected<has_T, OpT>;
 // use it for both input and output. Otherwise, return separate type arrays.
 template <typename OpT, bool = detect_has_T<OpT>::value>
 struct GetTypeArray {
-  static ArrayAttr getInputTypes(OpT op) { return op.Tin(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.Tout(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.TinAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.ToutAttr(); }
 };
 template <typename OpT>
 struct GetTypeArray<OpT, true> {
-  static ArrayAttr getInputTypes(OpT op) { return op.T(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.T(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.TAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.TAttr(); }
 };
 }  // namespace detail
 

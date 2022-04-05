@@ -417,7 +417,7 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
           DeviceNameUtils::IsSameAddressSpace(tpu_system_name,
                                               device_parsed_name)) {
         const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
-            device->tensorflow_gpu_device_info();
+            device->tensorflow_accelerator_device_info();
         if (gpu_device_info && gpu_device_info->stream) {
           int device_ordinal =
               gpu_device_info->stream->parent()->device_ordinal();

@@ -121,7 +121,7 @@ void TestDelegation::AddSubgraphs(int subgraphs_to_add,
 }
 
 void TestDelegate::SetUp() {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = TestDelegation::NewInterpreterWithDefaultDelegates();
   SetUpSubgraph(&interpreter_->primary_subgraph());
 }
 
@@ -134,7 +134,7 @@ void TestDelegate::TearDown() {
 }
 
 void TestTwoDelegates::SetUp() {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = TestDelegation::NewInterpreterWithDefaultDelegates();
   SetUpSubgraph(&interpreter_->primary_subgraph());
 }
 
@@ -380,7 +380,7 @@ std::unique_ptr<SimpleDelegate> SimpleDelegate::DelegateWithDynamicOutput(
 }
 
 void TestFP16Delegation::SetUp() {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = TestDelegation::NewInterpreterWithDefaultDelegates();
   interpreter_->AddTensors(13);
   interpreter_->SetInputs({0});
   interpreter_->SetOutputs({12});

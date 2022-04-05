@@ -79,7 +79,6 @@ class TestCoordinationClient : public CoordinationClient {
     done(errors::Unimplemented(#method "Async"));                     \
   }
 
-  UNIMPLEMENTED(Heartbeat);
   UNIMPLEMENTED(WaitForAllTasks);
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
@@ -89,6 +88,11 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(Barrier);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
+  void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
+                      HeartbeatResponse* response,
+                      StatusCallback done) override {
+    done(errors::Unimplemented("HeartbeatAsync"));
+  }
   void ShutdownTaskAsync(CallOptions* call_opts,
                          const ShutdownTaskRequest* request,
                          ShutdownTaskResponse* response,

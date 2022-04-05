@@ -1005,10 +1005,6 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
   if (barrier_id == device_propagation_barrier_id_) {
     SetXlaGlobalDeviceIds();
   }
-  // Propagate results to participating tasks.
-  for (const auto& callback : barrier->done_callbacks) {
-    callback(result);
-  }
   for (const auto& task_at_barrier : barrier->tasks_at_barrier) {
     // Clean up task state (used as error hooks).
     const CoordinatedTask& task = task_at_barrier.first;
@@ -1040,8 +1036,14 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
     }
   }
   barrier->tasks_at_barrier.clear();
-  barrier->done_callbacks.clear();
   ongoing_barriers_.erase(barrier_id);
+  // Note: barrier_id shouldn't be referenced after this line as its lifetime
+  // may be tied to one of the callbacks.
+  // Propagate results to participating tasks.
+  for (const auto& callback : barrier->done_callbacks) {
+    callback(result);
+  }
+  barrier->done_callbacks.clear();
 }
 
 bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(

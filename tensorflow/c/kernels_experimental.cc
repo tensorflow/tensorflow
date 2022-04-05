@@ -308,19 +308,19 @@ void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx, int input,
       OP_REQUIRES_OK(cc_ctx, EnsureSparseVariableAccess(ctx, isVariantType,
                                                         copyFunc, var.get()));
       *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
-      TF_SetStatus(status, TF_OK, "");
+      ::tensorflow::Set_TF_Status_from_Status(status, s);
       return;
     }
     OP_REQUIRES_OK(cc_ctx, PrepareToUpdateVariable(
                                ctx, var->tensor(),
                                var->copy_on_read_mode.load(), false, copyFunc));
     *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
-    TF_SetStatus(status, TF_OK, "");
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
     return;
   }
   *out = ::tensorflow::TF_TensorFromTensor(
       cc_ctx->mutable_input(input, lock_held), &s);
-  TF_SetStatus(status, TF_OK, "");
+  ::tensorflow::Set_TF_Status_from_Status(status, s);
 }
 
 void TF_OpKernelContext_ForwardRefInputToRefOutput(TF_OpKernelContext* ctx,
@@ -380,4 +380,14 @@ void TF_OpKernelConstruction_GetAttrTensorShape(TF_OpKernelConstruction* ctx,
   for (int i = 0; i < rank; ++i) {
     dims[i] = static_cast<int64_t>(shape.dim_size(i));
   }
+}
+
+bool TF_IsRefInput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (i < 0 || i >= cc_ctx->num_inputs()) {
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "input index out of range");
+    return false;
+  }
+  TF_SetStatus(status, TF_OK, "");
+  return cc_ctx->input_is_ref(i);
 }

@@ -283,12 +283,15 @@ class TFGraph_IfLikeOp<string mnemonic>
     I1Tensor:$cond,
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
-    TypeAttr:$Tcond,
-    TypeArrayAttr:$Tin,
-    TypeArrayAttr:$Tout,
     TFType_FuncAttr:$then_branch,
     TFType_FuncAttr:$else_branch,
-    TFGraph_ShapesAttr:$output_shapes
+    // Optional attributes. These attributes are present on import and are
+    // required for export, but can be dropped if they contain redundant type
+    // information.
+    OptionalAttr<TypeAttr>:$Tcond,
+    OptionalAttr<TypeArrayAttr>:$Tin,
+    OptionalAttr<TypeArrayAttr>:$Tout,
+    OptionalAttr<TFGraph_ShapesAttr>:$output_shapes
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
@@ -319,10 +322,13 @@ class TFGraph_CaseLikeOp<string mnemonic>
     I32Tensor:$branch_index,
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
-    TypeArrayAttr:$Tin,
-    TypeArrayAttr:$Tout,
     TypedArrayAttrBase<TFType_FuncAttr, "an array of functions">:$branches,
-    TFGraph_ShapesAttr:$output_shapes
+    // Optional attributes. These attributes are present on import and are
+    // required for export, but can be dropped if they contain redundant type
+    // information.
+    OptionalAttr<TypeArrayAttr>:$Tin,
+    OptionalAttr<TypeArrayAttr>:$Tout,
+    OptionalAttr<TFGraph_ShapesAttr>:$output_shapes
   );
 
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
@@ -353,11 +359,14 @@ class TFGraph_WhileLikeOp<string mnemonic>
     // Op operands.
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
-    TypeArrayAttr:$T,
     TFType_FuncAttr:$cond,
     TFType_FuncAttr:$body,
-    TFGraph_ShapesAttr:$output_shapes,
-    I64Attr:$parallel_iterations
+    I64Attr:$parallel_iterations,
+    // Optional attributes. These attributes are present on import and are
+    // required for export, but can be dropped if they contain redundant type
+    // information.
+    OptionalAttr<TypeArrayAttr>:$T,
+    OptionalAttr<TFGraph_ShapesAttr>:$output_shapes
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
@@ -392,8 +401,11 @@ def TFGraph_ForOp
     I32Tensor:$delta,
     Variadic<TFGraph_TensorOrControlType>:$args,
     // Required attributes.
-    TypeArrayAttr:$T,
-    TFType_FuncAttr:$body
+    TFType_FuncAttr:$body,
+    // Optional attributes. These attributes are present on import and are
+    // required for export, but can be dropped if they contain redundant type
+    // information.
+    OptionalAttr<TypeArrayAttr>:$T
   );
 
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);

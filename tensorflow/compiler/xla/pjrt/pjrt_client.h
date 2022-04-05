@@ -126,6 +126,15 @@ class PjRtDevice {
 
   virtual std::string DebugString() const = 0;
 
+  // Returns a scoped event that the caller uses to tell the PjRtClient that
+  // there is asynchronous work happening that depends on activity on the
+  // PjRtDevice. See comment on class definition in pjrt_future.h.
+  //
+  // Only some PjRtDevice implementations support ScopedAsyncTrackingEvent, and
+  // those that do not will return nullptr.
+  virtual std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const = 0;
+
   // Transfer the given literal to the infeed queue.
   virtual Status TransferToInfeed(const LiteralSlice& literal) = 0;
 
@@ -439,6 +448,12 @@ class PjRtClient {
     // SetTransferError may be called at most once, and may not be called unless
     // at least one buffer has not yet had its final transfer initiated.
     virtual void SetTransferError(Status error) = 0;
+
+    // Adds the specified key/value metadata for the transfer operation.
+    // This is typically used for debugging purposes, such as adding a handle
+    // that can be used to identify transfer operations.
+    using TransferMetadata = absl::flat_hash_map<std::string, std::string>;
+    virtual void AddTransferMetadata(const TransferMetadata& metadata) = 0;
   };
 
   // Returns a manager for async transfers into a set of buffers with on-host
@@ -655,12 +670,11 @@ class PjRtBuffer {
   virtual StatusOr<size_t> GetOnDeviceSizeInBytes() const = 0;
 
   // Transfers a sub-range of the on-device representation of the buffer.
-  // offset+transfer_size must be less than GetOnDeviceSizeInBytes. on_ready
-  // is called if and only if CopyRawToHost returns OK. on_ready will be called
-  // with a non-OK status if the buffer asynchronously transitions to an error
-  // state.
-  virtual Status CopyRawToHost(void* dst, int64_t offset, int64_t transfer_size,
-                               std::function<void(Status)> on_ready) = 0;
+  // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
+  // returned future transitions to ready on error, or after the transfer has
+  // completed.
+  virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+                                           int64_t transfer_size) = 0;
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async

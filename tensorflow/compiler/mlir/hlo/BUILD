@@ -1786,6 +1786,7 @@ cc_library(
         ":transforms_pass_inc_gen",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:BufferizationTransforms",
+        "@llvm-project//mlir:CopyOpInterface",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",

@@ -569,8 +569,8 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
                                          output);
       break;
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
+                         input->type);
       return kTfLiteError;
   }
 }
@@ -590,8 +590,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt16:
       return EvalImpl<kernel_type, kTfLiteInt16>(context, node);
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
+                         input->type);
       return kTfLiteError;
   }
 }

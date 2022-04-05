@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -363,5 +363,12 @@ TEST(GatherNdOpTest, StringInt64) {
   EXPECT_THAT(m.GetOutput<std::string>(),
               ElementsAreArray({"D", "E", "F", "G", "H", "I"}));
 }
+
+TEST(GatherNdOpTest, EmptyParamsAndIndex) {
+  GatherNdOpModel m({TensorType_FLOAT32, {1, 0}}, {TensorType_INT32, {0, 2}});
+  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
+}
+
 }  // namespace
 }  // namespace tflite

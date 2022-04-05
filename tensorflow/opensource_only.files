@@ -11,6 +11,10 @@ tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
 tensorflow/core/tfrt/utils/bridge_graph_analysis.h:
+tensorflow/dtensor/mlir/utils/BUILD:
+tensorflow/dtensor/mlir/utils/collective_lowering.cc:
+tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.cc:
+tensorflow/dtensor/mlir/utils/update_tpu_metadata.cc:
 tensorflow/examples/custom_ops_doc/multiplex_1/BUILD:
 tensorflow/examples/custom_ops_doc/multiplex_1/multiplex_1_op.py:
 tensorflow/examples/custom_ops_doc/multiplex_2/BUILD:
@@ -72,7 +76,7 @@ tensorflow/python/tpu/profiler/pip_package/README:
 tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh:
 tensorflow/python/tpu/profiler/pip_package/setup:.py
 tensorflow/python/tpu/tpu.bzl:
-tensorflow/security/fuzzing/tf_fuzzing.bzl:
+tensorflow/security/fuzzing/tf_fuzzing:.bzl
 tensorflow/stream_executor/build_defs.bzl:
 tensorflow/tools/build_info/BUILD:
 tensorflow/tools/ci_build/a100/nightly.sh:
