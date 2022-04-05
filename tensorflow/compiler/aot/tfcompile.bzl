@@ -20,7 +20,15 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_enabled")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_abilists")
 
 def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
@@ -313,6 +321,8 @@ def tf_library(
         target_triple = target_llvm_triple(),
         flags = flags,
         extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
+        dfsan = tfcompile_dfsan_enabled(),
+        dfsan_abilists = tfcompile_dfsan_abilists(),
         visibility = visibility,
         testonly = testonly,
         tags = tags,

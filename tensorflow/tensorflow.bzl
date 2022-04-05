@@ -3274,6 +3274,12 @@ def tf_enable_mlir_bridge():
 def tfcompile_target_cpu():
     return ""
 
+def tfcompile_dfsan_enabled():
+    return False
+
+def tfcompile_dfsan_abilists():
+    return []
+
 def tf_external_workspace_visible(visibility):
     # External workspaces can see this target.
     return ["//visibility:public"]
