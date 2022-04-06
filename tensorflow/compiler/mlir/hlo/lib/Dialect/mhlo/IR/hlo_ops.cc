@@ -6571,6 +6571,10 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   auto index_type = index.getType().cast<RankedTensorType>();
   if (!base_type || !index_type || !update_type) return {};
 
+  // TODO(b/228310289): Work around canonicalization crash for complex types.
+  // Remove after upstream MLIR has been fixed.
+  if (base_type.getElementType().isa<ComplexType>()) return {};
+
   // Catch a trivial full replacement of base with update, this does not require
   // these to be constant: just that we know the type.
   if (update_type == base_type && update_type.hasStaticShape() &&
