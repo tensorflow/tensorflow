@@ -1000,7 +1000,6 @@ class ScatterNdTensorDeterminismTest(ScatterNdTensorTest):
     super().tearDown()
     config.disable_op_determinism()
 
-  @test_util.disable_xla("Scatter ND is not deterministic with XLA")
   def testDeterminism(self):
     a = array_ops.zeros([1])
     indices = array_ops.zeros([100000, 1], dtypes.int32)
