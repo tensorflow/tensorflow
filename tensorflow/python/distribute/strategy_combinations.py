@@ -14,6 +14,7 @@
 # ==============================================================================
 """Strategy combinations for combinations.combine()."""
 
+import unittest
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.distribute import central_storage_strategy
@@ -32,6 +33,7 @@ from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util as framework_test_util
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
@@ -245,12 +247,19 @@ def _get_ps_strategy_creator(num_workers,
       if tf_config.task_type in ("worker", "ps"):
         worker_config = config_pb2.ConfigProto()
         worker_config.inter_op_parallelism_threads = 4  # max num_workers + 1
-        server = server_lib.Server(
-            cluster_def,
-            job_name=tf_config.task_type,
-            task_index=tf_config.task_id,
-            protocol="grpc",
-            config=worker_config)
+
+        try:
+          server = server_lib.Server(
+              cluster_def,
+              job_name=tf_config.task_type,
+              task_index=tf_config.task_id,
+              protocol="grpc",
+              config=worker_config)
+        except errors.UnknownError as e:
+          if "Could not start gRPC server" in e.message:
+            raise unittest.SkipTest("Cannot start std servers.")
+          else:
+            raise
 
         # Blocking the process that starts a server from exiting.
         server.join()
