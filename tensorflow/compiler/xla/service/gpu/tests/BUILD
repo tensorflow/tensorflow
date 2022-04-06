@@ -807,6 +807,7 @@ py_test(
         "no_oss",
         "notap",
         "requires-gpu-nvidia",
+        "requires-net:external",
     ],
     deps = [
         "//tensorflow:tensorflow_py",
