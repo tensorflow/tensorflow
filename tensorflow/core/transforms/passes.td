@@ -283,3 +283,38 @@ def PrepareAttributesForExport : Pass<"tfg-prepare-attrs-export", "ModuleOp"> {
 
   let constructor = "CreatePrepareAttributesForExportPass()";
 }
+
+def EliminatePassthroughIterArgs : Pass<"tfg-eliminate-passthrough-iter-args",
+                                        "ModuleOp"> {
+  let summary = "Eliminate passthrough loop iteration arguments.";
+
+  let description = [{
+    This pass will analyze loops and eliminate loop iteration arguments that are
+    passthrough, i.e. they are the same for every loop iteration. For example:
+
+    ```mlir
+    %For:2, %ctl = ForRegion(%a, %b) from %start to %end by %step {
+    %bb0(%index: tensor<i32>, %arg0: tensor<*xi32>, %arg1: tensor<*xi32>):
+      %ctl_0 = Use(%arg0) : tensor<*xi32>
+      %Foo, %ctl_1 = Foo(%arg1) : (tensor<*xi32>) -> (tensor<*xi32>)
+      yield(%arg0, %Foo) : tensor<*xi32>, tensor<*xi32>
+    }
+    %ctl_2 = Use(%For#0, For#1) : tensor<*xi32>, tensor<*xi32>
+    ```
+
+    Will become:
+
+    ```mlir
+    %For, %ctl = ForRegion(%b) from %start to %end by %step {
+    %bb0(%index: tensor<i32>, %arg0: tensor<*xi32>):
+      %ctl_0 = Use(%a) : tensor<*xi32>
+      %Foo, %ctl_1 = Foo(%arg0) : (tensor<*xi32>) -> (tensor<*xi32>)
+      yield(%Foo) : tensor<*xi32>
+    }
+    %ctl_2 = Use(%a, For#1) : tensor<*xi32>, tensor<*xi32>
+    ```
+  }];
+
+  let constructor = "CreateEliminatePassthroughIterArgsPass()";
+  let dependentDialects = ["tfg::TFGraphDialect"];
+}
