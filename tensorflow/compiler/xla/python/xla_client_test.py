@@ -408,6 +408,24 @@ def TestFactory(xla_backend,
           c, arguments=[arg0, arg1], expected=[arg0 + arg1, arg0 - arg1])
       del out, keepalive
 
+    def testPythonCallbackCanHandleExceptions(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      def _Callback(x):
+        raise ValueError("Value error raised!")
+
+      arg0 = np.array([9, 43, -101, 22], dtype=np.int32)
+      shape = xla_client.shape_from_pyval(arg0)
+      shape = shape.with_major_to_minor_layout_if_absent()
+      p0 = ops.Parameter(c, 0, shape)
+      out, keepalive = self.backend.emit_python_callback(
+          _Callback, c, [p0], [shape], has_side_effects=True)
+      with self.assertRaisesRegex(RuntimeError, "Value error raised!"):
+        self._Execute(c, [arg0])
+      del out, keepalive
+
     def testTokens(self):
       if self.backend.platform != "cpu":
         self.skipTest("Test requires cpu platform")
@@ -2216,6 +2234,12 @@ def TestFactory(xla_backend,
           if self.backend.platform == "cpu" else xla_client.make_cpu_client())
       self.gpu_backend = (
           self.backend if self.backend.platform == "gpu" else None)
+
+    def tearDown(self):
+      super().tearDown()
+      del self.backend
+      del self.cpu_backend
+      del self.gpu_backend
 
     # pylint: disable=g-complex-comprehension
     # pyformat: disable
