@@ -60,7 +60,7 @@ export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filt
  --keep_going "
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... "
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
-export IS_NIGHTLY="${IS_NIGHTLY}:=0"
+export IS_NIGHTLY="${IS_NIGHTLY:-0}"
 export TF_PROJECT_NAME="tensorflow_rocm"  # single pip package!
 export TF_PIP_TEST_ROOT="pip_test"
 
