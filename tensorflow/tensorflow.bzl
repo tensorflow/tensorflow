@@ -841,6 +841,7 @@ def tf_cc_shared_library(
                 ],
             }),
             additional_linker_inputs = additional_linker_inputs,
+            features = if_windows(["no_windows_export_all_symbols"]),  # See b/227922702
             visibility = visibility,
             win_def_file = if_windows(win_def_file, otherwise = None),
         )
