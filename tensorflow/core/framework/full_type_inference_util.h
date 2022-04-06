@@ -43,12 +43,6 @@ namespace full_type {
 // functions are meant to modify the type information of specific nodes (i.e.
 // NodeDef proto).
 
-// Helper for a no-op type inference function that indicates type inference
-// should never alter the node's existing type.
-// This is the same as not defining a type inference function at all, but
-// explicitly communicates that intent.
-ForwardTypeInferenceFn KeepExisting();
-
 // Helper for a type inference function which has the same type as the i'th
 // input.
 // The n arg allows multiple outputs, e.g. (T -> Product[T, T]).
@@ -62,14 +56,6 @@ ForwardTypeInferenceFn ReplicateInput(int i = 0, int n = 1);
 // https://en.wikipedia.org/wiki/Join_and_meet). This implementation is
 // simplified to require the two inputs are a subtype of another.
 ForwardTypeInferenceFn Merge();
-
-// Helper for ops with semantics of encoding an input, that is,
-// `T -> Encoded[T, <t>]`, where <t> is the encoded type.
-ForwardTypeInferenceFn Encode(FullTypeId t, int i);
-
-// Helper for ops with semantics of encoding an input, that is,
-// `Encoded[T, <t>] -> T`, where <t> is the encoded type.
-ForwardTypeInferenceFn Decode(FullTypeId t, int i);
 
 // Helper for the type inference counterpart of Unary, that is (U ->
 // PRODUCT[<t>[U]]), where <t> is parameterized by this factory, and U is the
