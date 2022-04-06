@@ -62,7 +62,6 @@ acd.register_read_only_resource_op("ResourceGather")
 acd.register_read_only_resource_op("ResourceGatherNd")
 acd.register_read_only_resource_op("_ReadVariablesOp")
 
-
 # TODO(allenl): Remove this alias and migrate callers.
 get_resource_handle_data = handle_data_util.get_resource_handle_data
 
@@ -90,8 +89,8 @@ def _set_handle_shapes_and_types(tensor, handle_data, graph_mode):
     return
 
   # Not an EagerTensor, so a graph tensor.
-  shapes, types = zip(*[(pair.shape, pair.dtype)
-                        for pair in handle_data.shape_and_type])
+  shapes, types = zip(
+      *[(pair.shape, pair.dtype) for pair in handle_data.shape_and_type])
   ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
   shapes = [
       [d.size for d in s.dim]  # pylint: disable=g-complex-comprehension
@@ -1785,9 +1784,8 @@ class ResourceVariable(BaseResourceVariable):
               self._maybe_initialize_trackable()
               self._update_uid = initial_value.checkpoint_position.restore_uid
               initial_value = initial_value.wrapped_value
-            initial_value = ops.convert_to_tensor(initial_value,
-                                                  name="initial_value",
-                                                  dtype=dtype)
+            initial_value = ops.convert_to_tensor(
+                initial_value, name="initial_value", dtype=dtype)
           if shape is not None:
             if not initial_value.shape.is_compatible_with(shape):
               raise ValueError(
@@ -2089,8 +2087,7 @@ class _UnreadVariable(BaseResourceVariable):
   Pretends to be the tensor if anyone looks.
   """
 
-  def __init__(self, handle, dtype, shape, in_graph_mode, parent_op,
-               unique_id):
+  def __init__(self, handle, dtype, shape, in_graph_mode, parent_op, unique_id):
     if isinstance(handle, ops.EagerTensor):
       handle_name = ""
     else:
@@ -2393,13 +2390,16 @@ class VariableSpec(tensor_spec.DenseSpec):
 _pywrap_utils.RegisterType("VariableSpec", VariableSpec)
 
 
-def write_object_proto_for_resource_variable(resource_variable, proto, options):
+def write_object_proto_for_resource_variable(resource_variable,
+                                             proto,
+                                             options,
+                                             enforce_naming=True):
   """Writes additional information of the variable into the SavedObject proto.
 
   This allows users to define a `hook` to provide extra information of the
   variable to the SavedObject.
 
-  For example, DistritubtedVariable class would fill in components in the
+  For example, DistributedVariable class would fill in components in the
   distributed context.
 
   Args:
@@ -2407,12 +2407,14 @@ def write_object_proto_for_resource_variable(resource_variable, proto, options):
       information to be saved into the proto.
     proto: `SavedObject` proto to update.
     options: A `SaveOption` instance that configures save behavior.
+    enforce_naming: A bool determining whether to check that names end in the
+      expected string ':0'
   """
   proto.variable.SetInParent()
-  if not resource_variable.name.endswith(":0"):
+  if enforce_naming and not resource_variable.name.endswith(":0"):
     raise ValueError(f"Cowardly refusing to save variable "
                      f"{resource_variable.name} because of "
-                     f"unexpected suffix in the name (':0') "
+                     f"unexpected suffix in the name (expected ':0')"
                      f"which won't be restored.")
   proto.variable.name = meta_graph._op_name(resource_variable.name)  # pylint: disable=protected-access
   proto.variable.trainable = resource_variable.trainable

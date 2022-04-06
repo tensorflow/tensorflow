@@ -189,24 +189,6 @@ def _get_multi_worker_mirrored_creator(required_gpus, use_merge_call=True):
 
   return _create_multi_worker_mirrored
 
-_ps_cluster = None
-MAX_NUM_WORKER = 3
-MAX_NUM_PS = 2
-
-
-def get_cluster_def(num_workers, num_ps):
-  if num_workers > MAX_NUM_WORKER or num_ps > MAX_NUM_PS:
-    raise ValueError("Requesting more servers than the maximum, adjust"
-                     "MAX_NUM_PS and MAX_NUM_WORKER")
-  global _ps_cluster
-  if _ps_cluster is None:
-    _ps_cluster = multi_worker_test_base.create_in_process_cluster(
-        num_workers=MAX_NUM_WORKER, num_ps=MAX_NUM_PS)
-  return {
-      "worker": _ps_cluster["worker"][:num_workers],
-      "ps": _ps_cluster["ps"][:num_ps],
-  }
-
 
 # Due to b/195615322, FixedShardsPartitioner will wrongly partition
 # RNG state, so we use MinSizePartitioner as the default. Maximum RNG
@@ -216,15 +198,14 @@ DEFAULT_PARTITIONER = sharded_variable.MinSizePartitioner(
     min_shard_bytes=8 * 3 + 1, max_shards=2)
 
 
-def _get_ps_strategy_creator(
-    num_workers, num_ps, required_gpus=0,
-    variable_partitioner=DEFAULT_PARTITIONER):
+def _get_ps_strategy_creator(num_workers,
+                             num_ps,
+                             required_gpus=0,
+                             variable_partitioner=DEFAULT_PARTITIONER):
 
   def _create_ps_strategy(resolver, variable_partitioner):
     return parameter_server_strategy_v2.ParameterServerStrategyV2(
-        resolver,
-        variable_partitioner=variable_partitioner
-        )
+        resolver, variable_partitioner=variable_partitioner)
 
   def _create_parameter_server():
     if framework_test_util.is_xla_enabled():
@@ -437,8 +418,7 @@ multi_worker_mirrored_2x2_gpu = combinations.NamedDistribution(
 )
 multi_worker_mirrored_2x2_gpu_no_merge_call = combinations.NamedDistribution(
     "MultiWorkerMirrored2x2GPUNoMergeCall",
-    _get_multi_worker_mirrored_creator(
-        required_gpus=2, use_merge_call=False),
+    _get_multi_worker_mirrored_creator(required_gpus=2, use_merge_call=False),
     has_chief=True,
     num_workers=1,
     required_physical_gpus=2,
@@ -456,13 +436,17 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
 )
 
 
-def parameter_server_strategy_fn(
-    name, num_workers, num_ps, required_gpus=0,
-    variable_partitioner=DEFAULT_PARTITIONER):
+def parameter_server_strategy_fn(name,
+                                 num_workers,
+                                 num_ps,
+                                 required_gpus=0,
+                                 variable_partitioner=DEFAULT_PARTITIONER):
   return combinations.NamedDistribution(
       name,
       _get_ps_strategy_creator(
-          num_workers=num_workers, num_ps=num_ps, required_gpus=required_gpus,
+          num_workers=num_workers,
+          num_ps=num_ps,
+          required_gpus=required_gpus,
           variable_partitioner=variable_partitioner),
       required_gpus=required_gpus,
       num_workers=num_workers,
@@ -478,7 +462,6 @@ parameter_server_strategy_3worker_2ps_1gpu = parameter_server_strategy_fn(
     "ParameterServer3Worker2PS1GPU", num_workers=3, num_ps=2, required_gpus=1)
 parameter_server_strategy_1worker_2ps_1gpu = parameter_server_strategy_fn(
     "ParameterServer1Worker2PS1GPU", num_workers=1, num_ps=2, required_gpus=1)
-
 
 graph_and_eager_modes = ["graph", "eager"]
 

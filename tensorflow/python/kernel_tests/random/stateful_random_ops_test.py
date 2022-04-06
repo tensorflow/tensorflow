@@ -20,8 +20,6 @@ import re
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.distribute import values as dist_values
-from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
@@ -30,14 +28,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.kernel_tests.random import util as \
-random_test_util
+from tensorflow.python.kernel_tests.random import util as random_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import stateful_random_ops as \
-random
+from tensorflow.python.ops import stateful_random_ops as random
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as tracking_util
@@ -659,56 +655,6 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     res2 = g2.normal(shape)
     self.assertAllEqual(res1, res2)
     self.assertAllEqual(g1.state.read_value(), g2.state.read_value())
-
-  @test_util.run_v2_only
-  def testCreateOutsideMirroredStrat(self):
-    """Tests RNG/MirrorStrategy interaction #1.
-
-    If an RNG is created outside a DS scope, all replicas will access the
-    same RNG object, and accesses are serialized.
-    """
-    shape = [3, 4]
-    dtype = dtypes.int32
-    gen = random.Generator.from_seed(1234)
-    strat = MirroredStrategy(devices=["cpu:0", "cpu:1"])
-    with strat.scope():
-      def f():
-        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t = array_ops.stack([t1, t2])
-        return t
-      results = strat.extended.call_for_each_replica(
-          fn=f)
-      values = results.values
-      self.assertAllEqual(2, len(values))
-      self.assertAllDifferent(values)
-
-  @test_util.run_v2_only
-  def testMirroredStratParaAsync(self):
-    """Tests RNG/MirrorStrategy interaction #2.
-
-    The user can create n independent RNGs outside strategy.scope(), where n
-    is the number of replicas, and give one to each replica. The replicas can
-    thus get different random-number streams.
-    """
-    shape = [3, 4]
-    dtype = dtypes.int32
-    gens = random.get_global_generator().split(count=2)
-    devices = ["cpu:0", "cpu:1"]
-    strat = MirroredStrategy(devices=devices)
-    # Use `PerReplica` to specify which `gen` is sent to which replica
-    gens = dist_values.PerReplica([[g] for g in gens])
-    with strat.scope():
-      def f(gen):
-        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
-        t = array_ops.stack([t1, t2])
-        return t
-      results = strat.extended.call_for_each_replica(
-          fn=f, args=gens)
-      local_results = strat.experimental_local_results(results)
-      self.assertAllEqual(2, len(local_results))
-      self.assertAllDifferent(local_results)
 
   @test_util.run_v2_only
   def testUniformFullInt(self):

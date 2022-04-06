@@ -124,7 +124,13 @@ class PjRtDevice {
   // compatible compilation.
   virtual absl::string_view device_kind() const = 0;
 
+  // Debug string suitable for logging when errors occur. Should be verbose
+  // enough to describe the current device unambiguously.
   virtual std::string DebugString() const = 0;
+
+  // Debug string suitable for reading by end users, should be reasonably terse,
+  // for example: "CpuDevice(id=0)".
+  virtual std::string ToString() const = 0;
 
   // Returns a scoped event that the caller uses to tell the PjRtClient that
   // there is asynchronous work happening that depends on activity on the

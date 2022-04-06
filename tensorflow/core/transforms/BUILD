@@ -42,7 +42,7 @@ cc_library(
 )
 
 cc_library(
-    name = "Utils",
+    name = "utils",
     srcs = ["utils/utils.cc"],
     hdrs = ["utils/utils.h"],
     deps = [
@@ -51,6 +51,26 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "eval_utils",
+    srcs = ["utils/eval_utils.cc"],
+    hdrs = ["utils/eval_utils.h"],
+    deps = [
+        ":utils",
+        "//tensorflow/c:tf_status_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/importexport:convert_tensor",
+        "//tensorflow/core/ir/importexport:export",
+        "//tensorflow/core/lib/core:threadpool",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -101,6 +121,25 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "eval_utils_test",
+    size = "small",
+    srcs = ["utils/eval_utils_test.cc"],
+    deps = [
+        ":eval_utils",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/ir:Dialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
     ],
 )
 

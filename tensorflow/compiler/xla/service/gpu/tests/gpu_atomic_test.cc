@@ -103,7 +103,10 @@ TEST_F(GpuAtomicTest, TestAddAtomicF32) {
     }
 )";
 
-  CompileAndVerifyIr(hlo_string, R"(
+  CompileAndVerifyIr(hlo_string, is_built_with_rocm_ ? R"(
+CHECK: atomicrmw fadd float addrspace{{.*}}, float {{.*}} seq_cst, align 4
+)"
+                                                     : R"(
 CHECK: atomicrmw fadd float* %[[ADDR:.*]], float %[[VALUE:.*]] seq_cst
 )");
 }

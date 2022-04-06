@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "llvm/IR/Intrinsics.h"
@@ -54,6 +55,149 @@ ParallelLoopEmitter::ParallelLoopEmitter(
       shape_(target_arrays[0].GetShape()),
       b_(b) {}
 
+ParallelLoopEmitter::LinearBaseAndThreadIdx
+ParallelLoopEmitter::EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
+                                                llvm::Value* base_index) {
+  llvm::Value* block_id =
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b_);
+  llvm_ir::AddRangeMetadata(0, launch_dimensions_.block_counts().x,
+                            static_cast<llvm::Instruction*>(block_id));
+  block_id = b_->CreateZExtOrTrunc(block_id, index_type, "block_id");
+
+  // Per the PTX documentation:
+  //   "It is guaranteed that [...] 0  <=  %tid.x <  %ntid.x"
+  llvm::Value* thread_id_x =
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b_);
+  llvm_ir::AddRangeMetadata(0, launch_dimensions_.thread_counts_per_block().x,
+                            static_cast<llvm::Instruction*>(thread_id_x));
+  thread_id_x = b_->CreateZExtOrTrunc(thread_id_x, index_type, "thread_id_x");
+
+  const int unroll_factor =
+      launch_config_.unroll_factor > 1 ? launch_config_.unroll_factor : 1;
+
+  // Linear base is different for logical order vs physical order stores.
+  // For logical,  linear_base = block_id*num_threads*unroll + thread_idx
+  // For physical, linear_base = (block_id*num_threads + thread_idx)*unroll
+  int block_id_multiplier =
+      launch_config_.logical_order
+          ? launch_dimensions_.total_nb_threads() * unroll_factor
+          : launch_dimensions_.total_nb_threads();
+
+  llvm::Value* linear_index_base = b_->CreateMul(
+      block_id, llvm::ConstantInt::get(index_type, block_id_multiplier), "",
+      /*HasNUW=*/true, /*HasNSW=*/true);
+
+  linear_index_base =
+      b_->CreateAdd(linear_index_base, thread_id_x, "linear_index",
+                    /*HasNUW=*/true, /*HasNSW=*/true);
+
+  if (launch_dimensions_.thread_counts_per_block().y > 1) {
+    CHECK(!launch_config_.logical_order);
+    llvm::Value* thread_id_y =
+        EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdy, {}, {}, b_);
+    llvm_ir::AddRangeMetadata(0, launch_dimensions_.thread_counts_per_block().y,
+                              static_cast<llvm::Instruction*>(thread_id_y));
+    thread_id_y = b_->CreateZExtOrTrunc(thread_id_y, index_type, "thread_id_y");
+    linear_index_base = b_->CreateAdd(
+        linear_index_base,
+        b_->CreateMul(
+            thread_id_y,
+            llvm::ConstantInt::get(
+                index_type, launch_dimensions_.thread_counts_per_block().x),
+            "",
+            /*HasNUW=*/true, /*HasNSW=*/true),
+        "",
+        /*HasNUW=*/true, /*HasNSW=*/true);
+  }
+
+  // Add an @llvm.assume(linear_index < threads_per_block * num_blocks).
+  //
+  // This might seem obvious from the computation above, but LLVM does not
+  // currently determine the range of linear_index precisely.  InstCombine uses
+  // known-bits, which, when applied to the task of determining a value's range,
+  // is imprecise for everything other than powers of 2.  And
+  // CorrelatedValuePropagation is, as a cost-saving measure, disabled for
+  // conditions in the same basic block as their operands.
+  llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::assume,
+      {b_->CreateICmpULT(
+          linear_index_base,
+          llvm::ConstantInt::get(
+              index_type,
+              block_id_multiplier * launch_dimensions_.block_counts().x),
+          "linear_index_in_range")},
+      {}, b_);
+
+  if (!launch_config_.logical_order && launch_config_.unroll_factor > 1) {
+    linear_index_base = b_->CreateMul(
+        linear_index_base,
+        llvm::ConstantInt::get(index_type, launch_config_.unroll_factor),
+        "linear_index_base", /*HasNUW=*/true, /*HasNSW=*/true);
+  }
+
+  if (base_index != nullptr) {
+    linear_index_base =
+        b_->CreateAdd(linear_index_base, base_index, "linear_index_plus_base",
+                      /*HasNUW=*/true, /*HasNSW=*/true);
+  }
+  return {linear_index_base, thread_id_x};
+}
+
+std::vector<llvm_ir::IrArray::Index>
+ParallelLoopEmitter::EmitLogicalIndexAndSetExitBasicBlock(
+    absl::string_view loop_name, llvm::Type* index_type,
+    llvm::Value* base_index) {
+  std::vector<llvm_ir::IrArray::Index> array_indices;
+
+  LinearBaseAndThreadIdx base_and_threadidx =
+      EmitLinearBaseAndThreadIdx(index_type, base_index);
+  llvm::Value* linear_index_base = base_and_threadidx.linear_base;
+  const int unroll_factor = launch_config_.unroll_factor;
+
+  llvm::Value* linear_base = linear_index_base;
+
+  for (int i = 0; i < unroll_factor; ++i) {
+    std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
+    if (i > 0) {
+      llvm::Value* addend = llvm::ConstantInt::get(
+          index_type, launch_dimensions_.total_nb_threads());
+      linear_base =
+          b_->CreateAdd(linear_base, addend, absl::StrCat("linear_index", i),
+                        /*HasNUW=*/true, /*HasNSW=*/true);
+    }
+    auto dims = shape_.dimensions();
+    llvm::Value* last_val = linear_base;
+    for (int j = dims.size() - 1; j >= 0; j--) {
+      multidim[j] =
+          b_->CreateURem(last_val, llvm::ConstantInt::get(index_type, dims[j]));
+      last_val =
+          b_->CreateUDiv(last_val, llvm::ConstantInt::get(index_type, dims[j]));
+    }
+    array_indices.emplace_back(multidim, shape_, index_type);
+  }
+
+  // We don't need to do bounds checking because this method is only
+  // triggered for cases where we have already verified the bounds.
+  llvm::BasicBlock* current_block = b_->GetInsertBlock();
+  llvm::BasicBlock* body_block =
+      llvm_ir::CreateBasicBlock(nullptr, "fusion-body", b_);
+  if (current_block->getTerminator() == nullptr) {
+    exit_bb_ = llvm_ir::CreateBasicBlock(nullptr, "after-fusion-body", b_);
+  } else {
+    exit_bb_ = current_block->splitBasicBlock(b_->GetInsertPoint(),
+                                              "after-fusion-body");
+    current_block->getTerminator()->eraseFromParent();
+  }
+  b_->SetInsertPoint(current_block);
+  b_->CreateBr(body_block);
+  b_->SetInsertPoint(body_block);
+  b_->CreateBr(exit_bb_);
+
+  // Set IR builder insertion point to the body of the if structure.
+  llvm_ir::SetToFirstInsertPoint(body_block, b_);
+  return array_indices;
+}
+
 std::vector<llvm_ir::IrArray::Index>
 ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
                                                    llvm::Type* index_type,
@@ -87,77 +231,18 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   VLOG(3) << "EmitIndexAndSetExitBasicBlock unroll_factor "
           << launch_config_.unroll_factor;
   CHECK_NE(index_type, nullptr);
+
+  if (launch_config_.logical_order) {
+    return EmitLogicalIndexAndSetExitBasicBlock(loop_name, index_type,
+                                                base_index);
+  }
+
   std::vector<llvm_ir::IrArray::Index> array_indices;
-  llvm::Value* block_id =
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b_);
-  llvm_ir::AddRangeMetadata(0, launch_dimensions_.block_counts().x,
-                            static_cast<llvm::Instruction*>(block_id));
-  block_id = b_->CreateZExtOrTrunc(block_id, index_type, "block_id");
+  LinearBaseAndThreadIdx linear_base_and_thread_idx =
+      EmitLinearBaseAndThreadIdx(index_type, base_index);
 
-  // Per the PTX documentation:
-  //   "It is guaranteed that [...] 0  <=  %tid.x <  %ntid.x"
-  llvm::Value* thread_id_x =
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b_);
-  llvm_ir::AddRangeMetadata(0, launch_dimensions_.thread_counts_per_block().x,
-                            static_cast<llvm::Instruction*>(thread_id_x));
-  thread_id_x = b_->CreateZExtOrTrunc(thread_id_x, index_type, "thread_id_x");
-
-  llvm::Value* linear_index_base = b_->CreateMul(
-      block_id,
-      llvm::ConstantInt::get(index_type, launch_dimensions_.total_nb_threads()),
-      "",
-      /*HasNUW=*/true, /*HasNSW=*/true);
-  if (launch_dimensions_.thread_counts_per_block().y > 1) {
-    llvm::Value* thread_id_y =
-        EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdy, {}, {}, b_);
-    llvm_ir::AddRangeMetadata(0, launch_dimensions_.thread_counts_per_block().y,
-                              static_cast<llvm::Instruction*>(thread_id_y));
-    thread_id_y = b_->CreateZExtOrTrunc(thread_id_y, index_type, "thread_id_y");
-    linear_index_base = b_->CreateAdd(
-        linear_index_base,
-        b_->CreateMul(
-            thread_id_y,
-            llvm::ConstantInt::get(
-                index_type, launch_dimensions_.thread_counts_per_block().x),
-            "",
-            /*HasNUW=*/true, /*HasNSW=*/true),
-        "",
-        /*HasNUW=*/true, /*HasNSW=*/true);
-  }
-  linear_index_base =
-      b_->CreateAdd(linear_index_base, thread_id_x, "linear_index",
-                    /*HasNUW=*/true, /*HasNSW=*/true);
-
-  // Add an @llvm.assume(linear_index < threads_per_block * num_blocks).
-  //
-  // This might seem obvious from the computation above, but LLVM does not
-  // currently determine the range of linear_index precisely.  InstCombine uses
-  // known-bits, which, when applied to the task of determining a value's range,
-  // is imprecise for everything other than powers of 2.  And
-  // CorrelatedValuePropagation is, as a cost-saving measure, disabled for
-  // conditions in the same basic block as their operands.
-  llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::assume,
-      {b_->CreateICmpULT(
-          linear_index_base,
-          llvm::ConstantInt::get(index_type,
-                                 launch_dimensions_.total_nb_threads() *
-                                     launch_dimensions_.block_counts().x),
-          "linear_index_in_range")},
-      {}, b_);
-
-  if (launch_config_.unroll_factor > 1) {
-    linear_index_base = b_->CreateMul(
-        linear_index_base,
-        llvm::ConstantInt::get(index_type, launch_config_.unroll_factor),
-        "linear_index_base", /*HasNUW=*/true, /*HasNSW=*/true);
-  }
-
-  if (base_index != nullptr) {
-    linear_index_base =
-        b_->CreateAdd(linear_index_base, base_index, "linear_index_plus_base",
-                      /*HasNUW=*/true, /*HasNSW=*/true);
-  }
+  llvm::Value* linear_index_base = linear_base_and_thread_idx.linear_base;
+  llvm::Value* thread_id_x = linear_base_and_thread_idx.thread_idx;
 
   // When enable_row_index is true, it means the inner most dimensions
   // match the block sizes.  So we can generate a simpler indexing

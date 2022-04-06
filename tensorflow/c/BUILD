@@ -279,6 +279,7 @@ tf_cuda_library(
         # "//tensorflow/cc/experimental/tf2:__subpackages__",
         # copybara:uncomment_end
         "//tensorflow/compiler/mlir/tensorflow/c:__subpackages__",
+        "//tensorflow/core/transforms:__subpackages__",
     ],
     deps = select({
         "//tensorflow:android": [

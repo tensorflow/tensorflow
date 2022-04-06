@@ -628,8 +628,10 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs) {
   const Shape& return_shape = computation.root_instruction()->shape();
+  llvm::Type* return_buffer_type =
+      llvm_ir::ShapeToIrType(return_shape, module_);
   llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-      llvm_ir::ShapeToIrType(return_shape, module_), "return_buffer", &b_);
+      return_buffer_type, "return_buffer", &b_);
 
   std::vector<llvm::Value*> allocas_for_returned_scalars;
   if (!return_shape.IsTuple()) {
@@ -637,7 +639,8 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
   } else {
     allocas_for_returned_scalars =
         llvm_ir::EmitTupleAllocasAtFunctionEntry(return_shape, &b_);
-    llvm_ir::IrArray tuple_array(return_buffer, return_shape);
+    llvm_ir::IrArray tuple_array(return_buffer, return_buffer_type,
+                                 return_shape);
 
     EmitTuple(tuple_array, allocas_for_returned_scalars, &b_);
   }

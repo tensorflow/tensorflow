@@ -1120,10 +1120,10 @@ llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilder<>* b,
         LayoutUtil::IsMonotonicWithDim0Major(shape.layout()));
   CHECK_GE(shape.dimensions_size(), n);
   Shape new_shape = CollapseFirstNDims(shape, n);
-  llvm::Value* new_value = b->CreateBitCast(
-      array.GetBasePointer(),
-      llvm_ir::ShapeToIrType(new_shape, module)->getPointerTo());
-  return llvm_ir::IrArray(new_value, std::move(new_shape));
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
+  llvm::Value* new_value =
+      b->CreateBitCast(array.GetBasePointer(), new_ir_type->getPointerTo());
+  return llvm_ir::IrArray(new_value, new_ir_type, std::move(new_shape));
 }
 
 Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
@@ -1153,10 +1153,10 @@ llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
   llvm_ir::IrArray::Index slice_index(multidim_index, outer_array.GetShape(),
                                       batch_index->getType());
   llvm::Value* slice_ptr = outer_array.EmitArrayElementAddress(slice_index, b);
-  llvm::Type* slice_ptr_type =
-      llvm_ir::ShapeToIrType(inner_shape, module)->getPointerTo();
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(inner_shape, module);
+  llvm::Type* slice_ptr_type = new_ir_type->getPointerTo();
   return llvm_ir::IrArray(b->CreateBitCast(slice_ptr, slice_ptr_type),
-                          std::move(inner_shape));
+                          new_ir_type, std::move(inner_shape));
 }
 
 Status EmitBatchDotOperation(

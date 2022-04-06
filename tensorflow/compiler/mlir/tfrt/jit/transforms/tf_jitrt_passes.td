@@ -114,8 +114,7 @@ def TileReduction : Pass<"tf-jitrt-tile-reduction", "mlir::func::FuncOp"> {
     Option<"reduction_1d_tile_size", "reduction-1d-tile-size",
            "int64_t", /*default=*/"32", "Tile size for a 1D reduction.">,
     ListOption<"reduction_2d_tile_sizes", "reduction-2d-tile-sizes", "int64_t",
-               "Tile sizes for a 2D reduction.",
-               "llvm::cl::MiscFlags::CommaSeparated">,
+               "Tile sizes for a 2D reduction.">,
   ];
 }
 
@@ -207,8 +206,7 @@ def Clustering : Pass<"tf-jitrt-clustering", "mlir::func::FuncOp"> {
                "Explicitly allow operations for clustering. Only operations in "
                "this list will be passed to the TF->JitRt clustering policy. "
                "Alternatively use 'tier1', ..., 'all' to allow clustering for "
-               "all operations included in the given clustering tier.",
-               "llvm::cl::MiscFlags::CommaSeparated">
+               "all operations included in the given clustering tier.">
   ];
 }
 
@@ -262,7 +260,6 @@ def MathApproximation : Pass<"tf-jitrt-math-approximation", "mlir::func::FuncOp"
   let options = [
    ListOption<"oplist", "oplist", "std::string",
               "List of math operations to be approximated. Use 'all' to select "
-              "all supported math operations.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "all supported math operations.">,
   ];
 }

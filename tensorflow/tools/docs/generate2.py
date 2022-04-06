@@ -29,6 +29,8 @@ import distutils
 import pathlib
 import textwrap
 
+from typing import NamedTuple
+
 from absl import app
 from absl import flags
 
@@ -157,7 +159,12 @@ class RawOpsPageInfo(module_page.ModulePageInfo):
 class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
   """A `tf_export`, `keras_export` and `estimator_export` aware doc_visitor."""
 
-  def _score_name(self, name):
+  class TfNameScore(NamedTuple):
+    cannonical_score: int
+    name_score: doc_generator_visitor.DocGeneratorVisitor.NameScore
+
+  def _score_name(self, path: doc_generator_visitor.ApiPath) -> TfNameScore:
+    name = ".".join(path)
     all_exports = [tf_export.TENSORFLOW_API_NAME,
                    tf_export.KERAS_API_NAME,
                    tf_export.ESTIMATOR_API_NAME]
@@ -172,8 +179,7 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
     if canonical is not None and name == "tf." + canonical:
       canonical_score = -1
 
-    scores = super()._score_name(name)
-    return (canonical_score,) + scores
+    return self.TfNameScore(canonical_score, super()._score_name(path))
 
 
 def build_docs(output_dir, code_url_prefix, search_hints):
@@ -234,7 +240,8 @@ def build_docs(output_dir, code_url_prefix, search_hints):
       site_path=site_path,
       visitor_cls=TfExportAwareVisitor,
       private_map=_PRIVATE_MAP,
-      extra_docs=_EXTRA_DOCS)
+      extra_docs=_EXTRA_DOCS,
+      callbacks=base_dir.get_callbacks())
 
   doc_generator.build(output_dir)
 

@@ -3811,7 +3811,6 @@ cc_library(
         ":call_graph",
         ":hlo",
         ":hlo_phi_graph",
-        ":hlo_value",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",

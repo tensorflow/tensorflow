@@ -17,6 +17,8 @@
 
 This functionality should ultimately be moved into a first-class core API.
 """
+import warnings
+
 import numpy
 
 from tensorflow.python.framework import constant_op
@@ -91,6 +93,7 @@ def get_tensor_from_node(node):
   Args:
     node: a tensor, variable, or resource to be resolved into a capturable
       tensor
+
   Returns:
     A list of tensors.
   Raises:
@@ -101,6 +104,8 @@ def get_tensor_from_node(node):
     if getattr(node, "is_distributed_variable", False):
       return node
     elif getattr(node, "is_distributed_table", False):
+      return node
+    elif getattr(node, "is_sharded_variable", False):
       return node
     elif resource_variable_ops.is_resource_variable(node):
       return node.handle
@@ -131,8 +136,8 @@ def restore_captures(concrete_function, inputs):
   bound_inputs = [get_tensor_from_node(obj) for obj in inputs]
   bound_variables = [
       obj for obj in inputs
-      if isinstance(obj, (
-          variables_lib.Variable, resource_variable_ops.BaseResourceVariable))
+      if isinstance(obj, (variables_lib.Variable,
+                          resource_variable_ops.BaseResourceVariable))
   ]
   # TODO(b/205010575): This is only injecting the captured inputs into the
   # concrete function, note that we did not modify the FuncGraph
@@ -168,4 +173,9 @@ def restore_captures(concrete_function, inputs):
         # placeholder for this input.
         concrete_function.graph.capture(bound_input)
 
+  if any([inp is None for inp in captured_inputs_list]):
+    warnings.warn("Trying to load ShardedVariables using tf.saved_model.load. "
+                  "This won't work if using a tf.distribute.Strategy, and may "
+                  "use excess memory if not using a Strategy. Ignore this "
+                  "warning if using tf.keras.models.load_model.")
   concrete_function.set_external_captures(captured_inputs_list)

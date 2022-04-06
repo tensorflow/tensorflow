@@ -135,6 +135,7 @@ PYBIND11_MODULE(xla_extension, m) {
           "client",
           [](const ClientAndPtr<PjRtDevice>& device) { return device.client; })
       .def("__str__", &PjRtDevice::DebugString)
+      .def("__repr__", &PjRtDevice::ToString)
       .def("transfer_to_infeed",
            [](PjRtDevice& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
@@ -163,18 +164,12 @@ PYBIND11_MODULE(xla_extension, m) {
         return device.client->LiveBuffersOnDevice(device.get());
       });
 
-  py::class_<TfrtCpuDevice, PjRtDevice, ClientAndPtr<TfrtCpuDevice>>(
-      m, "CpuDevice")
-      .def("__repr__", [](const TfrtCpuDevice& device) {
-        return absl::StrFormat("CpuDevice(id=%i)", device.id());
-      });
+  // TODO(tomhennigan): Can we remove this type definition?
+  py::class_<TfrtCpuDevice, PjRtDevice, ClientAndPtr<TfrtCpuDevice>> cpu(
+      m, "CpuDevice");
 
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
-      .def_property_readonly("device_vendor", &GpuDevice::device_vendor)
-      .def("__repr__", [](const GpuDevice& device) {
-        return absl::StrFormat("GpuDevice(id=%i, process_index=%i)",
-                               device.id(), device.process_index());
-      });
+      .def_property_readonly("device_vendor", &GpuDevice::device_vendor);
 
   py::class_<PjRtTpuDevice, PjRtDevice, ClientAndPtr<PjRtTpuDevice>>(
       m, "TpuDevice")
@@ -186,13 +181,7 @@ PYBIND11_MODULE(xla_extension, m) {
           "The coordinates of this TpuDevice's chip in the TPU mesh network.")
       .def_property_readonly(
           "core_on_chip", &PjRtTpuDevice::core_on_chip,
-          "The index of this TpuDevice's core on the TPU chip.")
-      .def("__repr__", [](const PjRtTpuDevice& device) {
-        return absl::StrFormat(
-            "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)",
-            device.id(), device.process_index(),
-            absl::StrJoin(device.coords(), ","), device.core_on_chip());
-      });
+          "The index of this TpuDevice's core on the TPU chip.");
 
   // Local XLA client methods.
 

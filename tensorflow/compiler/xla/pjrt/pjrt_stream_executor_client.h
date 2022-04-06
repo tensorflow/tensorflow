@@ -107,6 +107,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   absl::string_view device_kind() const override { return device_kind_; }
 
+  std::string ToString() const override;
+
   std::string DebugString() const override;
 
   Status TransferToInfeed(const LiteralSlice& literal) override;

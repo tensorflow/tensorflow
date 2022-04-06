@@ -426,7 +426,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(24, 25, 26, 58, 59, 60));
@@ -445,7 +445,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest2) {
       2, 1,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1));
   EXPECT_THAT(m.GetOutput(), ElementsAre(11, 9));
@@ -469,7 +469,7 @@ TEST(FloatFullyConnectedOpTest, SimpleTestNoBias) {
       2, 1,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1));
   EXPECT_THAT(m.GetOutput(), ElementsAre(10, 8));
@@ -495,7 +495,7 @@ TEST(FloatFullyConnectedOpTest, SimpleTestEmptyOutput) {
       2, 4,  // u = 0
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(0, 1));
 }
@@ -519,7 +519,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedUint8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
@@ -553,7 +553,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedUint8NoBias) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
@@ -583,7 +583,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
@@ -611,7 +611,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias32) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
@@ -640,7 +640,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16Bias64) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
@@ -671,7 +671,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8NoBias) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({23, 23, 23, 57, 57, 57})));
@@ -751,7 +751,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedOutputShape3DInt16) {
       1, -2, 3,  4,  5,   // b = 1, i = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear({
@@ -787,7 +787,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestSingleBatchQuantizedInt8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9, -10  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({58, 59, 60, 61})));
@@ -814,7 +814,7 @@ TEST_P(QuantizedFullyConnectedOpTest,
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
@@ -845,7 +845,7 @@ TEST_P(QuantizedFullyConnectedOpTest,
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({
@@ -928,7 +928,7 @@ void SimpleTestQuantizedInt16OutputCase(
   m.SetBias(bias_data);
   m.SetInput<uint8_t>(input_data);
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   std::vector<float> expected_output_data(output_depth * batches);
   for (int b = 0; b < batches; b++) {
@@ -1004,7 +1004,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedUint8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -1032,7 +1032,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -1066,7 +1066,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8MultiThreaded) {
         1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 3
     });
 
-    ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
     EXPECT_THAT(m.GetOutputShape(), ElementsAre(4, 3));
     EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
@@ -1100,7 +1100,7 @@ TEST(HybridAsymmetricInputFullyConnectedOpTest, SimpleTestQuantizedUint8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -1130,7 +1130,7 @@ TEST(HybridAsymmetricInputFullyConnectedOpTest, SimpleTestQuantizedInt8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                  {
@@ -1159,7 +1159,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // second batch
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
@@ -1190,7 +1190,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput4DOutput) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // second batch
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 2, 1, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
@@ -1236,7 +1236,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTest4dInputQuantizedUint8) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
@@ -1267,7 +1267,7 @@ TEST_P(QuantizedFullyConnectedOpTest,
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
@@ -1329,7 +1329,7 @@ TEST_P(FloatFullyConnectedOpTest, BlackBoxTest) {
     m.SetInput(0, batch_start, batch_end);
     m.SetInput(m.input_size(), batch_start, batch_end);
 
-    ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
     float* golden_start = fully_connected_golden_output + i * m.num_units();
     float* golden_end = golden_start + m.num_units();
@@ -1469,7 +1469,7 @@ TEST_P(SparseFullyConnectedOpTest, SimpleTest) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(24, 25, 26, 58, 59, 60));
@@ -1497,7 +1497,7 @@ TEST_P(SparseFullyConnectedOpTest, SimpleTestNoBias) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(23, 23, 23, 57, 57, 57));
@@ -1522,7 +1522,7 @@ TEST_P(SparseFullyConnectedOpTest, SimpleTest2) {
       2, 1   // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1));
   EXPECT_THAT(m.GetOutput(), ElementsAre(11, 9));
@@ -1552,7 +1552,7 @@ TEST_P(SparseFullyConnectedOpTest, Simple1x4Test) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10, -11, 12,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(289, 290, 291, 81, 82, 83));
@@ -1582,7 +1582,7 @@ TEST_P(SparseFullyConnectedOpTest, Simple1x4TestNoBias) {
       1, 2, 3, 4, 5, 6, 7, -8, 9,  -10, -11, 12,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(288, 288, 288, 80, 80, 80));
@@ -1615,7 +1615,7 @@ TEST_P(SparseFullyConnectedOpTest, Simple1x4TestMultiThreaded) {
         1, 2, 3, 4, 5, 6, 7, -8, 9,  -10, -11, 12,  // b = 1
     });
 
-    ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
     EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
     EXPECT_THAT(m.GetOutput(), ElementsAre(289, 290, 291, 81, 82, 83));
@@ -1653,7 +1653,7 @@ TEST_P(SparseFullyConnectedOpTest, Simple1x4TestMultiThreadedMoreBatches) {
         1, 2, 3, 4, 5, 6, 7, -8, 9,  -10, -11, 12,  // b = 5
     });
 
-    ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
     EXPECT_THAT(m.GetOutputShape(), ElementsAre(6, 3));
     EXPECT_THAT(m.GetOutput(), ElementsAre(289, 290, 291,  // b = 0
@@ -1717,7 +1717,7 @@ TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16Test) {
       1.0,  -2.5, 0.7,  -1.9, 0.2,  0.1,  0.2,  0.3,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 4));
   std::vector<float> expected = {0,      7.4715, 85.8359, 0,
@@ -1790,7 +1790,7 @@ TEST_P(SparseHybridFullyConnectedOpTest, SparseHybrid1x16TestMultiThreaded) {
         1.0,  -2.5, 0.7,  -1.9, 0.2,  0.1,  0.2,  0.3,  // b = 3
     });
 
-    ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
     EXPECT_THAT(m.GetOutputShape(), ElementsAre(4, 4));
     std::vector<float> expected = {
@@ -1871,7 +1871,7 @@ TEST_P(SparseQuantizedFullyConnectedOpTest, Simple1x16Test) {
       4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(11, 2, 25, 0, 2, 21));
@@ -1899,7 +1899,7 @@ TEST_P(SparseQuantizedFullyConnectedOpTest, Simple1x16TestNoBias) {
       4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1,  // b = 1
   });
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(10, 0, 22, 0, 0, 18));
@@ -1945,7 +1945,7 @@ TEST_P(SparseQuantizedFullyConnectedOpTest, Simple1x16TestScaledInputOutput) {
        0.05225316, 0.03152719, 0.8149394,  0.6554623,  0.0311714,  0.02122466,
        0.995122,   0.06201557, 0.16699032, 0.,         0.,         0.06638951});
 
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(-52, -50, -52));

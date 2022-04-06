@@ -6,6 +6,7 @@ package(
     default_visibility = [
         ":__subpackages__",
         "//tensorflow/core/ir:__subpackages__",
+        "//tensorflow/core/transforms:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

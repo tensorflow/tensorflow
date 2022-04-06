@@ -1483,12 +1483,15 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                       absl::string_view(obj_file.getData().data(),
                                         obj_file.getData().size()));
     };
+
     CompilerFunctor compiler_functor(
         target_machine.get(), opt_level,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
         llvm_ir::GetCpuFastMathFlags(module->config()),
-        pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook);
+        pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook,
+        aot_options.sanitize_dataflow(),
+        aot_options.sanitize_abilists_dataflow());
     std::unique_ptr<llvm::MemoryBuffer> object_file =
         cantFail(compiler_functor(*llvm_module));
     ObjectFileData object_file_data(object_file->getBufferStart(),
