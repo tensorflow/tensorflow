@@ -26,6 +26,10 @@ load(
     "tf_fingerprint_deps",
     "tf_kernel_tests_linkstatic",
 )
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
@@ -1857,9 +1861,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels/mkl:mkl_conv_op",
         "//tensorflow/stream_executor/cuda:cudnn_plugin",
-    ],
+    ] + if_mkl(["//tensorflow/core/kernels/mkl:mkl_conv_op"]),
 )
 
 tf_cuda_cc_test(
