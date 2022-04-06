@@ -190,7 +190,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
                 : "XLA was built without compiler optimizations, which can be "
                   "slow.  Try rebuilding with -c opt.";
         return absl::StrFormat(
-            "Constant folding an instrution is taking > %s:\n\n"
+            "Constant folding an instruction is taking > %s:\n\n"
             "  %s\n\n"  // instruction->ToString()
             "%s",       // explanation_msg
             absl::FormatDuration(slow_timeout), instruction->ToString(),
