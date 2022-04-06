@@ -77,8 +77,6 @@ RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.7"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9"
 
-# Use the manylinux 2014 install script to install a release clang version
-# The fact that is from manylinux 2014 has no impact.
-ENV CLANG_VERSION="11.0.0"
-COPY install/install_latest_clang_ml2014.sh /install/
-RUN /install/install_latest_clang_ml2014.sh
+ENV CLANG_VERSION="r42cab985fd95ba4f3f290e7bb26b93805edb447d"
+COPY install/install_latest_clang.sh /install/
+RUN /install/install_latest_clang.sh
