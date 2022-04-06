@@ -31,13 +31,13 @@ ADD devtoolset/rpm-patch.sh rpm-patch.sh
 
 # Set up a sysroot for glibc 2.12 / libstdc++ 4.4 / devtoolset-7 in /dt7.
 RUN /build_devtoolset.sh devtoolset-7 /dt7
-# Set up a sysroot for glibc 2.12 / libstdc++ 4.4 / devtoolset-8 in /dt8.
-RUN /build_devtoolset.sh devtoolset-8 /dt8
+# Set up a sysroot for glibc 2.12 / libstdc++ 4.4 / devtoolset-8 in /dt9.
+RUN /build_devtoolset.sh devtoolset-8 /dt9
 
 # TODO(klimek): Split up into two different docker images.
 FROM nvidia/cuda:11.4.1-cudnn8-devel-ubuntu18.04
 COPY --from=devtoolset /dt7 /dt7
-COPY --from=devtoolset /dt8 /dt8
+COPY --from=devtoolset /dt9 /dt9
 
 # Install TensorRT.
 RUN apt-get update && \
