@@ -78,7 +78,7 @@ size_t GetElementResult::EstimatedMemoryUsageBytes() const {
     const Variant& variant = tensor.scalar<Variant>()();
     const CompressedElement* compressed = variant.get<CompressedElement>();
     if (compressed) {
-      size_bytes += compressed->ByteSizeLong();
+      size_bytes += compressed->SpaceUsedLong();
     }
   }
   return size_bytes;
