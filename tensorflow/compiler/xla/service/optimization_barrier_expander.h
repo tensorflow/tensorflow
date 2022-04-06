@@ -21,14 +21,16 @@ limitations under the License.
 namespace xla {
 
 // This pass removes the opt-barrier operation which is functionally a no-op.
-class OptimizationBarrierExpander : public HloModulePass {
+class OptimizationBarrierExpander : public OpExpanderPass {
  public:
   OptimizationBarrierExpander() = default;
 
   absl::string_view name() const override { return "cse_barrier_expander"; }
 
  protected:
-  StatusOr<bool> Run(HloModule* module) override;
+  bool InstructionMatchesPattern(HloInstruction* instruction) override;
+
+  StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* hlo) override;
 };
 
 }  // namespace xla
