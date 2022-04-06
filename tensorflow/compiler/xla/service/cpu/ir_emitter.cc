@@ -426,6 +426,7 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data_slice,
                       assignment_.GetUniqueSlice(infeed, {0}));
   llvm::Value* data_address = EmitBufferPointer(data_slice, data_shape);
+  llvm::Type* data_type = IrShapeType(data_shape);
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice token_slice,
                       assignment_.GetUniqueSlice(infeed, {1}));
   llvm::Value* token_address = EmitBufferPointer(
@@ -460,7 +461,7 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
       tuple_element_addresses.push_back(tuple_element_address);
     }
 
-    llvm_ir::EmitTuple(llvm_ir::IrArray(data_address, data_shape),
+    llvm_ir::EmitTuple(llvm_ir::IrArray(data_address, data_type, data_shape),
                        tuple_element_addresses, &b_);
   } else {
     TF_RETURN_IF_ERROR(
@@ -749,7 +750,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
       llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
       "selected_value_address", &b_,
       MinimumAlignmentForPrimitiveType(operand_element_type));
-  llvm::Value* selected_index_address =
+  llvm::AllocaInst* selected_index_address =
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
           b_.getInt64Ty(), b_.getInt32(rank), "selected_index_address", &b_);
   llvm::Value* initialized_flag_address = llvm_ir::EmitAllocaAtFunctionEntry(
@@ -799,7 +800,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
       [&](const llvm_ir::IrArray::Index& operand_index) {
         for (int64_t i = 0; i < rank; ++i) {
           llvm::Value* selected_index_address_slot =
-              InBoundsGEP(selected_index_address, {b_.getInt32(i)});
+              InBoundsGEP(selected_index_address->getAllocatedType(),
+                          selected_index_address, {b_.getInt32(i)});
           Store(operand_index[i], selected_index_address_slot);
         }
       };
@@ -842,7 +844,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   llvm::SmallVector<llvm::Value*> selected_multi_index;
   for (int64_t i = 0; i < rank; ++i) {
     llvm::Value* selected_index_address_slot =
-        InBoundsGEP(selected_index_address, {b_.getInt32(i)});
+        InBoundsGEP(selected_index_address->getAllocatedType(),
+                    selected_index_address, {b_.getInt32(i)});
     selected_multi_index.push_back(Load(selected_index_address_slot));
   }
   llvm_ir::IrArray source_array(GetIrArrayFor(source));
@@ -1629,7 +1632,8 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
 
   for (llvm::Value* accumulator_shard : accumulator) {
     llvm::Value* initial_value;
-    auto shard_type = accumulator_shard->getType()->getPointerElementType();
+    auto shard_type =
+        llvm::cast<llvm::AllocaInst>(accumulator_shard)->getAllocatedType();
     if (auto vector_type = llvm::dyn_cast<llvm::VectorType>(shard_type)) {
       initial_value =
           VectorSplat(vector_type->getElementCount(), init_value_ssa);
@@ -1666,9 +1670,11 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
   for (int i = 0; i < accumulator.size(); i++) {
     auto input_address_typed =
         BitCast(input_address, accumulator[i]->getType());
-    auto current_accumulator_value =
-        AlignedLoad(accumulator[i], element_alignment);
-    auto addend = AlignedLoad(input_address_typed, element_alignment);
+    auto alloca = llvm::cast<llvm::AllocaInst>(accumulator[i]);
+    auto current_accumulator_value = AlignedLoad(
+        alloca->getAllocatedType(), accumulator[i], element_alignment);
+    auto addend = AlignedLoad(alloca->getAllocatedType(), input_address_typed,
+                              element_alignment);
     arg_array.AnnotateLoadStoreInstructionWithMetadata(addend);
 
     auto reduced_result =
@@ -1686,7 +1692,9 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
   ShardedVector result_ssa;
   result_ssa.reserve(accumulator.size());
   for (auto accumulator_shard : accumulator) {
-    result_ssa.push_back(AlignedLoad(accumulator_shard, element_alignment));
+    auto alloca = llvm::cast<llvm::AllocaInst>(accumulator_shard);
+    result_ssa.push_back(AlignedLoad(alloca->getAllocatedType(),
+                                     accumulator_shard, element_alignment));
   }
   return result_ssa;
 }
@@ -2305,7 +2313,8 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
   const Shape& data_shape = ShapeUtil::GetSubshape(hlo->shape(), {0});
   const Shape& input_shape = hlo->operand(0)->shape();
   llvm::Value* data_address = EmitBufferPointer(data_slice, data_shape);
-  llvm_ir::IrArray data_array(data_address, data_shape);
+  llvm::Type* data_type = IrShapeType(data_shape);
+  llvm_ir::IrArray data_array(data_address, data_type, data_shape);
   llvm::Value* source_buffer = GetEmittedValueFor(hlo->operand(0));
   llvm::Value* raw_buffer =
       b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
@@ -2424,8 +2433,8 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
     const HloInstruction* operand = operands[i];
     llvm::Value* operand_as_i8ptr =
         PointerCast(GetEmittedValueFor(operand), i8_ptr_type);
-    llvm::Value* slot_in_operands_alloca =
-        InBoundsGEP(operands_alloca, {b_.getInt64(i)});
+    llvm::Value* slot_in_operands_alloca = InBoundsGEP(
+        operands_alloca->getAllocatedType(), operands_alloca, {b_.getInt64(i)});
     Store(operand_as_i8ptr, slot_in_operands_alloca);
   }
   if (emit_code_for_msan_) {
@@ -2649,7 +2658,8 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
         i8_ptr_type);
 
     llvm::Value* copy_target_address =
-        GEP(target_region_begin, b_.getInt64(byte_offset_into_target_region));
+        GEP(b_.getInt8Ty(), target_region_begin,
+            b_.getInt64(byte_offset_into_target_region));
 
     EmitTransferElements(
         copy_target_address, copy_source_address,
@@ -2729,12 +2739,15 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
       ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
   llvm::Align element_alignment(tensorflow::MathUtil::GCD<unsigned>(
       primitive_type_size, MinimumAlignmentForPrimitiveType(primitive_type)));
-  llvm::Type* primitive_ptr_type = llvm::PointerType::getUnqual(
-      llvm_ir::PrimitiveTypeToIrType(primitive_type, module_));
+  llvm::Type* primitive_llvm_type =
+      llvm_ir::PrimitiveTypeToIrType(primitive_type, module_);
+  llvm::Type* primitive_ptr_type =
+      llvm::PointerType::getUnqual(primitive_llvm_type);
 
   if (element_count == 1) {
     auto* load_instruction =
-        AlignedLoad(BitCast(source, primitive_ptr_type), element_alignment);
+        AlignedLoad(primitive_llvm_type, BitCast(source, primitive_ptr_type),
+                    element_alignment);
     source_array.AnnotateLoadStoreInstructionWithMetadata(load_instruction);
     auto* store_instruction =
         AlignedStore(load_instruction, BitCast(target, primitive_ptr_type),
@@ -2959,8 +2972,8 @@ llvm::Value* IrEmitter::GetProfileCounterCommon(
 
   int64_t prof_counter_idx = it->second;
   std::string counter_name = IrName("prof_counter", hlo.name());
-  return GEP(GetProfileCountersArgument(), b_.getInt64(prof_counter_idx),
-             counter_name);
+  return GEP(b_.getInt64Ty(), GetProfileCountersArgument(),
+             b_.getInt64(prof_counter_idx), counter_name);
 }
 
 llvm::Value* IrEmitter::GetProfileCounterFor(
@@ -2980,9 +2993,9 @@ void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
                                                      llvm::Value* cycle_end,
                                                      llvm::Value* cycle_start) {
   auto* cycle_diff = b->CreateSub(cycle_end, cycle_start);
-  llvm::LoadInst* old_cycle_count =
-      b->CreateLoad(prof_counter->getType()->getPointerElementType(),
-                    prof_counter, "old_cycle_count");
+  llvm::LoadInst* old_cycle_count = b->CreateLoad(
+      llvm::cast<llvm::GetElementPtrInst>(prof_counter)->getSourceElementType(),
+      prof_counter, "old_cycle_count");
   auto* new_cycle_count =
       b->CreateAdd(cycle_diff, old_cycle_count, "new_cycle_count");
   b->CreateStore(new_cycle_count, prof_counter);
@@ -3129,7 +3142,8 @@ Status IrEmitter::Postprocess(HloInstruction* hlo) {
 llvm_ir::IrArray IrEmitter::GetIrArrayFor(const HloInstruction* hlo) {
   llvm::Value* value_for_op = GetEmittedValueFor(hlo);
 
-  llvm_ir::IrArray array(value_for_op, hlo->shape());
+  llvm::Type* ir_type = IrShapeType(hlo->shape());
+  llvm_ir::IrArray array(value_for_op, ir_type, hlo->shape());
   AddAliasingInformationToIrArray(*hlo, &array);
   return array;
 }
@@ -3202,8 +3216,8 @@ llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
       // Where Param is the actual element type of the underlying buffer (for
       // example, float for an XLA F32 element type).
       llvm::Value* params = compute_function_->parameters_arg();
-      llvm::Value* param_address_offset =
-          llvm_ir::EmitBufferIndexingGEP(params, param_number, &b_);
+      llvm::Value* param_address_offset = llvm_ir::EmitBufferIndexingGEP(
+          params, b_.getInt8PtrTy(), param_number, &b_);
       llvm::LoadInst* param_address_untyped = Load(param_address_offset);
 
       if (!target_shape.IsOpaque()) {
@@ -3239,7 +3253,7 @@ llvm::Value* IrEmitter::EmitGlobalBufferPointer(
     const BufferAllocation::Slice& slice, const Shape& target_shape) {
   const BufferAllocation& allocation = *slice.allocation();
   llvm::Value* tempbuf_address_ptr = llvm_ir::EmitBufferIndexingGEP(
-      GetBufferTableArgument(), slice.index(), &b_);
+      GetBufferTableArgument(), b_.getInt8PtrTy(), slice.index(), &b_);
   llvm::LoadInst* tempbuf_address_base = Load(tempbuf_address_ptr);
   if (hlo_module_config_.debug_options()
           .xla_llvm_enable_invariant_load_metadata()) {
@@ -3253,8 +3267,8 @@ llvm::Value* IrEmitter::EmitGlobalBufferPointer(
   llvm::Value* tempbuf_address_untyped = tempbuf_address_base;
   if (slice.offset() > 0) {
     // Adjust the address to account for the slice offset.
-    tempbuf_address_untyped =
-        InBoundsGEP(tempbuf_address_base, b_.getInt64(slice.offset()));
+    tempbuf_address_untyped = InBoundsGEP(b_.getInt8Ty(), tempbuf_address_base,
+                                          b_.getInt64(slice.offset()));
   }
   return BitCast(tempbuf_address_untyped,
                  IrShapeType(target_shape)->getPointerTo());
@@ -3310,8 +3324,9 @@ Status IrEmitter::EmitTargetElementLoop(
                           assignment_.GetUniqueSlice(target_op, {i}));
       const Shape& element_shape = ShapeUtil::GetSubshape(target_shape, {i});
       llvm::Value* op_target_address = EmitBufferPointer(slice, element_shape);
+      llvm::Type* op_target_type = IrShapeType(element_shape);
       output_arrays.push_back(
-          llvm_ir::IrArray(op_target_address, element_shape));
+          llvm_ir::IrArray(op_target_address, op_target_type, element_shape));
     }
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, output_arrays, &b_)
@@ -3434,7 +3449,8 @@ std::vector<llvm::Value*> IrEmitter::EmitThreadLocalCall(
         << " stack smashing";
     allocas_for_returned_scalars =
         llvm_ir::EmitTupleAllocasAtFunctionEntry(return_shape, &b_);
-    llvm_ir::IrArray tuple_array(return_value_buffer, return_shape);
+    llvm_ir::IrArray tuple_array(return_value_buffer, return_value_buffer_type,
+                                 return_shape);
 
     EmitTuple(tuple_array, allocas_for_returned_scalars, &b_);
   }
