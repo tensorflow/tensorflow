@@ -51,7 +51,7 @@ class ConvertBinaryImpl {
 
   Status ValidateImpl(const OpConverterParams &params,
                       bool both_tensors = false,
-                      const std::vector<string>& not_supported_ops = {}) {
+                      const std::vector<string> &not_supported_ops = {}) {
     const auto &node_def = params.node_def;
     const auto op = node_def.op();
     const auto op_pair = pOperMap_->find(op);
@@ -67,8 +67,8 @@ class ConvertBinaryImpl {
           "' received both input as constant");
     }
 
-   if (!not_supported_ops.empty() && params.use_implicit_batch) {
-      const auto& end = not_supported_ops.end();
+    if (!not_supported_ops.empty() && params.use_implicit_batch) {
+      const auto &end = not_supported_ops.end();
       if (std::find(not_supported_ops.begin(), end, op) != end) {
         return errors::Unimplemented(
             "Binary op: '", op, "' is not supported in implicit batch mode");
@@ -77,8 +77,8 @@ class ConvertBinaryImpl {
 
     if (both_tensors) {
       if (inputs.at(0).is_weights() || inputs.at(1).is_weights()) {
-        return errors::InvalidArgument(
-          "Both inputs  of '", op, "' are expected to be tensors");
+        return errors::InvalidArgument("Both inputs  of '", op,
+                                       "' are expected to be tensors");
       }
     }
 
@@ -114,7 +114,6 @@ class ConvertBinaryImpl {
     return Status::OK();
   }
 
-
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
     return std::array<InputArgSpec, 2>{
         InputArgSpec::Create("x", TrtInputArg::kBoth),
@@ -147,11 +146,11 @@ class ConvertBinary : public OpConverterBase<ConvertBinary>,
 };
 
 class ConvertBooleanBinary : public OpConverterBase<ConvertBooleanBinary>,
-    public ConvertBinaryImpl {
+                             public ConvertBinaryImpl {
  public:
   explicit ConvertBooleanBinary(OpConverterParams* params)
-      : OpConverterBase<ConvertBooleanBinary>(params)
-      , ConvertBinaryImpl(BinaryBooleanOperationMap()) {}
+      : OpConverterBase<ConvertBooleanBinary>(params),
+        ConvertBinaryImpl(BinaryBooleanOperationMap()) {}
 
   static constexpr std::array<DataType, 1> AllowedDataTypes() {
     return {DataType::DT_BOOL};
@@ -161,10 +160,11 @@ class ConvertBooleanBinary : public OpConverterBase<ConvertBooleanBinary>,
     return ConvertBinaryImpl::InputSpec();
   }
 
-  static constexpr const char* NodeDefDataTypeAttributeName() { return ""; }
-  Status Validate() { return ValidateImpl(*params_, true,
-                                          {"LogicalOr", "LogicalAnd"}); }
-  Status Convert() { return ConvertImpl(*params_);  }
+  static constexpr const char *NodeDefDataTypeAttributeName() { return ""; }
+  Status Validate() {
+    return ValidateImpl(*params_, true, {"LogicalOr", "LogicalAnd"});
+  }
+  Status Convert() { return ConvertImpl(*params_); }
 };
 
 REGISTER_DEFAULT_TRT_OP_CONVERTER(MakeConverterFunction<ConvertBinary>(),

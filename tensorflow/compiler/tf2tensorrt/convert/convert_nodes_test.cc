@@ -1008,8 +1008,8 @@ TEST_F(ConverterTest, CreateConstantLayer) {
     ITensorProxyPtr tensor =
         converter_->CreateConstantLayer(weights, CreateDims({3, 10}));
     ASSERT_NE(nullptr, tensor->trt_tensor());
-    EXPECT_EQ(dtype, tensor->getType()) 
-	<< "Expected " << DebugString(dtype) << " vs. actual "
+    EXPECT_EQ(dtype, tensor->getType())
+        << "Expected " << DebugString(dtype) << " vs. actual "
         << DebugString(tensor->getType());
     EXPECT_THAT(tensor->getDimensions(), DimsAreArray({3, 10}));
   }
@@ -1846,7 +1846,8 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
       const operationMap<S>& map,
       std::map<std::string,
                std::pair<std::function<NodeDef(DataType)>, std::vector<T>>>&
-          op_test_info, const std::vector<std::vector<T>> &data) {
+          op_test_info,
+      const std::vector<std::vector<T>> &data) {
     // Test combinations of tensor vs weight inputs (except when both inputs are
     // weights).
     const DataType tf_type = get_tf_type();
@@ -1871,8 +1872,7 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
               conv_status = errors::Unimplemented(
                   "Binary op: '", op_name,
                   "' is not supported in implicit batch mode");
-            } else
-            if (!operand_1_is_tensor || !operand_2_is_tensor) {
+            } else if (!operand_1_is_tensor || !operand_2_is_tensor) {
               conv_status = errors::InvalidArgument(
                   "Both inputs  of '", op_name, "' are expected to be tensors");
             }
@@ -1909,8 +1909,8 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
     AddTestWeights("weights1", {1}, {1}, tf_type_);
     AddTestWeights("weights2", {1}, {1}, tf_type_);
     const string error =
-        "Constant folding is falled back to TensorFlow, binary op '" +
-        op_name + "' received both input as constant";
+        "Constant folding is falled back to TensorFlow, binary op '" + op_name +
+        "' received both input as constant";
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED, error);
   }
 };
@@ -2006,9 +2006,9 @@ void TestConvertConst(OpConverterTest* test) {
   node_def.set_op("Const");
 
   auto reset_and_test = [&node_def, test](
-      const Tensor& tensor, const bool as_tensor_content,
-      const std::vector<int>& expected_dims,
-      const std::vector<OutputCType>& expected_value) {
+                            const Tensor& tensor, const bool as_tensor_content,
+                            const std::vector<int>& expected_dims,
+                            const std::vector<OutputCType>& expected_value) {
     test->Reset();
 
     TensorProto* tensor_attr =
@@ -3289,7 +3289,8 @@ TEST_P(OpConverter_FP32_FP16_BinaryTest, ConvertBinary) {
   ADD_OP("Maximum", ops::Maximum, {3, 6, 3, 6, 3, 6, 3, 6});
   ADD_OP("Pow", ops::Pow, {9, 36, 27, 216, 9, 36, 27, 216});
 #undef ADD_OP
-  std::vector<std::vector<float>> data = {{3, 6, 3, 6}, {3, 6}, {2, 3, 2, 3}, {2, 3}};
+  std::vector<std::vector<float>> data = {
+      {3, 6, 3, 6}, {3, 6}, {2, 3, 2, 3}, {2, 3}};
   RunTests(*BinaryOperationMap(), op_test_info, data);
 }
 
@@ -3303,7 +3304,8 @@ TEST_P(OpConverter_BOOL_BinaryTest, ConvertBBooleanBinary) {
   ADD_OP("LogicalOr", ops::LogicalOr, {1, 1, 0, 1, 1, 1, 0, 1});
   ADD_OP("LogicalAnd", ops::LogicalAnd, {0, 1, 0, 0, 0, 1, 0, 0});
 #undef ADD_OP
-  std::vector<std::vector<bool>> data = {{0, 1, 0, 1}, {0, 1}, {1, 0, 1, 0}, {1, 0}};
+  std::vector<std::vector<bool>> data = {
+      {0, 1, 0, 1}, {0, 1}, {1, 0, 1, 0}, {1, 0}};
   RunTests(*BinaryBooleanOperationMap(), op_test_info, data);
 }
 

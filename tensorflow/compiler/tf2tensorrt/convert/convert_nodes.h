@@ -517,7 +517,7 @@ const operationMap<nvinfer1::ActivationType>* ActivationTypeMap();
 // Map of all supported BinaryOperations.
 typedef operationMap<nvinfer1::ElementWiseOperation> binaryOperationMap;
 const binaryOperationMap* BinaryOperationMap();
-const binaryOperationMap *BinaryBooleanOperationMap();
+const binaryOperationMap* BinaryBooleanOperationMap();
 
 template <typename T>
 absl::InlinedVector<std::string, 1> GetOperationNames(const T& set) {
