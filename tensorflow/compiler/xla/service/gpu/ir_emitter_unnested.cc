@@ -1136,6 +1136,9 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
     backend.set_lhs_stride(op.lhs_stride());
     backend.set_rhs_stride(op.rhs_stride());
 
+    config.use_cublaslt =
+        hlo_module_config_.debug_options().xla_gpu_enable_cublaslt();
+
     auto& dims = *backend.mutable_dot_dimension_numbers();
     auto mlir_dims = op.dot_dimension_numbers();
 
