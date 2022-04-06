@@ -1800,11 +1800,6 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
   return {};
 }
 
-bool HloDataflowAnalysis::HasInPlaceOperations(
-    const HloInstruction& instruction) {
-  return !GetInPlaceInputOutputPairs(&instruction).empty();
-}
-
 bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     HloInstruction* operand, const ShapeIndex& operand_index,
     HloInstruction* user, const ShapeIndex& user_index) const {
