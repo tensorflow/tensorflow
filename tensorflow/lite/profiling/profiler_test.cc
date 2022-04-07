@@ -28,7 +28,7 @@ namespace profiling {
 namespace {
 
 double GetDurationOfEventMs(const ProfileEvent* event) {
-  return (event->end_timestamp_us - event->begin_timestamp_us) / 1e3;
+  return (event->elapsed_time) / 1e3;
 }
 
 void SleepForQuarterSecond(tflite::Profiler* profiler) {
