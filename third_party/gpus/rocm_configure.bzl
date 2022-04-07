@@ -575,12 +575,6 @@ def _create_local_rocm_repository(repository_ctx):
             name = "miopen-include",
             src_dir = rocm_toolkit_path + "/miopen/include",
             out_dir = "rocm/include/miopen",
-        ),
-        make_copy_dir_rule(
-            repository_ctx,
-            name = "rccl-include",
-            src_dir = rocm_toolkit_path + "/rccl/include",
-            out_dir = "rocm/include/rccl",
         )
     ]
 
@@ -672,7 +666,6 @@ def _create_local_rocm_repository(repository_ctx):
         "%{copy_rules}": "\n".join(copy_rules),
         "%{rocm_headers}": ('":rocm-include",\n' +
                             '":miopen-include",\n' +
-                            '":rccl-include",\n' +
                             hiprand_include +
                             rocrand_include),
     }
