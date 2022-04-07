@@ -318,3 +318,17 @@ def EliminatePassthroughIterArgs : Pass<"tfg-eliminate-passthrough-iter-args",
   let constructor = "CreateEliminatePassthroughIterArgsPass()";
   let dependentDialects = ["tfg::TFGraphDialect"];
 }
+
+def ShapeInference : Pass<"shape-inference"> {
+  let summary = "Infer the output shape of operations";
+  let description = [{
+    Infer the result shape of an operation if possible. Besides inferring the op
+    result tensor shape, it'll also try to evalute the tensor value which can be
+    used to do more inferences.
+  }];
+  let options = [
+    Option<"graph_version_", "graph-version", "int", /*default=*/"",
+           "The graph producer version">
+  ];
+  let constructor = "CreateShapeInferencePass()";
+}
