@@ -40,8 +40,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr int kDefaultClusterRegisterTimeoutMs = 3600 * 1000;  // 3600 seconds
-constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;          // 10 seconds
+constexpr absl::Duration kDefaultClusterRegisterTimeout = absl::Hours(1);
+constexpr absl::Duration kDefaultHeartbeatTimeout = absl::Seconds(10);
+constexpr absl::Duration kDefaultShutdownTimeout = absl::Seconds(10);
 constexpr char kHeartbeatThread[] = "CoordinationServiceHeartbeatLoop";
 
 class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
@@ -230,10 +231,10 @@ Status CoordinationServiceAgentImpl::Connect() {
 
   // Block until the remote service is up and the task is registered.
   CallOptions call_opts;
-  const uint64 register_timeout =
+  const int64_t register_timeout =
       configs_.cluster_register_timeout_in_ms() > 0
           ? configs_.cluster_register_timeout_in_ms()
-          : kDefaultClusterRegisterTimeoutMs;
+          : absl::ToInt64Milliseconds(kDefaultClusterRegisterTimeout);
   call_opts.SetTimeout(register_timeout);
   leader_client_->RegisterTaskAsync(
       &call_opts, &request, &response, [&](Status s) {
@@ -262,16 +263,18 @@ Status CoordinationServiceAgentImpl::Connect() {
         *request.mutable_source_task() = task_;
         request.set_incarnation(incarnation_id_);
         HeartbeatResponse response;
-        const uint64 heartbeat_interval =
+        const int64_t heartbeat_interval_ms =
             configs_.heartbeat_timeout_in_ms() > 0
                 ? configs_.heartbeat_timeout_in_ms() / 2
-                : kDefaultHeartbeatTimeoutMs / 2;
+                : absl::ToInt64Milliseconds(kDefaultHeartbeatTimeout) / 2;
+        CallOptions call_opts;
+        call_opts.SetTimeout(heartbeat_interval_ms);
 
         while (true) {
           {
             mutex_lock l(heartbeat_thread_shutdown_mu_);
             heartbeat_thread_cv_.wait_for(
-                l, std::chrono::milliseconds(heartbeat_interval));
+                l, std::chrono::milliseconds(heartbeat_interval_ms));
             if (shutting_down_) {
               return;
             }
@@ -280,10 +283,11 @@ Status CoordinationServiceAgentImpl::Connect() {
           absl::Notification n;
           // Heartbeat RPC implementation automatically retries to tolerate
           // transient network failures.
-          leader_client_->HeartbeatAsync(&request, &response, [&](Status s) {
-            status = s;
-            n.Notify();
-          });
+          leader_client_->HeartbeatAsync(&call_opts, &request, &response,
+                                         [&](Status s) {
+                                           status = s;
+                                           n.Notify();
+                                         });
           n.WaitForNotification();
           if (!status.ok()) {
             SetError(status);
@@ -380,7 +384,11 @@ Status CoordinationServiceAgentImpl::Shutdown() {
     *request.mutable_source_task() = task_;
     ShutdownTaskResponse response;
     CallOptions call_opts;
-    call_opts.SetTimeout(configs_.shutdown_barrier_timeout_in_ms());
+    const int64_t shutdown_timeout =
+        configs_.shutdown_barrier_timeout_in_ms() > 0
+            ? configs_.shutdown_barrier_timeout_in_ms()
+            : absl::ToInt64Milliseconds(kDefaultShutdownTimeout);
+    call_opts.SetTimeout(shutdown_timeout);
 
     absl::Notification n;
     leader_client_->ShutdownTaskAsync(&call_opts, &request, &response,

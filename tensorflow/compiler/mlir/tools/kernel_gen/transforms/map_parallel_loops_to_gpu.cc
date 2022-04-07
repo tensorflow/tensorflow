@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -32,7 +33,7 @@ struct MapParallelLoopsPass : MapParallelLoopsPassBase<MapParallelLoopsPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateMapParallelLoopsPass() {
   return std::make_unique<MapParallelLoopsPass>();
 }

@@ -354,6 +354,7 @@ upper_tabs:
         section:
         - include: /lite/api_docs/python/tf/lite/_toc.yaml
         - include: /lite/api_docs/python/tflite_model_maker/_toc.yaml
+        - include: /lite/api_docs/python/tflite_support/_toc.yaml
       - title: "Android (Java)"
         platform: android
         style: accordion

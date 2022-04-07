@@ -46,11 +46,14 @@ def _contains_quantized_function_call(meta_graphdef):
 class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ('none', None),
-      ('relu', nn_ops.relu),
-      ('relu6', nn_ops.relu6),
+      ('none', None, False),
+      ('relu', nn_ops.relu, False),
+      ('relu6', nn_ops.relu6, False),
+      ('with_bias', None, True),
+      ('with_bias_and_relu', nn_ops.relu, True),
+      ('with_bias_and_relu6', nn_ops.relu6, True),
   )
-  def test_qat_conv_model(self, activation_fn):
+  def test_qat_conv_model(self, activation_fn, has_bias):
 
     class ConvModel(module.Module):
 
@@ -73,7 +76,8 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
             dilations=[1, 1, 1, 1],
             padding='SAME',
             data_format='NHWC')
-        out = nn_ops.bias_add(out, bias, data_format='NHWC')
+        if has_bias:
+          out = nn_ops.bias_add(out, bias, data_format='NHWC')
         if activation_fn is not None:
           out = activation_fn(out)
         q_out = array_ops.fake_quant_with_min_max_args(
@@ -113,7 +117,15 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
 
-  def test_conv_ptq_model(self):
+  @parameterized.named_parameters(
+      ('none', None, False),
+      ('relu', nn_ops.relu, False),
+      ('relu6', nn_ops.relu6, False),
+      ('with_bias', None, True),
+      ('with_bias_and_relu', nn_ops.relu, True),
+      ('with_bias_and_relu6', nn_ops.relu6, True),
+  )
+  def test_conv_ptq_model(self, activation_fn, has_bias):
 
     class ConvModel(module.Module):
 
@@ -131,8 +143,10 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
             dilations=[1, 1, 1, 1],
             padding='SAME',
             data_format='NHWC')
-        out = nn_ops.bias_add(out, bias, data_format='NHWC')
-        out = nn_ops.relu6(out)
+        if has_bias:
+          out = nn_ops.bias_add(out, bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
         return {'output': out}
 
     model = ConvModel()
@@ -146,6 +160,125 @@ class StaticRangeQuantizationTest(test.TestCase, parameterized.TestCase):
                 ops.convert_to_tensor(
                     np.random.uniform(low=0, high=150,
                                       size=(1, 3, 4, 3)).astype('f4')),
+        }
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        optimization_method=quantize_model.OptimizationMethod
+        .STATIC_RANGE_QUANT,
+        representative_dataset=data_gen)
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @parameterized.named_parameters(
+      ('none', None, False),
+      ('relu', nn_ops.relu, False),
+      ('relu6', nn_ops.relu6, False),
+      ('with_bias', None, True),
+      ('with_bias_and_relu', nn_ops.relu, True),
+      ('with_bias_and_relu6', nn_ops.relu6, True),
+  )
+  def test_depthwise_conv_ptq_model(self, activation_fn, has_bias):
+
+    class DepthwiseConvModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 3, 4, 3], dtype=dtypes.float32)
+      ])
+      def conv(self, input_tensor):
+        filters = np.random.uniform(
+            low=-10, high=10, size=(2, 3, 3, 1)).astype('f4')
+        bias = np.random.uniform(low=0, high=10, size=(3)).astype('f4')
+        out = nn_ops.depthwise_conv2d_native(
+            input_tensor,
+            filters,
+            strides=[1, 2, 2, 1],
+            dilations=[1, 1, 1, 1],
+            padding='SAME',
+            data_format='NHWC')
+        if has_bias:
+          out = nn_ops.bias_add(out, bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        return {'output': out}
+
+    model = DepthwiseConvModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    def data_gen():
+      for _ in range(255):
+        yield {
+            'input_tensor':
+                ops.convert_to_tensor(
+                    np.random.uniform(low=0, high=150,
+                                      size=(1, 3, 4, 3)).astype('f4')),
+        }
+
+    tags = [tag_constants.SERVING]
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, ['serving_default'],
+        tags,
+        output_directory,
+        optimization_method=quantize_model.OptimizationMethod
+        .STATIC_RANGE_QUANT,
+        representative_dataset=data_gen)
+    self.assertIsNotNone(converted_model)
+    self.assertEqual(
+        list(converted_model.signatures._signatures.keys()),
+        ['serving_default'])
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(_contains_quantized_function_call(output_meta_graphdef))
+
+  @parameterized.named_parameters(
+      ('none', None, False),
+      ('relu', nn_ops.relu, False),
+      ('relu6', nn_ops.relu6, False),
+      ('with_bias', None, True),
+      ('with_bias_and_relu', nn_ops.relu, True),
+      ('with_bias_and_relu6', nn_ops.relu6, True),
+  )
+  def test_matmul_ptq_model(self, activation_fn, has_bias):
+
+    class MatmulModel(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[1, 4], dtype=dtypes.float32)
+      ])
+      def matmul(self, input_tensor):
+        filters = np.random.uniform(
+            low=-1.0, high=1.0, size=(4, 3)).astype('f4')
+        bias = np.random.uniform(low=-1.0, high=1.0, size=(3,)).astype('f4')
+        out = math_ops.matmul(input_tensor, filters)
+        if has_bias:
+          out = nn_ops.bias_add(out, bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        return {'output': out}
+
+    model = MatmulModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    def data_gen():
+      for _ in range(255):
+        yield {
+            'input_tensor':
+                ops.convert_to_tensor(
+                    np.random.uniform(low=0, high=5, size=(1, 4)).astype('f4')),
         }
 
     tags = [tag_constants.SERVING]

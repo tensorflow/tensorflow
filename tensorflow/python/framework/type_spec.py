@@ -233,6 +233,7 @@ class TypeSpec(trace.TraceType, metaclass=abc.ABCMeta):
                        (self, other))
     return result
 
+  # TODO(b/226395276): Delete after removing usages.
   def _with_tensor_ranks_only(self) -> "TypeSpec":
     """Returns a TypeSpec compatible with `self`, with tensor shapes relaxed.
 

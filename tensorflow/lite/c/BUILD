@@ -98,12 +98,19 @@ cc_library(
 
 cc_library(
     name = "c_api_experimental",
-    srcs = ["c_api_experimental.cc"],
-    hdrs = ["c_api_experimental.h"],
+    srcs = [
+        "c_api_experimental.cc",
+        "c_api_opaque.cc",
+    ],
+    hdrs = [
+        "c_api_experimental.h",
+        "c_api_opaque.h",
+    ],
     copts = tflite_copts(),
     deps = [
         ":c_api",
         ":c_api_internal",
+        ":c_api_types",
         ":common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
@@ -198,6 +205,7 @@ cc_library(
 exports_files([
     "c_api.h",
     "c_api_experimental.h",
+    "c_api_opaque.h",
     "c_api_types.h",
     "common.h",
 ])

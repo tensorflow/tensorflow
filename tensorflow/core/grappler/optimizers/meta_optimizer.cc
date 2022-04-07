@@ -1063,7 +1063,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     xla_compiled_functions.insert(func);
     // Depth first search through the func for transitively called funcs
     for (const NodeDef& node : func_def->node_def()) {
-      for (const auto attr : node.attr()) {
+      for (const auto& attr : node.attr()) {
         const AttrValue& attr_value = attr.second;
         if (attr_value.has_func()) {
           find_all_functions(attr_value.func().name());

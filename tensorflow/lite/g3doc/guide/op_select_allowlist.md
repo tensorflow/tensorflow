@@ -844,7 +844,7 @@ filegroup(
 )
 ```
 
-In order to find the relvant operator kernel source file under the
+In order to find the relevant operator kernel source file under the
 `tensorflow/core/kernels` directory, you can search the source code location,
 which contains the following kernel declaration with the operator name:
 

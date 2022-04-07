@@ -443,6 +443,7 @@ class InferenceContext {
   // Fills the output proto with the shape defined by the handle.
   // "proto" is expected to be empty prior to the call.
   void ShapeHandleToProto(ShapeHandle handle, TensorShapeProto* proto);
+  TensorShapeProto ShapeHandleToProto(ShapeHandle handle);
 
   // Returns true if the rank and all dimensions of the Shape are known.
   bool FullyDefined(ShapeHandle s);
@@ -566,6 +567,7 @@ class InferenceContext {
 
   // Returns in <out> a new shape corresponding to <shape>.
   Status MakeShapeFromTensorShape(const TensorShape& shape, ShapeHandle* out);
+  StatusOr<ShapeHandle> MakeShapeFromShapeTensor(const TensorShape& shape);
 
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.

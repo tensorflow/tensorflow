@@ -51,7 +51,6 @@ load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("//tensorflow/tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("//tensorflow/tools/toolchains/remote:configure.bzl", "remote_execution_configure")
 load("//tensorflow/tools/toolchains/clang6:repo.bzl", "clang6_configure")
-load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -135,9 +134,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "16a46625036735e1e48e65b9b2dec20dd9c05c38b580b79c9ee99fb3d6e4c505",
-        strip_prefix = "XNNPACK-c4267996b006f94694ea588ca2bbeac1ec98d458",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/c4267996b006f94694ea588ca2bbeac1ec98d458.zip"),
+        sha256 = "887dc32b201c7b4ba8e745f42e853f761129f1e7c6d88389e7bbca369c5dfff3",
+        strip_prefix = "XNNPACK-f45306daba5c3d9de3365e847663b31c1a12d5b1",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/f45306daba5c3d9de3365e847663b31c1a12d5b1.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -184,9 +183,9 @@ def _tf_repositories():
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
         patch_file = ["//third_party/mkl_dnn:onednn_acl.patch"],
-        sha256 = "89495899d7cc17bef14c5dbf72070d6dfda4769fe804f8e88d86f71ad7ae0d51",
-        strip_prefix = "oneDNN-2.6-rc",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.6-rc.tar.gz"),
+        sha256 = "9695640f55acd833ddcef4776af15e03446c4655f9296e5074b1b178dd7a4fb2",
+        strip_prefix = "oneDNN-2.6",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.6.tar.gz"),
     )
 
     tf_http_archive(
@@ -880,10 +879,6 @@ def workspace():
     _tf_repositories()
 
     tfrt_dependencies()
-
-    # TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
-    # Initializes Bazel package rules' external dependencies.
-    rules_pkg_dependencies()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

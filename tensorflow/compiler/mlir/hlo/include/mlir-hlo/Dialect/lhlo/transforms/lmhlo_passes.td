@@ -23,7 +23,7 @@ def LhloFuseLinalgPass : Pass<"lhlo-fuse-linalg", "func::FuncOp"> {
            /*default=*/"false", "Tiles GenericOp consumer to parallel loops before linalg fusion">,
     ListOption<"tile_sizes_", "tile-sizes", "unsigned",
            "Faster memory space number to promote fusion buffers to",
-           "llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated">,
+           "llvm::cl::ZeroOrMore">,
   ];
 }
 

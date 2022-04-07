@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"

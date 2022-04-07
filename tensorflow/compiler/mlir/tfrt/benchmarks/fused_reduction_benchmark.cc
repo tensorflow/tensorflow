@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace {
 
 const char* kReductionIR = R"(
-  func @main(%lhs: {0}, %rhs: {0}) -> tensor<f32> {
+  func.func @main(%lhs: {0}, %rhs: {0}) -> tensor<f32> {
     %lhs_abs = "tf.Abs"(%lhs) {{
       device = "/job:localhost/replica:0/task:0/device:CPU:0"
     } : ({0}) -> {0}
@@ -44,7 +44,7 @@ const char* kReductionIR = R"(
       keep_dims = false,
       device = "/job:localhost/replica:0/task:0/device:CPU:0"
     } : ({0}, tensor<1xi32>) -> tensor<f32>
-    return %result : tensor<f32>
+    func.return %result : tensor<f32>
   }
 )";
 

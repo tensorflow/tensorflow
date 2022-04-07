@@ -16,6 +16,7 @@
 
 import collections
 import functools
+import os
 import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
@@ -776,6 +777,8 @@ def load(export_dir, tags=None, options=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
+  if isinstance(export_dir, os.PathLike):
+    export_dir = os.fspath(export_dir)
   result = load_partial(export_dir, None, tags, options)["root"]
   return result
 

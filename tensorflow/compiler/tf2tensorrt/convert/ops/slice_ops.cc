@@ -85,9 +85,16 @@ Status ConvertStridedSliceHelper(
     }
   }
 
-  if (!dynamic_input_size_indices.empty() && params->use_implicit_batch) {
-    return errors::InvalidArgument(
-        "In implicit batch mode, dynamic input size is not supported.");
+  if (!dynamic_input_size_indices.empty()) {
+    if (strided_slice_spec == absl::nullopt) {
+      return errors::InvalidArgument(
+          "The argument `strided_slice_spec` is "
+          "`absl::nullopt` with `dynamic_input_size_indices` non empty.");
+    }
+    if (params->use_implicit_batch) {
+      return errors::InvalidArgument(
+          "In implicit batch mode, dynamic input size is not supported.");
+    }
   }
 
   if (params->validation_only) return Status::OK();
@@ -113,7 +120,6 @@ Status ConvertStridedSliceHelper(
 
   // Handle dynamic input shapes.
   if (!dynamic_input_size_indices.empty()) {
-    TRT_ENSURE(strided_slice_spec != absl::nullopt);
     TF_RETURN_IF_ERROR(HandleDynamicStridedSliceInput(
         &*builder, *slice, *strided_slice_spec, dynamic_input_size_indices,
         begin_dims->AsTrtDims(), stride_dims->AsTrtDims(),

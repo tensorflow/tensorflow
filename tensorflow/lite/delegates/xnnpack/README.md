@@ -136,6 +136,60 @@ interpreter.reset();
 TfLiteXNNPackDelegateDelete(xnnpack_delegate);
 ```
 
+### Using the XNNPACK weights cache
+
+XNNPACK internally packs static weights for operations (like convolutions) in
+order to make accessing weights more memory friendly. XNNPACK needs to allocate
+memory internally to hold these packed weights. If you are starting multiple
+TFLite interpreter instances based on the same model, there can be multiple
+copies of the same packed weights in each instance. This can cause high memory
+usage. The weights cache can be used to share packed weights between multiple
+TFLite instances.
+
+```c++
+// Create 2 interpreters which share the same model.
+std::unique_ptr<tflite::Interpreter> interpreter1;
+std::unique_ptr<tflite::Interpreter> interpreter2;
+
+// Create a weights cache that you can pass to XNNPACK delegate.
+TfLiteXNNPackDelegateWeightsCache* weights_cache =
+    TfLiteXNNPackDelegateWeightsCacheCreate();
+
+// Like using the low-level API above, initialize options, and pass this cache
+// to XNNPACK delegate via the options.
+TfLiteXNNPackDelegateOptions xnnpack_options =
+    TfLiteXNNPackDelegateOptionsDefault();
+xnnpack_options.weights_cache = weights_cache;
+
+// Modify graph with delegate, as above...
+TfLiteDelegate* delegate1 = TfLiteXNNPackDelegateCreate(&xnnpack_options);
+if (interpreter1->ModifyGraphWithDelegate(delegate1) != kTfLiteOk) {
+    // Static weights will be packed and written into weights_cache.
+}
+TfLiteDelegate* delegate2 = TfLiteXNNPackDelegateCreate(&xnnpack_options);
+if (interpreter1->ModifyGraphWithDelegate(delegate2) != kTfLiteOk) {
+    // XNNPACK will reuse packed weights if they can be found in the weights
+    // cache.
+}
+
+// Later, after all the interpreters and XNNPACK delegates using the cache are
+// destroyed, release the weights cache.
+TfLiteXNNPackWeightsCacheDelete(weights_cache);
+```
+
+The weights cache is a contents-based cache. Every time XNNPACK has to pack
+weights, it first packs into a temporary buffer, then tries to look up if the
+packed weights can be found in the weights cache, based on the contents of the
+packed weights. If it can be found, we access the packed weights in the
+cache for subsequent operations, and the temporary buffer is freed. Otherwise,
+the packed weights is added to the cache.
+
+Note that this weights cache is not thread-safe. If you are creating multiple
+threads of the interpreter based on the same model buffer, you will need to
+ensure that a single thread is writing all the packed weights into the weights
+cache. Afterwards, the weights cache can be shared freely between the threads,
+as there will be no more writes to the cache.
+
 ## Limitations and supported operators
 
 XNNPACK delegate is a work-in-progress, and currently supports a limited set of
@@ -482,16 +536,18 @@ By default, quantized inference in XNNPACK delegate is disabled, and XNNPACK is
 used only for floating-point models. Support for quantized inference in XNNPACK
 must be enabled by adding extra Bazel flags when building TensorFlow Lite.
 
-* `--define xnn_enable_qs8=true` flag enables XNNPACK inference for quantized
-operators using signed quantization schema. This schema is used by models
-produced by [Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
-through either post-training integer quantization or quantization-aware
-training. Post-training dynamic range quantization is not supported in XNNPACK.
+* `--define tflite_with_xnnpack_qs8=true` flag enables XNNPACK inference for
+  quantized operators using signed quantization schema. This schema is used by
+  models produced by [Model Optimization
+  Toolkit](https://www.tensorflow.org/model_optimization) through either
+  post-training integer quantization or quantization-aware training.
+  Post-training dynamic range quantization is not supported in XNNPACK.
 
-* `--define xnn_enable_qu8=true` flag enables XNNPACK inference for quantized
-operators using unsigned quantization schema, produced via the legacy TensorFlow
-1.X quantization tooling. This option is experimental and may perform
-suboptimally on mobile processors with NEON DOT product instructions.
+* `--define tflite_with_xnnpack_qu8=true` flag enables XNNPACK inference for
+  quantized operators using unsigned quantization schema, produced via the
+  legacy TensorFlow 1.X quantization tooling. This option is experimental and
+  may perform suboptimally on mobile processors with NEON DOT product
+  instructions.
 
 Below is the list of currently supported quantized operators:
 

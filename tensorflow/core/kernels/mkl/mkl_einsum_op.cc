@@ -138,7 +138,7 @@ class MklEinsum : public OpKernel {
  public:
   explicit MklEinsum(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("equation", &mkl_equation_));
-    OP_REQUIRES_OK(c, EinsumHelper::ParseEquation(
+    OP_REQUIRES_OK(c, ParseEinsumEquation(
                           mkl_equation_, &mkl_input_labels_,
                           &mkl_output_labels_, &mkl_label_types_,
                           &mkl_input_label_counts_, &mkl_output_label_counts_,
@@ -153,7 +153,7 @@ class MklEinsum : public OpKernel {
 
     OperandLabels input_labels(mkl_input_labels_);
     Labels output_labels(mkl_output_labels_);
-    std::vector<EinsumHelper::DimensionType> label_types(mkl_label_types_);
+    std::vector<EinsumDimensionType> label_types(mkl_label_types_);
     OperandLabelCounts input_label_counts(mkl_input_label_counts_);
     LabelCounts output_label_counts(mkl_output_label_counts_);
     LabelToDimSizes label_to_dim_sizes;
@@ -198,11 +198,11 @@ class MklEinsum : public OpKernel {
     // All batch dimensions should be present in the contracted result. First
     // the broadcasting dimensions, then the named batch dimensions.
     for (int label = 0; label < num_labels; ++label) {
-      if (label_types[label] == EinsumHelper::kBroadcasting)
+      if (label_types[label] == EinsumDimensionType::kBroadcasting)
         result_labels.push_back(label);
     }
     for (int label = 0; label < num_labels; ++label) {
-      if (label_types[label] == EinsumHelper::kBatch)
+      if (label_types[label] == EinsumDimensionType::kBatch)
         result_labels.push_back(label);
     }
     for (int i = 0; i < num_inputs; ++i) {
@@ -264,7 +264,7 @@ class MklEinsum : public OpKernel {
   string mkl_equation_;
   OperandLabels mkl_input_labels_;
   Labels mkl_output_labels_;
-  std::vector<EinsumHelper::DimensionType> mkl_label_types_;
+  std::vector<EinsumDimensionType> mkl_label_types_;
   OperandLabelCounts mkl_input_label_counts_;
   LabelCounts mkl_output_label_counts_;
   gtl::InlinedVector<bool, 2> mkl_input_has_ellipsis_;

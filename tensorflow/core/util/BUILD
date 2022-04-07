@@ -587,6 +587,7 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:inlined_vector",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )

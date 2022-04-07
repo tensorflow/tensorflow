@@ -34,10 +34,10 @@ func.func @fake_quant_conv(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32
 // CHECK-NEXT: %cst_6 = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
 // CHECK-NEXT: %0 = "tf.PartitionedCall"(%arg1, %cst_1, %cst_0) {config = "", config_proto = "", executor_type = "", f = @quantize_i8} : (tensor<2x3x3x2xf32>, tensor<f32>, tensor<i32>) -> tensor<2x3x3x2xi8>
 // CHECK-NEXT: %1 = "tf.PartitionedCall"(%arg0, %cst, %cst_0) {config = "", config_proto = "", executor_type = "", f = @quantize_i8} : (tensor<1x3x4x3xf32>, tensor<f32>, tensor<i32>) -> tensor<1x3x4x3xi8>
-// CHECK-NEXT: %2 = "tf.PartitionedCall"(%1, %0, %cst_6, %cst, %cst_0, %cst_1, %cst_0, %cst_2, %cst_3, %cst_4, %cst_5) {config = "", config_proto = "", executor_type = "", f = @quantized_conv2d_fn_0} : (tensor<1x3x4x3xi8>, tensor<2x3x3x2xi8>, tensor<2xi32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>) -> tensor<*xi8>
+// CHECK-NEXT: %2 = "tf.PartitionedCall"(%1, %0, %cst_6, %cst, %cst_0, %cst_1, %cst_0, %cst_2, %cst_3, %cst_4, %cst_5) {config = "", config_proto = "", executor_type = "", f = @quantized_conv2d_with_bias_fn_0} : (tensor<1x3x4x3xi8>, tensor<2x3x3x2xi8>, tensor<2xi32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>) -> tensor<*xi8>
 // CHECK-NEXT: %3 = "tf.PartitionedCall"(%2, %cst_4, %cst_5) {config = "", config_proto = "", executor_type = "", f = @dequantize_i8} : (tensor<*xi8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
 // CHECK-NEXT: return %3 : tensor<*xf32>
 
 // CHECK: func private @quantize_i8(
 // CHECK: func private @dequantize_i8(
-// CHECK: func private @quantized_conv2d_fn_0(
+// CHECK: func private @quantized_conv2d_with_bias_fn_0(

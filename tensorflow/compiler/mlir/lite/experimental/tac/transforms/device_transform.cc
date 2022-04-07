@@ -55,7 +55,7 @@ bool IsSupported(Operation* op, const std::string& hardware) {
 // ================== Convert Quantized Op ============================
 
 // Walk through the func and convert the quantize ops to their float version.
-void ConvertQuantizedOpToFloat(mlir::FuncOp func, OpBuilder* builder) {
+void ConvertQuantizedOpToFloat(mlir::func::FuncOp func, OpBuilder* builder) {
   func.walk([&](Operation* op) {
     // TODO(renjieliu): Find a generic way to deal with const ops.
     if (op->hasTrait<OpTrait::IsTerminator>() ||

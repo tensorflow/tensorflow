@@ -241,6 +241,8 @@ class ExecutableBuildOptions:
   device_assignment: Optional[DeviceAssignment]
   use_spmd_partitioning: bool
   use_auto_spmd_partitioning: bool
+  auto_spmd_partitioning_mesh_shape: List[int]
+  auto_spmd_partitioning_mesh_ids: List[int]
 
 class PrecisionConfig_Precision(enum.IntEnum):
   DEFAULT: int
@@ -290,22 +292,21 @@ class Device:
   platform: str
   device_kind: str
   client: Client
+  def __repr__(self) -> str: ...
   def __str__(self) -> str: ...
   def transfer_to_infeed(self, literal: _LiteralSlice): ...
   def transfer_from_outfeed(self, shape: Shape): ...
   def live_buffers(self) -> List[Buffer]: ...
 
 class CpuDevice(Device):
-  def __repr__(self) -> str: ...
+  pass
 
 class GpuDevice(Device):
   device_vendor: str
-  def __repr__(self) -> str: ...
 
 class TpuDevice(Device):
   coords: Tuple[int, ...]
   core_on_chip: int
-  def __repr__(self) -> str: ...
 
 class _GpuAllocatorKind(enum.IntEnum):
     DEFAULT: int

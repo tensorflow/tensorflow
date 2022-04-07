@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace mlir {
 static mlir::Operation* ExtractOnlyOp(mlir::ModuleOp module) {
-  mlir::FuncOp fn = module.lookupSymbol<mlir::FuncOp>("main");
+  mlir::func::FuncOp fn = module.lookupSymbol<mlir::func::FuncOp>("main");
   if (!fn) return nullptr;
 
   if (!llvm::hasSingleElement(fn)) return nullptr;

@@ -2598,7 +2598,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kAfterAll:
-    case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
     case HloOpcode::kGetDimensionSize:

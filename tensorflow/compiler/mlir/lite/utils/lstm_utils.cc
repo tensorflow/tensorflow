@@ -627,7 +627,8 @@ LogicalResult CreateEqualSizeSplitVOp(Value input, int axis, int splits,
 }
 
 // TODO(b/147436982): Consider refactor this to be more general.
-LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
+LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
+                                    OpBuilder* builder) {
   // For argument order, please check out standard_lstm under
   // tensorflow/python/keras/layers/recurrent_v2.py
   Value input = func_op.getArgument(0);

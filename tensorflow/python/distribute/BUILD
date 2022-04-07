@@ -663,6 +663,7 @@ distribute_py_test(
     ],
     xla_enable_strict_auto_jit = False,  # PSStrategy doesn't work on _xla tests
     deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:stateful_random_ops",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:combinations",
@@ -1291,7 +1292,11 @@ tf_py_test(
     size = "small",
     srcs = ["sharded_variable_test.py"],
     deps = [
+        ":combinations",
+        ":multi_worker_test_base",
+        ":parameter_server_strategy_v2",
         ":sharded_variable",
+        ":test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -1306,6 +1311,8 @@ tf_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model:load",
@@ -1313,6 +1320,7 @@ tf_py_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:util",
     ],
@@ -1624,6 +1632,7 @@ distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
     main = "moving_averages_test.py",
+    shard_count = 5,
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
         "notpu",  # TODO(b/210145904)
@@ -1907,6 +1916,8 @@ cuda_py_test(
 tpu_py_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
+    # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
+    disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
     python_version = "PY3",
     deps = [
@@ -2272,6 +2283,7 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":ps_values",
+        ":test_util",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:lookup_ops",

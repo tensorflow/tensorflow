@@ -37,7 +37,7 @@ module {
     } : (tensor<*xf32>) -> tensor<*xf32>
     %5 = "tf.PartitionedCall"(%4, %cst_1, %cst_2) {
       _tfl_quant_trait = "fully_quantizable", config = "", config_proto = "",
-      executor_type = "", f = @fused_matmul_fn_1
+      executor_type = "", f = @fused_matmul_with_bias_fn_1
     } : (tensor<*xf32>, tensor<144x10xf32>, tensor<10xf32>) -> tensor<*xf32>
     %6 = "quant.stats"(%5) {
       layerStats = dense<[-2.0, 2.0]> : tensor<2xf32>
@@ -49,7 +49,7 @@ module {
     func.return %8 : tensor<*xf32>
   }
 
-  func.func private @fused_matmul_fn_1(%a: tensor<*xf32>, %b: tensor<*xf32>, %c: tensor<*xf32>) -> tensor<*xf32> {
+  func.func private @fused_matmul_with_bias_fn_1(%a: tensor<*xf32>, %b: tensor<*xf32>, %c: tensor<*xf32>) -> tensor<*xf32> {
     func.return %a: tensor<*xf32>
   }
 }
@@ -70,7 +70,7 @@ module {
 // CHECK: %[[dq2:.*]] = "quant.dcast"(%[[q2]])
 // CHECK-SAME: quant.uniform<i8:f32, 0.010039215461880554:-1>
 // CHECK: %[[call:.*]] = "tf.PartitionedCall"(%[[dq2]]
-// CHECK-SAME: f = @fused_matmul_fn_1
+// CHECK-SAME: f = @fused_matmul_with_bias_fn_1
 // CHECK: %[[q3:.*]] = "quant.qcast"(%[[call]])
 // CHECK-SAME: quant.uniform<i8:f32, 0.015686274509803921:-1>
 // CHECK: %[[dq3:.*]] = "quant.dcast"(%[[q3]])

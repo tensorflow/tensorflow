@@ -89,6 +89,10 @@ std::string TfrtCpuDevice::DebugString() const {
   return absl::StrCat("TFRT_CPU_", id());
 }
 
+std::string TfrtCpuDevice::ToString() const {
+  return absl::StrCat("CpuDevice(id=", id(), ")");
+}
+
 Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);
 }

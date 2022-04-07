@@ -147,6 +147,10 @@ std::string PjRtStreamExecutorDevice::DebugString() const {
   return absl::StrCat(platform_name(), ":", id());
 }
 
+std::string PjRtStreamExecutorDevice::ToString() const {
+  return absl::StrCat(platform_name(), "(id=", id(), ")");
+}
+
 StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices) {
   if (devices.empty()) {
@@ -1395,11 +1399,9 @@ StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes() const {
   return device_buffer_->device_memory()[0].size();
 }
 
-Status PjRtStreamExecutorBuffer::CopyRawToHost(
-    void* dst, int64_t offset, int64_t transfer_size,
-    std::function<void(Status)> on_ready) {
-  return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size,
-                                         std::move(on_ready));
+PjRtFuture<Status> PjRtStreamExecutorBuffer::CopyRawToHost(
+    void* dst, int64_t offset, int64_t transfer_size) {
+  return client_->CopyRawSubBufferToHost(this, dst, offset, transfer_size);
 }
 
 StatusOr<ShapedBuffer> PjRtStreamExecutorBuffer::AsShapedBuffer() const {

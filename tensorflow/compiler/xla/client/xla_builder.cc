@@ -1248,15 +1248,6 @@ XlaOp XlaBuilder::Collapse(XlaOp operand,
   });
 }
 
-void XlaBuilder::Trace(const std::string& tag, XlaOp operand) {
-  ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    *instr.mutable_shape() = ShapeUtil::MakeNil().ToProto();
-    *instr.mutable_literal() = LiteralUtil::CreateR1U8(tag).ToProto();
-    return AddInstruction(std::move(instr), HloOpcode::kTrace, {operand});
-  });
-}
-
 XlaOp XlaBuilder::Select(XlaOp pred, XlaOp on_true, XlaOp on_false) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* true_shape, GetShapePtr(on_true));
@@ -4047,10 +4038,6 @@ XlaOp DynamicUpdateSlice(const XlaOp operand, const XlaOp update,
 XlaOp ConcatInDim(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                   int64_t dimension) {
   return builder->ConcatInDim(operands, dimension);
-}
-
-void Trace(const std::string& tag, const XlaOp operand) {
-  return operand.builder()->Trace(tag, operand);
 }
 
 XlaOp Select(const XlaOp pred, const XlaOp on_true, const XlaOp on_false) {

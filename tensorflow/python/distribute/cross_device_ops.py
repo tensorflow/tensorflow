@@ -119,11 +119,16 @@ def _make_tensor_into_per_replica(input_tensor):
                      % (input_tensor,))
   if isinstance(input_tensor, value_lib.PerReplica):
     return input_tensor
-  elif hasattr(input_tensor, "device"):
+
+  # If input is not a Tensor, convert it to a Tensor first.
+  if not tensor_util.is_tensor(input_tensor):
+    input_tensor = ops.convert_to_tensor(input_tensor)
+
+  if hasattr(input_tensor, "device"):
     return value_lib.PerReplica((input_tensor,))
-  else:
-    raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object "
-                     "because it doesn't have device set.")
+
+  raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object "
+                   "because it doesn't have device set.")
 
 
 def _normalize_value_destination_pairs(value_destination_pairs):

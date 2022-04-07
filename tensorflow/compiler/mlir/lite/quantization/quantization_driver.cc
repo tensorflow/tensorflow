@@ -1168,7 +1168,7 @@ void QuantizationDriver::Run() {
   }
 }
 
-void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
+void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
@@ -1179,7 +1179,7 @@ void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
 }
 
 void ApplyQuantizationParamsPropagation(
-    mlir::FuncOp func, bool is_signed, bool disable_per_channel,
+    mlir::func::FuncOp func, bool is_signed, bool disable_per_channel,
     OpQuantSpecGetter op_quant_spec_getter,
     OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
     bool legacy_float_scale) {

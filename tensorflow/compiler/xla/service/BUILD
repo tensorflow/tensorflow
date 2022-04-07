@@ -3811,7 +3811,6 @@ cc_library(
         ":call_graph",
         ":hlo",
         ":hlo_phi_graph",
-        ":hlo_value",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -4694,6 +4693,8 @@ tf_cc_test(
         ":hlo_cse",
         ":hlo_matchers",
         ":hlo_parser",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
@@ -4705,6 +4706,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 

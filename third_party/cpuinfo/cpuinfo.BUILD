@@ -109,6 +109,7 @@ cc_library(
         ":linux_mips64": COMMON_SRCS + LINUX_SRCS,
         ":linux_riscv64": COMMON_SRCS + LINUX_SRCS,
         ":linux_s390x": COMMON_SRCS + LINUX_SRCS,
+        ":linux_ppc64le": COMMON_SRCS + LINUX_SRCS,
         ":macos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":macos_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":windows_x86_64": COMMON_SRCS + X86_SRCS + WINDOWS_X86_SRCS,
@@ -230,6 +231,11 @@ config_setting(
 config_setting(
     name = "linux_s390x",
     values = {"cpu": "s390x"},
+)
+
+config_setting(
+    name = "linux_ppc64le",
+    values = {"cpu": "ppc"},
 )
 
 config_setting(

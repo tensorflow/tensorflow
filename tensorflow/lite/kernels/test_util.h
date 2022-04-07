@@ -515,10 +515,12 @@ class SingleOpModel {
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 
-  // Executes inference, asserting success.
-  void Invoke();
+  // Executes inference and return status code.
+  TfLiteStatus Invoke();
 
-  // Executes inference *without* asserting success.
+  // This function is deprecated and it's exactly the same as `Invoke`.
+  // TODO(b/227101699): Replace all usages of `InvokeUnchecked` with `Invoke`
+  // and remove this function.
   TfLiteStatus InvokeUnchecked();
 
   void PopulateStringTensor(int index, const std::vector<string>& content) {

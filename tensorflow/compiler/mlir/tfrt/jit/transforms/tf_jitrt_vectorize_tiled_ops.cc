@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -144,7 +145,7 @@ struct VectorizeTiledOpsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateVectorizeTiledOpsPass() {
   return std::make_unique<VectorizeTiledOpsPass>();
 }
