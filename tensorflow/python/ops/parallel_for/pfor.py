@@ -1600,8 +1600,8 @@ class PFor:
                 y_op.inputs)
             if (self._fallback_to_while_loop and not has_variant_outputs
                 and not has_vectorized_variant_inputs):
-              root_cause = "has no variant outputs and \
-                          has no vectorized variant inputs"
+              root_cause = ("has no variant outputs and "
+                            "has no vectorized variant inputs")
 
               converter = partial(_fallback_converter, root_cause=root_cause)
             else:
