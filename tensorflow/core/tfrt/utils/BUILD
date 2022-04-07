@@ -33,6 +33,7 @@ cc_library(
         "utils.h",
     ],
     deps = [
+        ":error_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/eager:context",

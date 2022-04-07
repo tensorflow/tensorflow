@@ -31,7 +31,6 @@
 // `key2` with given values.
 
 module {
-
   // Rescales to the output scale and zero point.
   func.func private @internal_rescale_fn(%accumulation : tensor<*xi32>,
                          %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
@@ -145,6 +144,83 @@ module {
     %0 = "tf.PartitionedCall"(%input, %filter, %input_scale, %input_zp,
                                 %filter_scale, %filter_zp) {
         config = "", config_proto = "", executor_type = "", f=@internal_conv2d_fn
+      } : (tensor<*xi8>, tensor<*xi8>, tensor<*xf32>, tensor<*xi32>,
+             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
+    %1 = "tf.PartitionedCall"(%0, %input_scale, %input_zp, %filter_scale, %filter_zp,
+                                %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@internal_rescale_fn
+      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
+             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
+    %2 = "tf.PartitionedCall"(%1, %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@${act_func}
+      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
+    func.return %2 : tensor<*xi8>
+  }
+
+  // DepthwiseConv2D with (simulated) int32 accumulation following by BiasAdd.
+  func.func private @internal_depthwise_conv2d_fn(
+                         %input : tensor<*xi8>, %filter : tensor<*xi8>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>) -> tensor<*xi32> {
+    %0 = "tf.Cast"(%input) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %1 = "tf.Sub"(%0, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %2 = "tf.Cast"(%filter) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %3 = "tf.Sub"(%2, %filter_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %cast_1_f32 = "tf.Cast"(%1) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
+    %cast_3_f32 = "tf.Cast"(%3) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
+
+    // TODO(b/215633216): Optimize this function with the XLA convolution op.
+    %5 = "tf.DepthwiseConv2dNative"(%cast_1_f32, %cast_3_f32) {
+      padding = "VALID", strides = [1, 1, 1, 1],
+      attr_map = "strides:0,padding:1,explicit_paddings:2,dilations:3"
+    } : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %6 = "tf.Cast"(%5) : (tensor<*xf32>) -> tensor<*xi32>
+    func.return %6 : tensor<*xi32>
+  }
+
+  parameters[
+    {"func_name": "depthwise_conv2d_with_bias", "act_func": "internal_no_activation_fn"},
+    {"func_name": "depthwise_conv2d_with_bias_and_relu", "act_func": "internal_relu_fn"},
+    {"func_name": "depthwise_conv2d_with_bias_and_relu6", "act_func": "internal_relu6_fn"}
+  ]
+  func.func @quantized_${func_name}_fn(%input : tensor<*xi8>,
+                         %filter : tensor<*xi8>, %bias : tensor<*xi32>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
+                         %bias_scale : tensor<*xf32>, %bias_zp : tensor<*xi32>,
+                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
+    %0 = "tf.PartitionedCall"(%input, %filter, %input_scale, %input_zp,
+                                %filter_scale, %filter_zp) {
+        config = "", config_proto = "", executor_type = "", f=@internal_depthwise_conv2d_fn
+      } : (tensor<*xi8>, tensor<*xi8>, tensor<*xf32>, tensor<*xi32>,
+             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
+    %1 = "tf.AddV2"(%0, %bias) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+    %2 = "tf.PartitionedCall"(%1, %input_scale, %input_zp, %filter_scale, %filter_zp,
+                                %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@internal_rescale_fn
+      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>,
+             tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
+    %3 = "tf.PartitionedCall"(%2, %out_scale, %out_zp) {
+        config = "", config_proto = "", executor_type = "", f=@${act_func}
+      } : (tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*xi8>
+    func.return %3 : tensor<*xi8>
+  }
+
+  parameters[
+    {"func_name": "depthwise_conv2d", "act_func": "internal_no_activation_fn"},
+    {"func_name": "depthwise_conv2d_with_relu", "act_func": "internal_relu_fn"},
+    {"func_name": "depthwise_conv2d_with_relu6", "act_func": "internal_relu6_fn"},
+  ]
+  func.func @quantized_${func_name}_fn(
+                         %input : tensor<*xi8>, %filter : tensor<*xi8>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>,
+                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*xi8> {
+    %0 = "tf.PartitionedCall"(%input, %filter, %input_scale, %input_zp,
+                                %filter_scale, %filter_zp) {
+        config = "", config_proto = "", executor_type = "", f=@internal_depthwise_conv2d_fn
       } : (tensor<*xi8>, tensor<*xi8>, tensor<*xf32>, tensor<*xi32>,
              tensor<*xf32>, tensor<*xi32>) -> tensor<*xi32>
     %1 = "tf.PartitionedCall"(%0, %input_scale, %input_zp, %filter_scale, %filter_zp,

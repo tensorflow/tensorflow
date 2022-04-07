@@ -137,7 +137,7 @@ class AlternativeSubgraphPass
       *this, "device-specs",
       llvm::cl::desc(
           "comma separated list of device specs, like CPU, GPU, DPS."),
-      llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated};
+      llvm::cl::ZeroOrMore};
 };
 
 void AlternativeSubgraphPass::GetAlternativeGraphForFunc(

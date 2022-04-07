@@ -68,8 +68,7 @@ def DropOutputShapesAttr : Pass<"tfg-drop-unregistered-output-shapes"> {
 
   let options = [
    ListOption<"skip_", "skip", "std::string",
-              "Comma separated list of ops that will be skipped.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "Comma separated list of ops that will be skipped.">,
   ];
   let constructor = "CreateDropOutputShapesAttrPass()";
 }
@@ -84,15 +83,12 @@ def GraphToFunc : Pass<"tfg-lift-graph-to-func", "ModuleOp"> {
   let constructor = "CreateGraphToFuncPass()";
   let options = [
    ListOption<"feeds_", "feeds", "std::string",
-              "Comma separated list of ops that will be turned into arguments.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "Comma separated list of ops that will be turned into arguments.">,
    ListOption<"fetches_", "fetches", "std::string",
-              "Comma separated list of ops that will be turned into results.",
-              "llvm::cl::MiscFlags::CommaSeparated">,
+              "Comma separated list of ops that will be turned into results.">,
    ListOption<"control_rets_", "control_rets", "std::string",
               "Comma separated list of ops that will be turned into control "
-              "returned.",
-              "llvm::cl::MiscFlags::CommaSeparated">
+              "returned.">
   ];
 }
 
@@ -286,4 +282,53 @@ def PrepareAttributesForExport : Pass<"tfg-prepare-attrs-export", "ModuleOp"> {
   }];
 
   let constructor = "CreatePrepareAttributesForExportPass()";
+}
+
+def EliminatePassthroughIterArgs : Pass<"tfg-eliminate-passthrough-iter-args",
+                                        "ModuleOp"> {
+  let summary = "Eliminate passthrough loop iteration arguments.";
+
+  let description = [{
+    This pass will analyze loops and eliminate loop iteration arguments that are
+    passthrough, i.e. they are the same for every loop iteration. For example:
+
+    ```mlir
+    %For:2, %ctl = ForRegion(%a, %b) from %start to %end by %step {
+    %bb0(%index: tensor<i32>, %arg0: tensor<*xi32>, %arg1: tensor<*xi32>):
+      %ctl_0 = Use(%arg0) : tensor<*xi32>
+      %Foo, %ctl_1 = Foo(%arg1) : (tensor<*xi32>) -> (tensor<*xi32>)
+      yield(%arg0, %Foo) : tensor<*xi32>, tensor<*xi32>
+    }
+    %ctl_2 = Use(%For#0, For#1) : tensor<*xi32>, tensor<*xi32>
+    ```
+
+    Will become:
+
+    ```mlir
+    %For, %ctl = ForRegion(%b) from %start to %end by %step {
+    %bb0(%index: tensor<i32>, %arg0: tensor<*xi32>):
+      %ctl_0 = Use(%a) : tensor<*xi32>
+      %Foo, %ctl_1 = Foo(%arg0) : (tensor<*xi32>) -> (tensor<*xi32>)
+      yield(%Foo) : tensor<*xi32>
+    }
+    %ctl_2 = Use(%a, For#1) : tensor<*xi32>, tensor<*xi32>
+    ```
+  }];
+
+  let constructor = "CreateEliminatePassthroughIterArgsPass()";
+  let dependentDialects = ["tfg::TFGraphDialect"];
+}
+
+def ShapeInference : Pass<"shape-inference"> {
+  let summary = "Infer the output shape of operations";
+  let description = [{
+    Infer the result shape of an operation if possible. Besides inferring the op
+    result tensor shape, it'll also try to evalute the tensor value which can be
+    used to do more inferences.
+  }];
+  let options = [
+    Option<"graph_version_", "graph-version", "int", /*default=*/"",
+           "The graph producer version">
+  ];
+  let constructor = "CreateShapeInferencePass()";
 }

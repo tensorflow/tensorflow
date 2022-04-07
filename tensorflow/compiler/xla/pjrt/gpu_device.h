@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_GPU_DEVICE_H_
 
 #include <memory>
+#include <string>
 
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
@@ -31,6 +32,8 @@ class GpuDevice : public PjRtStreamExecutorDevice {
             std::string device_kind, std::string device_vendor, int node_id);
 
   absl::string_view device_vendor();
+
+  std::string ToString() const override;
 
  private:
   std::string device_vendor_;

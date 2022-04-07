@@ -1,7 +1,9 @@
 # MLIR passes for DTensor support.
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = [
@@ -14,6 +16,7 @@ package(
 
 gentbl_cc_library(
     name = "tensorflow_dtensor_ops_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -41,6 +44,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "dtensor_passes_inc_gen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [(
         [
             "-gen-pass-decls",

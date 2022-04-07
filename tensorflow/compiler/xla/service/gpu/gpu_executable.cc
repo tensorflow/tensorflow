@@ -186,8 +186,7 @@ struct GpuExecutable::BefExecutable {
   tfrt::gpu::EntryPoint entry_point;
   // Signature: (chain, stream, inputs..., outputs...) -> (chain).
   const tfrt::Function* function;
-  absl::Mutex mutex;
-  tfrt::gpu::GpuContextCache gpu_ctx_cache TF_GUARDED_BY(mutex);
+  tfrt::gpu::GpuContextCache gpu_ctx_cache;
 };
 #endif  // XLA_ENABLE_XLIR
 
@@ -661,11 +660,8 @@ static Status ExecuteBef(const std::string& module_name,
   ScopedAnnotation annotation("BefExecution");
 
   se::gpu::GpuStream* stream = se::gpu::AsGpuStream(run_options->stream());
-  auto gpu_context = [&] {
-    absl::MutexLock lock(&bef_executable->mutex);
-    return bef_executable->gpu_ctx_cache.GetOrCreate(
-        se::gpu::GpuDriver::GetContextHandle(stream->parent()->gpu_context()));
-  }();
+  auto gpu_context = bef_executable->gpu_ctx_cache.GetOrCreate(
+      se::gpu::GpuDriver::GetContextHandle(stream->parent()->gpu_context()));
   auto gpu_stream =
       tfrt::gpu::MakeBorrowedStream(gpu_context.first, stream->gpu_stream());
 

@@ -1,5 +1,7 @@
 # DTensor MLIR dialect.
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = [
@@ -18,6 +20,7 @@ td_library(
         "ir/dtensor_dialect.td",
         "ir/dtensor_ops.td",
     ],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "@llvm-project//mlir:FuncTdFiles",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
@@ -27,6 +30,7 @@ td_library(
 
 gentbl_cc_library(
     name = "DialectIncGen",
+    compatible_with = get_compatible_with_cloud(),
     tbl_outs = [
         (
             ["-gen-op-decls"],

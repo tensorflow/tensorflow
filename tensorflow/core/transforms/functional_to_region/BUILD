@@ -16,7 +16,7 @@ cc_library(
     deps = [
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
-        "//tensorflow/core/transforms:Utils",
+        "//tensorflow/core/transforms:utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

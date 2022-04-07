@@ -202,7 +202,7 @@ class XlaHloToLhloPass
           ConvertMlirHloToHlo(module, &hlo_proto,
                               /*use_tuple_args=*/false,
                               /*return_tuple=*/false,
-                              /*shape_representation_fn=*/nullptr),
+                              /*shape_determination_fns=*/{}),
           "conversion to XLA HLO proto failed");
 
       auto statusOrHloModule = HloModuleFromProto(hlo_proto);

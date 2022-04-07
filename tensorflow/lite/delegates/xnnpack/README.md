@@ -184,12 +184,6 @@ packed weights. If it can be found, we access the packed weights in the
 cache for subsequent operations, and the temporary buffer is freed. Otherwise,
 the packed weights is added to the cache.
 
-Note that this weights cache is not thread-safe. If you are creating multiple
-threads of the interpreter based on the same model buffer, you will need to
-ensure that a single thread is writing all the packed weights into the weights
-cache. Afterwards, the weights cache can be shared freely between the threads,
-as there will be no more writes to the cache.
-
 ## Limitations and supported operators
 
 XNNPACK delegate is a work-in-progress, and currently supports a limited set of

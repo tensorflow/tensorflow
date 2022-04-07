@@ -88,17 +88,17 @@ TYPED_TEST(ExpandDimsOpTest, PositiveAxis) {
     std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
 
     ExpandDimsOpModel<TypeParam> axis_0(0, {2, 2}, values, test_type);
-    ASSERT_EQ(axis_0.InvokeUnchecked(), kTfLiteOk);
+    ASSERT_EQ(axis_0.Invoke(), kTfLiteOk);
     EXPECT_THAT(axis_0.GetValues(), ElementsAreArray(values));
     EXPECT_THAT(axis_0.GetOutputShape(), ElementsAreArray({1, 2, 2}));
 
     ExpandDimsOpModel<TypeParam> axis_1(1, {2, 2}, values, test_type);
-    ASSERT_EQ(axis_1.InvokeUnchecked(), kTfLiteOk);
+    ASSERT_EQ(axis_1.Invoke(), kTfLiteOk);
     EXPECT_THAT(axis_1.GetValues(), ElementsAreArray(values));
     EXPECT_THAT(axis_1.GetOutputShape(), ElementsAreArray({2, 1, 2}));
 
     ExpandDimsOpModel<TypeParam> axis_2(2, {2, 2}, values, test_type);
-    ASSERT_EQ(axis_2.InvokeUnchecked(), kTfLiteOk);
+    ASSERT_EQ(axis_2.Invoke(), kTfLiteOk);
     EXPECT_THAT(axis_2.GetValues(), ElementsAreArray(values));
     EXPECT_THAT(axis_2.GetOutputShape(), ElementsAreArray({2, 2, 1}));
   }
@@ -109,7 +109,7 @@ TYPED_TEST(ExpandDimsOpTest, NegativeAxis) {
     std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
 
     ExpandDimsOpModel<TypeParam> m(-1, {2, 2}, values, test_type);
-    ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetValues(), ElementsAreArray(values));
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1}));
   }
@@ -120,7 +120,7 @@ TEST(ExpandDimsOpTest, StrTensor) {
 
   // this test will fail on TestType::CONST
   ExpandDimsOpModel<std::string> m(0, {3}, values, TestType::kDynamic);
-  ASSERT_EQ(m.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetValues(), ElementsAreArray(values));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
 }

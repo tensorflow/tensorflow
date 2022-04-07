@@ -90,7 +90,7 @@ tf_module {
   }
   member_method {
     name: "create_c_op"
-    argspec: "args=[\'graph\', \'node_def\', \'inputs\', \'control_inputs\', \'op_def\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'graph\', \'node_def\', \'inputs\', \'control_inputs\', \'op_def\', \'extract_traceback\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "execute_fn_for_device"

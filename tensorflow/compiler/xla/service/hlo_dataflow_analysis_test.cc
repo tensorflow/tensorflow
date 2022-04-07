@@ -40,6 +40,7 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 
 // Test is parameterized on a bool which is whether the dataflow analysis is
@@ -3116,8 +3117,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUS) {
   HloInstruction* dus = module->entry_computation()->root_instruction();
 
   auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(dus);
-  std::vector<std::pair<HloUse, ShapeIndex>> expected_pairs;
-  expected_pairs.push_back({HloUse{dus, 0, {}}, {}});
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
@@ -3143,8 +3144,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSFusion) {
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
   auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
-  std::vector<std::pair<HloUse, ShapeIndex>> expected_pairs;
-  expected_pairs.push_back({HloUse{fusion, 0, {}}, {}});
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
@@ -3168,8 +3169,7 @@ TEST_F(GetInPlaceInputOutputPairsTest, NonDUSFusion) {
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
   auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
-  std::vector<std::pair<HloUse, ShapeIndex>> expected_pairs;
-  EXPECT_EQ(in_place_pairs, expected_pairs);
+  EXPECT_THAT(in_place_pairs, IsEmpty());
 }
 
 TEST_F(GetInPlaceInputOutputPairsTest, NestedDUSFusion) {
@@ -3201,8 +3201,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, NestedDUSFusion) {
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
   auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
-  std::vector<std::pair<HloUse, ShapeIndex>> expected_pairs;
-  expected_pairs.push_back({HloUse{fusion, 0, {}}, {}});
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
@@ -3245,13 +3245,13 @@ TEST_F(GetInPlaceInputOutputPairsTest, NestedMultiOutputDUSFusion) {
 
   auto inner_in_place_pairs =
       HloDataflowAnalysis::GetInPlaceInputOutputPairs(inner_fusion);
-  std::vector<std::pair<HloUse, ShapeIndex>> inner_expected_pairs;
-  inner_expected_pairs.push_back({HloUse{inner_fusion, 1, {1}}, {1}});
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> inner_expected_pairs;
+  inner_expected_pairs.push_back({HloOperandIndex{1, {1}}, {1}});
   EXPECT_EQ(inner_in_place_pairs, inner_expected_pairs);
 
   auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
-  std::vector<std::pair<HloUse, ShapeIndex>> expected_pairs;
-  expected_pairs.push_back({HloUse{fusion, 1, {0}}, {2}});
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{1, {0}}, {2}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 

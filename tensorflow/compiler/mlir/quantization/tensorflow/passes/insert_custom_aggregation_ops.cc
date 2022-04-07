@@ -68,7 +68,7 @@ class AddCustomAggregationOp : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    // Return early if the given operator isn't the custom aggregator op.
+    // Return early if the given operator is the custom aggregator op.
     if (op->getName().getStringRef() == kCustomAggregatorOpName)
       return failure();
 

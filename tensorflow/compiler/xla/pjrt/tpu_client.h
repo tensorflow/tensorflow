@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <array>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
@@ -40,6 +42,12 @@ class PjRtTpuDevice : public PjRtStreamExecutorDevice {
   const std::array<int, 3>& coords() const { return coords_; }
   int core_on_chip() const { return core_.index(); }
   const tensorflow::tpu::TpuCoreLocationExternal core() const { return core_; }
+
+  std::string ToString() const override {
+    return absl::StrFormat(
+        "TpuDevice(id=%i, process_index=%i, coords=(%s), core_on_chip=%i)",
+        id(), process_index(), absl::StrJoin(coords(), ","), core_on_chip());
+  }
 
   std::string DebugString() const override {
     return absl::StrFormat("TPU_%i(process=%i,(%i,%i,%i,%i))", id(),

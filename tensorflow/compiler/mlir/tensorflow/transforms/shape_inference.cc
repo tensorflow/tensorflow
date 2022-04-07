@@ -1043,7 +1043,7 @@ DatasetInput GetDatasetInput(Value value) {
   Operation* op = value.getDefiningOp();
   if (!llvm::isa_and_nonnull<BatchDatasetV2Op, MapDatasetOp, RepeatDatasetOp,
                              ParallelMapDatasetOp, ParallelMapDatasetV2Op,
-                             TakeDatasetOp>(op))
+                             TakeDatasetOp, TakeWhileDatasetOp>(op))
     return DatasetInput{nullptr, nullptr};
 
   return DatasetInput{op->getAttrOfType<ArrayAttr>("output_shapes"),

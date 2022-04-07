@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/platform/status.h"
+
 namespace tensorflow {
 namespace tpu {
 
@@ -26,7 +28,8 @@ namespace tpu {
 // up calls to this function will return true if the lock has been acquired and
 // false if we failed to acquire the lock.
 bool TryAcquireTpuLock();
-
+// This will check the lock and then load the library.
+bool FindAndLoadTpuLibrary();
 // Returns arguments (e.g. flags) set in the LIBTPU_INIT_ARGS environment
 // variable. The first return value is the arguments, the second return value is
 // pointers to the arguments suitable for passing into the C API.
