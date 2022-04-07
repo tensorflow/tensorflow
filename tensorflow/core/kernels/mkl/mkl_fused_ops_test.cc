@@ -774,17 +774,16 @@ class FusedPadConvOpTest : public OpsTestBase {
          59, 12,  0,   0,   0,   0,  0,   0,   0,   0,   0,   0});
 
     // Create a fused pad+conv2d node
-    TF_EXPECT_OK(
-        NodeDefBuilder("fused_pad_conv_op", "_MklNativePadWithConv2D")
-            .Input(FakeInput(dtype))     // Input
-            .Input(FakeInput(dtype))     // Filter
-            .Input(FakeInput(DT_INT32))  // Padding
-            .Attr("padding", "VALID")
-            .Attr("data_format", data_format)
-            .Attr("T", dtype)
-            .Attr("strides", {1, stride, stride, 1})
-            .Attr("_kernel", "MklNameChangeOp")
-            .Finalize(node_def()));
+    TF_EXPECT_OK(NodeDefBuilder("fused_pad_conv_op", "_MklNativePadWithConv2D")
+                     .Input(FakeInput(dtype))     // Input
+                     .Input(FakeInput(dtype))     // Filter
+                     .Input(FakeInput(DT_INT32))  // Padding
+                     .Attr("padding", "VALID")
+                     .Attr("data_format", data_format)
+                     .Attr("T", dtype)
+                     .Attr("strides", {1, stride, stride, 1})
+                     .Attr("_kernel", "MklNameChangeOp")
+                     .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
 
     // Setting up inputs and execute
@@ -1137,11 +1136,11 @@ class MklFusedMatMulCacheTest : public OpsTestBase {
     CommonTestUtilities<float> test_util;
     test::ExpectTensorNear<float>(expected, output, 1e-5);
 
-   // After the first time kernel execution, the weight will be cached
-   // if is_filter_const is true; otherwise the weight caching is empty.
-   EXPECT_TRUE(static_cast<KernelType*>(this->kernel_.get())
-                   ->IsWeightCacheEmpty(this->context_.get()) !=
-               is_filter_const);
+    // After the first time kernel execution, the weight will be cached
+    // if is_filter_const is true; otherwise the weight caching is empty.
+    EXPECT_TRUE(static_cast<KernelType*>(this->kernel_.get())
+                    ->IsWeightCacheEmpty(this->context_.get()) !=
+                is_filter_const);
   }
 };
 

@@ -496,11 +496,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_fused_batch_norm_ex,
                       CopyAttrsAll, FusedBatchNormExRewrite,
                       GetRewriteCause()});
-    rinfo_.push_back({csinfo_.fused_conv2d,
-                      native_fmt ? csinfo_.mkl_native_fused_conv2d
-                                 : csinfo_.mkl_fused_conv2d,
-                      CopyAttrsAllCheckConstFilter, FusedConv2DRewrite,
-                      GetRewriteCause()});
+    rinfo_.push_back(
+        {csinfo_.fused_conv2d, native_fmt ? csinfo_.mkl_native_fused_conv2d
+                                          : csinfo_.mkl_fused_conv2d,
+         CopyAttrsAllCheckConstFilter, FusedConv2DRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.fused_conv3d, csinfo_.mkl_native_fused_conv3d,
                       CopyAttrsAllCheckConstFilter, AlwaysRewrite,
                       kRewriteForOpNameChange});
@@ -509,12 +508,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                  : csinfo_.mkl_fused_depthwise_conv2d,
                       CopyAttrsAllCheckConstFilter, FusedDepthwiseConv2DRewrite,
                       GetRewriteCause()});
-    rinfo_.push_back({csinfo_.fused_matmul,
-                      native_fmt ? csinfo_.mkl_native_fused_matmul
-                                 : csinfo_.mkl_fused_matmul,
-                      CopyAttrsAllCheckConstFilter, FusedMatMulRewrite,
-                      GetRewriteCause()});
-
+    rinfo_.push_back(
+        {csinfo_.fused_matmul, native_fmt ? csinfo_.mkl_native_fused_matmul
+                                          : csinfo_.mkl_fused_matmul,
+         CopyAttrsAllCheckConstFilter, FusedMatMulRewrite, GetRewriteCause()});
     rinfo_.push_back(
         {csinfo_.identity, mkl_op_registry::GetMklOpName(csinfo_.identity),
          CopyAttrsAll, RewriteIfAtleastOneMklInput, GetRewriteCause()});
@@ -2589,7 +2586,7 @@ void MklLayoutRewritePass::CopyAttrsAllCheckConstFilter(const Node* orig_node,
   // CopyAttrsAll() has already copied the attribute from orig_node to nb.
   if (!is_filter_const) {
     nb->Attr("is_filter_const", filter_node->IsConstant());
-  } 
+  }
 }
 
 void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
