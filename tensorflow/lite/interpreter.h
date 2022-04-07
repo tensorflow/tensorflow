@@ -100,17 +100,18 @@ class InterpreterOptions {
 
   /// Use dynamic tensor allocation method for large tensors instead of static
   /// memory planner. It improves peak memory usage but there could be some
-  /// latency impact. The value is used to determine large tensors.
-  /// WARNING: This is an experimental API and subject to change.
-  void SetDynamicAllocationForLargeTensors(int value) {
+  /// latency impact. The value (in bytes, and default is 1024 * 1024) is used
+  /// to determine large tensors. WARNING: This is an experimental API and
+  /// subject to change.
+  void SetDynamicAllocationForLargeTensors(int value = 1 << 20) {
     if (value > 0) {
       experimental_dynamic_allocation_for_large_tensors_ = value;
     }
   }
 
-  /// Returns the size threshold for dynamic tensor allocation method.
-  /// It returns zero if the feature is not enabled.
-  /// WARNING: This is an experimental API and subject to change.
+  /// Returns the size (in bytes) threshold for dynamic tensor allocation
+  /// method. It returns zero if the feature is not enabled. WARNING: This is an
+  /// experimental API and subject to change.
   int GetDynamicAllocationForLargeTensors() {
     return experimental_dynamic_allocation_for_large_tensors_;
   }
