@@ -6009,6 +6009,64 @@ bool CudnnSupport::DoActivate(Stream* stream,
   return IsStatusOk(status, /*report_error=*/true);
 }
 
+namespace {
+// Cudnn legacy API only supports int32 indexing and can handle a maximum of
+// 2^31-1 elements. For pooling operations, we split the big tensor along the
+// batch axis if necessary and call cudnn API sequentially.
+// This function will return a vector of tuples, representing how to split the
+// tensors: (batch number of each split, offset in bytes of the input, offset in
+// bytes of the output).
+port::StatusOr<std::vector<std::tuple<int64_t, int64_t, int64_t>>>
+GetTensorSplits(const dnn::BatchDescriptor& input_descriptor,
+                const dnn::BatchDescriptor& output_descriptor,
+                dnn::DataType element_type) {
+  std::vector<std::tuple<int64_t, int64_t, int64_t>> out;
+  if (element_type == dnn::DataType::kInt8) {
+    out.push_back(std::make_tuple(input_descriptor.count(), 0, 0));
+    return out;
+  }
+
+  cudnnDataType_t cudnn_input_type =
+      ToCudnnDataType(element_type, input_descriptor.layout());
+  cudnnDataType_t cudnn_output_type =
+      ToCudnnDataType(element_type, output_descriptor.layout());
+
+  std::vector<int64_t> dims64 =
+      input_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
+
+  int64_t num_batches = input_descriptor.count();
+  int64_t elements_per_batch_input = input_descriptor.NodesAcrossFeatureMaps();
+  int64_t elements_per_batch_output =
+      output_descriptor.NodesAcrossFeatureMaps();
+
+  int64_t max_batches_per_split =
+      std::numeric_limits<int>::max() / elements_per_batch_input;
+
+  if (max_batches_per_split == 0) {
+    return port::Status(
+        port::error::INTERNAL,
+        absl::StrCat(
+            "Tensor has too many elements for int32 indexing: batches=",
+            num_batches, " elements_per_batch=", elements_per_batch_input,
+            "."));
+  }
+
+  int64_t processed_batches = 0;
+  while (processed_batches < num_batches) {
+    int64_t num_batches_per_split =
+        std::min(max_batches_per_split, num_batches - processed_batches);
+    int64_t offset_input = processed_batches * elements_per_batch_input *
+                           CudnnDataTypeToByteSize(cudnn_input_type);
+    int64_t offset_output = processed_batches * elements_per_batch_output *
+                            CudnnDataTypeToByteSize(cudnn_output_type);
+    out.push_back(
+        std::make_tuple(num_batches_per_split, offset_input, offset_output));
+    processed_batches += num_batches_per_split;
+  }
+  return out;
+}
+}  // namespace
+
 port::Status CudnnSupport::DoPoolForward(
     dnn::DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
@@ -6032,18 +6090,44 @@ port::Status CudnnSupport::DoPoolForward(
       ToCudnnDataType(element_type, input_dimensions.layout());
   cudnnDataType_t cudnn_output_type =
       ToCudnnDataType(element_type, output_dimensions.layout());
-  CudnnTensorDescriptor src_desc(input_dimensions, cudnn_input_type);
-  CudnnTensorDescriptor dest_desc(output_dimensions, cudnn_output_type);
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
-
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+
+  auto cudnn_launcher = [&](CudnnTensorDescriptor& src_desc,
+                            CudnnTensorDescriptor& dest_desc,
+                            const void* input_ptr, void* output_ptr) {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
         cudnn.handle(), pooling_desc.handle(), alpha, src_desc.handle(),
-        input_data.opaque(), beta, dest_desc.handle(), output_data.opaque()));
+        input_ptr, beta, dest_desc.handle(), output_ptr));
     return ::tensorflow::OkStatus();
-  }();
-  return status;
+  };
+
+  auto splits_or =
+      GetTensorSplits(input_dimensions, output_dimensions, element_type);
+  if (!splits_or.ok()) {
+    return port::Status(port::error::INTERNAL, "Cudnn pooling failed to split");
+  }
+  auto splits = std::move(splits_or.ValueOrDie());
+
+  dnn::BatchDescriptor input_split = input_dimensions;
+  dnn::BatchDescriptor output_split = output_dimensions;
+  for (int i = 0; i < splits.size(); i++) {
+    // It is safe to cap the batch dimension, since it is the leading
+    // dimension and will have no effect on the computation of strides in both
+    // kBatchYXDepth and kBatchDepthYX formats.
+    input_split.set_count(std::get<0>(splits[i]));
+    output_split.set_count(std::get<0>(splits[i]));
+    CudnnTensorDescriptor src_desc(input_split, cudnn_input_type);
+    CudnnTensorDescriptor dest_desc(output_split, cudnn_output_type);
+
+    const auto status = cudnn_launcher(
+        src_desc, dest_desc, input_data.opaque() + std::get<1>(splits[i]),
+        output_data.opaque() + std::get<2>(splits[i]));
+    if (!IsStatusOk(status, /*report_error=*/true)) {
+      return status;
+    }
+  }
+  return ::tensorflow::OkStatus();
 }
 
 port::Status CudnnSupport::DoPoolBackward(
@@ -6070,21 +6154,48 @@ port::Status CudnnSupport::DoPoolBackward(
       ToCudnnDataType(element_type, input_dimensions.layout());
   cudnnDataType_t cudnn_output_type =
       ToCudnnDataType(element_type, output_dimensions.layout());
-
-  CudnnTensorDescriptor src_desc(input_dimensions, cudnn_input_type);
-  CudnnTensorDescriptor dest_desc(output_dimensions, cudnn_output_type);
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
-
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+
+  auto cudnn_launcher = [&](CudnnTensorDescriptor& src_desc,
+                            CudnnTensorDescriptor& dest_desc,
+                            const void* output_ptr, const void* input_diff_ptr,
+                            const void* input_ptr, void* output_diff_ptr) {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingBackward(
         cudnn.handle(), pooling_desc.handle(), alpha, dest_desc.handle(),
-        output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
-        src_desc.handle(), input_data.opaque(), beta, src_desc.handle(),
-        output_diff_data.opaque()));
+        output_ptr, dest_desc.handle(), input_diff_ptr, src_desc.handle(),
+        input_ptr, beta, src_desc.handle(), output_diff_ptr));
     return ::tensorflow::OkStatus();
-  }();
-  return status;
+  };
+
+  auto splits_or =
+      GetTensorSplits(input_dimensions, output_dimensions, element_type);
+  if (!splits_or.ok()) {
+    return port::Status(port::error::INTERNAL, "Cudnn pooling failed to split");
+  }
+  auto splits = std::move(splits_or.ValueOrDie());
+
+  dnn::BatchDescriptor input_split = input_dimensions;
+  dnn::BatchDescriptor output_split = output_dimensions;
+  for (int i = 0; i < splits.size(); i++) {
+    // It is safe to cap the batch dimension, since it is the leading
+    // dimension and will have no effect on the computation of strides in both
+    // kBatchYXDepth and kBatchDepthYX formats.
+    input_split.set_count(std::get<0>(splits[i]));
+    output_split.set_count(std::get<0>(splits[i]));
+    CudnnTensorDescriptor src_desc(input_split, cudnn_input_type);
+    CudnnTensorDescriptor dest_desc(output_split, cudnn_output_type);
+
+    const auto status = cudnn_launcher(
+        src_desc, dest_desc, output_data.opaque() + std::get<2>(splits[i]),
+        input_diff_data.opaque() + std::get<2>(splits[i]),
+        input_data.opaque() + std::get<1>(splits[i]),
+        output_diff_data.opaque() + std::get<1>(splits[i]));
+    if (!IsStatusOk(status, /*report_error=*/true)) {
+      return status;
+    }
+  }
+  return ::tensorflow::OkStatus();
 }
 
 bool CudnnSupport::DoNormalizeWithDimensions(
