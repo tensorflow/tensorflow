@@ -497,6 +497,7 @@ class Context(object):
     self._device_lock = threading.Lock()
     self._physical_devices = None
     self._physical_device_to_index = None
+    self._pluggable_devices = None
     self._visible_device_list = []
     self._memory_growth_map = None
     self._virtual_device_map = {}
@@ -1204,7 +1205,10 @@ class Context(object):
     virtual_devices = []
     gpu_index = -1
     memory_growths = set()
-    for dev in self.list_physical_devices("GPU"):
+    gpu_devices = self.list_physical_devices("GPU")
+    pluggable_devices = self._pluggable_devices
+    compatible_devices = list(set(gpu_devices + pluggable_devices))
+    for dev in compatible_devices:
       gpu_index += 1
 
       if dev not in self._visible_device_list:
@@ -1430,10 +1434,16 @@ class Context(object):
       self._physical_device_to_index = {
           p: i for i, p in enumerate(self._physical_devices)
       }
+      pluggable_devs = pywrap_tfe.TF_ListPluggablePhysicalDevices()
+      self._pluggable_devices = [
+          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
+          for d in pluggable_devs
+      ]
 
       self._visible_device_list = list(self._physical_devices)
       self._memory_growth_map = {
           d: None for d in self._physical_devices if d.device_type == "GPU"
+          or d in self._pluggable_devices
       }
 
     # Import device settings that may have been passed into the constructor
@@ -1623,8 +1633,8 @@ class Context(object):
       raise ValueError(
           "Cannot set memory growth on device when virtual devices configured")
 
-    if dev.device_type != "GPU":
-      raise ValueError("Cannot set memory growth on non-GPU devices")
+    if dev.device_type != "GPU" and dev not in self._pluggable_devices:
+      raise ValueError("Cannot set memory growth on non-GPU and non-Pluggable devices")
 
     if self._memory_growth_map.get(dev) == enable:
       return
