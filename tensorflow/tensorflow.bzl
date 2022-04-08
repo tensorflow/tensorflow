@@ -1,4 +1,4 @@
-# Return the options to use for a C++ library or binary build.
+# Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
