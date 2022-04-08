@@ -359,14 +359,14 @@ class CollRMADistTest
   mutex mu_;
   int num_done_ TF_GUARDED_BY(mu_);
   condition_variable done_;
-  Tensor expected_value_;
-  Tensor large_response_;
-  Tensor to_tensor_;
   CallOptions opts_;
   DeviceLocality device_locality_;
   AllocatorAttributes alloc_attr_;
   FakeAllocator fake_allocator_;
   DeviceBase::AcceleratorDeviceInfo accelerator_device_info_;
+  Tensor expected_value_;
+  Tensor large_response_;
+  Tensor to_tensor_;
 };
 
 TEST_P(CollRMADistTest, ProdFirstOK) {
