@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 
-#include <string>
-
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/parse_text_proto.h"
@@ -34,23 +32,6 @@ const char kAttributePrefix[] = "tf.";
 const char kDataTypePrefix[] = "tfdtype$";
 const char kTensorShapePrefix[] = "tfshape$";
 const char kTensorPrefix[] = "tftensor$";
-
-std::string PrintShortTextFormat(const proto2::Message& message) {
-  std::string message_short_text;
-
-  proto2::TextFormat::Printer printer;
-  printer.SetSingleLineMode(true);
-  printer.SetExpandAny(true);
-
-  printer.PrintToString(message, &message_short_text);
-  // Single line mode currently might have an extra space at the end.
-  if (!message_short_text.empty() &&
-      message_short_text[message_short_text.size() - 1] == ' ') {
-    message_short_text.resize(message_short_text.size() - 1);
-  }
-
-  return message_short_text;
-}
 
 }  // namespace
 
@@ -80,7 +61,7 @@ MangledKind GetMangledKind(absl::string_view str) {
 }
 
 string MangleShape(const TensorShapeProto& shape) {
-  return absl::StrCat(kTensorShapePrefix, PrintShortTextFormat(shape));
+  return absl::StrCat(kTensorShapePrefix, shape.ShortDebugString());
 }
 
 Status DemangleShape(absl::string_view str, TensorShapeProto* proto) {
@@ -88,7 +69,7 @@ Status DemangleShape(absl::string_view str, TensorShapeProto* proto) {
 }
 
 string MangleTensor(const TensorProto& tensor) {
-  return absl::StrCat(kTensorPrefix, PrintShortTextFormat(tensor));
+  return absl::StrCat(kTensorPrefix, tensor.ShortDebugString());
 }
 
 Status DemangleTensor(absl::string_view str, TensorProto* proto) {

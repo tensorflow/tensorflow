@@ -370,13 +370,10 @@ Operation* BuildCompileOp(
   metadata.set_mlir_fingerprint(mlir_fingerprint);
 
   std::string txt_metadata;
-  if (tpu_compile_metadata_debug) {
-    proto2::TextFormat::Printer printer;
-    printer.SetExpandAny(true);
-    printer.PrintToString(metadata, &txt_metadata);
-  } else {
+  if (tpu_compile_metadata_debug)
+    txt_metadata = metadata.DebugString();
+  else
     metadata.SerializeToString(&txt_metadata);
-  }
 
   auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
       cluster_func.getLoc(),
