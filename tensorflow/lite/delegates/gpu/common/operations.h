@@ -616,6 +616,11 @@ struct GatherAttributes {
   Axis axis = Axis::UNKNOWN;
 };
 
+struct OneHotAttributes {
+  float on_value = 1;
+  float off_value = 0;
+};
+
 }  // namespace gpu
 }  // namespace tflite
 
