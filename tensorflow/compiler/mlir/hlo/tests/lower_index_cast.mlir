@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt -split-input-file -kernelgen-lower-index-cast %s | FileCheck %s
+// RUN: mlir-hlo-opt -split-input-file -lower-index-cast %s | FileCheck %s
 
 // index_cast of static tensor
 // CHECK-LABEL: func @f

@@ -18,15 +18,14 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
+#include "mlir-hlo/Transforms/PassDetail.h"
+#include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
-namespace kernel_gen {
-namespace transforms {
 namespace {
 
 // index_cast is not defined on tensors, so lower it to a tensor.generate.
@@ -55,9 +54,6 @@ struct IndexCastConverter : public OpRewritePattern<arith::IndexCastOp> {
   }
 };
 
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
-
 struct LowerIndexCastPass : public LowerIndexCastPassBase<LowerIndexCastPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<tensor::TensorDialect>();
@@ -78,6 +74,4 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLowerIndexCastPass() {
   return std::make_unique<LowerIndexCastPass>();
 }
 
-}  // namespace transforms
-}  // namespace kernel_gen
 }  // namespace mlir

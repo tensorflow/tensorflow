@@ -197,6 +197,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:ToLLVMIRTranslation",
+        "//tensorflow/compiler/mlir/hlo:lower_index_cast",
         "//tensorflow/compiler/mlir/xla:xla_framework",
         "//tensorflow/compiler/mlir/xla:xla_passes",
         "@llvm-project//mlir:LLVMDialect",
