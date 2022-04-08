@@ -576,11 +576,11 @@ TfLiteStatus GetDeviceHandle(const NnApi* nnapi, TfLiteContext* context,
     }
   }
 
-  context->ReportError(context,
-                       "Could not find the specified NNAPI accelerator: %s. "
-                       "Must be one of: {%s}.",
-                       device_name_ptr,
-                       nnapi::GetStringDeviceNamesList(nnapi).c_str());
+  TF_LITE_KERNEL_LOG(context,
+                     "Could not find the specified NNAPI accelerator: %s. "
+                     "Must be one of: {%s}.",
+                     device_name_ptr,
+                     nnapi::GetStringDeviceNamesList(nnapi).c_str());
   return kTfLiteError;
 }
 
@@ -1617,10 +1617,10 @@ class NNAPIOpBuilder {
         *type = kTfLiteFloat32;
         return kTfLiteOk;
       default:
-        context->ReportError(context,
-                             "NN API Delegate: Can't get an equivalent TF Lite "
-                             "type for provided NN API type: %d.\n",
-                             nn_type);
+        TF_LITE_KERNEL_LOG(context,
+                           "NN API Delegate: Can't get an equivalent TF Lite "
+                           "type for provided NN API type: %d.\n",
+                           nn_type);
         return kTfLiteError;
     }
   }
@@ -4478,7 +4478,7 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
                                            nnapi_errno, &nnapi_devices_));
 
     if (nnapi_devices_.empty()) {
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "NNAPI delegate requested but no accelerators available.");
       return kTfLiteError;
     }
@@ -5810,8 +5810,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
             }
             break;
           default:
-            context->ReportError(context,
-                                 "Unsupported type of pad value for pad_v2\n");
+            TF_LITE_KERNEL_LOG(context,
+                               "Unsupported type of pad value for pad_v2\n");
             return kTfLiteError;
         }
         continue;

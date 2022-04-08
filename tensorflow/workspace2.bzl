@@ -51,7 +51,6 @@ load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("//tensorflow/tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("//tensorflow/tools/toolchains/remote:configure.bzl", "remote_execution_configure")
 load("//tensorflow/tools/toolchains/clang6:repo.bzl", "clang6_configure")
-load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -135,9 +134,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "7e9ad45391e5158fd00e816022bda21d54a6180788af7c455c864a78cee252c6",
-        strip_prefix = "XNNPACK-11b2812d64e49bab9b6c489f79067fc94e69db9f",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/11b2812d64e49bab9b6c489f79067fc94e69db9f.zip"),
+        sha256 = "422d6a76dfcc9f8830b3fc1602d50c7db76ad565310df54e78bd1a3f3bf0852b",
+        strip_prefix = "XNNPACK-5b5b61f38ebfc0ed7e930654300750c29920ade7",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/5b5b61f38ebfc0ed7e930654300750c29920ade7.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -880,10 +879,6 @@ def workspace():
     _tf_repositories()
 
     tfrt_dependencies()
-
-    # TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
-    # Initializes Bazel package rules' external dependencies.
-    rules_pkg_dependencies()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

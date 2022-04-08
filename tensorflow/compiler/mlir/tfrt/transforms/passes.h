@@ -223,8 +223,7 @@ struct TfrtPipelineOptions
       llvm::cl::desc("A list of Tensorflow operations to cluster together for "
                      "JIT compilation. Alternatively use 'tier1', ..., 'all' "
                      "to allow clustering for all operations included in the "
-                     "given clustering tier."),
-      llvm::cl::MiscFlags::CommaSeparated};
+                     "given clustering tier.")};
 
   Option<int> auto_fusion_min_cluster_size{
       *this, "auto-fusion-min-cluster-size",

@@ -472,14 +472,7 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<HloConstantFolding>();
       pipeline.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
-
-      pipeline.AddPass<TransposeFolding>(
-          [](const HloInstruction& dot,
-             const TransposeFolding::OperandIndices& candidate_operands) {
-            return IsMatrixMultiplication(dot)
-                       ? candidate_operands
-                       : TransposeFolding::OperandIndices{};
-          });
+      pipeline.AddPass<TransposeFolding>();
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
       pipeline.AddPass<HloDCE>();
     }();
@@ -976,8 +969,7 @@ static Status CompileModuleToLlvmIrImpl(
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
     bool supports_runtime_managed_constants =
-        // TODO(b/218527186): Implement this feature for BEF as well.
-        !IsBefEnabled(hlo_module->config()) &&
+        !IsBefThunkEnabled(hlo_module->config()) &&
         // TODO(b/218907125): Implement this feature for ROCm as well.
         platform_id != se::rocm::kROCmPlatformId &&
         hlo_module->config().debug_options().xla_gpu_enable_shared_constants();
@@ -1573,8 +1565,7 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
   bool supports_runtime_managed_constants =
-      // TODO(b/218527186): Implement this feature for BEF as well.
-      !IsBefEnabled(module_config) &&
+      !IsBefThunkEnabled(module_config) &&
       // TODO(b/218907125): Implement this feature for ROCm as well.
       compiler->PlatformId() != se::rocm::kROCmPlatformId;
   if (supports_runtime_managed_constants) {

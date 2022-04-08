@@ -2212,6 +2212,47 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
+  @test_util.run_v2_only
+  def testKerasFullyConnectedOutputShape3D(self):
+    """Create a simple FullyConnected Model with an output of three dimensions."""
+    input_tensor = tf.keras.layers.Input(
+        batch_size=1, shape=[3, 3], name='input_tensor', dtype=tf.float32)
+
+    x = tf.quantization.fake_quant_with_min_max_args(input_tensor, -3.0, 3.0)
+    x = tf.keras.layers.Dense(3)(x)
+    x = tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+    model = tf.keras.Model(input_tensor, x)
+
+    model.compile(
+        optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
+
+    # Export the keras model to saved model.
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'fully_connected_output_3d')
+    model.save(saved_model_dir, save_format='tf', include_optimizer=False)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    interpreter = Interpreter(model_content=tflite_model)
+    output_details = interpreter.get_output_details()
+    input_details = interpreter.get_input_details()
+    interpreter.allocate_tensors()
+
+    input_data = np.array([[[1, 2, 3], [4, 5, 6], [7, 8, 9]]], np.float32)
+    interpreter.set_tensor(input_details[0]['index'], input_data)
+    interpreter.invoke()
+
+    actual_value = interpreter.get_tensor(output_details[0]['index'])
+    expected_value = model.predict(input_data)
+
+    self.assertLen(output_details[0]['shape_signature'], 3)
+    self.assertAllClose(expected_value, actual_value, atol=1e-5)
+    self.assertEqual(
+        list(output_details[0]['shape_signature']),
+        list(model.layers[-1].output_shape))
+
   def _createUnknownInputShapeModel(self):
     """Create a simple SavedModel with unknown input."""
     saved_model_dir = os.path.join(self.get_temp_dir(), 'unknown_input_shape')
@@ -3319,6 +3360,47 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     actual_value = self._evaluateTFLiteModel(
         tflite_model, [input_data_1, input_data_2],
         input_shapes=[([-1, 256, 256], [1, 256, 256])])[0]
+    self.assertAllClose(expected_value, actual_value, atol=4)
+
+  def testBatchMatMulHybrid(self):
+    # Test model that does batch matmul of:
+    # lhs input (1, 256, 128), rhs const (1, 128, 256).
+    # For dynamic range quantization situation, this will result in hybrid batch
+    # matmul, where lhs type is float32 and rhs type is int8.
+
+    # Intentionally set lhs, rhs sizes to satisfy following conditions:
+    # 1. rhs const num_elements >= 1024, since dynamic range quantization
+    # requires const tensor num_elements to be larger than
+    # min_elements_for_weights (which defaults to 1024).
+    # (https://github.com/tensorflow/tensorflow/blob/25e649ac3688655547da998eba2715cf70b3e5c9/tensorflow/compiler/mlir/lite/transforms/prepare_quantize_dynamic_range.cc#L262)
+    # 2. batch_size (256) > accum_dim_size (128) and
+    # num_units (256) > accum_dim_size (128), to test if the sizes are set
+    # correctly according to dimensions. See HybridAsymmetricBatchMatMulOpTest
+    # tests in
+    # https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/kernels/batch_matmul_test.cc.
+    input_data = tf.constant(
+        np.array(np.random.random_sample((1, 256, 128)), dtype=np.float32))
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None, 256, 128], dtype=tf.float32)
+    ])
+    def model(in_tensor):
+      rhs = tf.constant(
+          np.array(np.random.random_sample((1, 128, 256)), dtype=np.float32))
+      return tf.matmul(in_tensor, rhs)
+
+    concrete_func = model.get_concrete_function()
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data)
+    actual_value = self._evaluateTFLiteModel(
+        tflite_model, [input_data],
+        input_shapes=[([-1, 256, 128], [1, 256, 128])])[0]
     self.assertAllClose(expected_value, actual_value, atol=4)
 
   def testSizeInvalid(self):

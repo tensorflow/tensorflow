@@ -214,15 +214,9 @@ static StatusOr<Thunk::Kind> GetThunkKind(mlir::Operation* op) {
 
 static MlirAndTfrtHostCtx GetMlirAndTfrtHostCtx() {
   static auto* mlir_ctx = new mlir::MLIRContext;
-  static auto* host_ctx = [&] {
-    auto* result = new tfrt::HostContext(
-        tfrt::gpu::GetDiagHandler(mlir_ctx), tfrt::CreateMallocAllocator(),
-        // TODO(hanbinyoon): Make these configurable.
-        tfrt::CreateMultiThreadedWorkQueue(/*num_threads=*/1,
-                                           /*num_blocking_threads=*/16));
-    tfrt::RegisterStaticKernels(result->GetMutableRegistry());
-    return result;
-  }();
+  static auto* host_ctx =
+      tfrt::gpu::CreateHostContext(tfrt::gpu::GetDiagHandler(mlir_ctx))
+          .release();
   return {mlir_ctx, host_ctx};
 }
 

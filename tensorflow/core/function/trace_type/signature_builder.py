@@ -99,6 +99,9 @@ def create_trace_type(obj: Any,
   if isinstance(obj, trace.SupportsTracingProtocol):
     return obj.__tf_tracing_type__(context)
 
+  if hasattr(obj, "__wrapped__"):
+    return create_trace_type(obj.__wrapped__, context)
+
   if isinstance(obj, list):
     return default_types.List(*(create_trace_type(c, context) for c in obj))
 
@@ -119,9 +122,6 @@ def create_trace_type(obj: Any,
         tuple(
             create_trace_type(getattr(obj, a.name), context)
             for a in obj.__attrs_attrs__))
-
-  if hasattr(obj, "__wrapped__"):
-    return create_trace_type(obj.__wrapped__, context)
 
   try:
     ref = weakref.ref(obj, context.deletion_observer)

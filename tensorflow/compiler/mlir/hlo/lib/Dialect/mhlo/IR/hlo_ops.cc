@@ -2615,7 +2615,7 @@ class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
     llvm::SmallVector<Value, 6> new_operands;
     for (auto operand : op.getOperands()) {
       auto ty = operand.getType().cast<ShapedType>();
-      if (ty.getDimSize(axis) != 0) {
+      if (!ty.hasRank() || ty.getDimSize(axis) != 0) {
         new_operands.push_back(operand);
       }
     }
@@ -5132,20 +5132,14 @@ ParseResult parseBinaryOp(OpAsmParser& parser, OperationState& result) {
 
 void printBinaryOp(Operation* op, OpAsmPrinter& p) {
   assert(op->getNumResults() == 1 && "op should have one result");
-  // If any type is sparse, use generic form.
+  // If not all types are the same, use generic form.
   auto resultType = op->getResult(0).getType();
-  if (sparse_tensor::getSparseTensorEncoding(resultType) ||
-      llvm::any_of(op->getOperandTypes(), [&](Type tp) {
-        return sparse_tensor::getSparseTensorEncoding(tp);
-      })) {
+  if (llvm::any_of(op->getOperandTypes(),
+                   [&](Type type) { return type != resultType; })) {
     p.printGenericOp(op, /*printOpName=*/false);
     return;
   }
-  // Otherwise, use the shorthand syntax. Note that this uses the convention
-  // that even congruent types like tensor<10xf32> and tensor<?xf32> are
-  // printed with the static tensor type as representative.
-  // TODO(ajcbik): Should we just do this when types are not the same?
-  //               This seems better, but breaks existing CHECK tests.
+  // Otherwise, use the shorthand syntax.
   p << ' ';
   p.printOperands(op->getOperands());
   p.printOptionalAttrDict(op->getAttrs());
@@ -5936,32 +5930,31 @@ LogicalResult TriangularSolveOp::verify() {
 // GetTupleElementOp
 //===----------------------------------------------------------------------===//
 
-void GetTupleElementOp::build(OpBuilder& builder, OperationState& result,
-                              Value tuple, int32_t index) {
-  if (auto tuple_type = tuple.getType().dyn_cast<TupleType>()) {
-    auto element_type = tuple_type.getType(index);
-    build(builder, result, element_type, tuple,
-          builder.getI32IntegerAttr(index));
-    return;
-  }
+LogicalResult GetTupleElementOp::inferReturnTypes(
+    MLIRContext*, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto tuple_type = operands[0].getType().dyn_cast<TupleType>();
+  if (!tuple_type) return failure();
 
-  build(builder, result, tuple.getType(), tuple,
-        builder.getI32IntegerAttr(index));
+  auto index_attr = attributes.get("index").cast<IntegerAttr>();
+  auto index = index_attr.getInt();
+  if (index < 0 || index >= tuple_type.size()) return failure();
+
+  inferredReturnTypes.push_back(tuple_type.getType(index));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
 // TupleOp
 //===----------------------------------------------------------------------===//
 
-void TupleOp::build(OpBuilder& builder, OperationState& result,
-                    ValueRange values) {
-  SmallVector<Type, 4> types;
-  types.reserve(values.size());
-  for (auto val : values) {
-    types.push_back(val.getType());
-  }
-
-  build(builder, result, builder.getTupleType(types), values);
+LogicalResult TupleOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location>, ValueRange operands,
+    DictionaryAttr attributes, RegionRange,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(TupleType::get(context, TypeRange(operands)));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -6577,6 +6570,10 @@ OpFoldResult ScatterOp::fold(ArrayRef<Attribute> operands) {
   auto update_type = updates().getType().dyn_cast<RankedTensorType>();
   auto index_type = index.getType().cast<RankedTensorType>();
   if (!base_type || !index_type || !update_type) return {};
+
+  // TODO(b/228310289): Work around canonicalization crash for complex types.
+  // Remove after upstream MLIR has been fixed.
+  if (base_type.getElementType().isa<ComplexType>()) return {};
 
   // Catch a trivial full replacement of base with update, this does not require
   // these to be constant: just that we know the type.

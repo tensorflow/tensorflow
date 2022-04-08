@@ -5171,7 +5171,7 @@ def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   let hasOptions = 1;
 }
 
-def TFL_AssignVariableOp : TFL_Op<"assign_variable", [QuantizableResult]> {
+def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {
   let summary = "Assigns a new value to a variable.";
 
   let description = [{
@@ -5187,7 +5187,7 @@ this value or a subsequent newer value of the variable.
   let results = (outs);
 }
 
-def TFL_ReadVariableOp : TFL_Op<"read_variable", [QuantizableResult]> {
+def TFL_ReadVariableOp : TFL_Op<"read_variable", []> {
   let summary = "Reads variable value.";
 
   let description = [{

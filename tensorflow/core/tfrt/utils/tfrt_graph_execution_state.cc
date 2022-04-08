@@ -118,12 +118,12 @@ StatusOr<absl::flat_hash_set<std::string>> PreprocessGraph(
 }  // namespace
 
 StatusOr<std::unique_ptr<TfrtGraphExecutionState>>
-TfrtGraphExecutionState::Create(tensorflow::GraphDef graph_def,
-                                const FallbackState& fallback_state,
-                                bool run_placer_grappler_on_functions) {
+TfrtGraphExecutionState::Create(const TfrtGraphExecutionState::Options& options,
+                                tensorflow::GraphDef graph_def,
+                                const FallbackState& fallback_state) {
   TF_ASSIGN_OR_RETURN(
       auto functions_to_optimize,
-      PreprocessGraph(graph_def, run_placer_grappler_on_functions));
+      PreprocessGraph(graph_def, options.run_placer_grappler_on_functions));
 
   // `CreateGraphExecutionState()` will preprocess the graph (e.g., apply
   // Placer to the top level graph).
@@ -132,8 +132,8 @@ TfrtGraphExecutionState::Create(tensorflow::GraphDef graph_def,
       fallback_state.CreateGraphExecutionState(std::move(graph_def)));
 
   return std::make_unique<TfrtGraphExecutionState>(
-      std::move(graph_execution_state), fallback_state,
-      run_placer_grappler_on_functions, std::move(functions_to_optimize));
+      options, std::move(graph_execution_state), fallback_state,
+      std::move(functions_to_optimize));
 }
 
 namespace {
@@ -302,7 +302,7 @@ Status TfrtGraphExecutionState::Extend(const GraphDef& graph) {
   DCHECK_NE(graph_def, nullptr);
   TF_ASSIGN_OR_RETURN(
       functions_to_optimize_,
-      PreprocessGraph(*graph_def, run_placer_grappler_on_functions_));
+      PreprocessGraph(*graph_def, options_.run_placer_grappler_on_functions));
 
   return Status::OK();
 }
@@ -660,7 +660,7 @@ TfrtGraphExecutionState::OptimizeGraph(
   }
 
   FunctionDefLibrary optimized_flib_proto = optimized_flib->ToProto();
-  if (run_placer_grappler_on_functions_) {
+  if (options_.run_placer_grappler_on_functions) {
     TF_RETURN_IF_ERROR(OptimizeFunctions(optimized_flib_proto, *optimized_flib,
                                          fallback_state_,
                                          functions_to_optimize_));

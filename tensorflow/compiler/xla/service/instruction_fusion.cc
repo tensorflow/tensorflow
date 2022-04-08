@@ -195,7 +195,6 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
-    case HloOpcode::kTrace:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kWhile:
     case HloOpcode::kGetDimensionSize:
@@ -858,11 +857,13 @@ const HloInstruction* ExtractInstruction(const HloInstruction* hlo,
   if (producer->IsElementwise()) {
     return {};
   }
-  std::vector<std::pair<HloUse, ShapeIndex>> in_place_input_output_pairs =
-      HloDataflowAnalysis::GetInPlaceInputOutputPairs(
-          const_cast<HloInstruction*>(consumer));
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>>
+      in_place_input_output_pairs =
+          HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+              const_cast<HloInstruction*>(consumer));
   for (auto& pair : in_place_input_output_pairs) {
-    VLOG(4) << "in/out pair: " << pair.first.ToString() << " "
+    VLOG(4) << "in/out pair: " << pair.first.operand_number << " "
+            << pair.first.operand_index.ToString() << " "
             << pair.second.ToString();
     if (absl::c_find(producer->operands(),
                      consumer->operand(pair.first.operand_number)) !=

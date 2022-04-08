@@ -122,6 +122,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/tasks:add",
+        "//tensorflow/lite/delegates/gpu/common/tasks:cast",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_xy",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_z",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv",

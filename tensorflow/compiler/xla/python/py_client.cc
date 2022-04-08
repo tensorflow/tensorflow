@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 
 namespace xla {
@@ -449,7 +450,7 @@ class CpuCallback {
         results_(std::move(results)),
         transpose_cache_(/*capacity=*/16) {}
 
-  void Call(void* result, void** arg_ptrs);
+  void Call(void* result, void** arg_ptrs, XlaCustomCallStatus* status);
 
  private:
   py::function callable_;
@@ -458,7 +459,8 @@ class CpuCallback {
   TransposePlanCache transpose_cache_;
 };
 
-void CpuCallback::Call(void* result, void** arg_ptrs) {
+void CpuCallback::Call(void* result, void** arg_ptrs,
+                       XlaCustomCallStatus* status) {
   absl::Span<void* const> inputs(arg_ptrs, args_.size());
   absl::Span<void* const> outputs(reinterpret_cast<void**>(result),
                                   results_.size());
@@ -474,7 +476,16 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
       args[i].attr("flags").attr("writeable") = Py_False;
     }
   }
-  py::object result_tuple = callable_(*py::reinterpret_borrow<py::args>(args));
+  py::object result_tuple;
+  try {
+    result_tuple = callable_(*py::reinterpret_borrow<py::args>(args));
+  } catch (py::error_already_set& e) {
+    PyErr_Clear();
+    std::string error_message = e.what();
+    XlaCustomCallStatusSetFailure(status, error_message.c_str(),
+                                  error_message.length());
+    return;
+  }
   if (!PyTuple_Check(result_tuple.ptr())) {
     throw std::runtime_error(
         absl::StrFormat("CPU callback expected a tuple result, got %s",
@@ -526,10 +537,11 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
   }
 }
 
-extern "C" void XlaPythonCpuCallback(void* output, void** inputs) {
+extern "C" void XlaPythonCpuCallback(void* output, void** inputs,
+                                     XlaCustomCallStatus* status) {
   CpuCallback* callback =
       absl::bit_cast<CpuCallback*>(*static_cast<uintptr_t*>(inputs[0]));
-  callback->Call(output, inputs + 1);
+  callback->Call(output, inputs + 1, status);
 }
 
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
@@ -633,10 +645,14 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
       &builder, absl::bit_cast<std::uint64_t>(callback.get()));
 
   Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes_with_layout);
-  XlaOp result = CustomCallWithLayout(&builder, "xla_python_cpu_callback",
-                                      custom_call_args, result_shape,
-                                      custom_call_arg_layouts,
-                                      /*opaque=*/"", has_side_effect);
+  XlaOp result = CustomCallWithLayout(
+      &builder, "xla_python_cpu_callback", custom_call_args, result_shape,
+      custom_call_arg_layouts,
+      /*opaque=*/"", has_side_effect,
+      /*output_operand_aliasing=*/{},
+      /*literal=*/nullptr,
+      /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/API_VERSION_STATUS_RETURNING);
 
   py::capsule callback_capsule(callback.release(), [](void* ptr) {
     delete reinterpret_cast<CpuCallback*>(ptr);

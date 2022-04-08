@@ -2159,24 +2159,6 @@ py_library(
     ],
 )
 
-cuda_py_test(
-    name = "stateful_random_ops_test",
-    size = "medium",
-    srcs = ["ops/stateful_random_ops_test.py"],
-    python_version = "PY3",
-    xla_enable_strict_auto_jit = False,
-    xla_enabled = True,
-    deps = [
-        ":client_testlib",
-        ":logging_ops",
-        ":random_ops_gen",
-        ":stateful_random_ops",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/kernel_tests/random:util",
-    ],
-)
-
 py_library(
     name = "stateless_random_ops",
     srcs = ["ops/stateless_random_ops.py"],
@@ -3878,6 +3860,23 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "factory_ops_test",
+    size = "small",
+    srcs = ["ops/factory_ops_test.py"],
+    tags = [
+        "no_gpu",  # TODO(b/213596871): a similar test times out
+    ],
+    deps = [
+        ":sparse_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_gen_op_wrapper_private_py(
     name = "decode_proto_ops_gen",
     deps = [
@@ -4094,6 +4093,32 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
         "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_dtensor_device",
+    srcs = ["pywrap_dtensor_device.cc"],
+    features = ["-layering_check"],
+    module_name = "_pywrap_dtensor_device",
+    deps = [
+        ":pywrap_densor_device_headers",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status_headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
+)
+
+tf_pybind_cc_library_wrapper(
+    name = "pywrap_densor_device_headers",
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
     ],
 )
 

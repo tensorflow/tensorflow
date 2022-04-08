@@ -35,7 +35,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createBufferReusePass();
 
 /// Creates a pass to analyze shapes and to use that information for
 /// shape-related optimizations.
-std::unique_ptr<OperationPass<func::FuncOp>> createSymbolicShapeOptimizationPass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+createSymbolicShapeOptimizationPass();
 
 /// Creates a pass that merges smaller buffer into bigger buffer to optimize
 /// memory consumption.
@@ -55,6 +56,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createCopyRemovalPass();
 
 /// Creates a pass that computes the allocated memory.
 std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass();
+
+// Pass to lower index cast on tensors to tensor dialect.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerIndexCastPass();
 
 }  // namespace mlir
 

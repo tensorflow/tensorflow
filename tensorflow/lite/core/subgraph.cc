@@ -74,13 +74,12 @@ using ScopedTfLiteSparsity =
 TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
                            const TfLiteRegistration& registration,
                            int node_index, const char* message) {
-  context->ReportError(
-      context, "Node number %d (%s) %s.", node_index,
-      registration.custom_name
-          ? registration.custom_name
-          : EnumNameBuiltinOperator(
-                static_cast<BuiltinOperator>(registration.builtin_code)),
-      message);
+  TF_LITE_KERNEL_LOG(context, "Node number %d (%s) %s.", node_index,
+                     registration.custom_name
+                         ? registration.custom_name
+                         : EnumNameBuiltinOperator(static_cast<BuiltinOperator>(
+                               registration.builtin_code)),
+                     message);
   return kTfLiteError;
 }
 
@@ -90,8 +89,8 @@ TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
 // * The type of first parameter have to be `TfLiteContext*`.
 // * All parameters must be trivially destructible. (E.g. No C++ class)
 TfLiteStatus ForbiddenContextFunction(TfLiteContext* context, ...) {
-  context->ReportError(context,
-                       "The function is forbidden if not calling in delegate.");
+  TF_LITE_KERNEL_LOG(context,
+                     "The function is forbidden if not calling in delegate.");
   return kTfLiteError;
 }
 
@@ -1873,6 +1872,12 @@ void Subgraph::MaybeReleaseDynamicInputs(const TfLiteNode& node,
     }
     return false;
   };
+  auto tensorIsOutput = [&](int index) {
+    for (int idx : outputs_) {
+      if (idx == index) return true;
+    }
+    return false;
+  };
   // Release dynamic tensor's memory if the current node is the last one that
   // uses the tensor.
   for (int input_index = 0; input_index < node.inputs->size; ++input_index) {
@@ -1881,7 +1886,7 @@ void Subgraph::MaybeReleaseDynamicInputs(const TfLiteNode& node,
     if (!input_tensor || input_tensor->allocation_type != kTfLiteDynamic ||
         input_tensor->type == kTfLiteString ||
         input_tensor->type == kTfLiteResource ||
-        tensorIsInput(input_tensor_index))
+        tensorIsInput(input_tensor_index) || tensorIsOutput(input_tensor_index))
       continue;
     auto it = tensor_to_last_op_index_.find(input_tensor_index);
     if (it != tensor_to_last_op_index_.end() && it->second == node_index) {

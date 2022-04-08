@@ -446,6 +446,14 @@ func.func @comp_bad_direction(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> ten
 
 // -----
 
+// CHECK-LABEL: func @comp_compatible_types
+func.func @comp_compatible_types(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<?xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<3xi32>, tensor<3xi32>) -> tensor<?xi1>
+  func.return %0 : tensor<?xi1>
+}
+
+// -----
+
 func.func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   // expected-error@+1 {{duplicate sources not allowed}}
   %0 = "mhlo.collective_permute"(%arg0) {
@@ -3125,13 +3133,8 @@ func.func @rfft_invalid_ret_elt(%arg0: tensor<3x9xf32>) -> tensor<3x9xf32> {
 
 // CHECK-LABEL: @eltwise_static_and_dynamic_type(
 //  CHECK-SAME: %[[A:.*]]: tensor<10x10xf32>, %[[B:.*]]: tensor<?x?xf32>) -> tensor<10x10xf32>
-//       CHECK: %[[R:.*]] = mhlo.add %[[A]], %[[B]] : tensor<10x10xf32>
+//       CHECK: %[[R:.*]] = mhlo.add(%[[A]], %[[B]]) : (tensor<10x10xf32>, tensor<?x?xf32>) -> tensor<10x10xf32>
 //       CHECK: return %[[R]] : tensor<10x10xf32>
-//
-// TODO(ajcbik): note that we should really print the following op in the
-// same way as we parse it in the case types do not match exactly; this change,
-// however, would break many check tests that proliferated throughout
-//
 func.func @eltwise_static_and_dynamic_type(%arg0: tensor<10x10xf32>, %arg1: tensor<?x?xf32>) -> tensor<10x10xf32> {
   %0 = mhlo.add(%arg0, %arg1) : (tensor<10x10xf32>, tensor<?x?xf32>) -> tensor<10x10xf32>
   func.return %0 : tensor<10x10xf32>

@@ -331,8 +331,13 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
 }  // namespace
 
 tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
-  return mlir::TFTPU::RunTFXLABridge(module, enable_logging,
-                                     CreateTFXLABridgePipeline);
+  Status status = mlir::TFTPU::RunTFXLABridge(module, enable_logging,
+                                              CreateTFXLABridgePipeline);
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      /*device type*/ "cpu/gpu", /*bridge version*/ "v2",
+      /*fallback_enabled*/ false,
+      /*result*/ status == Status::OK() ? "success" : "failure");
+  return status;
 }
 
 }  // namespace TF

@@ -71,14 +71,16 @@ bool IsRematerializable(const HloInstruction* instruction) {
     }
   }
 
+  if (auto collective = DynCast<HloCollectiveInstruction>(instruction)) {
+    return !collective->constrain_layout();
+  }
+
   // Don't rematerialize instructions with side effects or instructions which
   // cannot be cloned safely.
   switch (instruction->opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConstant:
     case HloOpcode::kConditional:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kReduceScatter:
     case HloOpcode::kCustomCall:
     case HloOpcode::kParameter:
     case HloOpcode::kWhile:

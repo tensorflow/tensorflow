@@ -18,15 +18,14 @@ import contextlib
 import logging
 import os
 import threading
-from typing import List, Set
+from typing import Any, List, Sequence, Set
 
 import numpy as np
 
-# pylint: disable=g-direct-tensorflow-import
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.dtensor.python import _dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
+from tensorflow.python import _pywrap_dtensor_device
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.framework import device as tf_device
@@ -68,11 +67,12 @@ class DTensorDevice(object):
       self.name = "{}/device:CUSTOM:{}".format(ctx.host_address_space(),
                                                _next_device_number)
       _next_device_number += 1
-    device, device_info = _dtensor_device.Allocate(self.name)
+    device, device_info = _pywrap_dtensor_device.Allocate(self.name)
     context.register_custom_device(device, self.name, device_info)
 
     self._device_info = device_info
     self._current_output_layout = None
+    self._current_default_mesh = None
     self._is_async = is_async
     self._meshes = set()
     self._mesh_lock = threading.Lock()
@@ -154,25 +154,25 @@ class DTensorDevice(object):
     """Idempotently register `mesh` with the dtensor device."""
     with self._mesh_lock:
       if mesh not in self._meshes:
-        _dtensor_device.AddMesh(self._device_info, mesh.to_string(),
-                                self._is_async, False)
+        _pywrap_dtensor_device.AddMesh(self._device_info, mesh.to_string(),
+                                       self._is_async, False)
         self._meshes.add(mesh)
         if mesh.device_type().upper() == "TPU":
           logging.info(
               "Registering virtual 1:1 mapped host mesh %s for mesh %s",
               mesh.host_mesh().to_string(), mesh.to_string())
-          _dtensor_device.AddMesh(self._device_info,
-                                  mesh.host_mesh().to_string(), self._is_async,
-                                  True)
+          _pywrap_dtensor_device.AddMesh(self._device_info,
+                                         mesh.host_mesh().to_string(),
+                                         self._is_async, True)
           self._meshes.add(mesh.host_mesh())
           embedding_host_mesh = self._create_embedding_host_mesh(mesh)
           if embedding_host_mesh:
             logging.info(
-                "Registering embedding host mesh %s on each client for mesh %s ",
+                "Registering embedding host mesh %s on each client for mesh %s",
                 embedding_host_mesh.to_string(), mesh.to_string())
-            _dtensor_device.AddMesh(self._device_info,
-                                    embedding_host_mesh.to_string(),
-                                    self._is_async, False)
+            _pywrap_dtensor_device.AddMesh(self._device_info,
+                                           embedding_host_mesh.to_string(),
+                                           self._is_async, False)
             self._meshes.add(embedding_host_mesh)
 
   @property
@@ -188,127 +188,24 @@ class DTensorDevice(object):
           layout=new_layout.to_string(),
           source_layout=source_layout.to_string() if source_layout else "")
 
-  # pylint: disable=g-doc-return-or-yield
-  # pylint: disable=g-doc-args
-  # TODO(xiejw): add args and return once LG.
-  def pack(self, tensors, layout):
-    """Returns a packed tensor handle for dtensor_device.
+  def pack(self, tensors: Sequence[Any], layout: layout_lib.Layout) -> Any:
+    """Packs tensors into a DTensor handle on this DTensor device.
 
     Packing and unpacking are inverse operations:
 
+    ```
     * unpack(pack(tensors)) == tensors
     * pack(unpack(dtensor)) == dtensor
+    ```
 
-    1. For any DTensor on the mesh, `unpack` returns the raw components placed
-       on each underlying device.
-    2. Packing these raw components in the same order returns a DTensor which
-       should be identical to the original DTensor--both the content value and
-       the layout.
+    Refer to `dtensor.pack` for more information.
 
-    N.B. It is the callers responsibility to ensure that the underlying values
-    for Pack() adhere to the specified layout. See examples below for more
-    detail.
+    Args:
+      tensors: The list of tensors to pack into a DTensor.
+      layout: The layout of the DTensor to be created.
 
-    N.B. [Shape, Rank, and Scalar]: The rank of the DTensor is the same as the
-    rank of it's raw components, i.e., rank is preserved.  This leads to a
-    consistent interpretation for packing scalar values into a DTensor. The only
-    valid layout for a scalar value is fully replicated, and the individual
-    components must be identical scalars.
-
-    N.B. Each input `tensor[i]` will be copied to `layout.mesh.local_device[i]`
-    if not already on the local device.
-
-    For example, assume we have a mesh [X(2), Y(3)], which has in total 6
-    underlying devices. Futuremore, assume that the device location mapping is
-    the following:
-
-       device_ID  |  location X, Y
-               0     0, 0
-               1     0, 1
-               2     0, 2
-               3     1, 0
-               4     1, 1
-               5     1, 2
-
-
-    1. For 1-D vector DTensor with shape [128] with layout [mesh.X] and value as
-       range(128), the raw components will have shape [64] each, and the raw
-       components will be:
-
-       device_ID  |  raw component
-               0     range(64)
-               1     range(64)
-               2     range(64)
-               3     range(64, 128)
-               4     range(64, 128)
-               5     range(64, 128)
-
-
-       This also means for a 1-D DTensor with shape [2] and layout [mesh.X], the
-       raw components have shape [1] rather than the shape for scalar value.
-
-    2. For 2-D vector DTensor with shape [2, 3] with layout [mesh.X, mesh.Y] and
-       value as range(6), this is basically a fully-sharded DTensor.
-
-       From global view, the content looks like
-           [
-             [0.0, 1.0, 2.0],
-             [3.0, 4.0, 5.0],
-           ]
-
-       The raw components will have shape [1, 1] each, and have the following
-       content:
-
-       device_ID  |  raw component
-               0     [[0.0]]
-               1     [[1.0]]
-               2     [[2.0]]
-               3     [[3.0]]
-               4     [[4.0]]
-               5     [[5.0]]
-
-    3. For a scalar value 123.0 DTensor, it can only have one legitimate layout
-       `[]` (no dimension, but fully replicated).
-
-       The raw components will have shape [] each, and have the following
-       content:
-
-       device_ID  |  raw component
-               0     123.0
-               1     123.0
-               2     123.0
-               3     123.0
-               4     123.0
-               5     123.0
-
-       Again, caller of `pack` is expected to provide 6 identical value raw
-       components with scalar shapes.
-
-    4. For 3-D vector DTensor with shape [2, 2, 3] with layout
-       [X, unsharded, unsharded] and value as range(12),
-
-       From global view, the content looks like
-           [
-             [
-               [0.0, 1.0, 2.0],
-               [3.0, 4.0, 5.0],
-             ],
-             [
-               [6.0, 7.0, 8.0],
-               [9.0, 10., 11.],
-             ],
-           ]
-
-       The raw components will have shape [1, 2, 3] each, and have the following
-       content:
-
-       device_ID  |  raw component
-               0     range(6).reshape([1, 2, 3])
-               1     range(6).reshape([1, 2, 3])
-               2     range(6).reshape([1, 2, 3])
-               3     range(6, 12).reshape([1, 2, 3])
-               4     range(6, 12).reshape([1, 2, 3])
-               5     range(6, 12).reshape([1, 2, 3])
+    Returns:
+      A DTensor created from the individual component tensors.
 
     Raises:
       RuntimeError: When not called eagerly.
@@ -334,7 +231,7 @@ class DTensorDevice(object):
       else:
         is_sparse = False
       try:
-        return _dtensor_device.Pack(
+        return _pywrap_dtensor_device.Pack(
             context.context()._handle,  # pylint: disable=protected-access
             tensors,
             layout.to_string(),
@@ -343,35 +240,43 @@ class DTensorDevice(object):
       except core._NotOkStatusException as e:  # pylint: disable=protected-access
         raise core._status_to_exception(e) from None  # pylint: disable=protected-access
 
-  def unpack(self, tensor):
-    """Returns the raw tensor components of the packed tensor.
+  def unpack(self, dtensor: Any) -> Sequence[Any]:
+    """Unpacks a DTensor handle on this DTensor device.
 
     Packing and unpacking are inverse operations:
 
+    ```
     * unpack(pack(tensors)) == tensors
     * pack(unpack(dtensor)) == dtensor
+    ```
 
-    See documentation for pack for more details.
+    Refer to `dtensor.unpack` for more information.
+
+    Args:
+      dtensor: The DTensor to unpack.
+
+    Returns:
+      The raw underlying tensor components of the DTensor.
 
     Raises:
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
       raise RuntimeError("Unpack must be called eagerly.")
-    if issubclass(type(tensor), resource_variable_ops.BaseResourceVariable):
+    if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
       raise TypeError(
           "Received Variable input to unpack, Variable is not supported.")
     try:
-      tensors = _dtensor_device.Unpack(
+      tensors = _pywrap_dtensor_device.Unpack(
           context.context()._handle,  # pylint: disable=protected-access
-          tensor,
+          dtensor,
           self._device_info)
     except core._NotOkStatusException as e:  # pylint: disable=protected-access
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
 
-    is_sparse = _dtensor_device.IsSparseDTensor(
+    is_sparse = _pywrap_dtensor_device.IsSparseDTensor(
         context.context()._handle,  # pylint: disable=protected-access.
-        tensor,
+        dtensor,
         self._device_info)
     if is_sparse:
       result = []
@@ -384,20 +289,26 @@ class DTensorDevice(object):
     else:
       return tensors
 
-  def fetch_layout(self, tensor):
-    """Returns the layout of tensor.
+  def fetch_layout(self, dtensor: Any) -> layout_lib.Layout:
+    """Fetches the layout of the DTensor.
+
+    Args:
+      dtensor: The DTensor whose layout is to be fetched.
+
+    Returns:
+      The `Layout` of this DTensor.
 
     Raises:
       RuntimeError: When not called eagerly.
     """
     if not context.executing_eagerly():
       raise RuntimeError("FetchLayout must be called eagerly.")
-    if issubclass(type(tensor), resource_variable_ops.BaseResourceVariable):
-      tensor = tensor.read_value()
+    if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
+      dtensor = dtensor.read_value()
     try:
-      layout_string = _dtensor_device.FetchLayout(
+      layout_string = _pywrap_dtensor_device.FetchLayout(
           context.context()._handle,  # pylint: disable=protected-access
-          tensor,
+          dtensor,
           self._device_info)
     except core._NotOkStatusException as e:  # pylint: disable=protected-access
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
@@ -412,7 +323,7 @@ class DTensorDevice(object):
     Args:
       enabled: A boolean indicating whether to use the policy.
     """
-    _dtensor_device.SetSameShapePolicy(self._device_info, enabled)
+    _pywrap_dtensor_device.SetSameShapePolicy(self._device_info, enabled)
 
   def set_tpu_core_ids(self, mesh_name, tpu_core_ids):
     """Sets the singleton global device ID-to-physical core ID map.
@@ -421,10 +332,11 @@ class DTensorDevice(object):
       mesh_name: The name of a mesh. If empty, set the default mapping.
       tpu_core_ids: TPU core IDs sorted by TF task/device ordinal.
     """
-    _dtensor_device.SetTPUCoreIDs(self._device_info, mesh_name, tpu_core_ids)
+    _pywrap_dtensor_device.SetTPUCoreIDs(self._device_info, mesh_name,
+                                         tpu_core_ids)
 
   def clear_tpu_core_ids(self):
-    _dtensor_device.ClearTPUCoreIDs(self._device_info)
+    _pywrap_dtensor_device.ClearTPUCoreIDs(self._device_info)
 
   def tpu_core_ids_to_locations(self, tpu_core_ids):
     """Translates TPU core IDs to TPU core locations.
@@ -435,7 +347,7 @@ class DTensorDevice(object):
     Returns:
       A list of corresponding TPU core locations.
     """
-    return _dtensor_device.TPUCoreIDsToLocations(
+    return _pywrap_dtensor_device.TPUCoreIDsToLocations(
         context.context()._handle,  # pylint: disable=protected-access
         self._device_info,
         tpu_core_ids)
@@ -450,18 +362,39 @@ class DTensorDevice(object):
     Returns:
       A list of corresponding TPU core IDs.
     """
-    return _dtensor_device.TPUCoreLocationsToIDs(
+    return _pywrap_dtensor_device.TPUCoreLocationsToIDs(
         context.context()._handle,  # pylint: disable=protected-access
         self._device_info,
         tpu_core_locations)
 
   @contextlib.contextmanager
   def _experimental_default_mesh(self, mesh: layout_lib.Mesh):
+    """Sets a default mesh for all ops in the scope.
+
+    Note: This is an internal helper method, which is not user facing api.
+
+    Useful for requesting a specific mesh for ops which would have no inferred
+    layout, e.g. tf.zeros.
+
+    Args:
+      mesh: A Mesh to be used for ops without Mesh.
+
+    Yields:
+      Nothing.
+    """
+    previous_default = self._current_default_mesh
     self._register_mesh(mesh)
-    _dtensor_device.ExperimentalSetDefaultMesh(self._device_info,
-                                               mesh.to_string().encode("utf-8"))
+    _pywrap_dtensor_device.ExperimentalSetDefaultMesh(
+        self._device_info,
+        mesh.to_string().encode("utf-8"))
+    self._current_default_mesh = mesh
     yield
-    _dtensor_device.ExperimentalClearDefaultMesh(self._device_info)
+    _pywrap_dtensor_device.ExperimentalClearDefaultMesh(self._device_info)
+    if previous_default:
+      _pywrap_dtensor_device.ExperimentalSetDefaultMesh(
+          self._device_info,
+          previous_default.to_string().encode("utf-8"))
+    self._current_default_mesh = previous_default
 
   @contextlib.contextmanager
   def _default_layout(self, layout: layout_lib.Layout):
@@ -487,15 +420,17 @@ class DTensorDevice(object):
     Yields:
       Nothing.
     """
+    previous_default = None
+    previous_graph_size = None
+    graph = None
+
     self._register_mesh(layout.mesh)
     try:
       previous_default = self._current_output_layout
       self._current_output_layout = layout.to_string().encode("utf-8")
-      _dtensor_device.ExperimentalSetDefaultLayout(self._device_info,
-                                                   self._current_output_layout)
+      _pywrap_dtensor_device.ExperimentalSetDefaultLayout(
+          self._device_info, self._current_output_layout)
       if context.executing_eagerly():
-        graph = None
-        previous_graph_size = None
         with ops.device(self.name):
           yield
       else:
@@ -508,9 +443,9 @@ class DTensorDevice(object):
         previous_graph_size = len(graph.get_operations())
         yield
     finally:
-      if graph is not None:  # pytype: disable=name-error  # py39-upgrade
+      if graph is not None:
         # Tag operations added under this scope
-        for operation in graph.get_operations()[previous_graph_size:]:  # pytype: disable=name-error  # py39-upgrade
+        for operation in graph.get_operations()[previous_graph_size:]:
           # Set layout directly on the Op itself.
           operation._set_attr(  # pylint: disable=protected-access
               "_layout",
@@ -522,9 +457,9 @@ class DTensorDevice(object):
               attr_value_pb2.AttrValue(
                   s=layout.mesh.to_string().encode("utf-8")))
 
-      self._current_output_layout = previous_default  # pytype: disable=name-error  # py39-upgrade
+      self._current_output_layout = previous_default
       if self._current_output_layout is None:
-        _dtensor_device.ExperimentalClearDefaultLayout(self._device_info)
+        _pywrap_dtensor_device.ExperimentalClearDefaultLayout(self._device_info)
       else:
-        _dtensor_device.ExperimentalSetDefaultLayout(
+        _pywrap_dtensor_device.ExperimentalSetDefaultLayout(
             self._device_info, self._current_output_layout.decode("utf-8"))

@@ -917,26 +917,6 @@ class HloConstantInstruction : public HloInstruction {
   absl::optional<Literal> literal_;
 };
 
-class HloTraceInstruction : public HloInstruction {
- public:
-  explicit HloTraceInstruction(const std::string& tag, HloInstruction* operand);
-  // Returns a tag to be used in tracing.
-  std::string TracingTag() const { return literal_.GetR1U8AsString(); }
-  // Returns a serialized representation of this instruction.
-  HloInstructionProto ToProto() const override;
-
- private:
-  bool IdenticalSlowPath(
-      const HloInstruction& other,
-      const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const override;
-  // Implementation for non-common logic of CloneWithNewOperands.
-  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
-      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-      HloCloneContext* context) const override;
-  Literal literal_;
-};
-
 class HloFusionInstruction : public HloInstruction {
  public:
   explicit HloFusionInstruction(const Shape& shape, FusionKind fusion_kind,

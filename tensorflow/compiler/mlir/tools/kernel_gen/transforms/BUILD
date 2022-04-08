@@ -210,7 +210,6 @@ cc_library(
         "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "fuse_inner_parallel_loops_pass.cc",
-        "lower_index_cast_pass.cc",
         "parallel_loops_to_sequential.cc",
         "rewrite_tf_framework_assert.cc",
         "same_shape_propagation.cc",

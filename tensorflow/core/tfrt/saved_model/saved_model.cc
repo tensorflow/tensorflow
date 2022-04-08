@@ -249,7 +249,7 @@ tensorflow::Status RunInitializers(
     host->Await(results);
 
     if (auto* error = results[0]->GetErrorIfPresent()) {
-      return tensorflow::errors::Internal(error->message);
+      return CreateTfErrorStatus(*error);
     }
   }
 

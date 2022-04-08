@@ -228,12 +228,12 @@ TEST(NonMaxSuppressionV4OpModel, TestOutput) {
                                  /**max_output_size=**/ 6);
   nms.SetScores({0.9, 0.75, 0.6, 0.95, 0.5, 0.3});
   nms.SetScoreThreshold(0.4);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 0, 0, 0, 0}));
 
   nms.SetScoreThreshold(0.99);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   // The first two indices should be zeroed-out.
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0, 0, 0, 0}));
@@ -279,17 +279,17 @@ TEST(NonMaxSuppressionV4OpModel, TestDynamicOutput) {
   nms.SetScoreThreshold(0.4f);
 
   nms.SetMaxOutputSize(1);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({1}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3}));
 
   nms.SetMaxOutputSize(2);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0}));
 
   nms.SetScoreThreshold(0.99);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0}));
 }
@@ -342,7 +342,7 @@ TEST(NonMaxSuppressionV4OpModel, TestOutputWithZeroMaxOutput) {
                                  /**max_output_size=**/ 0);
   nms.SetScores({0.9, 0.75, 0.6, 0.95, 0.5, 0.3});
   nms.SetScoreThreshold(0.4);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
 }
 
@@ -406,7 +406,7 @@ TEST(NonMaxSuppressionV5OpModel, TestOutput) {
                                  /**max_output_size=**/ 6);
   nms.SetScores({0.9, 0.75, 0.6, 0.95, 0.5, 0.3});
   nms.SetScoreThreshold(0.0);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 5, 0, 0, 0}));
   EXPECT_THAT(nms.GetSelectedScores(),
@@ -414,7 +414,7 @@ TEST(NonMaxSuppressionV5OpModel, TestOutput) {
 
   // No candidate gets selected. But the outputs should be zeroed out.
   nms.SetScoreThreshold(0.99);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0, 0, 0, 0}));
   EXPECT_THAT(nms.GetSelectedScores(),
@@ -474,26 +474,26 @@ TEST(NonMaxSuppressionV5OpModel, TestDynamicOutput) {
       /*max_output_size=*/6);
 
   nms.SetMaxOutputSize(2);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({2}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0}));
   EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.95, 0.9}));
 
   nms.SetMaxOutputSize(1);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({1}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.95}));
 
   nms.SetMaxOutputSize(3);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({3}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({3, 0, 5}));
   EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.95, 0.9, 0.3}));
 
   // No candidate gets selected. But the outputs should be zeroed out.
   nms.SetScoreThreshold(0.99);
-  ASSERT_EQ(nms.InvokeUnchecked(), kTfLiteOk);
+  ASSERT_EQ(nms.Invoke(), kTfLiteOk);
   EXPECT_THAT(nms.GetNumSelectedIndices(), ElementsAreArray({0}));
   EXPECT_THAT(nms.GetSelectedIndices(), ElementsAreArray({0, 0, 0}));
   EXPECT_THAT(nms.GetSelectedScores(), ElementsAreArray({0.0, 0.0, 0.0}));

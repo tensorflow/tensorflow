@@ -25,6 +25,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
 namespace delegates {
@@ -89,6 +90,16 @@ class SimpleDelegate {
 // Base class for single/multiple delegate tests.
 // Friend of Interpreter to access private methods.
 class TestDelegation {
+ public:
+  // Returns an empty interpreter that uses the same default delegates that are
+  // normally enabled by default.
+  static std::unique_ptr<Interpreter> NewInterpreterWithDefaultDelegates() {
+    auto interpreter = std::make_unique<Interpreter>();
+    interpreter->lazy_delegate_providers_ =
+        tflite::ops::builtin::BuiltinOpResolver().GetDelegateCreators();
+    return interpreter;
+  }
+
  protected:
   TfLiteStatus RemoveAllDelegates() {
     return interpreter_->RemoveAllDelegates();
