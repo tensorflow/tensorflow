@@ -295,6 +295,14 @@ class TFGraph_IfLikeOp<string mnemonic>
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
+  let builders = [
+    OpBuilder<(ins "TypeRange":$results, "Value":$cond, "ValueRange":$args,
+                   "FuncAttr":$then_branch, "FuncAttr":$else_branch), [{
+      build($_builder, $_state, results, cond, args, then_branch, else_branch,
+            /*Tcond=*/{}, /*Tin=*/{}, /*Tout=*/{}, /*output_shapes=*/{});
+    }]>
+  ];
+
   let extraClassDefinition = [{
     LogicalResult $cppClass::verifySymbolUses(
         SymbolTableCollection &symbol_table) {
@@ -330,8 +338,15 @@ class TFGraph_CaseLikeOp<string mnemonic>
     OptionalAttr<TypeArrayAttr>:$Tout,
     OptionalAttr<TFGraph_ShapesAttr>:$output_shapes
   );
-
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
+
+  let builders = [
+    OpBuilder<(ins "TypeRange":$results, "Value":$branch_index,
+                   "ValueRange":$args, "ArrayAttr":$branches), [{
+      build($_builder, $_state, results, branch_index, args, branches,
+            /*Tin=*/{}, /*Tout=*/{}, /*output_shapes=*/{});
+    }]>
+  ];
 
   let extraClassDefinition = [{
     LogicalResult $cppClass::verifySymbolUses(
@@ -370,6 +385,14 @@ class TFGraph_WhileLikeOp<string mnemonic>
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
+  let builders = [
+    OpBuilder<(ins "TypeRange":$results, "ValueRange":$args, "FuncAttr":$cond,
+                   "FuncAttr":$body, "IntegerAttr":$parallel_iterations), [{
+      build($_builder, $_state, results, args, cond, body, parallel_iterations,
+            /*T=*/{}, /*output_shapes=*/{});
+    }]>
+  ];
+
   let extraClassDefinition = [{
     LogicalResult $cppClass::verifySymbolUses(
         SymbolTableCollection &symbol_table) {
@@ -407,8 +430,15 @@ def TFGraph_ForOp
     // information.
     OptionalAttr<TypeArrayAttr>:$T
   );
-
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
+
+  let builders = [
+    OpBuilder<(ins "TypeRange":$results, "Value":$start, "Value":$limit,
+                   "Value":$delta, "ValueRange":$args, "FuncAttr":$body), [{
+      build($_builder, $_state, results, start, limit, delta, args, body,
+            /*T=*/{});
+    }]>
+  ];
 }
 
 //===----------------------------------------------------------------------===//

@@ -86,6 +86,7 @@ cc_library(
         "//tensorflow/core/transforms/eliminate_passthrough_iter_args:Pass",
         "//tensorflow/core/transforms/functional_to_region:Pass",
         "//tensorflow/core/transforms/graph_to_func:Pass",
+        "//tensorflow/core/transforms/region_to_functional:Pass",
         "//tensorflow/core/transforms/remapper:Pass",
         "//tensorflow/core/transforms/shape_inference:Pass",
         "//tensorflow/core/transforms/toposort:Pass",
