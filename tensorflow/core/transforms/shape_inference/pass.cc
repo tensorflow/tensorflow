@@ -36,63 +36,6 @@ using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;
 
-// Compute a refined type between two types `lhs` and `rhs`, the result type
-// is always more refined (i.e. has more static information) than `lhs`. For
-// example, it combines `10x?x?` and `?x?x8` into `10x?x8`.
-// TODO(chiahungduan): The logic has most overlaps with
-// tf_type::GetCastCompatibleType except the subtype handling. Use it when the
-// logic is fixed in tf_type::GetCastCompatibleType.
-static Type RefineShape(ShapedType lhs, ShapedType rhs) {
-  if (lhs == rhs || !rhs.hasRank()) return lhs;
-
-  SmallVector<int64_t> shape;
-  bool refined_shape = false;
-
-  if (!lhs.hasRank()) {
-    llvm::append_range(shape, rhs.getShape());
-    refined_shape = true;
-  } else {
-    assert(lhs.getRank() == rhs.getRank());
-    for (auto it : llvm::zip(lhs.getShape(), rhs.getShape())) {
-      if (ShapedType::isDynamic(std::get<0>(it)) &&
-          ShapedType::isDynamic(std::get<1>(it))) {
-        shape.push_back(std::get<1>(it));
-        refined_shape = true;
-      } else {
-        shape.push_back(std::get<0>(it));
-      }
-    }
-  }
-
-  // Refine the subtype.
-  Type lhs_element_type = lhs.getElementType();
-  auto lhs_element_subtype =
-      lhs_element_type.dyn_cast<tf_type::TensorFlowTypeWithSubtype>();
-  auto rhs_element_subtype =
-      rhs.getElementType().dyn_cast<tf_type::TensorFlowTypeWithSubtype>();
-  if (!rhs_element_subtype || !lhs_element_subtype ||
-      rhs_element_subtype.GetSubtypes().size() != 1 ||
-      lhs_element_subtype.GetSubtypes().size() > 1) {
-    if (refined_shape) return lhs.clone(shape, lhs.getElementType());
-    return lhs;
-  }
-
-  ArrayRef<TensorType> lhs_subtypes = lhs_element_subtype.GetSubtypes();
-  ArrayRef<TensorType> rhs_subtypes = rhs_element_subtype.GetSubtypes();
-
-  if (lhs_subtypes.empty()) {
-    lhs_element_type = lhs_element_subtype.clone({rhs_subtypes[0]});
-  } else {
-    auto refined_subtype = RefineShape(lhs_subtypes[0].cast<ShapedType>(),
-                                       rhs_subtypes[0].cast<ShapedType>());
-    if (refined_subtype != lhs_subtypes[0]) lhs_element_type = refined_subtype;
-  }
-
-  if (refined_shape || lhs_element_type != lhs.getElementType())
-    return lhs.clone(shape, lhs_element_type);
-  return lhs;
-}
-
 // Only non-static shape or type with subtype can be refined.
 static bool CanBeRefined(Type type) {
   auto shape_type = type.dyn_cast<ShapedType>();
@@ -262,9 +205,9 @@ void ShapeInference::runOnOperation() {
         inferred_type = UnrankedTensorType::get(result.getElementType());
       }
 
-      inferred_type =
-          RefineShape(op_result.getType().cast<ShapedType>(), inferred_type)
-              .cast<TensorType>();
+      inferred_type = tf_type::GetCastCompatibleType(
+                          op_result.getType().cast<ShapedType>(), inferred_type)
+                          .cast<TensorType>();
 
       if (inferred_type == op_result.getType()) continue;
 
