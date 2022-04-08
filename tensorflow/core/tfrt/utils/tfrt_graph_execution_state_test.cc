@@ -347,9 +347,12 @@ TEST_F(OptimizeGraphTest, OptimizeFunctions) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto fallback_state,
       tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_execution_state,
-      TfrtGraphExecutionState::Create(graphdef, *fallback_state, true));
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -464,9 +467,12 @@ TEST_F(OptimizeGraphTest, OptimizeFunctionsUsedByFunctionNodes) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto fallback_state,
       tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_execution_state,
-      TfrtGraphExecutionState::Create(graphdef, *fallback_state, true));
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -585,9 +591,12 @@ TEST_F(OptimizeGraphTest, DontOptimizeUnsafeFunction) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto fallback_state,
       tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_execution_state,
-      TfrtGraphExecutionState::Create(graphdef, *fallback_state, true));
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -653,9 +662,12 @@ TEST_F(OptimizeGraphTest, FunctionBecomeUnsafeIfAnyOpIsUnsafe) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto fallback_state,
       tensorflow::tfrt_stub::FallbackState::Create({}, fdef_lib));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_execution_state,
-      TfrtGraphExecutionState::Create(graphdef, *fallback_state, true));
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
 
   tensorflow::GraphImportConfig graph_import_config;
   graph_import_config.prune_unused_nodes = true;
@@ -692,9 +704,12 @@ TEST_F(ExtendGraphTest, ExtendGraph) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
                           tensorflow::tfrt_stub::FallbackState::Create({}, {}));
+
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions = false;
   TF_ASSERT_OK_AND_ASSIGN(
       auto graph_execution_state,
-      TfrtGraphExecutionState::Create(graphdef, *fallback_state, false));
+      TfrtGraphExecutionState::Create(options, graphdef, *fallback_state));
 
   GraphDef extension;
   {
