@@ -824,13 +824,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
-    case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
-    case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
-      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
-          op_sig.inputs.at(0).type == kTfLiteInt16) {
-        return 2;
-      }
-      return 1;
     case BuiltinOperator_WHERE:
       if (op_sig.inputs.at(0).type == kTfLiteBool) return 1;
       return 2;
