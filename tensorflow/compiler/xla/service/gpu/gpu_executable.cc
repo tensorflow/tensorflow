@@ -134,23 +134,19 @@ struct GpuExecutable::BefExecutable {
  private:
   explicit BefExecutable(OwnedBefBuffer buffer)
       : bef_buffer(std::move(buffer)),
-        host_ctx(
-            tfrt::gpu::GetDiagHandler(&mlir_ctx), tfrt::CreateMallocAllocator(),
-            tfrt::CreateMultiThreadedWorkQueue(/*num_threads=*/1,
-                                               /*num_blocking_threads=*/16)) {
-    tfrt::RegisterStaticKernels(host_ctx.GetMutableRegistry());
-  }
+        host_ctx(tfrt::gpu::CreateHostContext(
+            tfrt::gpu::GetDiagHandler(&mlir_ctx))) {}
 
   Status Initialize() {
     bef_file =
         tfrt::BEFFile::Open({bef_buffer.get(), bef_buffer.get_deleter().size},
-                            host_ctx.GetKernelRegistry(),
-                            host_ctx.diag_handler(), host_ctx.allocator());
+                            host_ctx->GetKernelRegistry(),
+                            host_ctx->diag_handler(), host_ctx->allocator());
     if (!bef_file) {
       return InternalError("Failed to decode BEF buffer");
     }
 
-    auto req_ctx = tfrt::RequestContextBuilder(&host_ctx, nullptr).build();
+    auto req_ctx = tfrt::RequestContextBuilder(host_ctx.get(), nullptr).build();
     if (!req_ctx) {
       return tensorflow::errors::Internal(toString(req_ctx.takeError()));
     }
@@ -181,7 +177,7 @@ struct GpuExecutable::BefExecutable {
 
   OwnedBefBuffer bef_buffer;
   mlir::MLIRContext mlir_ctx;
-  tfrt::HostContext host_ctx;
+  std::unique_ptr<tfrt::HostContext> host_ctx;
   tfrt::RCReference<tfrt::BEFFile> bef_file;
   tfrt::gpu::EntryPoint entry_point;
   // Signature: (chain, stream, inputs..., outputs...) -> (chain).
@@ -668,8 +664,8 @@ static Status ExecuteBef(const std::string& module_name,
   // Create execution context.
   Thunk::ExecuteParams params(*run_options, buffer_allocations,
                               run_options->stream(), nullptr);
-  tfrt::RequestContextBuilder request_context_builder(&bef_executable->host_ctx,
-                                                      gpu_context.second);
+  tfrt::RequestContextBuilder request_context_builder(
+      bef_executable->host_ctx.get(), gpu_context.second);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<tfrt::ExecutionContext> exec_ctx,
       CreateExecutionContext(params, std::move(request_context_builder)));
@@ -705,7 +701,7 @@ static Status ExecuteBef(const std::string& module_name,
   // Execute the function.
   function->Execute(*exec_ctx, args, {result});
 
-  // Wait for async execution to complete.
+  // Wait for async results to be ready.
   tfrt::Await(*exec_ctx, llvm::makeArrayRef(result));
 
   // Report error if any, from handler and result.
