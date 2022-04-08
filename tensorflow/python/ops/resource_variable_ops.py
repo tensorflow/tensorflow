@@ -673,10 +673,23 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     resource_map = {self.handle: new_variable.handle}
     return obj_map, resource_map
 
-  def _read_variable_op(self):
+  def _read_variable_op(self, no_copy=False):
+    """Reads the value of the variable.
+
+    If the variable is in copy-on-read mode and `no_copy` is True, the variable
+    is converted to copy-on-write mode before it is read.
+
+    Args:
+      no_copy: Whether to prevent a copy of the variable.
+
+    Returns:
+      The value of the variable.
+    """
     variable_accessed(self)
 
-    def read_and_set_handle():
+    def read_and_set_handle(no_copy):
+      if no_copy:
+        gen_resource_variable_ops.disable_copy_on_read(self.handle)
       result = gen_resource_variable_ops.read_variable_op(
           self.handle, self._dtype)
       _maybe_set_handle_data(self._dtype, self.handle, result)
@@ -685,9 +698,9 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     if getattr(self, "_caching_device", None) is not None:
       with ops.colocate_with(None, ignore_existing=True):
         with ops.device(self._caching_device):
-          result = read_and_set_handle()
+          result = read_and_set_handle(no_copy)
     else:
-      result = read_and_set_handle()
+      result = read_and_set_handle(no_copy)
 
     if not context.executing_eagerly():
       # Note that if a control flow context is active the input of the read op
@@ -705,10 +718,26 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     read the value only after some condition is true.
 
     Returns:
-     the read operation.
+      The value of the variable.
     """
     with ops.name_scope("Read"):
       value = self._read_variable_op()
+    # Return an identity so it can get placed on whatever device the context
+    # specifies instead of the device where the variable is.
+    return array_ops.identity(value)
+
+  def read_value_no_copy(self):
+    """Constructs an op which reads the value of this variable without copy.
+
+    The variable is read without making a copy even when it has been sparsely
+    accessed. Variables in copy-on-read mode will be converted to copy-on-write
+    mode.
+
+    Returns:
+      The value of the variable.
+    """
+    with ops.name_scope("Read"):
+      value = self._read_variable_op(no_copy=True)
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)
