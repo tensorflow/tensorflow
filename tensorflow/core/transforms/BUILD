@@ -90,6 +90,7 @@ cc_library(
         "//tensorflow/core/transforms/remapper:Pass",
         "//tensorflow/core/transforms/shape_inference:Pass",
         "//tensorflow/core/transforms/toposort:Pass",
+        "@llvm-project//mlir:Pass",
     ],
 )
 

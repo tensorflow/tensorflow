@@ -240,7 +240,8 @@ tensorflow::StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
                                     /*remove_ref_type=*/false, &value);
           })
           .Default([&](Attribute attr) {
-            return Unimplemented("Unhandled attribute kind for attribute");
+            return Unimplemented("Unhandled attribute kind for attribute: ",
+                                 debugString(attr));
           }));
   return value;
 }
