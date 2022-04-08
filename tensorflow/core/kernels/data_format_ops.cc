@@ -319,7 +319,7 @@ TF_CALL_int64(REGISTER_GPU_KERNEL);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Registration of the DEVICE_DEFAULT implementations.
-#define REGISTER_GPU_KERNEL(T)                         \
+#define REGISTER_DEVICE_DEFAULT_KERNEL(T)              \
   REGISTER_KERNEL_BUILDER(Name("DataFormatDimMap")     \
                               .Device(DEVICE_DEFAULT)  \
                               .HostMemory("x")         \
@@ -327,11 +327,11 @@ TF_CALL_int64(REGISTER_GPU_KERNEL);
                               .Label("host")           \
                               .TypeConstraint<T>("T"), \
                           DataFormatDimMapOp<CPUDevice, T>);
-TF_CALL_int32(REGISTER_GPU_KERNEL);
-TF_CALL_int64(REGISTER_GPU_KERNEL);
-#undef REGISTER_GPU_KERNEL
+TF_CALL_int32(REGISTER_DEVICE_DEFAULT_KERNEL);
+TF_CALL_int64(REGISTER_DEVICE_DEFAULT_KERNEL);
+#undef REGISTER_DEVICE_DEFAULT_KERNEL
 
-#define REGISTER_GPU_KERNEL(T)                         \
+#define REGISTER_DEVICE_DEFAULT_KERNEL(T)              \
   REGISTER_KERNEL_BUILDER(Name("DataFormatVecPermute") \
                               .Device(DEVICE_DEFAULT)  \
                               .HostMemory("x")         \
@@ -339,8 +339,8 @@ TF_CALL_int64(REGISTER_GPU_KERNEL);
                               .Label("host")           \
                               .TypeConstraint<T>("T"), \
                           DataFormatVecPermuteOp<CPUDevice, T>);
-TF_CALL_int32(REGISTER_GPU_KERNEL);
-TF_CALL_int64(REGISTER_GPU_KERNEL);
-#undef REGISTER_GPU_KERNEL
+TF_CALL_int32(REGISTER_DEVICE_DEFAULT_KERNEL);
+TF_CALL_int64(REGISTER_DEVICE_DEFAULT_KERNEL);
+#undef REGISTER_DEVICE_DEFAULT_KERNEL
 
 }  // namespace tensorflow
