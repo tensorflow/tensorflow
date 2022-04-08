@@ -35,6 +35,7 @@
 
 	// Add the IDs of extensions you want installed when the container is created.
 	"extensions": [
+		"ms-python.pylint",
 		"ms-python.python",
 		"ms-vscode.cpptools",
 	],
