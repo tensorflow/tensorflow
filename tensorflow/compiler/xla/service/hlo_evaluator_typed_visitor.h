@@ -264,6 +264,25 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <
       typename NativeT,
       typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleRoundNearestEven(HloInstruction* round) {
+    // TODO(b/228138251): Add support for rounding to nearest even.
+    return UnsupportedTypeError(round);
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleRoundNearestEven(HloInstruction* round) {
+    return UnsupportedTypeError(round);
+  }
+
+  Status HandleRoundNearestEven(HloInstruction* round) override {
+    return HandleRoundNearestEven<ReturnT>(round);
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
   Status HandleCeil(HloInstruction* ceil) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[ceil],
                         ElementWiseUnaryOp(ceil, [](ElementwiseT elem_operand) {
