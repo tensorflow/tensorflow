@@ -11980,6 +11980,27 @@ func DirectedInterleaveDataset(scope *Scope, selector_input_dataset tf.Output, d
 	return op.Output(0)
 }
 
+// Turns off the copy-on-read mode.
+//
+// Turns off the copy-on-read mode of a resource variable. If the variable is not in copy-on-read mode, this op has no effect.
+//
+// Arguments:
+//	resource: The resource handle of the resource variable.
+//
+// Returns the created operation.
+func DisableCopyOnRead(scope *Scope, resource tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DisableCopyOnRead",
+		Input: []tf.Input{
+			resource,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Returns x / y element-wise.
 //
 // *NOTE*: `Div` supports broadcasting. More about broadcasting
