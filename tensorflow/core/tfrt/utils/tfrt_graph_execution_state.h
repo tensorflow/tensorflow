@@ -52,6 +52,7 @@ class TfrtGraphExecutionState {
 
   struct Options {
     bool run_placer_grappler_on_functions = false;
+    bool enable_tfrt_gpu = false;
   };
 
   // Creates a `GraphExecutionState` given `graph_def` and `fallback_state`.
@@ -73,7 +74,7 @@ class TfrtGraphExecutionState {
   // Creates an optimized graph by pruning with `graph_import_config` and
   // best-effort Grappler run.
   StatusOr<OptimizationResult> CreateOptimizedGraph(
-      const tensorflow::GraphImportConfig& graph_import_config);
+      tensorflow::GraphImportConfig& graph_import_config);
 
   // Extends the current graph by `graph`.
   Status Extend(const GraphDef& graph);
