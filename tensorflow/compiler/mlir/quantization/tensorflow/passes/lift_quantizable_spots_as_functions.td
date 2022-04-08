@@ -18,14 +18,13 @@ include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.td"
+include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 
 //===----------------------------------------------------------------------===//
 // Helper functions.
 //===----------------------------------------------------------------------===//
 
 class ExtractVariadic<int N> : NativeCodeCall<"*($0.begin() + "# N #")">;
-
-def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
 
 class IsFusedOpEndsWith<string OpName> : AttrConstraint<
     CPred<"!$_self.cast<ArrayAttr>().empty() && "
