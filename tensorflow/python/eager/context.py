@@ -1634,7 +1634,8 @@ class Context(object):
           "Cannot set memory growth on device when virtual devices configured")
 
     if dev.device_type != "GPU" and dev not in self._pluggable_devices:
-      raise ValueError("Cannot set memory growth on non-GPU and non-Pluggable devices")
+      raise ValueError(
+          "Cannot set memory growth on non-GPU and non-Pluggable devices")
 
     if self._memory_growth_map.get(dev) == enable:
       return
