@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/tools/proto_text/gen_proto_text_functions_lib.h"
 
+#include <string>
+
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -25,11 +27,40 @@ namespace tensorflow {
 namespace test {
 namespace {
 
-// Convert <input> to text depending on <short_debug>, then parse that into a
+std::string PrintShortTextFormat(const tensorflow::protobuf::Message& message) {
+  std::string message_short_text;
+
+  protobuf::TextFormat::Printer printer;
+  printer.SetSingleLineMode(true);
+  printer.SetExpandAny(true);
+
+  printer.PrintToString(message, &message_short_text);
+  // Single line mode currently might have an extra space at the end.
+  if (!message_short_text.empty() &&
+      message_short_text[message_short_text.size() - 1] == ' ') {
+    message_short_text.resize(message_short_text.size() - 1);
+  }
+
+  return message_short_text;
+}
+
+std::string PrintTextFormat(const tensorflow::protobuf::Message& message) {
+  std::string message_text;
+
+  protobuf::TextFormat::Printer printer;
+  printer.SetExpandAny(true);
+
+  printer.PrintToString(message, &message_text);
+
+  return message_text;
+}
+
+// Convert <input> to text depending on <short_text>, then parse that into a
 // new message using the generated parse function. Return the new message.
 template <typename T>
-T RoundtripParseProtoOrDie(const T& input, bool short_debug) {
-  const string s = short_debug ? input.ShortDebugString() : input.DebugString();
+T RoundtripParseProtoOrDie(const T& input, bool short_text) {
+  const string s =
+      short_text ? PrintShortTextFormat(input) : PrintTextFormat(input);
   T t;
   EXPECT_TRUE(ProtoParseFromString(s, &t)) << "Failed to parse " << s;
   return t;
@@ -39,12 +70,12 @@ T RoundtripParseProtoOrDie(const T& input, bool short_debug) {
 // matches DebugString calls on the proto, and verifies parsing the
 // DebugString output works. It does this for regular and short
 // debug strings.
-#define EXPECT_TEXT_TRANSFORMS_MATCH()                               \
-  EXPECT_EQ(proto.DebugString(), ProtoDebugString(proto));           \
-  EXPECT_EQ(proto.ShortDebugString(), ProtoShortDebugString(proto)); \
-  EXPECT_EQ(proto.DebugString(),                                     \
-            RoundtripParseProtoOrDie(proto, true).DebugString());    \
-  EXPECT_EQ(proto.DebugString(),                                     \
+#define EXPECT_TEXT_TRANSFORMS_MATCH()                                  \
+  EXPECT_EQ(PrintTextFormat(proto), ProtoDebugString(proto));           \
+  EXPECT_EQ(PrintShortTextFormat(proto), ProtoShortDebugString(proto)); \
+  EXPECT_EQ(proto.DebugString(),                                        \
+            RoundtripParseProtoOrDie(proto, true).DebugString());       \
+  EXPECT_EQ(proto.DebugString(),                                        \
             RoundtripParseProtoOrDie(proto, false).DebugString());
 
 // Macro for failure cases. Verifies both protobuf and proto_text to
