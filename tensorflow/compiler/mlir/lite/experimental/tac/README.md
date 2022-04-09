@@ -162,7 +162,7 @@ We have already modeled `cpu_hardware` & `gpu_hardware` as well as the
 
 #### Target Annotation Pass
 In this pass, every op will be targeted with the user specified targets based on
-the device capabilites. For example, If the user specified the desired targets
+the device capabilities. For example, If the user specified the desired targets
 are "GPU", "CPU", `conv2d` can run on both "GPU" and "CPU", we will annotate
 the op `conv2d` with "GPU" since it's preferred; `pack` can only run on "CPU",
 so we will annotate the op with "CPU" since "GPU" does not support this op.

@@ -111,7 +111,7 @@ class ConvolutionVisitor {
   // Returns false if the opcode should definitely not be propagated upon.
   bool IsOpcodeNonPropagatable(HloInstruction* consumer);
 
-  // This function checks if the HLO instrution supports propagation.
+  // This function checks if the HLO instruction supports propagation.
   bool SupportedOpForPropagation(HloInstruction* consumer,
                                  HloInstruction* producer);
 

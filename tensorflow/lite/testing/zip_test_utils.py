@@ -367,7 +367,7 @@ def make_zip_of_tests(options,
     make_test_inputs: function taking `curr_params`, `session`, `input_tensors`,
       `output_tensors` and returns tuple `(input_values, output_values)`.
     extra_convert_options: Additional convert options.
-    use_frozen_graph: Whether or not freeze graph before convertion.
+    use_frozen_graph: Whether or not freeze graph before conversion.
     expected_tf_failures: Number of times tensorflow is expected to fail in
       executing the input graphs. In some cases it is OK for TensorFlow to fail
       because the one or more combination of parameters is invalid.

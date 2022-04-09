@@ -6924,7 +6924,7 @@ inline int16x8x4_t FixedPoint4Logistic(int16x8x4_t input_val) {
 
   // TODO(b/134622898) Implement a low accuracy version of logistic. In this
   // method, gemmlowp::tanh spends about 80% of the execution times. The
-  // current implementation is rougly 12-bit accurate in the 16-bit fixed
+  // current implementation is roughly 12-bit accurate in the 16-bit fixed
   // point case. Until reaching to error bounds, there are rooms for
   // improvements.
   const FixedPoint0 output_val_f0_0 = gemmlowp::logistic(input_val_f4_0);
@@ -6954,7 +6954,7 @@ inline int16x8x4_t FixedPoint4Tanh(int16x8x4_t input_val) {
 
   // TODO(b/134622898) Implement a low accuracy version of logistic. In this
   // method, gemmlowp::tanh spends about 80% of the execution times. The
-  // current implementation is rougly 12-bit accurate in the 16-bit fixed
+  // current implementation is roughly 12-bit accurate in the 16-bit fixed
   // point case. Until reaching to error bounds, there are rooms for
   // improvements.
   const FixedPoint0 output_val_f0_0 = gemmlowp::tanh(input_val_f4_0);

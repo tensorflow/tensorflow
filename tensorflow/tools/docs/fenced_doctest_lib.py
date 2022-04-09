@@ -36,8 +36,8 @@ def load_from_files(
   Args:
     files: A list of file paths to test.
     globs: The global namespace the tests are run in.
-    set_up: Run before each test, recieves the test as argument.
-    tear_down: Run after each test, recieves the test as argument.
+    set_up: Run before each test, receives the test as argument.
+    tear_down: Run after each test, receives the test as argument.
 
   Returns:
     A DocFileSuite containing the tests.
@@ -80,7 +80,7 @@ class FencedCellParser(doctest.DocTestParser):
 
   https://docs.python.org/3/library/doctest.html#doctestparser-objects
 
-  The `get_examples` method recieves a string and returns an
+  The `get_examples` method receives a string and returns an
   iterable of `doctest.Example` objects.
   """
   patched = False

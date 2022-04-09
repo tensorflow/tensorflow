@@ -33,7 +33,7 @@ enum class BufferType { QUANTIZED_INT8, QUANTIZED_FLOAT16 };
 
 // Stores information about how to quantize a user-specified custom operation.
 // CustomOpInfo contains info of its corresponding CustomOp registered in the
-// CustomOpMap. 'quantizable_input_indices' is used to determine which indicies
+// CustomOpMap. 'quantizable_input_indices' is used to determine which indices
 // of the CustomOp is quantizable. 'is_weight_only' is used specify whether the
 // custom op is quantized only for storage and dequantized at runtime.
 // 'no_side_effect' is used to determine whether the op can be pruned if
