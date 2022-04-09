@@ -1619,6 +1619,7 @@ class PFor:
             try:
               new_outputs = converter(pfor_inputs)
             except ConversionNotImplementedError as e:
+              logging.warning(str(e))
               has_vectorized_variant_inputs = any(
                   _is_variant_with_internal_stacking(x) for x in
                   y_op.inputs)
