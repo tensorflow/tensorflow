@@ -2709,7 +2709,7 @@ This release introduces several vulnerability fixes:
     ([CVE-2021-29602](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29602))
 *   Fixes a division by zero in TFLite's implementation of hashtable lookup
     ([CVE-2021-29604](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29604))
-*   Fixes a integer overflow in TFLite concatentation
+*   Fixes a integer overflow in TFLite concatenation
     ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601))
 *   Fixes a integer overflow in TFLite memory allocation
     ([CVE-2021-29605](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29605))
@@ -2945,7 +2945,7 @@ This release introduces several vulnerability fixes:
     ([CVE-2021-29602](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29602))
 *   Fixes a division by zero in TFLite's implementation of hashtable lookup
     ([CVE-2021-29604](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29604))
-*   Fixes a integer overflow in TFLite concatentation
+*   Fixes a integer overflow in TFLite concatenation
     ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601))
 *   Fixes a integer overflow in TFLite memory allocation
     ([CVE-2021-29605](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29605))
@@ -3181,7 +3181,7 @@ This release introduces several vulnerability fixes:
     ([CVE-2021-29602](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29602))
 *   Fixes a division by zero in TFLite's implementation of hashtable lookup
     ([CVE-2021-29604](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29604))
-*   Fixes a integer overflow in TFLite concatentation
+*   Fixes a integer overflow in TFLite concatenation
     ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601))
 *   Fixes a integer overflow in TFLite memory allocation
     ([CVE-2021-29605](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29605))
@@ -3417,7 +3417,7 @@ This release introduces several vulnerability fixes:
     ([CVE-2021-29602](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29602))
 *   Fixes a division by zero in TFLite's implementation of hashtable lookup
     ([CVE-2021-29604](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29604))
-*   Fixes a integer overflow in TFLite concatentation
+*   Fixes a integer overflow in TFLite concatenation
     ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601))
 *   Fixes a integer overflow in TFLite memory allocation
     ([CVE-2021-29605](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29605))
@@ -3938,7 +3938,7 @@ This release introduces several vulnerability fixes:
         ([CVE-2021-29602](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29602))
     *   Fixes a division by zero in TFLite's implementation of hashtable lookup
         ([CVE-2021-29604](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29604))
-    *   Fixes a integer overflow in TFLite concatentation
+    *   Fixes a integer overflow in TFLite concatenation
         ([CVE-2021-29601](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29601))
     *   Fixes a integer overflow in TFLite memory allocation
         ([CVE-2021-29605](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-29605))

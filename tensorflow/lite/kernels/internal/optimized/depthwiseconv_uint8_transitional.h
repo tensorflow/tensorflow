@@ -2518,7 +2518,7 @@ struct KernelMacroBlock<
   //
   // The filter is applied using sub-blocks. These are in the needed form for
   // the first (width) offset. For subsequent offsets, the filter is applied to
-  // shifted and combined data. The concatentation and shifting herein is fairly
+  // shifted and combined data. The concatenation and shifting herein is fairly
   // straightforward, but in the optimized code is an area of creativity in
   // design because NEON instructions do not directly support the required
   // between-register permutation.
@@ -2695,7 +2695,7 @@ struct KernelMacroBlock<
   //
   // The filter is applied using sub-blocks. These are in the needed form for
   // the first (width) offset. For subsequent offsets, the filter is applied to
-  // shifted and combined data. The concatentation and shifting herein is fairly
+  // shifted and combined data. The concatenation and shifting herein is fairly
   // straightforward, but in the optimized code is an area of creativity in
   // design because NEON instructions do not directly support the required
   // between-register permutation.
