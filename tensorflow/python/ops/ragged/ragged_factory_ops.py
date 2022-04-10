@@ -164,6 +164,8 @@ def _constant_value(ragged_factory, inner_factory, pylist, dtype, ragged_rank,
     ValueError: If the scalar values in `pylist` have inconsistent nesting
       depth; or if ragged_rank or inner_shape are incompatible with `pylist`.
   """
+  if len(pylist) == 0:
+    raise TypeError("Invalid pylist: can not be empty")
   if ragged_tensor.is_ragged(pylist):
     raise TypeError("pylist may not be a RaggedTensor or RaggedTensorValue.")
   # np.ndim builds an array, so we short-circuit lists and tuples.
