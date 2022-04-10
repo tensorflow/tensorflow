@@ -33,7 +33,16 @@ _  /   /  __/  / / /(__  )/ /_/ /  /   _  __/   _  / / /_/ /_ |/ |/ /
 TF
 echo -e "\e[0;33m"
 
-if [[ $EUID -eq 0 ]]; then
+# If /proc/self/uid_map 4294967295 mappings, we are in the initial user namespace, i.e. the host.
+# Otherwise we are in a non-initial user namespace.
+# https://github.com/kubernetes-sigs/kind/blob/main/images/base/files/usr/local/bin/entrypoint#L21-L28
+userns=""
+if grep -Eqv "0[[:space:]]+0[[:space:]]+4294967295" /proc/self/uid_map; then
+  userns="1"
+fi
+
+
+if [[ $EUID -eq 0 && -z $userns ]]; then
   cat <<WARN
 WARNING: You are running this container as root, which can cause new files in
 mounted volumes to be created as the root user on your host machine.
@@ -42,6 +51,11 @@ To avoid this, run the container by specifying your user's userid:
 
 $ docker run -u \$(id -u):\$(id -g) args...
 WARN
+elif [[ -n $userns ]]; then
+  cat <<EXPL
+You are running this container in a user namesace (rootless),
+which should map to the ID and group for your user on the Docker host. Great!
+EXPL
 else
   cat <<EXPL
 You are running this container as user with ID $(id -u) and group $(id -g),
