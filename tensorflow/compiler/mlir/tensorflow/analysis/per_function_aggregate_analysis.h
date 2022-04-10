@@ -61,6 +61,13 @@ class PerFunctionAggregateAnalysisConsumerPass
     : public PassWrapper<
           PerFunctionAggregateAnalysisConsumerPass<DerivedT, AnalysisT>,
           OperationPass<ModuleOp>> {
+ public:
+  static ::mlir::TypeID resolveTypeID() {
+    static ::mlir::SelfOwningTypeID id;
+    return id;
+  }
+
+ private:
   void runOnOperation() override {
     ModuleOp op = this->getOperation();
     DerivedT& derived = *static_cast<DerivedT*>(this);

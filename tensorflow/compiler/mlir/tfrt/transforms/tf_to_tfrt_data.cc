@@ -228,6 +228,10 @@ class BatchDatasetV2OpConversion
 class TFToTFRTDataRewritePass
     : public mlir::PassWrapper<TFToTFRTDataRewritePass,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TFToTFRTDataRewritePass)
+
+ private:
   llvm::StringRef getArgument() const final { return "tf-to-tfrt-data"; }
   llvm::StringRef getDescription() const final {
     return "Convert Tensorflow dialect to TFRT's data dialect.";

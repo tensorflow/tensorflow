@@ -56,6 +56,8 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 struct TPUDynamicLayoutPass
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TPUDynamicLayoutPass, TF::ResourceAliasAnalysis> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TPUDynamicLayoutPass)
+
   void runOnFunction(
       FuncOp func,
       const TF::ResourceAliasAnalysis::Info& resource_alias_analysis);
