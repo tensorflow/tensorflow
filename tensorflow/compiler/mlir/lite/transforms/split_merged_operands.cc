@@ -67,6 +67,8 @@ namespace {
 
 struct SplitMergedOperandsPass
     : public PassWrapper<SplitMergedOperandsPass, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SplitMergedOperandsPass)
+
   void runOnOperation() override;
 
   StringRef getArgument() const final {

@@ -28,6 +28,11 @@ namespace {
 class InsertCallOnceOpFromSessionInitializerPass
     : public mlir::PassWrapper<InsertCallOnceOpFromSessionInitializerPass,
                                OperationPass<ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      InsertCallOnceOpFromSessionInitializerPass)
+
+ private:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TensorFlowLiteDialect>();
   }
@@ -43,7 +48,6 @@ class InsertCallOnceOpFromSessionInitializerPass
            "given";
   }
 
- private:
   void runOnOperation() override;
 };
 

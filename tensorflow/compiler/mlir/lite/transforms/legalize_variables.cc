@@ -55,6 +55,8 @@ bool IsSupportedElementType(ShapedType type) {
 class LegalizeVariables
     : public PassWrapper<LegalizeVariables, OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeVariables)
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
   }

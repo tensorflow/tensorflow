@@ -1619,6 +1619,8 @@ class TfToTfrtConversionPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TfToTfrtConversionPass)
+
   TfToTfrtConversionPass() = default;
   explicit TfToTfrtConversionPass(const TfrtPipelineOptions &options) {
     target_tpurt_ = options.target_tpurt;

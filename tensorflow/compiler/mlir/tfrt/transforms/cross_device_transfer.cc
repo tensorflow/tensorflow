@@ -108,6 +108,8 @@ static std::string GetDevice(mlir::Value value, FuncOp parent_func_op) {
 
 struct CrossDeviceTransferPass
     : public PassWrapper<CrossDeviceTransferPass, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CrossDeviceTransferPass)
+
   void runOnOperation() override;
 
   llvm::StringRef getArgument() const final {

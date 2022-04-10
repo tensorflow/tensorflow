@@ -171,6 +171,8 @@ class LegalizeHashTables
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeHashTables)
+
   LegalizeHashTables() = default;
   LegalizeHashTables(const LegalizeHashTables&) {}
 

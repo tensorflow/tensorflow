@@ -49,6 +49,8 @@ using mlir::func::FuncOp;
 struct AddTensorflowProducerVersion
     : public mlir::PassWrapper<AddTensorflowProducerVersion,
                                mlir::OperationPass<mlir::ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AddTensorflowProducerVersion)
+
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
 

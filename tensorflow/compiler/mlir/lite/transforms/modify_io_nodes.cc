@@ -47,6 +47,8 @@ namespace {
 struct ModifyIONodesPass
     : public PassWrapper<ModifyIONodesPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ModifyIONodesPass)
+
   explicit ModifyIONodesPass() {}
   explicit ModifyIONodesPass(mlir::Type input_type, mlir::Type output_type)
       : input_type(input_type), output_type(output_type) {}

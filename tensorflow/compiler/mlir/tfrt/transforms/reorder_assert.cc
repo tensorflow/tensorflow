@@ -28,6 +28,8 @@ class ReorderTfAssertPass
     : public mlir::PassWrapper<ReorderTfAssertPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReorderTfAssertPass)
+
   llvm::StringRef getArgument() const final { return "tfrt-reorder-tf-assert"; }
   llvm::StringRef getDescription() const final {
     return "Move tf.Assert to the end of the function to avoid unnecessary "
