@@ -53,7 +53,7 @@ $ docker run -u \$(id -u):\$(id -g) args...
 WARN
 elif [[ -n $userns ]]; then
   cat <<EXPL
-You are running this container in a user namesace (rootless),
+You are running this container in a user namespace (rootless),
 which should map to the ID and group for your user on the Docker host. Great!
 EXPL
 else
