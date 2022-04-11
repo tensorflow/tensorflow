@@ -37,6 +37,9 @@ CreateDTensorDeviceMeshClusterCoarsening();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateDTensorDCE();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateDTensorUndoMergeConstAcrossMesh();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateDTensorConstantFolding();
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>

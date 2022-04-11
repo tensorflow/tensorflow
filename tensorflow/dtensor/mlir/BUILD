@@ -205,6 +205,7 @@ cc_library(
         "spmd_expansion.cc",
         "tpu_add_resource_device_attribute.cc",
         "tpu_integration.cc",
+        "undo_merge_const_across_mesh.cc",
     ],
     hdrs = ["dtensor_mlir_passes.h"],
     deps = [
