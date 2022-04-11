@@ -5234,6 +5234,8 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
 
 def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
     NoSideEffect,
+    QuantizableResult,
+    AffineQuantizedOpInterface,
     AffineOpCoefficient<3, 1>,
     AccumulatorUniformScale<2, 0, 1>,
     TFL_OperandHasRank<0, 1>,
