@@ -688,7 +688,7 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     variable_accessed(self)
 
     def read_and_set_handle(no_copy):
-      if no_copy:
+      if no_copy and forward_compat.forward_compatible(2022, 5, 3):
         gen_resource_variable_ops.disable_copy_on_read(self.handle)
       result = gen_resource_variable_ops.read_variable_op(
           self.handle, self._dtype)
