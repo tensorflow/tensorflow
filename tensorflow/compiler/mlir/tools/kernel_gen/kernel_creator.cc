@@ -119,6 +119,8 @@ bool IsSmallAlloc(Value alloc) {
 struct CollapseParallelLoopsTo1D
     : public mlir::PassWrapper<CollapseParallelLoopsTo1D,
                                mlir::OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CollapseParallelLoopsTo1D)
+
   void runOnOperation() override {
     getOperation().walk([&](ParallelOp op) {
       unsigned num_loops = op.getNumLoops();
@@ -136,6 +138,8 @@ struct CollapseParallelLoopsTo1D
 class TileLoops
     : public mlir::PassWrapper<TileLoops, mlir::OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TileLoops)
+
   explicit TileLoops(llvm::ArrayRef<int64_t> tile_sizes,
                      llvm::ArrayRef<int64_t> unroll_factors) {
     tile_sizes_ = llvm::to_vector<4>(tile_sizes);
