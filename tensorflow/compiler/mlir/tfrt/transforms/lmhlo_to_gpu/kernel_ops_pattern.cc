@@ -49,15 +49,6 @@
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
-<<<<<<< HEAD
-#if TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/core/platform/rocm_rocdl_path.h"
-#else
-#include "tensorflow/compiler/xla/service/gpu/nvptx_helper.h"
-#endif
-=======
->>>>>>> google_upstream/master
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
@@ -198,10 +189,6 @@ Emit(mlir::func::FuncOp func_op,
       "v2048:2048-n32:64-A5";
   const char platform_name[] = "ROCm";
 #else
-<<<<<<< HEAD
-  // Hardcoded values for now...
-=======
->>>>>>> google_upstream/master
   const char target_triple[] = "nvptx64-nvidia-cuda";
   const char data_layout[] = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
   const char platform_name[] = "CUDA";
@@ -265,19 +252,6 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   hlo_module_config.set_debug_options(options);
   // TODO(b/228163857): pass down capability from CompileModuleToLlvmIrImpl().
   stream_executor::CudaComputeCapability cuda_compute_capability = {5, 2};
-<<<<<<< HEAD
-#if TENSORFLOW_USE_ROCM
-  auto platform = xla::PlatformUtil::GetPlatform("gpu");
-  if (!platform.ok()) return MakeError(platform.status());
-  auto ses = xla::PlatformUtil::GetStreamExecutors(*platform);
-  if (!ses.ok()) return MakeError(ses.status());
-  if (ses->size() == 0)
-    return MakeError("Unable to obtain rocm compute capability");
-  auto rocm_compute_capability =
-      (*ses)[0]->GetDeviceDescription().rocm_compute_capability();
-#else
-  stream_executor::RocmComputeCapability rocm_compute_capability("gfx908");
-=======
   stream_executor::RocmComputeCapability rocm_compute_capability("gfx900");
 #if TENSORFLOW_USE_ROCM
   auto platform = xla::PlatformUtil::GetPlatform("gpu");
@@ -288,16 +262,11 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   rocm_compute_capability = stream_executors->front()
                                 ->GetDeviceDescription()
                                 .rocm_compute_capability();
->>>>>>> google_upstream/master
 #endif
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 
-<<<<<<< HEAD
   auto emit_result = Emit(std::get<mlir::func::FuncOp>(module_op), *allocations,
-=======
-  auto emit_result = Emit(std::get<mlir::FuncOp>(module_op), *allocations,
->>>>>>> google_upstream/master
                           cuda_compute_capability, rocm_compute_capability,
                           hlo_module_config, llvm_module.get());
   if (!emit_result) return emit_result.takeError();
