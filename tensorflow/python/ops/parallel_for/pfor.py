@@ -1593,7 +1593,7 @@ class PFor:
           else:
             converter = _pfor_converter_registry.get(y_op.type, None)
           if converter is None:
-            root_cause = (f"there is no registered converter for this op yet.")
+            root_cause = (f"there is no registered converter for this op.")
             has_variant_outputs = any(x.dtype == dtypes.variant for x in
                                       y_op.outputs)
             has_vectorized_variant_inputs = any(
