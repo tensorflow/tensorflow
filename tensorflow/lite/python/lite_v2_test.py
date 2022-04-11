@@ -1144,7 +1144,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def testDisablePerChannelQuantization(self, disable_per_channel=False,
                                         enable_mlir_quantizer=False,
                                         representative_dataset=True):
-    k_conv_name = 'Conv2D1'
+    k_conv_name = 'Conv2D'
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 38
     root, func, calib_gen = self._getIntegerQuantizeModel(k_num_filters)
@@ -1165,7 +1165,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     detail = next((d for d in interpreter.get_tensor_details()
-                   if d['name'] == k_conv_name))
+                   if d['name'].startswith(k_conv_name)))
     quant_params = detail['quantization_parameters']
     expected_num_params = 1 if disable_per_channel else k_num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
@@ -2311,7 +2311,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     model.build(input_shape=(1, 5, 5, 3))
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
     save(model, saved_model_dir)
-    k_conv_name = 'sequential/conv2d/Conv2D1'
+    k_conv_name = 'sequential/conv2d/Conv2D'
     quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
         saved_model_dir)
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
@@ -2333,7 +2333,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     detail = next((d for d in interpreter.get_tensor_details()
-                   if d['name'] == k_conv_name))
+                   if d['name'].startswith(k_conv_name)))
     quant_params = detail['quantization_parameters']
     expected_num_params = k_num_filters
     if disable_per_channel:
@@ -2394,7 +2394,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     dense_bias = next((d for d in interpreter.get_tensor_details()
-                       if d['name'] == k_dense_bias_name))
+                       if d['name'].startswith(k_dense_bias_name)))
     self.assertEqual(bias_type, dense_bias['dtype'])
 
   @parameterized.named_parameters(
@@ -2408,7 +2408,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
                                        disable_per_channel,
                                        enable_float16_quant):
     num_filters = 1024
-    conv_name = 'sequential/conv2d/Conv2D1'
+    conv_name = 'sequential/conv2d/Conv2D'
     model = tf.keras.models.Sequential(
         [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')])
     model.build(input_shape=(1, 32, 32, 3))
@@ -2428,8 +2428,22 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
-    quantized_weight = next(
-        d for d in interpreter.get_tensor_details() if d['name'] == conv_name)
+    quantized_weight = None
+    quantized_weight_with_one_postfix = None
+    quantized_weight_without_one_postfix = None
+    for d in interpreter.get_tensor_details():
+      if d['name'] == conv_name + '1':
+        quantized_weight = d
+        quantized_weight_with_one_postfix = d
+        break
+    for d in interpreter.get_tensor_details():
+      if d['name'].startswith(conv_name):
+        if quantized_weight is None:
+          quantized_weight = d
+        quantized_weight_without_one_postfix = d
+        break
+
+    self.assertIsNotNone(quantized_weight)
     quant_params = quantized_weight['quantization_parameters']
 
     if enable_float16_quant:
@@ -2444,7 +2458,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertEqual(np.float32, output_details[0]['dtype'])
     if enable_float16_quant:
-      self.assertEqual(np.float16, quantized_weight['dtype'])
+      self.assertTrue(
+          (quantized_weight_with_one_postfix is not None and
+           np.float16 == quantized_weight_with_one_postfix['dtype']) or
+          (quantized_weight_without_one_postfix is not None and
+           np.float16 == quantized_weight_without_one_postfix['dtype']))
     else:
       self.assertEqual(np.int8, quantized_weight['dtype'])
 
@@ -2619,7 +2637,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
                                        disable_per_channel,
                                        enable_float16_quant):
     num_filters = 1024
-    conv_name = 'sequential/conv2d/Conv2D1'
+    conv_name = 'sequential/conv2d/Conv2D'
     model = tf.keras.models.Sequential(
         [tf.keras.Input(shape=(32, 32, 3)),
          tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')])
@@ -2637,8 +2655,22 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
-    quantized_weight = next(
-        d for d in interpreter.get_tensor_details() if d['name'] == conv_name)
+    quantized_weight = None
+    quantized_weight_with_one_postfix = None
+    quantized_weight_without_one_postfix = None
+    for d in interpreter.get_tensor_details():
+      if d['name'] == conv_name + '1':
+        quantized_weight = d
+        quantized_weight_with_one_postfix = d
+        break
+    for d in interpreter.get_tensor_details():
+      if d['name'].startswith(conv_name):
+        if quantized_weight is None:
+          quantized_weight = d
+        quantized_weight_without_one_postfix = d
+        break
+
+    self.assertIsNotNone(quantized_weight)
     quant_params = quantized_weight['quantization_parameters']
 
     if enable_float16_quant:
@@ -2653,7 +2685,11 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertEqual(np.float32, output_details[0]['dtype'])
     if enable_float16_quant:
-      self.assertEqual(np.float16, quantized_weight['dtype'])
+      self.assertTrue(
+          (quantized_weight_with_one_postfix is not None and
+           np.float16 == quantized_weight_with_one_postfix['dtype']) or
+          (quantized_weight_without_one_postfix is not None and
+           np.float16 == quantized_weight_without_one_postfix['dtype']))
     else:
       self.assertEqual(np.int8, quantized_weight['dtype'])
 
