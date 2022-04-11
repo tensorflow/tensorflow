@@ -169,6 +169,13 @@ Value GetShape(Value input, Location loc, PatternRewriter& rewriter) {
       .output();
 }
 
+mlir::TFL::MirrorPaddingType GetTFLMirrorPaddingFromString(
+    mlir::StringAttr padding) {
+  return llvm::StringSwitch<mlir::TFL::MirrorPaddingType>(padding.getValue())
+      .Case("REFLECT", mlir::TFL::MirrorPaddingType::REFLECT)
+      .Case("SYMMETRIC", mlir::TFL::MirrorPaddingType::SYMMETRIC);
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"
 
 #define DECL_CONVERT_OP(tf_op)                                               \

@@ -109,10 +109,15 @@ static tflite::Padding ConvertTFL_PaddingAttrForOptionWriter(
 }
 
 static tflite::MirrorPadMode ConvertTFL_MirrorPaddingAttrForOptionWriter(
-    llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
-  return llvm::StringSwitch<tflite::MirrorPadMode>(str)
-      .Case("REFLECT", tflite::MirrorPadMode_REFLECT)
-      .Case("SYMMETRIC", tflite::MirrorPadMode_SYMMETRIC);
+    mlir::TFL::MirrorPaddingType padding,
+    flatbuffers::FlatBufferBuilder* builder) {
+  switch (padding) {
+    case mlir::TFL::MirrorPaddingType::REFLECT:
+      return tflite::MirrorPadMode_REFLECT;
+    case mlir::TFL::MirrorPaddingType::SYMMETRIC:
+      return tflite::MirrorPadMode_SYMMETRIC;
+  }
+  llvm_unreachable("invalid mirror_pad_enum in conversion.");
 }
 
 static tflite::TensorType ConvertDerivedTypeAttrForOptionWriter(
@@ -206,10 +211,15 @@ ConvertTFL_FullyConnectedOptionsWeightFormatAttrForOptionWriter(
 }
 
 static tflite::LSTMKernelType ConvertTFL_LSTMKernelTypeAttrForOptionWriter(
-    llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
-  return llvm::StringSwitch<tflite::LSTMKernelType>(str)
-      .Case("FULL", tflite::LSTMKernelType_FULL)
-      .Case("BASIC", tflite::LSTMKernelType_BASIC);
+    mlir::TFL::LSTMKernelType kernel_type,
+    flatbuffers::FlatBufferBuilder* builder) {
+  switch (kernel_type) {
+    case mlir::TFL::LSTMKernelType::FULL:
+      return tflite::LSTMKernelType_FULL;
+    case mlir::TFL::LSTMKernelType::BASIC:
+      return tflite::LSTMKernelType_BASIC;
+  }
+  llvm_unreachable("invalid lstm_kernel_type in conversion.");
 }
 
 static mlir::Attribute BuildBoolAttr(bool value, mlir::Builder builder) {
@@ -270,14 +280,31 @@ static mlir::Attribute BuildTFL_FullyConnectedOptionsWeightFormatAttr(
 
 static mlir::Attribute BuildTFL_LSTMKernelTypeAttr(tflite::LSTMKernelType value,
                                                    mlir::Builder builder) {
-  const char* option_name = tflite::EnumNameLSTMKernelType(value);
-  return builder.getStringAttr(option_name);
+  mlir::TFL::LSTMKernelType kernel_type;
+  switch (value) {
+    case tflite::LSTMKernelType_FULL:
+      kernel_type = mlir::TFL::LSTMKernelType::FULL;
+      break;
+    case tflite::LSTMKernelType_BASIC:
+      kernel_type = mlir::TFL::LSTMKernelType::BASIC;
+      break;
+  }
+  return mlir::TFL::LSTMKernelTypeAttr::get(builder.getContext(), kernel_type);
 }
 
 static mlir::Attribute BuildTFL_MirrorPaddingAttr(tflite::MirrorPadMode value,
                                                   mlir::Builder builder) {
-  const char* option_name = tflite::EnumNameMirrorPadMode(value);
-  return builder.getStringAttr(option_name);
+  mlir::TFL::MirrorPaddingType padding;
+  switch (value) {
+    case tflite::MirrorPadMode_REFLECT:
+      padding = mlir::TFL::MirrorPaddingType::REFLECT;
+      break;
+    case tflite::MirrorPadMode_SYMMETRIC:
+    default:
+      padding = mlir::TFL::MirrorPaddingType::SYMMETRIC;
+      break;
+  }
+  return mlir::TFL::MirrorPaddingTypeAttr::get(builder.getContext(), padding);
 }
 
 static mlir::Attribute BuildTFL_PaddingAttr(tflite::Padding value,

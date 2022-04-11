@@ -35,4 +35,29 @@ def TFL_DimensionType : I32EnumAttr<
 def TFL_DimensionTypeAttr : EnumAttr<TFL_Dialect, TFL_DimensionType,
     "dimension_type_attr">;
 
+// MirrorPadding type attributes
+def TFL_MIRRORPAD_Reflect : I32EnumAttrCase<"REFLECT", 0>;
+def TFL_MIRRORPAD_Symmetric : I32EnumAttrCase<"SYMMETRIC", 1>;
+def TFL_MirrorPaddingType : I32EnumAttr<"MirrorPaddingType", "mirror_pad_enum", [
+      TFL_MIRRORPAD_Reflect, TFL_MIRRORPAD_Symmetric
+    ]> {
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::TFL";
+}
+def TFL_MirrorPaddingAttr : EnumAttr<TFL_Dialect, TFL_MirrorPaddingType,
+    "mirror_pad_attr">;
+
+// LSTM Kernel Type attributes
+def TFL_LSTM_KT_FULL  : I32EnumAttrCase<"FULL", 0>;
+def TFL_LSTM_KT_BASIC  : I32EnumAttrCase<"BASIC", 1>;
+def TFL_LSTMKernelType : I32EnumAttr<"LSTMKernelType", "lstm_kernel_type",
+   [
+     TFL_LSTM_KT_FULL,  TFL_LSTM_KT_BASIC
+   ]>{
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::mlir::TFL";
+}
+def TFL_LSTMKernelTypeAttr : EnumAttr<TFL_Dialect, TFL_LSTMKernelType,
+    "lstm_kernel_type_attr">;
+
 #endif // TFL_OP_ENUMS
