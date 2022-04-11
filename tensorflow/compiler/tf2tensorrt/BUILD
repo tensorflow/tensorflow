@@ -996,7 +996,6 @@ pybind_extension(
         "//:__subpackages__",
         "@zlib//:__subpackages__",
     ],
-    win_def_file = "//tensorflow/tools/def_file_filter:def_file_empty.def",
     deps = [
         ":common_utils",
         ":py_utils",
