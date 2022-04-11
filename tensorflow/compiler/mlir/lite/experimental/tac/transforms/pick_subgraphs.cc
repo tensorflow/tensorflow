@@ -125,6 +125,10 @@ inline func::CallOp GetProducerCallOpOrNull(Value output) {
 class PickSubgraphsPass
     : public mlir::PassWrapper<PickSubgraphsPass,
                                mlir::OperationPass<ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PickSubgraphsPass)
+
+ private:
   llvm::StringRef getArgument() const final { return "tfl-pick-subgraphs"; }
   llvm::StringRef getDescription() const final {
     return "Pick the best subgraphs to minimize the overall total costs.";

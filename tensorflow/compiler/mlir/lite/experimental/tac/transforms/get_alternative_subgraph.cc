@@ -93,6 +93,8 @@ class AlternativeSubgraphPass
     : public mlir::PassWrapper<AlternativeSubgraphPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AlternativeSubgraphPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-get-alternative-subgraph";
   }

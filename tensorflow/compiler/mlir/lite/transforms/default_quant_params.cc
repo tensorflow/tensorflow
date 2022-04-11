@@ -47,6 +47,8 @@ namespace {
 class DefaultQuantParamsPass
     : public PassWrapper<DefaultQuantParamsPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DefaultQuantParamsPass)
+
   explicit DefaultQuantParamsPass(double default_min, double default_max,
                                   bool is_signed)
       : default_min_(default_min),

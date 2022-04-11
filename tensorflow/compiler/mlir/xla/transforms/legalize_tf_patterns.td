@@ -67,7 +67,7 @@ def CastElementsToI64Elements : NativeCodeCall<
 class HLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<HLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
 
-// TODO(kramerb): Assert that $x and $y have the same shape.
+// TODO(b/228291745): Assert that $x and $y have the same shape.
 def : Pat<(TF_ApproximateEqualOp:$result $x, $y, $tolerance),
           (HLOClient_BroadcastCompareOp
            (HLO_AbsOp:$abs (HLO_SubOp $x, $y)),

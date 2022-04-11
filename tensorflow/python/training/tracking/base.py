@@ -31,7 +31,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import registration
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import checkpoint_util
-from tensorflow.python.types import core as core_types
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
@@ -1145,54 +1144,6 @@ class Trackable(object):
     """
     raise NotImplementedError
 
-  def _list_extra_dependencies_for_serialization(self, serialization_cache):
-    """Lists extra dependencies to serialize.
-
-    Internal sub-classes can override this method to return extra dependencies
-    that should be saved with the object during SavedModel serialization. For
-    example, this is used to save `trainable_variables` in Keras models. The
-    python property `trainable_variables` contains logic to iterate through the
-    weights from the model and its sublayers. The serialized Keras model saves
-    `trainable_weights` as a trackable list of variables.
-
-    PLEASE NOTE when overriding this method:
-      1. This function may only generate new trackable objects the first time it
-         is called.
-      2. The returned dictionary must not have naming conflicts with
-         dependencies tracked by the root. In other words, if the root is
-         tracking `object_1` with name 'x', and this functions returns
-         `{'x': object_2}`, an error is raised when saving.
-
-    Args:
-      serialization_cache: A dictionary shared between all objects in the same
-        object graph. This object is passed to both
-        `_list_extra_dependencies_for_serialization` and
-        `_list_functions_for_serialization`.
-
-    Returns:
-      A dictionary mapping attribute names to trackable objects.
-    """
-    del serialization_cache
-    return dict()
-
-  def _list_functions_for_serialization(self, serialization_cache):
-    """Lists the functions of this trackable to serialize.
-
-    Internal sub-classes can override this with specific logic. E.g.
-    `AutoTrackable` provides an implementation that returns the `attr`
-    that return functions.
-
-    Args:
-      serialization_cache: Dictionary passed to all objects in the same object
-        graph during serialization.
-
-    Returns:
-        A dictionary mapping attribute names to `Function` or
-        `ConcreteFunction`.
-    """
-    del serialization_cache
-    return dict()
-
   def _map_resources(self, save_options):  # pylint: disable=unused-argument
     """Makes new resource handle ops corresponding to existing resource tensors.
 
@@ -1482,72 +1433,10 @@ class Trackable(object):
     Returns:
       Dictionary mapping names to child trackables.
     """
-    del kwargs  # Unused.
+    del save_type, cache, kwargs  # Unused.
 
     self._maybe_initialize_trackable()
-    # TODO(kathywu): Migrate `_checkpoint_dependencies` overrides to
-    # `_trackable_children`.
-    if save_type == SaveType.CHECKPOINT:
-      return {name: ref for name, ref in self._checkpoint_dependencies}
-    elif save_type == SaveType.SAVEDMODEL:
-      return self._get_legacy_saved_model_children(cache)
-    else:
-      raise ValueError("Unexpected format passed to `_trackable_children`. "
-                       f"`save_type={save_type}`")
-
-  def _get_legacy_saved_model_children(self, serialization_cache):
-    """Combines legacy functions into a single dictionary."""
-    # TODO(kathywu): Delete this block once `list_*_from_serialization`
-    # has been removed.
-
-    # Retrieve functions attached to the object.
-    functions = self._list_functions_for_serialization(serialization_cache)
-
-    # Trace concrete functions to force side-effects:
-    #   1. populate the cache for functions that have an input_signature
-    #      and have not been called
-    #   2. force side effects of creation of concrete functions, e.g. create
-    #      variables on first run.
-    for fn in functions.values():
-      if isinstance(fn, core_types.GenericFunction):
-        fn._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
-
-    # Retrieve children that are only included when exporting SavedModel.
-    extra_dependencies = self._list_extra_dependencies_for_serialization(
-        serialization_cache)
-
-    children = {}
-    for name, child in self._checkpoint_dependencies:
-      if isinstance(child, (core_types.GenericFunction,
-                            core_types.ConcreteFunction)):
-        # Skip "tracked" functions for now since there may be objects that
-        # automatically track functions that should not be saved.
-        # TODO(kathywu): remove once `_list_functions_for_serialization` has
-        # been fully deprecated.
-        continue
-
-      if name in extra_dependencies and name != "signatures":
-        # Extra dependencies (except for `.signatures`, which is always added
-        # when saving) should not have naming conflicts with dependencies
-        # defined by the user.
-        obj_identifier = self._object_identifier  # pylint: disable=protected-access
-        raise ValueError(
-            f"Error when exporting object {self} with identifier "
-            f"'{obj_identifier}'. The object has an attribute named "
-            f"'{name}', which is reserved. List of all reserved attributes: "
-            f"{list(extra_dependencies.keys())}")
-
-      if name in functions and child is not functions[name]:
-        raise ValueError(
-            "Can't save object because it has multiple children with the same "
-            f"name. Object: {self}, attribute name: {name}, child 1: "
-            f"{child}, child 2: {functions[name]}")
-
-      children[name] = child
-
-    children.update(extra_dependencies)
-    children.update(functions)
-    return children
+    return {name: ref for name, ref in self._checkpoint_dependencies}
 
   def _export_to_saved_model_graph(self,
                                    object_map=None,

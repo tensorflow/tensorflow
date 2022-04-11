@@ -147,6 +147,10 @@ std::string PjRtStreamExecutorDevice::DebugString() const {
   return absl::StrCat(platform_name(), ":", id());
 }
 
+std::string PjRtStreamExecutorDevice::ToString() const {
+  return absl::StrCat(platform_name(), "(id=", id(), ")");
+}
+
 StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices) {
   if (devices.empty()) {

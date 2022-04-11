@@ -31,6 +31,8 @@ constexpr const char* kDevice = "device";
 
 struct RemoveDeviceAttributePass
     : public PassWrapper<RemoveDeviceAttributePass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RemoveDeviceAttributePass)
+
   llvm::StringRef getArgument() const final {
     return "tfrt-remove-device-attribute";
   }

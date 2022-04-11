@@ -278,7 +278,7 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   // is in-place. (We can relax this restriction by establishing an explicit
   // contract that describes what multi-output fusion scenarios are supported by
   // codegen and then changing this check to allow exactly those fusions).
-  if (HloDataflowAnalysis::HasInPlaceOperations(producer)) {
+  if (!HloDataflowAnalysis::GetInPlaceInputOutputPairs(&producer).empty()) {
     return false;
   }
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {

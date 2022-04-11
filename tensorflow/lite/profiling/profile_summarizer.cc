@@ -106,33 +106,16 @@ void ProfileSummarizer::ProcessProfiles(
     const tflite::Interpreter& interpreter) {
   if (profile_stats.empty()) return;
 
-  std::vector<const ProfileEvent*> events;
-  std::copy_if(profile_stats.begin(), profile_stats.end(),
-               std::back_inserter(events), [](const ProfileEvent* e) {
-                 return e->end_timestamp_us >= e->begin_timestamp_us;
-               });
-  // Sort with begin_time.
-  std::sort(events.begin(), events.end(),
-            [](const ProfileEvent* const& a, const ProfileEvent* const& b) {
-              return a->begin_timestamp_us < b->begin_timestamp_us;
-            });
-  if (events.empty()) {
-    return;
-  }
-
-  int64_t base_start_us = events[0]->begin_timestamp_us;
   int node_num = 0;
 
   // Total time will be accumulated per subgraph.
   std::map<uint32_t, int64_t> total_us_per_subgraph_map;
   int64_t delegate_internal_total_us = 0;
 
-  for (auto event : events) {
+  for (auto event : profile_stats) {
     const auto subgraph_index = event->extra_event_metadata;
     auto stats_calculator = GetStatsCalculator(subgraph_index);
-    int64_t start_us = event->begin_timestamp_us - base_start_us;
-    int64_t node_exec_time =
-        event->end_timestamp_us - event->begin_timestamp_us;
+    int64_t node_exec_time = event->elapsed_time;
     if (event->event_type == Profiler::EventType::OPERATOR_INVOKE_EVENT) {
       // When recording an OPERATOR_INVOKE_EVENT, we have recorded the node
       // index as event_metadata. See the macro
@@ -154,8 +137,7 @@ void ProfileSummarizer::ProcessProfiles(
           node_name + ":" + std::to_string(node_index);
 
       stats_calculator->AddNodeStats(node_name_in_stats, type_in_stats,
-                                     node_num, start_us, node_exec_time,
-                                     0 /*memory */);
+                                     node_num, node_exec_time, 0 /*memory */);
     } else if (event->event_type ==
                Profiler::EventType::DELEGATE_OPERATOR_INVOKE_EVENT) {
       const std::string node_name(event->tag);
@@ -164,9 +146,9 @@ void ProfileSummarizer::ProcessProfiles(
       const auto node_name_in_stats =
           "Delegate/" + node_name + ":" + std::to_string(event->event_metadata);
 
-      delegate_stats_calculator_->AddNodeStats(
-          node_name_in_stats, "DelegateOpInvoke", node_num, start_us,
-          node_exec_time, 0 /*memory */);
+      delegate_stats_calculator_->AddNodeStats(node_name_in_stats,
+                                               "DelegateOpInvoke", node_num,
+                                               node_exec_time, 0 /*memory */);
     } else {
       // Note: a different stats_calculator could be used to record
       // non-op-invoke events so that these could be separated from
@@ -179,7 +161,7 @@ void ProfileSummarizer::ProcessProfiles(
         continue;
       }
       node_name += "/" + std::to_string(event->extra_event_metadata);
-      stats_calculator->AddNodeStats(node_name, event->tag, node_num, start_us,
+      stats_calculator->AddNodeStats(node_name, event->tag, node_num,
                                      node_exec_time,
                                      node_mem_usage.max_rss_kb * 1000.0);
     }

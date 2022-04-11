@@ -101,6 +101,8 @@ class AttributesPassBase : public PassWrapper<PassT, OperationPass<>> {
 class ConsolidateAttributesPassImpl
     : public AttributesPassBase<ConsolidateAttributesPassImpl> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConsolidateAttributesPassImpl)
+
   void runOnOperation() override;
 
  private:
@@ -362,6 +364,9 @@ namespace {
 class PrepareAttributesForExportPassImpl
     : public AttributesPassBase<PrepareAttributesForExportPassImpl> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      PrepareAttributesForExportPassImpl)
+
   void runOnOperation() override;
 
  private:

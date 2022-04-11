@@ -22,9 +22,10 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
-constexpr llvm::StringRef kCompileDeviceTypeAttr = "_xla_compile_device_type";
-constexpr llvm::StringRef kReplicationInfoAttr = "_replication_info";
-constexpr llvm::StringRef kTPUReplicateAttr = "_tpu_replicate";
+// TODO(b/228344955) use inline constexpr with C++17
+extern const llvm::StringRef kCompileDeviceTypeAttr;
+extern const llvm::StringRef kReplicationInfoAttr;
+extern const llvm::StringRef kTPUReplicateAttr;
 
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>

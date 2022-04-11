@@ -15,6 +15,8 @@
 """DTensor Python API."""
 
 from tensorflow.dtensor.python import gen_dtensor_ops as ops
+from tensorflow.dtensor.python import mesh_util
+from tensorflow.dtensor.python import tpu_util
 
 from tensorflow.dtensor.python.api import call_with_layout
 from tensorflow.dtensor.python.api import check_layout

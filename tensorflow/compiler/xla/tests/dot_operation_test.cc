@@ -436,7 +436,7 @@ class ParametricDotTestWithoutLayoutAssignment : public ParametricDotTest {
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
         "layout-assignment");
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
-        "tiling-assignment");
+        "hlo-verifier");
     // Disable algebraic simplification because the pass may replace a dot
     // instruction with a layout-changing multiplication instruction.
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(

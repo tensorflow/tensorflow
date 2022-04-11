@@ -126,6 +126,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "comparison_util_test",
+    srcs = ["comparison_util_test.cc"],
+    deps = [
+        ":comparison_util",
+        ":test",
+        ":xla_data_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "execution_options_util",
     srcs = [

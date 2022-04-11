@@ -114,6 +114,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "fusion_logical_index_test",
+    srcs = ["fusion_logical_index_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "mlir_fft_test",
     srcs = ["mlir_fft_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -806,6 +817,7 @@ py_test(
         "no_oss",
         "notap",
         "requires-gpu-nvidia",
+        "requires-net:external",
     ],
     deps = [
         "//tensorflow:tensorflow_py",

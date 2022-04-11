@@ -189,6 +189,18 @@ def TFType_FullTypeId : I32EnumAttr<"FullTypeId", "", [
   //   TFT_LITERAL[TFT_INT32]{1} is the compile-time constant 1.
   I32EnumAttrCase<"TFT_LITERAL", 1003, "literal">,
 
+  // Encoding types describe a value of a certain type, encoded as a different
+  // type.
+  //
+  // Parametrization:
+  //   TFT_ENCODED[<encoded type>, <encoding type>]
+  //   * <encoded type> may be any type
+  //   * <encoding type> may be any type
+  //
+  // Examples:
+  //   TFT_ENCODING[TFT_INT32, TFT_STRING] is an integer encoded as string.
+  I32EnumAttrCase<"TFT_ENCODED", 1004, "encoded">,
+
   // Type attributes. These always appear in the parametrization of a type,
   // never alone. For example, there is no such thing as a "bool" TensorFlow
   // object (for now).

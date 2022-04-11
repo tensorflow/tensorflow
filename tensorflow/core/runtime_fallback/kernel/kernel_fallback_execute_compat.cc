@@ -598,7 +598,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
 
 // The BEF kernel for creating tensorflow::OpKernel to be used in kernel
 // fallback compat mode.
-llvm::Expected<tfrt::Chain> KernelFallbackCreateOp(
+tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackCreateOp(
     const tfrt::Chain& in_ch, tfrt::StringAttr device, tfrt::I64Attr num_args,
     tfrt::AggregateAttr op_attr_array, tfrt::AggregateAttr op_func_attr_array,
     tfrt::I64Attr op_key, tfrt::StringAttr op_name_attr,
@@ -607,7 +607,8 @@ llvm::Expected<tfrt::Chain> KernelFallbackCreateOp(
       exec_ctx.request_ctx()
           ->GetDataIfExists<KernelFallbackCompatRequestState>();
   if (!fallback_request_state) {
-    return tfrt::MakeStringError(
+    return tfrt::EmitErrorAsync(
+        exec_ctx,
         "KernelFallbackCompatRequestState not found in RequestContext.");
   }
 
@@ -626,16 +627,19 @@ llvm::Expected<tfrt::Chain> KernelFallbackCreateOp(
       attr_builder, fallback_request_state->device_manager(),
       fallback_request_state->process_function_library_runtime());
   if (!statusor_runner.ok())
-    return tfrt::MakeStatusError(statusor_runner.status());
+    return tfrt::EmitErrorAsync(
+        exec_ctx, statusor_runner.status().error_message(),
+        tfrt::ConvertTfErrorCodeToTfrtErrorCode(statusor_runner.status()));
 
   if (!runner_table->Insert(op_key.GetValue(),
                             std::move(statusor_runner).ValueOrDie())) {
-    return tfrt::MakeStringError(
+    return tfrt::EmitErrorAsync(
+        exec_ctx,
         absl::StrCat("KernelFallbackCreateOp: OpKernelRunner already exists: ",
                      op_name_attr.GetValue().str()));
   }
 
-  return tfrt::Chain();
+  return tfrt::MakeAvailableAsyncValueRef<tfrt::Chain>();
 }
 
 // FallbackSetResource is the fallback kernel that sets the tensor value in the

@@ -291,6 +291,8 @@ std::vector<T> BuildSparsityParameterAttribute(
 //          sparsity, and add Densify() op to fall back to dense execution.
 struct DenseToSparse
     : public PassWrapper<DenseToSparse, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DenseToSparse)
+
   void runOnOperation() override;
 
   StringRef getArgument() const final {

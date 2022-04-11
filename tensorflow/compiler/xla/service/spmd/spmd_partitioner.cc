@@ -3939,17 +3939,25 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
           << "Parameter shape changed for the entry computation";
     }
   } else {
+    // Fix up some bad tiling in entry computation layout.
+    auto update_shape = [this](Shape* subshape, const xla::ShapeIndex& index) {
+      if (subshape->IsArray()) {
+        UpdateLayout(subshape);
+      }
+    };
     const auto& old_entry_layout = module->entry_computation_layout();
     // Shapes can change but the layout should still remain the same.
     for (int64_t i = 0; i < new_program_shape.parameters_size(); ++i) {
       TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
           old_entry_layout.parameter_shape(i),
           new_program_shape.mutable_parameters(i)));
-      UpdateLayout(new_program_shape.mutable_parameters(i));
+      ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_parameters(i),
+                                        update_shape);
     }
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         old_entry_layout.result_shape(), new_program_shape.mutable_result()));
-    UpdateLayout(new_program_shape.mutable_result());
+    ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_result(),
+                                      update_shape);
 
     HloModuleConfig config = module->config();
     *config.mutable_entry_computation_layout() =

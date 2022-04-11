@@ -240,7 +240,8 @@ def build_docs(output_dir, code_url_prefix, search_hints):
       site_path=site_path,
       visitor_cls=TfExportAwareVisitor,
       private_map=_PRIVATE_MAP,
-      extra_docs=_EXTRA_DOCS)
+      extra_docs=_EXTRA_DOCS,
+      callbacks=base_dir.get_callbacks())
 
   doc_generator.build(output_dir)
 

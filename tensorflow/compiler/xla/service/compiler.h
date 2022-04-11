@@ -157,6 +157,19 @@ class AotCompilationOptions {
     run_backend_only_ = run_backend_only;
   }
 
+  bool sanitize_dataflow() const { return sanitize_dataflow_; }
+  void set_sanitize_dataflow(bool sanitize_dataflow) {
+    sanitize_dataflow_ = sanitize_dataflow;
+  }
+
+  const std::vector<std::string>& sanitize_abilists_dataflow() const {
+    return sanitize_abilists_dataflow_;
+  }
+  void set_sanitize_abilists_dataflow(
+      const std::vector<std::string>& abilists) {
+    sanitize_abilists_dataflow_ = abilists;
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -172,6 +185,8 @@ class AotCompilationOptions {
   uint64_t profile_handle_ = 0;
   std::string cache_key_;
   bool run_backend_only_ = false;
+  bool sanitize_dataflow_ = false;
+  std::vector<std::string> sanitize_abilists_dataflow_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -347,7 +362,7 @@ class Compiler {
     };
   }
 
-  virtual Shape DeviceShapeRepresentation(const Shape& shape) const {
+  virtual Shape DefaultDeviceShapeRepresentation(const Shape& shape) const {
     return shape;
   }
 

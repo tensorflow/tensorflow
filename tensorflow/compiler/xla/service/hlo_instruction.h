@@ -1428,7 +1428,7 @@ class HloInstruction {
   //
   // Precondition: The instruction has a valid to_apply_ field.
   HloComputation* to_apply() const;
-  void set_to_apply(HloComputation* to_apply);
+  void set_to_apply(HloComputation* computation);
 
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
@@ -1436,8 +1436,8 @@ class HloInstruction {
   // Precondition: The instruction is a While instruction.
   HloComputation* while_condition() const;
   HloComputation* while_body() const;
-  void set_while_condition(HloComputation* while_condition);
-  void set_while_body(HloComputation* while_body);
+  void set_while_condition(HloComputation* computation);
+  void set_while_body(HloComputation* computation);
 
   HloInstruction* while_init() const;
 

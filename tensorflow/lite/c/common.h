@@ -173,7 +173,7 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                 \
   } while (false)
 #else  // TF_LITE_STRIP_ERROR_STRINGS
-#define UNUSED(...) (void)sizeof(__VA_ARGS__)
+#define UNUSED(...) (void)sizeof(#__VA_ARGS__)
 #define TF_LITE_KERNEL_LOG(context, ...) UNUSED(__VA_ARGS__)
 #define TF_LITE_MAYBE_KERNEL_LOG(context, ...) UNUSED(__VA_ARGS__)
 #endif  // TF_LITE_STRIP_ERROR_STRINGS

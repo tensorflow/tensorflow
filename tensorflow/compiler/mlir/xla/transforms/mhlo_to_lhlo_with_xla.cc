@@ -180,6 +180,8 @@ class XlaHloToLhloPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(XlaHloToLhloPass)
+
   XlaHloToLhloPass() = default;
   XlaHloToLhloPass(const XlaHloToLhloPass&) {}
   StringRef getArgument() const final { return "xla-hlo-to-lhlo-with-xla"; }
@@ -441,6 +443,7 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:

@@ -74,6 +74,8 @@ class TfrtCpuDevice final : public PjRtDevice {
 
   std::string DebugString() const override;
 
+  std::string ToString() const override;
+
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
   Status TransferFromOutfeed(MutableBorrowingLiteral literal) override;

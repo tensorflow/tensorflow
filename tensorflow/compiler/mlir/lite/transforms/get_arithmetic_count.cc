@@ -36,6 +36,8 @@ namespace {
 
 struct GetArithmeticCountPass
     : public PassWrapper<GetArithmeticCountPass, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GetArithmeticCountPass)
+
   void runOnOperation() override;
 
   StringRef getArgument() const final {

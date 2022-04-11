@@ -50,6 +50,8 @@ struct RaiseCustomOpsPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseCustomOpsPass)
+
   explicit RaiseCustomOpsPass()
       : target_op_names(target_ops.begin(), target_ops.end()) {}
   explicit RaiseCustomOpsPass(const std::vector<std::string> &target_ops)

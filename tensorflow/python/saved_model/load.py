@@ -899,7 +899,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(
-          "Got an incompatible argument to `tags`: {tags}. The SavedModel at "
+          f"Got an incompatible argument to `tags`: {tags}. The SavedModel at "
           f"{export_dir} has one MetaGraph with tags "
           f"{meta_graph_def.meta_info_def.tags}. You may omit the argument, "
           "pass 'None', or pass matching tags.")

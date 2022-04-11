@@ -1,4 +1,4 @@
-# Return the options to use for a C++ library or binary build.
+# Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -827,8 +827,8 @@ def tf_cc_shared_library(
             name = cc_shared_library_name,
             roots = [cc_library_name],
             static_deps = static_deps,
-            shared_lib_name = shared_lib_name,
-            user_link_flags = linkopts + _rpath_user_link_flags(shared_lib_name) + select({
+            shared_lib_name = name_os_full,
+            user_link_flags = linkopts + _rpath_user_link_flags(name_os_full) + select({
                 clean_dep("//tensorflow:ios"): [
                     "-Wl,-install_name,@rpath/" + soname,
                 ],
@@ -841,6 +841,7 @@ def tf_cc_shared_library(
                 ],
             }),
             additional_linker_inputs = additional_linker_inputs,
+            features = if_windows(["no_windows_export_all_symbols"]),  # See b/227922702
             visibility = visibility,
             win_def_file = if_windows(win_def_file, otherwise = None),
         )
@@ -3273,6 +3274,12 @@ def tf_enable_mlir_bridge():
 
 def tfcompile_target_cpu():
     return ""
+
+def tfcompile_dfsan_enabled():
+    return False
+
+def tfcompile_dfsan_abilists():
+    return []
 
 def tf_external_workspace_visible(visibility):
     # External workspaces can see this target.

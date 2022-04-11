@@ -39,6 +39,8 @@ namespace {
 struct TestResourceAliasAnalysis
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TestResourceAliasAnalysis, TF::ResourceAliasAnalysis> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestResourceAliasAnalysis)
+
   StringRef getArgument() const final {
     return "tf-test-resource-alias-analysis";
   }

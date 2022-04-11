@@ -4,7 +4,7 @@ load("//tensorflow:tensorflow.bzl", "filegroup")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "genrule")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
@@ -365,7 +365,7 @@ tf_library(
     testonly = 1,
     config = "test_graph_tfadd_with_ckpt.config.pbtxt",
     cpp_class = "AddWithCkptComp",
-    freeze_checkpoint = "test_graph_tfadd_with_ckpt.ckpt",
+    freeze_checkpoint = if_google("test_graph_tfadd_with_ckpt.ckpt", None),  # b/228273415
     graph = "test_graph_tfadd_with_ckpt.pb",
     mlir_components = "Bridge",
     tags = [

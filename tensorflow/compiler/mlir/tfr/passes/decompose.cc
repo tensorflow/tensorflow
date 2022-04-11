@@ -97,6 +97,8 @@ Attribute Quantize(float value, Attribute scale_attr, Attribute zp_attr,
 class DecomposeTFOpsPass
     : public PassWrapper<DecomposeTFOpsPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DecomposeTFOpsPass)
+
   explicit DecomposeTFOpsPass(llvm::Optional<ModuleOp> external_tfr_module)
       : external_tfr_module_(external_tfr_module) {}
 

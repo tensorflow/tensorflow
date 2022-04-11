@@ -1055,7 +1055,8 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
 //===----------------------------------------------------------------------===//
 // MHLO tuple op definitions.
 //===----------------------------------------------------------------------===//
-def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]> {
+def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "GetTupleElement operator";
   let description = [{
     Returns a member of a tuple specified by an index.
@@ -1071,12 +1072,10 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]> {
 
   let hasFolder = 1;
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "Value":$value, "int32_t":$index)>];
 }
 
-def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
+def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "XLA's tuple op";
   let description = [{
      Groups a set of tensor inputs into a single tuple object.
@@ -1085,9 +1084,6 @@ def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]> {
    }];
   let arguments = (ins Variadic<HLO_TensorOrTokenOrTuple>:$val);
   let results = (outs HLO_Tuple);
-
-  let builders = [
-    OpBuilder<(ins "ValueRange":$values)>];
 
   let hasCanonicalizer = 1;
   let hasVerifier = 1;
@@ -1123,6 +1119,12 @@ def HLO_CompareOp: HLO_Op<"compare", [NoSideEffect, SameTypeOperands,
   ];
 
   let hasCustomHLOConverter = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1617,9 +1619,10 @@ def HLO_CustomCallOp: HLO_Op<"custom_call",
     DefaultValuedStrAttr<StrAttr, "">:$backend_config,
     // TODO(b/189822916): Remove this field when all clients are migrated to
     // the status-returning API.
-    DefaultValuedAttr<HLO_CustomCallApiVersionAttr,
-                      "CustomCallApiVersion::API_VERSION_ORIGINAL">:
-                      $api_version,
+    DefaultValuedAttr<
+        HLO_CustomCallApiVersionAttr,
+        "::mlir::mhlo::CustomCallApiVersion::API_VERSION_ORIGINAL">:
+        $api_version,
     DefaultValuedAttr<HLO_FlatSymbolRefArrayAttr, "{}">:$called_computations,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$operand_layouts,
     OptionalAttr<HLO_ArrayOfLayoutAttr>:$result_layouts

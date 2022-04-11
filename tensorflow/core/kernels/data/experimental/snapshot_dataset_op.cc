@@ -2243,7 +2243,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       };
 
       string hash_dir_ TF_GUARDED_BY(mu_);
-      snapshot_util::Mode state_ TF_GUARDED_BY(mu_);
+      snapshot_util::Mode state_ TF_GUARDED_BY(mu_) =
+          snapshot_util::Mode::READER;
       std::unique_ptr<IteratorBase> iterator_ TF_GUARDED_BY(mu_);
 
       mutex mu_;

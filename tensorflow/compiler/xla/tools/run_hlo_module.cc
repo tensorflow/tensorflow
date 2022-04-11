@@ -80,7 +80,8 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
 // miscomparison.
 void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
                   const LiteralSlice& mismatches,
-                  const ShapeIndex& /*shape_index*/) {
+                  const ShapeIndex& /*shape_index*/,
+                  const literal_comparison::ErrorBuckets& /*error_buckets*/) {
   LOG(INFO) << "expected: " << ShapeUtil::HumanString(expected.shape()) << " "
             << literal_comparison::ToStringTruncated(expected);
   LOG(INFO) << "actual:   " << ShapeUtil::HumanString(actual.shape()) << " "

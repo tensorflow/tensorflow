@@ -94,6 +94,8 @@ using ::llvm::cast;
 // Optimize TFLite operations in functions.
 class OptimizePass : public PassWrapper<OptimizePass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizePass)
+
   OptimizePass() = default;
   OptimizePass(const OptimizePass &) {}
   explicit OptimizePass(bool enable_canonicalization) {

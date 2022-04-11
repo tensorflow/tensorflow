@@ -918,6 +918,18 @@ ENTRY %PadHasInterior.v3 (input: f32[1,25,7,7]) -> f32[1,25,17,11] {
 
 )"
 },
+// round to nearest even
+{
+"RoundNearestEven",
+R"(HloModule RoundNearestEven_module
+
+ENTRY %RoundNearestEven (input: f32[2,2]) -> f32[2,2] {
+  %input = f32[2,2]{1,0} parameter(0)
+  ROOT %round-nearest-even = f32[2,2]{1,0} round-nearest-even(f32[2,2]{1,0} %input)
+}
+
+)"
+},
 // Negative padding
 {
 "PadHasNegativePadding",
@@ -2031,7 +2043,6 @@ ENTRY AddDependency {
 
 )"
 },
-
 // A module containing constants equal to the min/max values of various data
 // types.
 {

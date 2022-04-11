@@ -295,6 +295,14 @@ class TFGraph_IfLikeOp<string mnemonic>
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
+  let builders = [
+    OpBuilder<(ins "TypeRange":$results, "Value":$cond, "ValueRange":$args,
+                   "FuncAttr":$then_branch, "FuncAttr":$else_branch), [{
+      build($_builder, $_state, results, cond, args, then_branch, else_branch,
+            /*Tcond=*/{}, /*Tin=*/{}, /*Tout=*/{}, /*output_shapes=*/{});
+    }]>
+  ];
+
   let extraClassDefinition = [{
     LogicalResult $cppClass::verifySymbolUses(
         SymbolTableCollection &symbol_table) {
@@ -330,8 +338,15 @@ class TFGraph_CaseLikeOp<string mnemonic>
     OptionalAttr<TypeArrayAttr>:$Tout,
     OptionalAttr<TFGraph_ShapesAttr>:$output_shapes
   );
-
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
+
+  let builders = [
+    OpBuilder<(ins "TypeRange":$results, "Value":$branch_index,
+                   "ValueRange":$args, "ArrayAttr":$branches), [{
+      build($_builder, $_state, results, branch_index, args, branches,
+            /*Tin=*/{}, /*Tout=*/{}, /*output_shapes=*/{});
+    }]>
+  ];
 
   let extraClassDefinition = [{
     LogicalResult $cppClass::verifySymbolUses(
@@ -370,6 +385,14 @@ class TFGraph_WhileLikeOp<string mnemonic>
   );
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
 
+  let builders = [
+    OpBuilder<(ins "TypeRange":$results, "ValueRange":$args, "FuncAttr":$cond,
+                   "FuncAttr":$body, "IntegerAttr":$parallel_iterations), [{
+      build($_builder, $_state, results, args, cond, body, parallel_iterations,
+            /*T=*/{}, /*output_shapes=*/{});
+    }]>
+  ];
+
   let extraClassDefinition = [{
     LogicalResult $cppClass::verifySymbolUses(
         SymbolTableCollection &symbol_table) {
@@ -407,8 +430,23 @@ def TFGraph_ForOp
     // information.
     OptionalAttr<TypeArrayAttr>:$T
   );
+  let builders = [
+    OpBuilder<(ins "TypeRange":$results, "Value":$start, "Value":$limit,
+                   "Value":$delta, "ValueRange":$args, "FuncAttr":$body), [{
+      build($_builder, $_state, results, start, limit, delta, args, body,
+            /*T=*/{});
+    }]>
+  ];
 
   let results = (outs Variadic<TFGraph_Tensor>:$outs, ControlType:$ctl);
+
+  let builders = [
+    OpBuilder<(ins "TypeRange":$results, "Value":$start, "Value":$limit,
+                   "Value":$delta, "ValueRange":$args, "FuncAttr":$body), [{
+      build($_builder, $_state, results, start, limit, delta, args, body,
+            /*T=*/{});
+    }]>
+  ];
 }
 
 //===----------------------------------------------------------------------===//
@@ -452,7 +490,7 @@ def TFGraph_RegionAttrs : AttrDef<TFGraphDialect, "Region"> {
 // Base class for TFGraph region ops. Region ops contain only single-block graph
 // regions.
 class TFGraph_RegionOp<string mnemonic, list<Trait> traits = []> :
-    TFGraph_Op<mnemonic, [HasOnlyGraphRegion, SingleBlock,
+    TFGraph_Op<mnemonic, [HasOnlyGraphRegion, SingleBlock, RegionKindInterface,
                           DeclareOpInterfaceMethods<OpAsmOpInterface,
                               ["getDefaultDialect", "getAsmResultNames"]>,
                           TraitList<traits>]>;
@@ -477,7 +515,8 @@ def TFGraph_YieldOp : TFGraph_Op<"yield",
 
   let arguments = (ins Variadic<TFGraph_Tensor>:$args,
                        Variadic<ControlType>:$ctls);
-  let assemblyFormat = "(`(` $args^ `)`)? (`[` $ctls^ `]`)? attr-dict (`:` type($args)^)?";
+  let assemblyFormat = [{ (`(` $args^ `)`)? (`[` $ctls^ `]`)? attr-dict
+                          (`:` type($args)^)? }];
 }
 
 // Base class for TFGraph if-like operations with regions.
@@ -522,7 +561,7 @@ class TFGraph_IfLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     YieldOp else_yield();
 
     bool areTypesCompatible(Type lhs, Type rhs) {
-      return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+      return tf_type::HasCompatibleElementTypes(lhs, rhs);
     }
 
     RegionAttr getPreservedAttrs(unsigned index) {
@@ -636,7 +675,7 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     YieldOp branch_yield(unsigned idx);
 
     bool areTypesCompatible(Type lhs, Type rhs) {
-      return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+      return tf_type::HasCompatibleElementTypes(lhs, rhs);
     }
 
     RegionAttr getPreservedAttrs(unsigned index) {
@@ -789,7 +828,7 @@ class TFGraph_WhileLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
     YieldOp body_yield();
 
     bool areTypesCompatible(Type lhs, Type rhs) {
-      return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+      return tf_type::HasCompatibleElementTypes(lhs, rhs);
     }
 
     RegionAttr getPreservedAttrs(unsigned index) {
@@ -909,7 +948,7 @@ def TFGraph_ForRegionOp : TFGraph_RegionOp<
     YieldOp body_yield();
 
     bool areTypesCompatible(Type lhs, Type rhs) {
-      return getElementTypeOrSelf(lhs) == getElementTypeOrSelf(rhs);
+      return tf_type::HasCompatibleElementTypes(lhs, rhs);
     }
 
     RegionAttr getPreservedAttrs(unsigned index) {
