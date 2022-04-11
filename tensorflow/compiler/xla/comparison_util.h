@@ -111,15 +111,21 @@ class Comparison {
   inline bool IsTotalOrder() const { return order_ == Order::kTotal; }
   inline bool IsPartialOrder() const { return order_ == Order::kPartial; }
 
-  // Returns whether this is a total order F32 comparison.
+  // Returns whether this is a floating point total order comparison.
   inline bool IsF32TotalOrder() const {
     return primitive_type_ == PrimitiveType::F32 && IsTotalOrder();
+  }
+  inline bool IsBf16TotalOrder() const {
+    return primitive_type_ == PrimitiveType::BF16 && IsTotalOrder();
   }
 
   // Returns whether this is a standard comparison, i.e., what you would expect
   // as the industry standard on most architectures.
   inline bool IsStandardF32() const {
     return primitive_type_ == PrimitiveType::F32 && IsPartialOrder();
+  }
+  inline bool IsStandardBf16() const {
+    return primitive_type_ == PrimitiveType::BF16 && IsPartialOrder();
   }
   inline bool IsStandardS32() const {
     return primitive_type_ == PrimitiveType::S32 && IsTotalOrder();
