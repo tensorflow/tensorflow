@@ -1207,7 +1207,9 @@ class Context(object):
     memory_growths = set()
     gpu_devices = self.list_physical_devices("GPU")
     pluggable_devices = self._pluggable_devices
-    compatible_devices = list(set(gpu_devices + pluggable_devices))
+    for dev in pluggable_devices:
+      if dev not in gpu_devices:
+        compatible_devices.append(dev)
     for dev in compatible_devices:
       gpu_index += 1
 
