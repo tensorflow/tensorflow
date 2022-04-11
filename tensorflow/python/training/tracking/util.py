@@ -2214,6 +2214,8 @@ class Checkpoint(tracking.AutoTrackable):
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
+    if isinstance(file_prefix, os.PathLike):
+      file_prefix = os.fspath(file_prefix)
     return self._write(file_prefix, options)
 
   def _write(self, file_prefix, options=None, update_ckpt_state=False):
@@ -2314,6 +2316,8 @@ class Checkpoint(tracking.AutoTrackable):
     Returns:
       The full path to the checkpoint.
     """
+    if isinstance(file_prefix, os.PathLike):
+      file_prefix = os.fspath(file_prefix)
     # pylint:enable=line-too-long
     options = options or checkpoint_options.CheckpointOptions()
     graph_building = not context.executing_eagerly()
@@ -2413,6 +2417,8 @@ class Checkpoint(tracking.AutoTrackable):
       status of a checkpoint restoration.  See `restore` for details.
     """
     start_time = time.time()
+    if isinstance(save_path, os.PathLike):
+      save_path = os.fspath(save_path)
     options = options or checkpoint_options.CheckpointOptions()
     result = self._saver.restore(save_path=save_path, options=options)
     metrics.AddCheckpointReadDuration(
@@ -2527,6 +2533,8 @@ class Checkpoint(tracking.AutoTrackable):
         `save_path`.
     """
     orig_save_path = save_path
+    if isinstance(save_path, os.PathLike):
+      save_path = os.fspath(save_path)
 
     if save_path is not None and gfile.IsDirectory(save_path) and (
         (gfile.Exists(utils_impl.get_saved_model_pb_path(save_path)) or
