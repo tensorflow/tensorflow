@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import tracking
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -41,6 +42,7 @@ nested_structure_coder = lazy_loader.LazyLoader(
 
 
 @tf_export("data.experimental.save", v1=[])
+@deprecation.deprecated(None, "Use `tf.data.Dataset.save(...)` instead.")
 def save(dataset,
          path,
          compression=None,
@@ -245,6 +247,7 @@ class _LoadDataset(dataset_ops.DatasetSource):
 
 
 @tf_export("data.experimental.load", v1=[])
+@deprecation.deprecated(None, "Use `tf.data.Dataset.load(...)` instead.")
 def load(path, element_spec=None, compression=None, reader_func=None):
   """Loads a previously saved dataset.
 
