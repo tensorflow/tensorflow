@@ -242,10 +242,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_googlesource_code_re2",
-        sha256 = "d070e2ffc5476c496a6a872a6f246bfddce8e7797d6ba605a7c8d72866743bf9",
-        strip_prefix = "re2-506cfa4bffd060c06ec338ce50ea3468daa6c814",
+        sha256 = "b90430b2a9240df4459108b3e291be80ae92c68a47bc06ef2dc419c5724de061",
+        strip_prefix = "re2-a276a8c738735a0fe45a6ee590fe2df69bcf4502",
         system_build_file = "//third_party/systemlibs:re2.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/re2/archive/506cfa4bffd060c06ec338ce50ea3468daa6c814.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/re2/archive/a276a8c738735a0fe45a6ee590fe2df69bcf4502.tar.gz"),
     )
 
     tf_http_archive(
