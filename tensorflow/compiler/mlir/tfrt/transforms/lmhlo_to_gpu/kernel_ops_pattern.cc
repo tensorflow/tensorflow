@@ -266,7 +266,7 @@ static llvm::Expected<RewriteData> Match(Operation* op) {
   llvm::LLVMContext llvm_context;
   auto llvm_module = std::make_unique<llvm::Module>("", llvm_context);
 
-  auto emit_result = Emit(std::get<mlir::FuncOp>(module_op), *allocations,
+  auto emit_result = Emit(std::get<mlir::func::FuncOp>(module_op), *allocations,
                           cuda_compute_capability, rocm_compute_capability,
                           hlo_module_config, llvm_module.get());
   if (!emit_result) return emit_result.takeError();
