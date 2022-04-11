@@ -84,4 +84,10 @@ def LowerIndexCastPass
   let summary = "Lower index cast on tensors to tensor dialect";
   let constructor = "CreateLowerIndexCastPass()";
 }
+
+def ShapeSimplification
+    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
+  let summary = "Simplify shape ops";
+  let constructor = "CreateShapeSimplification()";
+}
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

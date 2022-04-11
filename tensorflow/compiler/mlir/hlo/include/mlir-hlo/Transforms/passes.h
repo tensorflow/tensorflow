@@ -60,6 +60,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass();
 // Pass to lower index cast on tensors to tensor dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLowerIndexCastPass();
 
+// Pass to simplify shape ops.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateShapeSimplification();
+
 }  // namespace mlir
 
 #endif  // MLIR_HLO_TRANSFORMS_PASSES_H

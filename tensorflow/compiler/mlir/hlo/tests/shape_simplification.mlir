@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt -split-input-file -kernelgen-shape-simplification %s | FileCheck %s
+// RUN: mlir-hlo-opt -split-input-file -shape-simplification %s | FileCheck %s
 
 // Incompatible shapes. No folding.
 // CHECK-LABEL: func @f

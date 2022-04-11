@@ -213,7 +213,6 @@ cc_library(
         "parallel_loops_to_sequential.cc",
         "rewrite_tf_framework_assert.cc",
         "same_shape_propagation.cc",
-        "shape_simplification.cc",
         "shape_to_descriptors_pass.cc",
         "tensorflow_abi_knowledge_propagation.cc",
         "tf_to_jit_invocations.cc",

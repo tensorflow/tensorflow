@@ -879,8 +879,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::kernel_gen::transforms::CreateShapeSimplification());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::CreateShapeSimplification());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeToShapeLowering());
   pm.addPass(mlir::createConvertShapeToStandardPass());
   pm.addNestedPass<mlir::func::FuncOp>(

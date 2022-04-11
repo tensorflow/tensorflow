@@ -16,20 +16,22 @@ limitations under the License.
 // This file contains the patterns to simplify shape ops that were deemed not
 // suitable for shape op canonicalization in MLIR Core.
 
+#include <memory>
+#include <utility>
+
 #include "llvm/ADT/Optional.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Transforms/PassDetail.h"
+#include "mlir-hlo/Transforms/passes.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
-namespace kernel_gen {
-namespace transforms {
 
 namespace {
 
@@ -217,9 +219,6 @@ struct ExtractFromBroadcastedTensorCanonicalizationPattern
   }
 };
 
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
-
 struct ShapeSimplification
     : public ShapeSimplificationBase<ShapeSimplification> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -254,6 +253,4 @@ std::unique_ptr<OperationPass<FuncOp>> CreateShapeSimplification() {
   return std::make_unique<ShapeSimplification>();
 }
 
-}  // namespace transforms
-}  // namespace kernel_gen
 }  // namespace mlir
