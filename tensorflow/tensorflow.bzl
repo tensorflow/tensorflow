@@ -756,9 +756,6 @@ def tf_cc_shared_object(
 def get_cc_shared_library_target_name(name):
     return name + "_st"  # Keep short. See b/221093790
 
-def get_sharedlibname(name):
-    return "sl_" + name  # Keep short. See b/221093790
-
 # buildozer: disable=function-docstring-args
 def tf_cc_shared_library(
         name,
@@ -822,7 +819,6 @@ def tf_cc_shared_library(
         )
 
         cc_shared_library_name = get_cc_shared_library_target_name(name_os_full)
-        shared_lib_name = get_sharedlibname(name_os_full)
         cc_shared_library(
             name = cc_shared_library_name,
             roots = [cc_library_name],
@@ -845,14 +841,9 @@ def tf_cc_shared_library(
             visibility = visibility,
             win_def_file = if_windows(win_def_file, otherwise = None),
         )
-        native.alias(
-            name = shared_lib_name,
-            actual = cc_shared_library_name,
-            visibility = visibility,
-        )
         filegroup(
             name = name_os_full,
-            srcs = [shared_lib_name],
+            srcs = [cc_shared_library_name],
             output_group = "main_shared_library_output",
         )
 
