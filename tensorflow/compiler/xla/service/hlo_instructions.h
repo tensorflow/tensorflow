@@ -215,6 +215,7 @@ class HloCompareInstruction : public HloInstruction {
                                  ComparisonDirection direction,
                                  absl::optional<Comparison::Type> type);
   ComparisonDirection direction() const { return compare_.GetDirection(); }
+  ComparisonOrder order() const { return compare_.GetOrder(); }
   Comparison::Type type() const { return compare_.GetType(); }
   HloInstructionProto ToProto() const override;
 
