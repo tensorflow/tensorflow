@@ -379,13 +379,20 @@ class Subgraph {
   }
 
   /// WARNING: This is an experimental API and subject to change.
-  /// Use dynamic tensor allocation method for large intermediate tensors
-  /// instead of static memory planner. It improves peak memory usage but there
-  /// could be some latency impact. The parameter
-  /// `large_tensors_threshods_in_bytes` is used to determine large tensors.
-  /// This API must be called before `AllocateTensors`.
-  void UseDynamicAllocationForLargeTensors(
-      int large_tensors_threshods_in_bytes);
+  /// Use dynamic tensor allocation and deallocation method for large tensors
+  /// instead of static memory planner. Dynamic tensors are allocated just
+  /// before when they're needed and released when they're not needed anymore.
+  /// It improves peak memory usage but there could be some latency impact. The
+  /// parameter `large_tensors_thresholds_in_bytes` is used to determine large
+  /// tensors. This API must be called before `AllocateTensors`.
+  void OptimizeMemoryForLargeTensors(int large_tensors_thresholds_in_bytes);
+
+  // WARNING: This is an experimental API and subject to change.
+  // True if dynamic tensor allocation / deallocation method is enabled by
+  // `OptimizeMemoryForLargeTensors` API.
+  inline bool IsMemoryOptimizationForLargeTensorsEnabled() {
+    return (large_tensors_thresholds_in_bytes_ > 0);
+  }
 
   // WARNING: This is an experimental API and subject to change.
   // Remove unused inputs of the subgraph. It checks usage of inputs and mark it
@@ -703,13 +710,14 @@ class Subgraph {
   // last operation that uses the tensor as input.
   void InitializeTensorReleaseMap();
 
+  // May allocate dynamic tensor memory of node outputs. It's used when
+  // `EnsureDynamicTensorsAreReleased` or`UseDynamicAllocationForLargeTensors`
+  // API is used.
+  TfLiteStatus MayAllocateOpOutput(TfLiteNode* node);
+
   // Checks the options for releasing dynamic tensors and release dynamic
   // tensors if configured.
-  void MaybeReleaseDynamicInputs(const TfLiteNode& node, size_t node_index);
-
-  // Reallocates the released large dynamic tensors by the
-  // MaybeReleaseDynamicInputs() method of the previous interpreter invocations.
-  void MaybeAllocateLargeDynamicTensors();
+  void MaybeReleaseDynamicTensors(const TfLiteNode& node, size_t node_index);
 
   // The state of the Interpreter.
   enum State {
@@ -874,9 +882,8 @@ class Subgraph {
   // uses this tensor.
   std::map<int, int> tensor_to_last_op_index_;
 
-  // List of tensors which are large and have a static shape. The memory of
-  // these tensors should be allocated before the graph execution.
-  std::set<int> large_static_shape_tensors_;
+  // Threshold bytes of tensors to apply dymamic allocation.
+  size_t large_tensors_thresholds_in_bytes_;
 };
 
 }  // namespace tflite
