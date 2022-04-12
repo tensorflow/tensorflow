@@ -390,3 +390,30 @@ def ShapeInference : Pass<"shape-inference"> {
   ];
   let constructor = "CreateShapeInferencePass()";
 }
+
+def ConstantFoldingPass : Pass<"constant-folding"> {
+  let summary = "constant-folding on tfg";
+  let description = [{
+    This pass will fold operations into constants and do full/partial propagte
+    the constants iteratively.
+  }];
+
+  let constructor = "CreateConstantFoldingPass()";
+  let options = [
+   ListOption<"nodes_to_preserve_", "nodes-to-preserve", "std::string",
+              "Comma separated list of ops that won't be optimized.",
+              "llvm::cl::ZeroOrMore">,
+   ListOption<"feeds_", "feeds", "std::string",
+              "Comma separated list of feed ops.", "llvm::cl::ZeroOrMore">,
+   ListOption<"fetches_", "fetches", "std::string",
+              "Comma separated list of fetch ops.", "llvm::cl::ZeroOrMore">,
+   Option<"disable_compressed_tensor_optimization_",
+          "disable-compressed-tensor-optimization", "bool",
+          /*default=*/"false",
+          "Determine if we should disable compressed tensor optimization">,
+   Option<"fold_quantization_emulation_",
+          "fold-quantization-emulation", "bool",
+          /*default=*/"true",
+          "Determine if we should fold quantization emulation ops">
+  ];
+}
