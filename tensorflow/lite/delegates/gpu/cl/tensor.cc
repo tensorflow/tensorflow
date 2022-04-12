@@ -382,10 +382,11 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                      GPUResourcesWithValue* resources) const {
   const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(obj_ptr);
   if (buffer_desc) {
-    if (descriptor_.storage_type != TensorStorageType::BUFFER) {
+    if (descriptor_.storage_type != TensorStorageType::BUFFER &&
+        descriptor_.storage_type != TensorStorageType::IMAGE_BUFFER) {
       return absl::InvalidArgumentError(
           "Tensor can be used with BufferDescriptor only with "
-          "TensorStorageType::BUFFER.");
+          "TensorStorageType::BUFFER/TensorStorageType::IMAGE_BUFFER.");
     }
     resources->buffers.push_back({"buffer", memory_});
     return absl::OkStatus();
