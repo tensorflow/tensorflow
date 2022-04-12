@@ -62,6 +62,8 @@
         *   The behavior of `tf.function` itself is unaffected.
     *   Note: This feature will be enabled by default in an upcoming version of TensorFlow.
 
+*   `tf.experimental.dtensor`: Added DTensor, an extension to TensorFlow for large-scale modeling with minimal changes to user code. You are welcome to try it out, though be aware that the DTensor API is experimental and up-to backward-incompatible changes. DTensor and Keras integration is published under `tf.keras.dtensor` in this release (refer to the `tf.keras` entry). The tutoral and guide for DTensor will be published on https://www.tensorflow.org/. Please stay tuned.
+    
 # Bug Fixes and Other Changes
 
 *   `tf.data`:
