@@ -49,7 +49,7 @@ module {
 // CHECK-DAG: %[[out_zp:.*]] = "tf.Const"() {value = dense<-1> : tensor<i32>}
 // CHECK-DAG: %[[b_quant:.*]] = "tf.Const"() {value = dense<[-62500, 75000]> : tensor<2xi32>}
 // CHECK-DAG: %[[w_quant:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}40, 20]
-// CHECK-SAME: {{\[\[\[}}-87, -42]
+// CHECK-DAG: {{\[\[\[}}-87, -42]
 
 // CHECK: %[[quantize:.*]] = "tf.PartitionedCall"(%arg0, %[[in_scale]], %[[in_zp]])
 // CHECK-SAME: f = @quantize_i8
