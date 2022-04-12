@@ -172,7 +172,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core/profiler/internal/cpu:host_tracer",
     ] + if_libtpu([
-        "//tensorflow/core/profiler/internal/tpu:tpu_tracer",
+        "//tensorflow/core/profiler/backends/tpu:tpu_tracer",
     ]) + if_xla_available([
         "//tensorflow/core/profiler/internal/cpu:metadata_collector",
     ]),
