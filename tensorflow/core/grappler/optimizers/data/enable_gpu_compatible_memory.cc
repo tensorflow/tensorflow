@@ -75,8 +75,9 @@ Status EnableGPUCompatibleMemory::OptimizeAndCollectStats(Cluster* cluster,
 
     if (!HasUseGpuCompatAllocatorAttr(*node_prior))
     {
-      VLOG(2) << "the " << node_prior->op() << " does not have the "
-        << UseGpuCompatAllocatorAttr << " attribute";
+      VLOG(2) << "The `" << node_prior->op() << "` op does not have the "
+        << UseGpuCompatAllocatorAttr << " attribute, hence the "
+        << "OptimizeAndCollectStats is skipped";
       return Status::OK();
     }
     (*node_prior->mutable_attr())[UseGpuCompatAllocatorAttr].set_b(true);
