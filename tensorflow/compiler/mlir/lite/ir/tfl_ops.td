@@ -43,24 +43,6 @@ def TFL_Quint8 : Type<CPred<"$_self.isa<mlir::TF::Quint8Type>()">,
                     "TFLite quint8 type">,
               BuildableType<"getType<mlir::TF::Quint8Type>()">;
 
-//===----------------------------------------------------------------------===//
-// Activation function enum definitions.
-//===----------------------------------------------------------------------===//
-
-// Allowed activation function cases
-// These should match the ActivationFunctionType enum in TFLite schema.
-def TFL_AF_None  : StrEnumAttrCase<"NONE">;
-def TFL_AF_Relu  : StrEnumAttrCase<"RELU">;
-def TFL_AF_Relu1 : StrEnumAttrCase<"RELU_N1_TO_1">;
-def TFL_AF_Relu6 : StrEnumAttrCase<"RELU6">;
-def TFL_AF_Tanh  : StrEnumAttrCase<"TANH">;
-def TFL_AF_Sign  : StrEnumAttrCase<"SIGN_BIT">;
-
-def TFL_AFAttr : StrEnumAttr<
-    "ActivationFunctionType", "fused activation enum", [
-      TFL_AF_None,  TFL_AF_Relu, TFL_AF_Relu1,
-      TFL_AF_Relu6, TFL_AF_Tanh, TFL_AF_Sign
-    ]>;
 
 //===----------------------------------------------------------------------===//
 // Padding enum definitions.

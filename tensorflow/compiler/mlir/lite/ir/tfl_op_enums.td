@@ -22,6 +22,18 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/EnumAttr.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 
+// A string attribute whose value are one of the values in `cases`.
+// Referred TF_AnyStrAttrOf in tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td
+class TFL_AnyStrAttrOf<list<string> cases> : StringBasedAttr<
+  CPred<!foldl(
+      "$_self.cast<StringAttr>().getValue() == \"" # !head(cases) # "\"",
+      !foreach(case, !tail(cases),
+               "$_self.cast<StringAttr>().getValue() == \"" # case # "\""),
+      prev, cur, prev # " || " # cur)>,
+  "string attribute whose value is " #
+    !foldl(/*init*/!head(cases), /*list*/!tail(cases),
+           prev, cur, prev # ", or " # cur)>;
+
 // Attributes used for encoding sparse tensors.
 // Please find detailed explanation of these parameters in the TFLite schema.
 def TFL_DT_Dense : I32EnumAttrCase<"DENSE", 0>;
@@ -34,6 +46,28 @@ def TFL_DimensionType : I32EnumAttr<
 }
 def TFL_DimensionTypeAttr : EnumAttr<TFL_Dialect, TFL_DimensionType,
     "dimension_type_attr">;
+
+// Allowed activation function cases
+// These should match the ActivationFunctionType enum in TFLite schema.
+def TFL_AFEnum_None  : I32EnumAttrCase<"NONE", 0>;
+def TFL_AFEnum_Relu  : I32EnumAttrCase<"RELU", 1>;
+def TFL_AFEnum_Relu1 : I32EnumAttrCase<"RELU_N1_TO_1", 2>;
+def TFL_AFEnum_Relu6 : I32EnumAttrCase<"RELU6", 3>;
+def TFL_AFEnum_Tanh  : I32EnumAttrCase<"TANH", 4>;
+def TFL_AFEnum_Sign  : I32EnumAttrCase<"SIGN_BIT", 5>;
+
+def TFL_AFAttr : TFL_AnyStrAttrOf<[
+      TFL_AFEnum_None.symbol,  TFL_AFEnum_Relu.symbol, TFL_AFEnum_Relu1.symbol,
+      TFL_AFEnum_Relu6.symbol, TFL_AFEnum_Tanh.symbol, TFL_AFEnum_Sign.symbol
+    ]>;
+
+// Predefined constant attributes of activation function
+def TFL_AF_None  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_None.symbol>;
+def TFL_AF_Relu  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Relu.symbol>;
+def TFL_AF_Relu1 : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Relu1.symbol>;
+def TFL_AF_Relu6 : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Relu6.symbol>;
+def TFL_AF_Tanh  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Tanh.symbol>;
+def TFL_AF_Sign  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Sign.symbol>;
 
 // MirrorPadding type attributes
 def TFL_MIRRORPAD_Reflect : I32EnumAttrCase<"REFLECT", 0>;

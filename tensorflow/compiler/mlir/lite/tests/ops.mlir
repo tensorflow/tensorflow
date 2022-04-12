@@ -582,7 +582,7 @@ func.func @testFusedActivationFunction(%arg0: tensor<4xi32>, %arg1: tensor<4xi32
 // -----
 
 func.func @testFusedActivationFunction(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
-  // expected-error @+1 {{attribute 'fused_activation_function' failed to satisfy constraint: fused activation enum}}
+  // expected-error @+1 {{attribute 'fused_activation_function' failed to satisfy constraint: string attribute whose value is NONE, or RELU, or RELU_N1_TO_1, or RELU6, or TANH, or SIGN_BIT}}
   %0 = tfl.add %arg0, %arg1 {fused_activation_function = "Relu6"} : tensor<4xi32>
   func.return %0: tensor<4xi32>
 }
