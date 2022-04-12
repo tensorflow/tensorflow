@@ -2438,7 +2438,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
 
     if explicitly_set_bias:
-      quantized_converter._experimental_full_integer_quantization_bias_type = bias_type
+      quantized_converter._experimental_full_integer_quantization_bias_type = \
+       bias_type
 
     if is_int16_quantize:
       quantized_converter.target_spec.supported_ops = [
@@ -3215,7 +3216,8 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter._experimental_default_to_single_batch_in_tensor_list_ops = default_to_single_batch
+    converter._experimental_default_to_single_batch_in_tensor_list_ops = \
+     default_to_single_batch
     if not default_to_single_batch:
       converter.target_spec.supported_ops = [
           tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
@@ -3266,7 +3268,8 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter._experimental_default_to_single_batch_in_tensor_list_ops = default_to_single_batch
+    converter._experimental_default_to_single_batch_in_tensor_list_ops = \
+     default_to_single_batch
     if not default_to_single_batch:
       converter.target_spec.supported_ops = [
           tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
@@ -3292,7 +3295,8 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter._experimental_default_to_single_batch_in_tensor_list_ops = default_to_single_batch
+    converter._experimental_default_to_single_batch_in_tensor_list_ops = \
+     default_to_single_batch
     if not default_to_single_batch:
       converter.target_spec.supported_ops = [
           tf.lite.OpsSet.TFLITE_BUILTINS, tf.lite.OpsSet.SELECT_TF_OPS
