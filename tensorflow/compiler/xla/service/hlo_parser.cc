@@ -140,6 +140,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kReplicaId:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
@@ -155,7 +156,6 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kSort:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
-    case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kTuple:
@@ -1250,6 +1250,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
@@ -2835,10 +2836,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operands[0], std::move(domain.exit_metadata),
           std::move(domain.entry_metadata)));
     }
-    case HloOpcode::kTrace:
-      TokenError(StrCat("parsing not yet implemented for op: ",
-                        HloOpcodeString(opcode)));
-      return nullptr;
     case HloOpcode::kGetDimensionSize: {
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,

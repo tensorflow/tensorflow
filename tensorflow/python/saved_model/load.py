@@ -16,6 +16,7 @@
 
 import collections
 import functools
+import os
 import sys
 
 from tensorflow.core.protobuf import graph_debug_info_pb2
@@ -776,6 +777,8 @@ def load(export_dir, tags=None, options=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
+  if isinstance(export_dir, os.PathLike):
+    export_dir = os.fspath(export_dir)
   result = load_partial(export_dir, None, tags, options)["root"]
   return result
 
@@ -896,7 +899,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(
-          "Got an incompatible argument to `tags`: {tags}. The SavedModel at "
+          f"Got an incompatible argument to `tags`: {tags}. The SavedModel at "
           f"{export_dir} has one MetaGraph with tags "
           f"{meta_graph_def.meta_info_def.tags}. You may omit the argument, "
           "pass 'None', or pass matching tags.")

@@ -263,6 +263,8 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
 // Applies quantization on the model in TFL dialect.
 struct QuantizePass : public PassWrapper<QuantizePass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
+
   // Constructor used by the PassRegistration and only used by test.
   explicit QuantizePass() {
     quant_specs.inference_type = tensorflow::DT_QINT8;

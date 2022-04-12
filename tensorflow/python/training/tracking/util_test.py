@@ -14,6 +14,7 @@
 # ==============================================================================
 import copy
 import os
+import pathlib
 import sys
 import weakref
 
@@ -1101,6 +1102,28 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
     with self.assertRaisesRegex(ValueError, "incompatible tensor with shape"):
       trackable_utils.Checkpoint(v=w).restore(save_path)
+
+  def test_save_restore_fspath(self):
+    v = variables_lib.Variable(1.0)
+    w = variables_lib.Variable(0.0)
+    ckpt = trackable_utils.Checkpoint(v=v)
+    prefix = pathlib.Path(self.get_temp_dir()) / "ckpt"
+    save_path = ckpt.save(prefix)
+    save_path = pathlib.Path(save_path)
+    ckpt2 = trackable_utils.Checkpoint(v=w)
+    ckpt2.restore(save_path)
+    self.assertEqual(ckpt.v.numpy(), 1.0)
+
+  def test_read_write_fspath(self):
+    v = variables_lib.Variable(1.0)
+    w = variables_lib.Variable(0.0)
+    ckpt = trackable_utils.Checkpoint(v=v)
+    prefix = pathlib.Path(self.get_temp_dir()) / "ckpt"
+    save_path = ckpt.write(prefix)
+    save_path = pathlib.Path(save_path)
+    ckpt2 = trackable_utils.Checkpoint(v=w)
+    ckpt2.read(save_path)
+    self.assertEqual(ckpt.v.numpy(), 1.0)
 
 
 class TemplateTests(parameterized.TestCase, test.TestCase):

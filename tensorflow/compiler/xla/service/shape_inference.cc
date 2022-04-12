@@ -246,6 +246,7 @@ StatusOr<PrimitiveType> MaybeUpcast(
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
       if (!ShapeUtil::ElementIsFloating(shape)) {
         return InvalidArgument(
             "Expected element type in shape to be floating for %s operation; "

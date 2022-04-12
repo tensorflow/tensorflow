@@ -375,14 +375,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
       break;
     }
-    case HloOpcode::kTrace: {
-      TF_RET_CHECK(proto.has_literal());
-      TF_ASSIGN_OR_RETURN(
-          auto literal,
-          Literal::CreateFromProto(proto.literal(), prohibit_empty_literal));
-      instruction = CreateTrace(literal.GetR1U8AsString(), operands(0));
-      break;
-    }
     case HloOpcode::kFusion: {
       // In the proto, fused computations are held exclusively within the
       // HloInstructionProto and do not appear as an HloComputationProto within
@@ -982,11 +974,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                                     name);
 }
 
-/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTrace(
-    const std::string& tag, HloInstruction* operand) {
-  return absl::make_unique<HloTraceInstruction>(tag, operand);
-}
-
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConstant(
     Literal literal) {
   return absl::make_unique<HloConstantInstruction>(std::move(literal));
@@ -1051,6 +1038,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCollectivePermuteDone:
@@ -1804,7 +1792,6 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
-    case HloOpcode::kTrace:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAllGatherStart:
@@ -1966,7 +1953,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kMap:
     case HloOpcode::kSlice:
     case HloOpcode::kConstant:
-    case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
     case HloOpcode::kRngBitGenerator:
@@ -2007,6 +1993,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
@@ -2313,7 +2300,8 @@ bool HloInstruction::IdenticalInternal(
         eq_operands,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations,
-    bool layout_sensitive, bool ignore_channel_id_values) const {
+    bool layout_sensitive, bool ignore_channel_id_values,
+    bool ignore_commutative_operand_order) const {
   // An instruction is always identical to itself.
   if (this == &other) {
     return true;
@@ -2332,11 +2320,24 @@ bool HloInstruction::IdenticalInternal(
     return false;
   }
 
+  // Check that operands are equal.
+  //
   // Use an explicit loop rather than ContainerEquals, because copying around
   // std::functions may be too expensive in some cases.
-  for (size_t i = 0; i < operands().size(); ++i) {
-    if (!eq_operands(operand(i), other.operand(i))) {
+  if (ignore_commutative_operand_order &&
+      HloOpcodeIsBinaryCommutative(opcode())) {
+    CHECK_EQ(operand_count(), 2);
+    if (!(eq_operands(operand(0), other.operand(0)) &&
+          eq_operands(operand(1), other.operand(1))) &&
+        !(eq_operands(operand(0), other.operand(1)) &&
+          eq_operands(operand(1), other.operand(0)))) {
       return false;
+    }
+  } else {
+    for (size_t i = 0; i < operands().size(); ++i) {
+      if (!eq_operands(operand(i), other.operand(i))) {
+        return false;
+      }
     }
   }
 
@@ -2460,6 +2461,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDynamicReshape:
     case HloOpcode::kReplicaId:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
@@ -2520,7 +2522,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSlice:
     case HloOpcode::kConstant:
     case HloOpcode::kIota:
-    case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
     case HloOpcode::kRngBitGenerator:
@@ -2894,6 +2895,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     // Unary elementwise operations.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
     case HloOpcode::kConvert:
@@ -3327,12 +3329,6 @@ std::string HloInstruction::ToCategory() const {
   return HloOpcodeString(opcode());
 }
 
-HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
-
-void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
-  trace_instruction_ = trace_instruction;
-}
-
 bool HloInstruction::IsFused() const {
   return parent_ != nullptr && parent_->IsFusionComputation();
 }
@@ -3358,10 +3354,6 @@ bool HloInstruction::IsCustomFusion() const {
 }
 
 bool HloInstruction::IsFusible() const {
-  // Instructions which are traced should not be fused.
-  if (tracing()) {
-    return false;
-  }
   // Some kinds of instructions don't make sense to fuse.
   switch (opcode_) {
     case HloOpcode::kDomain:
@@ -3403,6 +3395,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleAtan2(this);
     case HloOpcode::kRoundNearestAfz:
       return visitor->HandleRound(this);
+    case HloOpcode::kRoundNearestEven:
+      return visitor->HandleRoundNearestEven(this);
     case HloOpcode::kBatchNormTraining:
       return visitor->HandleBatchNormTraining(this);
     case HloOpcode::kBatchNormInference:
@@ -3629,10 +3623,6 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCholesky(this);
     case HloOpcode::kOptimizationBarrier:
       return visitor->HandleOptimizationBarrier(this);
-
-    // These opcodes are not handled here.
-    case HloOpcode::kTrace:
-      return Status::OK();
   }
   return InternalError(
       "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen - "
@@ -4442,10 +4432,6 @@ void HloInstruction::RelayoutConstant(const Layout& new_layout,
   Cast<HloConstantInstruction>(this)->RelayoutConstant(new_layout, shape_index);
 }
 
-std::string HloInstruction::TracingTag() const {
-  return Cast<HloTraceInstruction>(this)->TracingTag();
-}
-
 HloInstruction* HloInstruction::AddFusionOperand(HloInstruction* new_operand) {
   return Cast<HloFusionInstruction>(this)->AddFusionOperand(new_operand);
 }
@@ -4763,6 +4749,10 @@ bool HloInstruction::is_cross_program_prefetch() const {
 
 ComparisonDirection HloInstruction::comparison_direction() const {
   return Cast<HloCompareInstruction>(this)->direction();
+}
+
+ComparisonOrder HloInstruction::comparison_order() const {
+  return Cast<HloCompareInstruction>(this)->order();
 }
 
 const TriangularSolveOptions& HloInstruction::triangular_solve_options() const {

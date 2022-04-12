@@ -186,4 +186,4 @@ The resulting library can be found in
 
 Guidance on porting TensorFlow Lite for Microcontrollers to new platforms and
 devices can be found in
-[`micro/README.md`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/README.md).
+[`micro/docs/new_platform_support.md`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/docs/new_platform_support.md).

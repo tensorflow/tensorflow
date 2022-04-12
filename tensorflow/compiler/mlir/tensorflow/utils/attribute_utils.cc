@@ -22,6 +22,11 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
+// TODO(b/228344955) use inline constexpr with C++17
+const llvm::StringRef kCompileDeviceTypeAttr = "_xla_compile_device_type";
+const llvm::StringRef kReplicationInfoAttr = "_replication_info";
+const llvm::StringRef kTPUReplicateAttr = "_tpu_replicate";
+
 LogicalResult HasValidCompilationAndReplicationAttributes(Operation& op) {
   auto replicate_attr = op.getAttrOfType<StringAttr>(kReplicationInfoAttr);
   auto compile_attr = op.getAttrOfType<StringAttr>(kCompileDeviceTypeAttr);

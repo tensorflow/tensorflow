@@ -258,9 +258,13 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
       MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
+
+      UserScratchPad<unsigned char> scratch_pad;
+      scratch_pad.AllocateSPTensor(matmul_prim, ctx);
+
       // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
-                           cpu_stream);
+                           scratch_pad.Get(), cpu_stream);
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +

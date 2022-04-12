@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -29,6 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -37,10 +40,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
+namespace m = xla::match;
 
 class HloCseTest : public HloTestBase {
  protected:
@@ -221,37 +225,38 @@ TEST_F(HloCseTest, WhileLoopsIdenticalConditionsAndBodiesSameInput) {
 
     %body (param: (f32[], f32[])) -> (f32[], f32[]) {
       %param = (f32[], f32[]) parameter(0)
-      %get-tuple-element = f32[] get-tuple-element((f32[], f32[]) %param),
-index=0 %get-tuple-element.1 = f32[] get-tuple-element((f32[], f32[]) %param),
-index=1 %add = f32[] add(f32[] %get-tuple-element, f32[] %get-tuple-element.1)
-      ROOT %tuple = (f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %add)
+      %gte0 = get-tuple-element(%param), index=0
+      %gte1 = get-tuple-element(%param), index=1
+      %add = add(%gte0, %gte1)
+      ROOT %tuple = tuple(%gte0, %add)
     }
 
-    %condition (param.1: (f32[], f32[])) -> pred[] {
+    %condition {
       %param.1 = (f32[], f32[]) parameter(0)
       ROOT %constant = pred[] constant(false)
     }
 
-    %condition.1 (param.2: (f32[], f32[])) -> pred[] {
+    %condition.1 {
       %param.2 = (f32[], f32[]) parameter(0)
       ROOT %constant.1 = pred[] constant(false)
     }
 
-    ENTRY %WhileLoopsIdenticalConditionsAndBodiesSameInput () -> (f32[], f32[])
-{ %constant.2 = f32[] constant(1) %constant.3 = f32[] constant(2) %tuple.1 =
-(f32[], f32[]) tuple(f32[] %constant.2, f32[] %constant.3) %while = (f32[],
-f32[]) while((f32[], f32[]) %tuple.1), condition=%condition, body=%body ROOT
-%while.1 = (f32[], f32[]) while((f32[], f32[]) %tuple.1),
-condition=%condition.1, body=%body
+    ENTRY %WhileLoopsIdenticalConditionsAndBodiesSameInput {
+      %c0 = f32[] constant(1)
+      %c1 = f32[] constant(2)
+      %t = tuple(c0, c1)
+      %while = while(%t), condition=%condition, body=%body
+      %while.1 = while(%t), condition=%condition.1, body=%body
+      ROOT r = tuple(while, while.1)
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   auto computation = m->entry_computation();
 
-  EXPECT_EQ(5, computation->instruction_count());
+  EXPECT_EQ(6, computation->instruction_count());
   HloCSE cse(true);
   EXPECT_TRUE(cse.Run(m.get()).ValueOrDie());
-  EXPECT_EQ(4, computation->instruction_count());
+  EXPECT_EQ(5, computation->instruction_count());
 }
 
 // Test two while loops with same conditions, same inputs, but different
@@ -260,21 +265,20 @@ TEST_F(HloCseTest, WhileLoopsIdenticalConditionsSameInputAndDifferentBodies) {
   const char* const hlo_string = R"(
     HloModule WhileLoopsIdenticalConditionsSameInputAndDifferentBodies
 
-    %body (param: (f32[], f32[])) -> (f32[], f32[]) {
+    %body {
       %param = (f32[], f32[]) parameter(0)
-      %get-tuple-element = f32[] get-tuple-element((f32[], f32[]) %param),
-index=0 %get-tuple-element.1 = f32[] get-tuple-element((f32[], f32[]) %param),
-index=1 %add = f32[] add(f32[] %get-tuple-element, f32[] %get-tuple-element.1)
-      ROOT %tuple = (f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %add)
+      %get-tuple-element = get-tuple-element(%param), index=0
+      %get-tuple-element.1 = get-tuple-element(%param), index=1
+      %add = add(%get-tuple-element, %get-tuple-element.1)
+      ROOT %tuple = tuple(%get-tuple-element, %add)
     }
 
-    %body2 (param.1: (f32[], f32[])) -> (f32[], f32[]) {
+    %body2 {
       %param.1 = (f32[], f32[]) parameter(0)
-      %get-tuple-element.2 = f32[] get-tuple-element((f32[], f32[]) %param.1),
-index=0 %get-tuple-element.3 = f32[] get-tuple-element((f32[], f32[]) %param.1),
-index=1 %sub = f32[] subtract(f32[] %get-tuple-element.2, f32[]
-%get-tuple-element.3) ROOT %tuple.2 = (f32[], f32[]) tuple(f32[]
-%get-tuple-element.2, f32[] %sub)
+      %get-tuple-element.2 = get-tuple-element(%param.1), index=0
+      %get-tuple-element.3 = get-tuple-element(%param.1), index=1
+      %sub = subtract(%get-tuple-element.2, %get-tuple-element.3)
+      ROOT %tuple.2 = tuple(%get-tuple-element.2, %sub)
     }
 
     %condition (param.2: (f32[], f32[])) -> pred[] {
@@ -287,12 +291,12 @@ index=1 %sub = f32[] subtract(f32[] %get-tuple-element.2, f32[]
       ROOT %constant.1 = pred[] constant(false)
     }
 
-    ENTRY %WhileLoopsIdenticalConditionsSameInputAndDifferentBodies () ->
-(f32[], f32[]) { %constant.2 = f32[] constant(1) %constant.3 = f32[] constant(2)
-      %tuple.1 = (f32[], f32[]) tuple(f32[] %constant.2, f32[] %constant.3)
-      %while = (f32[], f32[]) while((f32[], f32[]) %tuple.1),
-condition=%condition, body=%body ROOT %while.1 = (f32[], f32[]) while((f32[],
-f32[]) %tuple.1), condition=%condition.1, body=%body2
+    ENTRY %WhileLoopsIdenticalConditionsSameInputAndDifferentBodies {
+      %constant.2 = f32[] constant(1)
+      %constant.3 = f32[] constant(2)
+      %tuple.1 = tuple(f32[] %constant.2, f32[] %constant.3)
+      %while = while(%tuple.1), condition=%condition, body=%body
+      ROOT %while.1 = while(%tuple.1), condition=%condition.1, body=%body2
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
@@ -309,32 +313,41 @@ TEST_F(HloCseTest, WhileLoopsIdenticalConditionsAndBodiesDifferentInput) {
   const char* const hlo_string = R"(
     HloModule WhileLoopsIdenticalConditionsAndBodiesDifferentInput
 
-    %body (param: (f32[], f32[])) -> (f32[], f32[]) {
+    %body {
       %param = (f32[], f32[]) parameter(0)
-      %get-tuple-element = f32[] get-tuple-element((f32[], f32[]) %param),
-index=0 %get-tuple-element.1 = f32[] get-tuple-element((f32[], f32[]) %param),
-index=1 %add = f32[] add(f32[] %get-tuple-element, f32[] %get-tuple-element.1)
-      ROOT %tuple = (f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %add)
+      %get-tuple-element = get-tuple-element(%param), index=0
+      %get-tuple-element.1 = get-tuple-element(%param), index=1
+      %add = add(%get-tuple-element, %get-tuple-element.1)
+      ROOT %tuple = tuple(%get-tuple-element, %add)
     }
 
-    %condition (param.1: (f32[], f32[])) -> pred[] {
+    %body.1 {
+      %param.1 = (f32[], f32[]) parameter(0)
+      %gte = get-tuple-element(%param.1), index=0
+      %gte1 = get-tuple-element(%param.1), index=1
+      %add.1 = add(%gte, %gte1)
+      ROOT %tuple = tuple(%gte, %add.1)
+    }
+
+    %condition {
       %param.1 = (f32[], f32[]) parameter(0)
       ROOT %constant = pred[] constant(false)
     }
 
-    %condition.1 (param.2: (f32[], f32[])) -> pred[] {
+    %condition.1 {
       %param.2 = (f32[], f32[]) parameter(0)
       ROOT %constant.1 = pred[] constant(false)
     }
 
-    ENTRY %WhileLoopsIdenticalConditionsAndBodiesDifferentInput () -> (f32[],
-f32[]) { %constant.2 = f32[] constant(1) %constant.3 = f32[] constant(2)
-      %tuple.1 = (f32[], f32[]) tuple(f32[] %constant.2, f32[] %constant.3)
-      %while = (f32[], f32[]) while((f32[], f32[]) %tuple.1),
-condition=%condition, body=%body %constant.4 = f32[] constant(1) %constant.5 =
-f32[] constant(2) %tuple.2 = (f32[], f32[]) tuple(f32[] %constant.4, f32[]
-%constant.5) ROOT %while.1 = (f32[], f32[]) while((f32[], f32[]) %tuple.2),
-condition=%condition.1, body=%body
+    ENTRY %WhileLoopsIdenticalConditionsAndBodiesDifferentInput {
+      %constant.2 = f32[] constant(1)
+      %constant.3 = f32[] constant(2)
+      %tuple.1 =  tuple(%constant.2, %constant.3)
+      %while = while(%tuple.1), condition=%condition, body=%body
+      %constant.4 = f32[] constant(1)
+      %constant.5 = f32[] constant(3)
+      %tuple.2 = tuple(%constant.4, %constant.5)
+      ROOT %while.1 = while(%tuple.2), condition=%condition.1, body=%body.1
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
@@ -352,30 +365,30 @@ TEST_F(HloCseTest, WhileLoopsIdenticalBodiesAndInputDifferentConditions) {
   const char* const hlo_string = R"(
     HloModule WhileLoopsIdenticalBodiesAndInputDifferentConditions
 
-    %body (param: (f32[], f32[])) -> (f32[], f32[]) {
+    %body {
       %param = (f32[], f32[]) parameter(0)
-      %get-tuple-element = f32[] get-tuple-element((f32[], f32[]) %param),
-index=0 %get-tuple-element.1 = f32[] get-tuple-element((f32[], f32[]) %param),
-index=1 %add = f32[] add(f32[] %get-tuple-element, f32[] %get-tuple-element.1)
-      ROOT %tuple = (f32[], f32[]) tuple(f32[] %get-tuple-element, f32[] %add)
+      %get-tuple-element = get-tuple-element(%param), index=0
+      %get-tuple-element.1 = get-tuple-element((f32[], f32[]) %param), index=1
+      %add = add(%get-tuple-element, %get-tuple-element.1)
+      ROOT %tuple = tuple(%get-tuple-element, %add)
     }
 
-    %condition (param.1: (f32[], f32[])) -> pred[] {
+    %condition {
       %param.1 = (f32[], f32[]) parameter(0)
       ROOT %constant = pred[] constant(false)
     }
 
-    %condition.1 (param.2: (f32[], f32[])) -> pred[] {
+    %condition.1 {
       %param.2 = (f32[], f32[]) parameter(0)
       ROOT %constant.1 = pred[] constant(true)
     }
 
-    ENTRY %WhileLoopsIdenticalBodiesAndInputDifferentConditions () -> (f32[],
-f32[]) { %constant.2 = f32[] constant(1) %constant.3 = f32[] constant(2)
-      %tuple.1 = (f32[], f32[]) tuple(f32[] %constant.2, f32[] %constant.3)
-      %while = (f32[], f32[]) while((f32[], f32[]) %tuple.1),
-condition=%condition, body=%body ROOT %while.1 = (f32[], f32[]) while((f32[],
-f32[]) %tuple.1), condition=%condition.1, body=%body
+    ENTRY %WhileLoopsIdenticalBodiesAndInputDifferentConditions {
+      %constant.2 = f32[] constant(1)
+      %constant.3 = f32[] constant(2)
+      %tuple.1 = tuple(%constant.2, %constant.3)
+      %while = while(%tuple.1), condition=%condition, body=%body
+      ROOT %while.1 = while(%tuple.1), condition=%condition.1, body=%body
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
@@ -631,21 +644,21 @@ TEST_F(HloCseTest, CompareComputations) {
     add_computation {
       add_lhs = f32[] parameter(0)
       add_rhs = f32[] parameter(1)
-      ROOT add_root = f32[] add(add_lhs, add_rhs)
+      ROOT add_root = add(add_lhs, add_rhs)
     }
 
     add_computation2 {
       add_lhs2 = f32[] parameter(0)
       add_rhs2 = f32[] parameter(1)
-      ROOT add_root2 = f32[] add(add_lhs2, add_rhs2)
+      ROOT add_root2 = add(add_lhs2, add_rhs2)
     }
 
     ENTRY entry {
       p = f32[10]{0} parameter(0)
       c = f32[] constant(0)
-      r1 = f32[] reduce(p, c), dimensions={0}, to_apply=add_computation
-      r2 = f32[] reduce(p, c), dimensions={0}, to_apply=add_computation2
-      ROOT f2 = (f32[],f32[]) tuple(r1, r2)
+      r1 = reduce(p, c), dimensions={0}, to_apply=add_computation
+      r2 = reduce(p, c), dimensions={0}, to_apply=add_computation2
+      ROOT f2 = tuple(r1, r2)
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
@@ -759,6 +772,178 @@ TEST_F(HloCseTest, OptimizationBarrier) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
   EXPECT_FALSE(changed);
 }
+
+class HloCseCustomCallTest
+    : public HloCseTest,
+      public ::testing::WithParamInterface<std::tuple<
+          std::string /*op1*/, std::string /*op2*/, bool /*should_cse*/>> {};
+
+TEST_P(HloCseCustomCallTest, DoIt) {
+  std::string op1 = std::get<0>(GetParam());
+  std::string op2 = std::get<1>(GetParam());
+  bool should_cse = std::get<2>(GetParam());
+
+  const char* const hlo_string_tmpl = R"(
+    HloModule m
+    ENTRY entry {
+      p0 = f32[1,1,1] parameter(0)
+
+      op0 = $0
+      op1 = $0
+      op2 = $1
+      ROOT root = tuple(op0, op1, op2)
+    }
+  )";
+  std::string hlo_string = absl::Substitute(hlo_string_tmpl, op1, op2);
+  SCOPED_TRACE(absl::StrCat("Module before CSE:\n", hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+
+  SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
+  EXPECT_EQ(changed, true);  // we always CSE op0 and op1, which are identical.
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0), root->operand(1))
+      << "Identical ops should be CSE'ed";
+  if (should_cse) {
+    EXPECT_EQ(root->operand(0), root->operand(2)) << "Ops should be CSE'ed";
+  } else {
+    EXPECT_NE(root->operand(0), root->operand(2)) << "Ops should not be CSE'ed";
+  }
+}
+
+static std::vector<
+    std::tuple<std::string /*op1*/, std::string /*op2*/, bool /*should_cse*/>>
+CustomCallTests() {
+  auto build = [](absl::string_view args1, absl::string_view args2) {
+    absl::string_view prefix =
+        "f32[] custom-call(p0), custom_call_target=\"foo\", ";
+    return std::make_tuple(absl::StrCat(prefix, args1),
+                           absl::StrCat(prefix, args2), false);
+  };
+  return {
+      {
+          // metadata shouldn't prevent CSE
+          "f32[] custom-call(p0), custom_call_target=\"foo\"",
+          "f32[] custom-call(p0), custom_call_target=\"foo\", "
+          "metadata={op_name=\"bar\"}",
+          true,
+      },
+      {
+          "f32[] custom-call(p0), custom_call_target=\"foo\"",
+          "f32[] custom-call(p0, p0), custom_call_target=\"foo\"",
+          false,
+      },
+      {
+          "f32[1] custom-call(p0), custom_call_target=\"foo\"",
+          "f32[2] custom-call(p0), custom_call_target=\"foo\"",
+          false,
+      },
+      {
+          "f32[] custom-call(p0), custom_call_target=\"foo\"",
+          "f32[] custom-call(p0), custom_call_target=\"bar\"",
+          false,
+      },
+
+      build("window={size=1}", "window={size=2}"),
+      build("dim_labels=b0f_0oi->b0f", "dim_labels=b0f_0oi->bf0"),
+      build("backend_config=\"foo\"", "backend_config=\"bar\""),
+      build("literal=s32[] 0", "literal=s32[] 1"),
+      build("literal=s32[] 0", "literal=f32[] 0"),
+      build("operand_precision={high,default}",
+            "operand_precision={high, high}"),
+      build("api_version=API_VERSION_STATUS_RETURNING",
+            "api_version=API_VERSION_ORIGINAL"),
+      build("feature_group_count=0", "feature_group_count=1"),
+  };
+}
+
+INSTANTIATE_TEST_SUITE_P(HloCseCustomCallTestSuite, HloCseCustomCallTest,
+                         ::testing::ValuesIn(CustomCallTests()));
+
+TEST_F(HloCseTest, CustomCallCalledComputations) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    comp {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT maximum = f32[] maximum(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = f32[] parameter(0)
+
+      op0 = f32[] custom-call(p0), custom_call_target="foo", called_computations={comp}
+      op1 = f32[] custom-call(p0), custom_call_target="foo", called_computations={comp, comp}
+      ROOT root = tuple(op0, op1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+
+  SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
+  EXPECT_EQ(changed, false);
+}
+
+TEST_F(HloCseTest, CustomCallSideEffects) {
+  const char* const hlo_string = R"(
+    HloModule m
+
+    ENTRY entry {
+      p0 = f32[] parameter(0)
+
+      op0 = f32[] custom-call(p0), custom_call_target="foo", custom_call_has_side_effect=true
+      op1 = f32[] custom-call(p0), custom_call_target="foo", custom_call_has_side_effect=true
+      ROOT root = tuple(op0, op1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&cse, m.get()));
+
+  SCOPED_TRACE(absl::StrCat("Module after CSE:\n", m->ToString()));
+  EXPECT_EQ(changed, false);
+}
+
+class HloCseCommutativeOpTest
+    : public HloCseTest,
+      public ::testing::WithParamInterface<std::string /*op*/> {};
+
+TEST_P(HloCseCommutativeOpTest, DoIt) {
+  std::string op = GetParam();
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0)
+      p1 = s32[10] parameter(1)
+      op1 = s32[10] $0(p0, p1)
+      op2 = s32[10] $0(p1, p0)
+      ROOT t = tuple(op1, op2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           absl::Substitute(kModuleStr, op)));
+  ASSERT_TRUE(
+      HloCSE(/*is_layout_sensitive=*/false).Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+
+  const HloInstruction* op0;
+  const HloInstruction* op1;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Op(&op0), m::Op(&op1))));
+  EXPECT_EQ(op0, op1);
+}
+
+INSTANTIATE_TEST_SUITE_P(AlgebraicSimplifierCanonicalizeCommutativeTestSuite,
+                         HloCseCommutativeOpTest,
+                         ::testing::Values("add", "multiply", "and", "or",
+                                           "xor", "minimum", "maximum"));
 
 }  // namespace
 }  // namespace xla

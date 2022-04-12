@@ -111,6 +111,84 @@ func.func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<3x4xf32> {
 
 // -----
 
+func.func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
+  // expected-error@+1 {{replica groups should be a rank 2 tensor of 64 bit integers}}
+  %0 = "mhlo.reduce_scatter"(%data) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<0> : tensor<1xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+func.func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
+  //  expected-error@+1 {{Invalid replica id -1}}
+  %0 = "mhlo.reduce_scatter"(%data) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, -1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+func.func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
+  //  expected-error@+1 {{replica id #1 seen more than once}}
+  %0 = "mhlo.reduce_scatter"(%data) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 1, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+func.func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
+  //  expected-error@+1 {{replica id #2 not seen in replica groups}}
+  %0 = "mhlo.reduce_scatter"(%data) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 3]]> : tensor<1x3xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+func.func @invalid_reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
+  // expected-error@+1 {{The reduction-region expected to return some value(s)}}
+  %0 = "mhlo.reduce_scatter"(%data) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"() : () -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64} : (tensor<4x16xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
+}
+
+// -----
+
+func.func @reduce_scatter(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
+  // expected-error@+1 {{expects scatter_dimension >= 0}}
+  %0 = "mhlo.reduce_scatter"(%data) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = -1 : i64} : (tensor<4x16xf32>) -> tensor<4x4xf32>
+  func.return %0 : tensor<4x4xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @alltoall
 func.func @alltoall(%data: tensor<4x16xf32>) -> tensor<16x4xf32> {
   %0 = "mhlo.all_to_all"(%data) {
@@ -442,6 +520,14 @@ func.func @comp_bad_direction(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> ten
   // expected-error@+1 {{'comparison_direction' failed to satisfy constraint}}
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = "FOOBAR"} : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi1>
   func.return %0 : tensor<3xi1>
+}
+
+// -----
+
+// CHECK-LABEL: func @comp_compatible_types
+func.func @comp_compatible_types(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<?xi1> {
+  %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<"comparison_direction EQ">} : (tensor<3xi32>, tensor<3xi32>) -> tensor<?xi1>
+  func.return %0 : tensor<?xi1>
 }
 
 // -----
@@ -3119,5 +3205,16 @@ func.func @rfft_invalid_ret_elt(%arg0: tensor<3x9xf32>) -> tensor<3x9xf32> {
   // expected-error@+1 {{RFFT produces a complex tensor as output, but is given 'tensor<3x9xf32>'.}}
   %0 = "mhlo.fft"(%arg0) { fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<"fft_type RFFT"> } : (tensor<3x9xf32>) -> tensor<3x9xf32>
   func.return %0 : tensor<3x9xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @eltwise_static_and_dynamic_type(
+//  CHECK-SAME: %[[A:.*]]: tensor<10x10xf32>, %[[B:.*]]: tensor<?x?xf32>) -> tensor<10x10xf32>
+//       CHECK: %[[R:.*]] = mhlo.add(%[[A]], %[[B]]) : (tensor<10x10xf32>, tensor<?x?xf32>) -> tensor<10x10xf32>
+//       CHECK: return %[[R]] : tensor<10x10xf32>
+func.func @eltwise_static_and_dynamic_type(%arg0: tensor<10x10xf32>, %arg1: tensor<?x?xf32>) -> tensor<10x10xf32> {
+  %0 = mhlo.add(%arg0, %arg1) : (tensor<10x10xf32>, tensor<?x?xf32>) -> tensor<10x10xf32>
+  func.return %0 : tensor<10x10xf32>
 }
 

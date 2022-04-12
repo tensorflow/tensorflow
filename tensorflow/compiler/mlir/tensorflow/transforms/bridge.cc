@@ -186,13 +186,15 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
 }  // namespace
 
 void CreateTPUBridgePipeline(OpPassManager &pm) {
-  pm.addPass(CreateCanonicalizeCompileAndReplicateAttributesPass());
+  pm.addNestedPass<FuncOp>(
+      CreateCanonicalizeCompileAndReplicateAttributesPass());
   CreateTPUBridgePipelineImpl(pm);
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   // Convert to unified compilation and replication attributes.
-  pm.addPass(CreateCanonicalizeCompileAndReplicateAttributesPass());
+  pm.addNestedPass<FuncOp>(
+      CreateCanonicalizeCompileAndReplicateAttributesPass());
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
@@ -211,7 +213,8 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   // attributes like we do for the V2 pipeline, so we need to convert them from
   // unified to legacy attributes before they get exposed to outside of the
   // bridge.
-  pm.addPass(CreateConvertToLegacyCompileAndReplicateAttributesPass());
+  pm.addNestedPass<FuncOp>(
+      CreateConvertToLegacyCompileAndReplicateAttributesPass());
 }
 
 tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
@@ -328,8 +331,13 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
 }  // namespace
 
 tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
-  return mlir::TFTPU::RunTFXLABridge(module, enable_logging,
-                                     CreateTFXLABridgePipeline);
+  Status status = mlir::TFTPU::RunTFXLABridge(module, enable_logging,
+                                              CreateTFXLABridgePipeline);
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      /*device type*/ "cpu/gpu", /*bridge version*/ "v2",
+      /*fallback_enabled*/ false,
+      /*result*/ status == Status::OK() ? "success" : "failure");
+  return status;
 }
 
 }  // namespace TF

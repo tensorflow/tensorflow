@@ -112,6 +112,12 @@ typedef struct TfLiteQuantizationParams {
   int32_t zero_point;
 } TfLiteQuantizationParams;
 
+// --------------------------------------------------------------------------
+// Opaque types used by c_api_opaque.h.
+
+// TfLiteOpaqueTensor is an opaque version of TfLiteTensor;
+typedef struct TfLiteOpaqueTensor TfLiteOpaqueTensor;
+
 #ifdef __cplusplus
 }  // extern C
 #endif

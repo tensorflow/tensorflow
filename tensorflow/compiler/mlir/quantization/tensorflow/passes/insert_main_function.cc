@@ -41,6 +41,8 @@ constexpr char kIndexPathAttr[] = "tf_saved_model.index_path";
 class InsertMainFunctionPass
     : public PassWrapper<InsertMainFunctionPass, OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertMainFunctionPass)
+
   explicit InsertMainFunctionPass() {}
 
   StringRef getArgument() const override { return "quant-add-main-function"; }

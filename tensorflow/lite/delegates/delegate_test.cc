@@ -852,7 +852,8 @@ INSTANTIATE_TEST_SUITE_P(
 class TestDelegateWithDynamicTensors : public ::testing::Test {
  protected:
   void SetUp() override {
-    interpreter_.reset(new Interpreter);
+    interpreter_ =
+        test_utils::TestDelegation::NewInterpreterWithDefaultDelegates();
 
     interpreter_->AddTensors(3);
     interpreter_->SetInputs({0});
@@ -996,7 +997,8 @@ TEST_F(TestDelegateWithDynamicTensors, ShapePropagation_FlagNotSet) {
 class TestReleaseDynamicTensorWithDelegate : public ::testing::Test {
  protected:
   void SetUp() override {
-    interpreter_.reset(new Interpreter);
+    interpreter_ =
+        test_utils::TestDelegation::NewInterpreterWithDefaultDelegates();
 
     interpreter_->AddTensors(3);
     interpreter_->SetInputs({0});

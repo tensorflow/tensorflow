@@ -458,8 +458,8 @@ TfLiteStatus L2Eval(TfLiteContext* context, TfLiteNode* node) {
     // We don't have a quantized implementation, so just fall through to the
     // 'default' case.
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
+                         input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

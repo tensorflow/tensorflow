@@ -493,9 +493,8 @@ HloComputation::ComputeChannelDependencies() const {
 }
 
 static inline bool HasOnlyTraceUsers(const HloInstruction* instruction) {
-  return absl::c_all_of(instruction->users(), [](HloInstruction* user) {
-    return user->opcode() == HloOpcode::kTrace;
-  });
+  return absl::c_all_of(instruction->users(),
+                        [](HloInstruction* user) { return false; });
 }
 
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
@@ -506,12 +505,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   absl::flat_hash_map<HloInstruction*, VisitState> visited;
   visited.reserve(instruction_count());
   for (auto& instruction : instructions_) {
-    if (instruction->opcode() == HloOpcode::kTrace) {
-      // Trace instructions aren't handled by the DFS visitor. Add trace
-      // instructions to the post order at the end (necessarily they have no
-      // users).
-      trace_instructions.push_back(instruction.get());
-    } else if (HasOnlyTraceUsers(instruction.get())) {
+    if (HasOnlyTraceUsers(instruction.get())) {
       ComputeInstructionPostOrder(instruction.get(), channel_dependencies,
                                   visited, post_order);
     }

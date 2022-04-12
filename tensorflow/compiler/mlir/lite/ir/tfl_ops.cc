@@ -3642,16 +3642,6 @@ bool WhileOp::isDefinedOutsideOfLoop(Value value) {
   return false;
 }
 
-LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
-  if (ops.empty()) return success();
-
-  // Move the hoisted value to just before the while.
-  Operation *while_op = this->getOperation();
-  for (auto op : ops) op->moveBefore(while_op);
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // LogisticOp
 //===----------------------------------------------------------------------===//

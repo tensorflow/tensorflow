@@ -44,6 +44,8 @@ namespace {
 
 struct DeviceTransformGPUPass
     : public mlir::PassWrapper<DeviceTransformGPUPass, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DeviceTransformGPUPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-device-transform-gpu";
   }

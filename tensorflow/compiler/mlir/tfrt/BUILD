@@ -104,6 +104,8 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
+        "//tensorflow/compiler/mlir/hlo:lower_index_cast",
+        "//tensorflow/compiler/mlir/hlo:shape_simplification",
         "//tensorflow/compiler/mlir/hlo:symbolic_shape_optimization",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
@@ -111,6 +113,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/core:ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticTransforms",
         "@llvm-project//mlir:Async",
@@ -518,7 +521,6 @@ cc_library(
         "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__pkg__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
-        "@tf_runtime//:__subpackages__",
     ],
     deps = [
         ":function",
@@ -568,6 +570,7 @@ cc_library(
     srcs = ["analysis/test_cost_analysis_pass.cc"],
     deps = [
         ":cost_analysis",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,

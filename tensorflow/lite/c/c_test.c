@@ -77,8 +77,8 @@ static void TestInferenceUsingSignature(void) {
 
   // (optional) Validate signatures
   ASSERT_EQ(TfLiteInterpreterGetSignatureCount(interpreter), 2);
-  ASSERT_STREQ(TfLiteInterpreterGetSignatureName(interpreter, 0), "add");
-  ASSERT_STREQ(TfLiteInterpreterGetSignatureName(interpreter, 1), "sub");
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 0), "add");
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 1), "sub");
 
   // Validate signature "add"
   TfLiteSignatureRunner* add_runner =
@@ -163,8 +163,8 @@ static void TestRepeatResizeInputTensor(void) {
   TfLiteInterpreterOptionsDelete(options);
 
   ASSERT_EQ(TfLiteInterpreterGetSignatureCount(interpreter), 2);
-  ASSERT_STREQ(TfLiteInterpreterGetSignatureName(interpreter, 0), "add");
-  ASSERT_STREQ(TfLiteInterpreterGetSignatureName(interpreter, 1), "sub");
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 0), "add");
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 1), "sub");
 
   TfLiteSignatureRunner* add_runner =
       TfLiteInterpreterGetSignatureRunner(interpreter, "add");

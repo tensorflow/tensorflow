@@ -6,6 +6,7 @@ package(
     default_visibility = [
         ":__subpackages__",
         "//tensorflow/core/ir:__subpackages__",
+        "//tensorflow/core/transforms:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -165,8 +166,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:tstring",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

@@ -64,10 +64,10 @@ static llvm::Expected<tfrt::gpu::wrapper::FftDirection> GetFftDirection(
 namespace {
 
 struct FftRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::FftOp> {
-  using tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::FftOp>::OpAdaptor;
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo::FftOp>::GpuAsyncOpConversionPattern;
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo::FftOp> {
+  using tfrt::gpu::StreamifyOpConversionPattern<lmhlo::FftOp>::OpAdaptor;
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo::FftOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::FftOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {

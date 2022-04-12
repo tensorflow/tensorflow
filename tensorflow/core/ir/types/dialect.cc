@@ -765,12 +765,14 @@ Type GetCastCompatibleType(Type a, Type b, bool may_ignore_ref_type_a) {
     // can be more constrained and check subtypes for cast compatibility as
     // well.
     if (a.isa<VariantType>()) return a;
+    if (b.isa<VariantType>()) return b;
 
     // For Resource types, we recursively check the subtypes for cast
     // compatibility, if possible. Otherwise treat them as compatible.
     auto a_wst_st = a_wst.GetSubtypes();
     auto b_wst_st = b_wst.GetSubtypes();
-    if (a_wst_st.empty() || b_wst_st.empty()) return a;
+    if (a_wst_st.empty()) return b;
+    if (b_wst_st.empty()) return a;
     if (a_wst_st.size() != b_wst_st.size()) return nullptr;
     llvm::SmallVector<TensorType, 4> refined_subtypes;
     for (auto subtypes : llvm::zip(a_wst_st, b_wst_st)) {

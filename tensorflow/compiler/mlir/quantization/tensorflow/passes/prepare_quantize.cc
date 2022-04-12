@@ -76,6 +76,8 @@ class PrepareQuantizePass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareQuantizePass)
+
   // Constructor used by the PassRegistration and enforce uint8 quantization.
   // This is only used by test.
   explicit PrepareQuantizePass() {
@@ -232,15 +234,14 @@ std::unique_ptr<OpQuantSpec> GetOpQuantSpec(Operation* op) {
     if (!function_name.startswith("fused_")) {
       return spec;
     }
-    if (function_name.contains("conv")) {
-      spec->biases_params.emplace(std::make_pair(
-          2, std::make_pair(std::initializer_list<int>({0, 1}),
-                            quant::GetUniformQuantizedTypeForBias)));
+    if (function_name.contains("depthwise_conv2d_with_bias")) {
+      spec->biases_params[2] = {{0, 1}, quant::GetUniformQuantizedTypeForBias};
+      spec->coeff_op_quant_dim[0] = 2;
+    } else if (function_name.contains("conv2d_with_bias")) {
+      spec->biases_params[2] = {{0, 1}, quant::GetUniformQuantizedTypeForBias};
       spec->coeff_op_quant_dim[0] = 3;
-    } else if (function_name.contains("matmul")) {
-      spec->biases_params.emplace(std::make_pair(
-          2, std::make_pair(std::initializer_list<int>({0, 1}),
-                            quant::GetUniformQuantizedTypeForBias)));
+    } else if (function_name.contains("matmul_with_bias")) {
+      spec->biases_params[2] = {{0, 1}, quant::GetUniformQuantizedTypeForBias};
       spec->coeff_op_quant_dim[0] = -1;
     }
   }

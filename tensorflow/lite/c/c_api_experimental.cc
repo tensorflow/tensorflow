@@ -106,7 +106,7 @@ int32_t TfLiteInterpreterGetSignatureCount(
   return static_cast<int32_t>(interpreter->impl->signature_keys().size());
 }
 
-const char* TfLiteInterpreterGetSignatureName(
+const char* TfLiteInterpreterGetSignatureKey(
     const TfLiteInterpreter* interpreter, int32_t signature_index) {
   int32_t signature_count = TfLiteInterpreterGetSignatureCount(interpreter);
   if (signature_index < 0 || signature_index >= signature_count) {
@@ -116,9 +116,9 @@ const char* TfLiteInterpreterGetSignatureName(
 }
 
 TfLiteSignatureRunner* TfLiteInterpreterGetSignatureRunner(
-    const TfLiteInterpreter* interpreter, const char* signature_name) {
+    const TfLiteInterpreter* interpreter, const char* signature_key) {
   tflite::SignatureRunner* signature_runner =
-      interpreter->impl->GetSignatureRunner(signature_name);
+      interpreter->impl->GetSignatureRunner(signature_key);
   return new TfLiteSignatureRunner{signature_runner};
 }
 

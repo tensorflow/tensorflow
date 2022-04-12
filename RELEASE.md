@@ -1,8 +1,71 @@
+# Release 2.10.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+# Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+# Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+# Major Features and Improvements
+
+* `tf.keras`:
+
+  *   Added `tf.keras.models.experimental.SharpnessAwareMinimization`. This
+      class implements the sharpness-aware minimization technique, which boosts
+      model performance on various tasks, e.g., ResNet on image classification.
+
+*   `tf.keras`:
+    * `EinsumDense` layer moved from experimental to core. Its import path moved
+      from `tf.keras.layers.experimental.EinsumDense` to
+      `tf.keras.layers.EinsumDense`.
+
+*   `tf.math`:
+
+    * Added `tf.math.approx_max_k` and `tf.math.approx_min_k` which are the
+      optimized alternatives to `tf.math.top_k` on TPU. The performance
+      difference range from 8 to 100 times depending on the size of k.
+      When running on CPU and GPU, a non-optimized XLA kernel is used.
+
+# Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+# Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.9.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
 # Breaking Changes
+
+*   Build, Compilation and Packaging
+    * TensorFlow is now compiled with `_GLIBCXX_USE_CXX11_ABI=1`. Downstream
+      projects that encounter `std::__cxx11` or `[abi:cxx11]` linker errors will
+      need to adopt this compiler option. See
+      [the GNU C++ Library docs on Dual ABI](https://gcc.gnu.org/onlinedocs/libstdc++/manual/using_dual_abi.html).
+    * TensorFlow Python wheels now specifically conform to
+      [manylinux2014](https://peps.python.org/pep-0599/), an upgrade from
+      manylinux2010. The minimum Pip version supporting manylinux2014 is Pip
+      19.3 (see [pypa/manylinux](https://github.com/pypa/manylinux). This change
+      may affect you if you have been using TensorFlow on a very old platform
+      equivalent to CentOS 6, as manylinux2014 targets CentOS 7 as a
+      compatibility base. Note that TensorFlow does not officially support
+      either platform.
+    * Discussion for these changes can be found on SIG Build's
+      [TensorFlow Community Forum thread](https://discuss.tensorflow.org/t/tensorflow-linux-wheels-are-being-upgraded-to-manylinux2014/8339)
 
 *   The `tf.keras.mixed_precision.experimental` API has been removed. The
     non-experimental symbols under `tf.keras.mixed_precision` have been
@@ -146,6 +209,23 @@
     *    The newly introduced `reduce_retracing` option also uses the Tracing
          Protocol to proactively generate generalized traces similar to
          `experimental_relax_shapes` (which has now been deprecated).
+
+*   Unified eager and `tf.function` execution:
+
+    *   Eager mode can now execute each op as a `tf.function`, allowing for more
+        consistent feature support in future releases.
+    *   It is available for immediate use.
+        *   See the `TF_RUN_EAGER_OP_AS_FUNCTION` environment variable in
+            [eager context](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/eager/context.py).
+        *   Eager performance should be similar with this feature enabled.
+            *   A roughly 5us per-op overhead may be observed when running many
+                small functions.
+            *   Note a
+                [known issue](https://github.com/tensorflow/tensorflow/issues/55414)
+                with GPU performance.
+        *   The behavior of `tf.function` itself is unaffected.
+    *   Note: This feature will be enabled by default in an upcoming version of
+        TensorFlow.
 
 # Bug Fixes and Other Changes
 

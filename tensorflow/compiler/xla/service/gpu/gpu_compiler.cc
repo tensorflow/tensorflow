@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
@@ -144,6 +145,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/service/sharding_remover.h"
+#include "tensorflow/compiler/xla/service/simplify_fp_conversions.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
@@ -403,6 +405,10 @@ Status GpuCompiler::OptimizeHloModule(
                             stream_exec);
     pipeline.AddPass<BFloat16Normalization>(&bf16);
 
+    // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+    if (debug_options.xla_gpu_simplify_all_fp_conversions())
+      pipeline.AddPass<SimplifyFPConversions>();
+
     pipeline.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
@@ -471,14 +477,7 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<HloConstantFolding>();
       pipeline.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
-
-      pipeline.AddPass<TransposeFolding>(
-          [](const HloInstruction& dot,
-             const TransposeFolding::OperandIndices& candidate_operands) {
-            return IsMatrixMultiplication(dot)
-                       ? candidate_operands
-                       : TransposeFolding::OperandIndices{};
-          });
+      pipeline.AddPass<TransposeFolding>();
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
       pipeline.AddPass<HloDCE>();
     }();
@@ -660,6 +659,8 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+
   HloPassPipeline pipeline("post-layout_assignment");
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
@@ -713,6 +714,10 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   GpuBfloat16Support bf16(/*supports_matrix_multiplication=*/false,
                           stream_exec);
   pipeline.AddPass<BFloat16Normalization>(&bf16);
+
+  // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
+  if (debug_options.xla_gpu_simplify_all_fp_conversions())
+    pipeline.AddPass<SimplifyFPConversions>();
 
   // Choose the fastest algorithm for each conv.
   //
@@ -817,8 +822,8 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
       builder.getI64IntegerAttr(hlo_module->config().replica_count());
   mlir::IntegerAttr num_partitions_attr =
       builder.getI64IntegerAttr(hlo_module->config().num_partitions());
-  mlir::FuncOp func =
-      mlir_module.lookupSymbol<mlir::FuncOp>(entry_function_name);
+  mlir::func::FuncOp func =
+      mlir_module.lookupSymbol<mlir::func::FuncOp>(entry_function_name);
   func->setAttr("replica_count", replica_count_attr);
   func->setAttr("num_partitions", num_partitions_attr);
 
@@ -851,7 +856,7 @@ static StatusOr<OwnedBefBuffer> LowerToBef(mlir::ModuleOp mlir_module,
 
 using OutputInfoMap =
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>;
-static Status GetMlirAllocationInfo(mlir::FuncOp func,
+static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
                                     Shape* output_shape,
@@ -951,7 +956,7 @@ static Status CompileModuleToLlvmIrImpl(
     DumpToFileInDirOrStdout(*hlo_module, "lmhlo", mlir_module.get());
   }
 
-  auto entry_function = mlir::cast<mlir::FuncOp>(
+  auto entry_function = mlir::cast<mlir::func::FuncOp>(
       mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
 
   TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
@@ -975,8 +980,7 @@ static Status CompileModuleToLlvmIrImpl(
     TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
     bool supports_runtime_managed_constants =
-        // TODO(b/218527186): Implement this feature for BEF as well.
-        !IsBefEnabled(hlo_module->config()) &&
+        !IsBefThunkEnabled(hlo_module->config()) &&
         // TODO(b/218907125): Implement this feature for ROCm as well.
         platform_id != se::rocm::kROCmPlatformId &&
         hlo_module->config().debug_options().xla_gpu_enable_shared_constants();
@@ -1475,7 +1479,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
 //
 // This function also serves as a half-baked verifier for function arg
 // attributes, since a full verifier doens't exist yet.
-static Status GetMlirAllocationInfo(mlir::FuncOp func,
+static Status GetMlirAllocationInfo(mlir::func::FuncOp func,
                                     std::vector<BufferAllocation>* allocations,
                                     OutputInfoMap* output_info,
                                     Shape* output_shape,
@@ -1551,8 +1555,9 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
     absl::string_view entry_function_name, se::StreamExecutor* stream_exec,
     std::unique_ptr<llvm::Module> llvm_module,
     IrEmitterContext* ir_emitter_context) {
-  mlir::FuncOp entry_function = mlir::cast<mlir::FuncOp>(module.lookupSymbol(
-      llvm::StringRef(entry_function_name.data(), entry_function_name.size())));
+  mlir::func::FuncOp entry_function =
+      mlir::cast<mlir::func::FuncOp>(module.lookupSymbol(llvm::StringRef(
+          entry_function_name.data(), entry_function_name.size())));
 
   std::vector<BufferAllocation> allocations;
   OutputInfoMap output_info;
@@ -1571,8 +1576,7 @@ StatusOr<std::unique_ptr<Executable>> CompileLmhloToExecutable(
   TF_RETURN_IF_ERROR(ir_emitter->EmitLmhloRegion(&entry_function.getBody()));
 
   bool supports_runtime_managed_constants =
-      // TODO(b/218527186): Implement this feature for BEF as well.
-      !IsBefEnabled(module_config) &&
+      !IsBefThunkEnabled(module_config) &&
       // TODO(b/218907125): Implement this feature for ROCm as well.
       compiler->PlatformId() != se::rocm::kROCmPlatformId;
   if (supports_runtime_managed_constants) {

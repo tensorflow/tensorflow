@@ -41,7 +41,6 @@ namespace {
 using bufferization::ToMemrefOp;
 using bufferization::ToTensorOp;
 using gml_st::LoopOp;
-using linalg::FillOp;
 using linalg::InitTensorOp;
 using memref::SubViewOp;
 using tensor::ExtractSliceOp;
@@ -139,9 +138,10 @@ struct BufferizeInsertSliceOp : public OpConversionPattern<InsertSliceOp> {
 
 /// Create linalg op on buffers given the original tensor-based operation and
 /// the buffers for the outputs.
-static linalg::LinalgOp createLinalgOpOnBuffers(
-    ConversionPatternRewriter &rewriter, linalg::LinalgOp linalgOp,
-    ValueRange inputs, ValueRange outputs) {
+linalg::LinalgOp createLinalgOpOnBuffers(ConversionPatternRewriter &rewriter,
+                                         linalg::LinalgOp linalgOp,
+                                         ValueRange inputs,
+                                         ValueRange outputs) {
   SmallVector<Value, 8> newOperands = inputs;
   newOperands.append(outputs.begin(), outputs.end());
   auto *newOp = linalgOp.cloneWithoutRegions(rewriter, linalgOp.getLoc(),
@@ -155,6 +155,17 @@ static linalg::LinalgOp createLinalgOpOnBuffers(
   return newOp;
 }
 
+/// Get a variadic operand segment.
+ValueRange GetVariadicOperands(DenseIntElementsAttr size_attr,
+                               ValueRange operands, unsigned index) {
+  const uint32_t *size_it = &*size_attr.value_begin<uint32_t>();
+  if (size_attr.isSplat()) return operands.slice(*size_it * index, *size_it);
+
+  unsigned start = 0;
+  for (unsigned i = 0; i < index; ++i) start += size_it[i];
+  return operands.slice(start, size_it[index]);
+}
+
 // Bufferize LinalgOps in-place.
 struct BufferizeLinalgOp
     : public OpInterfaceConversionPattern<linalg::LinalgOp> {
@@ -166,14 +177,16 @@ struct BufferizeLinalgOp
       ConversionPatternRewriter &rewriter) const final {
     if (!op->getParentOfType<LoopOp>()) return failure();
 
-    // GenericOpAdaptor below expects an `operand_segment_sizes` attribute.
-    if (!op->hasAttr("operand_segment_sizes")) return failure();
+    // An op with two variadic operand groups expects a segment size attribute.
+    auto operand_segments =
+        op->getAttrOfType<DenseIntElementsAttr>("operand_segment_sizes");
+    if (!operand_segments) return failure();
 
-    // TODO(b/199046880): Replace this with LinalgOp::Adaptor or equivalent.
-    linalg::GenericOpAdaptor adaptor(operands, op->getAttrDictionary());
-
-    createLinalgOpOnBuffers(rewriter, op, adaptor.inputs(), adaptor.outputs());
-    rewriter.replaceOp(op, adaptor.outputs());
+    const auto getOperands = [&](unsigned index) {
+      return GetVariadicOperands(operand_segments, operands, index);
+    };
+    createLinalgOpOnBuffers(rewriter, op, getOperands(0), getOperands(1));
+    rewriter.replaceOp(op, getOperands(1));
     return success();
   }
 };

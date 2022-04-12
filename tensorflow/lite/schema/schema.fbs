@@ -512,6 +512,7 @@ union BuiltinOptions {
 
 enum Padding : byte { SAME, VALID }
 
+// LINT.IfChange
 enum ActivationFunctionType : byte {
   NONE = 0,
   RELU = 1,
@@ -520,6 +521,7 @@ enum ActivationFunctionType : byte {
   TANH = 4,
   SIGN_BIT = 5,
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 table Conv2DOptions {
   padding:Padding;

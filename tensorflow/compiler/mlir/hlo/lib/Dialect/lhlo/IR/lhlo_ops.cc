@@ -93,13 +93,13 @@ LogicalResult AbsOp::verify() {
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllGatherOp::verify() {
   AllGatherOp op = *this;
-  return VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
+  return mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
 }
 
 // TODO(jurahul): Add verification for output shape.
 LogicalResult AllToAllOp::verify() {
   AllToAllOp op = *this;
-  return VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
+  return mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true);
 }
 
 //===----------------------------------------------------------------------===//
@@ -117,7 +117,7 @@ LogicalResult AllReduceOp::verify() {
 
 LogicalResult ReduceScatterOp::verify() {
   ReduceScatterOp op = *this;
-  if (failed(VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
+  if (failed(mlir::hlo::VerifyReplicaGroups(op, /*is_uniform_sized=*/true)))
     return failure();
   if (failed(mlir::hlo::VerifyReduceScatter(
           op, /*operand_types=*/op.operands().getTypes(),
@@ -389,15 +389,6 @@ void WhileOp::getSuccessorRegions(Optional<unsigned> index,
 }
 
 Region& WhileOp::getLoopBody() { return body(); }
-
-bool WhileOp::isDefinedOutsideOfLoop(Value value) {
-  return !body().isAncestor(value.getParentRegion());
-}
-
-LogicalResult WhileOp::moveOutOfLoop(ArrayRef<Operation*> ops) {
-  for (auto* op : ops) op->moveBefore(*this);
-  return success();
-}
 
 // suppress warning.
 

@@ -212,7 +212,7 @@ struct LegalizeControlFlowPass
 }  // namespace mhlo
 }  // namespace mlir
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 mlir::mhlo::createLegalizeControlFlowPass() {
   return std::make_unique<LegalizeControlFlowPass>();
 }

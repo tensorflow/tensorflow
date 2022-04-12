@@ -974,8 +974,8 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
                                   tensorflow::Tensor* output) const {
   tensorflow::Device* dstd = (d == nullptr) ? ctx.HostCPU() : d;
   tensorflow::Device* srcd = DeviceOrHostCPU(ctx);
-  const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
-  const bool src_cpu = srcd->tensorflow_gpu_device_info() == nullptr;
+  const bool dst_cpu = dstd->tensorflow_accelerator_device_info() == nullptr;
+  const bool src_cpu = srcd->tensorflow_accelerator_device_info() == nullptr;
   bool is_same_device =
       (srcd == dstd) || (srcd->name() == dstd->name()) || (dst_cpu && src_cpu);
 
@@ -1003,11 +1003,13 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
   if (!src_cpu) {
-    src_device_context = srcd->tensorflow_gpu_device_info()->default_context;
+    src_device_context =
+        srcd->tensorflow_accelerator_device_info()->default_context;
   }
   tensorflow::DeviceContext* dst_device_context = nullptr;
   if (!dst_cpu) {
-    dst_device_context = dstd->tensorflow_gpu_device_info()->default_context;
+    dst_device_context =
+        dstd->tensorflow_accelerator_device_info()->default_context;
   }
   // TODO(ashankar): The Sync() call below may be more aggressive than
   // necessary. It is based on knowledge of implementation details - that

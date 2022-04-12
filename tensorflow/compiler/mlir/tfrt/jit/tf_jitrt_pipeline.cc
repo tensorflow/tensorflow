@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
@@ -41,13 +42,15 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using mlir::FuncOp;
 using mlir::OpPassManager;
+using mlir::func::FuncOp;
 
 // Adds a Tensorflow producer version to the module to enable shape inference.
 struct AddTensorflowProducerVersion
     : public mlir::PassWrapper<AddTensorflowProducerVersion,
                                mlir::OperationPass<mlir::ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AddTensorflowProducerVersion)
+
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
 
@@ -186,8 +189,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<FuncOp>(
-      mlir::kernel_gen::transforms::CreateShapeSimplification());
+  pm.addNestedPass<FuncOp>(mlir::CreateShapeSimplification());
   pm.addNestedPass<FuncOp>(mlir::createShapeToShapeLowering());
   pm.addPass(mlir::createConvertShapeToStandardPass());
   pm.addNestedPass<FuncOp>(mlir::createConvertShapeConstraintsPass());
@@ -196,8 +198,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
   // Lower index cast on tensors to tensor.generate.
-  pm.addNestedPass<FuncOp>(
-      mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
+  pm.addNestedPass<FuncOp>(mlir::CreateLowerIndexCastPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 

@@ -1,8 +1,11 @@
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -12,27 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 
+#include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
-
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
-
-#if !defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/cloud/gcs_file_system.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
-#endif
-
-#include <dirent.h>
-#include <fcntl.h>
-#include <stdlib.h>
 #include <unistd.h>
 
 #include <fstream>
@@ -40,7 +29,19 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
+#include "tensorflow/core/tpu/tpu_ops_c_api.h"
+#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
+
+#if !defined(PLATFORM_GOOGLE)
+#include "tensorflow/core/platform/cloud/gcs_file_system.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#endif  // PLATFORM_GOOGLE
 
 namespace tensorflow {
 namespace tpu {
@@ -211,6 +212,7 @@ Status InitializeTpuLibrary(void* library_handle) {
   return s;
 }
 
+namespace {
 void* CreateGcsFilesystemFn() {
   return new tensorflow::RetryingGcsFileSystem();
 }
@@ -248,6 +250,7 @@ void InitializeCreateGcsFileSystemFnPtr() {
     shm_unlink(absl::StrCat("/tmp_tf_gcs_fs_pointer_", getpid()).data());
   });
 }
+}  // namespace
 
 bool FindAndLoadTpuLibrary() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");

@@ -25,7 +25,7 @@ class SortingTest : public MlirGpuTestBase {};
 
 TEST_F(SortingTest, SimpleCase1) {
   const char* mlir_text = R"(
-      func @main(%arg0: memref<4xf32> {lmhlo.params = 0 : index},
+      func.func @main(%arg0: memref<4xf32> {lmhlo.params = 0 : index},
                  %arg1: memref<4xf32> {lmhlo.params = 1 : index},
                  %arg2: memref<4xf32> {lmhlo.output_index = dense<[0]> : tensor<1xindex>},
                  %arg3: memref<4xf32> {lmhlo.output_index = dense<[1]> : tensor<1xindex>},

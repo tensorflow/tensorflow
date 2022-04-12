@@ -36,6 +36,8 @@ namespace {
 // Module pass to optimize TensorFlow functional ops.
 struct OptimizeFunctionalOpsPass
     : public PassWrapper<OptimizeFunctionalOpsPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeFunctionalOpsPass)
+
   void runOnOperation() override;
 
   StringRef getArgument() const final {

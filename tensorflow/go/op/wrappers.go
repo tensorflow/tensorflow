@@ -1034,6 +1034,99 @@ func Any(scope *Scope, input tf.Output, axis tf.Output, optional ...AnyAttr) (ou
 	return op.Output(0)
 }
 
+// ApproxTopKAttr is an optional argument to ApproxTopK.
+type ApproxTopKAttr func(optionalAttr)
+
+// ApproxTopKReductionDimension sets the optional reduction_dimension attribute to value.
+//
+// value: Integer dimension along which to search. Default: -1.
+// If not specified, defaults to -1
+func ApproxTopKReductionDimension(value int64) ApproxTopKAttr {
+	return func(m optionalAttr) {
+		m["reduction_dimension"] = value
+	}
+}
+
+// ApproxTopKRecallTarget sets the optional recall_target attribute to value.
+//
+// value: Recall target for the approximation. Range in (0,1]
+// If not specified, defaults to 0.95
+func ApproxTopKRecallTarget(value float32) ApproxTopKAttr {
+	return func(m optionalAttr) {
+		m["recall_target"] = value
+	}
+}
+
+// ApproxTopKIsMaxK sets the optional is_max_k attribute to value.
+//
+// value: When true, computes max-k; otherwise computes min-k.
+// If not specified, defaults to true
+func ApproxTopKIsMaxK(value bool) ApproxTopKAttr {
+	return func(m optionalAttr) {
+		m["is_max_k"] = value
+	}
+}
+
+// ApproxTopKReductionInputSizeOverride sets the optional reduction_input_size_override attribute to value.
+//
+// value: When set to a positive value, it overrides the size determined by
+// `input[reduction_dim]` for evaluating the recall. This option is useful when
+// the given `input` is only a subset of the overall computation in SPMD or
+// distributed pipelines, where the true input size cannot be deferred by the
+// `input` shape.
+// If not specified, defaults to -1
+func ApproxTopKReductionInputSizeOverride(value int64) ApproxTopKAttr {
+	return func(m optionalAttr) {
+		m["reduction_input_size_override"] = value
+	}
+}
+
+// ApproxTopKAggregateToTopk sets the optional aggregate_to_topk attribute to value.
+//
+// value: When true, aggregates approximate results to top-k. When false, returns the
+// approximate results. The number of the approximate results is implementation
+// defined and is greater equals to the specified `k`.
+// If not specified, defaults to true
+func ApproxTopKAggregateToTopk(value bool) ApproxTopKAttr {
+	return func(m optionalAttr) {
+		m["aggregate_to_topk"] = value
+	}
+}
+
+// Returns min/max k values and their indices of the input operand in an approximate manner.
+//
+// Returns min/max k values and their indices of the input operand in an approximate manner.
+//
+// Arguments:
+//	input: Array to search. Must be at least 1-D of the floating type
+//	k: Specifies the number of min/max-k.
+//
+// Returns:
+//	values: The min/max k values along the `reduction_dimension` of the `input` operand.
+// The dimension are the same as the `input` operand except for the
+// `reduction_dimension`: when `aggregate_to_topk` is true, the reduction
+// dimension is `k`; otherwise, it is greater equals to `k` where the size is
+// implementation-defined.
+//	indices: The indices of `values` along the `reduction_dimension` of the `input` operand.
+func ApproxTopK(scope *Scope, input tf.Output, k int64, optional ...ApproxTopKAttr) (values tf.Output, indices tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"k": k}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ApproxTopK",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // ApproximateEqualAttr is an optional argument to ApproximateEqual.
 type ApproximateEqualAttr func(optionalAttr)
 
@@ -11068,7 +11161,7 @@ func DepthToSpaceDataFormat(value string) DepthToSpaceAttr {
 //
 //   * Chunks of data of size `block_size * block_size` from depth are rearranged
 //     into non-overlapping blocks of size `block_size x block_size`
-//   * The width the output tensor is `input_depth * block_size`, whereas the
+//   * The width of the output tensor is `input_depth * block_size`, whereas the
 //     height is `input_height * block_size`.
 //   * The Y, X coordinates within each block of the output image are determined
 //     by the high order component of the input channel index.
@@ -11978,6 +12071,27 @@ func DirectedInterleaveDataset(scope *Scope, selector_input_dataset tf.Output, d
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Turns off the copy-on-read mode.
+//
+// Turns off the copy-on-read mode of a resource variable. If the variable is not in copy-on-read mode, this op has no effect.
+//
+// Arguments:
+//	resource: The resource handle of the resource variable.
+//
+// Returns the created operation.
+func DisableCopyOnRead(scope *Scope, resource tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DisableCopyOnRead",
+		Input: []tf.Input{
+			resource,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Returns x / y element-wise.
@@ -39036,26 +39150,28 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 
 // Scatters `updates` into a tensor of shape `shape` according to `indices`.
 //
-// Update the input tensor by scattering sparse `updates` according to individual values at the specified `indices`.
-// This op returns an `output` tensor with the `shape` you specify. This op is the
-// inverse of the `tf.gather_nd` operator which extracts values or slices from a
-// given tensor.
+// Scatter sparse `updates` according to individual values at the specified
+// `indices`. This op returns an output tensor with the `shape` you specify. This
+// op is the inverse of the `tf.gather_nd` operator which extracts values or slices
+// from a given tensor.
 //
 // This operation is similar to `tf.tensor_scatter_nd_add`, except that the tensor
-// is zero-initialized. Calling `tf.scatter_nd(indices, values, shape)`
+// is zero-initialized. Calling `tf.scatter_nd(indices, updates, shape)`
 // is identical to calling
-// `tf.tensor_scatter_nd_add(tf.zeros(shape, values.dtype), indices, values)`
+// `tf.tensor_scatter_nd_add(tf.zeros(shape, updates.dtype), indices, updates)`
 //
-// If `indices` contains duplicates, the duplicate `values` are accumulated
-// (summed).
+// If `indices` contains duplicates, the associated `updates` are accumulated
+// (summed) into the output tensor.
 //
-// **WARNING**: The order in which updates are applied is nondeterministic, so the
-// output will be nondeterministic if `indices` contains duplicates;
-// numbers summed in different order may yield different results because of some
-// numerical approximation issues.
+// **WARNING**: For floating-point data types, the output may be nondeterministic.
+// This is because the order in which the updates are applied is nondeterministic
+// and when floating-point numbers are added in different orders the resulting
+// numerical approximation error can be slightly different. However, the output
+// will be deterministic if op determinism is enabled via
+// `tf.config.experimental.enable_op_determinism`.
 //
-// `indices` is an integer tensor of shape `shape`. The last dimension
-// of `indices` can be at most the rank of `shape`:
+// `indices` is an integer tensor containing indices into the output tensor. The
+// last dimension of `indices` can be at most the rank of `shape`:
 //
 //     indices.shape[-1] <= shape.rank
 //

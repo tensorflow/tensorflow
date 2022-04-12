@@ -401,6 +401,9 @@ absl::Status GPUOperationFromNodePart0(
                             inputs[0]->id, -1, outputs[0]->id, gpu_subgraph,
                             &attr);
     }
+    case OperationType::CAST:
+      SelectCast(op_def, gpu_info, gpu_op);
+      return absl::OkStatus();
     case OperationType::CONCAT: {
       auto attr = absl::any_cast<ConcatAttributes>(node.operation.attributes);
       const int max_inputs = gpu_info.GetMaxImageArguments() - 8;

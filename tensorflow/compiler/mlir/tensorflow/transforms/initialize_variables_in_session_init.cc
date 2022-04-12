@@ -67,7 +67,7 @@ FuncOp CreateSessionInitFunc(ModuleOp module) {
       builder.create<FuncOp>(module->getLoc(), kSessionInitFuncName, func_type);
   func->setAttr(kTfSavedModelExportedNameAttr,
                 builder.getStrArrayAttr({kSessionInitFuncName}));
-  func.setVisibility(mlir::FuncOp::Visibility::Public);
+  func.setVisibility(mlir::func::FuncOp::Visibility::Public);
   auto func_builder = OpBuilder::atBlockBegin(func.addEntryBlock());
   func_builder.create<mlir::func::ReturnOp>(func.getLoc());
   // In cases where there is a session initializer op with empty initializer,
@@ -91,7 +91,7 @@ FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
 
   SymbolTable symbol_table(module);
   if (!session_init_op.initializers().empty()) {
-    FuncOp init_func_op = symbol_table.lookup<mlir::FuncOp>(
+    FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
     return init_func_op;
   }

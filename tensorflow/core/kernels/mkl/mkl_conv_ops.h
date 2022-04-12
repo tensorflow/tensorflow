@@ -303,11 +303,32 @@ class MklDnnConvUtil {
   virtual inline void GetBiasSizeInMklOrder(size_t bias_index,
                                             memory::dims* bias_dims) {
     const Tensor& bias = MklGetInput(context_, bias_index);
-    OP_REQUIRES(context_, bias.dims() == 1,
-                errors::InvalidArgument("bias must be 1-dimensional: ",
-                                        bias.shape().DebugString()));
-
-    *bias_dims = {static_cast<int>(bias.dim_size(0))};
+    if (bias.dims() > 1) {
+      if (strides_.size() == 4) {
+        OP_REQUIRES(
+            context_, bias.dims() <= 4,
+            errors::InvalidArgument("For NHWC format, bias should have  "
+                                    "4 or less dimensions",
+                                    bias.shape().DebugString()));
+      } else if (strides_.size() == 5) {
+        OP_REQUIRES(
+            context_, bias.dims() <= 5,
+            errors::InvalidArgument("For NDHWC format, bias should have  "
+                                    "5 or less dimensions",
+                                    bias.shape().DebugString()));
+      }
+      // Make sure all the dims except channel(last) is 1
+      for (int i = 0; i < bias.dims() - 1; i++) {
+        OP_REQUIRES(
+            context_, bias.dim_size(i) == 1,
+            errors::InvalidArgument("For bias_dims > 1, all except the last "
+                                    "dimension (channel) must be 1: ",
+                                    bias.shape().DebugString()));
+      }
+      *bias_dims = {static_cast<int>(bias.dim_size(bias.dims() - 1))};
+    } else {
+      *bias_dims = {static_cast<int>(bias.dim_size(0))};
+    }
   }
 
   // Function to calculate output and padding size for 2D/3D convolution.

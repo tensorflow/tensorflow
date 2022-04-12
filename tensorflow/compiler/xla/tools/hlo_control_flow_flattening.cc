@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -444,6 +445,10 @@ StatusOr<bool> HloControlFlowFlattening::Run(HloModule* module) {
       }
     }
   }
+
+  HloDCE hlo_dce;
+  TF_ASSIGN_OR_RETURN(bool dce_changed, hlo_dce.Run(module));
+  changed |= dce_changed;
 
   // Fix the schedule if the module was scheduled.
   if (changed && module->has_schedule()) {

@@ -174,7 +174,7 @@ TfLiteRegistration* Register_DYNAMIC_UPDATE_SLICE();
 namespace {
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
-  context->ReportError(
+  TF_LITE_KERNEL_LOG(
       context,
       "Regular TensorFlow ops are not supported by this interpreter. Make sure "
       "you invoke the Flex delegate before inference.");

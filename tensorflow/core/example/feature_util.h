@@ -272,6 +272,18 @@ Feature* GetFeature(const std::string& key, ProtoType* proto) {
   return &(*GetFeatures(proto)->mutable_feature())[key];
 }
 
+// Same as above, supports absl::string_view.
+template <typename ProtoType>
+Feature* GetFeature(absl::string_view key, ProtoType* proto) {
+  return &(*GetFeatures(proto)->mutable_feature())[std::string(key)];
+}
+
+// Same as above, supports const char*.
+template <typename ProtoType>
+Feature* GetFeature(const char* key, ProtoType* proto) {
+  return &(*GetFeatures(proto)->mutable_feature())[std::string(key)];
+}
+
 // Returns a repeated field with features corresponding to a feature_list key.
 const protobuf::RepeatedPtrField<Feature>& GetFeatureList(
     const std::string& key, const SequenceExample& sequence_example);
@@ -344,10 +356,37 @@ void AppendFeatureValues(IteratorType first, IteratorType last,
                          const std::string& key, ProtoType* proto) {
   AppendFeatureValues(first, last, GetFeature(key, GetFeatures(proto)));
 }
+// Same as above, supports absl::string_view.
+template <typename IteratorType, typename ProtoType>
+void AppendFeatureValues(IteratorType first, IteratorType last,
+                         absl::string_view key, ProtoType* proto) {
+  AppendFeatureValues(first, last, GetFeature(key, GetFeatures(proto)));
+}
+
+// Same as above, supports const char*.
+template <typename IteratorType, typename ProtoType>
+void AppendFeatureValues(IteratorType first, IteratorType last, const char* key,
+                         ProtoType* proto) {
+  AppendFeatureValues(first, last, GetFeature(key, GetFeatures(proto)));
+}
 
 // Copies all elements from the container into a feature.
 template <typename ContainerType, typename ProtoType>
 void AppendFeatureValues(const ContainerType& container, const std::string& key,
+                         ProtoType* proto) {
+  AppendFeatureValues<ContainerType>(container,
+                                     GetFeature(key, GetFeatures(proto)));
+}
+// Same as above, supports absl::string_view.
+template <typename ContainerType, typename ProtoType>
+void AppendFeatureValues(const ContainerType& container, absl::string_view key,
+                         ProtoType* proto) {
+  AppendFeatureValues<ContainerType>(container,
+                                     GetFeature(key, GetFeatures(proto)));
+}
+// Same as above, supports const char*.
+template <typename ContainerType, typename ProtoType>
+void AppendFeatureValues(const ContainerType& container, const char* key,
                          ProtoType* proto) {
   AppendFeatureValues<ContainerType>(container,
                                      GetFeature(key, GetFeatures(proto)));
@@ -358,6 +397,20 @@ void AppendFeatureValues(const ContainerType& container, const std::string& key,
 template <typename ValueType, typename ProtoType>
 void AppendFeatureValues(std::initializer_list<ValueType> container,
                          const std::string& key, ProtoType* proto) {
+  AppendFeatureValues<ValueType>(container,
+                                 GetFeature(key, GetFeatures(proto)));
+}
+// Same as above, supports absl::string_view.
+template <typename ValueType, typename ProtoType>
+void AppendFeatureValues(std::initializer_list<ValueType> container,
+                         absl::string_view key, ProtoType* proto) {
+  AppendFeatureValues<ValueType>(container,
+                                 GetFeature(key, GetFeatures(proto)));
+}
+// Same as above, supports const char*.
+template <typename ValueType, typename ProtoType>
+void AppendFeatureValues(std::initializer_list<ValueType> container,
+                         const char* key, ProtoType* proto) {
   AppendFeatureValues<ValueType>(container,
                                  GetFeature(key, GetFeatures(proto)));
 }

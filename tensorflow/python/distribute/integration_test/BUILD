@@ -38,6 +38,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/227372713)
         "notsan",  # b/195248428
     ],
     deps = [

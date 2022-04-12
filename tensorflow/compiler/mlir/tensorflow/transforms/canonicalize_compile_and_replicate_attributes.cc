@@ -42,9 +42,10 @@ struct CanonicalizeCompileAndReplicateAttributesPass
 };
 
 void CanonicalizeCompileAndReplicateAttributesPass::runOnOperation() {
-  auto module_op = getOperation();
+  FuncOp func_op = getOperation();
+  ModuleOp module_op = func_op->getParentOfType<ModuleOp>();
   mlir::OpBuilder builder(module_op.getContext());
-  module_op->walk([&](mlir::Operation* op) {
+  func_op->walk([&](mlir::Operation* op) {
     if (op->hasAttr(TF::kTPUReplicateAttr)) {
       op->setAttr(TF::kReplicationInfoAttr, op->getAttr(TF::kTPUReplicateAttr));
       op->removeAttr(TF::kTPUReplicateAttr);
@@ -56,7 +57,7 @@ void CanonicalizeCompileAndReplicateAttributesPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateCanonicalizeCompileAndReplicateAttributesPass() {
   return std::make_unique<CanonicalizeCompileAndReplicateAttributesPass>();
 }

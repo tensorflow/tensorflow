@@ -177,7 +177,7 @@ class PrefetchThread {
   // Runs the prefetch thread. It runs until an error is encountered or the
   // destructor is called.
   void Run();
-  // Fills `out` with a round of data. Waits for up to `wait_us` micoseconds
+  // Fills `out` with a round of data. Waits for up to `wait_us` microseconds
   // before giving up and returning with `out` empty. A negative `wait_us`
   // signals to wait indefinitely.
   Status FillBuffer(int64_t wait_us,

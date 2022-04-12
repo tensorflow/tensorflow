@@ -39,6 +39,8 @@ class InsertCustomAggregationOpsPass
     : public PassWrapper<InsertCustomAggregationOpsPass,
                          OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertCustomAggregationOpsPass)
+
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in the textual format (on
     // the commandline for example).
@@ -68,7 +70,7 @@ class AddCustomAggregationOp : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    // Return early if the given operator isn't the custom aggregator op.
+    // Return early if the given operator is the custom aggregator op.
     if (op->getName().getStringRef() == kCustomAggregatorOpName)
       return failure();
 

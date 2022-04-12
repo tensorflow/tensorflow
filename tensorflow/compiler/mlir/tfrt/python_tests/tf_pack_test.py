@@ -36,47 +36,47 @@ class TfPackTest(test.TestCase):
   def test_pack_0d_f32(self):
     self.pack_and_check(
         """
-      func @test(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<2xf32> {
+      func.func @test(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<2xf32> {
         %1 = "tf.Pack"(%arg0, %arg1) {axis = 0 : i64}
              : (tensor<f32>, tensor<f32>) -> tensor<2xf32>
-        return %1 : tensor<2xf32>
+        func.return %1 : tensor<2xf32>
       }""", (), np.float32)
 
   def test_pack_0d_i32(self):
     self.pack_and_check(
         """
-      func @test(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<2xi32> {
+      func.func @test(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<2xi32> {
         %1 = "tf.Pack"(%arg0, %arg1) {axis = 0 : i64}
              : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
-        return %1 : tensor<2xi32>
+        func.return %1 : tensor<2xi32>
       }""", (), np.int32)
 
   def test_pack_0d_i64(self):
     self.pack_and_check(
         """
-      func @test(%arg0: tensor<i64>, %arg1: tensor<i64>) -> tensor<2xi64> {
+      func.func @test(%arg0: tensor<i64>, %arg1: tensor<i64>) -> tensor<2xi64> {
         %1 = "tf.Pack"(%arg0, %arg1) {axis = 0 : i64}
              : (tensor<i64>, tensor<i64>) -> tensor<2xi64>
-        return %1 : tensor<2xi64>
+        func.return %1 : tensor<2xi64>
       }""", (), np.int64)
 
   def test_pack_0d_i1(self):
     self.pack_and_check(
         """
-      func @test(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<2xi1> {
+      func.func @test(%arg0: tensor<i1>, %arg1: tensor<i1>) -> tensor<2xi1> {
         %1 = "tf.Pack"(%arg0, %arg1) {axis = 0 : i64}
              : (tensor<i1>, tensor<i1>) -> tensor<2xi1>
-        return %1 : tensor<2xi1>
+        func.return %1 : tensor<2xi1>
       }""", (), bool)
 
   def test_pack_1d_i32(self):
     self.pack_and_check(
         """
-      func @test(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>)
+      func.func @test(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>)
          -> tensor<2x4xi32> {
         %1 = "tf.Pack"(%arg0, %arg1) {axis = 0 : i64}
              : (tensor<4xi32>, tensor<4xi32>) -> tensor<2x4xi32>
-        return %1 : tensor<2x4xi32>
+        func.return %1 : tensor<2x4xi32>
       }""", (4), np.int32)
 
 

@@ -832,8 +832,8 @@ static FailureOr<TypeRange> VerifyOperands(Operation *op) {
       llvm::find(op->getOperandTypes(), control_ty);
   if (!std::all_of(it, op->operand_type_end(),
                    [&](Type type) { return type == control_ty; })) {
-    return {op->emitOpError(
-        "not all control tokens come after non-control operands")};
+    return op->emitOpError(
+        "not all control tokens come after non-control operands");
   }
   return {Operation::operand_type_range(op->operand_type_begin(), it)};
 }
@@ -846,10 +846,10 @@ static FailureOr<TypeRange> VerifyResults(Operation *op) {
   Operation::result_type_iterator it =
       llvm::find(op->getResultTypes(), control_ty);
   if (it == op->result_type_end())
-    return {op->emitOpError("does not define a control result")};
+    return op->emitOpError("does not define a control result");
   if (it != std::prev(op->result_type_end())) {
-    return {op->emitOpError(
-        "must have a control token result as and only as its last result")};
+    return op->emitOpError(
+        "must have a control token result as and only as its last result");
   }
   return {Operation::result_type_range(op->result_type_begin(), it)};
 }
@@ -880,23 +880,23 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
   if (func.generic()) return success();
 
   for (auto &it : llvm::enumerate(operands)) {
-    auto arg_type = getElementTypeOrSelf(arguments[it.index() * 2]);
-    auto op_type = getElementTypeOrSelf(it.value());
-    if (arg_type != op_type) {
+    Type arg_type = arguments[it.index() * 2];
+    Type op_type = it.value();
+    if (!tf_type::HasCompatibleElementTypes(arg_type, op_type)) {
       return attach_func(
           op->emitOpError(func_name)
-          << " function argument #" << it.index() << " dtype " << arg_type
-          << " does not match corresponding operand dtype: " << op_type);
+          << " function argument #" << it.index() << " type " << arg_type
+          << " is not compatible with corresponding operand type: " << op_type);
     }
   }
   for (auto &it : llvm::enumerate(results)) {
-    auto ret_type = getElementTypeOrSelf(returns[it.index()]);
-    auto res_type = getElementTypeOrSelf(it.value());
-    if (ret_type != res_type) {
+    Type ret_type = returns[it.index()];
+    Type res_type = it.value();
+    if (!tf_type::HasCompatibleElementTypes(ret_type, res_type)) {
       return attach_func(
           op->emitOpError(func_name)
-          << " function result #" << it.index() << " dtype " << ret_type
-          << " does not match corresponding op result dtype: " << res_type);
+          << " function result #" << it.index() << " type " << ret_type
+          << " is not compatible with corresponding result type: " << res_type);
     }
   }
   return success();
@@ -907,6 +907,8 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
 // to be an array of type attributes.
 static LogicalResult VerifyTypeArray(Operation *op, ValueRange values,
                                      ArrayAttr types, StringRef kind) {
+  // Don't verify if the types are not present.
+  if (!types) return success();
   if (values.size() != types.size()) {
     return op->emitOpError("has ") << values.size() << " " << kind << "s but "
                                    << types.size() << " " << kind << " types";
@@ -915,10 +917,11 @@ static LogicalResult VerifyTypeArray(Operation *op, ValueRange values,
        llvm::zip(llvm::enumerate(values), types.getAsRange<TypeAttr>())) {
     Type type = std::get<0>(it).value().getType();
     Type dtype = std::get<1>(it).getValue();
-    if (getElementTypeOrSelf(type) != dtype) {
+    if (!tf_type::HasCompatibleElementTypes(type,
+                                            UnrankedTensorType::get(dtype))) {
       return op->emitOpError(kind)
-             << " #" << std::get<0>(it).index() << " expected to have dtype "
-             << dtype << " but got: " << type;
+             << " #" << std::get<0>(it).index()
+             << " is incompatible with dtype " << dtype << ", got: " << type;
     }
   }
   return success();
@@ -935,13 +938,13 @@ using detect_has_T = llvm::is_detected<has_T, OpT>;
 // use it for both input and output. Otherwise, return separate type arrays.
 template <typename OpT, bool = detect_has_T<OpT>::value>
 struct GetTypeArray {
-  static ArrayAttr getInputTypes(OpT op) { return op.Tin(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.Tout(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.TinAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.ToutAttr(); }
 };
 template <typename OpT>
 struct GetTypeArray<OpT, true> {
-  static ArrayAttr getInputTypes(OpT op) { return op.T(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.T(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.TAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.TAttr(); }
 };
 }  // namespace detail
 
@@ -1034,7 +1037,7 @@ static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
 
   auto cond_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
       op, op.cond().getName());
-  auto i1_type = Builder(op.getContext()).getI1Type();
+  auto i1_type = UnrankedTensorType::get(Builder(op.getContext()).getI1Type());
   if (cond_func &&
       failed(VerifySignature(cond_func, op, *ins, i1_type, "cond")))
     return failure();

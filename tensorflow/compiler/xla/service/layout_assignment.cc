@@ -2530,6 +2530,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
@@ -2598,7 +2599,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kAfterAll:
-    case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
     case HloOpcode::kGetDimensionSize:

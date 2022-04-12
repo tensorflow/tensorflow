@@ -1029,6 +1029,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
@@ -1051,7 +1052,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kYellow;
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
-    case HloOpcode::kTrace:
     case HloOpcode::kAfterAll:
     case HloOpcode::kAddDependency:
     case HloOpcode::kTuple:

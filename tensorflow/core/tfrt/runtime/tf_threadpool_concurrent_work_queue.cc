@@ -19,7 +19,9 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/core/tfrt/utils/thread_pool.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime
@@ -88,6 +90,35 @@ void TfThreadPoolWorkQueue::Await(
 bool TfThreadPoolWorkQueue::IsInWorkerThread() const {
   // TODO(b/192247530): Check if we have cases it is not true.
   return true;
+}
+
+std::unique_ptr<TfThreadPoolWorkQueue> CreateDefaultTfThreadPoolWorkQueue(
+    int num_inter_op_threads, int num_intra_op_threads) {
+  struct ThreadPools {
+    TfThreadPool inter_op_threadpool;
+    TfThreadPool intra_op_threadpool;
+
+    ThreadPools(int num_inter_op_threads, int num_intra_op_threads)
+        : inter_op_threadpool("default_work_queue_inter", num_inter_op_threads),
+          intra_op_threadpool("default_work_queue_intra",
+                              num_intra_op_threads) {}
+  };
+
+  class Wrapper : public TfThreadPoolWorkQueue {
+   public:
+    explicit Wrapper(std::unique_ptr<ThreadPools> thread_pools)
+        : TfThreadPoolWorkQueue(&thread_pools->inter_op_threadpool,
+                                &thread_pools->intra_op_threadpool),
+          thread_pools_(std::move(thread_pools)) {}
+
+    ~Wrapper() override = default;
+
+   private:
+    std::unique_ptr<ThreadPools> thread_pools_;
+  };
+
+  return std::make_unique<Wrapper>(std::make_unique<ThreadPools>(
+      num_inter_op_threads, num_intra_op_threads));
 }
 
 }  // namespace tfrt_stub

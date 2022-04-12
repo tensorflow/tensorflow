@@ -109,13 +109,18 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
   ~MklDnnMatMulFwdPrimitive() {}
 
+  dnnl::memory::desc GetScratchPadDesc() {
+    return context_.fwd_pd->scratchpad_desc();
+  }
+
   // Inner-product forward execute with bias:
   //  - src_data: input data buffer of src
   //  - weight_data: input data buffer of weight
   //  - bias_data: input data buffer of bias
   //  - dst_data: output data buffer of dst
+  //  - sp_data: scratchpad data
   void Execute(const Tinput* src_data, const Tweight* weight_data,
-               const Tbias* bias_data, Toutput* dst_data,
+               const Tbias* bias_data, Toutput* dst_data, void* sp_data,
                std::shared_ptr<stream> fwd_stream) {
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
@@ -126,6 +131,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
         static_cast<void*>(const_cast<Tbias*>(bias_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
                                       *fwd_stream);
+    context_.sp_mem->set_data_handle(sp_data, *fwd_stream);
 #else
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<Tinput*>(src_data)));
@@ -134,6 +140,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.bias_mem->set_data_handle(
         static_cast<void*>(const_cast<Tbias*>(bias_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
+    context_.sp_mem->set_data_handle(sp_data);
 #endif  // !ENABLE_ONEDNN_OPENMP
 
     execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
@@ -158,6 +165,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     std::shared_ptr<dnnl::memory> weight_mem;
     std::shared_ptr<dnnl::memory> bias_mem;
     std::shared_ptr<dnnl::memory> dst_mem;
+    std::shared_ptr<dnnl::memory> sp_mem;
 
     // Descriptor and primitive-descriptor for forward inner-product.
     std::shared_ptr<dnnl::inner_product_forward::desc> fwd_desc;
@@ -180,6 +188,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           weight_mem(nullptr),
           bias_mem(nullptr),
           dst_mem(nullptr),
+          sp_mem(nullptr),
           fwd_desc(nullptr),
           fwd_pd(nullptr),
           src_md(nullptr),
@@ -219,6 +228,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     // Check if there is any fusion as post-ops
     auto const& post_op_params = matmul_fwd_params.post_op_params;
     dnnl::primitive_attr post_ops_attr;
+    post_ops_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     dnnl::post_ops post_ops;
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
@@ -298,7 +308,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           *context_.fwd_desc, post_ops_attr, cpu_engine_));
     } else {
       context_.fwd_pd.reset(new inner_product_forward::primitive_desc(
-          *context_.fwd_desc, cpu_engine_));
+          *context_.fwd_desc, post_ops_attr, cpu_engine_));
     }
 
     // Create memory primitive based on dummy data
@@ -312,12 +322,16 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
                                         MklDnnType<Tbias>(),
                                         memory::format_tag::x},
                                        cpu_engine_, DummyData));
+    auto scratchpad_md = context_.fwd_pd->scratchpad_desc();
+    context_.sp_mem.reset(
+        new dnnl::memory(scratchpad_md, cpu_engine_, DummyData));
 
     // Create inner-product primitive.
     context_.matmul_fwd.reset(new inner_product_forward(*context_.fwd_pd));
     context_.net_args.push_back({{DNNL_ARG_SRC, *context_.src_mem},
                                  {DNNL_ARG_WEIGHTS, *context_.weight_mem},
                                  {DNNL_ARG_BIAS, *context_.bias_mem},
+                                 {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
                                  {DNNL_ARG_DST, *context_.dst_mem}});
 
     context_.fwd_primitives.push_back(*context_.matmul_fwd);

@@ -205,6 +205,7 @@ cc_library(
         ":worker_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/data:dataset_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",

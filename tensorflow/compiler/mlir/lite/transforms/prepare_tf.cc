@@ -100,6 +100,8 @@ namespace {
 // Prepare TF operations in functions for subsequent legalization.
 class PrepareTFPass : public PassWrapper<PrepareTFPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareTFPass)
+
   PrepareTFPass() = default;
   PrepareTFPass(const PrepareTFPass &) {}
   explicit PrepareTFPass(bool unfold_batch_matmul,
@@ -228,15 +230,14 @@ class ConvertTFConvOp : public RewritePattern {
     Value input = tf_op.input();
     RankedTensorType input_type =
         input.getType().template dyn_cast<RankedTensorType>();
-    // Safe guard for skipping grouped convolution legalization.
     // Only rank size four input will be only available by the tf.Conv2D
     // operator verification.
     if (!input_type || input_type.isDynamicDim(3)) {
       return failure();
     }
-    // Check if the given op is based on unsupported grouped convolution.
+    // Check if the given op is based on grouped convolution.
     // Dim size zero will be verified by the tf.Conv2D operator verification.
-    if (input_type.getDimSize(3) / filter_type.getDimSize(2) != 1) {
+    if (input_type.getDimSize(3) % filter_type.getDimSize(2) != 0) {
       return failure();
     }
 

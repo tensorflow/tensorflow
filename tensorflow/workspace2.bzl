@@ -51,7 +51,6 @@ load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("//tensorflow/tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("//tensorflow/tools/toolchains/remote:configure.bzl", "remote_execution_configure")
 load("//tensorflow/tools/toolchains/clang6:repo.bzl", "clang6_configure")
-load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -135,9 +134,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "16a46625036735e1e48e65b9b2dec20dd9c05c38b580b79c9ee99fb3d6e4c505",
-        strip_prefix = "XNNPACK-c4267996b006f94694ea588ca2bbeac1ec98d458",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/c4267996b006f94694ea588ca2bbeac1ec98d458.zip"),
+        sha256 = "422d6a76dfcc9f8830b3fc1602d50c7db76ad565310df54e78bd1a3f3bf0852b",
+        strip_prefix = "XNNPACK-5b5b61f38ebfc0ed7e930654300750c29920ade7",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/5b5b61f38ebfc0ed7e930654300750c29920ade7.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -184,9 +183,9 @@ def _tf_repositories():
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
         patch_file = ["//third_party/mkl_dnn:onednn_acl.patch"],
-        sha256 = "89495899d7cc17bef14c5dbf72070d6dfda4769fe804f8e88d86f71ad7ae0d51",
-        strip_prefix = "oneDNN-2.6-rc",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.6-rc.tar.gz"),
+        sha256 = "9695640f55acd833ddcef4776af15e03446c4655f9296e5074b1b178dd7a4fb2",
+        strip_prefix = "oneDNN-2.6",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.6.tar.gz"),
     )
 
     tf_http_archive(
@@ -243,10 +242,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_googlesource_code_re2",
-        sha256 = "d070e2ffc5476c496a6a872a6f246bfddce8e7797d6ba605a7c8d72866743bf9",
-        strip_prefix = "re2-506cfa4bffd060c06ec338ce50ea3468daa6c814",
+        sha256 = "b90430b2a9240df4459108b3e291be80ae92c68a47bc06ef2dc419c5724de061",
+        strip_prefix = "re2-a276a8c738735a0fe45a6ee590fe2df69bcf4502",
         system_build_file = "//third_party/systemlibs:re2.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/re2/archive/506cfa4bffd060c06ec338ce50ea3468daa6c814.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/re2/archive/a276a8c738735a0fe45a6ee590fe2df69bcf4502.tar.gz"),
     )
 
     tf_http_archive(
@@ -880,10 +879,6 @@ def workspace():
     _tf_repositories()
 
     tfrt_dependencies()
-
-    # TODO(rostam): Delete after the release of Bazel built-in cc_shared_library.
-    # Initializes Bazel package rules' external dependencies.
-    rules_pkg_dependencies()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

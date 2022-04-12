@@ -422,7 +422,6 @@ class MultiDeviceIterator : public ResourceBase {
     };
 
     mutex mu_;
-    std::unique_ptr<Thread> background_thread_ TF_GUARDED_BY(mu_);
     bool background_thread_finished_ TF_GUARDED_BY(mu_) = false;
     bool background_thread_started_ TF_GUARDED_BY(mu_) = false;
     bool end_of_iterator_ TF_GUARDED_BY(mu_) = false;
@@ -436,6 +435,7 @@ class MultiDeviceIterator : public ResourceBase {
     const std::unique_ptr<IteratorBase> host_iterator_;
     CancellationManager cancellation_manager_;
     MultiDeviceIterator* const parent_;  // Not owned.
+    std::unique_ptr<Thread> background_thread_ TF_GUARDED_BY(mu_);
   };
 
   UnboundedThreadPool unbounded_thread_pool_;

@@ -266,12 +266,13 @@ Status RingAlg::InitializeCollectiveContext(
 }
 
 string RingAlg::TensorDebugString(const Tensor& tensor) {
-  const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
-      col_ctx_->op_ctx->device()->tensorflow_gpu_device_info();
-  if (gpu_device_info) {
+  const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+      col_ctx_->op_ctx->device()->tensorflow_accelerator_device_info();
+  if (accelerator_device_info) {
     Tensor cpu_tensor(tensor.dtype(), tensor.shape());
-    Status st = gpu_device_info->default_context->CopyDeviceTensorToCPUSync(
-        &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor);
+    Status st =
+        accelerator_device_info->default_context->CopyDeviceTensorToCPUSync(
+            &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor);
     DCHECK(st.ok());
     return cpu_tensor.SummarizeValue(64);
   } else {

@@ -13,7 +13,6 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler/lib:profiler_factory",
         "//tensorflow/core/profiler/lib:profiler_interface",

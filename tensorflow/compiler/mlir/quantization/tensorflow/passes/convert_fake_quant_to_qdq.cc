@@ -29,6 +29,8 @@ namespace {
 class ConvertFakeQuantToQdqPass
     : public PassWrapper<ConvertFakeQuantToQdqPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertFakeQuantToQdqPass)
+
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
     // the textual format (on the commandline for example).

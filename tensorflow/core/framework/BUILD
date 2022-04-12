@@ -701,6 +701,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util:overflow",
         "//third_party/eigen3",
     ],
@@ -876,7 +877,6 @@ cc_library(
         ":node_def_proto_cc",
         ":node_def_util",
         ":op_def_proto_cc",
-        ":tensor",
         ":tensor_shape",
         ":tensor_shape_proto_cc",
         "//tensorflow/core/lib/core:errors",
@@ -1059,7 +1059,7 @@ cc_library(
         "//tensorflow/security/fuzzing:__subpackages__",
         # Necessary for calling REGISTER_OP with SetTypeConstructor
         # http://yaqs/4779722181477138432
-        "//intelligence/brella/sql/tensorflow:__pkg__",
+        "//intelligence/brella/analytics/sql/tensorflow:__pkg__",
     ],
     deps = [
         ":attr_value_proto_cc",

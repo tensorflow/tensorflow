@@ -113,15 +113,15 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
-  void HeartbeatAsync(const HeartbeatRequest* request,
+  void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
                       HeartbeatResponse* response,
                       StatusCallback done) override {
     // Different from other RPCs which do not retry by default, the Heartbeat
     // RPC should retry automatically to tolerate transient network issues.
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/Heartbeat", *request,
-        response, std::move(done),
-        /*call_opts=*/nullptr, /*threadpool=*/nullptr, /*max_retries=*/3,
+        response, std::move(done), call_opts, /*threadpool=*/nullptr,
+        /*max_retries=*/3,
         /*fail_fast=*/true, &target_);
   }
 

@@ -1262,7 +1262,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));
   const int platform_device_id =
-      ctx->device()->tensorflow_gpu_device_info()->gpu_id;
+      ctx->device()->tensorflow_accelerator_device_info()->gpu_id;
   if (platform_device_id < 0) {
     LOG(ERROR) << "Can't get gpu_device_info from context->device()";
     return errors::InvalidArgument(

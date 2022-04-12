@@ -98,15 +98,16 @@ class MultiTrainerCache {
  public:
   // Creates a `MultiTrainerCache` with `max_cache_size_bytes` of memory budget.
   // The cache should be able to hold at least one element, i.e.:
-  // REQUIRES: max_cache_size_bytes >= max(get_element_size(*))
+  // REQUIRES: `max_cache_size_bytes >= max(GetElementSizeBytes(*))`
   explicit MultiTrainerCache(
       size_t max_cache_size_bytes,
       std::unique_ptr<CachableSequence<ElementType>> cachable_sequence);
   virtual ~MultiTrainerCache() = default;
 
-  // Gets the next element for `trainer`. A `trainer_id` identifies the trainer
-  // reading from the cache. If one trainer has read data, the data is shared
-  // with other trainers.
+  // Gets the next element for a trainer. A `trainer_id` identifies the trainer
+  // reading from the cache. A trainer reads the next element it hasn't read
+  // before. After a trainer reads data, the data is cached and reused by other
+  // trainers.
   StatusOr<std::shared_ptr<const ElementType>> Get(
       const std::string& trainer_id);
 

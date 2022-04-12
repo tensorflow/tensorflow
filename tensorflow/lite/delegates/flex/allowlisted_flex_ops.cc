@@ -794,6 +794,7 @@ const std::set<std::string>& GetTFTextFlexAllowlist() {
           "SentencepieceDetokenizeOp",
           "SentencepieceVocabSizeOp",
           "SplitMergeTokenizeWithOffsets",
+          "TFText>NgramsStringJoin",
           "TFText>WhitespaceTokenizeWithOffsetsV2",
           "TokenizerFromLogits",
           "UnicodeScriptTokenizeWithOffsets",

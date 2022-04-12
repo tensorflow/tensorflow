@@ -93,6 +93,12 @@ class StatusOrData {
   explicit StatusOrData(const T& value) : data_(value) { MakeStatus(); }
   explicit StatusOrData(T&& value) : data_(std::move(value)) { MakeStatus(); }
 
+  template <typename... Args>
+  explicit StatusOrData(absl::in_place_t, Args&&... args)
+      : data_(std::forward<Args>(args)...) {
+    MakeStatus();
+  }
+
   explicit StatusOrData(const Status& status) : status_(status) {
     EnsureNotOk();
   }

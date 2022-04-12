@@ -45,6 +45,8 @@ namespace {
 class PostQuantizePass
     : public PassWrapper<PostQuantizePass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
+
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
   explicit PostQuantizePass() : emit_quant_adaptor_ops_(false) {
     ParseCustomOpSpecs(enable_custom_op_no_side_effect,
@@ -83,6 +85,8 @@ class PostQuantizePass
 class PostQuantizeRemoveQDQPass
     : public PassWrapper<PostQuantizeRemoveQDQPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizeRemoveQDQPass)
+
   // Constructor used by the PassRegistration. This will remove QDQ ops.
   explicit PostQuantizeRemoveQDQPass() {}
 

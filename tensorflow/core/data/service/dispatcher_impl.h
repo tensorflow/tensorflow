@@ -177,7 +177,7 @@ class DataServiceDispatcherImpl {
       const DispatcherState::Job& job,
       std::vector<std::unique_ptr<SplitProvider>>& restored)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Makes split providers for the specified `dataset_id`, and stores thent in
+  // Makes split providers for the specified `dataset_id`, and stores them in
   // `split_providers`.
   Status MakeSplitProviders(
       int64_t dataset_id,

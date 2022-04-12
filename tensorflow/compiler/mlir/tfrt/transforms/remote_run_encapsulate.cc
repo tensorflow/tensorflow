@@ -53,6 +53,8 @@ constexpr const char* kTFRTDevice = "tfrt.device";
 struct DistRemoteRunEncapsulatePass
     : public PassWrapper<DistRemoteRunEncapsulatePass,
                          OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DistRemoteRunEncapsulatePass)
+
   llvm::StringRef getArgument() const final {
     return "tfrt-dist-remote-run-encapsulate";
   }

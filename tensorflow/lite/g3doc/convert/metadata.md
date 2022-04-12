@@ -538,7 +538,7 @@ method:
 public InputStream getAssociatedFile(String fileName);
 ```
 
-Similarily, in C++, this can be done with the method,
+Similarly, in C++, this can be done with the method,
 `ModelMetadataExtractor::GetAssociatedFile`:
 
 ```c++

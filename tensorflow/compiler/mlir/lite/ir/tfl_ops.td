@@ -43,24 +43,6 @@ def TFL_Quint8 : Type<CPred<"$_self.isa<mlir::TF::Quint8Type>()">,
                     "TFLite quint8 type">,
               BuildableType<"getType<mlir::TF::Quint8Type>()">;
 
-//===----------------------------------------------------------------------===//
-// Activation function enum definitions.
-//===----------------------------------------------------------------------===//
-
-// Allowed activation function cases
-// These should match the ActivationFunctionType enum in TFLite schema.
-def TFL_AF_None  : StrEnumAttrCase<"NONE">;
-def TFL_AF_Relu  : StrEnumAttrCase<"RELU">;
-def TFL_AF_Relu1 : StrEnumAttrCase<"RELU_N1_TO_1">;
-def TFL_AF_Relu6 : StrEnumAttrCase<"RELU6">;
-def TFL_AF_Tanh  : StrEnumAttrCase<"TANH">;
-def TFL_AF_Sign  : StrEnumAttrCase<"SIGN_BIT">;
-
-def TFL_AFAttr : StrEnumAttr<
-    "ActivationFunctionType", "fused activation enum", [
-      TFL_AF_None,  TFL_AF_Relu, TFL_AF_Relu1,
-      TFL_AF_Relu6, TFL_AF_Tanh, TFL_AF_Sign
-    ]>;
 
 //===----------------------------------------------------------------------===//
 // Padding enum definitions.
@@ -70,15 +52,9 @@ def TFL_AFAttr : StrEnumAttr<
 // These should match the padding enum in TFLite schema.
 def TFL_PAD_Same  : StrEnumAttrCase<"SAME">;
 def TFL_PAD_Valid : StrEnumAttrCase<"VALID">;
-def TFL_MIRRORPAD_Reflect : StrEnumAttrCase<"REFLECT">;
-def TFL_MIRRORPAD_Symmetric : StrEnumAttrCase<"SYMMETRIC">;
 
 def TFL_PaddingAttr : StrEnumAttr<"Padding", "padding enum", [
       TFL_PAD_Same, TFL_PAD_Valid
-    ]>;
-
-def TFL_MirrorPaddingAttr : StrEnumAttr<"Padding", "Mirror pad enum", [
-      TFL_MIRRORPAD_Reflect, TFL_MIRRORPAD_Symmetric
     ]>;
 
 //===----------------------------------------------------------------------===//
@@ -384,6 +360,12 @@ class TFL_IntEqualsTo<int n> : AttrConstraint<
     CPred<"$_self.isa<IntegerAttr>() && "
             "$_self.cast<IntegerAttr>().getInt() == " # n>,
     "whose value is " # n>;
+
+// Ensures the given LSTMKernelType attribute has the given value.
+class TFL_LSTMKernelTypeEqualsTo<string value> : AttrConstraint<
+    CPred<"$_self.isa<LSTMKernelTypeAttr>() && "
+            "$_self.cast<LSTMKernelTypeAttr>().getValue() == " # value>,
+    "whose value is " # value>;
 
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
@@ -4094,15 +4076,6 @@ def TFL_DensifyOp: TFL_Op<"densify", [
 // LSTM Ops
 //===----------------------------------------------------------------------===//
 
-// LSTM Kernel Type attributes
-def TFL_LSTM_KT_FULL  : StrEnumAttrCase<"FULL">;
-def TFL_LSTM_KT_BASIC  : StrEnumAttrCase<"BASIC">;
-
-def TFL_LSTMKernelTypeAttr : StrEnumAttr<"LSTMKernelType", "lstm kernel type enum",
-   [
-     TFL_LSTM_KT_FULL,  TFL_LSTM_KT_BASIC
-   ]>;
-
 def LstmMandatoryInputsConstraint : PredOpTrait<
   "mandatory operands element types should match",
   // TODO(ashwinm): Replace the indices with input tensor names when that
@@ -4183,8 +4156,8 @@ def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the BASIC kernel only, constrain it.
     Confined<
-      DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "BASIC">,
-      [TFL_LSTM_KT_BASIC]>:$kernel_type
+      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::BASIC">,
+      [TFL_LSTMKernelTypeEqualsTo<"mlir::TFL::LSTMKernelType::BASIC">]>:$kernel_type
   );
 
   let hasOptions = 1;
@@ -4289,8 +4262,8 @@ Ba et al. 'Layer Normalization'
     Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the FULL kernel only, constrain it.
     Confined<
-      DefaultValuedStrAttr<TFL_LSTMKernelTypeAttr, "FULL">,
-      [TFL_LSTM_KT_FULL]>:$kernel_type,
+      DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "mlir::TFL::LSTMKernelType::FULL">,
+      [TFL_LSTMKernelTypeEqualsTo<"mlir::TFL::LSTMKernelType::FULL">]>:$kernel_type,
     // Used in post-training dynamic range quantization. If the value is true,
     // input activations are asymmetrically quantized.
     OptionalAttr<BoolAttr>:$asymmetric_quantize_inputs,
@@ -4951,7 +4924,7 @@ def TFL_IfOp : Op<TFL_Dialect, "if", [
 }
 
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
-    DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+    DeclareOpInterfaceMethods<LoopLikeOpInterface, ["isDefinedOutsideOfLoop"]>,
     SingleBlockImplicitTerminator<"YieldOp">,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = [{While loop}];
@@ -5154,7 +5127,7 @@ def TFL_VarHandleOp : TFL_Op<"var_handle", []> {
   let hasOptions = 1;
 }
 
-def TFL_AssignVariableOp : TFL_Op<"assign_variable", [QuantizableResult]> {
+def TFL_AssignVariableOp : TFL_Op<"assign_variable", []> {
   let summary = "Assigns a new value to a variable.";
 
   let description = [{
@@ -5170,7 +5143,7 @@ this value or a subsequent newer value of the variable.
   let results = (outs);
 }
 
-def TFL_ReadVariableOp : TFL_Op<"read_variable", [QuantizableResult]> {
+def TFL_ReadVariableOp : TFL_Op<"read_variable", []> {
   let summary = "Reads variable value.";
 
   let description = [{

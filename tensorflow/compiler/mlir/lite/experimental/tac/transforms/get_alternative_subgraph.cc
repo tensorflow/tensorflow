@@ -93,6 +93,8 @@ class AlternativeSubgraphPass
     : public mlir::PassWrapper<AlternativeSubgraphPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AlternativeSubgraphPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-get-alternative-subgraph";
   }
@@ -137,7 +139,7 @@ class AlternativeSubgraphPass
       *this, "device-specs",
       llvm::cl::desc(
           "comma separated list of device specs, like CPU, GPU, DPS."),
-      llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated};
+      llvm::cl::ZeroOrMore};
 };
 
 void AlternativeSubgraphPass::GetAlternativeGraphForFunc(

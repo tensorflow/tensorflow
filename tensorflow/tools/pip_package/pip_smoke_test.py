@@ -38,6 +38,7 @@ BUILD_DENYLIST = [
     "tensorflow/examples",
     "tensorflow/tools/android",
     "tensorflow/tools/toolchains",
+    "tensorflow/python/autograph/tests",
     "tensorflow/python/eager/benchmarks",
 ]
 

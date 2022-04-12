@@ -1,5 +1,5 @@
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-signed -tfl-test-post-training-quantize | FileCheck %s
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-signed -tfl-test-post-training-quantize -tfl-test-legacy-float-scale | FileCheck --check-prefix=Legacy %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-signed -tfl-test-post-training-quantize -cse | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-signed -tfl-test-post-training-quantize -cse -tfl-test-legacy-float-scale | FileCheck --check-prefix=Legacy %s
 
 // CHECK-LABEL: QuantizeLstmCellInput
 func.func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf32> {
@@ -31,8 +31,8 @@ func.func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf
     func.return %1 : tensor<1x28x20xf32>
 // CHECK-DAG: %[[none:.*]] = "tfl.no_value"() {value} : () -> none
 // CHECK-DAG: %[[cell_input:.*]] = arith.constant dense<1.000000e+00> : tensor<1x20xf32>
-// CHECK: %[[q:.*]] = "tfl.quantize"(%[[cell_input]]) {qtype = tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>} : (tensor<1x20xf32>) -> tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>
-// CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]]) : (tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>) -> tensor<1x20xf32>
+// CHECK-DAG: %[[q:.*]] = "tfl.quantize"(%[[cell_input]]) {qtype = tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>} : (tensor<1x20xf32>) -> tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>
+// CHECK-DAG: %[[dq:.*]] = "tfl.dequantize"(%[[q]]) : (tensor<1x20x!quant.uniform<i16:f32, 2.44140625E-4>>) -> tensor<1x20xf32>
 // Checks if input 19 is correctly passed from a dequantize op.
 // CHECK: %[[lstm:.*]] = "tfl.unidirectional_sequence_lstm"(%arg0, {{(%[^%,]+, )+}}%[[dq]], %[[none]], %[[none]], %[[none]], %[[none]])
 }
@@ -166,7 +166,7 @@ func.func @QuantizeLstmCifg(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes 
   %24 = "quant.stats"(%23) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
   func.return %24 : tensor<*xf32>
 
-// CHECK: %[[none:.*]] = "tfl.no_value"() {value} : () -> none
+// CHECK-DAG: %[[none:.*]] = "tfl.no_value"() {value} : () -> none
 // CHECK-DAG: %[[input_0:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x5x!quant.uniform<i8:f32, 0.010588235481112611:-15>>) -> tensor<1x5xf32>
 // CHECK-DAG: %[[input_2:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32, 0.018341723389512912>>) -> tensor<2x5xf32>
 // CHECK-DAG: %[[input_3:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x5x!quant.uniform<i8<-127:127>:f32, 0.011170119751156785>>) -> tensor<2x5xf32>

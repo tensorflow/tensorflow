@@ -58,6 +58,8 @@ namespace {
 class ImportQuantStatsPass
     : public PassWrapper<ImportQuantStatsPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ImportQuantStatsPass)
+
   explicit ImportQuantStatsPass(OperationToName op_to_name)
       : op_to_name_(op_to_name) {}
 

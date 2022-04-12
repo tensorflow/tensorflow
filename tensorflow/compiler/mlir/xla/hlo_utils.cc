@@ -465,8 +465,6 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kReverse;
   } else if (isa<mlir::mhlo::PadOp, mlir::lmhlo::PadOp>(op)) {
     return xla::HloOpcode::kPad;
-  } else if (isa<mlir::mhlo::TraceOp>(op)) {
-    return xla::HloOpcode::kTrace;
   } else if (isa<mlir::mhlo::TransposeOp, mlir::lmhlo::TransposeOp>(op)) {
     return xla::HloOpcode::kTranspose;
   } else if (isa<mlir::mhlo::TriangularSolveOp, mlir::lmhlo::TriangularSolveOp>(
