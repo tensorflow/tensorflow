@@ -1117,7 +1117,6 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
         fetches=fetches, feed_dict=feed_dict, **kwargs)
 
 
-@tf_export("__internal__.tracking.TrackableSaver", v1=[])
 class TrackableSaver(object):
   """Saves and restores a `Trackable` object and its dependencies.
 
