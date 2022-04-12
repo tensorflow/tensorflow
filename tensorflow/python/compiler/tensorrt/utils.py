@@ -14,6 +14,8 @@
 # =============================================================================
 """Exposes the Python wrapper conversion to trt_graph."""
 
+import os
+
 from distutils import version
 
 from tensorflow.compiler.tf2tensorrt import _pywrap_py_utils
@@ -69,3 +71,18 @@ def is_linked_tensorrt_version_greater_equal(major, minor=0, patch=0):
 def is_loaded_tensorrt_version_greater_equal(major, minor=0, patch=0):
   ver = _pywrap_py_utils.get_loaded_tensorrt_version()
   return _is_tensorrt_version_greater_equal(ver, (major, minor, patch))
+
+
+def is_experimental_feature_activated(feature_name):
+  """Determines if a TF-TRT experimental feature is enabled.
+
+  This helper function checks if an experimental feature was enabled using
+  the environment variable `TF_TRT_EXPERIMENTAL_FEATURES=feature_1,feature_2`.
+
+  Args:
+    feature_name: Name of the feature being tested for activation.
+  """
+
+  return (feature_name
+          in os.environ.get("TF_TRT_EXPERIMENTAL_FEATURES",
+                            default="").split(","))
