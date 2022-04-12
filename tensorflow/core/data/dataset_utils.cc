@@ -118,6 +118,10 @@ void DefaultOptimizationGraphRewrites(
         OptimizationOptions::kParallelBatch) {
       optimization_default->insert(kParallelBatchOpt);
     }
+    if (optimization_options.optional_enable_gpu_compatible_memory_case() !=
+        OptimizationOptions::kEnableGpuCompatibleMemory) {
+      optimization_default->insert(kEnableGPUCompatibleMemoryOpt);
+    }
   }
   if (OpDeterminismRequired()) {
     optimization_enabled->insert(kMakeDeterministicOpt);

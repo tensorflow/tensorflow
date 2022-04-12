@@ -25,6 +25,7 @@ cc_library(
         ":filter_fusion",
         ":filter_parallelization",
         ":inject_prefetch",
+        ":enable_gpu_compatible_memory",
         ":make_deterministic",
         ":make_sloppy",
         ":map_and_batch_fusion",
@@ -902,6 +903,44 @@ tf_cc_test(
         ":graph_test_utils",
         ":graph_utils",
         ":inject_prefetch",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "enable_gpu_compatible_memory",
+    srcs = ["enable_gpu_compatible_memory.cc"],
+    hdrs = ["enable_gpu_compatible_memory.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/data:dataset_utils",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "enable_gpu_compatible_memory_test",
+    size = "small",
+    srcs = ["enable_gpu_compatible_memory_test.cc"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":enable_gpu_compatible_memory",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
