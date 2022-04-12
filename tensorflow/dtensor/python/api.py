@@ -79,8 +79,9 @@ def call_with_layout(fn: Callable[...,
       result = fn(*args, **kwargs)
       return relayout(result, layout)
     else:
-      with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
-        return fn(*args, **kwargs)
+      with run_on(layout.mesh):
+        with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
+          return fn(*args, **kwargs)
   return fn(*args, **kwargs)
 
 
