@@ -1078,6 +1078,9 @@ REGISTER_OP("IteratorGetNextAsOptional")
     .Output("optional: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_OPTIONAL,
+                                                           "output_types"))
+    .SetForwardTypeFn(full_type::MapCovariant(TFT_ITERATOR, TFT_OPTIONAL, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ModelDataset")
