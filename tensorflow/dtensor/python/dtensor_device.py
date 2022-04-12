@@ -168,7 +168,7 @@ class DTensorDevice(object):
           embedding_host_mesh = self._create_embedding_host_mesh(mesh)
           if embedding_host_mesh:
             logging.info(
-                "Registering embedding host mesh %s on each client for mesh %s ",
+                "Registering embedding host mesh %s on each client for mesh %s",
                 embedding_host_mesh.to_string(), mesh.to_string())
             _pywrap_dtensor_device.AddMesh(self._device_info,
                                            embedding_host_mesh.to_string(),
@@ -420,6 +420,10 @@ class DTensorDevice(object):
     Yields:
       Nothing.
     """
+    previous_default = None
+    previous_graph_size = None
+    graph = None
+
     self._register_mesh(layout.mesh)
     try:
       previous_default = self._current_output_layout
@@ -427,8 +431,6 @@ class DTensorDevice(object):
       _pywrap_dtensor_device.ExperimentalSetDefaultLayout(
           self._device_info, self._current_output_layout)
       if context.executing_eagerly():
-        graph = None
-        previous_graph_size = None
         with ops.device(self.name):
           yield
       else:
@@ -441,9 +443,9 @@ class DTensorDevice(object):
         previous_graph_size = len(graph.get_operations())
         yield
     finally:
-      if graph is not None:  # pytype: disable=name-error  # py39-upgrade
+      if graph is not None:
         # Tag operations added under this scope
-        for operation in graph.get_operations()[previous_graph_size:]:  # pytype: disable=name-error  # py39-upgrade
+        for operation in graph.get_operations()[previous_graph_size:]:
           # Set layout directly on the Op itself.
           operation._set_attr(  # pylint: disable=protected-access
               "_layout",
@@ -455,7 +457,7 @@ class DTensorDevice(object):
               attr_value_pb2.AttrValue(
                   s=layout.mesh.to_string().encode("utf-8")))
 
-      self._current_output_layout = previous_default  # pytype: disable=name-error  # py39-upgrade
+      self._current_output_layout = previous_default
       if self._current_output_layout is None:
         _pywrap_dtensor_device.ExperimentalClearDefaultLayout(self._device_info)
       else:
