@@ -37,6 +37,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertFakeQuantToQdqPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftQuantizableSpotsAsFunctionsPass();
 
+// Apply graph optimizations such as fusing and constant folding to prepare
+// lifting.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass();
+
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
 std::unique_ptr<OperationPass<func::FuncOp>>
