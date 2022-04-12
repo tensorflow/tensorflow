@@ -35,12 +35,14 @@ using mlir::dyn_cast;
 using mlir::isa;
 
 using mlir::AffineMap;
+using mlir::MLIRContext;
 using mlir::Operation;
 using mlir::OpOperand;
 using mlir::OpResult;
 using mlir::RewritePatternSet;
 
 namespace linalg = mlir::linalg;
+namespace tensor = mlir::tensor;
 
 // Returns true if `op` is a linalg generic operation that only does the
 // broadcast of the input.
@@ -89,12 +91,25 @@ struct FusionPass : public FusionBase<FusionPass> {
   void runOnOperation() override {
     Operation *op = getOperation();
 
+    MLIRContext *context = &getContext();
     RewritePatternSet patterns(op->getContext());
-    linalg::populateElementwiseOpsFusionPatterns(
-        patterns,
-        linalg::LinalgElementwiseFusionOptions()
-            .setControlElementwiseOpsFusionFn(ControlElementwiseOpsFusion));
+    linalg::populateElementwiseOpsFusionPatterns(patterns,
+                                                 ControlElementwiseOpsFusion);
 
+    linalg::populateFoldReshapeOpsByExpansionPatterns(
+        patterns, linalg::skipUnitDimReshape);
+
+    linalg::populateSparseTensorRewriting(patterns);
+
+    linalg::populateConstantFoldLinalgOperations(patterns,
+                                                 ControlElementwiseOpsFusion);
+
+    mlir::AffineApplyOp::getCanonicalizationPatterns(patterns, context);
+    linalg::GenericOp::getCanonicalizationPatterns(patterns, context);
+    tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, context);
+    tensor::CollapseShapeOp::getCanonicalizationPatterns(patterns, context);
+    context->getLoadedDialect<linalg::LinalgDialect>()
+        ->getCanonicalizationPatterns(patterns);
     (void)applyPatternsAndFoldGreedily(op->getRegions(), std::move(patterns));
   }
 };
