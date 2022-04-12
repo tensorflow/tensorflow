@@ -119,10 +119,17 @@ Status DoBlasPlansAutotune(se::Stream* stream, const HloInstruction* instr,
       hlo_module_config.debug_options()
           .xla_gpu_crash_on_verification_failures();
 
+  const int64_t redzone_size =
+      check_cublas ? se::RedzoneAllocator::kDefaultRedzoneSize : 0;
+
   se::RedzoneAllocator input_output_allocator(
       stream, allocator,
       PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
-      /*memory_limit=*/std::numeric_limits<int64_t>::max());
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
+      /*redzone_size=*/redzone_size);
+
+  BufferComparator comparator(instr->shape(), hlo_module_config);
+
   int64_t rng_state = 0;
   auto get_initialized_buffer =
       [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
