@@ -327,6 +327,37 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         'The inference_input_type and inference_output_type '
         'must be tf.float32.', str(error.exception))
 
+  def _createV2QATSavedModelWithFloatOpsAtEnd(self):
+    """Create a simple QAT SavedModel that includes float ops at the end."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'qat_float_ops_at_end')
+    input_tensor = tf.keras.layers.Input((32, 32, 128))
+    x = tf.quantization.fake_quant_with_min_max_args(input_tensor, -3.0, 3.0)
+    x = tf.keras.layers.Conv2D(1, (3, 3))(x)
+    x = tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
+    # Exclude the quantization of the following Dense layer by not putting
+    # fake quant layer after the dense layer.
+    output_tensor = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    model = tf.keras.Model(input_tensor, output_tensor)
+    model.save(saved_model_dir)
+    return saved_model_dir
+
+  def testQuantizationRemovesQDQsForFloatIOInQAT(self):
+    saved_model_dir = self._createV2QATSavedModelWithFloatOpsAtEnd()
+    converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_model = converter.convert()
+
+    # Because assertions on the model later, we opt out applying default TFLite
+    # delegates (i.e. the XNNPACK delegate).
+    interpreter = Interpreter(
+        model_content=quantized_model,
+        experimental_op_resolver_type=OpResolverType
+        .BUILTIN_WITHOUT_DEFAULT_DELEGATES)
+    interpreter.allocate_tensors()
+    # The model should have LOGISTIC op, instead of DEQUANTIZE op.
+    op_details = interpreter._get_ops_details()
+    self.assertEqual(op_details[len(op_details) - 1]['op_name'], 'LOGISTIC')
+
   @parameterized.named_parameters(
       ('EnableMlirQuantizer', True),  # enable mlir quantizer
       ('DisableMlirQuantizer', False))  # disable mlir quantizer
