@@ -565,10 +565,9 @@ class EvaluateConstant : public FolderPatternBase {
     SmallVector<Value> const_values;
     for (auto &it : llvm::enumerate(result)) {
       Attribute attr = it.value();
-      Twine eval_name_prefix =
-          Twine(TFOp(op).name(), "/eval-") + std::to_string(it.index());
       FailureOr<TFOp> const_op = CreateConstantTensorOp(
-          rewriter, op->getLoc(), eval_name_prefix.str(),
+          rewriter, op->getLoc(),
+          (Twine(TFOp(op).name(), "/eval-") + Twine(it.index())).str(),
           attr.getType().cast<ShapedType>(), control_operands, attr,
           NamedAttribute(name_attr, TFOp(op).nameAttr()));
       if (failed(const_op)) return failure();
