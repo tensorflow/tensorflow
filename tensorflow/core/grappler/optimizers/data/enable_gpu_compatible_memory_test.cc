@@ -34,7 +34,7 @@ constexpr char kOptionsDataset[] = "OptionsDataset";
 constexpr char kParallelMapDataset[] = "ParallelMapDatasetV2";
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
-Status Optimize(InjectPrefetch &optimizer, const GrapplerItem &item,
+Status Optimize(EnableGPUCompatibleMemory &optimizer, const GrapplerItem &item,
                 GraphDef *output, bool autotune) {
   RewriterConfig_CustomGraphOptimizer config;
   if (autotune) {

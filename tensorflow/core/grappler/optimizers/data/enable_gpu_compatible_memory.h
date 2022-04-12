@@ -70,28 +70,15 @@ class EnableGPUCompatibleMemory : public TFDataOptimizerBase {
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     if (!config) return Status::OK();
-
-    const std::string& autotune = config->parameter_map().at(kAutotune).s();
-    if (autotune == "true") {
-      autotune_ = true;
-    } else if (autotune == "false") {
-      autotune_ = false;
-    } else {
-      return errors::InvalidArgument("Received an invalid value for parameter ",
-                                     kAutotune, ": ", autotune);
-    }
     return Status::OK();
   }
 
   Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output,
                                  OptimizationStats* stats) override;
-
- protected:
-  bool autotune_ = true;
 };
 
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_INJECT_PREFETCH_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_ENABLE_GPU_COMPATIBLE_MEMORY_H_

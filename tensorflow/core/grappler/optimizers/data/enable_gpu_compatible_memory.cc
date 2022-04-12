@@ -32,10 +32,10 @@ namespace grappler {
 namespace {
 
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
-constexpr char UseGpuAllocatorAttr[] = "UseGpuAllocator";
+constexpr char UseGpuCompatAllocatorAttr[] = "UseGpuCompatAllocator";
 
-bool HasUseGpuAllocatorAttr(const NodeDef& node) {
-    return node.attr().contains(UseGpuAllocatorAttr);
+bool HasUseGpuCompatAllocatorAttr(const NodeDef& node) {
+    return node.attr().contains(UseGpuCompatAllocatorAttr);
 }
 
 std::unique_ptr<GPUTensorOpList> get_gpu_tensor_op_list() {
@@ -73,13 +73,13 @@ Status EnableGPUCompatibleMemory::OptimizeAndCollectStats(Cluster* cluster,
       return Status::OK();      
     }
 
-    if (!HasUseGpuAllocatorAttr(*node_prior))
+    if (!HasUseGpuCompatAllocatorAttr(*node_prior))
     {
       VLOG(2) << "the " << node_prior->op() << " does not have the "
-        << UseGpuAllocatorAttr << " attribute";
+        << UseGpuCompatAllocatorAttr << " attribute";
       return Status::OK();
     }
-    (*node_prior->mutable_attr())[UseGpuAllocatorAttr].set_b(true);
+    (*node_prior->mutable_attr())[UseGpuCompatAllocatorAttr].set_b(true);
     return Status::OK();  
   }
   return Status::OK();  
