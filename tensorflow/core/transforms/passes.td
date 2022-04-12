@@ -245,6 +245,10 @@ def ControlFlowSink : Pass<"tfg-cf-sink", "GraphFuncOp"> {
   }];
 
   let constructor = "CreateControlFlowSinkPass()";
+
+  let statistics = [
+    Statistic<"num_sunk", "num-sunk", "Number of operations sunk">,
+  ];
 }
 
 def Remapper : Pass<"remapper"> {
