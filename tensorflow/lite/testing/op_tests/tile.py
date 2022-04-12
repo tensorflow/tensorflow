@@ -27,21 +27,21 @@ def make_tile_tests(options):
           "input_dtype": [tf.float32, tf.int32, tf.bool, tf.string],
           "input_shape": [[3, 2, 1], [2, 2, 2]],
           "multiplier_dtype": [tf.int32, tf.int64],
-          "multiplier_shape": [[3]]
-      },
+          "multiplier_shape": [[3]],
+          "fully_quantize": [False],
       {
           "input_dtype": [tf.float32, tf.int32],
           "input_shape": [[]],
           "multiplier_dtype": [tf.int32, tf.int64],
-          "multiplier_shape": [[0]]
-      },
-      {
+          "multiplier_shape": [[0]],
+          "fully_quantize": [False],
+      }, {
           "input_dtype": [tf.float32],
-          "input_shape": [[3, 2, 1]],
+          "input_shape": [[3, 2, 1], [2, 2, 2]],
           "multiplier_dtype": [tf.int32, tf.int64],
           "multiplier_shape": [[3]],
           "fully_quantize": [True],
-          # The input range is used to create representative dataset for both
+          "quantize_mode_16x8": [True, False],
           # input and multiplier so it needs to be positive.
           "input_range": [(1, 10)],
       }
@@ -63,10 +63,8 @@ def make_tile_tests(options):
   def build_inputs(parameters, sess, inputs, outputs):
     min_value, max_value = parameters.get("input_range", (-10, 10))
     input_value = create_tensor_data(
-        parameters["input_dtype"],
+    return [input_value], sess.run(
         parameters["input_shape"],
-        min_value=min_value,
-        max_value=max_value)
         outputs,
         feed_dict={
             inputs[0]: input_value
