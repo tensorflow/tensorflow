@@ -24,7 +24,6 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
-from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.collective_all_reduce_strategy import CollectiveAllReduceStrategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -62,6 +61,29 @@ class StrategyTest(test.TestCase, parameterized.TestCase):
       return strategy.run(f)
 
     g()
+
+  def testMergeCallInitScope(self, strategy):
+    with strategy.scope():
+
+      @def_function.function
+      def fn():
+
+        def merge_fn(unused_strat):
+
+          y = constant_op.constant(11)
+          return y
+
+        def replica_fn():
+
+          with ops.init_scope():
+            y = ds_context.get_replica_context().merge_call(merge_fn)
+            z = y + 1
+            return z
+
+        return strategy.run(replica_fn)
+
+      result = strategy.experimental_local_results(fn())
+      self.assertAllClose(result, [12] * _get_num_replicas_per_client(strategy))
 
 
 @combinations.generate(
@@ -675,8 +697,8 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
     # CollectiveAllReduceStrategy and TPUStrategy must have a cluster resolver.
     # `None` otherwise.
     resolver = strategy.cluster_resolver
-    if not isinstance(strategy, CollectiveAllReduceStrategy) and not isinstance(
-        strategy, tpu_strategy.TPUStrategy):
+    if (not isinstance(strategy, CollectiveAllReduceStrategy) and
+        not strategy_test_lib.is_tpu_strategy(strategy)):
       self.assertIsNone(resolver)
       return
 

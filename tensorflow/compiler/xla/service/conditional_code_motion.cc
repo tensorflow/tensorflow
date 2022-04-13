@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/conditional_code_motion.h"
 
+#include <algorithm>
 #include <iterator>
 #include <stack>
 #include <string>
@@ -389,24 +390,36 @@ absl::flat_hash_set<int64_t> FindSpecialConverts(HloInstruction* old_root,
     for (int others = 1; others < branch_count; ++others) {
       HloInstruction* others_root =
           conditional->branch_computation(others)->root_instruction();
+      const HloInstruction* other_convert = others_root->operand(operand_num);
+      if (other_convert->opcode() != HloOpcode::kConvert ||
+          convert_invalid(other_convert)) {
+        replica = false;
+        break;
+      }
+      // Do not move converts if their operands have different shapes in
+      // different branches.
       bool eq_shape =
           is_layout_sensitive
-              ? ShapeUtil::Equal(others_root->operand(operand_num)->shape(),
-                                 special_convert_candidate->shape())
-              : ShapeUtil::Compatible(
-                    others_root->operand(operand_num)->shape(),
-                    special_convert_candidate->shape());
+              ? ShapeUtil::Equal(other_convert->shape(),
+                                 special_convert_candidate->shape()) &&
+                    ShapeUtil::Equal(
+                        other_convert->operand(0)->shape(),
+                        special_convert_candidate->operand(0)->shape())
+              : ShapeUtil::Compatible(other_convert->shape(),
+                                      special_convert_candidate->shape()) &&
+                    ShapeUtil::Compatible(
+                        other_convert->operand(0)->shape(),
+                        special_convert_candidate->operand(0)->shape());
+      if (!eq_shape) {
+        replica = false;
+        break;
+      }
       auto repeated =
           absl::c_count_if(others_root->operands(),
                            [&](const HloInstruction* operand) -> bool {
                              return (special_convert_candidate == operand);
                            }) > 1;
-      if ((others_root->operand(operand_num)->opcode() ==
-           HloOpcode::kConvert) &&
-          eq_shape && !convert_invalid(others_root->operand(operand_num)) &&
-          !repeated) {
-        // Nothing to be done.
-      } else {
+      if (repeated) {
         replica = false;
         break;
       }
@@ -687,7 +700,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionOut(
       // branches (branches 1..n) being placed into the boundaries multiple
       // times.
       if (!computation->IsMarkedAsDead(instr_to_remove) &&
-          instr_to_remove->user_count() == 0) {
+          instr_to_remove->IsDead()) {
         VLOG(2) << "Removing boundary:" << b2.ToString() << "\n";
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(instr_to_remove));
       }
@@ -900,8 +913,8 @@ class GroupConnectedBoundaries {
   // search/tuning process.
   std::vector<std::vector<int64_t>>& move_config_;
   std::vector<std::vector<int64_t>>& reuse_config_;
-  std::vector<int64_t>& search_config_vec_;
-  int64_t* search_config_;
+  absl::Span<int64_t> search_config_vec_;
+  int64_t& search_config_;
   int64_t search_subscript_;
   absl::flat_hash_map<const int64_t*, int64_t> flipped_;
 
@@ -916,34 +929,34 @@ class GroupConnectedBoundaries {
       return *loc;
     }
     // The last 8 digits control when to start the first flip.
-    int c = ConditionalCodeMotion::flip_start(*search_config_);
+    int c = ConditionalCodeMotion::flip_start(search_config_);
     VLOG(2) << "flip start index = " << c << "\n";
     // Only flip the decision if c reaches 0.
     if (c > 0) {
-      (*search_config_)--;
+      search_config_--;
       return *loc;
     }
     // The 8-16 digits control the maximum number of times to flip a config.
-    auto flip_count = ConditionalCodeMotion::DecrementMaxFlip(search_config_);
+    auto flip_count = ConditionalCodeMotion::DecrementMaxFlip(&search_config_);
     VLOG(2) << "max flip count = " << flip_count << "\n";
-    VLOG(2) << "Updating max Flipping configuration = " << *search_config_
+    VLOG(2) << "Updating max Flipping configuration = " << search_config_
             << "\n";
     if (flip_count == 0) {
       VLOG(2) << "Maximum flip count has reached. ";
       if (search_subscript_ + 1 < search_config_vec_.size()) {
         VLOG(2) << "search_subscript_ = " << search_subscript_;
         VLOG(2) << "search config vec size = " << search_config_vec_.size();
-        search_config_ = &search_config_vec_[++search_subscript_];
+        search_config_ = search_config_vec_[++search_subscript_];
       } else {
         return *loc;
       }
     }
     // Reload the 16-23 digits of the configuration, which controls how
     // frequently a configuration should be flipped.
-    auto flip_stride = ConditionalCodeMotion::flip_stride(*search_config_);
-    *search_config_ += flip_stride;
+    auto flip_stride = ConditionalCodeMotion::flip_stride(search_config_);
+    search_config_ += flip_stride;
     VLOG(2) << "flip stride = " << flip_stride << "\n";
-    VLOG(2) << "Updating Flipping Stride = " << *search_config_ << "\n";
+    VLOG(2) << "Updating Flipping Stride = " << search_config_ << "\n";
 
     flipped_[loc] = *loc;
     // Copy the last 8 bits back to the first 8 bits of configuration.
@@ -960,27 +973,31 @@ class GroupConnectedBoundaries {
     return *loc;
   }
 
+  static std::vector<int64_t>& EnsureSearchConfig(
+      std::vector<int64_t>& search_config) {
+    if (search_config.empty()) {
+      search_config.push_back(0);
+    }
+    return search_config;
+  }
+
  public:
   explicit GroupConnectedBoundaries(
       HloInstruction* conditional, bool is_layout_sensitive,
       absl::flat_hash_map<HloInstruction*, int>& visited_count,
       std::vector<std::vector<int64_t>>* move_config,
       std::vector<std::vector<int64_t>>* reuse_config,
-      std::vector<int64_t>* search_config)
+      std::vector<int64_t>& search_config)
       : conditional_(conditional),
         conditional_parent_(conditional->parent()),
         is_layout_sensitive_(is_layout_sensitive),
         visited_count_(visited_count),
         move_config_(*move_config),
         reuse_config_(*reuse_config),
-        search_config_vec_(*search_config),
+        search_config_vec_(EnsureSearchConfig(search_config)),
+        search_config_(search_config_vec_.front()),
         search_subscript_(0) {
     VLOG(2) << "Initializing Group Connected Boundaries\n";
-    CHECK_NE(search_config, nullptr);
-    if (search_config_vec_.empty()) {
-      search_config_vec_.push_back(0);
-    }
-    search_config_ = &search_config_vec_[0];
   }
   // Returns estimation of potential reuses carried by a given pair of
   // instructions. Use different integers to classify different levels
@@ -992,7 +1009,7 @@ class GroupConnectedBoundaries {
     // When flipping, use -10 if flipping to the default reuse model. Other
     // values can be specified if needed to fine-control the decision making.
     int64_t config =
-        ((*search_config_) < 0)
+        (search_config_ < 0)
             ? FlipMutation(&curconfig[static_cast<uint32_t>(user->opcode())],
                            -10,
                            HloOpcodeString(op->opcode()) + "->" +
@@ -1045,14 +1062,14 @@ class GroupConnectedBoundaries {
                    : 0;
     VLOG(2) << "column = " << col << "\n";
     VLOG(2) << "config size = " << curconfig.size() << "\n";
-    VLOG(2) << "search_config = " << *search_config_ << "\n";
+    VLOG(2) << "search_config = " << search_config_ << "\n";
     CHECK(col < curconfig.size());
-    uint32_t config = ((*search_config_) > 0)
+    uint32_t config = (search_config_ > 0)
                           ? FlipMutation(&curconfig[col], 1,
                                          "Move-" + HloOpcodeString(opcode))
                           : curconfig[col];
     VLOG(2) << "Checking instruction is worth moving: " << config << "\n";
-    VLOG(2) << "after checking search_config = " << *search_config_ << "\n";
+    VLOG(2) << "after checking search_config = " << search_config_ << "\n";
     return (config != 0);
   }
 
@@ -1343,7 +1360,7 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
     absl::flat_hash_map<HloInstruction*, int>& visited_count) {
   GroupConnectedBoundaries connect(conditional, is_layout_sensitive_,
                                    visited_count, &move_config_, &reuse_config_,
-                                   &search_config_);
+                                   search_config_);
   auto move_in_or_out =
       connect.BoundariesToMoveInOrOut(conditional, cur_boundary);
   if (!move_in_or_out.empty()) {

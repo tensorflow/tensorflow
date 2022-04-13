@@ -45,17 +45,7 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
 
   TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
 
-  let verifier = [{
-    // This is required to populate derived attributes during export in a
-    // meaningful way. Else during export to GraphDef element_type() query
-    // will result in out of bounds access/assert.
-    if (handle_dtype().getSubtypes().size() != 1) {
-      return emitOpError(
-          "must have exactly one subtype in the result variant type");
-    }
-
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 
   DerivedTypeAttr element_dtype = DerivedTypeAttr<
       "return getElementTypeOrSelf(element_type());">;
@@ -117,9 +107,7 @@ An n-way switch statement, implementing the following:
 
   let hasCanonicalizer = 1;
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 
 
  let extraClassDeclaration = [{
@@ -128,26 +116,26 @@ An n-way switch statement, implementing the following:
     // Gets function corresponding branch # `index`.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
-    FuncOp ResolveBranchFunction(::mlir::SymbolTableCollection* table, int index) {
+    func::FuncOp ResolveBranchFunction(::mlir::SymbolTableCollection* table, int index) {
       auto flat_sym_ref = branches()[index].cast<FlatSymbolRefAttr>();
       if (table)
-        return table->lookupNearestSymbolFrom<FuncOp>(*this, flat_sym_ref);
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, flat_sym_ref);
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, flat_sym_ref);
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, flat_sym_ref);
     }
     // TODO(b/204997177): Deprecate and remove.
-    FuncOp branch_function(int index) { return ResolveBranchFunction(nullptr, index); }
+    func::FuncOp branch_function(int index) { return ResolveBranchFunction(nullptr, index); }
 
     // Resolve all branch functions.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
     void ResolveBranchFunctions(::mlir::SymbolTableCollection* table,
-        SmallVectorImpl<FuncOp> &functions) {
+        SmallVectorImpl<func::FuncOp> &functions) {
       functions.reserve(num_branches());
       for (int idx : llvm::seq<int>(0, num_branches()))
         functions.push_back(ResolveBranchFunction(table, idx));
     }
     // TODO(b/204997177): Deprecate and remove.
-    void get_branch_functions(SmallVectorImpl<FuncOp> &functions) {
+    void get_branch_functions(SmallVectorImpl<func::FuncOp> &functions) {
       return ResolveBranchFunctions(nullptr, functions);
     }
   }];
@@ -192,9 +180,7 @@ An n-way switch statement, implementing the following:
 
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 
@@ -294,28 +280,28 @@ else_branch: A function that takes 'inputs' and returns a list of
     // Resolve the then branch function.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
-    FuncOp ResolveThenFunction(::mlir::SymbolTableCollection* table) {
+    func::FuncOp ResolveThenFunction(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<FuncOp>(*this, then_branchAttr());
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, then_branchAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
         *this, then_branchAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
-    FuncOp then_function(::mlir::SymbolTableCollection* table = nullptr) {
+    func::FuncOp then_function(::mlir::SymbolTableCollection* table = nullptr) {
       return ResolveThenFunction(table);
     }
 
     // Resolve the else branch function.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
-    FuncOp ResolveElseFunction(::mlir::SymbolTableCollection* table) {
+    func::FuncOp ResolveElseFunction(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<FuncOp>(*this, else_branchAttr());
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, else_branchAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
         *this, else_branchAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
-    FuncOp else_function(::mlir::SymbolTableCollection* table = nullptr) {
+    func::FuncOp else_function(::mlir::SymbolTableCollection* table = nullptr) {
       return ResolveElseFunction(table);
     }
   }];
@@ -376,9 +362,7 @@ else_branch: A region that computes the outputs of the op if cond = false.
 
   let regions = (region SizedRegion<1>:$then_branch, SizedRegion<1>:$else_branch);
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let hasRegionVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$operands,
@@ -427,13 +411,13 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
-    FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
+    func::FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
-    FuncOp func() {  return ResolveFunc(nullptr); }
+    func::FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 }
 
@@ -469,7 +453,7 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
   TF_DerivedOperandTypeListAttr Tdense = TF_DerivedOperandTypeListAttr<4>;
   TF_DerivedResultTypeListAttr sparse_types = TF_DerivedResultTypeListAttr<1>;
 
-  let verifier = ?;
+  let hasVerifier = 0;
 }
 
 def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
@@ -512,9 +496,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
   TF_DerivedResultTypeListAttr ragged_split_types =
     TF_DerivedResultTypeListAttr<5>;
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 }
 
 def TF_PlaceholderOp : TF_Op<"Placeholder", [NoSideEffect]> {
@@ -590,16 +572,16 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
-    FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
+    func::FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
-    FuncOp func() {  return ResolveFunc(nullptr); }
+    func::FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 
-  let verifier = [{ return VerifyPartitionedCall(*this); }];
+  let hasVerifier = 1;
 }
 
 def TF_WhileOp : TF_Op<"While", [DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
@@ -659,24 +641,24 @@ body: A function that takes a list of tensors and returns another
     // Get the condition function.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
-    FuncOp ResolveCondFunction(::mlir::SymbolTableCollection* table) {
+    func::FuncOp ResolveCondFunction(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, condAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, condAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, condAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
-    FuncOp cond_function() { return ResolveCondFunction(nullptr); }
+    func::FuncOp cond_function() { return ResolveCondFunction(nullptr); }
 
     // Get the body function.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
-    FuncOp ResolveBodyFunction(::mlir::SymbolTableCollection* table) {
+    func::FuncOp ResolveBodyFunction(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, bodyAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, bodyAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, bodyAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
-    FuncOp body_function() { return ResolveBodyFunction(nullptr); }
+    func::FuncOp body_function() { return ResolveBodyFunction(nullptr); }
   }];
 }
 
@@ -739,7 +721,7 @@ def TF_WhileRegionOp : TF_Op<"WhileRegion",
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
 }
@@ -785,17 +767,6 @@ Example:
     Res<TF_ResourceTensor, "", [TF_VariableAlloc]>:$resource
   );
 
-  let verifier = [{
-    // VarHandleOp requires the resource handle supply a single subtype from
-    // which to derive the dtype and shape attributes.
-    if (resource_type().getSubtypes().size() != 1) {
-      return emitOpError(
-          "must have exactly one subtype in the result resource type");
-    }
-
-    return success();
-  }];
-
   DerivedTypeAttr dtype = DerivedTypeAttr<
       "return getElementTypeOrSelf(resource_subtype());">;
   DerivedAttr shape = DerivedAttr<
@@ -810,6 +781,8 @@ Example:
       return getElementTypeOrSelf(resource()).cast<TF::ResourceType>();
     }
   }];
+
+  let hasVerifier = 1;
 }
 
 def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect, TF_NoConstantFold]> {
@@ -835,7 +808,8 @@ def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
   let summary = "Fetches multiple values from infeed as an XLA tuple.";
 
   let arguments = (ins
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<ArrayAttr>:$layouts
   );
 
   let results = (outs
@@ -1025,16 +999,16 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
     // enabling reusing cached symbol table lookup.
-    FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
+    func::FuncOp ResolveFunc(::mlir::SymbolTableCollection* table) {
       if (table)
-        return table->lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, fAttr());
+        return table->lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, fAttr());
     }
     // TODO(b/204997177): Deprecate and remove.
-    FuncOp func() {  return ResolveFunc(nullptr); }
+    func::FuncOp func() {  return ResolveFunc(nullptr); }
   }];
 
-  let verifier = [{ return VerifyPartitionedCall(*this); }];
+  let hasVerifier = 1;
 }
 
 def TF_StatefulUniformFullIntOp : TF_Op<"StatefulUniformFullInt", []> {
@@ -1496,7 +1470,7 @@ outputs outside the XLA computation.
 // Declares symbol reference attribute `shape_inference_graph` to be optional
 // unlike the TensorFlow definition. This is required to support ops that use
 // empty string value for the attribute to signify missing.
-def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", [TF_SendRecvSideEffect]> {
+def TF_XlaHostComputeOp : TF_Op<"XlaHostCompute", [TF_SendSideEffect, TF_RecvSideEffect]> {
   let summary = [{
 A pseudo-op to represent host-side computation in an XLA program.
   }];
@@ -1611,7 +1585,7 @@ tpu_call([w_dyn])
     TF_I32OrI64Tensor:$static_shape
   );
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 
   let results = (outs
     TF_Tensor:$output
@@ -1632,6 +1606,7 @@ target computation.
 'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
 types of the inputs to the computation, as well as a mapping onto the TPU pod
 topology.
+'producer_name' is a string describing the name of the framework that add support for running this portion of the model on TPUs.
   }];
 
   let arguments = (ins
@@ -1639,7 +1614,8 @@ topology.
     Variadic<TF_I32OrI64Tensor>:$static_shapes,
     OptionalAttr<I32ArrayAttr>:$operands_with_static_shape,
     DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
-    StrAttr:$metadata
+    StrAttr:$metadata,
+    StrAttr:$producer_name
   );
 
   let results = (outs

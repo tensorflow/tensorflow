@@ -15,15 +15,22 @@ limitations under the License.
 
 // This file defines enums used in the LMHLO_GPU dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_ENUMS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_ENUMS_H_
+#ifndef MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_ENUMS_H
+#define MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_ENUMS_H
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 
 // Order matters, this .inc header is not self-contained, and relies on the
 // #includes above.
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_enums.h.inc"
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops_attrdefs.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_ENUMS_H_
+#endif  // MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_ENUMS_H

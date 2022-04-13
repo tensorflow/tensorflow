@@ -16,17 +16,19 @@ limitations under the License.
 // This file implements logic for fusing linalg ops obtained after LHLO
 // lowering.
 
+#include <utility>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Pass/Pass.h"
@@ -71,7 +73,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       result_buffers.insert(func_arg);
     }
     for (auto& block : func) {
-      auto returnOp = mlir::dyn_cast<mlir::ReturnOp>(block.getTerminator());
+      auto returnOp =
+          mlir::dyn_cast<mlir::func::ReturnOp>(block.getTerminator());
       if (!returnOp) continue;
       for (auto operand : returnOp.getOperands()) {
         result_buffers.insert(operand);
@@ -166,7 +169,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       }
     });
     auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+      return signalPassFailure();
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
@@ -187,7 +191,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       }
 
       auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+        return signalPassFailure();
     }
     for (auto* e : erase_set) e->erase();
   }

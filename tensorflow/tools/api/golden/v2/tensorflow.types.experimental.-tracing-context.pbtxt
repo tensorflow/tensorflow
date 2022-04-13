@@ -1,0 +1,8 @@
+path: "tensorflow.types.experimental.TracingContext"
+tf_class {
+  is_instance: "<class \'tensorflow.python.types.trace.TracingContext\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+}

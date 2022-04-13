@@ -124,6 +124,8 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
       options.use_tpu_host_allocator_for_inputs;
   pass_options.hoist_invariant_ops = options.hoist_invariant_ops;
   pass_options.func_use_fallback_tensor = true;
+  pass_options.enable_while_parallel_iterations =
+      options.enable_while_parallel_iterations;
   pass_options.auto_fusion_oplist = options.auto_fusion_oplist;
   pass_options.auto_fusion_min_cluster_size =
       options.auto_fusion_min_cluster_size;

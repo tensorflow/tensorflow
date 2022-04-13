@@ -17,6 +17,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "index_shuffle"
+    argspec: "args=[\'index\', \'seed\', \'max_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "set_global_generator"
     argspec: "args=[\'generator\'], varargs=None, keywords=None, defaults=None"
   }

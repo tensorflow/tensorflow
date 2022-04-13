@@ -107,6 +107,11 @@ _ESTIMATOR_DOC_SOURCES = {
         docstring_module_name='inputs.inputs'),
 }
 
+_KERAS_DOC_SOURCES = {
+    'keras.optimizers.experimental':
+        DocSource(docstring_module_name='optimizers.optimizer_experimental')
+}
+
 
 def get_doc_sources(api_name):
   """Get a map from module to a DocSource object.
@@ -121,4 +126,6 @@ def get_doc_sources(api_name):
     return _TENSORFLOW_DOC_SOURCES
   if api_name == tf_export.ESTIMATOR_API_NAME:
     return _ESTIMATOR_DOC_SOURCES
+  if api_name == tf_export.KERAS_API_NAME:
+    return _KERAS_DOC_SOURCES
   return {}

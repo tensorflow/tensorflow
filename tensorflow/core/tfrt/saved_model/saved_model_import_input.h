@@ -37,8 +37,7 @@ class TfrtSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
       std::unique_ptr<TfrtGraphExecutionState> graph_execution_state);
 
   StatusOr<const tensorflow::Graph*> GetSubGraph(
-      absl::string_view name,
-      const GraphImportConfig& graph_import_config) override;
+      absl::string_view name, GraphImportConfig& graph_import_config) override;
 
   // Return the time used by grappler.
   absl::Duration GetGrapplerDuration() const { return grappler_duration_; }

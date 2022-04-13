@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -53,8 +53,10 @@ namespace TFL {
 namespace {
 
 struct ReduceWhileOperandsPass
-    : public PassWrapper<ReduceWhileOperandsPass, FunctionPass> {
+    : public PassWrapper<ReduceWhileOperandsPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReduceWhileOperandsPass)
+
   StringRef getArgument() const final { return "tfl-reduce-while"; }
   StringRef getDescription() const final {
     // TODO(b/200919263): Declare Reduce While Operands Pass in Table-Gen
@@ -64,7 +66,7 @@ struct ReduceWhileOperandsPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect, TF::TensorFlowDialect>();
   }
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 LogicalResult FindImplicityProducers(
@@ -288,8 +290,8 @@ bool ReduceWhileOperands(TFL::WhileOp while_op) {
   return erase_indices.any();
 }
 
-void ReduceWhileOperandsPass::runOnFunction() {
-  auto fn = getFunction();
+void ReduceWhileOperandsPass::runOnOperation() {
+  auto fn = getOperation();
   fn.walk([&](TFL::WhileOp while_op) { ReduceWhileOperands(while_op); });
 }
 

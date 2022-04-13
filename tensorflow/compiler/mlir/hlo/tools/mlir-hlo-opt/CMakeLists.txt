@@ -21,6 +21,7 @@ set(LIBS
         MLIROptLib
 
         GmlStPasses
+        GmlStTestPasses
         GmlStDialect
         LmhloDialect
         LmhloGPUDialect

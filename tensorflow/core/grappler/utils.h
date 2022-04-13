@@ -299,7 +299,7 @@ string SafeTensorIdToString(const SafeTensorId& tensor_id);
 
 // True iff 'name' refers to a control inputs, i.e. a node name prefixed with
 // the ^ character.
-bool IsControlInput(const string& name);
+bool IsControlInput(absl::string_view name);
 
 // True iff tensor index refers to a control input.
 bool IsControlInput(const TensorId& tensor_id);

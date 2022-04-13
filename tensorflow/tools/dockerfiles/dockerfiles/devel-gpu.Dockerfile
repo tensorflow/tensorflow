@@ -141,13 +141,11 @@ RUN python3 -m pip --no-cache-dir install \
 
 # Installs bazelisk
 RUN mkdir /bazel && \
-    wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
+    curl -fSsL -o /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
     mkdir /bazelisk && \
-    wget -O /bazelisk/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazelisk/master/LICENSE" && \
-    mkdir -p "$HOME/bin" && \
-    wget -O $HOME/bin/bazel "https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-linux-amd64" && \
-    chmod +x "$HOME/bin/bazel" && \
-    export PATH="$HOME/bin:$PATH"
+    curl -fSsL -o /bazelisk/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazelisk/master/LICENSE" && \
+    curl -fSsL -o /usr/bin/bazel "https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-linux-amd64" && \
+    chmod +x /usr/bin/bazel
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

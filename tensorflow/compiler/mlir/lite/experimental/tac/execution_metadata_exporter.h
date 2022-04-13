@@ -18,6 +18,7 @@
 #include <string>
 
 #include "llvm/ADT/Optional.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 
 namespace tflite {

@@ -350,7 +350,9 @@ class NearComparator {
     if (num_mismatches_ == 0) {
       return Status::OK();
     } else if (!VLOG_IS_ON(1) && miscompare_callback_ != nullptr) {
-      miscompare_callback_(expected_, actual_, mismatches_, shape_index_);
+      miscompare_callback_(
+          expected_, actual_, mismatches_, shape_index_,
+          ErrorBuckets(abs_error_buckets_, rel_error_buckets_));
     }
     return InvalidArgument("%s", ErrorMessage());
   }
@@ -765,7 +767,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 
     if (!result.ok() && miscompare_callback) {
       miscompare_callback(expected, actual, LiteralSlice(miscompared),
-                          shape_index);
+                          shape_index, ErrorBuckets());
     }
   }
 

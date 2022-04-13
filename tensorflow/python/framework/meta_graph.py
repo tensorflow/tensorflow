@@ -631,7 +631,7 @@ def read_meta_graph_file(filename):
   """
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
   if not file_io.file_exists(filename):
-    raise IOError("File does not exist. Received: {filename}.")
+    raise IOError(f"File does not exist. Received: {filename}.")
   # First try to read it as a binary file.
   with file_io.FileIO(filename, "rb") as f:
     file_content = f.read()

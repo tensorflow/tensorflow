@@ -48,6 +48,8 @@ class GraphOptPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GraphOptPass)
+
   explicit GraphOptPass(std::vector<tensorflow::GraphOptimizationPass*> passes)
       : passes_(std::move(passes)) {}
 

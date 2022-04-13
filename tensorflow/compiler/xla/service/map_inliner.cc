@@ -69,8 +69,7 @@ Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   // Only inlining functions that are simply a single operation until a better
   // profitability model for inlining is defined.
   if (hlo_query::AllOperandsAreParameters(root)) {
-    if (root.opcode() == HloOpcode::kFusion ||
-        root.opcode() == HloOpcode::kTrace) {
+    if (root.opcode() == HloOpcode::kFusion) {
       // Cloning not supported for these instructions.
       return Status::OK();
     }

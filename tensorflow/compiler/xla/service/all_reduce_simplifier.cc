@@ -51,6 +51,20 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
     return replica_group_size;
   };
 
+  bool changed = false;
+  for (auto computation : module->computations()) {
+    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
+      // AllGather and ReduceScatter with the same input and output shape
+      if ((inst->opcode() == HloOpcode::kAllGather ||
+           inst->opcode() == HloOpcode::kReduceScatter) &&
+          ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
+        changed = true;
+        TF_RETURN_IF_ERROR(
+            computation->ReplaceInstruction(inst, inst->mutable_operand(0)));
+      }
+    }
+  }
+
   for (auto computation : module->computations()) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       if (!inst->shape().IsArray()) {
@@ -73,8 +87,6 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
       }
     }
   }
-
-  bool changed = false;
 
   for (auto all_reduce_and_group_size : all_reduces_to_replace) {
     auto all_reduce = all_reduce_and_group_size.first;

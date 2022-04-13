@@ -126,7 +126,7 @@ TEST_F(NnApiDeviceSelectionTest, DoesntSetDevicesWhenCpuAllowed) {
   tflite::StatefulNnApiDelegate::Options options;
   options.disallow_nnapi_cpu = false;
   InitWithOptions(options);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 }
 
@@ -150,7 +150,7 @@ TEST_F(NnApiDeviceSelectionTest, SetsDeviceBasedOnOptions) {
   tflite::StatefulNnApiDelegate::Options options;
   options.accelerator_name = "dsp";
   InitWithOptions(options);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 }
 
@@ -176,7 +176,7 @@ TEST_F(NnApiDeviceSelectionTest, DisallowsCPUBasedOnOptions) {
   tflite::StatefulNnApiDelegate::Options options;
   options.disallow_nnapi_cpu = true;
   InitWithOptions(options);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
 }
 
@@ -189,7 +189,7 @@ TEST_F(NnApiDeviceSelectionTest,
   tflite::StatefulNnApiDelegate::Options options;
   options.disallow_nnapi_cpu = false;
   InitWithOptions(options);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
   EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 1);
 }
@@ -203,7 +203,7 @@ TEST_F(NnApiDeviceSelectionTest,
   tflite::StatefulNnApiDelegate::Options options;
   options.disallow_nnapi_cpu = true;
   InitWithOptions(options);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetCompilationStatus(), kTfLiteOk);
   EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 1);
 }
@@ -293,7 +293,7 @@ TEST_F(UnsupportedOperationOnDeviceTest,
   ArgMaxOpModel m({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
                   TensorType_INT32, nnapi_mock_->GetNnApi(), "test-device");
   m.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 1)
       << "Expected Max not to be delegates since it not supported before NNAPI "
@@ -304,7 +304,7 @@ TEST_F(UnsupportedOperationOnDeviceTest,
   ArgMaxOpModel m1({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
                    TensorType_INT32, nnapi_mock_->GetNnApi(), "test-device");
   m1.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
-  m1.Invoke();
+  ASSERT_EQ(m1.Invoke(), kTfLiteOk);
 
   EXPECT_EQ(m1.CountOpsExecutedByCpuKernel(), 0)
       << "Expected Max op to be delegated since it is supported in NNAPI 1.2.";
@@ -329,7 +329,7 @@ TEST_F(UnsupportedOperationOnDeviceTest,
                   TensorType_INT32, nnapi_mock_->GetNnApi(),
                   /*disallow_nnapi_cpu=*/true);
   m.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 1)
       << "Expected Max not to be delegates since it not supported before NNAPI "
@@ -339,7 +339,7 @@ TEST_F(UnsupportedOperationOnDeviceTest,
                    TensorType_INT32, nnapi_mock_->GetNnApi(),
                    /*disallow_nnapi_cpu=*/false);
   m1.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
-  m1.Invoke();
+  ASSERT_EQ(m1.Invoke(), kTfLiteOk);
 
   EXPECT_EQ(m1.CountOpsExecutedByCpuKernel(), 0)
       << "Expected Max op to be delegated since we enabled NNAPI CPU "
@@ -351,7 +351,7 @@ TEST_F(UnsupportedOperationOnDeviceTest,
                    TensorType_INT32, nnapi_mock_->GetNnApi(),
                    /*disallow_nnapi_cpu=*/true);
   m2.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
 
   EXPECT_EQ(m2.CountOpsExecutedByCpuKernel(), 0)
       << "Expected Max op to be delegated since it is supported in NNAPI 1.2.";
@@ -456,7 +456,7 @@ TEST_F(UnsupportedOperationOnDeviceTest,
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   m.PopulateTensor<float>(m.input3(), input2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 1);
   ASSERT_EQ(should_build_model_with_sup_ops_compilation_model_create_count, 2)
@@ -486,7 +486,7 @@ TEST_F(UnsupportedOperationOnDeviceTest, ShouldRunOnCpuIfDeviceSupportsNoOps) {
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   m.PopulateTensor<float>(m.input3(), input2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_EQ(m.CountOpsExecutedByCpuKernel(), 2);
 }
@@ -519,7 +519,7 @@ TEST_F(UnsupportedOperationOnDeviceTest, ShouldCacheModelCompilation) {
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   m.PopulateTensor<float>(m.input3(), input2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
   EXPECT_EQ(should_cache_model_compilation_model_create_count, 1);
@@ -539,7 +539,7 @@ TEST_F(UnsupportedOperationOnDeviceTest,
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
   m.PopulateTensor<float>(m.input3(), input2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Delegation succeded without failures and all nodes have been delegated.
   ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
@@ -622,7 +622,7 @@ TEST_F(TfLiteOpMappedToMultipleNnApiOps, AllCostituentOpsNotSupported) {
   std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Delegation succeded without failures and HardSwish has not been delegated
   // but Add has been correctly delegated.
@@ -652,7 +652,7 @@ TEST_F(TfLiteOpMappedToMultipleNnApiOps, NotAllConstitutentOpsSupported) {
   std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Delegation succeded without failures. HardSwish has not been delegated
   // but Add is delegated.
@@ -681,7 +681,7 @@ TEST_F(TfLiteOpMappedToMultipleNnApiOps, AllConstitutentOpsSupported) {
   std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
   m.PopulateTensor<float>(m.input1(), input1);
   m.PopulateTensor<float>(m.input2(), input2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Delegation succeded without failures and all nodes have been delegated.
   ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);

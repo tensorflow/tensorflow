@@ -48,6 +48,8 @@ inline float InferenceTypeEfficiency(InferenceType inference_type) {
 // This is used by TAC to get op supported/ op cost estimates on CPU.
 class CpuHardware : public TargetHardware {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CpuHardware)
+
   // String Identifier for CPU hardware.
   static constexpr char kId[] = "CPU";
 

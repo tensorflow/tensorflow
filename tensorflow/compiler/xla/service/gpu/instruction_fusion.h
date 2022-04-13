@@ -31,16 +31,17 @@ class GpuInstructionFusion : public InstructionFusion {
 
   static bool IsExpensive(const HloInstruction& instruction);
 
+  StatusOr<bool> Run(HloModule* module) override {
+    fusion_node_evaluations_.clear();
+    return InstructionFusion::Run(module);
+  }
+
+ protected:
   FusionDecision ShouldFuse(HloInstruction* consumer,
                             int64_t operand_index) override;
 
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
-
-  StatusOr<bool> Run(HloModule* module) override {
-    fusion_node_evaluations_.clear();
-    return InstructionFusion::Run(module);
-  }
 
  private:
   // This method is called by ShouldFuse() to do all the computationally

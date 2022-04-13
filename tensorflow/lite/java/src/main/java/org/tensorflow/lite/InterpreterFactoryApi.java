@@ -18,6 +18,7 @@ package org.tensorflow.lite;
 import java.io.File;
 import java.nio.ByteBuffer;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
  * Private interface specifying factory for constructing InterpreterApi instances. This interface is
@@ -62,4 +63,10 @@ public interface InterpreterFactoryApi {
    * TensorFlowLite runtime.
    */
   public String schemaVersion();
+
+  /**
+   * Instance method for constructing an NNAPI delegate implementation, using the TF Lite runtime
+   * from the InterpreterFactoryApi.
+   */
+  public NnApiDelegate.PrivateInterface createNnApiDelegateImpl(NnApiDelegate.Options options);
 }

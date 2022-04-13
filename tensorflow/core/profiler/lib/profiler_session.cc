@@ -59,10 +59,10 @@ tensorflow::Status ProfilerSession::Status() {
   return status_;
 }
 
+#if !defined(IS_MOBILE_PLATFORM)
 Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
   mutex_lock l(mutex_);
   TF_RETURN_IF_ERROR(status_);
-#if !defined(IS_MOBILE_PLATFORM)
   LOG(INFO) << "Profiler session collecting data.";
   if (profilers_ != nullptr) {
     profilers_->Stop().IgnoreError();
@@ -71,9 +71,9 @@ Status ProfilerSession::CollectDataInternal(profiler::XSpace* space) {
   }
   // Allow another session to start.
   profiler_lock_.ReleaseIfActive();
-#endif
   return Status::OK();
 }
+#endif
 
 Status ProfilerSession::CollectData(profiler::XSpace* space) {
 #if !defined(IS_MOBILE_PLATFORM)

@@ -51,7 +51,7 @@ def RuntimeFallback_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 
 // Base class for the operation in this dialect.
-class RuntimeFallbackDialect_Op<string mnemonic, list<OpTrait> traits = []> :
+class RuntimeFallbackDialect_Op<string mnemonic, list<Trait> traits = []> :
     Op<RuntimeFallback_Dialect, mnemonic, traits> { }
 
 def InitEagerContextOp : RuntimeFallbackDialect_Op<"init_eager_context"> {

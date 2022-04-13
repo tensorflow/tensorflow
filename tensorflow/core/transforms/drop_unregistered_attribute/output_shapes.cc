@@ -20,17 +20,12 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/core//ir/ops.h"
+#include "tensorflow/core/ir/ops.h"
+#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
-
 namespace {
-
-#define GEN_PASS_CLASSES
-#include "tensorflow/core/transforms/passes.h.inc"
-
-}  // end namespace
 
 struct DropOutputShapesAttrPass
     : DropOutputShapesAttrBase<DropOutputShapesAttrPass> {
@@ -52,9 +47,11 @@ struct DropOutputShapesAttrPass
   DenseSet<StringAttr> skip_id;
 };
 
+}  // namespace
+
+std::unique_ptr<Pass> CreateDropOutputShapesAttrPass() {
+  return std::make_unique<DropOutputShapesAttrPass>();
+}
+
 }  // namespace tfg
 }  // namespace mlir
-
-std::unique_ptr<mlir::Pass> mlir::tfg::CreateDropOutputShapesAttrPass() {
-  return std::make_unique<mlir::tfg::DropOutputShapesAttrPass>();
-}

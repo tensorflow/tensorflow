@@ -27,9 +27,14 @@ class Flags {
   TF_DECLARE_FLAG(test_only_experiment_1, true, "Test only experiment 1.");
   TF_DECLARE_FLAG(test_only_experiment_2, false, "Test only experiment 2.");
 
-  // Declare flags below here
+  // Declare flags below here.
+  // LINT.IfChange
   TF_DECLARE_FLAG(graph_building_optimization, false,
                   "Optimize graph building for faster tf.function tracing.");
+  TF_DECLARE_FLAG(
+      op_building_optimization, true,
+      "Optimize tf.Operation building for faster tf.function tracing.");
+  // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 
 Flags& Global();

@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s -lhlo-legalize-to-gpu -split-input-file | FileCheck %s
 
-func @reduce(%arg: memref<100x10xf32>,
+func.func @reduce(%arg: memref<100x10xf32>,
              %init: memref<f32>,
              %result: memref<100xf32>) {
   "lmhlo.reduce"(%arg, %init, %result) ({
@@ -10,7 +10,7 @@ func @reduce(%arg: memref<100x10xf32>,
       "lmhlo.terminator"() : () -> ()
     } ) {dimensions = dense<[1]> : tensor<1xi64>}
       : (memref<100x10xf32>, memref<f32>, memref<100xf32>) -> ()
-  return
+  func.return
 }
 
 // CHECK-DAG: #[[$MAP:.*]] = affine_map<()[s0] -> (s0)>

@@ -163,6 +163,7 @@ cuda_py_test(
     size = "small",
     srcs = ["graph_building_test.py"],
     deps = [
+        "//tensorflow/core/config:flags_py",
         "//tensorflow/python:client_testlib",
     ],
 )

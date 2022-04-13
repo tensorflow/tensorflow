@@ -94,11 +94,6 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "keras", keras)
 
-# Explicitly import lazy-loaded modules to support autocompletion.
-# pylint: disable=g-import-not-at-top
-if _typing.TYPE_CHECKING:
-  from tensorflow_estimator.python.estimator.api._v2 import estimator
-# pylint: enable=g-import-not-at-top
 
 # Enable TF2 behaviors
 from tensorflow.python.compat import v2_compat as _compat  # pylint: disable=g-import-not-at-top
@@ -180,6 +175,17 @@ if hasattr(_current_module, "keras"):
     keras._load()
   except ImportError:
     pass
+
+# Explicitly import lazy-loaded modules to support autocompletion.
+# pylint: disable=g-import-not-at-top
+if _typing.TYPE_CHECKING:
+  from tensorflow_estimator.python.estimator.api._v2 import estimator as estimator
+  from keras.api._v2 import keras
+  from keras.api._v2.keras import losses
+  from keras.api._v2.keras import metrics
+  from keras.api._v2.keras import optimizers
+  from keras.api._v2.keras import initializers
+# pylint: enable=g-import-not-at-top
 
 # pylint: enable=undefined-variable
 

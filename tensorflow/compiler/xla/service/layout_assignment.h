@@ -49,8 +49,7 @@ namespace xla {
 // gathered together in LayoutConstraints object.
 class LayoutConstraint {
  public:
-  LayoutConstraint(bool mandatory, bool dfs,
-                   int64_t priority = kDefaultPriority)
+  LayoutConstraint(bool mandatory, bool dfs, int64_t priority)
       : mandatory_(mandatory), dfs_(dfs), priority_(priority) {}
   virtual ~LayoutConstraint() = default;
 
@@ -65,11 +64,16 @@ class LayoutConstraint {
   // Return the priority of the current constraint. When conflicting constraints
   // are encountered, the higher priority one should win.
   int64_t priority() const { return priority_; }
+  bool IsDefaultLayout() const { return priority_ == kDefaultPriority; }
 
-  // The default priority of all constraints when not set explicitly.
-  static constexpr int64_t kDefaultPriority = 1;
+  // The priority of all default layouts when not set explicitly.
+  static constexpr int64_t kDefaultPriority = -2;
+  // The beginning priority of layout assignment.
+  static constexpr int64_t kBeginningPriority = 0;
+  // The priority of layout assignment given by the user for entry computation.
+  static constexpr int64_t kGivenPriority = 3;
 
- private:
+ protected:
   bool mandatory_;
   bool dfs_;
   int64_t priority_;
@@ -82,11 +86,12 @@ std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
 class BufferLayoutConstraint : public LayoutConstraint {
  public:
   BufferLayoutConstraint(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory, bool dfs,
-                         int64_t priority = LayoutConstraint::kDefaultPriority);
+                         bool mandatory, bool dfs, int64_t priority);
 
   const LogicalBuffer& buffer() const { return *buffer_; }
   const Layout& layout() const { return layout_; }
+  bool UpdateLayout(int64_t priority, const Layout& layout, bool mandatory,
+                    bool dfs);
 
   std::string ToString() const override;
 
@@ -102,10 +107,9 @@ class BufferLayoutConstraint : public LayoutConstraint {
 // use.
 class OperandLayoutConstraint : public LayoutConstraint {
  public:
-  OperandLayoutConstraint(
-      const ShapeLayout& shape_layout, const HloInstruction* instruction,
-      int64_t operand_no, bool mandatory, bool dfs,
-      int64_t priority = LayoutConstraint::kDefaultPriority);
+  OperandLayoutConstraint(const ShapeLayout& shape_layout,
+                          const HloInstruction* instruction, int64_t operand_no,
+                          bool mandatory, bool dfs, int64_t priority);
 
   const ShapeLayout& shape_layout() const { return shape_layout_; }
   const HloInstruction* instruction() const { return instruction_; }
@@ -127,11 +131,12 @@ class ComputationLayoutConstraint : public LayoutConstraint {
  public:
   static constexpr int64_t kDefaultLayoutIsUsed = 0;
   static constexpr int64_t kResultLayoutIsSet = 1;
-  static constexpr int64_t kComputationLayoutIsSet = 2;
-  explicit ComputationLayoutConstraint(
-      const HloComputation* computation, ComputationLayout* computation_layout,
-      bool dfs = false, int64_t priority = LayoutConstraint::kDefaultPriority)
-      : LayoutConstraint(/*mandatory=*/true, dfs, priority),
+  static constexpr int64_t kParameterLayoutIsSet = 2;
+  static constexpr int64_t kComputationLayoutIsSet = 3;
+  explicit ComputationLayoutConstraint(const HloComputation* computation,
+                                       ComputationLayout* computation_layout,
+                                       int64_t priority)
+      : LayoutConstraint(/*mandatory=*/true, /*dfs=*/true, priority),
         layout_state_((computation_layout == nullptr)
                           ? kDefaultLayoutIsUsed
                           : kComputationLayoutIsSet),
@@ -144,20 +149,25 @@ class ComputationLayoutConstraint : public LayoutConstraint {
   const ComputationLayout& computation_layout() const {
     return computation_layout_;
   }
-  ComputationLayout& mutable_computation_layout() {
-    return computation_layout_;
-  }
-  void ResetComputationLayout(const ComputationLayout& layout) {
+  void ResetComputationLayout(const ComputationLayout& layout, int64_t priority,
+                              bool prop_result_layout,
+                              bool prop_parameter_layout) {
     computation_layout_ = layout;
-    layout_state_ |= kComputationLayoutIsSet;
+    priority_ = priority;
+    if (prop_result_layout) {
+      layout_state_ |= kResultLayoutIsSet;
+    }
+    if (prop_parameter_layout) {
+      layout_state_ |= kParameterLayoutIsSet;
+    }
   }
-  void ResetResultLayout(const ShapeLayout& shape_layout, bool use_dfs) {
-    CHECK(use_dfs && dfs());
+  void ResetResultLayout(const ShapeLayout& shape_layout, int64_t priority) {
     *computation_layout_.mutable_result_layout() = shape_layout;
     layout_state_ |= kResultLayoutIsSet;
+    priority_ = priority;
   }
-  bool computation_layout_is_set() const {
-    return layout_state_ & kComputationLayoutIsSet;
+  bool parameter_layout_is_set() const {
+    return layout_state_ & kParameterLayoutIsSet;
   }
   bool result_layout_is_set() const {
     return layout_state_ & kResultLayoutIsSet;
@@ -253,7 +263,8 @@ class LayoutAssignment : public HloModulePass {
   class LayoutConstraints {
    public:
     explicit LayoutConstraints(HloComputation* computation,
-                               ComputationLayout* computation_layout = nullptr);
+                               ComputationLayout* computation_layout,
+                               int64_t priority);
     ~LayoutConstraints() = default;
 
     const HloComputation* computation() const { return computation_; }
@@ -268,17 +279,16 @@ class LayoutAssignment : public HloModulePass {
         const HloInstruction* instruction, int64_t operand_no,
         const OperandLayoutConstraint& constraint);
     Status SetResultLayout(LayoutAssignment* assignment,
-                           const Shape& shape_with_layout, bool dfs = true);
+                           const Shape& shape_with_layout, int64_t priority);
 
     const ComputationLayout& computation_layout() const {
       return computation_constraint_.computation_layout();
     }
-    void ResetComputationLayout(const ComputationLayout& layout) {
-      computation_constraint_.ResetComputationLayout(layout);
+    const ComputationLayoutConstraint& computation_constraint() const {
+      return computation_constraint_;
     }
-
-    ComputationLayout& mutable_computation_layout() {
-      return computation_constraint_.mutable_computation_layout();
+    ComputationLayoutConstraint* mutable_computation_constraint() {
+      return &computation_constraint_;
     }
 
    private:
@@ -302,7 +312,9 @@ class LayoutAssignment : public HloModulePass {
     LayoutConstraints* constraints = nullptr;
     if (it == computation_layouts_.end()) {
       computation_layouts_.emplace(
-          computation, constraints = new LayoutConstraints(computation));
+          computation,
+          constraints = new LayoutConstraints(
+              computation, nullptr, LayoutConstraint::kDefaultPriority));
     } else {
       constraints = (*it).second.get();
     }
@@ -318,7 +330,14 @@ class LayoutAssignment : public HloModulePass {
   Status SetArrayOperandLayout(const Layout& layout,
                                const HloInstruction* instruction,
                                int64_t operand_no, bool mandatory = true,
-                               bool dfs = true);
+                               bool dfs = true) {
+    return SetArrayOperandLayout(layout, instruction, operand_no, mandatory,
+                                 dfs, current_priority_);
+  }
+  Status SetArrayOperandLayout(const Layout& layout,
+                               const HloInstruction* instruction,
+                               int64_t operand_no, bool mandatory, bool dfs,
+                               int64_t priority);
   // Convenience wrapper around SetBufferLayout. Sets the layouts of all buffers
   // created by the instruction to the layouts in the given shape. The
   // instruction must define every logical buffer in its output.
@@ -327,16 +346,42 @@ class LayoutAssignment : public HloModulePass {
   Status SetInstructionLayout(const Shape& shape_with_layout,
                               const HloInstruction* instruction,
                               bool mandatory = true, bool dfs = true,
-                              bool allow_alias = false);
+                              bool allow_alias = false) {
+    return SetInstructionLayout(shape_with_layout, instruction, mandatory, dfs,
+                                allow_alias, current_priority_);
+  }
+  Status SetInstructionLayout(const Shape& shape_with_layout,
+                              const HloInstruction* instruction, bool mandatory,
+                              bool dfs, bool allow_alias, int64_t priority);
+  // Set the same given layout across all components of the instruction output.
+  // It works the same as the API above if the output is a single array.
+  Status SetInstructionLayout(const Layout& layout,
+                              const HloInstruction* instruction,
+                              bool mandatory = true, bool dfs = true,
+                              bool allow_alias = false, int64_t priority = -1);
   // Add a constraint on the layout of a LogicalBuffer, the layout of the
   // operand of the instruction, or the layout of the result of the computation,
   // respectively.
   Status SetBufferLayout(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory = true, bool dfs = true);
+                         bool mandatory = true, bool dfs = true) {
+    return SetBufferLayout(layout, buffer, mandatory, dfs, current_priority_);
+  }
+  Status SetBufferLayout(const Layout& layout, const LogicalBuffer& buffer,
+                         bool mandatory, bool dfs, int64_t priority);
   Status SetOperandLayout(const Shape& shape_with_layout,
                           const HloInstruction* instruction, int64_t operand_no,
-                          bool mandatory = true, bool dfs = true);
+                          bool mandatory = true, bool dfs = true) {
+    return SetOperandLayout(shape_with_layout, instruction, operand_no,
+                            mandatory, dfs, current_priority_);
+  }
+  Status SetOperandLayout(const Shape& shape_with_layout,
+                          const HloInstruction* instruction, int64_t operand_no,
+                          bool mandatory, bool dfs, int64_t priority);
   bool reverse_computation_order() const { return reverse_computation_order_; }
+
+  ComputationLayout& saved_entry_computation_layout() {
+    return saved_entry_computation_layout_;
+  }
 
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
@@ -394,7 +439,8 @@ class LayoutAssignment : public HloModulePass {
   // result.
   Status PropagateUseConstraintToDefs(const ShapeLayout& shape_layout,
                                       const HloInstruction* instruction,
-                                      LayoutConstraints* constraints);
+                                      LayoutConstraints* constraints,
+                                      int64_t priority);
 
   // Propagates the memory space defined in the entry computation to the called
   // computations.
@@ -422,13 +468,11 @@ class LayoutAssignment : public HloModulePass {
 
  private:
   // Initializes the layout assignment object for a new Run() call.
-  Status Init();
+  Status Init(HloModule* module);
 
   // Adds constraints which must be satisfied for correctness on all
   // backends. Called once prior to propagating constraints.
-  Status AddMandatoryConstraints(const ComputationLayout* computation_layout,
-                                 ChannelLayoutConstraints* channel_constraints,
-                                 HloComputation* computation,
+  Status AddMandatoryConstraints(ChannelLayoutConstraints* channel_constraints,
                                  LayoutConstraints* constraints);
 
   // Return a vector containing the constraints which have been added to the
@@ -456,15 +500,14 @@ class LayoutAssignment : public HloModulePass {
   // computation instruction constraints.
   // Layouts constraints are added, then propagated until all LogicalBuffers in
   // the computation are constrained.
-  Status RunOnComputation(ComputationLayout* computation_layout,
-                          HloComputation* computation,
+  Status RunOnComputation(LayoutConstraints* constraints,
                           ChannelLayoutConstraints* channel_constraints);
 
   // Assign layouts to the instructions of a computation which satisfy the given
   // layout constraints. Copies may be added to satisfy the constraints. The
   // given LayoutConstraints must have layout constraints every logical buffer
   // in the computation.
-  Status AssignLayouts(const LayoutConstraints& constraints);
+  Status AssignLayouts(LayoutConstraints& constraints);
 
   // Propagates layout constraints from a set of initial constraints in order to
   // minimize the local cost of the computation. This propagation is *not*
@@ -479,10 +522,10 @@ class LayoutAssignment : public HloModulePass {
   // necessary conditions.
   Status CheckLayouts(HloModule* module);
 
-  // Computes the ComputationLayout of the given computation based of the
-  // layouts assigned to parameters and root instruction, and inserts it to the
-  // computation_layouts_ map.
-  Status CalculateComputationLayout(HloComputation* computation);
+  // Computes the ComputationLayout of the given constraints based of the
+  // layouts assigned to parameters and root instruction. Also propagate
+  // constraints to computation nested inside.
+  Status CalculateComputationLayout(LayoutConstraints* constraints);
 
   // Clears all the layouts which can be cleared within a computation.
   Status ClearComputationLayouts(HloComputation* computation);
@@ -508,6 +551,7 @@ class LayoutAssignment : public HloModulePass {
   bool reverse_computation_order_;
 
  protected:
+  static constexpr int64_t kNumberOfPropagationRounds = 2;
   // Sets up the copy instruction according to the characteristic (sharding,
   // metadata, ...) of the reference instruction. The index argument is used
   // when the instruction is a tuple, and in such case the index represents
@@ -616,6 +660,7 @@ class LayoutAssignment : public HloModulePass {
   // A vector which holds constraints as they are added. Can be cleared with
   // ClearAddedConstraints.
   std::vector<const LayoutConstraint*> added_constraints_;
+  int64_t current_priority_ = LayoutConstraint::kBeginningPriority;
 };
 
 }  // namespace xla

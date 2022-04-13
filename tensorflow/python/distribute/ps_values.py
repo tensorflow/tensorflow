@@ -757,12 +757,9 @@ class RestoredDistributedTable(DistributedTable):
       # been created. We store them in '_restored_function' and set them to the
       # distributed tables when they're created in
       # `self._maybe_build_distributed_table.create_copy`.
-      if load_context.in_load_context() or (
-          "RestoredStaticHashtable" in self._wrapped.__class__.__name__):
-
-        if not hasattr(self, "_restored_function"):
-          self._restored_function = {}
-        self._restored_function[name] = value
+      if not hasattr(self, "_restored_function"):
+        self._restored_function = {}
+      self._restored_function[name] = value
       return self._coordinator_instance.__setattr__(name, value)
     else:
       return super(RestoredDistributedTable, self).__setattr__(name, value)

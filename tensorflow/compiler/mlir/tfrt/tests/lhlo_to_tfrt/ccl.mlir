@@ -10,7 +10,7 @@
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @all_gather(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+func.func @all_gather(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -44,7 +44,7 @@ func @all_gather(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @all_reduce(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+func.func @all_reduce(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -81,7 +81,7 @@ func @all_reduce(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @reduce_scatter(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+func.func @reduce_scatter(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -117,7 +117,7 @@ func @reduce_scatter(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %re
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @all_to_all(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+func.func @all_to_all(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -156,7 +156,7 @@ func @all_to_all(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @all_to_all_split_dimension(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
+func.func @all_to_all_split_dimension(%operand0: memref<2x2xf32>, %operand1: memref<2x2xf32>, %result0: memref<2x2xf32>, %result1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 
@@ -188,7 +188,7 @@ func @all_to_all_split_dimension(%operand0: memref<2x2xf32>, %operand1: memref<2
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg3: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @collective_permute(%operand: memref<2x2xf32>, %result: memref<2x2xf32>)
+func.func @collective_permute(%operand: memref<2x2xf32>, %result: memref<2x2xf32>)
   attributes {replica_count = 0 : i32, num_partitions = 0 : i32} {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute

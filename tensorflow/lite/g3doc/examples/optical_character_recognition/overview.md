@@ -28,9 +28,10 @@ you can download the models from [TF Hub](https://tfhub.dev/).
 OCR tasks are often broken down into 2 stages. First, we use a text detection
 model to detect the bounding boxes around possible texts. Second, we feed
 processed bounding boxes into a text recognition model to determine specific
-characters inside the bounding boxes (we also need to do Non-Maximal Supression,
-perspective transformation and etc. beforing text recoginition). In our case,
-both models are from TensorFlow Hub and they are FP16 quantized models.
+characters inside the bounding boxes (we also need to do Non-Maximal
+Suppression, perspective transformation and etc. beforing text recognition). In
+our case, both models are from TensorFlow Hub and they are FP16 quantized
+models.
 
 ## Performance benchmarks
 

@@ -148,6 +148,9 @@ class GraphExecutionState {
   // graph, whereas some clients may want access to the full graph.
   const Graph* full_graph() { return graph_; }
 
+  // The original graph.
+  GraphDef* original_graph_def() { return original_graph_def_.get(); }
+
   // The original function library of this graph.
   const FunctionLibraryDefinition& flib_def() const { return *flib_def_; }
 

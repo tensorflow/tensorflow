@@ -26,7 +26,6 @@ import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/protobuf/config.proto";
-import "tensorflow/core/protobuf/coordination_config.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
@@ -83,8 +82,7 @@ message CreateWorkerSessionRequest {
   // WorkerSessions.
   int64 master_incarnation = 6;
 
-  // Configures coordination service within worker sessions.
-  CoordinationServiceConfig coordination_service_config = 7;
+  reserved 7;  // Deprecated config that is embedded within server_def now.
 }
 
 message CreateWorkerSessionResponse {}

@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +30,7 @@ from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics import metrics
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -411,6 +411,8 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
       # pylint: enable=g-assert-in-except
 
   def test_failure_at_PrepareCompositeFunctionsPass(self):
+    if context.is_tfrt_enabled():
+      self.skipTest('This test crashed with TFRT.')
 
     class NgramsLayer(tf.keras.layers.Layer):
 
@@ -489,8 +491,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
     self.assertEqual(
         exported_error,
         "\'tf.CustomAdd\' op is neither a custom op nor a flex op\n"
-        "Error code: ERROR_NEEDS_CUSTOM_OPS"
-    )
+        'Error code: ERROR_NEEDS_CUSTOM_OPS')
 
   def test_unsupported_control_flow_v1(self):
     filename = resource_loader.get_path_to_datafile(

@@ -212,6 +212,7 @@ class SGD(_Optimizer):
 
   def __init__(self,
                learning_rate: Union[float, Callable[[], float]] = 0.01,
+               use_gradient_accumulation: bool = True,
                clip_weight_min: Optional[float] = None,
                clip_weight_max: Optional[float] = None,
                weight_decay_factor: Optional[float] = None,
@@ -222,6 +223,8 @@ class SGD(_Optimizer):
     Args:
       learning_rate: The learning rate. It should be a floating point value or a
         callable taking no arguments for a dynamic learning rate.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster.
       clip_weight_min: the minimum value to clip by; None means -infinity.
       clip_weight_max: the maximum value to clip by; None means +infinity.
       weight_decay_factor: amount of weight decay to apply; None means that the
@@ -239,8 +242,6 @@ class SGD(_Optimizer):
         'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for more
         information on gradient accumulation and its impact on tpu embeddings.
     """
-    use_gradient_accumulation = clipvalue is not None
-
     super(SGD, self).__init__(
         learning_rate, use_gradient_accumulation, clip_weight_min,
         clip_weight_max, weight_decay_factor,

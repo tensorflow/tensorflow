@@ -159,6 +159,30 @@ ENTRY AddDotsFunc {
       )");
 }
 
+TEST_F(GemmRewriteTest, BatchedArgRowColTransposeFoldCheck) {
+  const char* hlo_text = R"(
+HloModule BatchedArgRowColTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[5,3,2] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  x_transposed = f32[5,2,3] transpose(x), dimensions={0, 2, 1}
+  ROOT dot_a = f32[5,2,4] dot(x_transposed, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,3,2], y: f32[5,3,4]) -> f32[5,2,4] {
+; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = f32[5,3,2]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
+; CHECK-NEXT:    ROOT [[INSTR_2:%[^ ]+]] = f32[5,2,4]{2,1,0} custom-call([[INSTR_0]], [[INSTR_1]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[\"0\"]},\"batch_size\":\"5\",\"lhs_stride\":\"6\",\"rhs_stride\":\"12\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
+}
+
 TEST_F(GemmRewriteTest, InstrTransposeFoldCheck) {
   const char* hlo_text = R"(
 HloModule InstrTransposeFoldGemm
@@ -575,6 +599,30 @@ ENTRY int8gemm {
   )",
                       /*print_operand_shape=*/true);
   }
+}
+
+TEST_F(GemmRewriteTest, BF16GemmWithBias) {
+  const char* hlo_text = R"(
+HloModule BF16GemmWithBias
+
+ENTRY BF16GemmWithBias {
+  x = bf16[8,8]{1,0} parameter(0)
+  y = bf16[8,8]{1,0} parameter(1)
+  dot.5 = bf16[8,8]{1,0} dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias = bf16[8,8]{1,0} parameter(2)
+  ROOT add.6 = bf16[8,8]{1,0} add(dot.5, bias)
+}
+  )";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %BF16GemmWithBias (x: bf16[8,8], y: bf16[8,8], bias: bf16[8,8]) -> bf16[8,8] {
+; CHECK-NEXT:    [[INSTR_0:%[^ ]+]] = bf16[8,8]{1,0} parameter(0)
+; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = bf16[8,8]{1,0} parameter(1)
+; CHECK-NEXT:    [[INSTR_2:%[^ ]+]] = bf16[8,8]{1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[INSTR_3:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[INSTR_0]], [[INSTR_1]], [[INSTR_2]]), custom_call_target="__cublas$gemm", backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"lhs_stride\":\"64\",\"rhs_stride\":\"64\",\"selected_algorithm\":\"{{-?[0-9]+}}\"}"
+      )");
 }
 }  // namespace
 }  // namespace gpu

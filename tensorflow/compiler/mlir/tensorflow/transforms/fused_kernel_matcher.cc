@@ -17,6 +17,7 @@ limitations under the License.
 #include <iostream>
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -51,7 +52,7 @@ namespace {
 // computation.
 struct FusedKernelMatcherPass
     : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 bool IsActivationFunction(Operation *op) {
@@ -244,10 +245,10 @@ class FuseMatMulBiasAdd
   }
 };
 
-void FusedKernelMatcherPass::runOnFunction() {
+void FusedKernelMatcherPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
-  auto func = getFunction();
-  patterns.insert<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
+  auto func = getOperation();
+  patterns.add<FuseConv2DBiasAdd, FuseMatMulBiasAdd>(&getContext());
 
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

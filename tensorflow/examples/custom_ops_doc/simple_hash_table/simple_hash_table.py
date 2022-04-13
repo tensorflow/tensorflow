@@ -18,8 +18,6 @@ This defines a public API and provides a docstring for the C++ Op defined by
 simple_hash_table_kernel.cc
 """
 
-import functools
-
 import tensorflow as tf
 from tensorflow.examples.custom_ops_doc.simple_hash_table.simple_hash_table_op import gen_simple_hash_table_op
 
@@ -96,42 +94,18 @@ class SimpleHashTable(tf.saved_model.experimental.TrackableResource):
         key_dtype=self._key_dtype,
         value_dtype=self._value_dtype,
         name=self._name)
-
-    # TODO(b/203097231) Explain the use of self._table_name in the support
-    # for SavedModel and how it differs from self._name (or unify)
-    if not tf.executing_eagerly():
-      self._table_name = table_ref.op.name.split("/")[-1]
-    else:
-      # Tensor.op is meaningless when eager execution is enabled, so this
-      # attribute cannot be used to provide a name.
-      self._table_name = None
     return table_ref
 
-  # TODO(b/203097231) For SavedModel support use public API for SaveableObject
-  def _gather_saveables_for_checkpoint(self):
-    """For object-based checkpointing."""
-    return {
-        "table":
-            functools.partial(
-                SimpleHashTable._Saveable,
-                table=self,
-                name=self._name,
-                table_name=self._name)
-    }
+  def _serialize_to_tensors(self):
+    """Implements checkpointing protocols for `Trackable`."""
+    tensors = self.export()
+    return {"table-keys": tensors[0], "table-values": tensors[1]}
 
-    # TODO(b/203097231) For SavedModel support use public API for SaveableObject
-  class _Saveable(object):
-    """SaveableObject implementation for SimpleHashTable."""
-
-    def __init__(self, table, name, table_name=None):
-      raise Exception(
-          NotImplementedError, "Sorry, _Saveable is not implemented. "
-          "It needs an appropriate base class to be publically visible.")
-
-    def restore(self, restored_tensors, restored_shapes):
-      raise Exception(
-          NotImplementedError, "Sorry, _Saveable is not implemented. "
-          "It needs an appropriate base class to be publically visible.")
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements checkpointing protocols for `Trackable`."""
+    return gen_simple_hash_table_op.examples_simple_hash_table_import(
+        self.resource_handle, restored_tensors["table-keys"],
+        restored_tensors["table-values"])
 
   @property
   def key_dtype(self):
@@ -142,10 +116,6 @@ class SimpleHashTable(tf.saved_model.experimental.TrackableResource):
   def value_dtype(self):
     """The table value dtype."""
     return self._value_dtype
-
-  @property
-  def name(self):
-    return self._table_name
 
   def find(self, key, dynamic_default_value=None, name=None):
     """Looks up `key` in a table, outputs the corresponding value.

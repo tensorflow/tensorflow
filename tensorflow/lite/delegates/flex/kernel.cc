@@ -565,8 +565,8 @@ TfLiteStatus DelegateKernel::Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   for (const auto& node_data : op_data_->nodes) {
     if (node_data->nodedef().op().empty()) {
-      context->ReportError(context, "Invalid NodeDef in Flex op '%s'",
-                           node_data->name().c_str());
+      TF_LITE_KERNEL_LOG(context, "Invalid NodeDef in Flex op '%s'",
+                         node_data->name().c_str());
       return kTfLiteError;
     }
     TF_LITE_ENSURE(context, node_data->op_kernel_runner());
@@ -740,8 +740,8 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
       continue;
     }
     if (!buffer_map->HasTensor(tensor_index)) {
-      context->ReportError(context, "Cannot write to invalid tensor index %d",
-                           tensor_index);
+      TF_LITE_KERNEL_LOG(context, "Cannot write to invalid tensor index %d",
+                         tensor_index);
       return kTfLiteError;
     }
 

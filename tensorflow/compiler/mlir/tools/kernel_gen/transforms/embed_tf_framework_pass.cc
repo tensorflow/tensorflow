@@ -15,8 +15,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -67,12 +68,12 @@ class EmbedTFFrameworkPass
       if (!op->hasAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName)) {
         return true;
       }
-      FunctionType func_type = op.getType();
+      FunctionType func_type = op.getFunctionType();
       return func_type.getNumInputs() > 0 &&
              func_type.getInput(0).isa<OpKernelContextType>();
     });
-    target.addDynamicallyLegalOp<AssertOp, memref::AllocOp, memref::DeallocOp>(
-        IsNotInsideTfEntryFunction);
+    target.addDynamicallyLegalOp<cf::AssertOp, memref::AllocOp,
+                                 memref::DeallocOp>(IsNotInsideTfEntryFunction);
     target.addDynamicallyLegalOp<JITExecuteOp>(
         &HasInitializedOpKernelContextOperand<JITExecuteOp>);
     target.addDynamicallyLegalOp<JITCompileFromStrOp>(

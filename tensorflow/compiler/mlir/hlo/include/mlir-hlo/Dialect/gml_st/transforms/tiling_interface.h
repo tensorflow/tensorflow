@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILINGINTERFACE_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILINGINTERFACE_H_
+#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
+#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/IR/OpDefinition.h"
@@ -28,4 +28,4 @@ void registerTilingInterfaceExternalModels(DialectRegistry &registry);
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILINGINTERFACE_H_
+#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_INTERFACE_H

@@ -34,9 +34,9 @@ namespace tflite {
 namespace {
 
 TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
-  context->ReportError(context,
-                       "Encountered an unresolved custom op. Did you miss "
-                       "a custom op or delegate?");
+  TF_LITE_KERNEL_LOG(context,
+                     "Encountered an unresolved custom op. Did you miss "
+                     "a custom op or delegate?");
   return kTfLiteError;
 }
 
@@ -120,6 +120,9 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteComplex128:
       *bytes = sizeof(std::complex<double>);
       break;
+    case kTfLiteUInt16:
+      *bytes = sizeof(uint16_t);
+      break;
     case kTfLiteInt16:
       *bytes = sizeof(int16_t);
       break;
@@ -134,7 +137,7 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       break;
     default:
       if (context) {
-        context->ReportError(
+        TF_LITE_KERNEL_LOG(
             context,
             "Type %d is unsupported. Only float16, float32, float64, int8, "
             "int16, int32, int64, uint8, uint64, bool, complex64 and "

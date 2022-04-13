@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <cmath>
 
+#include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradients.h"
+#include "tensorflow/cc/gradients/grad_helper.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/math_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-
-#include "tensorflow/cc/framework/grad_op_registry.h"
-#include "tensorflow/cc/framework/gradients.h"
 
 namespace tensorflow {
 namespace ops {
@@ -358,6 +358,19 @@ Status AtanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Atan", AtanGrad);
 
+Status Atan2Grad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  auto y = op.input(0);
+  auto x = op.input(1);
+  Output grad_inv = Div(scope, grad_inputs[0],
+                        Add(scope, Square(scope, x), Square(scope, y)));
+  grad_outputs->push_back(Mul(scope, x, grad_inv));
+  grad_outputs->push_back(Mul(scope, Neg(scope, y), grad_inv));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Atan2", Atan2Grad);
+
 // BinaryGradCommon handles the setup for binary ops that broadcast
 // their inputs.
 Status BinaryGradCommon(const Scope& scope, const Operation& op,
@@ -616,61 +629,6 @@ REGISTER_GRADIENT_OP("Conj", ConjGrad);
 // Integer division x / y, assuming x and y >=0, but treats x/0 = x
 Output SafeDivHelper(const Scope& scope, const Output& x, const Output& y) {
   return Div(scope, x, Maximum(scope, y, Const(scope, 1)));
-}
-
-// Helper function for reduction ops.
-//
-// input_shape: 1-D Tensor, the shape of the Tensor being reduced.
-// axes: 1-D Tensor, the reduction axes.
-//   Note that the reduction indices are in the range
-//   -rank(input_shape), rank(input_shape)
-// returns a 1-D Tensor, the output shape as if keep_dims were set to True.
-Output ReducedShapeHelper(const Scope& scope, const Output& input_shape,
-                          const Output& reduction_axes) {
-  auto zero = Const(scope, 0);
-  auto one = Const(scope, 1);
-
-  // Running example in comments
-  // input_shape = [2, 3, 5, 7]
-  // axes = [1, 2]
-  // The result (a shape after a reduction with keep_dims=True)
-  // [2, 1, 1, 7]
-  //
-  // We can treat each entry in axes as an index into input_shape that
-  // should be replaced by 1.
-  // We use DynamicStitch to do this.
-
-  // input_rank = 4
-  auto input_rank = Size(scope, input_shape);
-
-  // Normalize any negative indices in the reduction_axes to positive
-  // values.
-  auto axes = Mod(scope, Add(scope, reduction_axes, input_rank), input_rank);
-
-  // This [0..input_rank) range of integers is used in DynamicStitch to
-  // first copy input_shape to the result.
-  // input_rank_range = [0, 1, 2, 3]
-  auto input_rank_range = Range(scope, zero, input_rank, one);
-
-  // A 1-filled tensor with the same shape as axes. DynamicStitch will
-  // merge these 1s (using axes for indices) to the correct
-  // position in the result.
-  // axes_ones = [1, 1]
-  auto axes_ones = OnesLike(scope, axes);
-
-  // using DynamicStitch:
-  // indices = { input_rank_range, axes }
-  //         = { [0, 1, 2, 3], [1, 2] }
-  // data = { input_shape, axes_ones }
-  //      = { [2, 3, 5, 7], [1, 1] }
-  // The input_rank_range entry in indices first replicates the
-  // input_shape to the result.
-  // The axes entry in indices then moves a 1 to each of its entries,
-  // resulting in
-  // [2, 1, 1, 7]
-  std::vector<Output> indices = {input_rank_range, axes};
-  std::vector<Output> data = {input_shape, axes_ones};
-  return DynamicStitch(scope, indices, data);
 }
 
 // SumGradHelper returns the gradient for the Sum operator, and is used
@@ -1241,7 +1199,7 @@ Status SelectV2Grad(const Scope& scope, const Operation& op,
   auto y = op.input(2);
 
   auto zeros = ZerosLike(scope, grad_inputs[0]);
-  auto gx = Where3(scope, c, grad_inputs[0], zeros);
+  auto gx = SelectV2(scope, c, grad_inputs[0], zeros);
   auto x_shape = Shape(scope, x);
   auto output_shape = Shape(scope, op.output(0));
 
@@ -1251,7 +1209,7 @@ Status SelectV2Grad(const Scope& scope, const Operation& op,
       ReduceSum(scope, gx, /*axis=*/reduce_x.r0, ReduceSum::KeepDims(true));
   auto gx_sum_reshape = Reshape(scope, gx_sum, x_shape);
 
-  auto gy = Where3(scope, c, zeros, grad_inputs[0]);
+  auto gy = SelectV2(scope, c, zeros, grad_inputs[0]);
   auto y_shape = Shape(scope, y);
 
   // Reduce away broadcasted leading dims.

@@ -33,6 +33,14 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "approx_max_k"
+    argspec: "args=[\'operand\', \'k\', \'reduction_dimension\', \'recall_target\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'-1\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "approx_min_k"
+    argspec: "args=[\'operand\', \'k\', \'reduction_dimension\', \'recall_target\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'-1\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "argmax"
     argspec: "args=[\'input\', \'axis\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int64\'>\", \'None\'], "
   }

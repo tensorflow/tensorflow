@@ -20,8 +20,9 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -46,6 +47,8 @@ namespace {
 class TrimFunctionsPass
     : public mlir::PassWrapper<TrimFunctionsPass, OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TrimFunctionsPass)
+
   explicit TrimFunctionsPass() : trim_funcs_allowlist_(trim_funcs_allowlist) {}
   explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_allowlist)
       : trim_funcs_allowlist_(trim_funcs_allowlist) {}
@@ -116,7 +119,7 @@ void TrimFunctionsPass::Verify() {
   SymbolTable symbol_table = SymbolTable(getOperation());
   llvm::SetVector<FuncOp> reachable_funcs;
   for (auto func : getOperation().getOps<FuncOp>()) {
-    auto walk_result = func.walk([&](CallOp op) -> WalkResult {
+    auto walk_result = func.walk([&](func::CallOp op) -> WalkResult {
       if (!symbol_table.lookup<FuncOp>(op.getCallee()))
         return getOperation().emitError()
                << func.getName() << " is not in the funcs allowlist";

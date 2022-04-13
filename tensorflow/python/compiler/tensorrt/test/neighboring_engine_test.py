@@ -53,8 +53,8 @@ class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": ["bias", "mul", "sub"],
-        "TRTEngineOp_1": ["weights", "conv"]
+        "TRTEngineOp_000": ["bias", "mul", "sub"],
+        "TRTEngineOp_001": ["weights", "conv"]
     }
 
 

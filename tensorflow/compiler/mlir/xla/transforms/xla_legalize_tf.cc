@@ -26,8 +26,8 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -59,7 +59,7 @@ class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
     }
   }
   /// Performs the lowering to XLA dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Emits debug information which includes the number of ops of each type which
@@ -300,14 +300,14 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   }
   target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<arith::ArithmeticDialect>();
-  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
-  target.addLegalOp<CallOp>();
+  target.addLegalOp<func::CallOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ::mlir::ReturnOp>();
+    target.addLegalOp<ModuleOp, FuncOp, ::mlir::func::ReturnOp>();
     DenseSet<Operation *> nonlegalized_ops;
     LogicalResult result = applyPartialConversion(
         op, target, std::move(patterns), &nonlegalized_ops);
@@ -324,12 +324,12 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 }
 
 // Performs the lowering to XLA dialect.
-void LegalizeTF::runOnFunction() {
+void LegalizeTF::runOnOperation() {
   llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None;
   if (use_tf2xla_fallback_) {
     tf2xla_fallback_device_type = device_type_;
   }
-  if (failed(legalizeTF(getFunction(), allow_partial_conversion_,
+  if (failed(legalizeTF(getOperation(), allow_partial_conversion_,
                         legalize_chlo_, tf2xla_fallback_device_type,
                         prefer_tf2xla_))) {
     signalPassFailure();

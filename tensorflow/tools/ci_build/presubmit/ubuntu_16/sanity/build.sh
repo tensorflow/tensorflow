@@ -68,6 +68,7 @@ EOF
     --host_jvm_args=-Dbazel.DigestFunction=SHA256 \
     test \
     --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
+    --build_event_binary_file="${KOKORO_ARTIFACTS_DIR}/build_events.pb" \
     --test_output=all \
     tensorflow/tools/ci_build:${SANITY_OUT_TARGET}
 

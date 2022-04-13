@@ -68,7 +68,7 @@ class TargetAnnotationPass : public TacFunctionPass<TargetAnnotationPass> {
       *this, "device-specs",
       llvm::cl::desc(
           "comma separated list of device specs, like CPU, GPU, Hexagon."),
-      llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated};
+      llvm::cl::ZeroOrMore};
 };
 
 void SetAnnotation(Operation* op, std::string attribute, std::string annotation,
@@ -111,7 +111,7 @@ void TargetAnnotationPass::SetTargetAnnotation(
   // default to CPU
   if (!device_is_set) {
     if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
-        !llvm::isa<ReturnOp, FuncOp, CallableOpInterface>(op)) {
+        !llvm::isa<func::ReturnOp, FuncOp, CallableOpInterface>(op)) {
       SetAnnotation(op, kDevice, "CPU", builder);
       device_is_set = true;
     }
@@ -129,7 +129,7 @@ void TargetAnnotationPass::runOnFunction() {
     // We only care about TFL dialect.
     if (IsNonConstOp(op) && NotTFLQuantDequantizeOp(op) &&
         !IsTerminatorOp(op) &&
-        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op)) {
+        !llvm::isa<func::ReturnOp, FuncOp, CallOpInterface>(op)) {
       SetTargetAnnotation(op, device_specs_flag_, &builder);
     }
   });

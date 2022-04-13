@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -89,9 +91,6 @@ class PartialCache {
     *out_tensors = cache_.at(index);
     return Status::OK();
   }
-
-  // Returns whether the partial cache is complete.
-  bool IsComplete() { return cache_.size() == input_->Cardinality(); }
 
   // Returns the data which has been cached up to this point.
   std::vector<std::vector<Tensor>> GetCacheData() { return cache_; }
@@ -769,20 +768,20 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
-    if (cache_->IsCompleted()) {
-      *out_tensors = cache_->at(index);
-      return Status::OK();
+
+    CardinalityOptions options;
+    options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
+    int64_t cardinality = Cardinality(options);
+
+    if (cardinality != kUnknownCardinality &&
+        cardinality != kInfiniteCardinality && index >= cardinality) {
+      return errors::OutOfRange("Index out of range [0, ", cardinality,
+                                "):", index);
     }
     if (!partial_cache_) {
       partial_cache_ = absl::make_unique<PartialCache>(input_);
     }
-    TF_RETURN_IF_ERROR(partial_cache_->Get(ctx, index, out_tensors));
-    if (partial_cache_->IsComplete()) {
-      cache_->Complete(partial_cache_->GetCacheData());
-      partial_cache_.reset();
-    }
-    return Status::OK();
+    return partial_cache_->Get(ctx, index, out_tensors);
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {

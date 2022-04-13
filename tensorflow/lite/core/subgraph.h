@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -377,6 +378,22 @@ class Subgraph {
     release_dynamic_tensors_if_unused_ = true;
   }
 
+  /// WARNING: This is an experimental API and subject to change.
+  /// Use dynamic tensor allocation and deallocation method for large tensors
+  /// instead of static memory planner. Dynamic tensors are allocated just
+  /// before when they're needed and released when they're not needed anymore.
+  /// It improves peak memory usage but there could be some latency impact. The
+  /// parameter `large_tensors_thresholds_in_bytes` is used to determine large
+  /// tensors. This API must be called before `AllocateTensors`.
+  void OptimizeMemoryForLargeTensors(int large_tensors_thresholds_in_bytes);
+
+  // WARNING: This is an experimental API and subject to change.
+  // True if dynamic tensor allocation / deallocation method is enabled by
+  // `OptimizeMemoryForLargeTensors` API.
+  inline bool IsMemoryOptimizationForLargeTensorsEnabled() {
+    return (large_tensors_thresholds_in_bytes_ > 0);
+  }
+
   // WARNING: This is an experimental API and subject to change.
   // Remove unused inputs of the subgraph. It checks usage of inputs and mark it
   // as kTfLiteOptionalTensor if the input is not used in graph execution.
@@ -415,11 +432,10 @@ class Subgraph {
       profiler_->EndEvent(event_handle, event_metadata1, event_metadata2);
     }
 
-    void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                  uint64_t end, int64_t event_metadata1,
-                  int64_t event_metadata2) override {
+    void AddEvent(const char* tag, EventType event_type, uint64_t elapsed_time,
+                  int64_t event_metadata1, int64_t event_metadata2) override {
       if (!profiler_) return;
-      profiler_->AddEvent(tag, event_type, start, end, event_metadata1,
+      profiler_->AddEvent(tag, event_type, elapsed_time, event_metadata1,
                           subgraph_index_);
     }
 
@@ -694,9 +710,14 @@ class Subgraph {
   // last operation that uses the tensor as input.
   void InitializeTensorReleaseMap();
 
+  // May allocate dynamic tensor memory of node outputs. It's used when
+  // `EnsureDynamicTensorsAreReleased` or`UseDynamicAllocationForLargeTensors`
+  // API is used.
+  TfLiteStatus MayAllocateOpOutput(TfLiteNode* node);
+
   // Checks the options for releasing dynamic tensors and release dynamic
   // tensors if configured.
-  void MaybeReleaseDynamicInputs(const TfLiteNode& node, size_t node_index);
+  void MaybeReleaseDynamicTensors(const TfLiteNode& node, size_t node_index);
 
   // The state of the Interpreter.
   enum State {
@@ -860,6 +881,9 @@ class Subgraph {
   // Mapping between tensor index to the last index of the execution plan that
   // uses this tensor.
   std::map<int, int> tensor_to_last_op_index_;
+
+  // Threshold bytes of tensors to apply dymamic allocation.
+  size_t large_tensors_thresholds_in_bytes_;
 };
 
 }  // namespace tflite

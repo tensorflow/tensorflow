@@ -331,8 +331,8 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   const size_t size_in_bytes = 8;
   const int8_t test_value = 7;
   TF_EXPECT_OK(tracer->Start());
-  void* hostptr = 0;
-  void* devptr = 0;
+  void* hostptr = nullptr;
+  void* devptr = nullptr;
 
   // These six CUDA API calls will create 4 CUDA API and 4 device XEvents.
   ASSERT_EQ(cudaSuccess,

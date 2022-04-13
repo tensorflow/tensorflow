@@ -1,6 +1,9 @@
 # Tests of TensorFlow kernels written using the Python API.
 
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
@@ -120,6 +123,7 @@ cuda_py_test(
     srcs = ["random_gamma_test.py"],
     shard_count = 4,
     tags = [
+        "no_windows",  # TODO(b/218876472)
         "nomsan",  # b/216320808
         "nozapfhahn",
     ],
@@ -223,6 +227,29 @@ cuda_py_test(
         "//tensorflow/python:stateless_random_ops",
         "//third_party/py/numpy",
     ],
+)
+
+cuda_py_test(
+    name = "stateful_random_ops_test",
+    size = "medium",
+    srcs = ["stateful_random_ops_test.py"],
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
+    deps = [
+        ":util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python/framework:config",
+    ],
+)
+
+tf_py_test(
+    name = "random_index_shuffle_test",
+    srcs = ["random_index_shuffle_test.py"],
+    shard_count = 10,
 )
 
 py_library(

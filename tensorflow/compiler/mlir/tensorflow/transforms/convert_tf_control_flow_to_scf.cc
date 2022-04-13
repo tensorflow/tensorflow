@@ -184,7 +184,7 @@ class ConvertWhileRegionOp : public OpRewritePattern<WhileRegionOp> {
 
 void populateTfControlFlowToScfPatterns(MLIRContext* context,
                                         RewritePatternSet* patterns) {
-  patterns->insert<ConvertIfRegionOp, ConvertWhileRegionOp>(context);
+  patterns->add<ConvertIfRegionOp, ConvertWhileRegionOp>(context);
 }
 
 struct ConvertTfControlFlowToScf

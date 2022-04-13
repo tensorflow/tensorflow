@@ -32,19 +32,6 @@ namespace nnapi {
 
 using tflite::TFLITE_LOG_ERROR;
 
-NnApiSupportLibrary::NnApiSupportLibrary(const NnApiSLDriverImplFL5& impl,
-                                         void* libHandle)
-    : NnApiSLDriverImplFL5(impl), libHandle(libHandle) {
-  base.implFeatureLevel = ANEURALNETWORKS_FEATURE_LEVEL_5;
-}
-
-NnApiSupportLibrary::~NnApiSupportLibrary() {
-  if (libHandle != nullptr) {
-    dlclose(libHandle);
-    libHandle = nullptr;
-  }
-}
-
 std::unique_ptr<const NnApiSupportLibrary> loadNnApiSupportLibrary(
     const std::string& libName) {
   void* libHandle = dlopen(libName.c_str(), RTLD_LAZY | RTLD_LOCAL);
@@ -79,16 +66,28 @@ std::unique_ptr<const NnApiSupportLibrary> loadNnApiSupportLibrary(
     return nullptr;
   }
 
-  if (impl->implFeatureLevel < ANEURALNETWORKS_FEATURE_LEVEL_5) {
-    int64_t impl_feature_level = impl->implFeatureLevel;
+  if (impl->implFeatureLevel < ANEURALNETWORKS_FEATURE_LEVEL_5 ||
+      impl->implFeatureLevel > ANEURALNETWORKS_FEATURE_LEVEL_7) {
     TFLITE_LOG(TFLITE_LOG_ERROR,
                "Unsupported NnApiSLDriverImpl->implFeatureLevel: %" PRId64,
-               impl_feature_level);
+               impl->implFeatureLevel);
     return nullptr;
   }
 
-  return std::make_unique<NnApiSupportLibrary>(
-      *reinterpret_cast<NnApiSLDriverImplFL5*>(impl), libHandle);
+  if (impl->implFeatureLevel == ANEURALNETWORKS_FEATURE_LEVEL_5) {
+    return std::make_unique<NnApiSupportLibrary>(
+        reinterpret_cast<NnApiSLDriverImplFL5*>(impl), libHandle);
+  }
+  if (impl->implFeatureLevel == ANEURALNETWORKS_FEATURE_LEVEL_6) {
+    return std::make_unique<NnApiSupportLibrary>(
+        reinterpret_cast<NnApiSLDriverImplFL6*>(impl), libHandle);
+  }
+  if (impl->implFeatureLevel == ANEURALNETWORKS_FEATURE_LEVEL_7) {
+    return std::make_unique<NnApiSupportLibrary>(
+        reinterpret_cast<NnApiSLDriverImplFL7*>(impl), libHandle);
+  }
+
+  return nullptr;
 }
 
 }  // namespace nnapi

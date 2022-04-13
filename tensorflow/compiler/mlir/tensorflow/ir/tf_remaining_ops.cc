@@ -37,7 +37,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -54,7 +54,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -82,13 +82,14 @@ namespace {
 // This verifies that `_XlaHostComputeMlirOp` has a well-formed
 // `host_mlir_module` attribute.
 // For other attributes, there is no additional verification beyond the default.
-static LogicalResult Verify(_XlaHostComputeMlirOp op) {
+LogicalResult _XlaHostComputeMlirOp::verify() {
+  _XlaHostComputeMlirOp op = *this;
   // Extract the module and function.
   StringRef host_module = op.host_mlir_module();
 
   if (host_module.empty()) return success();
 
-  mlir::OwningModuleRef module_for_func;
+  mlir::OwningOpRef<mlir::ModuleOp> module_for_func;
   tensorflow::Status status = tensorflow::DeserializeMlirModule(
       host_module.str(), op->getContext(), &module_for_func);
   if (!status.ok()) {
@@ -103,15 +104,15 @@ static LogicalResult Verify(_XlaHostComputeMlirOp op) {
            << "serialized module in attribute 'host_mlir_module' does not "
               "contain 'host_func' function.";
 
-  if (op->getNumOperands() != func.getType().getNumInputs())
+  if (op->getNumOperands() != func.getFunctionType().getNumInputs())
     return op.emitError()
-           << "'host_func' has " << func.getType().getNumInputs()
+           << "'host_func' has " << func.getFunctionType().getNumInputs()
            << " inputs and '_XlaHostComputeMlir' has " << op->getNumOperands()
            << " operands.  Number of operands/inputs should be the same.";
 
-  if (op->getNumResults() != func.getType().getNumResults())
+  if (op->getNumResults() != func.getFunctionType().getNumResults())
     return op.emitError() << "'host_func' has "
-                          << func.getType().getNumResults()
+                          << func.getFunctionType().getNumResults()
                           << " results and '_XlaHostComputeMlir' has "
                           << op->getNumResults()
                           << " results.  Number of results should be the same.";
@@ -119,12 +120,29 @@ static LogicalResult Verify(_XlaHostComputeMlirOp op) {
   return success();
 }
 
-FuncOp _XlaHostComputeMlirOp::GetHostFunc(mlir::OwningModuleRef* mlir_module) {
+FuncOp _XlaHostComputeMlirOp::GetHostFunc(
+    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module) {
   if (!tensorflow::DeserializeMlirModule(host_mlir_module().str(),
                                          this->getContext(), mlir_module)
            .ok())
     return nullptr;
   return (*mlir_module)->lookupSymbol<FuncOp>("host_func");
+}
+
+//===----------------------------------------------------------------------===//
+// XLA Send/Recv ops
+//===----------------------------------------------------------------------===//
+
+// For XLA Send/Recv ops the key corresponds to the resource instance.
+
+std::string _XlaRecvAtHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaRecvAtHostV2Op::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostOp::GetResourceInstanceStr() { return key().str(); }
+
+std::string _XlaSendFromHostV2Op::GetResourceInstanceStr() {
+  return key().str();
 }
 
 }  // namespace TF

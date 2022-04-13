@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_
+#ifndef MLIR_HLO_UTILS_BROADCAST_UTILS_H
+#define MLIR_HLO_UTILS_BROADCAST_UTILS_H
 
 // Utilities relating to implementing HLO broadcasting.
 // Note: This file should not depend on any non-MLIR TensorFlow libraries.
@@ -51,4 +51,4 @@ Value ComputeNaryElementwiseBroadcastingResultExtents(Location loc,
 }  // namespace hlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_
+#endif  // MLIR_HLO_UTILS_BROADCAST_UTILS_H

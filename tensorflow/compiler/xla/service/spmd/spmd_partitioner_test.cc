@@ -2630,7 +2630,7 @@ ENTRY entry
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort = FindInstruction(module.get(), "sort");
+  auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 104832);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 104832);
   auto final_sort = FindInstruction(module.get(), "sort.1");
@@ -2709,7 +2709,7 @@ ENTRY entry
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort = FindInstruction(module.get(), "sort");
+  auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 104832);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 104832);
   auto final_sort = FindInstruction(module.get(), "sort.1");
@@ -2786,7 +2786,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort = FindInstruction(module.get(), "sort");
+  auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
 }
@@ -2862,7 +2862,7 @@ ENTRY entry
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort = FindInstruction(module.get(), "sort");
+  auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
 }
@@ -2937,7 +2937,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto sort = FindInstruction(module.get(), "sort");
+  auto sort = FindInstruction(module.get(), "sort.0");
   EXPECT_EQ(sort->operand(0)->shape().dimensions(1), 209664);
   EXPECT_EQ(sort->operand(1)->shape().dimensions(1), 209664);
 }
@@ -9083,7 +9083,7 @@ ENTRY %module {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/8));
 
-  const HloInstruction* sort = FindInstruction(module.get(), "sort");
+  const HloInstruction* sort = FindInstruction(module.get(), "sort.0");
   EXPECT_NE(sort, nullptr);
   auto sort_match =
       AllOf(op::Shape("(f32[2,64,32128], s32[2,64,32128])"), op::Sort(_, _));
@@ -9753,6 +9753,60 @@ ENTRY entry {
                             op::Broadcast(op::Constant())));
 }
 
+TEST_F(SpmdPartitioningTest, SubgroupManualAllReduce) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  param = f32[2,2] parameter(0),
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+  ROOT all-reduce = f32[2,2]{1,0} all-reduce(param), to_apply=sum,
+    replica_groups={{2,0},{1,3}}, use_global_device_ids=true, channel_id=1,
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::AllReduce(op::Parameter(0)), op::Shape("f32[1,2]")));
+  EXPECT_EQ(root->replica_groups().size(), 2);
+}
+
+TEST_F(SpmdPartitioningTest, SubgroupIllegalManualAllReduce) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  param = f32[2,2] parameter(0),
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+  ROOT all-reduce = f32[2,2]{1,0} all-reduce(param), to_apply=sum,
+    replica_groups={{1,0},{2,3}}, use_global_device_ids=true, channel_id=1,
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+}
+)";
+
+  auto module_status = PartitionComputation(hlo_string, /*num_devices=*/4);
+  EXPECT_FALSE(module_status.status().ok());
+  EXPECT_THAT(module_status.status().ToString(),
+              ::testing::HasSubstr("Manual all-reduce across devices that "
+                                   "belong to different manual subgroups"));
+}
+
 TEST_F(SpmdPartitioningTest, SubgroupManualReduce) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -9944,6 +9998,32 @@ ENTRY entry {
               op::Shape("(f32[4,2,10])"));
 }
 
+TEST_F(SpmdPartitioningTest, GatherTrivialRestoreSharding) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = bf16[250112,4096] parameter(0), sharding={replicated}
+  %cpy.input = bf16[250112,4096] copy(%input), sharding={
+    devices=[32,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,
+                    23,24,25,26,27,28,29,30,31}
+  %indices = s32[64,1,1] parameter(1), sharding={replicated}
+  %cpy.indices = s32[64,1,1] copy(%indices), sharding={replicated}
+  %gather = bf16[64,1,4096] gather(bf16[250112,4096] %cpy.input, s32[64,1,1] %cpy.indices),
+    offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=2, slice_sizes={1,4096}, sharding={replicated}
+  ROOT %copy = bf16[64,1,4096] copy(gather), sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/32));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Shape("bf16[64,1,4096]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::AllReduce(op::Select(
+                  _, _, op::Gather(op::Shape("bf16[7816,4096]"), _)))));
+}
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

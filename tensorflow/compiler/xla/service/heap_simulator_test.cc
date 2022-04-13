@@ -501,10 +501,10 @@ TEST_F(HeapSimulatorTest, FusionOutputsOnlyShareOnce) {
   auto can_share_buffer =
       [](const HloInstruction* instr, const HloInstruction* operand,
          const ShapeIndex& user_index) -> absl::optional<bool> {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      return true;
-    }
-    return false;
+    return instr->opcode() == HloOpcode::kFusion &&
+           operand->shape().IsArray() &&
+           ShapeUtil::Equal(operand->shape(),
+                            ShapeUtil::GetSubshape(instr->shape(), user_index));
   };
 
   HloModuleConfig config;
@@ -1033,8 +1033,9 @@ class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
       buffer_interval_.end = end;
       chunk_candidate_ = GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
           buffer_interval_, preferred_offset);
-      EXPECT_EQ(chunk_candidate_.chunk.size, size);
-      return {chunk_candidate_.chunk.offset, chunk_candidate_.heap_size};
+      EXPECT_EQ(chunk_candidate_.size, size);
+      return {chunk_candidate_.offset,
+              result_.UpdatedHeapSize(chunk_candidate_)};
     }
 
     // Commits the previously found chunk candidate.
@@ -1045,7 +1046,7 @@ class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {
 
    private:
     BufferInterval buffer_interval_;
-    ChunkCandidate chunk_candidate_;
+    Chunk chunk_candidate_;
   };
 
   InheritedGlobalDecreasingSizeBestFitHeap heap_;

@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -51,8 +50,12 @@ class SessionMgr {
   ~SessionMgr() {}
 
   // Allocates state for a new session.
-  Status CreateSession(const std::string& session, const ServerDef& server_def,
-                       bool isolate_session_state);
+  Status CreateSession(
+      const std::string& session, const ServerDef& server_def,
+      bool isolate_session_state,
+      StatusCallback coordination_error_callback = [](Status s) {
+        LOG(ERROR) << "Coordination agent is set to error: " << s;
+      });
   Status CreateSession(
       const std::string& session, const ServerDef& server_def,
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
@@ -70,7 +73,9 @@ class SessionMgr {
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
       bool isolate_session_state, std::string master_task,
       int64_t master_incarnation,
-      const CoordinationServiceConfig& coordination_service_config);
+      StatusCallback coordination_error_callback = [](Status s) {
+        LOG(ERROR) << "Coordination agent is set to error: " << s;
+      });
 
   void ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache);
 
@@ -99,6 +104,10 @@ class SessionMgr {
   void RetrieveLogs(int64_t step_id, LoggingResponse* response);
 
   void ClearLogs();
+
+  // Agent should be torn down before service as it needs to disconnect first.
+  void TeardownCoordinationServiceAgent();
+  void TeardownCoordinationService();
 
  private:
   WorkerEnv* const worker_env_;  // Not owned.

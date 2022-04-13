@@ -249,16 +249,18 @@ static tensorflow::Status InjectTfGpuResourcesHelper(
                                                 /*peer_gpu_ids=*/{});
       if (!tf_allocator)
         return tensorflow::errors::NotFound("TF allocator not found");
-      auto gpu_device_info = gpu_device->tensorflow_gpu_device_info();
-      if (!gpu_device_info)
-        return tensorflow::errors::NotFound("gpu_device_info not found");
+      auto accelerator_device_info =
+          gpu_device->tensorflow_accelerator_device_info();
+      if (!accelerator_device_info)
+        return tensorflow::errors::NotFound(
+            "accelerator_device_info not found");
 
       tfrt::gpu::GpuResources gpu_resources;
       gpu_resources.gpu_context = tfrt::gpu::wrapper::Context(gpu_context);
       gpu_resources.allocator_factory =
           CreateRuntimeFallbackGpuAllocatorFactory(tf_allocator);
       gpu_resources.stream = tfrt::gpu::wrapper::Stream(static_cast<CUstream>(
-          gpu_device_info->stream->implementation()->GpuStreamHack()));
+          accelerator_device_info->stream->implementation()->GpuStreamHack()));
       auto platform = tfrt::gpu::wrapper::Platform::CUDA;
       tfrt::gpu::SetTfrtGpuResources(
           tfrt::gpu::wrapper::Device(gpu_ordinal, platform), gpu_resources);
@@ -1256,64 +1258,6 @@ static llvm::Expected<tfrt::Value> ConvertTFTensorHandleToTFRTTensor(
   return std::move(value);
 }
 
-// Sync execution via runtime fallback, by taking and returning
-// tfrt::TensorHandle.
-static void RuntimeFallbackSyncExecuteOp(tfrt::SyncKernelFrame* frame) {
-  const auto& exec_ctx = frame->GetExecutionContext();
-  assert(frame->GetNumAttributes() == 2);
-  auto op_attr_array = AggregateAttr(frame->GetAttributeAt(0));
-  auto op_name = StringAttr(frame->GetAttributeAt(1));
-
-  tfrt::OpAttrs op_attrs;
-  tfrt::SetUpOpAttrs(op_attr_array, &op_attrs);
-
-  llvm::SmallVector<OwnedTensorHandle, 8> input_tensor_handles;
-  llvm::SmallVector<TensorHandle*, 8> input_tensor_handle_ptrs;
-  input_tensor_handles.reserve(frame->GetNumArgs());
-  input_tensor_handles.reserve(frame->GetNumArgs());
-  for (int i = 0, e = frame->GetNumArgs(); i < e; ++i) {
-    auto& tensor = frame->GetArgAt<Tensor>(i);
-    input_tensor_handles.push_back(ConvertTFRTTensorToTFTensorHandle(&tensor));
-    input_tensor_handle_ptrs.push_back(input_tensor_handles.back().get());
-  }
-  int num_retvals = frame->GetNumResults();
-  llvm::SmallVector<tensorflow::AbstractTensorHandle*, 4> result_tensor_handles(
-      num_retvals);
-
-  // Get EagerContext.
-  auto eager_ctx_expected = GetEagerContext(exec_ctx);
-  if (!eager_ctx_expected) {
-    frame->SetError(eager_ctx_expected.takeError());
-    return;
-  }
-
-  auto status = CallEagerExecute(exec_ctx, eager_ctx_expected.get(),
-                                 op_name.GetValue().drop_front(3).str().c_str(),
-                                 /*device_name=*/"", input_tensor_handle_ptrs,
-                                 OpAttrsRef(op_attrs), result_tensor_handles);
-
-  if (!status.ok()) {
-    frame->SetError(tfrt::MakeStringError(status.error_message()));
-    return;
-  }
-
-  llvm::SmallVector<OwnedTensorHandle, 4> owned_result_tensor_handles;
-  owned_result_tensor_handles.reserve(result_tensor_handles.size());
-  for (auto* tensor_handle : result_tensor_handles)
-    owned_result_tensor_handles.push_back(
-        OwnedTensorHandle{TensorHandleFromInterface(tensor_handle)});
-
-  for (auto iter : llvm::enumerate(owned_result_tensor_handles)) {
-    auto value = ConvertTFTensorHandleToTFRTTensor(std::move(iter.value()),
-                                                   frame->GetHostContext());
-    if (!value) {
-      frame->SetError(value.takeError());
-      return;
-    }
-    *frame->GetResultAt(iter.index()) = std::move(*value);
-  }
-}
-
 void RegisterTfdDelegateKernels(tfrt::KernelRegistry* registry) {
   registry->AddKernel("tfd.init_eager_context",
                       TFRT_KERNEL(TfdInitEagerContext));
@@ -1343,11 +1287,6 @@ void RegisterTfdDelegateKernels(tfrt::KernelRegistry* registry) {
                       TFRT_KERNEL(CreateRuntimeFallbackOpHandlerKernel));
   registry->AddKernel("corert.add_runtime_fallback_implicit_conversions",
                       TFRT_KERNEL(AddRuntimeFallbackImplicitConversionKernel));
-
-  // Below are synchronous fallback kernels.
-
-  registry->AddSyncKernel("tfrt_fallback_sync.executeop",
-                          RuntimeFallbackSyncExecuteOp);
 }
 
 }  // namespace tfd

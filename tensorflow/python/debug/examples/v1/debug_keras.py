@@ -41,7 +41,6 @@ def main(_):
   if FLAGS.debug:
     # Use the command-line interface (CLI) of tfdbg.
     if FLAGS.use_random_config_path:
-      # TODO(mihaimaruseac): Safe to ignore fd here?
       _, config_file_path = tempfile.mkstemp(".tfdbg_config")
     else:
       config_file_path = None

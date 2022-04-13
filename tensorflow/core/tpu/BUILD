@@ -13,8 +13,9 @@ package(
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
-        "//tensorflow/core/profiler/internal/tpu:__subpackages__",
+        "//tensorflow/core/profiler/backends/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
+        "//tensorflow/dtensor:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],
@@ -25,6 +26,19 @@ cc_library(
     hdrs = ["libtftpu.h"],
     visibility = ["//visibility:public"],
     deps = [],
+)
+
+cc_library(
+    name = "tpu_embedding_configuration_utils",
+    srcs = ["tpu_embedding_configuration_utils.cc"],
+    hdrs = ["tpu_embedding_configuration_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 cc_library(
@@ -143,7 +157,17 @@ cc_library(
     srcs = ["tpu_initializer_helper.cc"],
     hdrs = ["tpu_initializer_helper.h"],
     deps = [
+        ":libtftpu_header",
+        ":tpu_api",
+        ":tpu_api_dlsym_set_fn",
+        ":tpu_executor_init_fns",
+        ":tpu_library_init_fns",
+        ":tpu_ops_c_api_hdrs",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform/cloud:gcs_file_system",
+        "//tensorflow/stream_executor/tpu:tpu_executor",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -178,20 +202,9 @@ cc_library(
         ["tpu_api_dlsym_initializer_windows.cc"],
         otherwise = ["tpu_api_dlsym_initializer.cc"],
     ),
-    hdrs = ["tpu_api_dlsym_initializer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":libtftpu_header",
-        ":tpu_api",
-        ":tpu_api_dlsym_set_fn",
-        ":tpu_executor_init_fns",
         ":tpu_initializer_helper",
-        ":tpu_library_init_fns",
-        ":tpu_ops_c_api_hdrs",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform/cloud:gcs_file_system",
-        "//tensorflow/stream_executor/tpu:tpu_executor",
-        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
     # Always link this in, because even if we don't use it directly we want its
     #static initializers to dynamically load API symbols exported from libtpu.so

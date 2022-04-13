@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/cost_util.h"
 
+#include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/platform/env.h"
@@ -25,6 +26,8 @@ namespace {
 
 class TestGcuCostMeasurement : public CostMeasurement {
  public:
+  using CostMeasurement::CostMeasurement;
+
   absl::Duration GetTotalCost() override { return absl::ZeroDuration(); }
   absl::string_view GetCostType() const override { return "test_gcu"; }
 };
@@ -32,6 +35,8 @@ REGISTER_COST_MEASUREMENT("test_gcu", TestGcuCostMeasurement);
 
 class TestTpuCostMeasurement : public CostMeasurement {
  public:
+  using CostMeasurement::CostMeasurement;
+
   absl::Duration GetTotalCost() override { return absl::ZeroDuration(); }
   absl::string_view GetCostType() const override { return "test_tpu"; }
 };
@@ -46,8 +51,9 @@ REGISTER_REQUEST_COST_ACCESSOR("test", TestRequestCostAccessor);
 TEST(CreateCostMeasurementsTest, Basic) {
   setenv("TF_COST_MEASUREMENT_TYPE", "test_gcu, test_tpu, test_invalid",
          /*overwrite=*/1);
+  const CostMeasurement::Context context;
   std::vector<std::unique_ptr<CostMeasurement>> measurements =
-      CreateCostMeasurements();
+      CreateCostMeasurements(context);
 
   EXPECT_EQ(measurements.size(), 2);
   EXPECT_EQ(measurements[0]->GetTotalCost(), absl::ZeroDuration());

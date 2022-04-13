@@ -55,6 +55,9 @@ namespace xla {
   V(kAllReduceStart, "all-reduce-start", kHloOpcodeIsVariadic)                 \
   V(kAllReduceDone, "all-reduce-done", 1)                                      \
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                             \
+  V(kAsyncStart, "async-start", kHloOpcodeIsVariadic)                          \
+  V(kAsyncUpdate, "async-update", 1)                                           \
+  V(kAsyncDone, "async-done", 1)                                               \
   V(kAtan2, "atan2", 2)                                                        \
   V(kBatchNormGrad, "batch-norm-grad", 5)                                      \
   V(kBatchNormInference, "batch-norm-inference", 5)                            \
@@ -135,6 +138,7 @@ namespace xla {
   V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)                      \
   V(kRngBitGenerator, "rng-bit-generator", 1)                                  \
   V(kRoundNearestAfz, "round-nearest-afz", 1)                                  \
+  V(kRoundNearestEven, "round-nearest-even", 1)                                \
   V(kRsqrt, "rsqrt", 1)                                                        \
   V(kScatter, "scatter", 3)                                                    \
   V(kSelect, "select", 3)                                                      \
@@ -152,7 +156,6 @@ namespace xla {
   V(kCbrt, "cbrt", 1)                                                          \
   V(kSubtract, "subtract", 2)                                                  \
   V(kTanh, "tanh", 1)                                                          \
-  V(kTrace, "trace", 1)                                                        \
   V(kTranspose, "transpose", 1)                                                \
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \
@@ -189,6 +192,26 @@ bool HloOpcodeIsVariadic(HloOpcode opcode);
 // Returns the arity of opcode. If the opcode is variadic,
 // returns nullopt.
 absl::optional<int> HloOpcodeArity(HloOpcode opcode);
+
+// Returns true if the given opcode is one of kAsyncStart, kAsyncUpdate, or
+// kAsyncDone.
+bool HloOpcodeIsAsync(HloOpcode opcode);
+
+// True if the op takes two arguments and order doesn't matter.
+inline bool HloOpcodeIsBinaryCommutative(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAdd:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kAnd:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+      return true;
+    default:
+      return false;
+  }
+}
 
 // Returns the number of HloOpcode values.
 inline const uint32_t HloOpcodeCount() {

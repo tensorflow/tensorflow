@@ -17,10 +17,10 @@ limitations under the License.
 
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 
-#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -48,14 +48,23 @@ struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
     if (!result_type || !result_type.hasStaticShape() || result_rank > 1)
       return failure();
 
-    auto memref_type =
-        MemRefType::get(result_type.getShape(), result_type.getElementType());
+    auto element_type = result_type.getElementType();
+    auto memref_type = MemRefType::get(result_type.getShape(), element_type);
     auto elements_attr = op.getValue().cast<DenseElementsAttr>();
+
+    // arith.constant doesn't handle scalar complex types.
+    // TODO(kramerb): Should this use materializeConstant instead?
+    auto make_constant = [&](Attribute attr, Type type) -> Value {
+      if (complex::ConstantOp::isBuildableWith(attr, type))
+        return rewriter.create<complex::ConstantOp>(loc, type,
+                                                    attr.cast<ArrayAttr>());
+      return rewriter.create<arith::ConstantOp>(loc, attr);
+    };
 
     if (result_rank == 0) {
       Value buffer = rewriter.create<memref::AllocOp>(loc, memref_type);
-      Value constant = rewriter.create<arith::ConstantOp>(
-          loc, elements_attr.getValues<Attribute>()[0]);
+      Value constant =
+          make_constant(elements_attr.getValues<Attribute>()[0], element_type);
       rewriter.create<memref::StoreOp>(loc, constant, buffer);
       rewriter.replaceOp(op, {buffer});
       return success();
@@ -66,11 +75,10 @@ struct BufferizeConstantOp : public OpConversionPattern<arith::ConstantOp> {
     bool all_same_elems = elements_attr.isSplat();
     Value value;
     if (all_same_elems)
-      value = rewriter.create<arith::ConstantOp>(
-          loc, elements_attr.getSplatValue<mlir::Attribute>());
+      value = make_constant(elements_attr.getSplatValue<mlir::Attribute>(),
+                            element_type);
     for (auto &en : llvm::enumerate(elements_attr.getValues<Attribute>())) {
-      if (!all_same_elems)
-        value = rewriter.create<arith::ConstantOp>(loc, en.value());
+      if (!all_same_elems) value = make_constant(en.value(), element_type);
       Value index = rewriter.create<arith::ConstantIndexOp>(loc, en.index());
       rewriter.create<memref::StoreOp>(loc, value, buffer, index);
     }
@@ -103,7 +111,8 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
       if (i) {
         Value rank_is_greater = lb.create<arith::CmpIOp>(
             arith::CmpIPredicate::ugt, ranks[i], max_rank);
-        max_rank = lb.create<SelectOp>(rank_is_greater, ranks[i], max_rank);
+        max_rank =
+            lb.create<arith::SelectOp>(rank_is_greater, ranks[i], max_rank);
       } else {
         max_rank = ranks[0];
       }
@@ -206,8 +215,8 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
             Value current_size_is_not_one = b.create<arith::CmpIOp>(
                 l, arith::CmpIPredicate::ne, current_size, one);
             no_broadcasting.push_back(current_size_is_not_one);
-            Value new_same_size = b.create<SelectOp>(l, current_size_is_not_one,
-                                                     current_size, same_size);
+            Value new_same_size = b.create<arith::SelectOp>(
+                l, current_size_is_not_one, current_size, same_size);
             Value same_size_was_not_one = b.create<arith::CmpIOp>(
                 l, arith::CmpIPredicate::ne, same_size, one);
             Value is_different_size = b.create<arith::CmpIOp>(
@@ -233,9 +242,9 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
             // If all dimensions are 1, we preserve the status whether a shape
             // needs broadcasting or not, because in that case the dimension can
             // just be ignored.
-            no_broadcasting[i] =
-                b.create<SelectOp>(l, same_size_is_one, prev_no_broadcasting[i],
-                                   no_broadcasting[i]);
+            no_broadcasting[i] = b.create<arith::SelectOp>(
+                l, same_size_is_one, prev_no_broadcasting[i],
+                no_broadcasting[i]);
             // Compare whether the current shape changes its status regarding
             // whether it needs broadcasting at the current dimension.
             Value broadcasting_is_different = b.create<arith::CmpIOp>(
@@ -289,9 +298,10 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
                                    // If the shape needed broadcasting at the
                                    // previous dimension, we set the output size
                                    // to 1, otherwise to 'running_product'.
-                                   Value output_size = b.create<SelectOp>(
-                                       l, prev_no_broadcasting[i],
-                                       running_product, one);
+                                   Value output_size =
+                                       b.create<arith::SelectOp>(
+                                           l, prev_no_broadcasting[i],
+                                           running_product, one);
                                    b.create<memref::StoreOp>(l, output_size,
                                                              result_shapes[i],
                                                              output_dimension);
@@ -327,7 +337,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
       result_shapes[i] =
           RemoveLeadingOnesFrom1DMemref(lb, result_shapes[i], ranks[i]);
       result_shapes[i] =
-          lb.create<SelectOp>(is_invalid, shapes[i], result_shapes[i]);
+          lb.create<arith::SelectOp>(is_invalid, shapes[i], result_shapes[i]);
     }
     rewriter.replaceOp(broadcast_shapes_op, result_shapes);
     return success();
@@ -352,8 +362,8 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
           auto all_ones =
               b.create<arith::AndIOp>(l, vr.front(), is_equal_to_one);
           auto increased_value = b.create<arith::AddIOp>(l, vr.back(), one);
-          auto number_of_leading_ones =
-              b.create<SelectOp>(l, all_ones, increased_value, vr.back());
+          auto number_of_leading_ones = b.create<arith::SelectOp>(
+              l, all_ones, increased_value, vr.back());
           b.create<scf::YieldOp>(l,
                                  ValueRange{all_ones, number_of_leading_ones});
         });
@@ -413,7 +423,7 @@ void populateExtraBufferizePatterns(
     MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       BufferizeAndConvertMinimumBroadcastShapesOp,
       BufferizeConstantOp,
       BufferizeJITExecuteOp
