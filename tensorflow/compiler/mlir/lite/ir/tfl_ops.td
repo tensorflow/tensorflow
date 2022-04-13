@@ -45,19 +45,6 @@ def TFL_Quint8 : Type<CPred<"$_self.isa<mlir::TF::Quint8Type>()">,
 
 
 //===----------------------------------------------------------------------===//
-// Padding enum definitions.
-//===----------------------------------------------------------------------===//
-
-// Allowed padding cases
-// These should match the padding enum in TFLite schema.
-def TFL_PAD_Same  : StrEnumAttrCase<"SAME">;
-def TFL_PAD_Valid : StrEnumAttrCase<"VALID">;
-
-def TFL_PaddingAttr : StrEnumAttr<"Padding", "padding enum", [
-      TFL_PAD_Same, TFL_PAD_Valid
-    ]>;
-
-//===----------------------------------------------------------------------===//
 // TensorType attribute definitions.
 //===----------------------------------------------------------------------===//
 // A type attribute containing the TensorType.
@@ -1025,15 +1012,6 @@ def TFL_DepthwiseConv2DOp :
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
   }];
 }
-
-def TFL_FCWO_Default  : StrEnumAttrCase<"DEFAULT">;
-def TFL_FCWO_Shuffled4x16i8  : StrEnumAttrCase<"SHUFFLED4x16INT8">;
-
-def TFL_FullyConnectedOptionsWeightFormatAttr :
-    StrEnumAttr<"FullyConnectedOptionsWeightsFormat",
-                "fully connected options weights format", [
-      TFL_FCWO_Default, TFL_FCWO_Shuffled4x16i8
-    ]>;
 
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
