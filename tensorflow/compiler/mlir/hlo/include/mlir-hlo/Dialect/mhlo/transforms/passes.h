@@ -119,6 +119,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFlattenTuplePass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateExpandHloTuplesPass(
     const std::string& entry_function_name = "main");
 
+// Creates a pass for collapsing the mhlo.map if the map only has elementwise
+// op.
+std::unique_ptr<OperationPass<func::FuncOp>> createCollapseElementwiseMapPass();
+
 }  // namespace mhlo
 }  // namespace mlir
 
