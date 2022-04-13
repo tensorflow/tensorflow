@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -107,6 +108,8 @@ static std::string GetDevice(mlir::Value value, FuncOp parent_func_op) {
 
 struct CrossDeviceTransferPass
     : public PassWrapper<CrossDeviceTransferPass, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CrossDeviceTransferPass)
+
   void runOnOperation() override;
 
   llvm::StringRef getArgument() const final {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -124,7 +125,7 @@ Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
                                     const toco::TocoFlags& toco_flags,
                                     string* result) {
   mlir::MLIRContext context;
-  mlir::TFL::QuantizationSpecs quant_specs;
+  mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<string> node_names;
@@ -169,7 +170,7 @@ Status ConvertJaxToTFLiteFlatBuffer(const std::string& input,
   }
 
   // Set the input names.
-  auto main_func = module->lookupSymbol<mlir::FuncOp>("main");
+  auto main_func = module->lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_func) return errors::Internal("Failed to find the main function.");
   // Retrive input names from model flags.
   std::vector<std::string> input_names;

@@ -28,9 +28,9 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -337,7 +337,7 @@ SmallVector<Value, 8> MaterializeRankedOperations(
     OperationState ranked_op_state(loc, nested_op.getName().getStringRef(),
                                    mapped_operands, ranked_result_types,
                                    nested_op.getAttrs());
-    Operation *ranked_op = b.createOperation(ranked_op_state);
+    Operation *ranked_op = b.create(ranked_op_state);
     for (auto it : llvm::zip(nested_op.getResults(), ranked_op->getResults()))
       bvm.map(std::get<0>(it), std::get<1>(it));
   }
@@ -920,7 +920,7 @@ struct RankSpecializationToSCFPass
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mhlo::MhloDialect, chlo::HloClientDialect,
-                    StandardOpsDialect, shape::ShapeDialect, scf::SCFDialect>();
+                    func::FuncDialect, shape::ShapeDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {

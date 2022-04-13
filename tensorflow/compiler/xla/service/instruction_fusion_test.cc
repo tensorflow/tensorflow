@@ -29,20 +29,19 @@ using InstructionFusionTest = HloTestBase;
 // FuseIntoMultiOutput for testing.
 class InstructionFusionForTesting : public InstructionFusion {
  public:
-  explicit InstructionFusionForTesting(HloModule* module)
-      : InstructionFusion(InstructionFusion::IsExpensive) {
-    module_ = module;
-    computation_ = module->entry_computation();
-  }
+  explicit InstructionFusionForTesting()
+      : InstructionFusion(InstructionFusion::IsExpensive) {}
 
-  HloInstruction* Fuse(HloInstruction* producer,
-                       HloInstruction* consumer) override {
-    return InstructionFusion::Fuse(producer, consumer);
+  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
+                       HloComputation* computation) override {
+    return InstructionFusion::Fuse(producer, consumer, computation);
   }
 
   HloInstruction* FuseIntoMultiOutput(HloInstruction* producer,
-                                      HloInstruction* consumer) override {
-    return InstructionFusion::FuseIntoMultiOutput(producer, consumer);
+                                      HloInstruction* consumer,
+                                      HloComputation* computation) override {
+    return InstructionFusion::FuseIntoMultiOutput(producer, consumer,
+                                                  computation);
   }
 };
 
@@ -58,7 +57,7 @@ TEST_F(InstructionFusionTest, FuseInstructions) {
   HloInstruction* sub = module->entry_computation()->root_instruction();
   HloInstruction* add = sub->mutable_operand(0);
   HloInstruction* fusion =
-      InstructionFusionForTesting(module.get()).Fuse(add, sub);
+      InstructionFusionForTesting().Fuse(add, sub, module->entry_computation());
 
   ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
   EXPECT_THAT(fusion->fused_expression_root(),
@@ -81,8 +80,8 @@ TEST_F(InstructionFusionTest, FuseIntoFusionInstruction) {
                     .ValueOrDie();
   HloInstruction* root = module->entry_computation()->root_instruction();
   HloInstruction* abs = root->mutable_operand(0);
-  HloInstruction* fusion =
-      InstructionFusionForTesting(module.get()).Fuse(abs, root);
+  HloInstruction* fusion = InstructionFusionForTesting().Fuse(
+      abs, root, module->entry_computation());
 
   ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
   EXPECT_THAT(fusion->fused_expression_root(), op::Add(op::Abs(), op::Abs()))
@@ -102,8 +101,8 @@ TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
   HloInstruction* root = module->entry_computation()->root_instruction();
   HloInstruction* abs = root->mutable_operand(0);
   HloInstruction* tanh = root->mutable_operand(1);
-  HloInstruction* fusion =
-      InstructionFusionForTesting(module.get()).FuseIntoMultiOutput(abs, tanh);
+  HloInstruction* fusion = InstructionFusionForTesting().FuseIntoMultiOutput(
+      abs, tanh, module->entry_computation());
 
   ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
   EXPECT_THAT(fusion->fused_expression_root(), op::Tuple(op::Tanh(), op::Abs()))
@@ -184,7 +183,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     abs1 = f32[] abs(add)
     rng = f32[] rng(p1, abs1), distribution=rng_uniform
     abs2 = f32[] abs(rng)
-    abs3 = f32[] abs(rng)    
+    abs3 = f32[] abs(rng)
     ROOT root = f32[] subtract(abs2, add)
   })")
                     .ValueOrDie();

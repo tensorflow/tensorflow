@@ -475,6 +475,98 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveBcastRecv").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("CollectiveBcastRecv").Device(DEVICE_DEFAULT),
                         CollectiveBcastRecvOpKernel);
 
+class CollectiveAssignGroupV2OpKernel : public OpKernel {
+ public:
+  explicit CollectiveAssignGroupV2OpKernel(OpKernelConstruction* c)
+      : OpKernel(c) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& group_assignment = context->input(0);
+    const Tensor& device_index = context->input(1);
+    const Tensor& base_key = context->input(2);
+
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(device_index.shape()),
+        errors::InvalidArgument(
+            "device_index must be a scalar, but received tensor of shape: ",
+            device_index.shape().DebugString()));
+
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsMatrix(group_assignment.shape()),
+        errors::InvalidArgument("group_assignment must be a 2-d Tensor, but "
+                                "received tensor of shape: ",
+                                group_assignment.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(base_key.shape()),
+                errors::InvalidArgument(
+                    "base_key must be a scalar, but received tensor of shape: ",
+                    base_key.shape().DebugString()));
+
+    Tensor* group_key = nullptr;
+    Tensor* group_size = nullptr;
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({}),
+                                                     &group_size, attr));
+
+    OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape({}),
+                                                     &group_key, attr));
+
+    OP_REQUIRES_OK(
+        context,
+        ComputeGroupKey(group_assignment, device_index.scalar<int32_t>()(),
+                        base_key.scalar<int32_t>()(), group_size, group_key));
+  }
+
+ private:
+  static Status ComputeGroupKey(const Tensor& group_assignment,
+                                const int32_t device_index,
+                                const int32_t base_key, Tensor* group_size,
+                                Tensor* group_key) {
+    group_size->flat<int32_t>()(0) = group_assignment.dim_size(1);
+
+    for (int group_id = 0; group_id < group_assignment.dim_size(0);
+         group_id++) {
+      int32_t key = static_cast<int32_t>(static_cast<uint32_t>(base_key) +
+                                         static_cast<uint32_t>(group_id));
+      if (key == 0) {
+        return errors::InvalidArgument(
+            "Using the reserved group_key = 0 is not allowed: group_id = ",
+            group_id, ", base_key = ", base_key);
+      }
+      for (int color = 0; color < group_assignment.dim_size(1); color++) {
+        const auto index = group_assignment.matrix<int32>()(group_id, color);
+        if (index < 0 || index >= group_assignment.shape().num_elements()) {
+          return errors::InvalidArgument("Not all items in group_assignment ",
+                                         group_assignment.DebugString(),
+                                         " is within [0, number of devices)");
+        }
+        if (index == device_index) {
+          group_key->flat<int32_t>()(0) = key;
+          VLOG(2) << " group_assignment = " << group_assignment.DebugString()
+                  << " device_index = " << index
+                  << " group_key = " << group_key->DebugString()
+                  << " group_size = " << group_size->DebugString();
+          return Status::OK();
+        }
+      }
+    }
+    return errors::InvalidArgument("device_index ", device_index,
+                                   " is not found in group_assignment ",
+                                   group_assignment.DebugString());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("CollectiveAssignGroupV2").Device(DEVICE_CPU),
+                        CollectiveAssignGroupV2OpKernel);
+REGISTER_KERNEL_BUILDER(Name("CollectiveAssignGroupV2")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("device_index")
+                            .HostMemory("group_assignment")
+                            .HostMemory("base_key")
+                            .HostMemory("group_size")
+                            .HostMemory("group_key"),
+                        CollectiveAssignGroupV2OpKernel);
+
 class CollectiveOpV2Kernel : public AsyncOpKernel {
  public:
   explicit CollectiveOpV2Kernel(OpKernelConstruction* c)

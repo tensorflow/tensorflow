@@ -1056,10 +1056,6 @@ class DatasetBase : public core::RefCounted {
   };
 
  protected:
-  friend Status AsGraphDef(
-      OpKernelContext* ctx, const DatasetBase* dataset,
-      SerializationContext&& serialization_ctx,
-      GraphDef* graph_def);  // For access to graph related members.
   friend class CapturedFunction;
 
   // Serializes the dataset into a `GraphDef`, which has two uses:

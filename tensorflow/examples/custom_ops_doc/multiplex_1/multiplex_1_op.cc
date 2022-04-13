@@ -22,7 +22,7 @@ limitations under the License.
 // "Best practices for custom operations in TensorFlow"
 // https://github.com/tensorflow/community/blob/master/rfcs/20190726-custom-ops.md
 
-REGISTER_OP("Examples>MultiplexDense")
+REGISTER_OP("Examples1>MultiplexDense")
     .Input("cond: bool")
     .Input("a_values: T")
     .Input("b_values: T")

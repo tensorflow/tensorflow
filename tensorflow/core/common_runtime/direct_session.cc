@@ -433,7 +433,7 @@ Status DirectSession::Extend(GraphDef&& graph) {
   return ExtendLocked(std::move(graph));
 }
 
-Status DirectSession::ExtendLocked(GraphDef graph) {
+Status DirectSession::ExtendLocked(GraphDef&& graph) {
   if (finalized_) {
     return errors::FailedPrecondition("Session has been finalized.");
   }

@@ -126,6 +126,18 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "comparison_util_test",
+    srcs = ["comparison_util_test.cc"],
+    deps = [
+        ":comparison_util",
+        ":test",
+        ":xla_data_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "execution_options_util",
     srcs = [
@@ -249,6 +261,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/numeric:bits",
@@ -799,16 +812,17 @@ tf_cc_test(
 
 cc_library(
     name = "shape_tree",
+    srcs = ["shape_tree.cc"],
     hdrs = ["shape_tree.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":shape_util",
         ":status_macros",
-        ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/types:span",
     ],
 )

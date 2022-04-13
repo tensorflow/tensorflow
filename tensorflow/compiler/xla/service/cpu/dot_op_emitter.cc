@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "mlir/Dialect/Arithmetic/Utils/Utils.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -268,7 +269,8 @@ Status DotOpEmitter::EmitLinalgMatmul() {
 
   return EmitMlirFuncAndCall(
       mlir_context_, b_, dot_info_.result_shape, operand_shapes, target_ptr,
-      operand_ptrs, name, [&](mlir::OpBuilder* builder, mlir::FuncOp function) {
+      operand_ptrs, name,
+      [&](mlir::OpBuilder* builder, mlir::func::FuncOp function) {
         CHECK_EQ(dot_info_.dim_nums.lhs_contracting_dimensions_size(), 1);
         CHECK_EQ(dot_info_.dim_nums.rhs_contracting_dimensions_size(), 1);
         mlir::MLIRContext* context = builder->getContext();
@@ -319,7 +321,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
               mlir::Value add = ab.add(mul, args[2]);
               b.create<mlir::linalg::YieldOp>(loc, add);
             });
-        builder->create<mlir::ReturnOp>(function.getLoc());
+        builder->create<mlir::func::ReturnOp>(function.getLoc());
 
         mlir::linalg::LinalgTilingOptions tilingOptions;
         tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
@@ -347,7 +349,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         // TODO: this should be within a pass and we should be able to create a
         // nested OpPassManager.
         // Created a nested OpPassManager, populate the strategy and run.
-        // mlir::OpPassManager dynamicPM("builtin.func");
+        // mlir::OpPassManager dynamicPM("func.func");
         // strategy.configurePassPipeline(dynamicPM, function.getContext());
         // Propagate pass failure?
         // (void)mlir::runPipeline(dynamicPM, function);
@@ -1118,10 +1120,10 @@ llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilder<>* b,
         LayoutUtil::IsMonotonicWithDim0Major(shape.layout()));
   CHECK_GE(shape.dimensions_size(), n);
   Shape new_shape = CollapseFirstNDims(shape, n);
-  llvm::Value* new_value = b->CreateBitCast(
-      array.GetBasePointer(),
-      llvm_ir::ShapeToIrType(new_shape, module)->getPointerTo());
-  return llvm_ir::IrArray(new_value, std::move(new_shape));
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
+  llvm::Value* new_value =
+      b->CreateBitCast(array.GetBasePointer(), new_ir_type->getPointerTo());
+  return llvm_ir::IrArray(new_value, new_ir_type, std::move(new_shape));
 }
 
 Status ValidateDotDimensionNumbers(const DotDimensionNumbers& dim_numbers) {
@@ -1151,10 +1153,10 @@ llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
   llvm_ir::IrArray::Index slice_index(multidim_index, outer_array.GetShape(),
                                       batch_index->getType());
   llvm::Value* slice_ptr = outer_array.EmitArrayElementAddress(slice_index, b);
-  llvm::Type* slice_ptr_type =
-      llvm_ir::ShapeToIrType(inner_shape, module)->getPointerTo();
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(inner_shape, module);
+  llvm::Type* slice_ptr_type = new_ir_type->getPointerTo();
   return llvm_ir::IrArray(b->CreateBitCast(slice_ptr, slice_ptr_type),
-                          std::move(inner_shape));
+                          new_ir_type, std::move(inner_shape));
 }
 
 Status EmitBatchDotOperation(

@@ -707,6 +707,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/transforms:PassRegistration",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
     ],

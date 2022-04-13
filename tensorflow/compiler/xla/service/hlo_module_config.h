@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_CONFIG_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -148,6 +149,37 @@ class HloModuleConfig {
     use_spmd_partitioning_ = use_spmd_partitioning;
   }
   bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
+
+  void set_use_auto_spmd_partitioning(bool use_auto_spmd_partitioning) {
+    use_auto_spmd_partitioning_ = use_auto_spmd_partitioning;
+    if (use_auto_spmd_partitioning) {
+      // TODO(yuemmawang) Remove this warning once auto sharding is thoroughly
+      // tested with fleetwide models.
+      LOG(WARNING) << "Warning: Using auto_spmd_partitioning. It is "
+                      "experimental and may "
+                      "contain bugs!";
+      LOG(INFO) << "Overwriting use_spmd_partitioning to true, because "
+                   "use_auto_spmd_partitioning is true.";
+      set_use_spmd_partitioning(true);
+    }
+  }
+  bool use_auto_spmd_partitioning() const {
+    return use_auto_spmd_partitioning_;
+  }
+
+  void set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t> mesh_shape) {
+    auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+  }
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+    return auto_spmd_partitioning_mesh_shape_;
+  }
+
+  void set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t> mesh_ids) {
+    auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+  }
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+    return auto_spmd_partitioning_mesh_ids_;
+  }
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.
@@ -323,6 +355,14 @@ class HloModuleConfig {
   // Whether to use SPMD (true) or MPMD (false) when num_partitions_ > 0 and XLA
   // needs to partition the module.
   bool use_spmd_partitioning_ = false;
+
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning_ = false;
+
+  // Mesh shape and mesh ids used by auto spmd partitioning.
+  std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
+
+  std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.

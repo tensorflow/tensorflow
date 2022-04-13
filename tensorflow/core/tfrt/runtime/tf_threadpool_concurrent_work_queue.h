@@ -70,6 +70,12 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
   tensorflow::thread::ThreadPoolInterface* inter_op_threadpool_ = nullptr;
 };
 
+// Create a default TfThreadPoolWorkQueue that is implemented by
+// tensorflow::thread::ThreadPool. `num_inter_op_threads` and
+// `num_intra_op_threads` must be larger than zero.
+std::unique_ptr<TfThreadPoolWorkQueue> CreateDefaultTfThreadPoolWorkQueue(
+    int num_inter_op_threads, int num_intra_op_threads);
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 

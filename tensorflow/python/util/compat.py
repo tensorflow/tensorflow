@@ -47,6 +47,7 @@ import numbers as _numbers
 
 import numpy as _np
 import six as _six
+import codecs
 
 from tensorflow.python.util.tf_export import tf_export
 
@@ -72,6 +73,8 @@ def as_bytes(bytes_or_text, encoding='utf-8'):
   Raises:
     TypeError: If `bytes_or_text` is not a binary or unicode string.
   """
+  # Validate encoding, a LookupError will be raised if invalid.
+  encoding = codecs.lookup(encoding).name
   if isinstance(bytes_or_text, bytearray):
     return bytes(bytes_or_text)
   elif isinstance(bytes_or_text, _six.text_type):
@@ -99,6 +102,8 @@ def as_text(bytes_or_text, encoding='utf-8'):
   Raises:
     TypeError: If `bytes_or_text` is not a binary or unicode string.
   """
+  # Validate encoding, a LookupError will be raised if invalid.
+  encoding = codecs.lookup(encoding).name
   if isinstance(bytes_or_text, _six.text_type):
     return bytes_or_text
   elif isinstance(bytes_or_text, bytes):

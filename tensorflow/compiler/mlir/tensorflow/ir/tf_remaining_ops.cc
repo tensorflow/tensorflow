@@ -37,7 +37,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -54,7 +54,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -104,15 +104,15 @@ LogicalResult _XlaHostComputeMlirOp::verify() {
            << "serialized module in attribute 'host_mlir_module' does not "
               "contain 'host_func' function.";
 
-  if (op->getNumOperands() != func.getType().getNumInputs())
+  if (op->getNumOperands() != func.getFunctionType().getNumInputs())
     return op.emitError()
-           << "'host_func' has " << func.getType().getNumInputs()
+           << "'host_func' has " << func.getFunctionType().getNumInputs()
            << " inputs and '_XlaHostComputeMlir' has " << op->getNumOperands()
            << " operands.  Number of operands/inputs should be the same.";
 
-  if (op->getNumResults() != func.getType().getNumResults())
+  if (op->getNumResults() != func.getFunctionType().getNumResults())
     return op.emitError() << "'host_func' has "
-                          << func.getType().getNumResults()
+                          << func.getFunctionType().getNumResults()
                           << " results and '_XlaHostComputeMlir' has "
                           << op->getNumResults()
                           << " results.  Number of results should be the same.";

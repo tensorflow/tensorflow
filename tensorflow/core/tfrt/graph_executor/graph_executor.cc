@@ -291,10 +291,15 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
   if (options.runtime == nullptr) {
     return errors::InvalidArgument("options.runtime must be non-null ");
   }
-  TF_ASSIGN_OR_RETURN(auto graph_execution_state,
-                      TfrtGraphExecutionState::Create(
-                          std::move(graph_def), fallback_state,
-                          options.run_placer_grappler_on_functions));
+
+  TfrtGraphExecutionState::Options graph_execution_state_options;
+  graph_execution_state_options.run_placer_grappler_on_functions =
+      options.run_placer_grappler_on_functions;
+
+  TF_ASSIGN_OR_RETURN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(graph_execution_state_options,
+                                      std::move(graph_def), fallback_state));
   return std::make_unique<GraphExecutor>(std::move(options), fallback_state,
                                          tpu_model_resource,
                                          std::move(graph_execution_state));
@@ -401,6 +406,10 @@ tensorflow::Status GraphExecutor::Run(
   }
 
   return tensorflow::Status::OK();
+}
+
+tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
+  return graph_execution_state_->Extend(graph);
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>

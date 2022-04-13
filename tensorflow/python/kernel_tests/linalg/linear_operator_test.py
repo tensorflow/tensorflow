@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
+from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
@@ -406,6 +407,22 @@ class LinearOperatorTest(test.TestCase):
             lhs, right_operator, adjoint_a=adjoint, adjoint_b=adjoint_arg)
         self.assertAllClose(
             self.evaluate(op_val), self.evaluate(matmul_val))
+
+  def testVectorizedMap(self):
+
+    def fn(x):
+      y = constant_op.constant([3., 4.])
+      # Make a [2, N, N] shaped operator.
+      x = x * y[..., array_ops.newaxis, array_ops.newaxis]
+      operator = linalg.LinearOperatorFullMatrix(
+          x, is_square=True)
+      return operator
+
+    x = np.random.uniform(-1., 1., size=[3, 5, 5]).astype(np.float32)
+    batched_operator = control_flow_ops.vectorized_map(
+        fn, ops.convert_to_tensor(x))
+    self.assertIsInstance(batched_operator, linalg.LinearOperator)
+    self.assertAllEqual(batched_operator.batch_shape, [3, 2])
 
 
 if __name__ == "__main__":

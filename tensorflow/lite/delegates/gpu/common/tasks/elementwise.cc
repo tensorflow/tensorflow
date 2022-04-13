@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -230,7 +231,8 @@ GPUOperation CreateElementwiseTwoInput(
                          absl::make_unique<TensorDescriptor>(std::move(desc)));
   const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
   result.code_ = absl::StrCat(
-      "FLT4 second_val = args.second_tensor.Read(0, 0, ", s_coord, ");\n");
+      "args.second_tensor::type second_val = args.second_tensor.Read(0, 0, ",
+      s_coord, ");\n");
   if (shape.c == 1) {
     result.code_ += "  second_val.y = second_val.x;\n";
     result.code_ += "  second_val.z = second_val.x;\n";
@@ -267,8 +269,9 @@ GPUOperation CreateElementwiseTwoInput(
   const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
   const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
   const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
-  result.code_ = absl::StrCat("FLT4 second_val = args.second_tensor.Read(",
-                              x_coord, ", ", y_coord, ", ", s_coord, ");\n");
+  result.code_ = absl::StrCat(
+      "args.second_tensor::type second_val = args.second_tensor.Read(", x_coord,
+      ", ", y_coord, ", ", s_coord, ");\n");
   if (shape.c == 1) {
     result.code_ += "  second_val.y = second_val.x;\n";
     result.code_ += "  second_val.z = second_val.x;\n";
@@ -330,8 +333,9 @@ GPUOperation CreateElementwiseTwoInput(const OperationDef& definition,
   const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
   const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
   const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
-  op.code_ = absl::StrCat("FLT4 second_val = args.second_tensor.Read(", x_coord,
-                          ", ", y_coord, ", ", s_coord, ");\n");
+  op.code_ = absl::StrCat(
+      "args.second_tensor::type second_val = args.second_tensor.Read(", x_coord,
+      ", ", y_coord, ", ", s_coord, ");\n");
   if (shape.c == 1) {
     op.code_ += "  second_val.y = second_val.x;\n";
     op.code_ += "  second_val.z = second_val.x;\n";

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Core"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -254,13 +254,16 @@ std::vector<T> BuildSparsityParameterAttribute(
   for (int i = 0; i < dim_size; i++) {
     if (format[i] == kTfLiteDimDense) {
       dim_metadata[i] = DimensionMetadataAttr::get(
-          builder->getStringAttr("DENSE"),
+          ::mlir::TFL::DimensionTypeAttr::get(
+              builder->getContext(), ::mlir::TFL::DimensionType::DENSE),
           builder->getI32IntegerAttr(metadata[2 * i][0]),
           builder->getArrayAttr({}), builder->getArrayAttr({}),
           builder->getContext());
     } else {
       dim_metadata[i] = DimensionMetadataAttr::get(
-          builder->getStringAttr("SPARSE_CSR"), builder->getI32IntegerAttr(0),
+          ::mlir::TFL::DimensionTypeAttr::get(
+              builder->getContext(), ::mlir::TFL::DimensionType::SPARSE_CSR),
+          builder->getI32IntegerAttr(0),
           builder->getI32ArrayAttr(metadata[2 * i]),
           builder->getI32ArrayAttr(metadata[2 * i + 1]), builder->getContext());
     }
@@ -288,6 +291,8 @@ std::vector<T> BuildSparsityParameterAttribute(
 //          sparsity, and add Densify() op to fall back to dense execution.
 struct DenseToSparse
     : public PassWrapper<DenseToSparse, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DenseToSparse)
+
   void runOnOperation() override;
 
   StringRef getArgument() const final {

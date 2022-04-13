@@ -71,6 +71,27 @@ tensorflow::Status ReadModelProto(const std::string& input_file,
 // in a text or binary format.
 bool IsTextProto(const std::string& input_file);
 
+template <class T>
+tensorflow::Status SerializeProto(T model_proto,
+                                  const std::string& output_file) {
+  auto output_dir = tensorflow::io::Dirname(output_file);
+
+  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->RecursivelyCreateDir(
+      {output_dir.data(), output_dir.length()}));
+  if (IsTextProto(output_file)) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        tensorflow::WriteTextProto(tensorflow::Env::Default(), output_file,
+                                   model_proto),
+        "Error while writing the resulting model proto");
+  } else {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        tensorflow::WriteBinaryProto(tensorflow::Env::Default(), output_file,
+                                     model_proto),
+        "Error while writing the resulting model proto");
+  }
+  return tensorflow::Status::OK();
+}
+
 }  // namespace graph_transforms
 }  // namespace tfg
 }  // namespace mlir

@@ -151,6 +151,9 @@ bool IsPassthroughCustomOps(const HloInstruction* hlo) {
   if (hlo->IsCustomCall("Sharding")) {
     return true;
   }
+  if (hlo->IsCustomCall("X64Combine")) {
+    return true;
+  }
   if (hlo->operand_count() != 1 || !hlo->shape().IsArray() ||
       !hlo->operand(0)->shape().IsArray() ||
       hlo->operand(0)->shape().rank() != hlo->shape().rank()) {
@@ -222,6 +225,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRemainder:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
@@ -256,6 +260,9 @@ const HloInstruction* PickRepresentativeOperand(
     // There is no suitable operand for the rest of the opcodes.
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceStart:
@@ -301,7 +308,6 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
-    case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kTuple:
@@ -1086,7 +1092,7 @@ bool InferUnspecifiedDimsFromOperand(HloInstruction* annotate_op,
             operand_sharding, unspecified_dims);
     HloSharding sharding = annotate_op->sharding();
     if (!hlo_sharding_util::MergeShardingIfCompatible(
-            partial_replicated, sharding.NumTiles(), &sharding)) {
+            partial_replicated, sharding.NumTiles() + 1, &sharding)) {
       return false;
     }
     annotate_op->set_sharding(sharding);
@@ -1124,8 +1130,7 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
   if (!annotate_op->IsCustomCall("Sharding")) {
     CHECK_EQ(annotate_op->opcode(), HloOpcode::kCopy);
   }
-  if (!IsSpatiallyPartitioned(annotate_op->operand(0)) ||
-      !user->sharding().IsTiled()) {
+  if (!user->has_sharding() || !user->sharding().IsTiled()) {
     return false;
   }
   absl::optional<HloSharding> user_sharding =
@@ -1141,7 +1146,7 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
             *user_sharding, unspecified_dims);
     HloSharding sharding = annotate_op->sharding();
     if (!hlo_sharding_util::MergeShardingIfCompatible(
-            partial_replicated, sharding.NumTiles(), &sharding)) {
+            partial_replicated, sharding.NumTiles() + 1, &sharding)) {
       return false;
     }
     annotate_op->set_sharding(sharding);
@@ -1197,7 +1202,7 @@ bool InferUnspecifiedDimsFromUsers(HloInstruction* annotate_op,
 
   HloInstruction* op_for_users =
       man_conversion_op == nullptr ? annotate_op : man_conversion_op;
-  bool changed = true;
+  bool changed = false;
   for (HloInstruction* user : op_for_users->users()) {
     changed |= InferUnspecifiedDimsFromOneUser(
         annotate_op, user, aggressiveness, is_spmd, unspecified_dims,
@@ -2175,6 +2180,19 @@ bool ShardingPropagation::InferShardingFromOperands(
       return MaybeImproveInstructionSharding(std::move(sharding), instruction,
                                              may_combine_partial_sharding);
     }
+    case HloOpcode::kCustomCall: {
+      if (instruction->IsCustomCall("X64Combine")) {
+        return false;
+      }
+      const HloInstruction* operand = PickRepresentativeOperand(instruction);
+      if (!operand || !IsSpatiallyPartitioned(operand)) {
+        return false;
+      }
+      return MaybeImproveInstructionSharding(
+          operand->sharding(), instruction, may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/ComputeNonRootUsers(instruction) ==
+              1);
+    }
     default: {
       if (instruction->IsElementwise() && may_combine_partial_sharding) {
         bool changed = false;
@@ -2210,7 +2228,7 @@ bool ShardingPropagation::InferShardingFromOperands(
     }
   }
   return false;
-}
+}  // NOLINT(readability/fn_size)
 
 StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
   absl::optional<absl::flat_hash_map<const HloInstruction*, HloSharding>>
@@ -2527,7 +2545,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
         if (!instruction->has_sharding()) {
           continue;
         }
-        if (IsCSEPreventionTarget(instruction)) {
+        if (IsCSEPreventionTarget(instruction) && instruction->has_sharding()) {
           if (!(*original_sharding).contains(instruction)) {
             // Mark the propagated sharding as for CSE prevention.
             instruction->set_sharding(

@@ -17,18 +17,24 @@ limitations under the License.
 
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/importexport/mangling.h"
+#include "tensorflow/core/ir/types/dialect.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
 
 using tensorflow::AttrValue;
 using tensorflow::AttrValueMap;
@@ -234,7 +240,8 @@ tensorflow::StatusOr<AttrValue> ConvertAttribute(Attribute attr) {
                                     /*remove_ref_type=*/false, &value);
           })
           .Default([&](Attribute attr) {
-            return Unimplemented("Unhandled attribute kind for attribute");
+            return Unimplemented("Unhandled attribute kind for attribute: ",
+                                 debugString(attr));
           }));
   return value;
 }
@@ -424,6 +431,66 @@ StringRef PrepareTFGAttributeForExport(StringRef tfg_attr_name) {
   return StringSwitch<StringRef>(tfg_attr_name)
       .Case(TFGraphDialect::getTfgTpuReplicateAttrKey(), kTpuReplicate)
       .Default(tfg_attr_name);
+}
+
+tensorflow::StatusOr<::mlir::tf_type::FullTypeAttr> ConvertAttribute(
+    const tensorflow::FullTypeDef& full_type, Builder& builder,
+    TFGraphDialect* tfgDialect) {
+  using FullTypeAttr = ::mlir::tf_type::FullTypeAttr;
+
+  SmallVector<FullTypeAttr> args;
+  for (const tensorflow::FullTypeDef& it : full_type.args()) {
+    TF_ASSIGN_OR_RETURN(FullTypeAttr arg,
+                        ConvertAttribute(it, builder, tfgDialect));
+    args.push_back(arg);
+  }
+
+  Attribute attr;
+  switch (full_type.attr_case()) {
+    case tensorflow::FullTypeDef::AttrCase::kS:
+      attr = builder.getStringAttr(full_type.s());
+      break;
+    case tensorflow::FullTypeDef::AttrCase::kI:
+      attr = builder.getI64IntegerAttr(full_type.i());
+      break;
+    case tensorflow::FullTypeDef::ATTR_NOT_SET:
+      break;
+    default:
+      return InvalidArgument("Unsupported attr kind in FullType");
+  }
+
+  return FullTypeAttr::get(builder.getContext(), full_type.type_id(), args,
+                           attr);
+}
+
+tensorflow::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
+    tf_type::FullTypeAttr full_type) {
+  using FullTypeDef = tensorflow::FullTypeDef;
+
+  FullTypeDef ret;
+  for (tf_type::FullTypeAttr it : full_type.getArgs()) {
+    TF_ASSIGN_OR_RETURN(*ret.add_args(), ConvertAttribute(it));
+  }
+
+  if (full_type.getAttr()) {
+    bool converted = llvm::TypeSwitch<Attribute, bool>(full_type.getAttr())
+                         .Case<StringAttr>([&](StringAttr sattr) {
+                           ret.set_s(sattr.str());
+                           return true;
+                         })
+                         .Case<IntegerAttr>([&](IntegerAttr iattr) {
+                           ret.set_i(iattr.getInt());
+                           return true;
+                         })
+                         .Default([&](Attribute attr) { return false; });
+    if (!converted)
+      return InvalidArgument("Unsupported attr kind in FullType:",
+                             mlir::debugString(full_type.getAttr()));
+  }
+
+  ret.set_type_id(static_cast<tensorflow::FullTypeId>(full_type.getType_id()));
+
+  return ret;
 }
 
 }  // namespace tfg

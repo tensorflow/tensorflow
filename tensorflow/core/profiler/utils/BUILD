@@ -63,9 +63,6 @@ cc_library(
 cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
-    deps = [
-        "//tensorflow/core/platform:types",
-    ],
 )
 
 cc_library(
@@ -251,7 +248,9 @@ cc_library(
         ":tf_op_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:context_types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -268,8 +267,10 @@ cc_library(
         ":timespan",
         ":trace_utils",
         ":xplane_builder",
+        ":xplane_schema",
         ":xplane_visitor",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:context_types",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

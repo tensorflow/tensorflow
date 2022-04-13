@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef MLIR_HLO_TRANSFORMS_PASSDETAIL_H
 #define MLIR_HLO_TRANSFORMS_PASSDETAIL_H
 
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
 
-class StandardOpsDialect;
+namespace func {
+class FuncDialect;
+class FuncOp;
+}  // end namespace func
 
 namespace arith {
 class ArithmeticDialect;

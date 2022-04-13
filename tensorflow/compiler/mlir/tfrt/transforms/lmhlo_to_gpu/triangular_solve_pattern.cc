@@ -26,9 +26,9 @@ namespace tensorflow {
 namespace {
 
 struct TriangularSolveRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::TriangularSolveOp> {
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo::TriangularSolveOp>::GpuAsyncOpConversionPattern;
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo::TriangularSolveOp> {
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo::TriangularSolveOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::TriangularSolveOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {
@@ -42,23 +42,24 @@ struct TriangularSolveRewritePattern
         !has_fortran_layout(op.layout_output()))
       return rewriter.notifyMatchFailure(op, "expected fortran layout");
 
-    auto transpose_or = xla::ConvertTranspose(op.transpose_a());
+    auto transpose_or =
+        xla::ConvertTranspose(mlir::mhlo::stringifyTranspose(op.transpose_a()));
     if (!transpose_or.ok()) {
       return rewriter.notifyMatchFailure(op,
                                          transpose_or.status().error_message());
     }
-    cublasOperation_t trans = [&] {
+    tfrt::gpu::wrapper::BlasOperation trans = [&] {
       switch (transpose_or.ValueOrDie()) {
         case xla::TriangularSolveOptions::NO_TRANSPOSE:
-          return CUBLAS_OP_N;
+          return kBlasOperationNone;
         case xla::TriangularSolveOptions::TRANSPOSE:
-          return CUBLAS_OP_T;
+          return kBlasOperationTranspose;
         case xla::TriangularSolveOptions::ADJOINT:
-          return CUBLAS_OP_C;
+          return kBlasOperationConjTranspose;
         default:
           LOG(ERROR) << "Invalid triangular solve transpose value "
                      << transpose_or.ValueOrDie();
-          return CUBLAS_OP_N;
+          return kBlasOperationNone;
       }
     }();
 
@@ -69,12 +70,9 @@ struct TriangularSolveRewritePattern
     Value context = rewriter.create<tfrt::gpu::StreamGetContextOp>(loc, stream);
     auto handle = rewriter.create<tfrt::gpu::BlasCreateOp>(loc, context);
 
-    cublasSideMode_t side_mode =
-        op.left_side() ? CUBLAS_SIDE_LEFT : CUBLAS_SIDE_RIGHT;
-    cublasFillMode_t fill_mode =
-        op.lower() ? CUBLAS_FILL_MODE_LOWER : CUBLAS_FILL_MODE_UPPER;
-    cublasDiagType_t diag_type =
-        op.unit_diagonal() ? CUBLAS_DIAG_UNIT : CUBLAS_DIAG_NON_UNIT;
+    auto side_mode = op.left_side() ? kBlasSideLeft : kBlasSideRight;
+    auto fill_mode = op.lower() ? kBlasFillModeLower : kBlasFillModeUpper;
+    auto diag_type = op.unit_diagonal() ? kBlasDiagUnit : kBlasDiagNonUnit;
 
     const xla::Shape b_shape = xla::gpu::GetShape(op.b());
     int64_t m_value = b_shape.dimensions(b_shape.rank() - 2);
@@ -84,7 +82,7 @@ struct TriangularSolveRewritePattern
 
     mlir::Type element_type =
         op.output().getType().cast<mlir::MemRefType>().getElementType();
-    auto data_type = MlirTypeToCudaDataType(element_type);
+    auto data_type = MlirTypeToBlasDataType(element_type);
 
     auto alpha = MakeScalingFactorConstant(
         rewriter, loc, element_type, llvm::APFloat(1.0), llvm::APFloat(0.0));
@@ -94,7 +92,7 @@ struct TriangularSolveRewritePattern
     // is m (it is m here). OTOH, if side_mode == RIGHT, we're solving
     // X.op(A) = alpha*B, and the minimum height of A is n (it is n here).
     auto height_a = rewriter.create<tfrt::compiler::ConstantI32Op>(
-        loc, side_mode == CUBLAS_SIDE_LEFT ? m_value : n_value);
+        loc, side_mode == kBlasSideLeft ? m_value : n_value);
     auto height_b =
         rewriter.create<tfrt::compiler::ConstantI32Op>(loc, m_value);
 

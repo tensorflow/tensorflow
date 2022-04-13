@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Asset-type Trackable object."""
+import os
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -68,11 +69,13 @@ class Asset(base.Trackable):
   ```
 
   Attributes:
-    asset_path: A 0-D `tf.string` tensor with path to the asset.
+    asset_path: A path, or a 0-D `tf.string` tensor with path to the asset.
   """
 
   def __init__(self, path):
     """Record the full path to the asset."""
+    if isinstance(path, os.PathLike):
+      path = os.fspath(path)
     # The init_scope prevents functions from capturing `path` in an
     # initialization graph, since it is transient and should not end up in a
     # serialized function body.
@@ -100,8 +103,7 @@ class Asset(base.Trackable):
   def _add_trackable_child(self, name, value):
     setattr(self, name, value)
 
-  def _export_to_saved_model_graph(self, object_map, tensor_map, options):
-    del object_map, options  # Unused.
+  def _export_to_saved_model_graph(self, tensor_map, **unused_kwargs):
     # TODO(b/205008097): Instead of mapping 1-1 between trackable asset
     # and asset in the graph def consider deduping the assets that
     # point to the same file.

@@ -173,11 +173,6 @@ class HloRunnerInterface {
   virtual absl::string_view Name() const = 0;
 
   typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
-
- protected:
-  // TODO(b/201558073): Move this function out of the runtime in the future.
-  void UpdateEntryComputationLayout(
-      HloModule* module, DeviceShapeRepresentationFn shape_representation_fn);
 };
 
 }  // namespace xla

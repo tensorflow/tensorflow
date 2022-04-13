@@ -132,29 +132,48 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               m::AddAnyOrder(
                   m::Op(&existing_gemm).WithCustomCallTarget(kGemmCallTarget),
                   m::Op(&bias)))) {
-      // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
-      // supports fixed values for alpha/beta.
-      if (existing_gemm->shape().element_type() == S32) {
-        return Status::OK();
-      }
-      auto config =
-          existing_gemm->backend_config<GemmBackendConfig>().ValueOrDie();
-      if (config.beta() == 0 && bias->user_count() == 1 &&
-          existing_gemm->user_count() == 1 &&
-          bias->shape() == existing_gemm->shape()) {
-        config.set_beta(1.0);
-        CHECK_EQ(existing_gemm->operand_count(), 2);
-        std::unique_ptr<HloInstruction> gemm_call =
-            HloInstruction::CreateCustomCall(
-                instr->shape(),
-                {existing_gemm->mutable_operand(0),
-                 existing_gemm->mutable_operand(1), bias},
-                kGemmCallTarget);
-        TF_RETURN_IF_ERROR(gemm_call->set_backend_config(config));
-        TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
-        TF_RETURN_IF_ERROR(
-            ReplaceWithNewInstruction(instr, std::move(gemm_call)));
-      }
+      return FuseBiasedGemm(instr, bias, existing_gemm);
+    }
+    return Status::OK();
+  }
+
+  Status HandleConvert(HloInstruction *instr) override {
+    HloInstruction *bias, *existing_gemm;
+    if (Match(
+            instr,
+            m::Convert(m::AddAnyOrder(
+                           m::Convert(m::Op(&existing_gemm)
+                                          .WithCustomCallTarget(kGemmCallTarget)
+                                          .WithElementType(BF16)),
+                           m::Convert(m::Op(&bias).WithElementType(BF16))))
+                .WithElementType(BF16))) {
+      return FuseBiasedGemm(instr, bias, existing_gemm);
+    }
+    return Status::OK();
+  }
+
+  Status FuseBiasedGemm(HloInstruction *instr, HloInstruction *bias,
+                        HloInstruction *existing_gemm) {
+    // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
+    // supports fixed values for alpha/beta.
+    if (existing_gemm->shape().element_type() == S32) {
+      return Status::OK();
+    }
+    auto config =
+        existing_gemm->backend_config<GemmBackendConfig>().ValueOrDie();
+    if (config.beta() == 0 && bias->user_count() == 1 &&
+        existing_gemm->user_count() == 1 &&
+        bias->shape() == existing_gemm->shape()) {
+      config.set_beta(1.0);
+      CHECK_EQ(existing_gemm->operand_count(), 2);
+      std::unique_ptr<HloInstruction> gemm_call =
+          existing_gemm->CloneWithNewOperands(
+              instr->shape(), {existing_gemm->mutable_operand(0),
+                               existing_gemm->mutable_operand(1), bias});
+      TF_RETURN_IF_ERROR(gemm_call->set_backend_config(config));
+      TF_RETURN_IF_ERROR(SetName(instr->GetModule(), gemm_call.get()));
+      TF_RETURN_IF_ERROR(
+          ReplaceWithNewInstruction(instr, std::move(gemm_call)));
     }
     return Status::OK();
   }

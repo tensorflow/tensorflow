@@ -103,7 +103,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       /*const*/ Rendezvous* rendezvous,
       DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
       CollectiveExecutorMgrInterface* collective_executor_mgr = nullptr,
-      bool run_eager_op_as_function = false);
+      bool run_eager_op_as_function = false, bool jit_compile_rewrite = false);
 
   void Release() override { Unref(); }
 
@@ -150,6 +150,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   bool RunEagerOpAsFunction() const;
 
   void SetRunEagerOpAsFunction(bool enable) override;
+
+  bool JitCompileRewrite() const;
+
+  void SetJitCompileRewrite(bool enable) override;
 
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
@@ -202,6 +206,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status SelectDevice(DeviceNameUtils::ParsedName preferred,
                       const NodeDef& ndef, Device** out) const;
 
+  // TODO(mdan): Rename to ContainsFunction.
   bool FindFunctionByName(const string& name) const;
 
   Status FindFunctionOpData(const string& name,
@@ -822,6 +827,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // to this context.
   std::function<void()> resource_deallocator_ = nullptr;
   bool run_eager_op_as_function_;
+  bool jit_compile_rewrite_;
 };
 
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {

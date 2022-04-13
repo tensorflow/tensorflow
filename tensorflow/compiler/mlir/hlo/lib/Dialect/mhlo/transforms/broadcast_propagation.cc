@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "mlir-hlo/utils/hlo_utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -113,13 +112,16 @@ bool AllowsForBroadcastPropagation(Operation *op) {
          AllowsForElementwiseBroadcastPropagation(op);
 }
 
-DenseIntElementsAttr ComposeBroadcastDimensionsAttr(DenseIntElementsAttr a,
+DenseIntElementsAttr ComposeBroadcastDimensionsAttr(OpBuilder &builder,
+                                                    DenseIntElementsAttr a,
                                                     DenseIntElementsAttr b) {
-  SmallVector<int64_t> b_vec = llvm::to_vector(llvm::map_range(
-      b, [](APInt it) { return static_cast<int64_t>(it.getLimitedValue()); }));
+  SmallVector<int64_t> b_vec =
+      llvm::to_vector(llvm::map_range(b, [](const APInt &it) {
+        return static_cast<int64_t>(it.getLimitedValue());
+      }));
   SmallVector<int64_t> composed_vec = llvm::to_vector(llvm::map_range(
-      a, [&](APInt it) { return b_vec[it.getLimitedValue()]; }));
-  return hlo::GetI64ElementsAttr(composed_vec, a.getContext());
+      a, [&](const APInt &it) { return b_vec[it.getLimitedValue()]; }));
+  return builder.getI64TensorAttr(composed_vec);
 }
 
 // Find all the broadcast intents and their dependencies. Start analyzing from
@@ -131,7 +133,7 @@ void FindBroadcastIntents(
     SmallVector<BroadcastIntent> &bcast_intents,
     DenseMap<BroadcastIntent, SmallVector<BroadcastIntent>>
         &bcast_intent_dependencies) {
-  MLIRContext *ctx = root.getContext();
+  OpBuilder builder(root.getContext());
 
   // Use the result vector of broadcast intents as a worklist. The set of
   // broadcast intents helps to ensure their uniqueness.
@@ -169,7 +171,7 @@ void FindBroadcastIntents(
     if (auto producer_bcast_op =
             llvm::dyn_cast<DynamicBroadcastInDimOp>(producer_op)) {
       DenseIntElementsAttr composed_bcast_dims = ComposeBroadcastDimensionsAttr(
-          producer_bcast_op.broadcast_dimensions(),
+          builder, producer_bcast_op.broadcast_dimensions(),
           it.broadcast_dimensions.cast<DenseIntElementsAttr>());
       BroadcastIntent bcasted_operand_intent = {
           it.result_type, producer_bcast_op.operand(), it.output_dimensions,
@@ -189,7 +191,7 @@ void FindBroadcastIntents(
     for (auto operand : producer_op->getOperands()) {
       auto operand_ty = operand.getType().cast<RankedTensorType>();
       auto operand_bcast_dims = operand_ty.getRank() == 0
-                                    ? hlo::GetI64ElementsAttr({}, ctx)
+                                    ? builder.getI64TensorAttr({})
                                     : it.broadcast_dimensions;
       auto bcasted_operand_ty = RankedTensorType::get(
           it.result_type.getShape(), operand_ty.getElementType());
@@ -303,8 +305,7 @@ DenseMap<BroadcastIntent, Value> RealizeBroadcastIntents(
     OperationState new_producer_op_state(
         producer_op->getLoc(), producer_op->getName().getStringRef(),
         bcasted_operands, it.result_type, producer_op->getAttrs());
-    Operation *new_producer_op =
-        rewriter.createOperation(new_producer_op_state);
+    Operation *new_producer_op = rewriter.create(new_producer_op_state);
     assert(new_producer_op->getNumResults() == 1 &&
            "expect exactly one result");
     realizations[it] = new_producer_op->getResults().front();

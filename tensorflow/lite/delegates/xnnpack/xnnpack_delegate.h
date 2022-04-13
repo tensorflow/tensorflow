@@ -30,6 +30,8 @@ extern "C" {
 // Force FP16 inference for FP32 operators.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 0x00000004
 
+struct TfLiteXNNPackDelegateWeightsCache;
+
 typedef struct {
   // Number of threads to use in the thread pool.
   // 0 or negative value means no thread pool used.
@@ -39,6 +41,9 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QU8
   // - TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16
   uint32_t flags;
+  // Cache for packed weights, can be shared between multiple instances of
+  // delegates.
+  struct TfLiteXNNPackDelegateWeightsCache* weights_cache;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns a structure with the default XNNPack delegate options.
@@ -62,6 +67,15 @@ TFL_CAPI_EXPORT void* TfLiteXNNPackDelegateGetThreadPool(
 
 // Destroys a delegate created with `TfLiteXNNPackDelegateCreate` call.
 TFL_CAPI_EXPORT void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);
+
+// Creates a new weights cache that can be shared with multiple delegate
+// instances.
+TFL_CAPI_EXPORT struct TfLiteXNNPackDelegateWeightsCache*
+TfLiteXNNPackDelegateWeightsCacheCreate();
+// Destroys a weights cache created with
+// `TfLiteXNNPackDelegateWeightsCacheCreate` call.
+TFL_CAPI_EXPORT void TfLiteXNNPackWeightsCacheDelete(
+    struct TfLiteXNNPackDelegateWeightsCache* cache);
 
 #ifdef __cplusplus
 }

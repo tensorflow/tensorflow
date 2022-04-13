@@ -121,6 +121,9 @@ class StreamExecutor {
   // Unloads the module with handle `module_handle`.
   bool UnloadModule(ModuleHandle module_handle);
 
+  port::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
+      Stream* stream, const std::vector<uint8_t>& content);
+
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>

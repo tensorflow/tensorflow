@@ -65,7 +65,6 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   DataType GetDataType() const { return descriptor_.data_type; }
   TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
 
-  // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const;
 
   absl::Status WriteData(
@@ -85,6 +84,7 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
 
   absl::Status CreateFromDescriptor(const TensorDescriptor& desc,
                                     id<MTLDevice> device);
+  absl::Status ToDescriptor(TensorDescriptor* desc, id<MTLDevice> device) const;
 
   absl::Status SetBufferHandle(id<MTLBuffer> buffer);
   id<MTLBuffer> GetBufferHandle() const;
@@ -105,8 +105,10 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
 
   template <typename T>
   absl::Status WriteDataBHWDC(id<MTLDevice> device, const T* in);
+  absl::Status WriteData(id<MTLDevice> device, const void* ptr);
   template <typename T>
   absl::Status ReadDataBHWDC(id<MTLDevice> device, T* out) const;
+  absl::Status ReadData(id<MTLDevice> device, void* ptr) const;
 
   int GetAlignedChannels() const;
   int3 GetFullTensorRegion() const;
@@ -182,12 +184,8 @@ absl::Status MetalSpatialTensor::ReadData(id<MTLDevice> device,
 
 template <typename T>
 absl::Status MetalSpatialTensor::WriteDataBHWDC(id<MTLDevice> device, const T* in) {
-  const int aligned_channels = GetAlignedChannels();
-  const int elements_count = shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
-
-  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
   std::unique_ptr<uint8_t[]> data_copy;
-  data_copy.reset(new uint8_t[data_size]);
+  data_copy.reset(new uint8_t[GetMemorySizeInBytes()]);
   if (descriptor_.data_type == DataType::FLOAT16) {
     // rearrangement and conversion from float32 to float16
     DataFromBHWDC(reinterpret_cast<const float*>(in), shape_, descriptor_,
@@ -197,56 +195,15 @@ absl::Status MetalSpatialTensor::WriteDataBHWDC(id<MTLDevice> device, const T* i
     DataFromBHWDC(in, shape_, descriptor_, reinterpret_cast<T*>(data_copy.get()));
   }
 
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      std::memcpy(reinterpret_cast<uint8_t*>([memory_ contents]) + buffer_offset_, data_copy.get(),
-                  data_size);
-      break;
-    case TensorStorageType::TEXTURE_2D:
-      WriteDataToTexture2D(texture_mem_, device, data_copy.get());
-      break;
-    case TensorStorageType::TEXTURE_3D:
-      WriteDataToTexture3D(texture_mem_, device, data_copy.get());
-      break;
-    case TensorStorageType::TEXTURE_ARRAY:
-      WriteDataToTexture2DArray(texture_mem_, device, data_copy.get());
-      break;
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-    default:
-      return absl::InternalError("Unsupported tensor storage type");
-  }
-
-  return absl::OkStatus();
+  return WriteData(device, data_copy.get());
 }
 
 template <typename T>
 absl::Status MetalSpatialTensor::ReadDataBHWDC(id<MTLDevice> device, T* out) const {
-  const int aligned_channels = GetAlignedChannels();
-  const int elements_count = shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
-  const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
   std::unique_ptr<uint8_t[]> data_copy;
-  data_copy.reset(new uint8_t[data_size]);
+  data_copy.reset(new uint8_t[GetMemorySizeInBytes()]);
 
-  switch (descriptor_.storage_type) {
-    case TensorStorageType::BUFFER:
-    case TensorStorageType::IMAGE_BUFFER:
-      std::memcpy(data_copy.get(), reinterpret_cast<uint8_t*>([memory_ contents]) + buffer_offset_,
-                  data_size);
-      break;
-    case TensorStorageType::TEXTURE_2D:
-      ReadDataFromTexture2D(texture_mem_, device, data_copy.get());
-      break;
-    case TensorStorageType::TEXTURE_3D:
-      ReadDataFromTexture3D(texture_mem_, device, data_copy.get());
-      break;
-    case TensorStorageType::TEXTURE_ARRAY:
-      ReadDataFromTexture2DArray(texture_mem_, device, data_copy.get());
-      break;
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-    default:
-      return absl::InternalError("Unsupported tensor storage type");
-  }
+  RETURN_IF_ERROR(ReadData(device, data_copy.get()));
 
   if (descriptor_.data_type == DataType::FLOAT16) {
     // rearrangement and conversion from float32 to float16

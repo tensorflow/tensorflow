@@ -1192,7 +1192,7 @@ class LinearOperator(
     pass
 
 
-class _LinearOperatorSpec(type_spec.TypeSpec):
+class _LinearOperatorSpec(type_spec.BatchableTypeSpec):
   """A tf.TypeSpec for `LinearOperator` objects."""
 
   __slots__ = ("_param_specs", "_non_tensor_params", "_prefer_static_fields")
@@ -1266,6 +1266,29 @@ class _LinearOperatorSpec(type_spec.TypeSpec):
     return (self._param_specs,
             self._non_tensor_params,
             self._prefer_static_fields)
+
+  def _copy(self, **overrides):
+    kwargs = {
+        "param_specs": self._param_specs,
+        "non_tensor_params": self._non_tensor_params,
+        "prefer_static_fields": self._prefer_static_fields
+    }
+    kwargs.update(overrides)
+    return type(self)(**kwargs)
+
+  def _batch(self, batch_size):
+    """Returns a TypeSpec representing a batch of objects with this TypeSpec."""
+    return self._copy(
+        param_specs=nest.map_structure(
+            lambda spec: spec._batch(batch_size),  # pylint: disable=protected-access
+            self._param_specs))
+
+  def _unbatch(self, batch_size):
+    """Returns a TypeSpec representing a single element of this TypeSpec."""
+    return self._copy(
+        param_specs=nest.map_structure(
+            lambda spec: spec._unbatch(),  # pylint: disable=protected-access
+            self._param_specs))
 
 
 def make_composite_tensor(cls, module_name="tf.linalg"):

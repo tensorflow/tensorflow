@@ -16,13 +16,15 @@ limitations under the License.
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
+#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace mlir {
@@ -37,7 +39,8 @@ TEST(TFOpWrapper, LLVMRTTI) {
   )mlir";
   MLIRContext context;
   context.getOrLoadDialect<TFGraphDialect>();
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
 
   Operation *module_op = module.get();
@@ -61,7 +64,8 @@ TEST(TFOpWrapper, ControlOperands) {
   )mlir";
   MLIRContext context;
   context.getOrLoadDialect<TFGraphDialect>();
-  OwningOpRef<ModuleOp> module = mlir::parseSourceString(code, &context);
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
 
   TFOp a_op;
@@ -150,6 +154,39 @@ TEST(TFOpWrapper, AttributeGetterSetters) {
     EXPECT_EQ(op.tpuReplicate(), tpu_replicate);
   }
 }
+
+TEST(TFOpWrapper, ValueControlRet) {
+  const char *const code = R"mlir(
+    tfg.func @test(%arg: tensor<i32> {tfg.name = "arg"}) -> (tensor<i32>) {
+      %Const, %ctl = Const {dtype = i32, value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
+      %Add, %ctl_2 = Add(%Const, %arg) [%ctl] {T = i32} : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
+      return(%Add) : tensor<i32>
+    }
+  )mlir";
+
+  MLIRContext context;
+  context.getOrLoadDialect<TFGraphDialect>();
+  OwningOpRef<ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  ASSERT_TRUE(module);
+  GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
+  ASSERT_TRUE(func);
+
+  auto iterator = func.body().begin()->begin();
+  TFOp const_op = &(*iterator++);
+  TFOp add_op = &(*iterator);
+
+  OperandControlRetRange ret_range(add_op->getOperands());
+
+  EXPECT_EQ(ret_range[0], const_op.controlRet());
+  // The control token of an argument is the argument next to itself.
+  EXPECT_EQ(ret_range[1], func.body().begin()->getArguments()[1]);
+  // Value with ControlType will be the same.
+  EXPECT_EQ(ret_range[2], const_op.controlRet());
+
+  for (Value v : ret_range) EXPECT_TRUE(v.getType().isa<ControlType>());
+}
+
 }  // namespace
 }  // namespace tfg
 }  // namespace mlir

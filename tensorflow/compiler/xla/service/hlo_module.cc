@@ -19,7 +19,9 @@ limitations under the License.
 #include <iterator>
 #include <set>
 #include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -234,45 +236,55 @@ void HloModule::ReplaceComputations(
 }
 
 std::string HloModule::ToString(const HloPrintOptions& options) const {
-  std::ostringstream s;
-  // When print_ids() is false, exclude module's name because it includes and
-  // leads to non-deterministic fingerprint.
-  s << "HloModule "
-    << (options.print_ids() ? PrintName(name(), options.print_ids()) : "");
+  return std::string(ToCord(options));
+}
+
+absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
+  absl::Cord result;
+  result.Append("HloModule ");
+  if (options.print_ids()) {
+    // When print_ids() is false, exclude module's name because it includes and
+    // leads to non-deterministic fingerprint.
+    result.Append(name());
+  }
   if (has_schedule()) {
     TF_CHECK_OK(schedule().Verify());
-    s << ", is_scheduled=true";
+    result.Append(", is_scheduled=true");
   }
   std::string serialized_aliasing = input_output_alias_config().ToShortString();
   if (!serialized_aliasing.empty()) {
-    s << absl::StrFormat(", input_output_alias={ %s }", serialized_aliasing);
+    result.Append(", input_output_alias={ ");
+    result.Append(std::move(serialized_aliasing));
+    result.Append(" }");
   }
   if (config_.alias_passthrough_params()) {
-    s << ", alias_passthrough_params=true";
+    result.Append(", alias_passthrough_params=true");
   }
   if (config_.allow_spmd_sharding_propagation_to_output()) {
-    s << ", allow_spmd_sharding_propagation_to_output=true";
+    result.Append(", allow_spmd_sharding_propagation_to_output=true");
   }
-  s << "\n\n";
+  result.Append("\n\n");
   const auto& computations = options.canonicalize_computations()
                                  ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
-    if (!options.print_computation(computation)) {
+    // Don't print async computations when the sytax sugar is enabled since that
+    // is redundant information.
+    if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {
       continue;
     }
     if (computation == entry_computation()) {
-      s << "ENTRY ";
+      result.Append("ENTRY ");
     }
     if (has_schedule() && schedule().is_computation_scheduled(computation)) {
-      s << computation->ToString(
-               options, schedule().sequence(computation).instructions())
-        << "\n\n";
+      result.Append(computation->ToCord(
+          options, schedule().sequence(computation).instructions()));
     } else {
-      s << computation->ToString(options) << "\n\n";
+      result.Append(computation->ToCord(options));
     }
+    result.Append("\n\n");
   }
-  return s.str();
+  return result;
 }
 
 HloModuleProto HloModule::ToProto() const {
@@ -305,6 +317,12 @@ HloModuleProto HloModule::ToProto() const {
   proto.set_is_dynamic(is_dynamic_);
   if (has_spmd_output_sharding()) {
     *proto.mutable_spmd_output_sharding() = spmd_output_sharding().ToProto();
+  }
+
+  if (has_spmd_parameters_shardings()) {
+    for (const auto& parameter_sharding : spmd_parameters_shardings()) {
+      *proto.add_spmd_parameters_shardings() = parameter_sharding.ToProto();
+    }
   }
 
   for (const HloModuleProto::ProfileInfo& profile_info : profile_info_list_) {
@@ -420,7 +438,9 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                                    /*preserve_entry_layouts=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
-
+  if (proto.has_schedule()) {
+    TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
+  }
   TF_ASSIGN_OR_RETURN(
       module->input_output_alias_config_,
       HloInputOutputAliasConfig::CreateFromProto(
@@ -455,6 +475,17 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                         HloSharding::FromProto(proto.spmd_output_sharding()));
     module->set_spmd_output_sharding(hlo_sharding);
   }
+
+  std::vector<HloSharding> param_shardings;
+  for (const auto& sharding_proto : proto.spmd_parameters_shardings()) {
+    TF_ASSIGN_OR_RETURN(HloSharding sharding,
+                        HloSharding::FromProto(sharding_proto));
+    param_shardings.push_back(sharding);
+  }
+  if (!param_shardings.empty()) {
+    module->set_spmd_parameters_shardings(param_shardings);
+  }
+
   for (const auto& profile_info : proto.profile_info()) {
     module->add_profile_info(profile_info);
   }
@@ -476,6 +507,18 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     }
     module_config.set_use_spmd_partitioning(
         execution_options->use_spmd_partitioning());
+    module_config.set_use_auto_spmd_partitioning(
+        execution_options->use_auto_spmd_partitioning());
+    std::vector<int64_t> mesh_shape;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_shape()) {
+      mesh_shape.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+    std::vector<int64_t> mesh_ids;
+    for (auto t : execution_options->auto_spmd_partitioning_mesh_ids()) {
+      mesh_ids.push_back(t);
+    }
+    module_config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     module_config.set_allow_spmd_sharding_propagation_to_output(
         execution_options->allow_spmd_sharding_propagation_to_output());
@@ -705,8 +748,8 @@ bool CompareComputationsByContent(const HloComputation* a,
   if (a->instruction_count() != b->instruction_count()) {
     return a->instruction_count() < b->instruction_count();
   }
-  return a->ToString(HloPrintOptions::Fingerprint()) <
-         b->ToString(HloPrintOptions::Fingerprint());
+  return a->ToString(HloPrintOptions::ModuleFingerprint()) <
+         b->ToString(HloPrintOptions::ModuleFingerprint());
 }
 
 uint64_t GetFingerprint(
@@ -717,7 +760,7 @@ uint64_t GetFingerprint(
     return it->second;
   } else {
     const uint64_t fingerprint = tensorflow::Fingerprint64(
-        computation->ToString(HloPrintOptions::Fingerprint()));
+        computation->ToString(HloPrintOptions::ModuleFingerprint()));
     fingerprint_map[computation] = fingerprint;
     return fingerprint;
   }

@@ -15,10 +15,9 @@ limitations under the License.
 
 #include <string>
 
-#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -26,13 +25,16 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/utils.h"
 
 namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {
 namespace {
 
-using LLVM::LLVMFuncOp;
+using transforms::CreateOrFindGlobalStringConstant;
+using transforms::GetGlobalName;
+using transforms::GetOrInsertLLVMFunction;
 
 static constexpr StringRef kCInterfaceAlloc = "_mlir_ciface_tf_alloc";
 static constexpr StringRef kCInterfaceDealloc = "_mlir_ciface_tf_dealloc";
@@ -51,48 +53,9 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
  public:
   using ConvertOpToLLVMPattern<OpTy>::ConvertOpToLLVMPattern;
 
-  // Attempts to find function symbol in the module, adds it if not found.
-  FlatSymbolRefAttr getOrInsertTFFunction(PatternRewriter &rewriter,
-                                          Operation *op) const {
-    ModuleOp module = op->getParentOfType<ModuleOp>();
-    StringRef tf_func_name = GetFuncName();
-    auto tf_func = module.lookupSymbol<LLVMFuncOp>(tf_func_name);
-    if (!tf_func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      auto func_type = GetFuncType();
-      tf_func = rewriter.create<LLVMFuncOp>(rewriter.getUnknownLoc(),
-                                            tf_func_name, func_type);
-    }
-    return SymbolRefAttr::get(rewriter.getContext(), tf_func_name);
-  }
-
  protected:
   virtual StringRef GetFuncName() const = 0;
   virtual Type GetFuncType() const = 0;
-
-  Value CreateOrFindGlobalStringConstant(Location loc, OpBuilder &builder,
-                                         StringRef base_name,
-                                         StringRef str) const {
-    auto module =
-        builder.getInsertionBlock()->getParentOp()->getParentOfType<ModuleOp>();
-    std::string global_name =
-        llvm::formatv("{0}_{1}", base_name, llvm::hash_value(str));
-    mlir::StringAttr global_name_attr = builder.getStringAttr(global_name);
-    Operation *global_constant =
-        SymbolTable::lookupNearestSymbolFrom(module, global_name_attr);
-    if (global_constant) {
-      Value global_ptr = builder.create<LLVM::AddressOfOp>(
-          loc, cast<LLVM::GlobalOp>(global_constant));
-      Value c0 = builder.create<LLVM::ConstantOp>(loc, builder.getI64Type(),
-                                                  builder.getIndexAttr(0));
-      return builder.create<LLVM::GEPOp>(
-          loc, LLVM::LLVMPointerType::get(builder.getIntegerType(8)),
-          global_ptr, ValueRange{c0, c0});
-    }
-    return LLVM::createGlobalString(loc, builder, global_name, str,
-                                    LLVM::Linkage::Internal);
-  }
 
   std::pair<Value, Value> ConvertArrayAttrToStackAllocatedArray(
       Location loc, Type size_ty, Type element_ty,
@@ -181,7 +144,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
             tf_alloc_op.input_indices(), &rewriter);
 
     // Insert function call.
-    FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    FlatSymbolRefAttr tf_func_ref =
+        GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     Value allocated_byte_ptr =
         rewriter
             .create<LLVM::CallOp>(
@@ -271,7 +235,8 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
         memref.allocatedPtr(rewriter, op.getLoc()));
 
     // Insert function call.
-    FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    FlatSymbolRefAttr tf_func_ref =
+        GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, llvm::None, tf_func_ref,
         llvm::makeArrayRef({adaptor.ctx(), allocated_bytes_ptr}));
@@ -298,7 +263,8 @@ class JITCompileFromStrOpConverter
     auto loc = op.getLoc();
     std::string zero_terminated_code = op.code().str() + '\00';
     Value jit_module_code = CreateOrFindGlobalStringConstant(
-        loc, rewriter, kJITCodeGlobalBaseName, zero_terminated_code);
+        loc, GetGlobalName(kJITCodeGlobalBaseName, zero_terminated_code),
+        zero_terminated_code, &rewriter);
     std::pair<Value, Value> tile_sizes =
         ConvertIntegerArrayAttrToStackAllocatedArray(loc, rewriter.getI64Type(),
                                                      rewriter.getI64Type(),
@@ -315,7 +281,8 @@ class JITCompileFromStrOpConverter
         loc, rewriter.getI1Type(), op.index64BitAttr());
     Value cpu_codegen = rewriter.create<LLVM::ConstantOp>(
         loc, rewriter.getI1Type(), op.cpuCodegenAttr());
-    FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    FlatSymbolRefAttr tf_func_ref =
+        GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, getVoidPtrType(), tf_func_ref,
         llvm::makeArrayRef({adaptor.ctx(), jit_module_code, tile_sizes.first,
@@ -384,7 +351,7 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
             static_cast<int64_t>(adaptor.operands().size())));
     Value args_ptr = rewriter.create<LLVM::AllocaOp>(loc, arg_ptr_ty, num_args,
                                                      /*alignment=*/0);
-    for (auto it : llvm::enumerate(adaptor.operands())) {
+    for (const auto &it : llvm::enumerate(adaptor.operands())) {
       Value index = rewriter.create<LLVM::ConstantOp>(
           loc, i64_ty, rewriter.getI64IntegerAttr(it.index()));
       Value element_ptr =
@@ -395,7 +362,8 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
         rewriter.create<LLVM::BitcastOp>(loc, void_ptr_ty, args_ptr);
 
     // Materialize runtime call.
-    FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    FlatSymbolRefAttr tf_func_ref =
+        GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.create<LLVM::CallOp>(
         loc, llvm::None, tf_func_ref,
         ValueRange{adaptor.ctx(), adaptor.callable(), result_void_ptr, num_args,
@@ -444,7 +412,8 @@ class ReportErrorOpConverter
         GenerateErrorMessageConstant(loc, module, adaptor.msg(), rewriter);
 
     // Insert function call.
-    FlatSymbolRefAttr tf_func_ref = getOrInsertTFFunction(rewriter, op);
+    FlatSymbolRefAttr tf_func_ref =
+        GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     Value error_code = rewriter.create<LLVM::ConstantOp>(
         loc, typeConverter->convertType(rewriter.getI32Type()),
         adaptor.error_codeAttr());
@@ -480,7 +449,8 @@ class ReportErrorOpConverter
     err_stream << '\00';
     StringRef generated_error(err_stream.str());
     return CreateOrFindGlobalStringConstant(
-        loc, builder, kErrorMessageGlobalBaseName, generated_error);
+        loc, GetGlobalName(kErrorMessageGlobalBaseName, generated_error),
+        generated_error, &builder);
   }
 };
 

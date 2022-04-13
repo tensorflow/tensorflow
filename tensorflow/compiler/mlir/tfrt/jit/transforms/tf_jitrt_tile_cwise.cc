@@ -16,7 +16,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -37,12 +40,12 @@ using mlir::SmallVector;
 using mlir::success;
 using mlir::Value;
 using mlir::arith::ConstantIndexOp;
+using mlir::gml_st::LoopOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingOptions;
 using mlir::linalg::LinalgTransformationFilter;
-using mlir::linalg::TiledLoopOp;
 
 struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
   /// MatchAnyOpTag-based constructor with a mandatory `filter`.
@@ -58,12 +61,13 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
     // Check if it is cwise on tensors.
     if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
 
-    auto tiled_linalg_op = tileLinalgOp(rewriter, linalg_op, options);
+    auto tiled_linalg_op =
+        mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
     if (failed(tiled_linalg_op) || tiled_linalg_op.getValue().loops.empty())
       return failure();
 
-    TiledLoopOp tiled_loop =
-        mlir::dyn_cast<TiledLoopOp>(*tiled_linalg_op.getValue().loops.front());
+    LoopOp tiled_loop =
+        mlir::dyn_cast<LoopOp>(*tiled_linalg_op.getValue().loops.front());
     if (!tiled_loop) return failure();
 
     tiled_loop->walk([&](LinalgOp tiledOp) {
@@ -82,7 +86,7 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
 // Return true if the generic has only parallel iterations. This disallows
 // windowed and reduction iteration.
 bool isNonTiledCwiseGeneric(Operation *op) {
-  if (op->getParentOfType<TiledLoopOp>()) return false;
+  if (op->getParentOfType<LoopOp>()) return false;
   auto linalg_op = mlir::dyn_cast<GenericOp>(op);
   if (linalg_op) {
     if (!linalg_op.hasTensorSemantics()) return false;
@@ -99,7 +103,7 @@ bool isNonTiledCwiseGeneric(Operation *op) {
 // Return true if the generic has only parallel iterations. This disallows
 // windowed and reduction iteration.
 bool isNonTiledFill(Operation *op) {
-  if (op->getParentOfType<TiledLoopOp>()) return false;
+  if (op->getParentOfType<LoopOp>()) return false;
   if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {
     return fill_op.hasTensorSemantics();
   }
@@ -108,7 +112,7 @@ bool isNonTiledFill(Operation *op) {
 
 static constexpr llvm::StringRef kTiledId = "tiled";
 
-void Tile(mlir::FuncOp func, int64_t tile_size,
+void Tile(mlir::func::FuncOp func, int64_t tile_size,
           LinalgTransformationFilter &filter) {
   LinalgTilingOptions tiling_options;
   // Tile the innermost dimension by `tile_size` for vectorization and scalarize
@@ -122,7 +126,6 @@ void Tile(mlir::FuncOp func, int64_t tile_size,
           tiles.back() = b.create<ConstantIndexOp>(op->getLoc(), tile_size);
         return tiles;
       });
-  tiling_options.setLoopType(mlir::linalg::LinalgTilingLoopType::TiledLoops);
 
   mlir::RewritePatternSet patterns(func.getContext());
   patterns.add<TileCWisePattern>(tiling_options, filter, patterns.getContext());
@@ -168,20 +171,20 @@ struct TileFillPass : public TileFillBase<TileFillPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileCWisePass() {
   return std::make_unique<TileCWisePass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileCWisePass(
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileCWisePass(
     int64_t cwise_tile_size) {
   return std::make_unique<TileCWisePass>(cwise_tile_size);
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileFillPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileFillPass() {
   return std::make_unique<TileFillPass>();
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> CreateTileFillPass(
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> CreateTileFillPass(
     int64_t cwise_tile_size) {
   return std::make_unique<TileFillPass>(cwise_tile_size);
 }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 
+#include <algorithm>
 #include <atomic>
 #include <deque>
 #include <limits>
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
@@ -261,7 +263,7 @@ class MarkForCompilationPassImpl {
   bool IsScalarIntegerResourceOperation(const Cluster& cluster);
 
   // ---------------------------------------------------------------------------
-  // The pass proceeds in four steps, out of which `RunEdgeContractionLoop` and
+  // The pass proceeds in five steps, out of which `RunEdgeContractionLoop` and
   // `CreateClusters` do most of the heavy lifting.
 
   // Initializes some internal data structures.
@@ -283,6 +285,15 @@ class MarkForCompilationPassImpl {
   // finishes the clustering decisions made are implicitly stored in
   // `clusters_`.
   Status RunEdgeContractionLoop();
+
+  // "Fixes up" clusters by removing some modes.
+  //
+  // Autoclustering can sometimes be overeager.  For example, clustering large
+  // constants (or large broadcasts of constants) can increase the live range
+  // of those constants, and increase overall memory usage.
+  //
+  // This function removes "obviously bad" cases like these.
+  Status DeclusterNodes();
 
   // Manifests the clustering decisions into the TF graph by tagging nodes with
   // an `_XlaCluster` attribute.  Also some basic filter logic, like
@@ -447,6 +458,7 @@ class MarkForCompilationPassImpl {
 
   std::vector<std::unique_ptr<Cluster>> cluster_storage_;
   std::vector<UnionFind<Cluster*>> cluster_for_node_;
+  absl::flat_hash_set<const Node*> declustered_nodes_;
   GraphCycles cycles_graph_;
   OrderedNodeSet compilation_candidates_;
   std::unique_ptr<DeadnessAnalysis> deadness_analysis_;
@@ -858,6 +870,36 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   return Status::OK();
 }
 
+Status MarkForCompilationPassImpl::DeclusterNodes() {
+  for (Node* n : compilation_candidates_) {
+    Cluster* cluster = GetClusterForNode(n);
+    if (cluster == nullptr) {
+      continue;
+    }
+
+    // De-cluster Fill ops that are
+    //  - used at least once outside the cluster, and
+    //  - not used inside the cluster.
+    //
+    // In this case, using XLA for the op can only make peak memory usage worse.
+    // If we don't cluster the Fill, it can be materialized right before it's
+    // used in the TF graph.  Whereas if we do cluster it, the Fill must be live
+    // starting at the end of the XLA cluster, potentially significantly
+    // increasing its live range.
+    //
+    // See b/221997940 for a real-world example of this.
+    if (n->op_def().name() == "Fill" &&
+        n->out_nodes().begin() != n->out_nodes().end() &&
+        absl::c_all_of(n->out_nodes(), [&](Node* user) {
+          return GetClusterForNode(user) != cluster;
+        })) {
+      declustered_nodes_.insert(n);
+    }
+  }
+
+  return Status::OK();
+}
+
 // Tracks monotonic sequence numbers for graphs.
 class ClusterSequenceNumberGenerator {
  public:
@@ -910,7 +952,7 @@ Status MarkForCompilationPassImpl::CreateClusters() {
     Cluster* cluster = GetClusterForNode(n);
     TF_ASSIGN_OR_RETURN(bool should_compile_cluster,
                         ShouldCompileCluster(*cluster));
-    if (!should_compile_cluster) {
+    if (!should_compile_cluster || declustered_nodes_.contains(n)) {
       continue;
     }
 
@@ -1213,7 +1255,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
   // Check that user's provided TF operation really exists.
   for (const auto& s : allowlist) {
-    if (!all_ops.contains(string(s))) {
+    if (!all_ops.contains(s)) {
       return errors::InvalidArgument(
           "The operation '", s,
           "' passed to --tf_xla_ops_to_cluster is not supported by XLA.");
@@ -1488,6 +1530,7 @@ Status MarkForCompilationPassImpl::Run() {
   }
 
   TF_RETURN_IF_ERROR(RunEdgeContractionLoop());
+  TF_RETURN_IF_ERROR(DeclusterNodes());
   TF_RETURN_IF_ERROR(CreateClusters());
   TF_RETURN_IF_ERROR(DumpDebugInfo());
 
@@ -1860,6 +1903,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
             "LeakyReluGrad", "Elu", "EluGrad", "Selu", "SeluGrad", "Select",
             "SelectV2", "Transpose", "ConjugateTranspose",
             "_UnaryOpsComposition", "CollectiveReduceV2",
+            "CollectiveAssignGroupV2",
             // The following 5 operations are converted to identity
             "PlaceholderWithDefault", "PreventGradient", "StopGradient",
             "Snapshot", "_EagerConst"}},
@@ -1881,7 +1925,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
           {"SORT", {"TopKV2"}},  // XLA version much faster then TF version.
           {"MISC",
            // clang-format off
-     {"BroadcastTo", "ExpandDims", "Fill", "NoOp",
+     {"ApproxTopK", "BroadcastTo", "ExpandDims", "Fill", "NoOp",
       "Range", "Rank", "Reshape", "Shape", "ShapeN", "Size", "Squeeze",
       "Transpose", "ZerosLike", "OnesLike", "BiasAdd" /*PW + Broadcast*/,
       "BroadcastArgs", "BroadcastGradientArgs", "OneHot", "Concat", "ConcatV2",
@@ -2010,6 +2054,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "MaxPoolV2",
       "Multinomial",
       "NextAfter",
+      "NonMaxSuppressionV3",
       "NonMaxSuppressionV4",
       "ParallelDynamicStitch",
       "ParameterizedTruncatedNormal",
@@ -2085,6 +2130,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "StatelessCase",
       "StatelessIf",
       "StatelessMultinomial",
+      "StatelessParameterizedTruncatedNormal",
       "StatelessRandomGetAlg",
       "StatelessRandomGetKeyCounter",
       "StatelessRandomGetKeyCounterAlg",
@@ -2146,6 +2192,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "XlaConcatND",
       "XlaConv",
       "XlaConvV2",
+      "XlaCustomCall",
       "XlaDequantize",
       "XlaDot",
       "XlaDotV2",
@@ -2155,6 +2202,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "XlaGather",
       "XlaIf",
       "XlaKeyValueSort",
+      "XlaOptimizationBarrier",
       "XlaPad",
       "XlaRecv",
       "XlaReduce",

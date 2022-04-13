@@ -832,13 +832,11 @@ Status XlaCompiler::CompileFunction(
 
     std::vector<std::string> valid_control_rets =
         GetValidControlRets(fbody->control_ret_nodes, *graph);
-    // TODO(b/203254951): clean up MLIR to use shape_determination_fns.
     TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
         std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
         valid_control_rets, options_.device_type.type_string(),
         options.use_tuple_arg, /*analyse_graph=*/false, *options_.flib_def,
-        debug_info, options_.shape_determination_fns.shape_representation_fn,
-        result));
+        debug_info, options_.shape_determination_fns, result));
   } else {
     VLOG(1) << "Using the old bridge to compile the function";
     TF_RETURN_IF_ERROR(

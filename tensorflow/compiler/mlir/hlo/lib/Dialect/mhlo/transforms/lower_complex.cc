@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/utils/hlo_utils.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -69,7 +70,7 @@ void mlir::mhlo::PopulateComplexLoweringPatterns(MLIRContext* /*context*/,
   populateWithGenerated(*patterns);
 }
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 mlir::mhlo::createLowerComplexPass() {
   return std::make_unique<mlir::mhlo::LowerComplexPass>();
 }

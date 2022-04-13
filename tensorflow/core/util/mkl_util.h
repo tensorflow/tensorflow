@@ -135,8 +135,6 @@ inline void execute_primitives(
   }
 }
 
-bool AreWeightsFrozen();
-
 // In oneDNN v1.x, the format (ex. NCHW) used to initialize a memory descriptor
 // (md) structure will no longer be recorded in its `format` field. Instead, it
 // will be set to a canonical `blocked` format for every fully described md.
@@ -801,6 +799,37 @@ inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
   OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::v(),
                                                  tf_shape, tensor_out));
 }
+
+template <typename T>
+struct UserScratchPad {
+  template <typename MklPrim>
+  // NOTE: if scratchpad is not required for a particular primitive the
+  //      spad_md.get_size() will return 0. It is fine to return
+  //      nullptr in this case
+  inline void AllocateSPTensor(MklPrim* mkl_prim, OpKernelContext* context) {
+    allocated_ = false;
+    auto spad_md = mkl_prim->GetScratchPadDesc();
+    size_t spad_size = spad_md.get_size();
+    if (spad_size == 0) return;
+
+    size_t allocate_size = (spad_size + sizeof(T) - 1) / sizeof(T);
+    TensorShape tf_shape;
+    tf_shape.AddDim(allocate_size);
+    AllocTmpBuffer<T>(context, &scratch_pad_, tf_shape);
+    allocated_ = true;
+  }
+  inline void* Get() {
+    if (allocated_) {
+      return static_cast<void*>(scratch_pad_.flat<T>().data());
+    } else {
+      return nullptr;
+    }
+  }
+
+ private:
+  Tensor scratch_pad_;
+  bool allocated_ = false;
+};
 
 inline void GetStridesFromSizes(MklTensorFormat data_format, size_t* strides,
                                 const size_t* sizes) {

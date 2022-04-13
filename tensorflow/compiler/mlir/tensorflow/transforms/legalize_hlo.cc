@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -33,7 +34,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -69,6 +70,8 @@ using mhlo::DotDimensionNumbersAttr;
 
 // Replaces `region`'s terminator to TF::Yield.
 void ReplaceReturnOp(Region &region, PatternRewriter &rewriter) {
+  OpBuilder::InsertionGuard guard(rewriter);
+
   for (auto &block : region.getBlocks()) {
     Operation *terminator = block.getTerminator();
     auto return_op = llvm::dyn_cast_or_null<mhlo::ReturnOp>(terminator);
@@ -78,6 +81,20 @@ void ReplaceReturnOp(Region &region, PatternRewriter &rewriter) {
     rewriter.replaceOpWithNewOp<TF::YieldOp>(return_op,
                                              return_op->getOperands());
   }
+}
+
+// If `value` is a splat constant, returns a success and set `splat_value`
+// to the splate constant value.
+// `SplatValueType` can be `APInt` or `APFloat`.
+template <typename SplatValueType>
+LogicalResult GetConstantSplatValue(Value value, SplatValueType &splat_value) {
+  DenseElementsAttr attr;
+  if (!matchPattern(value, m_Constant(&attr)) || !attr.isSplat()) {
+    return failure();
+  }
+
+  splat_value = attr.getSplatValue<SplatValueType>();
+  return success();
 }
 
 class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
@@ -1196,8 +1213,9 @@ bool MatchTopKComparator(Region &comparator) {
   auto compare_op = dyn_cast_or_null<mhlo::CompareOp>(&operations.front());
   auto return_op = dyn_cast_or_null<mhlo::ReturnOp>(&operations.back());
   if (!compare_op || !return_op) return false;
-  // TODO(xuanyuanluo): Support "LT" direction.
-  if (compare_op.comparison_direction() != "GT") return false;
+  // TODO(xuanyuanluo): Support mhlo::ComparisonDirection::LT direction.
+  if (compare_op.comparison_direction() != mhlo::ComparisonDirection::GT)
+    return false;
   if (compare_op.lhs() != comparator_blk.getArgument(0) ||
       compare_op.rhs() != comparator_blk.getArgument(1))
     return false;
@@ -1208,7 +1226,8 @@ bool MatchTopKComparator(Region &comparator) {
 //
 // %result = "mhlo.sort" (%keys, %indices) ({
 //  ^bb0(%key_0, %key_1, %index_0, %index_1):
-//     %1 = "mhlo.compare"(%key_0, %key_1) {"GT"} -> tensor<i1>
+//     %1 = "mhlo.compare"(%key_0, %key_1) {mhlo::ComparisonDirection::GT}
+//     -> tensor<i1>
 //  }),
 //
 // where the indices is obtained by an IotaOp (maybe folded).
@@ -1582,15 +1601,14 @@ class ConvertReduceOpToTfSum
   LogicalResult MatchInitValue(Value init_value) const override {
     auto type = init_value.getType().cast<ShapedType>().getElementType();
     if (type.isa<FloatType>()) {
-      DenseFPElementsAttr init_attr;
-      if (!matchPattern(init_value, m_Constant(&init_attr)) ||
-          !init_attr.isSplat() || !init_attr.getSplatValue<APFloat>().isZero())
+      APFloat const_value(.0);
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isZero())
         return failure();
-    } else if (type.isa<IntegerType>()) {
-      DenseIntElementsAttr int_init_attr;
-      if (!matchPattern(init_value, m_Constant(&int_init_attr)) ||
-          !int_init_attr.isSplat() ||
-          !int_init_attr.getSplatValue<APInt>().isZero())
+    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+      APInt const_value;
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isZero())
         return failure();
     } else {
       return failure();
@@ -1606,12 +1624,20 @@ class ConvertReduceOpToTfMax
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
-    DenseFPElementsAttr init_attr;
-    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
-        !init_attr.isSplat() ||
-        !init_attr.getSplatValue<APFloat>().isInfinity() ||
-        !init_attr.getSplatValue<APFloat>().isNegative())
+    auto type = init_value.getType().cast<ShapedType>().getElementType();
+    if (type.isa<FloatType>()) {
+      APFloat const_value(.0);
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isInfinity() || !const_value.isNegative())
+        return failure();
+    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+      APInt const_value;
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isMinSignedValue())
+        return failure();
+    } else {
       return failure();
+    }
     return success();
   }
 };
@@ -1622,12 +1648,21 @@ class ConvertReduceOpToTfMin
   using ConvertReduceOpToTfOp::ConvertReduceOpToTfOp;
 
   LogicalResult MatchInitValue(Value init_value) const override {
-    DenseFPElementsAttr init_attr;
-    if (!matchPattern(init_value, m_Constant(&init_attr)) ||
-        !init_attr.isSplat() ||
-        !init_attr.getSplatValue<APFloat>().isInfinity() ||
-        init_attr.getSplatValue<APFloat>().isNegative())
+    auto type = init_value.getType().cast<ShapedType>().getElementType();
+
+    if (type.isa<FloatType>()) {
+      APFloat const_value(.0);
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isInfinity() || const_value.isNegative())
+        return failure();
+    } else if (type.isa<IntegerType>() && type.isSignlessInteger()) {
+      APInt const_value;
+      if (failed(GetConstantSplatValue(init_value, const_value)) ||
+          !const_value.isMaxSignedValue())
+        return failure();
+    } else {
       return failure();
+    }
     return success();
   }
 };
@@ -1759,7 +1794,8 @@ class ConvertReduceOpToTfArgMinMax
 
       mhlo::CompareOp value_ne = llvm::dyn_cast_or_null<mhlo::CompareOp>(
           value_or.rhs().getDefiningOp());
-      if (!value_ne || value_ne.comparison_direction() != "NE" ||
+      if (!value_ne ||
+          value_ne.comparison_direction() != mhlo::ComparisonDirection::NE ||
           value_ne.lhs() != body.getArgument(0) ||
           value_ne.rhs() != body.getArgument(0))
         return failure();
@@ -1789,14 +1825,16 @@ class ConvertReduceOpToTfArgMinMax
 
     mhlo::CompareOp value_eq = llvm::dyn_cast_or_null<mhlo::CompareOp>(
         index_and.lhs().getDefiningOp());
-    if (!value_eq || value_eq.comparison_direction() != "EQ" ||
+    if (!value_eq ||
+        value_eq.comparison_direction() != mhlo::ComparisonDirection::EQ ||
         value_eq.lhs() != body.getArgument(0) ||
         value_eq.rhs() != body.getArgument(2))
       return failure();
 
     mhlo::CompareOp index_lt = llvm::dyn_cast_or_null<mhlo::CompareOp>(
         index_and.rhs().getDefiningOp());
-    if (!index_lt || index_lt.comparison_direction() != "LT" ||
+    if (!index_lt ||
+        index_lt.comparison_direction() != mhlo::ComparisonDirection::LT ||
         index_lt.lhs() != body.getArgument(1) ||
         index_lt.rhs() != body.getArgument(3))
       return failure();
@@ -1804,7 +1842,7 @@ class ConvertReduceOpToTfArgMinMax
     return success();
   }
 
-  virtual const char *CompareDirection() const = 0;
+  virtual mhlo::ComparisonDirection CompareDirection() const = 0;
 
   virtual bool IsValueInitValue(const DenseElementsAttr &attr) const = 0;
 };
@@ -1814,7 +1852,9 @@ class ConvertReduceOpToTfArgmax
  public:
   using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
 
-  const char *CompareDirection() const override { return "GT"; }
+  mhlo::ComparisonDirection CompareDirection() const override {
+    return mhlo::ComparisonDirection::GT;
+  }
   bool IsValueInitValue(const DenseElementsAttr &attr) const override {
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat() ||
@@ -1836,7 +1876,9 @@ class ConvertReduceOpToTfArgmin
  public:
   using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
 
-  const char *CompareDirection() const override { return "LT"; }
+  mhlo::ComparisonDirection CompareDirection() const override {
+    return mhlo::ComparisonDirection::LT;
+  }
   bool IsValueInitValue(const DenseElementsAttr &attr) const override {
     auto element_type = attr.getType().getElementType();
     if (attr.getNumElements() != 1 || !element_type.isIntOrFloat() ||
@@ -1986,6 +2028,137 @@ bool IsSpatialPoolingWithoutDilation(
   *padding_mode = "SAME";
   return true;
 }
+
+// Convert a reduce_window operation into a cumulative operation where possible
+// for a given binary operation.
+template <class BinaryOp, class TfCumOp>
+class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  virtual bool IsInitValue(const DenseElementsAttr &attr) const = 0;
+
+  LogicalResult matchAndRewrite(
+      mhlo::ReduceWindowOp rw, OpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const final {
+    if (rw.getNumResults() != 1 || rw.inputs().size() != 1 ||
+        rw.init_values().size() != 1)
+      return failure();
+
+    if (failed(MatchBinaryReduceFunction<BinaryOp>(rw.body())))
+      return failure();
+
+    // Ensure that initial_values are as expected.
+    auto const_op = llvm::dyn_cast_or_null<mhlo::ConstOp>(
+        rw.init_values()[0].getDefiningOp());
+    if (!const_op) return failure();
+    auto const_op_dense_value = const_op.value().cast<DenseElementsAttr>();
+    if (!const_op_dense_value || !IsInitValue(const_op_dense_value)) {
+      return failure();
+    }
+
+    ShapedType input_type = rw.inputs()[0].getType().cast<ShapedType>();
+
+    // For a cumulative op, require a tensor of 1s for each dimension in
+    // input.
+    auto is_splat_int64_ones =
+        [&rewriter,
+         &input_type](const ::llvm::Optional<DenseIntElementsAttr> &attr) {
+          if (!attr.hasValue()) return false;
+          if (attr->getType().getShape()[0] != input_type.getRank())
+            return false;
+          if (!attr->isSplat()) return false;
+          if (attr->getElementType() != rewriter.getIntegerType(64))
+            return false;
+          if (attr->getSplatValue<APInt>().getSExtValue() != 1) return false;
+          return true;
+        };
+    if (!is_splat_int64_ones(rw.base_dilations()) ||
+        !is_splat_int64_ones(rw.window_dilations()) ||
+        !is_splat_int64_ones(rw.window_strides()))
+      return failure();
+
+    // Determine which axis is being used for the cumulative operation.
+    //
+    // For a cumulative op, window_dimensions should be of the form:
+    //  dense<[1, 1, N, 1]>
+    // where N is the same as the size of the corresponding input dimension
+    // and there is a 1-entry for each input dimension not being operated
+    // over.
+    const auto &window_dimensions = rw.window_dimensions();
+    if (window_dimensions.size() != input_type.getRank()) return failure();
+    int64_t cumulative_axis = -1;
+    for (int64_t i = 0, e = window_dimensions.size(); i < e; ++i) {
+      int64_t window_dimension = window_dimensions.getValues<int64_t>()[i];
+      if (window_dimension == 1) continue;
+      // Cumulative axis already set.
+      if (cumulative_axis != -1) return failure();
+      // Potential cumulative axis is not the right size.
+      if (window_dimension != input_type.getShape()[i]) return failure();
+      cumulative_axis = i;
+    }
+
+    // For a cumulative op, padding (expressed as a list of left-padding and
+    // right-padding pairs) should be of the form:
+    //  dense<[[0, 0], [0, 0], [N-1, 0], [0, 0]]>
+    // where N is the size of the input dimension being operated over.
+    if (!rw.padding()) return failure();
+    const auto &padding = rw.padding()->getValues<int64_t>();
+    if (padding.size() != input_type.getRank() * 2) return failure();
+    int64_t padding_value = input_type.getShape()[cumulative_axis] - 1;
+    for (int64_t dim = 0; dim < input_type.getRank(); ++dim) {
+      int64_t left_padding = padding[2 * dim];
+      int64_t right_padding = padding[2 * dim + 1];
+      if (dim == cumulative_axis) {
+        if (left_padding != padding_value) return failure();
+      } else {
+        if (left_padding != 0) return failure();
+      }
+      if (right_padding != 0) return failure();
+    }
+
+    auto axis = rewriter.create<TF::ConstOp>(
+        rw->getLoc(),
+        rewriter.getIntegerAttr(rewriter.getIntegerType(64), cumulative_axis));
+
+    rewriter.replaceOpWithNewOp<TfCumOp>(rw, rw.getType(0), rw.inputs()[0],
+                                         axis, /* exclusive */ false,
+                                         /* reverse */ false);
+    return success();
+  }
+};
+
+class ConvertLoweredCumSumOp
+    : public ConvertLoweredCumOp<mhlo::AddOp, TF::CumsumOp> {
+  using ConvertLoweredCumOp::ConvertLoweredCumOp;
+  bool IsInitValue(const DenseElementsAttr &attr) const override {
+    auto element_type = attr.getType().getElementType();
+    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
+      return false;
+    if (element_type.isa<FloatType>()) {
+      auto value = *attr.value_begin<APFloat>();
+      return value.isZero();
+    }
+    auto value = *attr.value_begin<APInt>();
+    return value.isZero();
+  }
+};
+
+class ConvertLoweredCumProdOp
+    : public ConvertLoweredCumOp<mhlo::MulOp, TF::CumprodOp> {
+  using ConvertLoweredCumOp::ConvertLoweredCumOp;
+  bool IsInitValue(const DenseElementsAttr &attr) const override {
+    auto element_type = attr.getType().getElementType();
+    if (attr.getNumElements() != 1 || !element_type.isIntOrFloat())
+      return false;
+    if (element_type.isa<FloatType>()) {
+      auto value = *attr.value_begin<APFloat>();
+      return value.isExactlyValue(1.0);
+    }
+    auto value = *attr.value_begin<APInt>();
+    return value.getSExtValue() == 1;
+  }
+};
 
 // Maps the following representations of AvgPool in MHLO into a tf.AvgPool{3D}
 // operation when they cleanly map to 2D or 3D average pool with VALID or SAME
@@ -2393,7 +2566,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
   // output to the real output.
   struct TransposeParams {
     std::vector<int64_t> permutation;
-    // The following are the "canocanilzed" output shape with offset dims.
+    // The following are the "canonicalized" output shape with offset dims.
     std::vector<int64_t> canonicalized_output_shape;
     std::vector<int64_t> canonicalized_offset_dims;
   };
@@ -2612,13 +2785,12 @@ class ConvertWhileOp : public OpConversionPattern<mhlo::WhileOp> {
     // Creates a TF::WhileRegionOp to replace the mhlo::WhileOp. HLO WhileOp
     // currently doesn't support stateless and shape invariant, so these
     // parameters are set to the default values.
-    rewriter.setInsertionPoint(while_op);
     auto new_while = rewriter.create<TF::WhileRegionOp>(
         while_op.getLoc(), while_op->getResultTypes(), while_op->getOperands(),
         /*parallel_iterations=*/10,
         /*is_stateless=*/false, /*shape_invariant=*/false);
-    new_while.cond().takeBody(while_op.getRegion(0));
-    new_while.body().takeBody(while_op.getRegion(1));
+    new_while.cond().takeBody(while_op.cond());
+    new_while.body().takeBody(while_op.body());
     ReplaceReturnOp(new_while.cond(), rewriter);
     ReplaceReturnOp(new_while.body(), rewriter);
     rewriter.replaceOp(while_op, new_while.getResults());
@@ -2634,13 +2806,12 @@ class ConvertIfOp : public OpConversionPattern<mhlo::IfOp> {
       mhlo::IfOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     // HLO IfOp currently doesn't support stateless
-    rewriter.setInsertionPoint(op);
     auto new_op = rewriter.create<TF::IfRegionOp>(
         op.getLoc(), op->getResultTypes(), op.pred(),
         /*is_stateless=*/false, /*_then_func_name=*/nullptr,
         /*_else_func_name=*/nullptr);
-    new_op.then_branch().takeBody(op.getRegion(0));
-    new_op.else_branch().takeBody(op.getRegion(1));
+    new_op.then_branch().takeBody(op.true_branch());
+    new_op.else_branch().takeBody(op.false_branch());
     ReplaceReturnOp(new_op.then_branch(), rewriter);
     ReplaceReturnOp(new_op.else_branch(), rewriter);
     rewriter.replaceOp(op, new_op.getResults());
@@ -2834,7 +3005,7 @@ void LegalizeHloToTf::runOnOperation() {
 
   ConversionTarget target(context);
   target.addLegalDialect<TensorFlowDialect>();
-  target.addLegalOp<CallOp, ConstantOp, arith::ConstantOp>();
+  target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
   target.addLegalOp<mhlo::TupleOp>();
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
@@ -2847,16 +3018,16 @@ void LegalizeHloToTf::runOnOperation() {
 
 void PopulateLegalizeHloToTfPatterns(RewritePatternSet *patterns,
                                      MLIRContext *context) {
-  patterns->insert<
-      ConvertIfOp, ConvertWhileOp, ConvertSortToTfTopk, ConvertAvgPoolOp,
-      ConvertConvOp, ConvertNonTrivialConvOp, ConvertDynamicSliceOp,
-      ConvertDynamicUpdateSliceOp, ConvertGatherOp, ConvertMaxPoolOp,
-      ConvertScatterAddOp, ConvertScatterMaxOp, ConvertScatterMinOp,
-      ConvertScatterSubOp, ConvertScatterUpdateOp, ConvertSliceOp,
-      ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
+  patterns->add<
+      ConvertAvgPoolOp, ConvertConvOp, ConvertNonTrivialConvOp,
+      ConvertDynamicSliceOp, ConvertDynamicUpdateSliceOp, ConvertGatherOp,
+      ConvertIfOp, ConvertMaxPoolOp, ConvertScatterAddOp, ConvertScatterMaxOp,
+      ConvertScatterMinOp, ConvertScatterSubOp, ConvertScatterUpdateOp,
+      ConvertSliceOp, ConvertReduceOpToTfArgmax, ConvertReduceOpToTfArgmin,
       ConvertReduceOpToTfMax, ConvertReduceOpToTfMin, ConvertReduceOpToTfAll,
-      ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(
-      context);
+      ConvertReduceOpToTfAny, ConvertReduceOpToTfSum, ConvertSortToTfTopk,
+      ConvertIotaOpToTfRange, ConvertWhileOp, ConvertLoweredCumSumOp,
+      ConvertLoweredCumProdOp>(context);
   populateWithGenerated(*patterns);
 }
 

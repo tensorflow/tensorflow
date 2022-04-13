@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_GRAPHDEF_H_
 
 #include <memory>
+#include <string>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -28,10 +29,19 @@ limitations under the License.
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace mlir {
 namespace tfg {
+
+// Compute the name to use in GraphDef for a given Value (either the result of
+// an operation or a block operand if a function argument) and store the result
+// in the provided name string. The `control_ty` is the instance of the
+// `ControlType` to compare against and detect a control dependency case.
+tensorflow::Status GetValueName(Value operand, std::string &name,
+                                Type control_ty);
+
 // Exports a GraphFunc operation as a new entry in the function library,
 // overwriting any existing functions.
 tensorflow::Status ExportFunction(mlir::tfg::GraphFuncOp func_op,
@@ -40,9 +50,17 @@ tensorflow::Status ExportFunction(mlir::tfg::GraphFuncOp func_op,
 }  // namespace mlir
 namespace tensorflow {
 
-// Given an MLIR module, returns a newly allocated GraphDef. The module must
+// Given an MLIR module, returns a `output_graph` GraphDef. The module must
 // contain at most a single Graph operation and zero or more TFFunc operations.
 Status ExportMlirToGraphdef(mlir::ModuleOp module, GraphDef *output_graph);
+
+// Given an MLIR module, returns a `output_saved_model` SavedModel.
+// The module must contain at most a single Graph operation and zero or more
+// TFFunc operations. `original_saved_model` is used as only a GraphDef portion
+// of a saved model represented in the MLIR module.
+Status ExportMlirToSavedModel(mlir::ModuleOp module,
+                              const SavedModel &original_saved_model,
+                              SavedModel *output_saved_model);
 
 // Callback type for `ConvertOperationToNode`.
 using GetValueNameFn = llvm::function_ref<Status(

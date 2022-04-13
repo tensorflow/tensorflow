@@ -26,10 +26,40 @@ limitations under the License.
 #include "tensorflow/core/kernels/ragged_tensor_variant.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
 
 namespace tensorflow {
 namespace {
+
+template <typename VALUE_TYPE>
+Status UnbatchDenseZerothDim(
+    const RaggedTensorVariant& batched_ragged,
+    std::vector<RaggedTensorVariant>* ragged_components) {
+  Tensor batched_values = batched_ragged.values();
+  TensorShape values_shape = batched_values.shape();
+  if (values_shape.dims() < 1) {
+    return errors::InvalidArgument("Can't unbatch rank-0 tensor.");
+  }
+  int num_components = values_shape.dim_size(0);
+  values_shape.RemoveDim(0);
+  int num_values = values_shape.num_elements();
+
+  ragged_components->resize(num_components);
+  const auto& batched_flat = batched_values.flat<VALUE_TYPE>();
+
+  for (int i = 0; i < num_components; i++) {
+    (*ragged_components)[i].set_values(
+        Tensor(DataTypeToEnum<VALUE_TYPE>::value, values_shape));
+    auto ragged_component_values_flat =
+        (*ragged_components)[i].mutable_values()->flat<VALUE_TYPE>();
+    for (int j = 0; j < num_values; j++) {
+      ragged_component_values_flat(j) = batched_flat(j + i * num_values);
+    }
+  }
+
+  return Status::OK();
+}
 
 template <typename VALUE_TYPE, typename SPLIT_TYPE>
 Status UnbatchRaggedZerothDim(
@@ -37,8 +67,17 @@ Status UnbatchRaggedZerothDim(
     std::vector<RaggedTensorVariant>* ragged_components) {
   // Set up the component Ragged Tensors.
   int ragged_rank = batched_ragged.ragged_rank();
+  if (ragged_rank == 0) {
+    return UnbatchDenseZerothDim<VALUE_TYPE>(batched_ragged, ragged_components);
+  }
+
   auto batched_splits_top_vec = batched_ragged.splits(0).vec<SPLIT_TYPE>();
   int num_components = batched_splits_top_vec.size() - 1;
+
+  if (num_components < 0) {
+    return errors::Internal("Invalid split argument.");
+  }
+
   int num_splits = ragged_rank - 1;
   ragged_components->resize(num_components);
   for (RaggedTensorVariant& ragged_component : *ragged_components) {
@@ -157,19 +196,8 @@ class RaggedTensorToVariantOp : public OpKernel {
       return;
     }
 
-    // Checked here instead of at input in case batched_input_ is false
-    OP_REQUIRES(context, ragged_nested_splits_len > 0,
-                errors::InvalidArgument(
-                    "rt_nested_splits must be a list of one or more, but "
-                    "received rt_nested_splits of length 0."));
-
     // Unbatch the Ragged Tensor and encode the components.
     std::vector<RaggedTensorVariant> unbatched_ragged_input;
-    auto batched_splits_top_vec =
-        batched_ragged_input.splits(0).vec<SPLIT_TYPE>();
-    int num_components = batched_splits_top_vec.size() - 1;
-    OP_REQUIRES(context, num_components >= 0,
-                errors::Internal("Invalid split argument."));
     OP_REQUIRES_OK(context, UnbatchRaggedZerothDim<VALUE_TYPE, SPLIT_TYPE>(
                                 batched_ragged_input, &unbatched_ragged_input));
 

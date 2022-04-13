@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 
-#include <float.h>
-
+#include <algorithm>
 #include <functional>
 #include <memory>
+#include <numeric>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -1687,8 +1689,7 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::Postprocess(HloInstruction* hlo) {
-  logger_->RegisterLogEntry(GetPartitionedHlo(hlo).hlo(),
-                            b_.derived_instructions(hlo));
+  logger_->RegisterLogEntry(hlo, b_.derived_instructions(hlo));
   visiting_hlo_ = nullptr;
   b_.set_visiting_hlo(nullptr);
   // Revert fake one-device shardings for manually partitioned ops.
@@ -1925,7 +1926,6 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     const int64_t partition_count =
         input_sharding.tile_assignment().dim(sort_dim);
     const int64_t input_size = input->shape().dimensions(sort_dim);
-    const int64_t per_partition_size = CeilOfRatio(input_size, partition_count);
     const auto element_type = input->shape().element_type();
     const auto index_type = index->shape().element_type();
 
@@ -1943,7 +1943,7 @@ Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     // becomes the padded shape.
     std::vector<int64_t> replicated_dimensions(
         input->shape().dimensions().begin(), input->shape().dimensions().end());
-    replicated_dimensions[sort_dim] = per_partition_size * partition_count;
+    replicated_dimensions[sort_dim] = RoundUpTo(input_size, partition_count);
     const Shape replicated_shape = ShapeUtil::MakeTupleShape(
         {ShapeUtil::MakeShape(element_type, replicated_dimensions),
          ShapeUtil::MakeShape(index_type, replicated_dimensions)});
@@ -2761,8 +2761,8 @@ Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
           return branch_b.AddInstruction(
               HloInstruction::CreateTuple(padded_elements));
         }
-        const Shape& pad_shape =
-            ShapeUtil::GetSubshape(shard_shape, ShapeIndexView(index, 1));
+        const Shape& pad_shape = ShapeUtil::GetSubshape(
+            shard_shape, ShapeIndexView(index).subspan(1));
         if (ShapeUtil::Compatible(element_shape, pad_shape)) {
           return infeed_element;
         }
@@ -3939,15 +3939,25 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
           << "Parameter shape changed for the entry computation";
     }
   } else {
+    // Fix up some bad tiling in entry computation layout.
+    auto update_shape = [this](Shape* subshape, const xla::ShapeIndex& index) {
+      if (subshape->IsArray()) {
+        UpdateLayout(subshape);
+      }
+    };
     const auto& old_entry_layout = module->entry_computation_layout();
     // Shapes can change but the layout should still remain the same.
     for (int64_t i = 0; i < new_program_shape.parameters_size(); ++i) {
       TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
           old_entry_layout.parameter_shape(i),
           new_program_shape.mutable_parameters(i)));
+      ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_parameters(i),
+                                        update_shape);
     }
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         old_entry_layout.result_shape(), new_program_shape.mutable_result()));
+    ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_result(),
+                                      update_shape);
 
     HloModuleConfig config = module->config();
     *config.mutable_entry_computation_layout() =

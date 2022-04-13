@@ -438,7 +438,7 @@ cmd_status(){
 # Run bazel build --nobuild to test the validity of the BUILD files
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/... -//tensorflow/tools/toolchains/win/... -//tensorflow/tools/toolchains/win_1803/..."
   BUILD_CMD="bazel build --experimental_cc_shared_library --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}

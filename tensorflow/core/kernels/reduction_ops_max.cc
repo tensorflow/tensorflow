@@ -60,12 +60,15 @@ REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
 REGISTER_GPU_KERNELS(int64_t);
 
-// A special GPU kernel for int32.
+#undef REGISTER_GPU_KERNELS
+#endif
+
+// A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(
     Name("Max")
-        .Device(DEVICE_GPU)
+        .Device(DEVICE_DEFAULT)
         .HostMemory("reduction_indices")
         .HostMemory("input")
         .HostMemory("output")
@@ -74,17 +77,12 @@ REGISTER_KERNEL_BUILDER(
     ReductionOp<CPUDevice, int32, int32, Eigen::internal::MaxReducer<int32>>);
 REGISTER_KERNEL_BUILDER(
     Name("Max")
-        .Device(DEVICE_GPU)
+        .Device(DEVICE_DEFAULT)
         .HostMemory("reduction_indices")
         .HostMemory("input")
         .HostMemory("output")
         .TypeConstraint<int32>("T")
         .TypeConstraint<int64_t>("Tidx"),
     ReductionOp<CPUDevice, int32, int64, Eigen::internal::MaxReducer<int32>>);
-
-#undef REGISTER_GPU_KERNELS
-
-#endif
-
 
 }  // namespace tensorflow

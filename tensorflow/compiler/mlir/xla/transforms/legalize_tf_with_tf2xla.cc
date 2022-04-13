@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -236,6 +236,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SparseToDenseOp>(),
     TypeID::get<TF::SquareOp>(),
     TypeID::get<TF::StatelessMultinomialOp>(),
+    TypeID::get<TF::StatelessParameterizedTruncatedNormalOp>(),
     TypeID::get<TF::StatelessRandomGetAlgOp>(),
     TypeID::get<TF::StatelessRandomGetKeyCounterOp>(),
     TypeID::get<TF::StatelessRandomGetKeyCounterAlgOp>(),
@@ -369,6 +370,7 @@ bool IsOpAllowedTf2XlaPreferred(Operation* op) {
     TypeID::get<TF::SplitOp>(),
     TypeID::get<TF::SplitVOp>(),
     TypeID::get<TF::SqueezeOp>(),
+    TypeID::get<TF::StatelessParameterizedTruncatedNormalOp>(),
     TypeID::get<TF::StatefulPartitionedCallOp>(),
     TypeID::get<TF::StopGradientOp>(),
     TypeID::get<TF::StridedSliceGradOp>(),

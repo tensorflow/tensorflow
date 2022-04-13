@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -200,10 +201,10 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
   std::vector<std::unique_ptr<const se::dnn::ConvRunner>> runners;
   TF_RETURN_IF_ERROR(stream_exec->GetConvolveRunners(
       /* use_cudnn_frontend = */ false, kind, dtype, dtype, stream,
-      params.config.input_descriptor, params.input_buf,
-      params.config.filter_descriptor, params.filter_buf,
-      params.config.output_descriptor, params.output_buf,
-      params.config.conv_desc, /* use_fallback = */ false, scratch_allocator,
+      params.config->input_descriptor, params.input_buf,
+      params.config->filter_descriptor, params.filter_buf,
+      params.config->output_descriptor, params.output_buf,
+      params.config->conv_desc, /* use_fallback = */ false, scratch_allocator,
       &runners));
 
   return runners;
@@ -481,9 +482,13 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                         "Disqualified for implicit RELU.");
   }
 
+  const int64_t rz_space_limit = hlo_module_config.debug_options()
+                                     .xla_gpu_redzone_scratch_max_megabytes() *
+                                 (1LL << 20);
   se::RedzoneAllocator scratch_allocator(
       stream, allocator,
-      PtxOptsFromDebugOptions(hlo_module_config.debug_options()));
+      PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
+      /*memory_limit=*/rz_space_limit);
   se::dnn::ProfileResult profile_result;
   VLOG(3) << "Trying algorithm " << alg.ToString() << " for "
           << instr->ToString();
@@ -659,7 +664,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   se::RedzoneAllocator input_output_allocator(
       stream, allocator,
       PtxOptsFromDebugOptions(hlo_module_config.debug_options()),
-      /*memory_limit=*/se::RedzoneAllocator::kDefaultMemoryLimit,
+      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
       /*redzone_size=*/redzone_size);
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {

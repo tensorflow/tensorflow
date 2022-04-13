@@ -20,14 +20,16 @@ TODO(martinz): replace ragged_tensor_shape with this.
 
 
 import abc
-from typing import Iterable, Sequence, Tuple, Union
+from typing import Any, Iterable, Sequence, Optional, Tuple, Union
 
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -35,7 +37,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
+from tensorflow.python.ops.ragged.row_partition import RowPartitionSpec
 from tensorflow.python.types import core
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(martinz): allow inner_shape to be a fully defined TensorShape.
@@ -48,7 +52,8 @@ from tensorflow.python.types import core
 #
 # TODO(martinz): unify the impl of the determination of index type across
 #     RowPartition and DynamicRaggedShape.
-class DynamicRaggedShape:
+@tf_export("experimental.DynamicRaggedShape")
+class DynamicRaggedShape(extension_type.ExtensionType):
   """The shape of a ragged or dense tensor.
 
   Ragged shapes are encoded using two fields:
@@ -78,6 +83,9 @@ class DynamicRaggedShape:
   [RP([2, 1])]                | [3, 2]       | `[[[1, 2], [3, 4]], [[5, 6]]]`
   [RP([2, 1]), RP([2, 1, 2])] | [5]          | `[[[1, 2], [3]], [[4, 5]]]`
   """
+  _row_partitions: Tuple[RowPartition, ...]
+  _inner_shape: ops.Tensor
+  _static_inner_shape: tensor_shape.TensorShape
 
   def __init__(self, row_partitions, inner_shape, dtype=None, validate=False):
     """Core constructor for a DynamicRaggedShape.
@@ -119,8 +127,7 @@ class DynamicRaggedShape:
       dtype = dtypes.int32
     dtype = _find_dtype(dtypes.int64, dtype)
 
-    row_partitions = tuple(
-        [rp.with_row_splits_dtype(dtype) for rp in row_partitions])
+    row_partitions = tuple([rp.with_dtype(dtype) for rp in row_partitions])
     self._row_partitions = row_partitions
     self._inner_shape = ops.convert_to_tensor(
         inner_shape, dtype_hint=dtype, name="inner_dim_sizes")
@@ -171,7 +178,7 @@ class DynamicRaggedShape:
       self._inner_shape = control_flow_ops.with_dependencies(
           checks, self._inner_shape, name="inner_shape_validated")
       self._row_partitions = [
-          rp.with_dependencies(checks) for rp in self._row_partitions
+          rp._with_dependencies(checks) for rp in self._row_partitions  # pylint: disable=protected-access
       ]
 
   @classmethod
@@ -273,7 +280,8 @@ class DynamicRaggedShape:
       (row_partitions, nvals) = _to_row_partitions_and_nvals_from_lengths(
           lengths[:num_row_partitions + 1])
       inner_shape = [nvals] + lengths[num_row_partitions + 1:]
-      return DynamicRaggedShape(row_partitions, inner_shape, dtype=dtype)
+      return DynamicRaggedShape(
+          row_partitions, inner_shape, dtype=dtype)
     else:
       return DynamicRaggedShape([], lengths, dtype=dtype)
 
@@ -291,7 +299,8 @@ class DynamicRaggedShape:
     if not row_partitions:
       raise ValueError("row_partitions cannot be empty")
     inner_shape = [row_partitions[-1].nvals()]
-    return DynamicRaggedShape(row_partitions, inner_shape, dtype=dtype)
+    return DynamicRaggedShape(
+        row_partitions, inner_shape, dtype=dtype)
 
   @classmethod
   def _from_inner_shape(cls, inner_shape, dtype=None):
@@ -414,7 +423,8 @@ class DynamicRaggedShape:
           return DynamicRaggedShape._from_inner_shape(self.inner_shape[:stop])
         else:
           new_inner_shape = self.inner_shape[:stop - self.num_row_partitions]
-        return DynamicRaggedShape(self.row_partitions, new_inner_shape)
+        return DynamicRaggedShape(
+            self.row_partitions, new_inner_shape)
     else:
       if stop < self.rank:
         partial = self._slice_shape(0, stop)
@@ -648,7 +658,7 @@ class DynamicRaggedShape:
     result = tensor_shape.dimension_value(self._static_inner_shape[dimension])
     return self._inner_shape[dimension] if result is None else result
 
-  def with_inner_rank(self, inner_rank):
+  def _with_inner_rank(self, inner_rank):
     """Returns the same shape but a different inner_rank.
 
     All dimensions that are to be represented in the inner_shape must be dense.
@@ -812,6 +822,241 @@ class DynamicRaggedShape:
           flat_values, self.row_partitions, validate=False)
     else:
       return flat_values
+
+  class Spec:
+    """A Spec for DynamicRaggedShape: similar to a static shape."""
+
+    @classmethod
+    def _from_row_partitions_inner_shape_and_dtype(  # pylint:disable=invalid-name
+        cls, row_partitions: RowPartitionSpec,
+        static_inner_shape: tensor_shape.TensorShape,
+        dtype: dtypes.DType) -> "DynamicRaggedShape.Spec":
+      """Create a Spec given row partitions, a static inner shape, and a dtype.
+
+      The inner shape (spec) can be derived from the static inner shape rank
+      and the dtype.
+
+      Args:
+        row_partitions: the RowPartitionSpec.
+        static_inner_shape: the static inner shape.
+        dtype: the DType (tf.int64 or tf.int32).
+
+      Returns:
+        A DynamicRaggedShape.Spec.
+      """
+      if dtype != dtypes.int32 and dtype != dtypes.int64:
+        raise ValueError("dtype must be tf.int32 or tf.int64")
+
+      for spec in row_partitions:
+        if spec.dtype != dtype:
+          raise ValueError(
+              "dtype of {spec} is {spec_dtype}: expected {expected_dtype}"
+              .format(spec=spec, spec_dtype=spec.dtype, expected_dtype=dtype))
+
+      inner_rank = static_inner_shape.rank
+      inner_shape = tensor_spec.TensorSpec([inner_rank], dtype=dtype)
+      return DynamicRaggedShape.Spec(
+          _row_partitions=row_partitions,
+          _inner_shape=inner_shape,
+          _static_inner_shape=static_inner_shape)
+
+    # TODO(martinz): it is unclear what the default uniformity of RowPartitions
+    # should be, so I am moving this to experimental until we figure it out.
+    # Also, while I have specified this is meant to represent a shape of a
+    # proper Tensor instead of a RaggedTensor, this is also subject to
+    # interpretation.
+    @classmethod
+    def _from_tensor_shape(cls,
+                           shape: Any,
+                           num_row_partitions: int,
+                           dtype: dtypes.DType) -> "DynamicRaggedShape.Spec":
+      """Creates a `DynamicRaggedShape.Spec` corresponding to a `tf.TensorShape`.
+
+      It is assumed that this is a `tf.TensorShape` coming from a
+      `tf.TensorSpec`, not from `RaggedTensor.shape`.
+
+      In addition to the shape, we need to know the number of row partitions,
+      and the dtype used in the shape (tf.int32 or tf.int64).
+
+      Within the dimensions that are partitioned, all dimensions are assumed
+      to be uniform.
+
+      Args:
+        shape: a TensorShape.
+        num_row_partitions: the ragged rank of the RaggedShape.
+        dtype: the dtype of the shape (not the tensor); tf.int64 or tf.int32.
+
+      Returns:
+        a DynamicRaggedShape.Spec representing a TensorShape.
+      """
+      if dtype != dtypes.int32 and dtype != dtypes.int64:
+        raise ValueError("dtype must be tf.int32 or tf.int64")
+
+      shape = tensor_shape.as_shape(shape)
+      if shape.rank is None:
+        row_partitions = [
+            RowPartitionSpec(dtype=dtype) for _ in range(num_row_partitions)
+        ]
+        return cls._from_row_partitions_inner_shape_and_dtype(
+            row_partitions=row_partitions,
+            static_inner_shape=tensor_shape.TensorShape(None),
+            dtype=dtype)
+
+      if shape.rank <= 1:
+        # Create a scalar or vector shape.
+        if num_row_partitions:
+          raise ValueError("num_row_partitions should be zero " +
+                           "if shape is a scalar or vector.")
+        return cls._from_row_partitions_inner_shape_and_dtype(
+            row_partitions=[], static_inner_shape=shape, dtype=dtype)
+
+      if shape.rank <= num_row_partitions:
+        raise ValueError("num_row_partitions must be less than rank")
+
+      num_elements_so_far = tensor_shape.dimension_value(shape[0])
+      rp_specs = []
+      for i in range(num_row_partitions):
+        current_dim = tensor_shape.dimension_value(shape[i + 1])
+        if current_dim is None or num_elements_so_far is None:
+          nvals = None
+        else:
+          nvals = num_elements_so_far * current_dim
+        rp_specs.append(RowPartitionSpec(
+            nrows=num_elements_so_far,
+            nvals=nvals,
+            uniform_row_length=current_dim,
+            dtype=dtype))
+        num_elements_so_far = nvals
+
+      static_inner_shape = tensor_shape.TensorShape(
+          [num_elements_so_far]) + shape[num_row_partitions + 1:]
+      return cls._from_row_partitions_inner_shape_and_dtype(
+          row_partitions=rp_specs,
+          static_inner_shape=static_inner_shape,
+          dtype=dtype)
+
+    @property
+    def dtype(self) -> dtypes.DType:
+      return self._inner_shape.dtype
+
+    @property
+    def inner_rank(self) -> Optional[int]:
+      return self._static_inner_shape.rank
+
+    @property
+    def num_row_partitions(self) -> int:
+      return len(self._row_partitions)
+
+    @property
+    def rank(self) -> Optional[int]:
+      inner_rank = self.inner_rank
+      return None if inner_rank is None else inner_rank + self.num_row_partitions
+
+    def _dimension(self, index: int) -> Optional[int]:
+      """Get the size of dimension index, if known statically."""
+      if index == 0:
+        if self._row_partitions:
+          return self._row_partitions[0].nrows
+        elif self.inner_rank is None:
+          return None
+        elif self.inner_rank == 0:
+          raise ValueError("Index out of range: 0.")
+        else:
+          return tensor_shape.dimension_value(self._static_inner_shape[0])
+      if index <= len(self._row_partitions):
+        return self._row_partitions[index - 1].uniform_row_length
+
+      relative_index = index - self.num_row_partitions
+
+      if self.inner_rank is None:
+        return None
+      elif self.inner_rank <= relative_index:
+        raise ValueError(f"Index out of range: {index}.")
+      else:
+        return tensor_shape.dimension_value(
+            self._static_inner_shape[relative_index])
+
+    def _num_slices_in_dimension(self, axis: int) -> Optional[int]:
+      """The total size of a dimension (like nvals).
+
+      This is a static version of DynamicRaggedShape._num_slices_in_dimension()
+
+      Example:
+
+      ```
+      shape = DynamicRaggedShape.Spec(
+        _row_partitions=[
+          RowPartitionSpec(nrows=3, nvals=14, dtype=tf.int32)
+          RowPartitionSpec(nrows=14, nvals=25, dtype=tf.int32)
+
+        ],
+        _static_inner_shape=tf.TensorShape([25, 3, 4]),
+        _inner_shape=tf.TensorSpec(tf.TensorShape([3]), dtype=tf.int32))
+      shape._num_slices_in_dimension(0) = 3
+      shape._num_slices_in_dimension(1) = 14
+      shape._num_slices_in_dimension(2) = 25
+      shape._num_slices_in_dimension(3) = 3
+      shape._num_slices_in_dimension(4) = 4
+      shape._num_slices_in_dimension(-2) = 3
+      ```
+
+      Args:
+        axis: the last dimension to include.
+
+      Returns:
+        the number of values in a dimension.
+      """
+      if not isinstance(axis, int):
+        raise TypeError("axis must be an integer")
+      axis = array_ops.get_positive_axis(axis, self.rank, ndims_name="rank")
+
+      if axis == 0:
+        return self._dimension(0)
+      if axis <= self.num_row_partitions:
+        # TODO(martinz): use nvals OR nrows, whichever is defined.
+        return self._row_partitions[axis - 1].nvals
+      remainder = axis - (self.num_row_partitions - 1)
+      head_inner_shape = self._static_inner_shape[:remainder]
+      return head_inner_shape.num_elements()
+
+    def _truncate(self, new_rank: int) -> "DynamicRaggedShape.Spec":
+      """Truncate a ragged shape spec.
+
+      For example, if the original spec s was for a shape:
+      [3, [4, 1], 2, 7]
+
+      Then truncate_dynamic_ragged_shape_spec(s, 3) is a spec for:
+      [3, [4, 1], 2]
+
+      Args:
+        new_rank: the new rank
+
+      Returns:
+        A truncated DynamicRaggedShape.Spec.
+      """
+      if new_rank == 0:
+        return DynamicRaggedShape.Spec._from_tensor_shape([], 0, self.dtype)
+
+      if new_rank == 1:
+        vector_size = self._dimension(0)
+        return DynamicRaggedShape.Spec._from_tensor_shape([vector_size], 0,
+                                                          self.dtype)
+
+      if new_rank < self.num_row_partitions + 1:
+        new_row_partitions = self._row_partitions[:new_rank - 1]
+        new_static_inner_shape = tensor_shape.TensorShape(
+            [new_row_partitions[-1].nvals])
+        return DynamicRaggedShape.Spec._from_row_partitions_inner_shape_and_dtype(
+            row_partitions=new_row_partitions,
+            static_inner_shape=new_static_inner_shape,
+            dtype=self.dtype)
+      else:
+        remainder = new_rank - self.num_row_partitions
+        new_static_inner_shape = self._static_inner_shape[:remainder]
+        return DynamicRaggedShape.Spec._from_row_partitions_inner_shape_and_dtype(
+            row_partitions=self._row_partitions,
+            static_inner_shape=new_static_inner_shape,
+            dtype=self.dtype)
 
 
 def broadcast_dynamic_shape(shape_x: DynamicRaggedShape,
@@ -1039,7 +1284,9 @@ def _find_dtype(value, preferred):
   raise ValueError("Illegal dtype: " + str(result))
 
 
-def _find_dtype_iterable(iterable, dtype):
+def _find_dtype_iterable(
+    iterable: Iterable[Any],
+    dtype: Optional[dtypes.DType]) -> Optional[dtypes.DType]:
   """Find the preferred dtype of a list of objects.
 
   This will go over the iterable, and use the first object with a preferred
@@ -1934,7 +2181,7 @@ def _broadcast_dynamic_shape_next_layer(
       check_valid = [
           check_ops.assert_equal(c_1a.row_splits(), c_1b.row_splits())
       ]
-      return (c_1a.with_dependencies(check_valid),
+      return (c_1a._with_dependencies(check_valid),  # pylint: disable=protected-access
               ac_1.with_dependencies(check_valid),
               bc_1.with_dependencies(check_valid))
 
@@ -2301,3 +2548,7 @@ def _reduce_prod_patch(x):
     return math_ops.cast(
         math_ops.reduce_prod(math_ops.cast(x, dtypes.int32)), dtypes.int64)
   return math_ops.reduce_prod(x)
+
+
+# Type alias for shape encoded as a DynamicRaggedShape or a Tensor.
+DenseOrRaggedShape = Union[DynamicRaggedShape, core.TensorLike]

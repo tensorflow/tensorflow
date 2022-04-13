@@ -16,10 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
+#include <algorithm>
 #include <bitset>
 #include <cmath>
+#include <functional>
 #include <limits>
+#include <random>
 #include <type_traits>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -31,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -254,6 +259,25 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleRound(HloInstruction* round) override {
     return HandleRound<ReturnT>(round);
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleRoundNearestEven(HloInstruction* round) {
+    // TODO(b/228138251): Add support for rounding to nearest even.
+    return UnsupportedTypeError(round);
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleRoundNearestEven(HloInstruction* round) {
+    return UnsupportedTypeError(round);
+  }
+
+  Status HandleRoundNearestEven(HloInstruction* round) override {
+    return HandleRoundNearestEven<ReturnT>(round);
   }
 
   template <
@@ -1141,7 +1165,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
                  &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
                  rhs_literal_data, feature_group_count,
-                 batch_group_count](const absl::Span<const int64_t> out_index) {
+                 batch_group_count](const absl::Span<const int64_t> out_index,
+                                    int /*thread_id*/) {
       // Dimension number applicable for input (lhs).
       const int64_t input_batch_dim = dnums.input_batch_dimension();
       const int64_t input_z_dim = dnums.input_feature_dimension();
@@ -1344,7 +1369,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         parent_->use_fast_path_ &&
         ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
         ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) {
-      return HandleDot<ReturnT>(dot);
+      return HandleDot<ElementwiseT>(dot);
     }
     return HandleDotSlowPath(dot);
   }
@@ -1380,32 +1405,38 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         << rhs->shape().dimensions(rhs_contracting_dimension);
 
     // The fast path is for a simple rank 2 dot with default layout operands.
-    if (lhs_rank == 2 && rhs_rank == 2 && lhs_contracting_dimension == 1 &&
-        rhs_contracting_dimension == 0 &&
-        LayoutUtil::Equal(lhs->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2()) &&
-        LayoutUtil::Equal(rhs->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2()) &&
-        LayoutUtil::Equal(dot->shape().layout(),
-                          LayoutUtil::GetDefaultLayoutForR2())) {
-      const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
-      const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-      const int64_t contracted_dimension_size =
-          lhs->shape().dimensions(lhs_contracting_dimension);
-      Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
-                                 contracted_dimension_size);
-      lhs_array.SetValues(lhs_literal.data<NativeT>());
-      Array2D<NativeT> rhs_array(contracted_dimension_size,
-                                 rhs->shape().dimensions(1));
-      rhs_array.SetValues(rhs_literal.data<NativeT>());
-      std::unique_ptr<Array2D<NativeT>> result_array =
-          HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
-      Literal result(dot->shape());
-      result.PopulateR2FromArray2D(*result_array);
-      parent_->evaluated_[dot] = std::move(result);
-      return Status::OK();
+    if (lhs_rank != 2 || rhs_rank != 2 || lhs_contracting_dimension != 1 ||
+        rhs_contracting_dimension != 0 ||
+        !LayoutUtil::Equal(lhs->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2()) ||
+        !LayoutUtil::Equal(rhs->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2()) ||
+        !LayoutUtil::Equal(dot->shape().layout(),
+                           LayoutUtil::GetDefaultLayoutForR2())) {
+      return HandleDotSlowPath(dot);
     }
-    return HandleDotSlowPath(dot);
+
+    const PrimitiveType native_ty =
+        primitive_util::NativeToPrimitiveType<NativeT>();
+    Literal lhs_literal =
+        parent_->GetEvaluatedLiteralFor(lhs).Convert(native_ty).ValueOrDie();
+    Literal rhs_literal =
+        parent_->GetEvaluatedLiteralFor(rhs).Convert(native_ty).ValueOrDie();
+    const int64_t contracted_dimension_size =
+        lhs->shape().dimensions(lhs_contracting_dimension);
+    Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
+                               contracted_dimension_size);
+    lhs_array.SetValues(lhs_literal.data<NativeT>());
+    Array2D<NativeT> rhs_array(contracted_dimension_size,
+                               rhs->shape().dimensions(1));
+    rhs_array.SetValues(rhs_literal.data<NativeT>());
+    std::unique_ptr<Array2D<NativeT>> result_array =
+        HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
+    Literal result(ShapeUtil::MakeShape(native_ty, dot->shape().dimensions()));
+    result.PopulateR2FromArray2D(*result_array);
+    parent_->evaluated_[dot] =
+        std::move(result).Convert(dot->shape().element_type()).ValueOrDie();
+    return Status::OK();
   }
 
   template <typename NativeT, typename std::enable_if<!std::is_same<
@@ -1428,89 +1459,77 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK_EQ(dnums.lhs_batch_dimensions_size(),
              dnums.rhs_batch_dimensions_size());
 
-    DimensionVector lhs_index(lhs_rank);
-    DimensionVector rhs_index(rhs_rank);
-
-    // result_index_locations[i] contains one or two pointers to the locations
-    // in lhs_index or rhs_index where the i'th result index should go.
-    absl::InlinedVector<std::pair<int64_t*, int64_t*>, InlineRank()>
-        result_index_locations;
-    result_index_locations.reserve(
-        (lhs_rank - dnums.lhs_contracting_dimensions_size()) +
-        (rhs_rank - dnums.rhs_contracting_dimensions_size()));
-
-    // The first components in the output shape are the LHS and RHS batch
-    // dimensions:
-    for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
-      result_index_locations.push_back(
-          {&lhs_index[dnums.lhs_batch_dimensions(i)],
-           &rhs_index[dnums.rhs_batch_dimensions(i)]});
-    }
-
-    // Then we have the LHS and RHS non-contracting dimensions, if any:
+    DimensionVector lhs_non_contracting_dims;
+    DimensionVector rhs_non_contracting_dims;
     for (int64_t i = 0; i < lhs_rank; i++) {
       if (!absl::c_linear_search(dnums.lhs_contracting_dimensions(), i) &&
           !absl::c_linear_search(dnums.lhs_batch_dimensions(), i)) {
-        result_index_locations.push_back({&lhs_index[i], nullptr});
+        lhs_non_contracting_dims.push_back(i);
       }
     }
     for (int64_t i = 0; i < rhs_rank; i++) {
       if (!absl::c_linear_search(dnums.rhs_contracting_dimensions(), i) &&
           !absl::c_linear_search(dnums.rhs_batch_dimensions(), i)) {
-        result_index_locations.push_back({&rhs_index[i], nullptr});
+        rhs_non_contracting_dims.push_back(i);
       }
     }
 
-    absl::InlinedVector<int64_t, InlineRank()> accumulate_index_sizes;
-    accumulate_index_sizes.reserve(dnums.lhs_contracting_dimensions_size());
-    absl::InlinedVector<std::pair<int64_t*, int64_t*>, InlineRank()>
-        accumulate_index_locations;
-    accumulate_index_locations.reserve(dnums.lhs_contracting_dimensions_size());
+    absl::InlinedVector<int64_t, InlineRank()> contracting_dim_sizes;
+    contracting_dim_sizes.reserve(dnums.lhs_contracting_dimensions_size());
+    DimensionVector lhs_contracting_dims;
+    DimensionVector rhs_contracting_dims;
     for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); ++i) {
       const int64_t lhs_dnum = dnums.lhs_contracting_dimensions(i);
       const int64_t rhs_dnum = dnums.rhs_contracting_dimensions(i);
-      accumulate_index_locations.push_back(
-          {&lhs_index[lhs_dnum], &rhs_index[rhs_dnum]});
+      lhs_contracting_dims.push_back(lhs_dnum);
+      rhs_contracting_dims.push_back(rhs_dnum);
       const int64_t dim_size = lhs_literal.shape().dimensions(lhs_dnum);
-      accumulate_index_sizes.push_back(dim_size);
+      contracting_dim_sizes.push_back(dim_size);
     }
-    const int64_t total_contraction_size = Product(accumulate_index_sizes);
+    const int64_t total_contraction_size = Product(contracting_dim_sizes);
     Literal result(dot->shape());
-    TF_RETURN_IF_ERROR(
-        result.Populate<ReturnT>([&](absl::Span<const int64_t> result_index) {
-          ElementwiseT result_val = static_cast<ElementwiseT>(0);
+    TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+        [&](absl::Span<const int64_t> result_index, int /*thread_id*/) {
+          // Locations in LHS and RHS that we read from.
+          DimensionVector lhs_index(lhs_rank);
+          DimensionVector rhs_index(rhs_rank);
 
-          for (int64_t i = 0; i < result_index.size(); i++) {
-            *result_index_locations[i].first = result_index[i];
-            if (result_index_locations[i].second) {
-              *result_index_locations[i].second = result_index[i];
-            }
+          // First come the batch dimensions.
+          int64_t idx = 0;
+          for (int64_t i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
+            lhs_index[dnums.lhs_batch_dimensions(i)] = result_index[idx];
+            rhs_index[dnums.rhs_batch_dimensions(i)] = result_index[idx];
+            idx++;
           }
 
-          // Accumulates resulting product along the contracted dimension.
-          absl::InlinedVector<int64_t, InlineRank()> accumulate_index(
-              accumulate_index_sizes.size(), 0);
-          for (int64_t k = 0; k < total_contraction_size; k++) {
-            for (int64_t i = 0; i < accumulate_index_sizes.size(); ++i) {
-              *(accumulate_index_locations[i].first) = accumulate_index[i];
-              *(accumulate_index_locations[i].second) = accumulate_index[i];
-            }
+          // Next we have non-contracting dimensions, if any.
+          for (int64_t i = 0; i < lhs_non_contracting_dims.size(); i++) {
+            lhs_index[lhs_non_contracting_dims[i]] = result_index[idx++];
+          }
+          for (int64_t i = 0; i < rhs_non_contracting_dims.size(); i++) {
+            rhs_index[rhs_non_contracting_dims[i]] = result_index[idx++];
+          }
 
+          // Accumulate resulting product along the contracting dimensions.
+          ElementwiseT result_val = static_cast<ElementwiseT>(0);
+          for (int64_t k = 0; k < total_contraction_size; k++) {
             ElementwiseT lhs_val(lhs_literal.Get<ReturnT>(lhs_index));
             ElementwiseT rhs_val(rhs_literal.Get<ReturnT>(rhs_index));
             result_val +=
                 ToArithmeticSafeType(lhs_val) * ToArithmeticSafeType(rhs_val);
 
-            // If there are no contracting dimension accumulate_index_sizes is
-            // empty, do not try to count down from -1 to 0 since it is and
-            // infinite loop.
-            if (!accumulate_index_sizes.empty()) {
-              for (int64_t i = accumulate_index_sizes.size() - 1; i >= 0; --i) {
-                int64_t value = ++accumulate_index[i];
-                if (value != accumulate_index_sizes[i]) {
+            // If there are no contracting dimensions, do not try to count down
+            // from -1 to 0; that's an infinite loop.
+            if (!contracting_dim_sizes.empty()) {
+              for (int64_t i = contracting_dim_sizes.size() - 1; i >= 0; --i) {
+                lhs_index[lhs_contracting_dims[i]]++;
+                rhs_index[rhs_contracting_dims[i]]++;
+                if (lhs_index[lhs_contracting_dims[i]] !=
+                    contracting_dim_sizes[i]) {
                   break;
                 }
-                accumulate_index[i] = 0;
+                lhs_index[lhs_contracting_dims[i]] = 0;
+                rhs_index[rhs_contracting_dims[i]] = 0;
               }
             }
           }
@@ -1911,15 +1930,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       // do this by iterating through the window, and compare each index with
       // the selected index.
       absl::optional<ReturnT> selected_val;
-      absl::optional<std::vector<int64_t>> selected_index;
+      absl::optional<DimensionVector> selected_index;
 
       IterateThroughWindow(
           window_shape, window, operand_literal.shape(), source_index,
-          [&](const std::vector<int64_t>& operand_index) {
+          [&](absl::Span<const int64_t> operand_index) {
             auto curr_val = operand_literal.Get<ReturnT>(operand_index);
             if (!selected_val) {
               selected_val = curr_val;
-              selected_index = operand_index;
+              selected_index.emplace(operand_index.begin(),
+                                     operand_index.end());
             }
             curr_val_literal.Set({}, curr_val);
             selected_val_literal.Set({}, *selected_val);
@@ -1931,14 +1951,15 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             bool selected = !computed_result.Get<bool>({});
             if (selected) {
               selected_val = curr_val;
-              selected_index = operand_index;
+              selected_index.emplace(operand_index.begin(),
+                                     operand_index.end());
             }
             embedded_evaluator.ResetVisitStates();
           });
 
       IterateThroughWindow(
           window_shape, window, operand_literal.shape(), source_index,
-          [&](const std::vector<int64_t>& operand_index) {
+          [&](absl::Span<const int64_t> operand_index) {
             if (std::equal(operand_index.begin(), operand_index.end(),
                            selected_index->begin())) {
               auto source = source_literal.Get<ReturnT>(source_index);
@@ -2003,11 +2024,26 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Shape window_shape = ShapeUtil::MakeShape(
         input_arrays[0]->shape().element_type(), window_dimension_sizes);
 
-    HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
+    const int num_threads = tensorflow::port::MaxParallelism() + 1;
+    std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
+    embedded_evaluators.reserve(num_threads);
+    for (int i = 0; i < num_threads; ++i) {
+      embedded_evaluators.push_back(
+          parent_->CreateEmbedded(parent_->max_loop_iterations_));
+    }
+
     // For each resulting dimension, calculate and assign computed value.
-    auto evaluate_impl =
-        [&](absl::Span<const int64_t> output_index) -> std::vector<Literal> {
-      std::vector<Literal> computed_result;
+    auto evaluate_impl = [&init_literal_vec, &window_shape, &window,
+                          &input_literal_vec, &embedded_evaluators, function,
+                          &inferred_return_shape](
+                             absl::Span<const int64_t> output_index,
+                             int thread_id) -> absl::InlinedVector<Literal, 2> {
+      const int embedded_evaluator_index = thread_id + 1;
+      CHECK_GE(embedded_evaluator_index, 0);
+      CHECK_LT(embedded_evaluator_index, embedded_evaluators.size());
+      HloEvaluator& embedded_evaluator =
+          *embedded_evaluators[embedded_evaluator_index];
+      absl::InlinedVector<Literal, 2> computed_result;
       computed_result.reserve(init_literal_vec.size());
       for (const auto* init : init_literal_vec) {
         computed_result.push_back(init->Clone());
@@ -2020,8 +2056,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               VLOG(2) << "Pushing:" << curr_result_val.ToString() << "\n";
               args.push_back(&curr_result_val);
             }
-            absl::InlinedVector<Literal, 2> curr_val_literal_vec(
-                input_literal_vec.size());
+            absl::InlinedVector<Literal, 2> curr_val_literal_vec;
+            curr_val_literal_vec.reserve(input_literal_vec.size());
             for (const auto* input_literal : input_literal_vec) {
               // Evaluate computation with specified literal operands.
               curr_val_literal_vec.push_back(Literal(ShapeUtil::MakeShape(
@@ -2040,7 +2076,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             // on the same computation.
             embedded_evaluator.ResetVisitStates();
             if (inferred_return_shape.IsTuple()) {
-              computed_result = computed_result[0].DecomposeTuple();
+              auto decomposed = computed_result[0].DecomposeTuple();
+              computed_result.clear();
+              computed_result.reserve(decomposed.size());
+              for (int i = 0; i < decomposed.size(); ++i) {
+                computed_result.push_back(std::move(decomposed[i]));
+              }
             }
           });
       VLOG(2) << "Final result size:" << computed_result.size() << "\n";
@@ -2055,23 +2096,33 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       for (int64_t i = 0; i < num_args; ++i) {
         results[i] = Literal(inferred_return_shape.tuple_shapes(i));
       }
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachIndexWithStatus(
+      ShapeUtil::ForEachIndexParallel(
           inferred_return_shape.tuple_shapes(0),
-          [&](absl::Span<const int64_t> output_index) -> StatusOr<bool> {
-            std::vector<Literal> computed_result_vec =
-                evaluate_impl(output_index);
+          [&results, &evaluate_impl](absl::Span<const int64_t> output_index,
+                                     int thread_id) -> bool {
+            absl::InlinedVector<Literal, 2> computed_result_vec =
+                evaluate_impl(output_index, thread_id);
             for (int i = 0; i < computed_result_vec.size(); ++i) {
-              TF_RETURN_IF_ERROR(results[i].CopyElementFrom(
-                  computed_result_vec[i], {}, output_index));
+              // We are reading from `computed_result_vec[i]` at the top-level
+              // literal index and writing to `results[i]` at `output_index`.
+              // This is thread-safe because:
+              //  - `results[i]` is not changing size.
+              //  - `computed_result_vec[i]` is thread-local.
+              //  - There is exactly one write to `results[i]` for each
+              //    `output_index`.
+              TF_CHECK_OK(results[i].CopyElementFrom(computed_result_vec[i], {},
+                                                     output_index));
             }
             return true;
-          }));
+          });
       result = Literal::MoveIntoTuple(absl::MakeSpan(results));
       VLOG(2) << "Final result is:" << result.ToString() << "\n";
     } else {
-      TF_RETURN_IF_ERROR(
-          result.Populate<ReturnT>([&](absl::Span<const int64_t> output_index) {
-            return evaluate_impl(output_index)[0].template Get<ReturnT>({});
+      TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+          [&evaluate_impl](absl::Span<const int64_t> output_index,
+                           int thread_id) {
+            return evaluate_impl(output_index, thread_id)[0]
+                .template Get<ReturnT>({});
           }));
     }
     VLOG(2) << "Final result is:" << result.ToString() << "\n";
@@ -2862,12 +2913,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   static void IterateThroughWindow(
       const Shape& window_shape, const Window& window, const Shape& base_shape,
       const absl::Span<const int64_t> window_count_index,
-      const std::function<void(const std::vector<int64_t>&)>& f) {
+      const std::function<void(absl::Span<const int64_t>)>& f) {
     const int64_t rank = base_shape.rank();
     DimensionVector window_index(rank);
     std::fill(window_index.begin(), window_index.end(), 0);
     do {
-      std::vector<int64_t> base_index(rank);
+      DimensionVector base_index(rank);
       bool out_of_bound = false;
       for (int64_t i = 0; i < rank; ++i) {
         // Padding is applied to the dilated base. Say that padding is 3 and

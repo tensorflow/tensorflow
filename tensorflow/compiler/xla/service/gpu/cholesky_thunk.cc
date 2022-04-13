@@ -122,8 +122,15 @@ Status CholeskyThunk::DoPotrfBatched(const ExecuteParams& params,
       params.buffer_allocations->GetDeviceAddress(a_buffer_).opaque());
   se::DeviceMemory<int> infos(
       params.buffer_allocations->GetDeviceAddress(info_buffer_));
+#if TENSORFLOW_USE_ROCSOLVER
+  // hipsolver is not supported so allocate a GPU buffer
+  se::ScopedDeviceMemory<T*> ptrs =
+      stream->parent()->AllocateOwnedArray<T*>(batch_size_);
+  auto as = *ptrs;
+#else
   se::DeviceMemory<T*> as(
       params.buffer_allocations->GetDeviceAddress(workspace_buffer_));
+#endif
 
   CHECK_GE(as.size(), batch_size_);
   CHECK_GE(infos.size(), batch_size_);

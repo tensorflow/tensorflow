@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -143,9 +145,23 @@ void WaitAndLogIfStuck(absl::Mutex& mutex, const absl::Condition& condition) {
 
   LOG(ERROR) << "This thread has been waiting for "
              << absl::ToInt64Seconds(kTimeout) << "s and may be stuck:";
-  mutex.Await(condition);
-  LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
-                "Perhaps the timeout is too short.";
+
+  int64_t termination_timeout = xla::GetDebugOptionsFromFlags()
+                                    .xla_gpu_nccl_termination_timeout_seconds();
+  // infinite timeout is equivalent to await call without timeout.
+  absl::Duration kTerminationTimeout = termination_timeout >= 0
+                                           ? absl::Seconds(termination_timeout)
+                                           : absl::InfiniteDuration();
+
+  if (mutex.AwaitWithTimeout(condition, kTerminationTimeout)) {
+    LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
+                  "Perhaps the timeout is too short.";
+    return;
+  }
+  LOG(ERROR)
+      << "Termination timeout of " << termination_timeout
+      << " seconds exceeded. Exiting to ensure a consistent program state.";
+  std::exit(42);
 }
 
 // A rendezvous for a group of threads.

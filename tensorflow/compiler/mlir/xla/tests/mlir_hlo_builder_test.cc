@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -85,7 +86,7 @@ TEST_F(XlaBuilderTest, Infeed) {
   TF_ASSERT_OK(xla_builder_.GetCurrentStatus());
   ExpectHasSubstr(
       GetMlirOpString(infeed),
-      R"("mhlo.infeed"(%0) {infeed_config = ""} : (!mhlo.token) -> tuple<tensor<4x8xf32>, !mhlo.token>)");
+      R"("mhlo.tuple"(%1#0, %1#1) : (tensor<4x8xf32>, !mhlo.token) -> tuple<tensor<4x8xf32>)");
 }
 
 TEST_F(XlaBuilderTest, Outfeed) {

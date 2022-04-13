@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/DenseMap.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
@@ -60,6 +61,13 @@ class PerFunctionAggregateAnalysisConsumerPass
     : public PassWrapper<
           PerFunctionAggregateAnalysisConsumerPass<DerivedT, AnalysisT>,
           OperationPass<ModuleOp>> {
+ public:
+  static ::mlir::TypeID resolveTypeID() {
+    static ::mlir::SelfOwningTypeID id;
+    return id;
+  }
+
+ private:
   void runOnOperation() override {
     ModuleOp op = this->getOperation();
     DerivedT& derived = *static_cast<DerivedT*>(this);

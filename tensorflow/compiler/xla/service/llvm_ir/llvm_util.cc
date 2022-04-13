@@ -121,27 +121,28 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
   }
 }
 
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
-                                   llvm::IRBuilder<>* b) {
+llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
+                                   llvm::Value* index, llvm::IRBuilder<>* b) {
   llvm::Type* array_type = array->getType();
   CHECK(array_type->isPointerTy());
   llvm::PointerType* array_type_as_pointer =
       llvm::cast<llvm::PointerType>(array_type);
+  CHECK(array_type_as_pointer->isOpaqueOrPointeeTypeMatches(element_type));
   VLOG(2) << "EmitBufferIndexingGEP with type="
           << llvm_ir::DumpToString(*array_type)
           << " array=" << llvm_ir::DumpToString(*array)
           << " index=" << llvm_ir::DumpToString(*index);
 
   return b->CreateInBoundsGEP(
-      array_type_as_pointer->getElementType(), array,
+      element_type, array,
       llvm::isa<llvm::GlobalVariable>(array)
           ? llvm::ArrayRef<llvm::Value*>({b->getInt64(0), index})
           : index);
 }
 
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64_t index,
-                                   llvm::IRBuilder<>* b) {
-  return EmitBufferIndexingGEP(array, b->getInt64(index), b);
+llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
+                                   int64_t index, llvm::IRBuilder<>* b) {
+  return EmitBufferIndexingGEP(array, element_type, b->getInt64(index), b);
 }
 
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
@@ -620,7 +621,7 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
 
   // Generate unwind information so that GDB can crawl through the stack frames
   // created by the JIT compiled code.
-  function->setHasUWTable();
+  function->setUWTableKind(llvm::UWTableKind::Default);
 
   // Tensorflow always flushes denormals to zero, let LLVM know that flushing
   // denormals is safe. This allows vectorization using ARM's neon instruction
@@ -690,8 +691,8 @@ llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
                                   llvm::IRBuilder<>* builder) {
   llvm::GlobalVariable* state_ptr =
       GetOrCreateVariableForRngState(module, builder);
-  llvm::LoadInst* state_value_old = builder->CreateLoad(
-      state_ptr->getType()->getPointerElementType(), state_ptr, "load_state");
+  llvm::LoadInst* state_value_old =
+      builder->CreateLoad(state_ptr->getValueType(), state_ptr, "load_state");
   llvm::Value* state_value_new = builder->CreateAdd(
       state_value_old,
       llvm::ConstantInt::get(state_value_old->getType(), delta));

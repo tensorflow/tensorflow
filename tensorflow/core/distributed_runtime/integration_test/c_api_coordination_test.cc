@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
+#include "absl/time/time.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -38,13 +41,20 @@ namespace {
 
 constexpr char kCoordinationServiceType[] = "standalone";
 
-void EnableCoordinationService(tensorflow::ServerDef* server_def) {
+void ConfigCoordinationService(
+    tensorflow::ServerDef* server_def,
+    bool agent_destruction_without_shutdown = false) {
   auto coord_config = server_def->mutable_default_session_config()
                           ->mutable_experimental()
                           ->mutable_coordination_config();
   coord_config->set_service_type(kCoordinationServiceType);
   coord_config->set_service_leader("/job:worker/replica:0/task:0");
-  coord_config->set_heartbeat_timeout_in_ms(5 * 1000);  // 5 seconds
+  coord_config->set_agent_destruction_without_shutdown(
+      agent_destruction_without_shutdown);
+  coord_config->set_heartbeat_timeout_in_ms(
+      absl::ToInt64Milliseconds(absl::Seconds(5)));
+  coord_config->set_shutdown_barrier_timeout_in_ms(
+      absl::ToInt64Milliseconds(absl::Seconds(5)));
 }
 
 string SetConfigKeyValueFn() {
@@ -104,7 +114,10 @@ TEST(CAPI, MultiClientCoordinationService) {
   const int cluster_size = 3;
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);
-  EnableCoordinationService(&server_def);
+  // Agent needs to be destroyed without shutdown to simulate network failure,
+  // which would trigger stale heartbeat detection on the service-side.
+  ConfigCoordinationService(&server_def,
+                            /*agent_destruction_without_shutdown=*/true);
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;
     // By default, server_def has task index set to 0.
@@ -170,7 +183,7 @@ TEST(CAPI, MultiClientSetGetConfigInOp) {
   const int cluster_size = 3;
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);
-  EnableCoordinationService(&server_def);
+  ConfigCoordinationService(&server_def);
   BlockingCounter finish_counter(cluster_size);
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;
@@ -257,7 +270,7 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
   const int cluster_size = 3;
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);
-  EnableCoordinationService(&server_def);
+  ConfigCoordinationService(&server_def);
   tensorflow::BlockingCounter counter1(cluster_size);
   tensorflow::BlockingCounter counter2(cluster_size);
   tensorflow::BlockingCounter counter3(cluster_size);
@@ -327,7 +340,7 @@ TEST(CAPI, MultiClientPropagateError) {
   const int cluster_size = 3;
   tensorflow::ServerDef server_def =
       GetMultiClientServerDef("worker", cluster_size);
-  EnableCoordinationService(&server_def);
+  ConfigCoordinationService(&server_def);
   // Barrier for initializing the cluster.
   tensorflow::BlockingCounter counter1(cluster_size);
   // Barrier for finishing executing operations on all workers.
@@ -387,35 +400,29 @@ TEST(CAPI, MultiClientPropagateError) {
   thread_worker3.join();
 }
 
-TEST(CAPI, SingleClientSetGetConfigInOp) {
+class SingleClientCoordinationServiceTest
+    : public ::testing::Test,
+      public ::testing::WithParamInterface<bool> {};
+
+TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
+  const bool use_worker0_as_client = GetParam();
   tensorflow::ServerDef server_def = GetServerDef("worker", 3);
   const char task0_name[] = "/job:worker/replica:0/task:0/device:CPU:0";
   const char task1_name[] = "/job:worker/replica:0/task:1/device:CPU:0";
   const char task2_name[] = "/job:worker/replica:0/task:2/device:CPU:0";
 
-  EnableCoordinationService(&server_def);
-  // Add localhost job for the remote client task
-  auto cluster = server_def.mutable_cluster();
-  auto client_job = cluster->add_job();
-  client_job->set_name("localhost");
-  const int client_port = tensorflow::testing::PickUnusedPortOrDie();
-  client_job->mutable_tasks()->insert(
-      {0, strings::StrCat("localhost:", client_port)});
-  server_def.set_job_name("localhost");
-  server_def.mutable_default_session_config()
-      ->mutable_experimental()
-      ->mutable_coordination_config()
-      ->set_service_leader(task0_name);
-  string serialized = server_def.SerializeAsString();
-
+  ConfigCoordinationService(&server_def);
   ServerFactory* factory;
   ASSERT_TRUE(ServerFactory::GetFactory(server_def, &factory).ok());
   server_def.set_job_name("worker");
   server_def.set_task_index(0);
   std::unique_ptr<tensorflow::ServerInterface> w0;
-  ASSERT_TRUE(
-      factory->NewServer(server_def, ServerFactory::Options(), &w0).ok());
-  ASSERT_TRUE(w0->Start().ok());
+  if (!use_worker0_as_client) {
+    // Start a separate server for worker0 if it's not used as the client
+    ASSERT_TRUE(
+        factory->NewServer(server_def, ServerFactory::Options(), &w0).ok());
+    ASSERT_TRUE(w0->Start().ok());
+  }
   server_def.set_task_index(1);
   std::unique_ptr<tensorflow::ServerInterface> w1;
   ASSERT_TRUE(
@@ -434,6 +441,23 @@ TEST(CAPI, SingleClientSetGetConfigInOp) {
   TFE_Context* ctx = TFE_NewContext(opts, status);
   EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
+
+  server_def.set_task_index(0);
+  if (!use_worker0_as_client) {
+    // Add localhost job for the remote client task
+    auto cluster = server_def.mutable_cluster();
+    auto client_job = cluster->add_job();
+    client_job->set_name("localhost");
+    const int client_port = tensorflow::testing::PickUnusedPortOrDie();
+    client_job->mutable_tasks()->insert(
+        {0, strings::StrCat("localhost:", client_port)});
+    server_def.set_job_name("localhost");
+  }
+  server_def.mutable_default_session_config()
+      ->mutable_experimental()
+      ->mutable_coordination_config()
+      ->set_service_leader(task0_name);
+  const std::string serialized = server_def.SerializeAsString();
 
   TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
@@ -540,6 +564,13 @@ TEST(CAPI, SingleClientSetGetConfigInOp) {
   w1.release();
   w2.release();
 }
+
+INSTANTIATE_TEST_SUITE_P(CAPI, SingleClientCoordinationServiceTest,
+                         ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool> arg) {
+                           return arg.param ? "use_worker0_as_client"
+                                            : "use_remote_client";
+                         });
 
 }  // namespace
 }  // namespace tensorflow

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -244,10 +245,62 @@ TEST(AppendFeatureValuesTest, FloatValuesFromContainer) {
   EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
 }
 
+TEST(AppendFeatureValuesTest, FloatValuesFromContainerWithStringViewKey) {
+  Example example;
+
+  std::vector<double> values{1.1, 2.2, 3.3};
+  absl::string_view key("tag");
+  AppendFeatureValues(values, key, &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
 TEST(AppendFeatureValuesTest, FloatValuesUsingInitializerList) {
   Example example;
 
   AppendFeatureValues({1.1, 2.2, 3.3}, "tag", &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(AppendFeatureValuesTest,
+     FloatValuesUsingInitializerListWithStringViewKey) {
+  Example example;
+  absl::string_view key("tag");
+  AppendFeatureValues({1.1, 2.2, 3.3}, key, &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(AppendFeatureValuesTest, FloatValuesUsingIterators) {
+  Example example;
+  std::vector<double> values{1.1, 2.2, 3.3};
+  AppendFeatureValues(values.begin(), values.end(), "tag", &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(AppendFeatureValuesTest, FloatValuesUsingIteratorsWithStringViewKey) {
+  Example example;
+  absl::string_view key("tag");
+  std::vector<double> values{1.1, 2.2, 3.3};
+  AppendFeatureValues(values.begin(), values.end(), key, &example);
 
   auto tag_ro = GetFeatureValues<float>("tag", example);
   ASSERT_EQ(3, tag_ro.size());

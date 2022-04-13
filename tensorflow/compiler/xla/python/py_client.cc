@@ -32,7 +32,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 
 namespace xla {
@@ -134,7 +136,7 @@ Status PyClient::Defragment() {
              buffer = buffer->next_) {
           if (!buffer->is_deleted()) {
             TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
-                                buffer->buffer_->ToLiteral());
+                                buffer->buffer_->ToLiteralSync());
             tmp_buffers.push_back({buffer, literal});
           }
         }
@@ -212,6 +214,29 @@ StatusOr<py::object> PyClient::BufferFromPyval(
     device = pjrt_client_->addressable_devices().front();
   }
   CHECK(device != nullptr);
+
+  auto transfer_guard_formatter = [&argument, dst_device = device] {
+    auto type = py::cast<std::string>(py::str(argument.get_type()));
+    // Catch exceptions because shape and dtype properties convertible to str
+    // are not guaranteed to present in an arbitrary argument.
+    std::string shape;
+    std::string dtype;
+    try {
+      shape = py::cast<std::string>(py::str(argument.attr("shape")));
+    } catch (const std::exception& e) {
+      shape = "<unknown>";
+    }
+    try {
+      dtype = py::cast<std::string>(py::str(argument.attr("dtype")));
+    } catch (const std::exception& e) {
+      dtype = "<unknown>";
+    }
+    return absl::StrCat("type=", type, ", shape=", shape, ", dtype=", dtype,
+                        ", dst_device=", dst_device->DebugString());
+  };
+  TF_RETURN_IF_ERROR(
+      jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
+
   TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,
                       pjrt_client_->LookupDevice(device->id()));
   if (found_device != device) {
@@ -226,7 +251,6 @@ StatusOr<py::object> PyClient::BufferFromPyval(
   options.allow_zero_copy =
       (!force_copy &&
        (host_buffer_semantics == PjRtClient::HostBufferSemantics::kZeroCopy));
-  options.force_lazy_arrays = true;
   TF_ASSIGN_OR_RETURN(DevicePutResult put,
                       DevicePut(argument, device, options));
 
@@ -426,7 +450,7 @@ class CpuCallback {
         results_(std::move(results)),
         transpose_cache_(/*capacity=*/16) {}
 
-  void Call(void* result, void** arg_ptrs);
+  void Call(void* result, void** arg_ptrs, XlaCustomCallStatus* status);
 
  private:
   py::function callable_;
@@ -435,7 +459,8 @@ class CpuCallback {
   TransposePlanCache transpose_cache_;
 };
 
-void CpuCallback::Call(void* result, void** arg_ptrs) {
+void CpuCallback::Call(void* result, void** arg_ptrs,
+                       XlaCustomCallStatus* status) {
   absl::Span<void* const> inputs(arg_ptrs, args_.size());
   absl::Span<void* const> outputs(reinterpret_cast<void**>(result),
                                   results_.size());
@@ -451,7 +476,16 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
       args[i].attr("flags").attr("writeable") = Py_False;
     }
   }
-  py::object result_tuple = callable_(*py::reinterpret_borrow<py::args>(args));
+  py::object result_tuple;
+  try {
+    result_tuple = callable_(*py::reinterpret_borrow<py::args>(args));
+  } catch (py::error_already_set& e) {
+    PyErr_Clear();
+    std::string error_message = e.what();
+    XlaCustomCallStatusSetFailure(status, error_message.c_str(),
+                                  error_message.length());
+    return;
+  }
   if (!PyTuple_Check(result_tuple.ptr())) {
     throw std::runtime_error(
         absl::StrFormat("CPU callback expected a tuple result, got %s",
@@ -503,10 +537,11 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
   }
 }
 
-extern "C" void XlaPythonCpuCallback(void* output, void** inputs) {
+extern "C" void XlaPythonCpuCallback(void* output, void** inputs,
+                                     XlaCustomCallStatus* status) {
   CpuCallback* callback =
       absl::bit_cast<CpuCallback*>(*static_cast<uintptr_t*>(inputs[0]));
-  callback->Call(output, inputs + 1);
+  callback->Call(output, inputs + 1, status);
 }
 
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
@@ -610,10 +645,14 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
       &builder, absl::bit_cast<std::uint64_t>(callback.get()));
 
   Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes_with_layout);
-  XlaOp result = CustomCallWithLayout(&builder, "xla_python_cpu_callback",
-                                      custom_call_args, result_shape,
-                                      custom_call_arg_layouts,
-                                      /*opaque=*/"", has_side_effect);
+  XlaOp result = CustomCallWithLayout(
+      &builder, "xla_python_cpu_callback", custom_call_args, result_shape,
+      custom_call_arg_layouts,
+      /*opaque=*/"", has_side_effect,
+      /*output_operand_aliasing=*/{},
+      /*literal=*/nullptr,
+      /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/API_VERSION_STATUS_RETURNING);
 
   py::capsule callback_capsule(callback.release(), [](void* ptr) {
     delete reinterpret_cast<CpuCallback*>(ptr);

@@ -121,9 +121,11 @@ message BoundedAdagradParameters {
   // computing the effective learning rate. When update_accumulator_first is set
   // to True, the updated value of the accumulator is used.
   bool update_accumulator_first = 1;
+
   // The max_var_update value to use. Set value to 0 (default) to disable using
   // max_var_update to clip the gradient.
   float max_var_update = 2;
+
   // The maximum value of the accumulator. Set max_accumulator to 0 (default)
   // to disable using max_accumulator to clip the accumulator.
   float max_accumulator = 3;
@@ -149,18 +151,19 @@ message StochasticGradientDescentParameters {}
 // for a dynamic learning rate, it is nearly the same as long as the learning
 // rate does not change quickly. The benefit of setting multiply_linear_by_lr to
 // true is that the modified formula handles zero and near-zero learning rates
-// without producing NaNs, improving flexibility for learning rate ramp-up. The
-// allow_zero_accumulator parameter changes some internal formulas to allow zero
-// and near-zero accumulator values at the cost of some performance; this only
-// needs to be set if you are using an initial accumulator value of zero, which
-// is uncommon.
+// without producing NaNs, improving flexibility for learning rate ramp-up.
 message FtrlParameters {
   float l1 = 1;
   float l2 = 2;
   float lr_power = 3;
   float beta = 7;
   bool multiply_linear_by_lr = 6;
-  bool allow_zero_accumulator = 8;
+
+  // Previously, allow_zero_accumulator parameter changed some internal formulas
+  // to allow zero and near-zero accumulator values at the cost of some
+  // performance. The current implementation ignores this parameter; zero or
+  // near-zero accumulator values are now always supported.
+  bool allow_zero_accumulator = 8 [deprecated = true];
 
   // Old initial accumulator parameters.
   reserved "initial_accum", "initial_linear";
@@ -496,11 +499,10 @@ message OptimizationParameters {
   ClippingLimits gradient_clipping_limits = 7;
 
   // Amount of weight decay to apply; see weight_decay_optimizers.py for
-  // details. Almost all optimizers are supported with this option (MDL Adagrad
-  // Light does not work, and SGD does not behave as expected if it is enabled).
-  // Although there is no check, users who want weight decay will probably also
-  // want to enable gradient accumulation as well so that the decay will happen
-  // once per minibatch.
+  // details. All optimizers except MDL Adagrad Light are supported with this
+  // option. Although there is no check, users who want weight decay will also
+  // want to ensure that gradient accumulation is enabled so that the decay will
+  // happen once per global batch.
   float weight_decay_factor = 16;
 
   // If true, the weight decay factor is multiplied by the current learning rate

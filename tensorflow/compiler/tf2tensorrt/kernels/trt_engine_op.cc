@@ -434,12 +434,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     use_explicit_precision_ = false;
   }
 
-  if (use_explicit_precision_) {
-    LOG(INFO) << "TRTEngineOp using explicit QDQ";
-  } else {
-    LOG(INFO) << "TRTEngineOp not using explicit QDQ";
-  }
-
   native_execution_func_handle_ = kInvalidHandle;
   if (!static_engine_) {
     OP_REQUIRES_OK(context, ImportSegmentGraphDef(context->function_library(),
@@ -1268,7 +1262,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));
   const int platform_device_id =
-      ctx->device()->tensorflow_gpu_device_info()->gpu_id;
+      ctx->device()->tensorflow_accelerator_device_info()->gpu_id;
   if (platform_device_id < 0) {
     LOG(ERROR) << "Can't get gpu_device_info from context->device()";
     return errors::InvalidArgument(

@@ -42,9 +42,12 @@ namespace {
 struct DedupeAndHoistConstantPass
     : DedupeAndHoistConstantBase<DedupeAndHoistConstantPass> {
   LogicalResult initialize(MLIRContext* context) override {
+    dtype_id = StringAttr::get(context, "dtype");
+    name_id = StringAttr::get(context, TFGraphDialect::getNameAttrKey());
+    t_id = StringAttr::get(context, "T");
     tfg_const = StringAttr::get(context, "tfg.Const");
     value_id = StringAttr::get(context, "value");
-    name_id = StringAttr::get(context, TFGraphDialect::getNameAttrKey());
+    mlir_context = context;
     return success();
   }
   void runOnOperation() override;
@@ -57,12 +60,19 @@ struct DedupeAndHoistConstantPass
   // Returns whether identity op is required.
   bool RequiresIdentity(Operation* op);
 
+  // Returns an identity op with same attributes and control deps as input and
+  // value as operand.
+  Operation* BuildIdentity(Operation* input, Operation* value);
+
   FunctionTable* function_table;
 
   // Identifiers used for operation type & attributes checked.
-  StringAttr tfg_const;
-  StringAttr value_id;
+  StringAttr dtype_id;
   StringAttr name_id;
+  StringAttr tfg_const;
+  StringAttr t_id;
+  StringAttr value_id;
+  MLIRContext* mlir_context;
 };
 
 }  // namespace
@@ -138,8 +148,8 @@ bool DedupeAndHoistConstantPass::RequiresIdentity(Operation* op) {
   return false;
 }
 
-static Operation* BuildIdentity(Operation* input, Operation* value,
-                                Attribute value_id) {
+Operation* DedupeAndHoistConstantPass::BuildIdentity(Operation* input,
+                                                     Operation* value) {
   OperationState state(input->getLoc(), "tfg.Identity");
   state.addTypes(input->getResultTypes());
   state.addOperands({value->getResult(0)});
@@ -149,25 +159,37 @@ static Operation* BuildIdentity(Operation* input, Operation* value,
   operands.insert(op_operands.begin(), op_operands.end());
   state.addOperands(operands.takeVector());
 
-  // All attributes except for value.
-  // TODO(jpienaar): Consider reducing name of the identity op.
-  auto attrs = llvm::to_vector(llvm::make_filter_range(
-      input->getAttrs(),
-      [&](NamedAttribute attr) { return attr.getName() == value_id; }));
+  // All attributes except for value, name, and dtype (which is remapped to I)
+  auto attrs = llvm::to_vector(
+      llvm::make_filter_range(input->getAttrs(), [&](NamedAttribute attr) {
+        return attr.getName() != value_id && attr.getName() != dtype_id &&
+               attr.getName() != name_id;
+      }));
   state.addAttributes(attrs);
-  return OpBuilder(input).createOperation(state);
+
+  // Concat `const_dedupe_hoist` prefix with the const op name to avoid name
+  // collision.
+  // TODO(rdzhabarov): Improve name generation to avoid potential collisions.
+  if (auto const_name = input->getAttrOfType<StringAttr>(name_id)) {
+    state.addAttribute(
+        name_id, StringAttr::get(mlir_context, "const_dedupe_hoist/" +
+                                                   const_name.getValue()));
+  }
+  // Map dtype to T attribute.
+  state.addAttribute(t_id, input->getAttr(dtype_id));
+  return OpBuilder(input).create(state);
 }
 
 void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {
   DenseMap<Operation*, std::vector<Operation*>, EquivalentConst> constant_ops;
 
   // Collect all small constant ops grouped by attributes.
-  getOperation()->walk([&](Operation* op) {
-    if (op->getName().getIdentifier() != tfg_const) return;
+  op->walk([&](Operation* inner_op) {
+    if (inner_op->getName().getIdentifier() != tfg_const) return;
 
-    ElementsAttr val = op->getAttr(value_id).cast<ElementsAttr>();
+    ElementsAttr val = inner_op->getAttr(value_id).cast<ElementsAttr>();
     if (val.getNumElements() > max_size_) return;
-    constant_ops[op].push_back(op);
+    constant_ops[inner_op].push_back(inner_op);
   });
 
   // Iterate over all constant ops and perform constant deduping.
@@ -180,7 +202,7 @@ void DedupeAndHoistConstantPass::RunOnGraphOrFuncOp(Operation* op) {
         if (!assume_strict_calls_ && RequiresIdentity(jt)) {
           // Create a new identity node with all the control deps of the node
           // being replaced that forwards the value of top.
-          Operation* id = BuildIdentity(jt, top, value_id);
+          Operation* id = BuildIdentity(jt, top);
           jt->replaceAllUsesWith(id);
         } else {
           // Just propagate control deps from the duplicated op to its users and
@@ -201,8 +223,6 @@ void DedupeAndHoistConstantPass::runOnOperation() {
   if (!assume_strict_calls_) {
     function_table = &getAnalysis<FunctionTable>();
     assume_strict_calls_ = function_table->empty();
-  } else {
-    assume_strict_calls_ = true;
   }
 
   for (auto& op : module.getOps())

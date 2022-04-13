@@ -65,7 +65,7 @@ TEST(RankOpTest, InputTypeFloat) {
   EXPECT_TRUE(model.GetOutputShape().empty());
 
   // Invoke is superfluous and shouldn't change the output.
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({5}));
   EXPECT_TRUE(model.GetOutputShape().empty());

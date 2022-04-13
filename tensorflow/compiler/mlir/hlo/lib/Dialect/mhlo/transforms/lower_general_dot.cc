@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -181,7 +181,6 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
   LogicalResult matchAndRewrite(DotGeneralOp op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    auto dot_element_type = getElementTypeOrSelf(op);
 
     auto dot_numbers = op.dot_dimension_numbers();
     if (!dot_numbers.getLhsBatchingDimensions().empty() ||
@@ -199,37 +198,23 @@ struct GeneralDotConvert : public OpRewritePattern<DotGeneralOp> {
     RankedTensorType rhs_ty = rhs.getType().dyn_cast<RankedTensorType>();
     if (!lhs_ty || !rhs_ty) return failure();
 
-    if (!(lhs_contracting_dims.size() == 1 &&
-          lhs_contracting_dims.front() == 1)) {
-      lhs = ProcessDotArg(op.lhs(), op.getLoc(),
-                          dot_numbers.getLhsContractingDimensions(),
-                          /*outer_dims_first=*/true, rewriter);
-    }
+    lhs = ProcessDotArg(op.lhs(), op.getLoc(),
+                        dot_numbers.getLhsContractingDimensions(),
+                        /*outer_dims_first=*/true, rewriter);
 
-    if (!(rhs_contracting_dims.size() == 1 &&
-          rhs_contracting_dims.front() == 0)) {
-      rhs = ProcessDotArg(op.rhs(), op.getLoc(),
-                          dot_numbers.getRhsContractingDimensions(),
-                          /*outer_dims_first=*/false, rewriter);
-    }
+    rhs = ProcessDotArg(op.rhs(), op.getLoc(),
+                        dot_numbers.getRhsContractingDimensions(),
+                        /*outer_dims_first=*/false, rewriter);
 
     // Accept only static shaped types.
     auto lhs_shape_type = lhs.getType().dyn_cast_or_null<ShapedType>();
     auto rhs_shape_type = rhs.getType().dyn_cast_or_null<ShapedType>();
     if (!lhs_shape_type || !rhs_shape_type) return failure();
 
-    // Dot resulting shape.
-    auto lhs_shape = lhs_shape_type.getShape();
-    auto rhs_shape = rhs_shape_type.getShape();
-    auto new_dot_type =
-        RankedTensorType::get({lhs_shape[0], rhs_shape[1]}, dot_element_type);
-
     ArrayAttr precision_config;
     if (op.precision_config()) precision_config = *op.precision_config();
-    Value new_dot_op = rewriter
-                           .create<DotOp>(op.getLoc(), new_dot_type, lhs, rhs,
-                                          precision_config)
-                           .getResult();
+    Value new_dot_op =
+        rewriter.create<DotOp>(op.getLoc(), lhs, rhs, precision_config);
     if (lhs_contracting_dims.size() == (lhs_ty.getRank() - 1) &&
         rhs_contracting_dims.size() == (rhs_ty.getRank() - 1)) {
       rewriter.replaceOp(op, new_dot_op);

@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -47,6 +47,8 @@ namespace {
 struct ModifyIONodesPass
     : public PassWrapper<ModifyIONodesPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ModifyIONodesPass)
+
   explicit ModifyIONodesPass() {}
   explicit ModifyIONodesPass(mlir::Type input_type, mlir::Type output_type)
       : input_type(input_type), output_type(output_type) {}
@@ -218,7 +220,7 @@ void ModifyIONodesPass::runOnOperation() {
   }
 
   OpBuilder builder(func);
-  FunctionType func_type = func.getType();
+  FunctionType func_type = func.getFunctionType();
   llvm::SmallVector<Type, 4> new_input_types(func_type.getInputs().begin(),
                                              func_type.getInputs().end());
   llvm::SmallVector<Type, 4> new_output_types(func_type.getResults().begin(),

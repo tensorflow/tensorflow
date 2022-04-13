@@ -37,7 +37,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -94,6 +94,8 @@ using ::llvm::cast;
 // Optimize TFLite operations in functions.
 class OptimizePass : public PassWrapper<OptimizePass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizePass)
+
   OptimizePass() = default;
   OptimizePass(const OptimizePass &) {}
   explicit OptimizePass(bool enable_canonicalization) {
@@ -151,14 +153,9 @@ bool IsTailOfShape(Type type1, Type type2) {
 bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
                                       const ArrayRef<int64_t> elements_shape,
                                       bool is_depthwise) {
-  // Make sure the val tensor has shape where all dimensions are 1 except
-  // last one.
-  // Also, val tensor must be of rank 1 or 4 or 0 (scalar).
+  // Also, val tensor must be of rank 1 or 0 (scalar).
   const auto elements_rank = elements_shape.size();
-  for (int i = 0; i < static_cast<int>(elements_shape.size()) - 1; ++i) {
-    if (elements_shape[i] != 1) return false;
-  }
-  if (elements_rank != 1 && elements_rank != 0 && elements_rank != 4) {
+  if (elements_rank != 1 && elements_rank != 0) {
     return false;
   }
   auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
@@ -983,11 +980,9 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
     }
 
     // Make sure that the fused bias will be a 1D tensor.
-    if (isa<TFL::DepthwiseConv2DOp>(mul_op_lhs)) {
-      auto gamma_shape = gamma.getType().cast<ShapedType>();
-      if (!gamma_shape.hasRank() || gamma_shape.getRank() != 1) {
-        return failure();
-      }
+    auto gamma_shape = gamma.getType().cast<ShapedType>();
+    if (!gamma_shape.hasRank() || gamma_shape.getRank() != 1) {
+      return failure();
     }
 
     // Rewrite filter constant. Since the folder of TFL::MulOp couldn't

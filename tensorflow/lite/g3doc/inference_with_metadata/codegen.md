@@ -228,7 +228,7 @@ if(null != myImageClassifier) {
 
 The generated code provides a way for developers to accelerate their code
 through the use of [delegates](../performance/delegates.md) and the number of
-threads. These can be set when initiatizing the model object as it takes three
+threads. These can be set when initializing the model object as it takes three
 parameters:
 
 *   **`Context`**: Context from the Android Activity or Service

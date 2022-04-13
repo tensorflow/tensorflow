@@ -1,7 +1,7 @@
 // RUN: tf-tfrt-opt %s -tf-jitrt-fission | FileCheck %s --dump-input=always
 
 // CHECK-LABEL: @matmul_bias_add
-func @matmul_bias_add(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>)
+func.func @matmul_bias_add(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>)
     -> tensor<?x?xf32> {
   // CHECK:      %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %arg0)
   // CHECK-SAME:   {transpose_a = false, transpose_b = false}
@@ -14,11 +14,11 @@ func @matmul_bias_add(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>)
          transpose_b = false
        }
        : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<?xf32>) -> tensor<?x?xf32>
-  return %0: tensor<?x?xf32>
+  func.return %0: tensor<?x?xf32>
 }
 
 // CHECK-LABEL: @matmul_bias_add_relu
-func @matmul_bias_add_relu(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>)
+func.func @matmul_bias_add_relu(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>)
     -> tensor<?x?xf32> {
   // CHECK:      %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %arg0)
   // CHECK-SAME:   {transpose_a = false, transpose_b = false}
@@ -32,5 +32,5 @@ func @matmul_bias_add_relu(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>)
          transpose_b = false
        }
        : (tensor<?x?xf32>, tensor<?x?xf32>, tensor<?xf32>) -> tensor<?x?xf32>
-  return %0: tensor<?x?xf32>
+  func.return %0: tensor<?x?xf32>
 }

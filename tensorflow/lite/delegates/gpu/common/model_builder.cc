@@ -298,6 +298,9 @@ class CastOperationParser : public TFLiteOperationParser {
     }
     if (IsLogicalCode(input_tensor_info.producers[0].second->builtin_code)) {
       return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    } else if (context->tensors[tflite_node->inputs->data[0]].type !=
+               kTfLiteBool) {
+      return CheckGpuDelegateCompatibility(context, tflite_node, registration);
     }
     return absl::UnimplementedError("Not supported Cast case.");
   }
@@ -306,14 +309,23 @@ class CastOperationParser : public TFLiteOperationParser {
                      const TfLiteRegistration* registration,
                      GraphFloat32* graph, ObjectReader* reader) final {
     Node* node = graph->NewNode();
-    // Adding Identity reshape that will be removed.
-    node->operation.type = ToString(OperationType::RESHAPE);
+    TfLiteType tflite_type = reader->GetInputTensor(0)->type;
+    if (tflite_type == kTfLiteBool) {
+      // Adding Identity reshape that will be removed with bool type.
+      node->operation.type = ToString(OperationType::RESHAPE);
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+      // New shape comes from output shape.
+      ReshapeAttributes attr;
+      attr.new_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
+      node->operation.attributes = attr;
+      return absl::OkStatus();
+    }
+    node->operation.type = ToString(OperationType::CAST);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    // New shape comes from output shape.
-    ReshapeAttributes attr;
-    attr.new_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
-    node->operation.attributes = attr;
+    Value* output = graph->FindOutputs(node->id)[0];
+    output->tensor.type = ToDataType(reader->GetOutputTensor(0)->type);
     return absl::OkStatus();
   }
 };
@@ -2659,6 +2671,10 @@ TfLiteIntArray* GetOpsToReplace(
     }
     if (registration->builtin_code == kTfLiteBuiltinCast) {
       allowed_in_types.push_back(kTfLiteBool);
+      allowed_in_types.push_back(kTfLiteFloat32);
+      allowed_in_types.push_back(kTfLiteInt32);
+      allowed_out_types.push_back(kTfLiteFloat32);
+      allowed_out_types.push_back(kTfLiteInt32);
     }
     if (!IsAllAllowedTensors(context, node->inputs, allowed_in_types) ||
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {

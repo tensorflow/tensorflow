@@ -86,6 +86,7 @@ using ::tfrt::HostContext;
 using ::tfrt::IndirectAsyncValue;
 using ::tfrt::KernelRegistry;
 using ::tfrt::MakeAvailableAsyncValueRef;
+using ::tfrt::MakeConstructedAsyncValueRef;
 using ::tfrt::MakeErrorAsyncValueRef;
 using ::tfrt::MakeStringError;
 using ::tfrt::RCArray;
@@ -108,11 +109,11 @@ using ::tfrt::jitrt::JitExecutableCache;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::OperandConstraint;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
-using ::tfrt::jitrt::ReturnAsyncStridedMemref;
 using ::tfrt::jitrt::ReturnErrors;
 using ::tfrt::jitrt::ReturnStridedMemref;
-using ::tfrt::jitrt::ReturnValueConverter;
+using ::tfrt::jitrt::ReturnValueConversion;
 using ::tfrt::jitrt::SpecializationListener;
+using ::tfrt::jitrt::StaticReturnValueConverter;
 
 using ::tensorflow::profiler::TraceMe;
 using ::tensorflow::profiler::TraceMeEncode;
@@ -126,8 +127,7 @@ using ::tensorflow::thread::ThreadPool;
 
 class CompilationThreadPool : public SharedContext {
  public:
-  explicit CompilationThreadPool(HostContext* host)
-      : thread_pool_(Env::Default(), "tf-jitrt-compiler", /*num_threads=*/32) {}
+  explicit CompilationThreadPool(HostContext* host) { Reset(); }
 
   static CompilationThreadPool& Get(HostContext* host) {
     return host->GetOrCreateSharedContext<CompilationThreadPool>();
@@ -139,14 +139,21 @@ class CompilationThreadPool : public SharedContext {
     // thread pool requires std::function tasks, we have to do manual memory
     // management here.
     auto ptr = std::make_unique<Task>(std::forward<Task>(task));
-    thread_pool_.Schedule([ptr = ptr.release()]() {
+    thread_pool_->Schedule([ptr = ptr.release()]() {
       (*ptr)();
       delete ptr;
     });
   }
 
+  // This is an unsafe function intended only for use in tests. It is undefined
+  // behavior to call it concurrently with `Schedule`.
+  void Reset() {
+    thread_pool_ = std::make_unique<ThreadPool>(
+        Env::Default(), "tf-jitrt-compiler", /*num_threads=*/32);
+  }
+
  private:
-  ThreadPool thread_pool_;
+  std::unique_ptr<ThreadPool> thread_pool_;
 };
 
 // -------------------------------------------------------------------------- //
@@ -159,10 +166,12 @@ static Expected<Eigen::ThreadPoolInterface*> GetWorkerThreads(
   RequestContext* req_ctx = exec_ctx.request_ctx();
 
   auto* fallback = req_ctx->GetDataIfExists<KernelFallbackCompatRequestState>();
-  if (!fallback) return MakeStringError("fallback request state was not found");
+  if (LLVM_UNLIKELY(!fallback))
+    return MakeStringError("fallback request state was not found");
 
   // Return user provided intra op thread pool if it is available.
-  if (fallback->intra_op_threadpool()) return fallback->intra_op_threadpool();
+  if (LLVM_LIKELY(fallback->intra_op_threadpool()))
+    return fallback->intra_op_threadpool();
 
   // Otherwise find the default CPU device in the device manager.
   Device* host_cpu = fallback->device_manager().HostCPU();
@@ -255,33 +264,28 @@ static const std::string GetSessionName(RequestContext* req_ctx) {
 }
 
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
-    CompilationUnitAttribute kernel, const ExecutionContext& exec_ctx,
+    const CompilationUnitAttribute& kernel, const ExecutionContext& exec_ctx,
     const Optional<TfJitRtPipelineOpts>& opts = None) {
-  // We only support functions nested in top level compiled module.
-  if (kernel.nested_symbols().size() != 1)
-    return MakeStringError(
-        "kernel function has to be defined in a top-level module");
-
   // Request context must be initialized with the tf_jitrt state.
   auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
-  if (!state)
+  if (LLVM_UNLIKELY(!state))
     return MakeStringError("tf_jitrt state not found in the request context");
 
-  JitExecutableCache* jit_executable_cache = state->jit_executable_cache;
-
-  // TODO(ezhulenev): CompilationUnitAttribute in addition to an `id` should
-  // provide a hash (or something like sha-256 fingerprint) of its content for
-  // cache lookup. Currently we rely on the fact that the SavedModel never
-  // unloads a Bef file, and there is a 1-to-1 relationship between the
-  // ResourceContext and the SavedModel, so the `id` is guaranteed to be a
-  // unique key for the cache lookup.
+  // We rely on the unique `id` provided by the CompilationUnitAttribute to look
+  // up the JitExecutable in the cache. This id is guaranteed to be unique
+  // within a Bef file. Currently we rely on the fact that the SavedModel
+  // never unloads a Bef file, and there is a 1-to-1 relationship between the
+  // ResourceContext and the SavedModel.
   //
   // TODO(b/206081322): Different compilation options should create unique
   // compiled kernel cache keys.
-  intptr_t key = kernel.id();
+  size_t key = kernel.id();
+
+  JitExecutableCache* jit_executable_cache = state->jit_executable_cache;
 
   // Maybe return JitExecutable from the cache.
-  if (auto cached = jit_executable_cache->Find(key)) return cached;
+  auto cached = jit_executable_cache->Find(key);
+  if (LLVM_LIKELY(cached)) return cached;
 
   // Get the worker threads from the execution context. Do this before
   // allocating an async value to make sure that we can try to instantiate the
@@ -304,6 +308,12 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     std::string name;
     std::string serialized_operation;
   } kernel_info;
+
+  // We only support functions nested in top level compiled module.
+  if (kernel.nested_symbols().size() != 1)
+    return MakeStringError(
+        "kernel function has to be defined in a top-level module");
+
   // TODO(ecg): use designed initializers + const when C++20 is adopted.
   kernel_info.id = kernel.id();
   kernel_info.entrypoint = kernel.nested_symbols()[0];
@@ -399,7 +409,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
   CompilationThreadPool& thread_pool = CompilationThreadPool::Get(host);
 
   thread_pool.Schedule([kernel_info, runner, workers = *worker_threads,
-                        ptr = entry.ptr, request_id = req_ctx->id(),
+                        ref = entry.ptr.CopyRef(), request_id = req_ctx->id(),
                         session_name = GetSessionName(req_ctx),
                         tf_jitrt_opts = opts]() {
     TraceMe trace_me([&] {
@@ -460,7 +470,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
               << kernel_info.name << " (" << session_name << ")";
     Expected<JitExecutable> jit_executable = JitExecutable::Instantiate(
         kernel_info.serialized_operation, kernel_info.entrypoint,
-        std::move(opts), runner);
+        std::move(opts), session_name, runner);
     auto compile_duration = absl::Now() - compile_start_time;
 
     LOG(INFO) << "JitExecutable instantiation for " << kernel_info.name
@@ -477,9 +487,9 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Set the entry async value state to error or concrete.
     if (auto err = jit_executable.takeError())
-      ptr.SetError(std::move(err));
+      ref.SetError(std::move(err));
     else
-      ptr.emplace(std::move(*jit_executable));
+      ref.emplace(std::move(*jit_executable));
   });
 
   return entry.ptr;
@@ -501,12 +511,15 @@ static AsyncValueRef<Chain> Compile(StringAttribute device,
   if (auto err = executable.takeError())
     return MakeErrorAsyncValueRef(StrCat(err));
 
-  // Immediately return an available chain once we schedule the compilation.
-  return MakeAvailableAsyncValueRef<Chain>();
+  // Mark chain available once we compile the default executable.
+  auto chain = MakeConstructedAsyncValueRef<Chain>();
+  executable->AndThen([chain]() { chain.SetStateConcrete(); });
+
+  return chain;
 }
 
 // -------------------------------------------------------------------------- //
-// TFRT kernel function definition for tf_jitrt.fallback.wait_for_compilation.
+// TFRT kernel function definition for tf_jitrt.test.wait_for_compilation.
 // -------------------------------------------------------------------------- //
 
 static AsyncValueRef<Chain> WaitForCompilation(
@@ -527,11 +540,30 @@ static AsyncValueRef<Chain> WaitForCompilation(
 }
 
 // -------------------------------------------------------------------------- //
+// TFRT kernel function for tf_jitrt.test.reset_compilation_thread_pool.
+// -------------------------------------------------------------------------- //
+
+static AsyncValueRef<Chain> ResetCompilationThreadPool(
+    Argument<Chain> chain, const ExecutionContext& exec_ctx) {
+  // Make sure that we reset the compilation thread pool only from a thread pool
+  // (concurrent work queue) managed by the HostContext.
+  return EnqueueWork(exec_ctx, [host = exec_ctx.host()]() -> Chain {
+    CompilationThreadPool::Get(host).Reset();
+    return {};
+  });
+}
+
+// -------------------------------------------------------------------------- //
 // Execute compiled JitRt kernels with Fallback Runtime interop.
 // -------------------------------------------------------------------------- //
 
+using ReturnTensorflowTensor =
+    ReturnValueConversion<TensorflowConversionContext,
+                          ReturnStridedMemref<ConvertTensor>>;
+
 using TensorflowReturnValueConverter =
-    ReturnValueConverter<TensorflowConversionContext>;
+    StaticReturnValueConverter<TensorflowConversionContext,
+                               ReturnTensorflowTensor>;
 
 // Converts Tensor to the Memref Descriptor and verifies that the Tensor
 // value is compatible with the memref type.
@@ -546,9 +578,9 @@ static void ConvertTensorToMemrefDesc(const tensorflow::Tensor& tensor,
   memref->strides.resize_for_overwrite(rank);
 
   // Fill memref sizes and compute strides from the tensor dimensions.
-  ssize_t multiplier = 1;
+  int64_t multiplier = 1;
   for (int i = rank - 1; i >= 0; --i) {
-    ssize_t dim_size = tensor.dim_size(i);
+    int64_t dim_size = tensor.dim_size(i);
     memref->sizes[i] = dim_size;
     memref->strides[i] = multiplier;
     multiplier *= dim_size;
@@ -629,27 +661,26 @@ static void ExecuteImpl(Executable& executable,
   for (auto& t : operands)
     ctx.runtime_tensors.insert({t.tensor().data(), &t.tensor()});
 
-  // Tensorflow -> JitRt only supports returning Memrefs as Tensors.
   TensorflowReturnValueConverter converter(results, ctx);
-  converter.AddConversion(ReturnAsyncStridedMemref<ConvertTensor>);
-  converter.AddConversion(ReturnStridedMemref<ConvertTensor>);
 
   // Get the worker threads from the execution context.
   Expected<Eigen::ThreadPoolInterface*> worker_threads =
       GetWorkerThreads(exec_ctx);
-  if (auto err = worker_threads.takeError())
-    return ReturnErrors(results, std::move(err), exec_ctx);
+
+  if (LLVM_UNLIKELY(!worker_threads))
+    return ReturnErrors(results, worker_threads.takeError(), exec_ctx);
 
   // Use Eigen thread pool to execute all async tasks.
   EigenThreadPoolAsyncTaskRunner async_task_runner(*worker_threads);
 
   Executable::ExecuteOpts opts;
   opts.async_task_runner = &async_task_runner;
-  opts.kernel_context = &converter.context();
+  opts.kernel_context = &ctx;
 
   // Execution error automatically forwarded to all results, we only need to
   // notify the HostContext to emit the diagnostics for the kernel invocation.
-  if (auto err = executable.Execute(memrefs, converter, opts)) {
+  auto err = executable.Execute(memrefs, converter, opts);
+  if (LLVM_UNLIKELY(err)) {
     EmitError(exec_ctx, StrCat(err));
     return;
   }
@@ -674,18 +705,17 @@ static void ExecuteImpl(JitExecutable& jit_executable,
 
   Expected<AsyncValuePtr<Executable>> executable = jit_executable.GetExecutable(
       memrefs, user_data, debug ? &debug_listener : nullptr);
-  if (auto err = executable.takeError())
-    return ReturnErrors(results, std::move(err), exec_ctx);
 
-  // If executable is available execute it inline.
-  if (executable->IsAvailable()) {
-    if (executable->IsError()) {
-      ReturnErrors(results, executable->GetError(), exec_ctx);
-    } else {
-      ExecuteImpl(executable->get(), memrefs, operands, results, exec_ctx);
-    }
-    return;
-  }
+  if (LLVM_UNLIKELY(!executable))
+    return ReturnErrors(results, executable.takeError(), exec_ctx);
+
+  // If executable is available execute it inline ...
+  if (LLVM_LIKELY(executable->IsConcrete()))
+    return ExecuteImpl(executable->get(), memrefs, operands, results, exec_ctx);
+
+  // ... or maybe return errors.
+  if (LLVM_UNLIKELY(executable->IsError()))
+    return ReturnErrors(results, executable->GetError(), exec_ctx);
 
   // Otherwise execute it when the executable will become available. This
   // requires careful lifetime extension of all async values passed as operands
@@ -722,29 +752,44 @@ static void ExecuteImpl(JitExecutable& jit_executable,
   });
 }
 
+static std::string OperandsToString(
+    RepeatedArguments<FallbackTensor> operands) {
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  int i = 0;
+  os << "{";
+  for (const auto& operand : operands) {
+    os << "[" << i++ << "]: " << operand.tensor().DebugString(/*num_values=*/0);
+    if (i < operands.size()) os << ", ";
+  }
+  os << "}";
+  return out;
+}
+
 // Gets a JitExecutable async value from the cache, and then dispatches it
 // inline or using and-then continuation depending on the async value state.
 static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
-                        RemainingResults results, StringAttribute device,
-                        CompilationUnitAttribute kernel,
+                        RemainingResults results, const StringAttribute& device,
+                        const CompilationUnitAttribute& kernel,
                         const ExecutionContext& exec_ctx, bool debug = false,
                         const Optional<TfJitRtPipelineOpts>& opts = None) {
+  VLOG(2) << "kernel_name: " << kernel.root_symbol().str()
+          << ", operands: " << OperandsToString(operands);
+
   // Compile kernel module into the JitExecutable.
   Expected<AsyncValuePtr<JitExecutable>> jit_executable =
       CompileImpl(kernel, exec_ctx, opts);
 
-  if (auto err = jit_executable.takeError())
-    return ReturnErrors(results, std::move(err), exec_ctx);
+  if (LLVM_UNLIKELY(!jit_executable))
+    return ReturnErrors(results, jit_executable.takeError(), exec_ctx);
 
-  // If kernel is available execute it inline.
-  if (jit_executable->IsAvailable()) {
-    if (jit_executable->IsError()) {
-      ReturnErrors(results, jit_executable->GetError(), exec_ctx);
-    } else {
-      ExecuteImpl(**jit_executable, operands, results, exec_ctx, debug);
-    }
-    return;
-  }
+  // If kernel is available execute it inline ...
+  if (LLVM_LIKELY(jit_executable->IsConcrete()))
+    return ExecuteImpl(**jit_executable, operands, results, exec_ctx, debug);
+
+  // ... or maybe return errors.
+  if (LLVM_UNLIKELY(jit_executable->IsError()))
+    return ReturnErrors(results, jit_executable->GetError(), exec_ctx);
 
   // Otherwise execute it when the executable will become available. This
   // requires careful lifetime extension of all async values passed as operands
@@ -814,11 +859,14 @@ void ExecuteDebug(RepeatedArguments<FallbackTensor> operands,
 
 void RegisterTfJitRuntimeKernels(KernelRegistry* registry) {
   registry->AddKernel("tf_jitrt.fallback.compile", TFRT_KERNEL(Compile));
-  registry->AddKernel("tf_jitrt.fallback.wait_for_compilation",
-                      TFRT_KERNEL(WaitForCompilation));
   registry->AddKernel("tf_jitrt.fallback.execute", TFRT_KERNEL(Execute));
   registry->AddKernel("tf_jitrt.fallback.debug.execute",
                       TFRT_KERNEL(ExecuteDebug));
+
+  registry->AddKernel("tf_jitrt.test.wait_for_compilation",
+                      TFRT_KERNEL(WaitForCompilation));
+  registry->AddKernel("tf_jitrt.test.reset_compilation_thread_pool",
+                      TFRT_KERNEL(ResetCompilationThreadPool));
 }
 
 }  // namespace tensorflow

@@ -1103,7 +1103,9 @@ TEST(BasicInterpreter, ReleaseDynamicTensors) {
   ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
   ASSERT_NE(interpreter.tensor(2)->data.raw, nullptr);
 
-  interpreter.EnsureDynamicTensorsAreReleased();
+  InterpreterOptions options;
+  options.SetEnsureDynamicTensorsAreReleased();
+  interpreter.ApplyOptions(&options);
   ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
 
   // Check that the intermediate dynamic tensor's memory is released.

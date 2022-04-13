@@ -27,10 +27,13 @@ StatusOr<TfrtSavedModelMLIRImportInput> TfrtSavedModelMLIRImportInput::Create(
     bool run_placer_grappler_on_nested_functions) {
   DCHECK(meta_graph_def);
 
-  TF_ASSIGN_OR_RETURN(auto graph_execution_state,
-                      TfrtGraphExecutionState::Create(
-                          meta_graph_def->graph_def(), fallback_state,
-                          run_placer_grappler_on_nested_functions));
+  TfrtGraphExecutionState::Options options;
+  options.run_placer_grappler_on_functions =
+      run_placer_grappler_on_nested_functions;
+  TF_ASSIGN_OR_RETURN(
+      auto graph_execution_state,
+      TfrtGraphExecutionState::Create(options, meta_graph_def->graph_def(),
+                                      fallback_state));
 
   return TfrtSavedModelMLIRImportInput(meta_graph_def, debug_info,
                                        std::move(graph_execution_state));
@@ -43,7 +46,7 @@ TfrtSavedModelMLIRImportInput::TfrtSavedModelMLIRImportInput(
       graph_execution_state_(std::move(graph_execution_state)) {}
 
 StatusOr<const tensorflow::Graph*> TfrtSavedModelMLIRImportInput::GetSubGraph(
-    absl::string_view name, const GraphImportConfig& graph_import_config) {
+    absl::string_view name, GraphImportConfig& graph_import_config) {
   LOG(INFO) << "TFRT importing savedmodel signature: " << name;
 
   auto iter = optimized_graphs_.find(name);

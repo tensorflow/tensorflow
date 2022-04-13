@@ -29,9 +29,9 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir-hlo/utils/hlo_utils.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -145,17 +145,17 @@ Value MaterializeErfcApproximationF64ForMagnituteGEOne(
       rewriter.create<mhlo::DivOp>(loc, exp_z_mul_poly_r, poly_s);
 
   // Combine polynomial approximations for x >= 1.
-  const StringAttr kLT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
   Value eight = chlo::getConstantLike(rewriter, loc, 8.0, x);
-  Value abs_x_lt_8 = rewriter.create<mhlo::CompareOp>(loc, abs_x, eight, kLT);
+  Value abs_x_lt_8 = rewriter.create<mhlo::CompareOp>(
+      loc, abs_x, eight, mhlo::ComparisonDirection::LT);
   Value erfc_approx = rewriter.create<mhlo::SelectOp>(
       loc, abs_x_lt_8, erfc_approx_1_8, erfc_approx_8_inf);
 
   // Clamp to prevent overflow and materialize approximation for large x as
   //   erfc(x) = 0.
   Value z_lt_neg_maxlog = rewriter.create<mhlo::CompareOp>(
-      loc, z, chlo::getConstantLike(rewriter, loc, -kMaxlog, x), kLT);
+      loc, z, chlo::getConstantLike(rewriter, loc, -kMaxlog, x),
+      mhlo::ComparisonDirection::LT);
   Value zero = chlo::getConstantLike(rewriter, loc, 0.0, x);
   Value erfc_approx_clamped =
       rewriter.create<mhlo::SelectOp>(loc, z_lt_neg_maxlog, zero, erfc_approx);
@@ -164,7 +164,8 @@ Value MaterializeErfcApproximationF64ForMagnituteGEOne(
   //   erfc(x) = 2 - erfc(-x).
   // Reuse previously materialized approximations all of which take |x| as their
   // argument.
-  Value x_lt_zero = rewriter.create<mhlo::CompareOp>(loc, x, zero, kLT);
+  Value x_lt_zero = rewriter.create<mhlo::CompareOp>(
+      loc, x, zero, mhlo::ComparisonDirection::LT);
   Value two = chlo::getConstantLike(rewriter, loc, 2.0, x);
   Value two_sub_erfc_approx_clamped =
       rewriter.create<mhlo::SubOp>(loc, two, erfc_approx_clamped);
@@ -220,9 +221,8 @@ Value MaterializeErfApproximationF64(ConversionPatternRewriter &rewriter,
 
   // Materialize approximation selection based on argument.
   Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
-  const StringAttr kLT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
-  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(loc, abs_x, one, kLT);
+  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(
+      loc, abs_x, one, mhlo::ComparisonDirection::LT);
   return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, erf_approx,
                                          erfc_based_approx);
 }
@@ -247,9 +247,8 @@ Value MaterializeErfcApproximationF64(ConversionPatternRewriter &rewriter,
 
   // Materialize approximation selection based on argument.
   Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
-  const StringAttr kLT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
-  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(loc, abs_x, one, kLT);
+  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(
+      loc, abs_x, one, mhlo::ComparisonDirection::LT);
   return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, erf_based_approx,
                                          erfc_approx);
 }
@@ -283,8 +282,6 @@ Value MaterializeErfcApproximationF32ForMagnitudeGEOne(
   // Materialize polynomial approximation for x >= 1 as
   //   erfc(x) = exp(z) 1/x P(1/x^2)   if x in [1, 2)
   //   erfc(x) = exp(z) 1/x R(1/x^2)   if x >= 2
-  const StringAttr kLT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
   Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
   Value one = chlo::getConstantLike(rewriter, loc, 1.0, x);
   Value reciprocal_x_sq = rewriter.create<mhlo::DivOp>(loc, one, x_sq);
@@ -293,7 +290,8 @@ Value MaterializeErfcApproximationF32ForMagnitudeGEOne(
   Value exp_z_mul_one_div_abs_x =
       rewriter.create<mhlo::MulOp>(loc, exp_z, one_div_abs_x);
   Value two = chlo::getConstantLike(rewriter, loc, 2.0, x);
-  Value abs_x_lt_two = rewriter.create<mhlo::CompareOp>(loc, abs_x, two, kLT);
+  Value abs_x_lt_two = rewriter.create<mhlo::CompareOp>(
+      loc, abs_x, two, mhlo::ComparisonDirection::LT);
   Value poly_p = MaterializePolynomialApproximation(
       rewriter, loc, reciprocal_x_sq, llvm::makeArrayRef(kErfcPCoefficients));
   Value poly_r = MaterializePolynomialApproximation(
@@ -306,7 +304,8 @@ Value MaterializeErfcApproximationF32ForMagnitudeGEOne(
   // Clamp to prevent overflow and materialize approximation for large x as
   //   erfc(x) = 0.
   Value z_lt_neq_maxlog = rewriter.create<mhlo::CompareOp>(
-      loc, z, chlo::getConstantLike(rewriter, loc, -kMaxlog, x), kLT);
+      loc, z, chlo::getConstantLike(rewriter, loc, -kMaxlog, x),
+      mhlo::ComparisonDirection::LT);
   Value zero = chlo::getConstantLike(rewriter, loc, 0.0, x);
   Value erfc_approx_clamped =
       rewriter.create<mhlo::SelectOp>(loc, z_lt_neq_maxlog, zero, erfc_approx);
@@ -315,7 +314,8 @@ Value MaterializeErfcApproximationF32ForMagnitudeGEOne(
   //   erfc(x) = 2 - erfc(-x).
   // Reuse previously materialized approximations all of which take |x| as their
   // argument.
-  Value x_lt_zero = rewriter.create<mhlo::CompareOp>(loc, x, zero, kLT);
+  Value x_lt_zero = rewriter.create<mhlo::CompareOp>(
+      loc, x, zero, mhlo::ComparisonDirection::LT);
   Value two_sub_erfc_approx =
       rewriter.create<mhlo::SubOp>(loc, two, erfc_approx_clamped);
   return rewriter.create<mhlo::SelectOp>(loc, x_lt_zero, two_sub_erfc_approx,
@@ -394,10 +394,9 @@ Value MaterializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
   Value erf_based_approx = rewriter.create<mhlo::SubOp>(loc, one, erf_approx);
 
   // Materialize approximation selection based on argument.
-  const StringAttr kLT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
   Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(loc, abs_x, one, kLT);
+  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(
+      loc, abs_x, one, mhlo::ComparisonDirection::LT);
   return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, erf_based_approx,
                                          erfc_approx);
 }
@@ -512,10 +511,9 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
   //   z = -x      if x < 1/2
   //   z = x - 1   otheriwse
   Value x = args.front();
-  const StringAttr kLT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
   Value half = getConstantLike(rewriter, loc, 0.5, x);
-  Value need_to_reflect = rewriter.create<mhlo::CompareOp>(loc, x, half, kLT);
+  Value need_to_reflect = rewriter.create<mhlo::CompareOp>(
+      loc, x, half, mhlo::ComparisonDirection::LT);
   Value neg_x = rewriter.create<mhlo::NegOp>(loc, x);
   Value one = getConstantLike(rewriter, loc, 1, x);
   Value x_sub_one = rewriter.create<mhlo::SubOp>(loc, x, one);
@@ -600,8 +598,8 @@ Value MaterializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
   Value abs = rewriter.create<mhlo::AbsOp>(loc, x);
   Value abs_frac = rewriter.create<mhlo::SubOp>(
       loc, abs, rewriter.create<mhlo::FloorOp>(loc, abs));
-  Value reduce_abs_frac =
-      rewriter.create<mhlo::CompareOp>(loc, half, abs_frac, kLT);
+  Value reduce_abs_frac = rewriter.create<mhlo::CompareOp>(
+      loc, half, abs_frac, mhlo::ComparisonDirection::LT);
   abs_frac = rewriter.create<mhlo::SelectOp>(
       loc, reduce_abs_frac, rewriter.create<mhlo::SubOp>(loc, one, abs_frac),
       abs_frac);
@@ -701,10 +699,9 @@ Value MaterializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
   //   z = -x      if x < 1/2
   //   z = x - 1   otheriwse
   Value x = args.front();
-  const StringAttr kLT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
   Value half = getConstantLike(rewriter, loc, 0.5, x);
-  Value need_to_reflect = rewriter.create<mhlo::CompareOp>(loc, x, half, kLT);
+  Value need_to_reflect = rewriter.create<mhlo::CompareOp>(
+      loc, x, half, mhlo::ComparisonDirection::LT);
   Value neg_x = rewriter.create<mhlo::NegOp>(loc, x);
   Value one = getConstantLike(rewriter, loc, 1, x);
   Value x_sub_one = rewriter.create<mhlo::SubOp>(loc, x, one);
@@ -784,13 +781,11 @@ Value MaterializeDigamma(ConversionPatternRewriter &rewriter, Location loc,
                                             digamma);
 
   // Digamma has poles at negative integers and zero; return nan for those.
-  const StringAttr kLE = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LE));
-  Value is_le_zero = rewriter.create<mhlo::CompareOp>(loc, x, zero, kLE);
-  const StringAttr kEQ = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::EQ));
+  Value is_le_zero = rewriter.create<mhlo::CompareOp>(
+      loc, x, zero, mhlo::ComparisonDirection::LE);
   Value is_int = rewriter.create<mhlo::CompareOp>(
-      loc, x, rewriter.create<mhlo::FloorOp>(loc, x), kEQ);
+      loc, x, rewriter.create<mhlo::FloorOp>(loc, x),
+      mhlo::ComparisonDirection::EQ);
   Value is_pole = rewriter.create<mhlo::AndOp>(loc, is_le_zero, is_int);
   return rewriter.create<mhlo::SelectOp>(
       loc, is_pole,
@@ -883,8 +878,6 @@ Value MaterializeZeta(ConversionPatternRewriter &rewriter, Location loc,
 
   // Use the initial zeta sum without the correction term coming
   // from Euler-Maclaurin if it is accurate enough.
-  const StringAttr kLT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
   Value abs_neg_power = rewriter.create<mhlo::AbsOp>(loc, neg_power);
   Value abs_initial_sum = rewriter.create<mhlo::AbsOp>(loc, initial_sum);
   Value output = rewriter.create<mhlo::SelectOp>(
@@ -894,42 +887,43 @@ Value MaterializeZeta(ConversionPatternRewriter &rewriter, Location loc,
           rewriter.create<mhlo::MulOp>(
               loc, abs_initial_sum,
               chlo::getConstantLikeSmallestFiniteValue(rewriter, loc, a)),
-          kLT),
+          mhlo::ComparisonDirection::LT),
       initial_sum, s);
 
   // Function is not defined for x < 1.
   Value nan = chlo::getConstantLike(
       rewriter, loc, std::numeric_limits<double>::quiet_NaN(), x);
   output = rewriter.create<mhlo::SelectOp>(
-      loc, rewriter.create<mhlo::CompareOp>(loc, x, one_like_x, kLT), nan,
-      output);
+      loc,
+      rewriter.create<mhlo::CompareOp>(loc, x, one_like_x,
+                                       mhlo::ComparisonDirection::LT),
+      nan, output);
 
   // For q <= 0, x must be an integer.
-  const StringAttr kLE = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LE));
-  const StringAttr kNE = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
-  Value q_le_zero = rewriter.create<mhlo::CompareOp>(loc, q, zero, kLE);
+  Value q_le_zero = rewriter.create<mhlo::CompareOp>(
+      loc, q, zero, mhlo::ComparisonDirection::LE);
   Value x_not_int = rewriter.create<mhlo::CompareOp>(
-      loc, x, rewriter.create<mhlo::FloorOp>(loc, x), kNE);
+      loc, x, rewriter.create<mhlo::FloorOp>(loc, x),
+      mhlo::ComparisonDirection::NE);
   Value x_domain_error =
       rewriter.create<mhlo::AndOp>(loc, q_le_zero, x_not_int);
   output = rewriter.create<mhlo::SelectOp>(loc, x_domain_error, nan, output);
 
   // For all integer q <= 0, zeta has a pole. The limit is only defined as
   // +inf if x is and even integer.
-  const StringAttr kEQ = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::EQ));
   Value inf = chlo::getConstantLike(rewriter, loc,
                                     std::numeric_limits<double>::infinity(), x);
   Value q_is_int = rewriter.create<mhlo::CompareOp>(
-      loc, q, rewriter.create<mhlo::FloorOp>(loc, q), kEQ);
+      loc, q, rewriter.create<mhlo::FloorOp>(loc, q),
+      mhlo::ComparisonDirection::EQ);
   Value at_pole = rewriter.create<mhlo::AndOp>(loc, q_le_zero, q_is_int);
   Value two = chlo::getConstantLike(rewriter, loc, 2.0, x);
   Value x_is_int = rewriter.create<mhlo::CompareOp>(
-      loc, x, rewriter.create<mhlo::FloorOp>(loc, x), kEQ);
+      loc, x, rewriter.create<mhlo::FloorOp>(loc, x),
+      mhlo::ComparisonDirection::EQ);
   Value x_is_even = rewriter.create<mhlo::CompareOp>(
-      loc, rewriter.create<mhlo::RemOp>(loc, x, two), zero, kEQ);
+      loc, rewriter.create<mhlo::RemOp>(loc, x, two), zero,
+      mhlo::ComparisonDirection::EQ);
   Value x_is_even_int = rewriter.create<mhlo::AndOp>(loc, x_is_int, x_is_even);
   output = rewriter.create<mhlo::SelectOp>(
       loc, at_pole,
@@ -937,7 +931,10 @@ Value MaterializeZeta(ConversionPatternRewriter &rewriter, Location loc,
 
   // For x = 1, this is the harmonic series and diverges.
   output = rewriter.create<mhlo::SelectOp>(
-      loc, rewriter.create<mhlo::CompareOp>(loc, x, one, kEQ), inf, output);
+      loc,
+      rewriter.create<mhlo::CompareOp>(loc, x, one,
+                                       mhlo::ComparisonDirection::EQ),
+      inf, output);
 
   return output;
 }
@@ -964,21 +961,18 @@ Value MaterializePolygamma(ConversionPatternRewriter &rewriter, Location loc,
       loc, rewriter.create<mhlo::MulOp>(loc, sign, exp_lgamma_np1), zeta);
 
   // Handle n = 0.
-  const StringAttr kEQ = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::EQ));
   Value zero = getConstantLike(rewriter, loc, 0.0, x);
-  Value n_eq_zero = rewriter.create<mhlo::CompareOp>(loc, n, zero, kEQ);
+  Value n_eq_zero = rewriter.create<mhlo::CompareOp>(
+      loc, n, zero, mhlo::ComparisonDirection::EQ);
   result = rewriter.create<mhlo::SelectOp>(
       loc, n_eq_zero, rewriter.create<chlo::DigammaOp>(loc, x), result);
 
   // Check that n is a natural number. Return nan, otherwise.
-  const StringAttr kNE = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
   Value non_int = rewriter.create<mhlo::CompareOp>(
-      loc, n, rewriter.create<mhlo::FloorOp>(loc, n), kNE);
-  const StringAttr kLT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
-  Value negative = rewriter.create<mhlo::CompareOp>(loc, n, zero, kLT);
+      loc, n, rewriter.create<mhlo::FloorOp>(loc, n),
+      mhlo::ComparisonDirection::NE);
+  Value negative = rewriter.create<mhlo::CompareOp>(
+      loc, n, zero, mhlo::ComparisonDirection::LT);
   Value non_natural = rewriter.create<mhlo::OrOp>(loc, non_int, negative);
   return rewriter.create<mhlo::SelectOp>(
       loc, non_natural,
@@ -1026,10 +1020,10 @@ Value MaterializeNextAfter(ConversionPatternRewriter &rewriter, Location loc,
   auto y_as_int = b.create<mhlo::BitcastConvertOp>(int_ty, y);
 
   // The result is NaN if either "x" or "y" are NaN.
-  const StringAttr kNE = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::NE));
-  auto x_is_nan = b.create<mhlo::CompareOp>(x, x, kNE);
-  auto y_is_nan = b.create<mhlo::CompareOp>(y, y, kNE);
+  auto x_is_nan =
+      b.create<mhlo::CompareOp>(x, x, mhlo::ComparisonDirection::NE);
+  auto y_is_nan =
+      b.create<mhlo::CompareOp>(y, y, mhlo::ComparisonDirection::NE);
   auto nan_input = b.create<mhlo::OrOp>(x_is_nan, y_is_nan);
   auto result_for_nan = getConstantLike(
       rewriter, loc, std::numeric_limits<double>::quiet_NaN(), x);
@@ -1045,16 +1039,17 @@ Value MaterializeNextAfter(ConversionPatternRewriter &rewriter, Location loc,
   auto y_abs = b.create<mhlo::AndOp>(y_as_int, negated_sign_mask);
 
   // When both "x" and "y" are equal, the result is "y".
-  const StringAttr kEQ = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::EQ));
-  auto x_and_y_are_equal = b.create<mhlo::CompareOp>(x, y, kEQ);
+  auto x_and_y_are_equal =
+      b.create<mhlo::CompareOp>(x, y, mhlo::ComparisonDirection::EQ);
   auto result_for_equal = y_as_int;
 
   // When both "x" and "y" are 0, the result is "y". This is a separate case
   // from above because "x" and "y" might have a different sign.
   auto zero = getConstantLike(rewriter, loc, 0, x_as_int);
-  auto x_is_zero = b.create<mhlo::CompareOp>(x_abs, zero, kEQ);
-  auto y_is_zero = b.create<mhlo::CompareOp>(y_abs, zero, kEQ);
+  auto x_is_zero =
+      b.create<mhlo::CompareOp>(x_abs, zero, mhlo::ComparisonDirection::EQ);
+  auto y_is_zero =
+      b.create<mhlo::CompareOp>(y_abs, zero, mhlo::ComparisonDirection::EQ);
   auto result_for_both_zero = y_as_int;
 
   auto x_sign = b.create<mhlo::AndOp>(x_as_int, sign_mask);
@@ -1074,10 +1069,10 @@ Value MaterializeNextAfter(ConversionPatternRewriter &rewriter, Location loc,
   //   smaller.
   // - "x" with a magnitude smaller than "y" means we need to make the magnitude
   //   larger.
-  auto signs_disagree = b.create<mhlo::CompareOp>(x_sign, y_sign, kNE);
-  const StringAttr kGT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::GT));
-  auto x_magnitude_larger_than_y = b.create<mhlo::CompareOp>(x_abs, y_abs, kGT);
+  auto signs_disagree =
+      b.create<mhlo::CompareOp>(x_sign, y_sign, mhlo::ComparisonDirection::NE);
+  auto x_magnitude_larger_than_y =
+      b.create<mhlo::CompareOp>(x_abs, y_abs, mhlo::ComparisonDirection::GT);
   auto result_has_smaller_magnitude =
       b.create<mhlo::OrOp>(x_magnitude_larger_than_y, signs_disagree);
   auto minus_one = getConstantLike(rewriter, loc, -1, x_as_int);
@@ -1157,8 +1152,6 @@ Value MaterializeSinhApproximation(ConversionPatternRewriter &rewriter,
 
   SinhOp::Adaptor transformed(operands);
   Value x = transformed.operand();
-  const StringAttr kLT = rewriter.getStringAttr(
-      mhlo::stringifyComparisonDirection(mhlo::ComparisonDirection::LT));
   Value exp_x = rewriter.create<mhlo::ExpOp>(loc, x);
   Value exp_neg_x =
       rewriter.create<mhlo::ExpOp>(loc, rewriter.create<mhlo::NegOp>(loc, x));
@@ -1169,7 +1162,8 @@ Value MaterializeSinhApproximation(ConversionPatternRewriter &rewriter,
 
   Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
   Value one = getConstantLike(rewriter, loc, 1.0, x);
-  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(loc, abs_x, one, kLT);
+  Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(
+      loc, abs_x, one, mhlo::ComparisonDirection::LT);
   return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, small_sinh_result,
                                          large_sinh_result);
 }
@@ -1467,7 +1461,7 @@ void PopulateChloBroadcastingPatterns(MLIRContext *context,
   PopulateForBroadcastingBinaryOp<ConvertRankedDynamicBroadcastBinaryOp>(
       context, patterns, 5);
   patterns
-      ->insert<ConvertConstantLikeOp, ConvertDynamicReshapeOp, ConvertSelectOp>(
+      ->add<ConvertConstantLikeOp, ConvertDynamicReshapeOp, ConvertSelectOp>(
           context);
 }
 

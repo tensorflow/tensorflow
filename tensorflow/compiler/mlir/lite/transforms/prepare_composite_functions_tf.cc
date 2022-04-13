@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -121,9 +121,9 @@ LogicalResult ConvertTflFusableOp(
   }
 
   auto tfl_fusable_op = builder.create<TFL::CustomOp>(
-      func->getLoc(), func.getType().getResults(), func.getArguments(),
+      func->getLoc(), func.getFunctionType().getResults(), func.getArguments(),
       custom_op_name, CustomOption(&builder, custom_option_buffer));
-  builder.create<ReturnOp>(func->getLoc(), tfl_fusable_op.getResults());
+  builder.create<func::ReturnOp>(func->getLoc(), tfl_fusable_op.getResults());
   return success();
 }
 
@@ -137,13 +137,13 @@ class ConvertEmbeddedLookupFunc {
                    StringAttr::get(func_.getContext(), "embedding_lookup"));
     Value lookup = func_.getArgument(1);
     Value value = func_.getArgument(0);
-    auto output_type = func_.getType().getResult(0);
+    auto output_type = func_.getFunctionType().getResult(0);
 
     OpBuilder builder(func_.getBody());
     auto op = builder.create<mlir::TFL::EmbeddingLookupOp>(
         func_.getLoc(), output_type, lookup, value);
 
-    builder.create<mlir::ReturnOp>(func_.getLoc(), op.getResult());
+    builder.create<mlir::func::ReturnOp>(func_.getLoc(), op.getResult());
   }
 
   LogicalResult VerifySignature() {
@@ -152,7 +152,7 @@ class ConvertEmbeddedLookupFunc {
              << "Invalid number of arguments in the embedding "
                 "matmul composite function";
     }
-    if (func_.getType().getNumResults() != 1) {
+    if (func_.getFunctionType().getNumResults() != 1) {
       return func_.emitWarning() << "Invalid number of results in the "
                                     "embedding matmul composite function";
     }
@@ -177,6 +177,8 @@ class PrepareCompositeFunctionsPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareCompositeFunctionsPass)
+
   explicit PrepareCompositeFunctionsPass() {}
 
   StringRef getArgument() const final {

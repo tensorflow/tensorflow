@@ -74,7 +74,7 @@ struct LoopToSCFPattern : public OpRewritePattern<LoopOp> {
       if (!seqIVs.empty()) {
         scf::LoopNest nest =
             scf::buildLoopNest(builder, loc, seqLBs, seqUBs, seqSteps,
-                               [&](OpBuilder &builder, Location loc,
+                               [&](OpBuilder & /*builder*/, Location /*loc*/,
                                    ValueRange ivs) { bvm.map(seqIVs, ivs); });
         builder.setInsertionPointToStart(nest.loops.back().getBody());
       }

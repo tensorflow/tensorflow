@@ -215,6 +215,9 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = [
+        "notsan",  # TODO(b/220133218)
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -543,6 +546,7 @@ py_library(
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/data/ops:optional_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
 )
@@ -635,6 +639,7 @@ py_library(
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/tpu:device_assignment",
+        "//tensorflow/python/tpu:tpu_hardware_feature",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/tpu:tpu_py",
         "//tensorflow/python/tpu/ops",
@@ -658,6 +663,7 @@ distribute_py_test(
     ],
     xla_enable_strict_auto_jit = False,  # PSStrategy doesn't work on _xla tests
     deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:stateful_random_ops",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:combinations",
@@ -1286,7 +1292,11 @@ tf_py_test(
     size = "small",
     srcs = ["sharded_variable_test.py"],
     deps = [
+        ":combinations",
+        ":multi_worker_test_base",
+        ":parameter_server_strategy_v2",
         ":sharded_variable",
+        ":test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -1301,6 +1311,8 @@ tf_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model:load",
@@ -1308,6 +1320,7 @@ tf_py_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:util",
     ],
@@ -1619,6 +1632,7 @@ distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
     main = "moving_averages_test.py",
+    shard_count = 5,
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
         "notpu",  # TODO(b/210145904)
@@ -1663,6 +1677,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_windows",  # TODO(b/227211015)
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1859,6 +1874,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "nomsan",  # b/154224457: Re-enable when fixed.
+        "notsan",  # TODO(b/220133218)
     ],
     # b/155301154 broken with XLA:GPU
     xla_enable_strict_auto_jit = True,
@@ -1900,6 +1916,8 @@ cuda_py_test(
 tpu_py_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
+    # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
+    disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
     python_version = "PY3",
     deps = [
@@ -1943,6 +1961,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "notsan",  # TODO(b/220133218)
     ],
     # b/141096229: Non-atomic AssignAdd
     xla_enable_strict_auto_jit = False,
@@ -2255,6 +2274,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
@@ -2263,6 +2283,7 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":ps_values",
+        ":test_util",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:lookup_ops",

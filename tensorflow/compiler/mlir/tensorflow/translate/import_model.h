@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -116,11 +117,13 @@ class SavedModelMLIRImportInput {
   // GetSubGraph() is expected to return a tensorflow::Graph that contains the
   // node set specified in `specs`. The implementation is free to transform the
   // graph in the original savedmodel as needed, as long as it produces the same
-  // results and effects. `name` is a unique identifier for this subgraph, so
-  // the implementation can use it for eg. debugging or caching compilation
-  // results.
+  // results and effects. If the transformation requires some configs in `spec`
+  // (e.g., control_outputs) to be changed, they should be updated accordingly
+  // and remain valid for the graph.
+  // `name` is a unique identifier for this subgraph, so the implementation can
+  // use it for eg. debugging or caching compilation results.
   virtual stream_executor::port::StatusOr<const Graph*> GetSubGraph(
-      absl::string_view name, const GraphImportConfig& specs) = 0;
+      absl::string_view name, GraphImportConfig& specs) = 0;
 
  private:
   const MetaGraphDef* meta_graph_def_ = nullptr;

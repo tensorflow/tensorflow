@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
@@ -381,10 +382,11 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                      GPUResourcesWithValue* resources) const {
   const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(obj_ptr);
   if (buffer_desc) {
-    if (descriptor_.storage_type != TensorStorageType::BUFFER) {
+    if (descriptor_.storage_type != TensorStorageType::BUFFER &&
+        descriptor_.storage_type != TensorStorageType::IMAGE_BUFFER) {
       return absl::InvalidArgumentError(
           "Tensor can be used with BufferDescriptor only with "
-          "TensorStorageType::BUFFER.");
+          "TensorStorageType::BUFFER/TensorStorageType::IMAGE_BUFFER.");
     }
     resources->buffers.push_back({"buffer", memory_});
     return absl::OkStatus();
@@ -569,15 +571,14 @@ absl::Status Tensor::WriteData(
 
 absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,
                                           CLContext* context) {
-  shape_ = desc.shape;
+  shape_ = desc.GetBHWDCShape();
   descriptor_.data_type = desc.data_type;
   descriptor_.storage_type = desc.storage_type;
   descriptor_.layout = desc.layout;
   memory_owner_ = true;
   CLMemory memory;
-  uint8_t* data_ptr = desc.data.empty()
-                          ? nullptr
-                          : const_cast<unsigned char*>(desc.data.data());
+  const uint8_t* data_ptr =
+      desc.GetData().empty() ? nullptr : desc.GetData().data();
   RETURN_IF_ERROR(
       AllocateTensorMemory(*context, shape_, descriptor_, data_ptr, &memory));
   memory_ = memory.Release();
@@ -586,6 +587,59 @@ absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,
         *context, memory_, desc.data_type,
         shape_.b * shape_.w * shape_.h * shape_.d * DivideRoundUp(shape_.c, 4),
         &image_buffer_memory_));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Tensor::ToDescriptor(TensorDescriptor* desc,
+                                  CLCommandQueue* queue) const {
+  *desc = descriptor_;
+  desc->SetBHWDCShape(shape_);
+  std::vector<uint8_t> data(GetMemorySizeInBytes());
+  RETURN_IF_ERROR(ReadData(data.data(), queue));
+  desc->SetData(std::move(data));
+  return absl::OkStatus();
+}
+
+absl::Status Tensor::WriteData(const void* ptr, CLCommandQueue* queue) {
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      RETURN_IF_ERROR(
+          queue->EnqueueWriteBuffer(memory_, GetMemorySizeInBytes(), ptr));
+      break;
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
+    case TensorStorageType::SINGLE_TEXTURE_2D: {
+      cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
+      RETURN_IF_ERROR(
+          queue->EnqueueWriteImage(mem, GetFullTensorRegion(), ptr));
+      break;
+    }
+    default:
+      return absl::InternalError("Unsupported tensor storage type");
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Tensor::ReadData(void* ptr, CLCommandQueue* queue) const {
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      RETURN_IF_ERROR(
+          queue->EnqueueReadBuffer(memory_, GetMemorySizeInBytes(), ptr));
+      break;
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
+    case TensorStorageType::SINGLE_TEXTURE_2D: {
+      cl_mem mem = buffer_based_ ? image_buffer_memory_ : memory_;
+      RETURN_IF_ERROR(queue->EnqueueReadImage(mem, GetFullTensorRegion(), ptr));
+      break;
+    }
+    default:
+      return absl::InternalError("Unsupported tensor storage type");
   }
   return absl::OkStatus();
 }

@@ -477,8 +477,10 @@ def check_bazel_version(min_version, max_version):
   """
   bazel_executable = which('bazel')
   if bazel_executable is None:
-    print('Cannot find bazel. Please install bazel.')
-    sys.exit(1)
+    bazel_executable = which('bazelisk')
+    if bazel_executable is None:
+      print('Cannot find bazel. Please install bazel/bazelisk.')
+      sys.exit(1)
 
   stderr = open(os.devnull, 'wb')
   curr_version = run_shell([bazel_executable, '--version'],
@@ -945,7 +947,7 @@ def is_cuda_compatible(lib, cuda_ver, cudnn_ver):
 
 def set_tf_tensorrt_version(environ_cp):
   """Set TF_TENSORRT_VERSION."""
-  if not is_linux():
+  if not (is_linux() or is_windows()):
     raise ValueError('Currently TensorRT is only supported on Linux platform.')
 
   if not int(environ_cp.get('TF_NEED_TENSORRT', False)):
@@ -1238,6 +1240,10 @@ def validate_cuda_config(environ_cp):
       cuda_libraries.append('tensorrt')
     if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')
+  if is_windows():
+    if int(environ_cp.get('TF_NEED_TENSORRT', False)):
+      cuda_libraries.append('tensorrt')
+      print('WARNING: TensorRT support on Windows is experimental\n')
 
   paths = glob.glob('**/third_party/gpus/find_cuda_config.py', recursive=True)
   if not paths:
@@ -1317,7 +1323,6 @@ def main():
   if is_windows():
     environ_cp['TF_NEED_OPENCL'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
-    environ_cp['TF_NEED_TENSORRT'] = '0'
     # TODO(ibiryukov): Investigate using clang as a cpu or cuda compiler on
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
@@ -1389,6 +1394,8 @@ def main():
 
       set_tf_cuda_version(environ_cp)
       set_tf_cudnn_version(environ_cp)
+      if is_windows():
+        set_tf_tensorrt_version(environ_cp)
       if is_linux():
         set_tf_tensorrt_version(environ_cp)
         set_tf_nccl_version(environ_cp)

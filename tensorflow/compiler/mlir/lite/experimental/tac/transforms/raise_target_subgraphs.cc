@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -93,6 +93,9 @@ inline bool IsNonConstQuantizeOp(Operation* op) {
 class RaiseTargetSubgraphsPass
     : public mlir::PassWrapper<RaiseTargetSubgraphsPass,
                                mlir::OperationPass<ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseTargetSubgraphsPass)
+
  private:
   llvm::StringRef getArgument() const final {
     return "tfl-raise-target-subgraphs";
@@ -270,7 +273,8 @@ FuncOp RaiseTargetSubgraphsPass::BuildFuncOp(
     auto cloned_output = output_cloned_op_output_mapping.find(output)->second;
     final_outputs.push_back(cloned_output);
   }
-  function_builder.create<mlir::ReturnOp>(new_func.getLoc(), final_outputs);
+  function_builder.create<mlir::func::ReturnOp>(new_func.getLoc(),
+                                                final_outputs);
 
   module_op.push_back(new_func);
   return new_func;
@@ -293,7 +297,7 @@ void RaiseTargetSubgraphsPass::ExtractSubgraphToFunc(Subgraph* subgraph,
   // TODO(renjieliu): we should add func attributes to the call op.
   builder->setInsertionPoint(last_output);
   auto call_op =
-      builder->create<CallOp>(last_output->getLoc(), func, func_inputs);
+      builder->create<func::CallOp>(last_output->getLoc(), func, func_inputs);
 
   auto interface_name = GetInterFaceName(func);
 
@@ -338,7 +342,7 @@ void RaiseTargetSubgraphsPass::RaiseTargetSubgraphsForBlock(Block* block,
   int current_subgraph_id = -1;
   for (auto& op : *block) {
     if (IsNonConstQuantizeOp(&op) && !IsTerminatorOp(&op) &&
-        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op)) {
+        !llvm::isa<func::ReturnOp, FuncOp, CallOpInterface>(op)) {
       auto current_device_type = GetInferenceDeviceTypeForOp(&op);
       if (!(current_device_type.hasValue() &&
             current_device_type == previous_device_type)) {

@@ -79,6 +79,13 @@ class ClOperation {
                            operation_->work_group_size_);
   }
 
+  absl::Status AddToQueue(ProfilingCommandQueue* queue, CLEvent* event) {
+    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
+    return queue->CLCommandQueue::Dispatch(kernel_,
+                                           operation_->GetWorkGroupsCount(),
+                                           operation_->work_group_size_, event);
+  }
+
   // for better profiling
   absl::Status AddToQueueNTimes(ProfilingCommandQueue* queue, int n,
                                 int flush_period = 0) {

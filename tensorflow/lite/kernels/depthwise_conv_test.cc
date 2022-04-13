@@ -182,7 +182,7 @@ TEST_P(DepthwiseConvolutionOpTest, ActivationReluTest) {
   });
   m.SetBias({1, 2, 3, 4});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  71, 0, 99, 0,   //
@@ -213,7 +213,7 @@ TEST_P(DepthwiseConvolutionOpTest, ActivationReluN1Test) {
   });
   m.SetBias({1, 2, 3, 4});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  1, -1, 1, -1,  //
@@ -244,7 +244,7 @@ TEST_P(DepthwiseConvolutionOpTest, ActivationRelu6Test) {
   });
   m.SetBias({1, 2, 3, 4});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  6, 0, 6, 0,  //
@@ -275,7 +275,7 @@ void StrideTest(TfLiteRegistration* registration, int num_thread) {
   });
   m.SetBias({1, 2, 3, 4});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  71, -34, 99, -20,  //
@@ -313,7 +313,7 @@ void PaddingTest(TfLiteRegistration* registration, int num_thread) {
   });
   m.SetBias({1, 2, 3, 4});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  71, -34, 99, -20,     //
@@ -348,7 +348,7 @@ void SimpleTest(TfLiteRegistration* registration, int num_thread) {
   });
   m.SetBias({1, 2, 3, 4});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  71, -34, 99, -20,  //
@@ -408,7 +408,7 @@ void SimpleDilatedTestPaddingValid(TfLiteRegistration* registration,
   m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9});
   // No bias for this test.
   m.SetBias({0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Since the dilation rate is 3 this will reduce the size of the output from
   // 10x10 to 3x3 of all 5s. Specifically:
@@ -454,7 +454,7 @@ void SimpleDilatedTestPaddingSame(TfLiteRegistration* registration,
   // No bias for this test.
   m.SetBias({0});
   m.SetNumThreads(num_thread);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Output:
   // | 4 | 7 | 3 |
@@ -512,7 +512,7 @@ void BatchPaddingValidTest(TfLiteRegistration* registration, int num_thread) {
   // No bias for this test.
   m.SetBias({0, 0, 0, 0});
   m.SetNumThreads(num_thread);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -568,7 +568,7 @@ void BatchPaddingSameTest(TfLiteRegistration* registration, int num_thread) {
   // No bias for this test.
   m.SetBias({0});
   m.SetNumThreads(num_thread);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -705,7 +705,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleTestQuantized) {
   });
   m.SetBias({1, 2, 3, 4});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear(
                                             {
@@ -747,12 +747,12 @@ TEST_P(DepthwiseConvolutionOpTest,
   quant_op.SetInput(input);
   quant_op.SetFilter(filter);
   quant_op.SetBias(bias);
-  quant_op.Invoke();
+  ASSERT_EQ(quant_op.Invoke(), kTfLiteOk);
 
   float_op.SetInput(input);
   float_op.SetFilter(filter);
   float_op.SetBias(bias);
-  float_op.Invoke();
+  ASSERT_EQ(float_op.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(quant_op.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
@@ -785,12 +785,12 @@ TEST_P(DepthwiseConvolutionOpTest,
   quant_op.SetInput(input);
   quant_op.SetFilter(filter);
   quant_op.SetBias(bias);
-  quant_op.Invoke();
+  ASSERT_EQ(quant_op.Invoke(), kTfLiteOk);
 
   float_op.SetInput(input);
   float_op.SetFilter(filter);
   float_op.SetBias(bias);
-  float_op.Invoke();
+  ASSERT_EQ(float_op.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(quant_op.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
@@ -844,7 +844,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTestPaddingValid) {
   m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9});
   // No bias for this test.
   m.SetBias({0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Since the dilation rate is 3 this will reduce the size of the output from
   // 10x10 to 3x3 of all 5s. Specifically:
@@ -886,7 +886,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTestPaddingSame) {
   m.SetFilter({1, 2, 3, 4});
   // No bias for this test.
   m.SetBias({0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // Output:
   // | 4 | 7 | 3 |
@@ -952,7 +952,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowUint8GeneralTest) {
   // No bias for this test.
   m.SetBias({0});
   m.SetNumThreads(4);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -1036,7 +1036,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
   // No bias for this test.
   m.SetBias({0});
   m.SetNumThreads(4);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -1123,7 +1123,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowValidPaddingTest) {
   // No bias for this test.
   m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
   m.SetNumThreads(4);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -1190,7 +1190,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowSamePaddingTest) {
   // No bias for this test.
   m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
   m.SetNumThreads(3);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -1263,7 +1263,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
   // No bias for this test.
   m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
   m.SetNumThreads(2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -1327,7 +1327,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnBatchSamePaddingTest) {
   // No bias for this test.
   m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
   m.SetNumThreads(3);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -1399,7 +1399,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
   // No bias for this test.
   m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
   m.SetNumThreads(4);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -1469,7 +1469,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
   // No bias for this test.
   m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
   m.SetNumThreads(4);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -1530,7 +1530,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
   // No bias for this test.
   m.SetBias({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
   m.SetNumThreads(4);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -1584,7 +1584,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadDifferentPaddingTest) {
   // No bias for this test.
   m.SetBias({0, 0});
   m.SetNumThreads(4);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   // clang-format off
   EXPECT_THAT(
@@ -1666,7 +1666,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, SimplePerTensorTest) {
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 4] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray(ArrayFloatNear({43, 48, 18, 22, 3, -4, -28, -36})));
@@ -1712,7 +1712,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, SimplePerAxisTest) {
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 4] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray(ArrayFloatNear({43, 48, 21, 22, 3, -4, -30, -54})));
@@ -1760,7 +1760,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 4] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray(ArrayFloatNear({43, 48, 18.5, 22, 3, -4, -28.5, -36})));
@@ -1808,7 +1808,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
 
   // Invoke and verify output.
   // output has dimension [1 * 1 * 2 * 4] as [batch, y, x, output_channel]
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray(ArrayFloatNear({43, 48, 21, 22, 3, -4, -30, -36})));
@@ -1846,7 +1846,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {
   m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
 
   // Invoke and verify output.
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({9, 18, 0, 0, 47, 54, 0, 0})));
 }
@@ -1882,7 +1882,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
   m.SetBias({0, 0, 0, 0, 0, 0, 0, 0});
 
   // Invoke and verify output.
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({
                   // array of 9 x 8 => [1, 3, 3, 8]

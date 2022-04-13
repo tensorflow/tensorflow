@@ -265,7 +265,7 @@ Tensor CopyTensorToDevice(Device* device, const Tensor& tensor) {
   } else if (device->device_type() == DEVICE_GPU) {
     Tensor copied(device->GetAllocator(AllocatorAttributes()), tensor.dtype(),
                   tensor.shape());
-    auto* dev_info = device->tensorflow_gpu_device_info();
+    auto* dev_info = device->tensorflow_accelerator_device_info();
     CHECK(dev_info);
     TF_CHECK_OK(dev_info->default_context->CopyCPUTensorToDeviceSync(
         &tensor, device, &copied));
@@ -279,7 +279,7 @@ Tensor CopyTensorToHost(Device* device, const Tensor& tensor) {
     return tensor;
   } else if (device->device_type() == DEVICE_GPU) {
     Tensor copied(tensor.dtype(), tensor.shape());
-    auto* dev_info = device->tensorflow_gpu_device_info();
+    auto* dev_info = device->tensorflow_accelerator_device_info();
     CHECK(dev_info);
     TF_CHECK_OK(dev_info->default_context->CopyDeviceTensorToCPUSync(
         &tensor, "" /*tensor_name*/, device, &copied));
@@ -325,7 +325,7 @@ Status RunCollective(CollectiveTestEnv* test_env, CollectiveParams* col_params,
   gtl::InlinedVector<AllocatorAttributes, 4> input_aa({AllocatorAttributes()});
   op_params.input_alloc_attrs = &input_aa;
   DeviceContext* dev_ctx = nullptr;
-  auto* dev_info = device->tensorflow_gpu_device_info();
+  auto* dev_info = device->tensorflow_accelerator_device_info();
   if (dev_info) {
     dev_ctx = dev_info->default_context;
     dev_ctx->Ref();

@@ -561,10 +561,10 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
                                           GetNestedComputer());
-  FusedIrEmitter fused_emitter(&elemental_emitter);
+  FusedIrEmitter fused_emitter(elemental_emitter);
   BindFusionArguments(fusion, &fused_emitter);
   TF_ASSIGN_OR_RETURN(auto generator, fused_emitter.GetGenerator(
-                                          fusion->fused_expression_root()));
+                                          *fusion->fused_expression_root()));
   return EmitTargetElementLoop(*fusion, generator);
 }
 
@@ -628,8 +628,10 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs) {
   const Shape& return_shape = computation.root_instruction()->shape();
+  llvm::Type* return_buffer_type =
+      llvm_ir::ShapeToIrType(return_shape, module_);
   llvm::Value* return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-      llvm_ir::ShapeToIrType(return_shape, module_), "return_buffer", &b_);
+      return_buffer_type, "return_buffer", &b_);
 
   std::vector<llvm::Value*> allocas_for_returned_scalars;
   if (!return_shape.IsTuple()) {
@@ -637,7 +639,8 @@ StatusOr<std::vector<llvm::Value*>> IrEmitter::ComputeNestedElementFromAddrs(
   } else {
     allocas_for_returned_scalars =
         llvm_ir::EmitTupleAllocasAtFunctionEntry(return_shape, &b_);
-    llvm_ir::IrArray tuple_array(return_buffer, return_shape);
+    llvm_ir::IrArray tuple_array(return_buffer, return_buffer_type,
+                                 return_shape);
 
     EmitTuple(tuple_array, allocas_for_returned_scalars, &b_);
   }
@@ -673,7 +676,7 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
   for (int i = 0; i < fusion->operand_count(); i++) {
     const HloInstruction* operand = fusion->operand(i);
     fused_emitter->BindGenerator(
-        fusion->fused_parameter(i),
+        *fusion->fused_parameter(i),
         [this, operand, fusion](llvm_ir::IrArray::Index index) {
           return GetIrArray(*operand, *fusion)
               .EmitReadArrayElement(index, &b_, operand->name());

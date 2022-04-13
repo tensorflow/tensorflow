@@ -60,7 +60,7 @@ apt-get install -y --no-install-recommends \
     pkg-config \
     python-dev \
     python-setuptools \
-    python-virtualenv \
+    python3-virtualenv \
     python3-dev \
     python3-setuptools \
     rsync \

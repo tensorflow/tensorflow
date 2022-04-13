@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -83,14 +84,14 @@ LogicalResult SessionInitializerOp::verify() {
       session_initializer->getParentOfType<ModuleOp>());
 
   for (auto sym_ref : session_initializer.initializers()) {
-    auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
+    auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
     if (!init_func_op)
       return session_initializer.emitOpError()
              << "the initializer function does not exist";
 
-    if (!init_func_op.getType().getResults().empty())
+    if (!init_func_op.getFunctionType().getResults().empty())
       return session_initializer.emitOpError()
              << "the initializer function should have no output";
 
@@ -279,7 +280,6 @@ static LogicalResult VerifySavedModelModule(
       return func.emitError() << "non-exported function @" << func.getName()
                               << " should be private";
     }
-
     if (!is_exported && HasAnyTfSavedModelArgAttr(func)) {
       return func.emitError() << "can only apply 'tf_saved_model' argument "
                                  "attributes to exported functions";
@@ -293,7 +293,7 @@ static LogicalResult VerifySavedModelModule(
            << "there must be no more than one session_initializer op";
   }
 
-  auto is_init = [&session_initializers](mlir::FuncOp func) {
+  auto is_init = [&session_initializers](mlir::func::FuncOp func) {
     if (session_initializers.empty()) return false;
     auto init_syms = (*session_initializers.begin()).initializers();
     return std::any_of(
@@ -462,7 +462,7 @@ class OptimizeSessionInitializerPattern
     SmallVector<FuncOp, 2> to_remove;
     SmallVector<mlir::Attribute, 2> to_keep;
     for (auto sym_ref : op.initializers()) {
-      auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
+      auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
           sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
       // The init function can only be referenced from the SessionInitializerOp.
@@ -505,7 +505,7 @@ SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp op) {
 
   SmallVector<StringRef, 2> results;
   for (auto sym_ref : session_initializer_op.initializers()) {
-    auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
+    auto init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
     auto exported_names = GetExportedNames(init_func_op);
     assert(exported_names.size() == 1);

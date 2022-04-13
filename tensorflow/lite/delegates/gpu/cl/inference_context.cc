@@ -173,7 +173,7 @@ absl::Status GetBufferAsignment(
   bool has_buffer_based_images = false;
   for (auto& usage : buffer_usages) {
     const auto& t = gpu_model.tensors.at(usage.first);
-    const auto& shape = t.shape;
+    const auto& shape = t.GetBHWDCShape();
     const auto& descriptor = t;
     const size_t element_size = SizeOf(descriptor.data_type);
     size_t buffer_size;
@@ -217,6 +217,7 @@ absl::Status GetBufferAsignment(
   const size_t base_align_bytes =
       std::max<size_t>(gpu_info.opencl_info.base_addr_align_in_bits >> 3, 1);
 
+  *use_offset_assignment = false;
   if (*is_sub_buffers_supported) {
     RETURN_IF_ERROR(AssignOffsetsToTensors(
         *buffer_usage_records, MemoryStrategy::GREEDY_BY_SIZE,
@@ -283,10 +284,11 @@ absl::Status InferenceContext::InitFromGpuModel(
   }
   std::map<ValueId, Tensor> temp_external_tensors;
   for (const auto& external_tensor : create_info.external_mutable_tensors) {
-    RETURN_IF_ERROR(CreateTensor(
-        env->context(), gpu_model->tensors[external_tensor.first].shape,
-        gpu_model->tensors[external_tensor.first],
-        &temp_external_tensors[external_tensor.first]));
+    RETURN_IF_ERROR(
+        CreateTensor(env->context(),
+                     gpu_model->tensors[external_tensor.first].GetBHWDCShape(),
+                     gpu_model->tensors[external_tensor.first],
+                     &temp_external_tensors[external_tensor.first]));
     external_mutable_tensors_[external_tensor.first] =
         &temp_external_tensors[external_tensor.first];
   }
@@ -373,10 +375,11 @@ absl::Status InferenceContext::RestoreDeserialized(
       external_immutable_tensors_[external_tensor.first] = cl_spatial_tensor;
     }
     for (const auto& external_tensor : create_info->external_mutable_tensors) {
-      RETURN_IF_ERROR(CreateTensor(
-          env->context(), gpu_model.tensors[external_tensor.first].shape,
-          gpu_model.tensors[external_tensor.first],
-          &temp_external_tensors[external_tensor.first]));
+      RETURN_IF_ERROR(
+          CreateTensor(env->context(),
+                       gpu_model.tensors[external_tensor.first].GetBHWDCShape(),
+                       gpu_model.tensors[external_tensor.first],
+                       &temp_external_tensors[external_tensor.first]));
       external_mutable_tensors_[external_tensor.first] =
           &temp_external_tensors[external_tensor.first];
     }
@@ -476,7 +479,7 @@ absl::Status InferenceContext::AllocateVariableTensors(
         return absl::InternalError("No variable tensor with this id.");
       }
       const auto& t = it->second;
-      const auto& shape = t.shape;
+      const auto& shape = t.GetBHWDCShape();
       const auto& descriptor = t;
 
       RETURN_IF_ERROR(
@@ -568,7 +571,7 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
         continue;
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[t.first];
       if (created_tensors[tensor_index]) continue;
-      const auto& shape_5d = gpu_model.tensors.at(t.first).shape;
+      const auto& shape_5d = gpu_model.tensors.at(t.first).GetBHWDCShape();
       const auto shape = BHWC(shape_5d.b, shape_5d.h, shape_5d.w, shape_5d.c);
       const int buffer_index = use_offset_assignment
                                    ? tensor_index
@@ -620,7 +623,7 @@ absl::Status InferenceContext::AllocateStrongShapesTensors(
       return tensor_desc.data_type == t.tensor_desc.data_type &&
              tensor_desc.storage_type == t.tensor_desc.storage_type &&
              tensor_desc.layout == t.tensor_desc.layout &&
-             tensor_desc.shape == t.tensor_desc.shape;
+             tensor_desc.GetBHWDCShape() == t.tensor_desc.GetBHWDCShape();
     }
   };
 
@@ -645,7 +648,7 @@ absl::Status InferenceContext::AllocateStrongShapesTensors(
           IsBufferBased(gpu_info, gpu_model.tensors.at(t.first).storage_type)) {
         continue;
       }
-      const auto& shape = gpu_model.tensors.at(t.first).shape;
+      const auto& shape = gpu_model.tensors.at(t.first).GetBHWDCShape();
       const auto id = assignment.object_ids[remap_from_graph_ids[t.first]];
       graph_ids_to_strong_shape_tensors_[t.first] = id;
       const auto& it = strong_shape_tensors_.find(id);
@@ -871,6 +874,9 @@ uint64_t InferenceContext::GetConstantTensorsSize() const {
   uint64_t total_size = 0;
   for (const auto& node : nodes_) {
     total_size += node.cl_operation.GetGpuOperation().const_args_size_;
+  }
+  for (const auto& t : const_tensors_) {
+    total_size += t.second.GetMemorySizeInBytes();
   }
   return total_size;
 }

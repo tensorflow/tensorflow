@@ -46,12 +46,17 @@ struct TfJitRtPipelineOptions
 
   ListOption<int64_t> reduction_2d_tile_sizes{
       *this, "reduction-2d-tile-sizes",
-      llvm::cl::desc("Tile sizes for a 2D reduction."), llvm::cl::ZeroOrMore,
-      llvm::cl::MiscFlags::CommaSeparated};
+      llvm::cl::desc("Tile sizes for a 2D reduction."), llvm::cl::ZeroOrMore};
 
   Option<bool> legalize_i1_tensors{
       *this, "legalize-i1-tensors",
       llvm::cl::desc("Convert i1 tensors to i8 tensors."),
+      llvm::cl::init(false)};
+
+  Option<bool> codegen_transpose{
+      *this, "codegen-transpose",
+      llvm::cl::desc(
+          "Enable the specific code generation for transpose operations."),
       llvm::cl::init(false)};
 };
 

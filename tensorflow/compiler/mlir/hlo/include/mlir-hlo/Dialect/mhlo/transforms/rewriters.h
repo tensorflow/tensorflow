@@ -29,8 +29,6 @@ class BufferizeTypeConverter;
 }  // namespace bufferization
 namespace mhlo {
 
-class RemoveSignTypeConverter;
-
 // Collection of rewrite patterns for lowering a general dot product.
 void PopulateGeneralDotOpLoweringPatterns(RewritePatternSet *patterns,
                                           MLIRContext *ctx);
@@ -64,16 +62,8 @@ void populateHLOToLHLOConversionPattern(
     MLIRContext *context, bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns);
 
-// Collection of rewrite patterns for lowering of HLO to memref dialect.
-// These patterns generally assume that the HLO operation are aliasing their
-// input memrefs. If enforce_identity_map returns true for an op, copies will be
-// inserted when the lowering would otherwise lead to a memref with a
-// non-identity map.
-void populateHLOToMemrefConversionPattern(
-    bufferization::BufferizeTypeConverter *converter,
-    RemoveSignTypeConverter *sign_converter, RewritePatternSet *patterns,
-    const std::function<bool(Operation *)> &enforce_identity_map =
-        [](Operation *) { return true; });
+// Collection of rewrite patterns for lowering of HLO to arithmetic dialect.
+void populateHLOToArithmeticConversionPatterns(RewritePatternSet *patterns);
 
 // Collection of rewrite patterns for lowering of shape operations from the HLO
 // dialect to the standard dialect.
@@ -112,7 +102,6 @@ void PopulateDynamicShapeFusionPatterns(MLIRContext *context,
 
 // Populate a collection of conversion patterns for un-fusing
 // batch_norm_inference and batch_norm_training into constituent HLO ops.
-// TODO(laurenzo): Implement un-fusing of batch_norm_training.
 void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      RewritePatternSet *patterns);
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
+#include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

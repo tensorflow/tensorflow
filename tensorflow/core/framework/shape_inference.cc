@@ -905,6 +905,19 @@ Status InferenceContext::MakeShapeFromTensorShape(const TensorShape& shape,
                                          out);
 }
 
+StatusOr<ShapeHandle> InferenceContext::MakeShapeFromShapeTensor(
+    const TensorShape& shape) {
+  ShapeHandle out;
+  TF_RETURN_IF_ERROR(MakeShapeFromTensorShape(shape, &out));
+  return out;
+}
+
+TensorShapeProto InferenceContext::ShapeHandleToProto(ShapeHandle handle) {
+  TensorShapeProto out;
+  ShapeHandleToProto(handle, &out);
+  return out;
+}
+
 Status InferenceContext::MakeShapeFromShapeProto(const TensorShapeProto& proto,
                                                  ShapeHandle* out) {
   *out = nullptr;

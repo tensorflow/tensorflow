@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -51,11 +51,11 @@ class HloFunctionImporter {
  public:
   // Imports the given computation as a function in the given module. This also
   // imports any computations referred by instructions in this computation.
-  static Status ImportAsFunc(const xla::HloComputation& computation,
-                             mlir::ModuleOp module,
-                             std::unordered_map<const xla::HloComputation*,
-                                                mlir::FuncOp>* function_map,
-                             mlir::Builder* builder);
+  static Status ImportAsFunc(
+      const xla::HloComputation& computation, mlir::ModuleOp module,
+      std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
+          function_map,
+      mlir::Builder* builder);
 
   // Imports the given hlo computation to the specified region. If
   // 'flatten_region_arg_tuple' is true, then flatten the tuple-typed region
@@ -134,20 +134,21 @@ class HloFunctionImporter {
  private:
   HloFunctionImporter(mlir::ModuleOp module,
                       std::unordered_map<const xla::HloComputation*,
-                                         mlir::FuncOp>* function_map,
+                                         mlir::func::FuncOp>* function_map,
                       mlir::Builder* builder)
       : context_(module.getContext()),
         module_(module),
         builder_(builder),
         function_map_(function_map) {
     context_->loadDialect<mlir::arith::ArithmeticDialect>();
-    context_->loadDialect<mlir::StandardOpsDialect>();
+    context_->loadDialect<mlir::func::FuncDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
   }
 
   // Imports the given computation as a new function, if it hasn't been already
   // imported.
-  StatusOr<mlir::FuncOp> ImportAsFunc(const xla::HloComputation& computation);
+  StatusOr<mlir::func::FuncOp> ImportAsFunc(
+      const xla::HloComputation& computation);
 
   // Imports the given computation in the specified region.
   tensorflow::Status ImportAsRegion(const HloComputation& computation,
@@ -210,7 +211,7 @@ class HloFunctionImporter {
 
   // Converts the dimensions of an HLO instruction into an MLIR attribute.
   mlir::DenseIntElementsAttr ConvertDimensions(
-      llvm::ArrayRef<int64_t> op_dimensions);
+      absl::Span<const int64_t> op_dimensions);
 
   // Converts Array ref to an DenseIntElementsAttr.
   mlir::DenseIntElementsAttr Convert(llvm::ArrayRef<int64_t> elements);
@@ -230,7 +231,8 @@ class HloFunctionImporter {
   mlir::Builder* builder_;
 
   // Mapping from HloComputation to the created MLIR function.
-  std::unordered_map<const xla::HloComputation*, mlir::FuncOp>* function_map_;
+  std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
+      function_map_;
 
   // Mapping from HloInstructions to the associative MLIR values.
   std::unordered_map<const xla::HloInstruction*, mlir::Value>

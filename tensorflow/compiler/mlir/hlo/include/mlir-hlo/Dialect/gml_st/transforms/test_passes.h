@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H_
+#ifndef MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
+#define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
@@ -31,4 +32,4 @@ std::unique_ptr<OperationPass<FuncOp>> createTestGmlStLoopTilingPass();
 }  // namespace gml_st
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H_
+#endif  // MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TEST_PASSES_H

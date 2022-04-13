@@ -549,6 +549,10 @@ void TFRemoveLogSink(TFLogSink* sink);
 // Get all the log sinks.  Thread-safe.
 std::vector<TFLogSink*> TFGetLogSinks();
 
+// Change verbose level of pre-defined files if envorionment
+// variable `env_var` is defined. This is currently a no op.
+void UpdateLogVerbosityIfDefined(const char* env_var);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_LOGGING_H_

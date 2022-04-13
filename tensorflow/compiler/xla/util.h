@@ -394,6 +394,22 @@ T RoundDownTo(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
 }
 
+template <typename T>
+struct DivMod {
+  T quotient;
+  T modulo;
+};
+
+// Divide `dividend` by `divisor` such that the quotient is rounded towards
+// negative infinity. The remainder will have the same sign as `divisor`.
+template <typename T>
+DivMod<T> FloorDivMod(T dividend, T divisor) {
+  DivMod<T> div_mod;
+  div_mod.quotient = FloorOfRatio(dividend, divisor);
+  div_mod.modulo = dividend - div_mod.quotient * divisor;
+  return div_mod;
+}
+
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
@@ -464,8 +480,7 @@ template <typename T>
 constexpr inline int Log2Ceiling(T x) {
   static_assert(std::is_unsigned<T>::value,
                 "T should be an unsigned integer type");
-  int bit_width = absl::bit_width(x);
-  return absl::popcount(x) <= 1 ? bit_width - 1 : bit_width;
+  return x == 0 ? -1 : absl::bit_width(x - 1);
 }
 
 // Returns the value with every bit except the lower 'width' bits set to zero.

@@ -26,6 +26,10 @@ limitations under the License.
 #undef ERROR
 #endif
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 namespace tflite {
 namespace logging {
 // A wrapper that logs to stderr.
@@ -46,6 +50,27 @@ class LoggingWrapper {
   std::stringstream& Stream() { return stream_; }
   ~LoggingWrapper() {
     if (should_log_) {
+      // Also print log to logcat for android, as stderr will be hidden
+      // in the app use case.
+#ifdef __ANDROID__
+      switch (severity_) {
+        case LogSeverity::INFO:
+          __android_log_print(ANDROID_LOG_INFO, "tflite", "%s",
+                              stream_.str().c_str());
+          break;
+        case LogSeverity::WARN:
+          __android_log_print(ANDROID_LOG_WARN, "tflite", "%s",
+                              stream_.str().c_str());
+          break;
+        case LogSeverity::ERROR:
+          __android_log_print(ANDROID_LOG_ERROR, "tflite", "%s",
+                              stream_.str().c_str());
+          break;
+        case LogSeverity::FATAL:
+          __android_log_print(ANDROID_LOG_ERROR, "tflite", "%s",
+                              stream_.str().c_str());
+      }
+#endif
       switch (severity_) {
         case LogSeverity::INFO:
         case LogSeverity::WARN:

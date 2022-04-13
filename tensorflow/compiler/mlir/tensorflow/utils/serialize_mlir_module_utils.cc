@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/platform/errors.h"
@@ -45,7 +45,8 @@ Status DeserializeMlirModule(llvm::StringRef serialized_mlir_module,
   mlir::StatusScopedDiagnosticHandler error_handler(mlir_context);
 
   // Parse the module.
-  *mlir_module = mlir::parseSourceString(serialized_mlir_module, mlir_context);
+  *mlir_module = mlir::parseSourceString<mlir::ModuleOp>(serialized_mlir_module,
+                                                         mlir_context);
   if (!*mlir_module)
     return error_handler.Combine(
         errors::InvalidArgument("could not parse MLIR module"));

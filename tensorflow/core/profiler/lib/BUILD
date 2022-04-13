@@ -172,7 +172,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core/profiler/internal/cpu:host_tracer",
     ] + if_libtpu([
-        "//tensorflow/core/profiler/internal/tpu:tpu_tracer",
+        "//tensorflow/core/profiler/backends/tpu:tpu_tracer",
     ]) + if_xla_available([
         "//tensorflow/core/profiler/internal/cpu:metadata_collector",
     ]),
@@ -240,12 +240,26 @@ cc_library(
     hdrs = ["connected_traceme.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":context_types_hdrs",
         ":traceme",
         ":traceme_encode",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
+)
+
+cc_library(
+    name = "context_types_hdrs",
+    hdrs = ["context_types.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "context_types",
+    srcs = ["context_types.cc"],
+    hdrs = ["context_types.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -335,6 +349,7 @@ filegroup(
     srcs = [
         "annotated_traceme.h",
         "connected_traceme.h",
+        "context_types.h",
         "device_profiler_session.h",
         "profiler_interface.h",
     ],

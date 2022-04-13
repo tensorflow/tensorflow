@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -55,6 +56,14 @@ Status GetValidatedModeOverride(const string& mode_override,
 }
 
 namespace {
+
+// Deallocates all tensors in `tf_tensors`.
+void DeleteTensors(std::vector<TF_Tensor*>& tf_tensors) {
+  for (TF_Tensor* tf_tensor : tf_tensors) {
+    TF_DeleteTensor(tf_tensor);
+  }
+  tf_tensors.clear();
+}
 
 // T1: The type of the sample_indices op input.
 // T2: The type of the embedding_indices op input.
@@ -121,17 +130,6 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
 
     const int num_input_features = sample_indices_or_row_splits_list.size();
 
-    if (num_input_features != embedding_indices_list.size() ||
-        num_input_features != aggregation_weights_list.size()) {
-      VLOG(0) << "EnqueueTPUEmbeddingArbitraryTensorBatchOp::Compute failed"
-              << "All three lists must have num_input_features but "
-              << "len(sample_indices_or_row_splits_list) == "
-              << num_input_features << ", len(embedding_indices_list) == "
-              << embedding_indices_list.size()
-              << ", len(aggregation_weights_list) == "
-              << aggregation_weights_list.size();
-    }
-
     std::vector<TF_Tensor*> sample_indices_or_row_splits_tensors(
         num_input_features);
     std::vector<TF_Tensor*> embedding_indices_tensors(num_input_features);
@@ -167,6 +165,10 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
 
     tpu::OpsApiFn()->TpuEmbeddingEngine_EnqueueTensorBatchFn(&params);
     OP_REQUIRES_OK(ctx, status.status());
+
+    DeleteTensors(sample_indices_or_row_splits_tensors);
+    DeleteTensors(embedding_indices_tensors);
+    DeleteTensors(aggregation_weights_tensors);
 
     VLOG(2) << "EnqueueTPUEmbeddingArbitraryTensorBatchOp::Compute done";
   }

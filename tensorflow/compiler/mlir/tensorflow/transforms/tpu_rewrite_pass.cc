@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
@@ -58,12 +60,6 @@ limitations under the License.
 
 namespace mlir {
 namespace TFTPU {
-
-// NOLINTNEXTLINE
-static llvm::cl::opt<bool> tpu_compile_metadata_debug(
-    "tpu_compile_metadata_debug",
-    llvm::cl::desc("Serialize TPUCompileMetadataProto metadata in "
-                   "'tf._TPUCompileMlir' op as a proto debug string"));
 
 constexpr char kStepMarkerLocationAttr[] = "step_marker_location";
 constexpr char kDevicesAttr[] = "devices";
@@ -328,7 +324,7 @@ Operation* BuildCompileOp(
     tf_device::ClusterFuncOp cluster_func, int num_replicas,
     int num_cores_per_replica, llvm::StringRef compilation_device,
     llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
-    OpBuilder* builder) {
+    OpBuilder* builder, bool tpu_compile_metadata_debug) {
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   if (failed(SetMetadataProtoFromClusterFuncOp(
@@ -553,8 +549,8 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 LogicalResult Rewrite(
     tf_device::ClusterFuncOp cluster_func,
     llvm::ArrayRef<tensorflow::DeviceNameUtils::ParsedName> devices,
-    ArrayRef<TF::TPUCompilationResultOp> compilation_result,
-    OpBuilder* builder) {
+    ArrayRef<TF::TPUCompilationResultOp> compilation_result, OpBuilder* builder,
+    bool tpu_compile_metadata_debug) {
   // Collect `num_replicas` and `num_cores_per_replica` attributes.
   int num_replicas = 1;
   tf_device::ReplicateOp replicate =
@@ -614,10 +610,11 @@ LogicalResult Rewrite(
     builder->setInsertionPoint(cluster_func->getParentOp());
   }
 
-  Operation* compile_op = BuildCompileOp(
-      cluster_func, num_replicas, num_cores_per_replica,
-      tpu_device_assignment.compilation_device,
-      std::move(tpu_device_assignment.xla_device_assignment), builder);
+  Operation* compile_op =
+      BuildCompileOp(cluster_func, num_replicas, num_cores_per_replica,
+                     tpu_device_assignment.compilation_device,
+                     std::move(tpu_device_assignment.xla_device_assignment),
+                     builder, tpu_compile_metadata_debug);
   if (!compile_op) return failure();
 
   // This replaces _TPUCompileMlir placeholder ops that are required
@@ -753,16 +750,18 @@ void TPURewritePass::runOnOperation() {
     return WalkResult::advance();
   });
   if (result_init.wasInterrupted()) return signalPassFailure();
-
   llvm::SmallVector<tf_device::ClusterFuncOp> to_be_erased;
   OpBuilder builder(&getContext());
   auto result = getOperation().walk([&](tf_device::ClusterFuncOp op) {
+    if (failed(TF::HasValidCompilationAndReplicationAttributes(*op)))
+      return WalkResult::interrupt();
     // Skip non-tpu device cluster_func.
-    auto cluster_id = op->getAttrOfType<StringAttr>("_tpu_replicate");
+    auto cluster_id = op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
     if (!cluster_id) return WalkResult::advance();
 
     if (failed(Rewrite(op, devices.device_names(),
-                       compilation_results[cluster_id], &builder)))
+                       compilation_results[cluster_id], &builder,
+                       tpu_compile_metadata_debug_)))
       return WalkResult::interrupt();
 
     to_be_erased.push_back(op);

@@ -17,7 +17,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/ir/dialect.h"
@@ -65,7 +65,7 @@ class ShapeInferenceTest : public ::testing::Test {
 
   ShapeInferenceTest() {
     context_.getOrLoadDialect<tfg::TFGraphDialect>();
-    module_ = mlir::parseSourceString(code, &context_);
+    module_ = mlir::parseSourceString<mlir::ModuleOp>(code, &context_);
     assert(module_);
   }
 

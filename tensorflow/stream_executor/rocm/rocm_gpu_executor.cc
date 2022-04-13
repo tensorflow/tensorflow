@@ -115,6 +115,12 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   return UnloadGpuBinary(gpu_binary);
 }
 
+port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
+GpuExecutor::CreateOrShareConstant(Stream* stream,
+                                   const std::vector<uint8_t>& content) {
+  return port::UnimplementedError("Not implemented for ROCm");
+}
+
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
   auto module_it = gpu_binary_to_module_.find(gpu_binary);
   if (gpu_binary_to_module_.end() == module_it) {
@@ -943,8 +949,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   builder.set_device_address_bits(64);
 
   builder.set_device_vendor("Advanced Micro Devices, Inc");
-  builder.set_rocm_amdgpu_isa_version(version);
-  builder.set_rocm_amdgpu_gcn_arch_name(gcn_arch_name);
+  builder.set_rocm_compute_capability(gcn_arch_name);
 
   builder.set_shared_memory_per_core(
       GpuDriver::GetMaxSharedMemoryPerCore(device).ValueOrDie());

@@ -45,41 +45,11 @@ namespace gpu {
 // one if possible.
 GpuTransferManager::GpuTransferManager(se::Platform::Id id,
                                        unsigned pointer_size)
-    : GenericTransferManager(id, pointer_size) {
-  StatusOr<se::Platform*> platform =
-      se::MultiPlatformManager::PlatformWithId(id);
-  if (!platform.ok()) {
-    LOG(WARNING)
-        << "GpuTransferManager couldn't get StreamExecutor platform for " << id
-        << ".  This may lead to failures later.";
-    return;
-  }
+    : GenericTransferManager(id, pointer_size) {}
 
-  int64_t num_devices = (*platform)->VisibleDeviceCount();
-  pinned_buffer_mutexes_.resize(num_devices);
-  pinned_buffers_.resize(num_devices);
-
-  for (int64_t device_id = 0; device_id < num_devices; ++device_id) {
-    pinned_buffer_mutexes_[device_id] = absl::make_unique<absl::Mutex>();
-
-    StatusOr<se::StreamExecutor*> executor =
-        (*platform)->ExecutorForDevice(device_id);
-    if (!executor.ok()) {
-      LOG(WARNING)
-          << "GpuTransferManager couldn't get StreamExecutor for device "
-          << device_id
-          << ".  As a result, all dynamic shape copies from that device will "
-             "be unpinned (and therefore potentially slow).";
-      continue;
-    }
-    char* pinned_chunk = reinterpret_cast<char*>(
-        (*executor)->HostMemoryAllocate(kPinnedBufferBytes));
-    static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
-                  "assumption of loop below");
-    for (char* buf = pinned_chunk; buf < pinned_chunk + kPinnedChunkBytes;
-         buf += kPinnedBufferBytes) {
-      pinned_buffers_[device_id].push_back(buf);
-    }
+GpuTransferManager::~GpuTransferManager() {
+  if (pinned_chunk_se_) {
+    pinned_chunk_se_->HostMemoryDeallocate(pinned_chunk_);
   }
 }
 
@@ -93,6 +63,23 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   return gpu::GetOrCreateOutfeedManager(executor)->TransferLiteralFromOutfeed(
       executor, literal);
+}
+
+void GpuTransferManager::EnsurePinnedBuffersAllocated(
+    se::StreamExecutor* executor) {
+  if (pinned_chunk_ != nullptr) {
+    return;
+  }
+
+  pinned_chunk_se_ = executor;
+  pinned_chunk_ =
+      reinterpret_cast<char*>(executor->HostMemoryAllocate(kPinnedChunkBytes));
+  static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
+                "assumption of loop below");
+  for (char* buf = pinned_chunk_; buf < pinned_chunk_ + kPinnedChunkBytes;
+       buf += kPinnedBufferBytes) {
+    pinned_buffers_.push_back(buf);
+  }
 }
 
 Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
@@ -140,35 +127,29 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
         return Status::OK();
       }));
 
-  // Check out pinned memory for each buffer we want to copy.  If by some
-  // there aren't enough pinned buffers available, or if one of our buffers is
-  // so big it doesn't fit, allocate an entry for it in fallback_buffers.
-  const int device_id = stream->parent()->device_ordinal();
+  // Check out pinned memory for each buffer we want to copy.  If there aren't
+  // enough pinned buffers available, or if one of our buffers is so big it
+  // doesn't fit, allocate an entry for it in fallback_buffers.
   std::vector<int32_t*> h2d_memcpy_dsts;
   std::vector<void*> checked_out_buffers;
   std::vector<std::unique_ptr<char[]>> fallback_buffers;
 
   // Return checked-out buffers at the end of this function.
   auto cleanup = tensorflow::gtl::MakeCleanup([&] {
-    absl::MutexLock lock(pinned_buffer_mutexes_[device_id].get());
-    std::vector<void*>& available_buffers =
-        pinned_buffers_[device_id];  // guarded by lock
-    available_buffers.insert(available_buffers.end(),
-                             checked_out_buffers.begin(),
-                             checked_out_buffers.end());
+    absl::MutexLock lock(&mu_);
+    pinned_buffers_.insert(pinned_buffers_.end(), checked_out_buffers.begin(),
+                           checked_out_buffers.end());
   });
 
-  CHECK_LT(device_id, pinned_buffers_.size());
   {
-    absl::MutexLock lock(pinned_buffer_mutexes_[device_id].get());
-    std::vector<void*>& available_buffers =
-        pinned_buffers_[device_id];  // guarded by lock
+    absl::MutexLock lock(&mu_);
+    EnsurePinnedBuffersAllocated(stream->parent());
 
     for (const auto& src_dst : copies) {
       se::DeviceMemoryBase src = src_dst.first;
-      if (!available_buffers.empty() && src.size() <= kPinnedBufferBytes) {
-        void* buf = available_buffers.back();
-        available_buffers.pop_back();
+      if (!pinned_buffers_.empty() && src.size() <= kPinnedBufferBytes) {
+        void* buf = pinned_buffers_.back();
+        pinned_buffers_.pop_back();
         checked_out_buffers.push_back(buf);
         h2d_memcpy_dsts.push_back(reinterpret_cast<int32_t*>(buf));
       } else {

@@ -3,6 +3,7 @@
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(":build_defs.bzl", "build_test")
 load(":cc_library_with_tflite.bzl", "custom_c_library_with_tflite")
 
@@ -486,6 +487,16 @@ cc_library(
     deps = [
         "//tensorflow/lite/java/jni",
     ],
+)
+
+#------------------------------------------------------------------------------
+# Bazel rules
+
+bzl_library(
+    name = "cc_library_with_tflite_bzl",
+    srcs = ["cc_library_with_tflite.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/lite:build_def_bzl"],
 )
 
 #------------------------------------------------------------------------------
