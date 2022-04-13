@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_
 #define TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_
 
+#include <limits>
 #include <type_traits>
 
 #include "tensorflow/core/platform/logging.h"
@@ -156,6 +157,16 @@ T MathUtil::IPow(T base, int exp) {
     exp >>= 1;
     if (exp == 0) return result;
   }
+}
+
+// Retrieves the sign mask of `x`:
+//   -1 if x < 0,
+//   +1 if x > 0,
+//    0 if x = 0.
+//  nan if x is nan.
+template <typename T>
+static T Sign(const T x) {
+  return std::isnan(x) ? x : (x == T(0) ? T(0) : (x > T(0) ? T(1) : T(-1)));
 }
 
 }  // namespace tensorflow
