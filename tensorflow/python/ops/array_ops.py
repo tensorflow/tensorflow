@@ -5899,8 +5899,8 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
 
   ```
   num_updates, index_depth = indices.shape.as_list()
-  inner_shape = tensor.shape[:index_depth]
-  outer_shape = tensor.shape[index_depth:]
+  outer_shape = tensor.shape[:index_depth]
+  inner_shape = tensor.shape[index_depth:]
   assert updates.shape == [num_updates, inner_shape]
   ```
 
