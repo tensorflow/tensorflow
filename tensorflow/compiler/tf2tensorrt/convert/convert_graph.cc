@@ -50,9 +50,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/config.pb.h"             // NOLINT
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"    // NOLINT
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
@@ -715,7 +715,7 @@ Status CreateStaticEngine(const TRTOptimizationPass::ConversionParams& params,
   // Create static engines with precision_mode fp32/fp16.
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
-      info.segment_graph_def,
+      info.segment_graph_def, nullptr,
       calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
       max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
       trt_allocator.get(), /*calibrator=*/nullptr, &engine,

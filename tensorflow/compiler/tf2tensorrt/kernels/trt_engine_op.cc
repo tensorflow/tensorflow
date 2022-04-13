@@ -1029,7 +1029,7 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
 
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   auto status = convert::ConvertGraphDefToEngine(
-      segment_graph_def_, precision_mode_, batch_size, workspace_size_,
+      segment_graph_def_, ctx, precision_mode_, batch_size, workspace_size_,
       conversion_input_shapes, &logger, cache_resource->allocator_.get(),
       calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
       &cache_resource->profiles_, name(), use_explicit_precision_, &cluster);
@@ -1276,7 +1276,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
   string platform_device_name = ctx->device()->name();
   cres->thr_.reset(new std::thread([this, cres, shapes, conversion_input_shapes,
                                     platform_device_id, platform_device_name,
-                                    cache_res]() {
+                                    cache_res, ctx]() {
     core::ScopedUnref sc(cache_res);
 
     VLOG(1) << "Starting calibration thread on device " << platform_device_id
@@ -1304,7 +1304,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
     // TODO(aaroey): maybe setting the max batch size using the python
     // calibration wrapper class.
     auto s = convert::ConvertGraphDefToEngine(
-        this->segment_graph_def_, TrtPrecisionMode::INT8,
+        this->segment_graph_def_, ctx, TrtPrecisionMode::INT8,
         cres->calibrator_->getBatchSize(), this->workspace_size_,
         conversion_input_shapes, &cache_res->GetLogger(),
         cache_res->allocator_.get(), cres->calibrator_.get(), &cres->engine_,
