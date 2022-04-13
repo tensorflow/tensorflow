@@ -163,6 +163,12 @@ class TrtWeightStore {
   std::vector<Tensor> store_;
 };
 
+enum class TRT_ArgumentType {
+  TENSOR = 0,
+  WEIGHTS = 1,
+  RESOURCE = 2,
+};
+
 // Represents a TRT-style input to a TF node, it can be either a
 // ITensorProxyPtr (representing nvinfer1::ITensor* or SimpleITensor),
 // or TRT_ShapedWeights which is compile-time constant.
@@ -192,14 +198,26 @@ class TRT_TensorOrWeights {
   // Constructs a wrapper for the given weights.
   explicit TRT_TensorOrWeights(const TRT_ShapedWeights& weights);
 
+  // Constructs a wrapper for the given resource handle.
+  explicit TRT_TensorOrWeights(const ResourceHandle& resource);
+
   TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs);
 
   void operator=(const TRT_TensorOrWeights& rhs);
 
-  bool is_tensor() const { return initialized_ && is_tensor_; }
-  bool is_weights() const { return initialized_ && !is_tensor_; }
+  bool is_tensor() const {
+    return initialized_ && arg_type_ == TRT_ArgumentType::TENSOR;
+  }
+  bool is_weights() const {
+    return initialized_ && arg_type_ == TRT_ArgumentType::WEIGHTS;
+  }
+  bool is_resource() const {
+    return initialized_ && arg_type_ == TRT_ArgumentType::RESOURCE;
+  }
 
   ITensorProxyPtr tensor() const;
+
+  ResourceHandle resource() const;
 
   TRT_ShapedWeights& weights() {
     DCHECK(is_weights());
@@ -220,7 +238,8 @@ class TRT_TensorOrWeights {
   string DebugString() const;
 
   nvinfer1::DataType TrtDType() const {
-    return is_tensor_ ? tensor_proxy_ptr_->getType() : weights_.TrtDType();
+    return arg_type_ == TRT_ArgumentType::TENSOR ? tensor_proxy_ptr_->getType()
+                                                 : weights_.TrtDType();
   }
 
  private:
@@ -244,9 +263,12 @@ class TRT_TensorOrWeights {
   ITensorProxyPtr tensor_proxy_ptr_ = nullptr;
   int batch_size_ = -1;
 
+  // For DT_RESOURCE arguments (there is no corresponding type in TRT).
+  ResourceHandle resource_;
+
   TRT_ShapedWeights weights_;
   bool initialized_ = false;
-  bool is_tensor_ = false;
+  TRT_ArgumentType arg_type_ = TRT_ArgumentType::WEIGHTS;
 
   friend class Converter;
 };

@@ -33,7 +33,7 @@ namespace tensorflow {
 REGISTER_OP("TRTEngineOp")
     .Attr("serialized_segment: string")
     .Attr("segment_func: func = {}")
-    .Attr("InT: list({int8,float16,float32,int32})")
+    .Attr("InT: list({int8,float16,float32,int32,resource})")
     .Attr("OutT: list({int8,float16,float32,int32})")
     .Attr("input_shapes: list(shape) = []")
     .Attr("output_shapes: list(shape) = []")

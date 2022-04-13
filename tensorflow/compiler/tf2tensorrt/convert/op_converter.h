@@ -32,7 +32,7 @@ class Converter;
 
 // Specifies the expected type taken by a TRT_TensorOrWeights input during op
 // conversion.
-enum class TrtInputArg { kTensor = 1, kWeight = 2, kBoth = 3 };
+enum class TrtInputArg { kTensor = 1, kWeight = 2, kBoth = 3, kResource = 4 };
 
 // Parameters for each op converter.
 struct OpConverterParams {

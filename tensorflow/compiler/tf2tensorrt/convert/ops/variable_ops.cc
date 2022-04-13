@@ -202,6 +202,174 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(
     MakeConverterFunction<ConvertVariableV2>(),
     {"VariableV2"});
 
+class ConvertReadVariableOp : public OpConverterBase<ConvertReadVariableOp> {
+ public:
+  ConvertReadVariableOp(OpConverterParams* params)
+      : OpConverterBase<ConvertReadVariableOp>(params) {}
+
+  struct ReadVariableOpAttributes {
+    TensorShapeProto shape_proto;
+    TensorShape shape;
+    string name;
+    DataType dtype;
+  };
+
+  static constexpr std::array<InputArgSpec, 1> InputSpec() {
+    return {InputArgSpec::Create("resource", TrtInputArg::kResource)};
+  }
+
+  static constexpr std::array<DataType, 2> AllowedDataTypes() {
+    return {DataType::DT_FLOAT, DataType::DT_HALF};
+  }
+
+  static constexpr const char* NodeDefDataTypeAttributeName() {
+    return "dtype";
+  }
+
+  template <typename T>
+  Status ValidateImpl() {
+    const auto& node_def = params_->node_def;
+
+    // Verify and consume node attributes.
+    StatusOr<TensorShapeProto> shape_proto =
+        GetAttrValue<TensorShapeProto>("_shape");
+    TRT_ENSURE_OK(shape_proto);
+
+    attrs_.shape_proto = *shape_proto;
+    attrs_.shape = TensorShape(*shape_proto);
+    attrs_.name = node_def.name();
+
+    Tensor tensor(attrs_.dtype, attrs_.shape);
+    auto tensor_flat = tensor.flat<T>();
+    for (int64_t i = 0; i < tensor_flat.size(); i++) {
+      tensor_flat(i) = T(0.0f);
+    }
+
+    TRT_ShapedWeights weights;
+    TF_RETURN_IF_ERROR(
+        TfTensorToTrtWeights(tensor, params_->weight_store, &weights));
+
+    // Only push outputs during validation and when outputs are expected.
+    if (params_->validation_only && params_->outputs != nullptr) {
+      AddOutput(TRT_TensorOrWeights(weights));
+    }
+    return Status::OK();
+  }
+
+  Status Validate() {
+    StatusOr<DataType> dtype = GetAttrValue<DataType>("dtype");
+    TRT_ENSURE_OK(dtype);
+    attrs_.dtype = *dtype;
+
+    switch (attrs_.dtype) {
+      case DT_FLOAT:
+        return ValidateImpl<float>();
+      case DT_HALF:
+        return ValidateImpl<Eigen::half>();
+    }
+  }
+
+  template <typename T>
+  Status ConvertImpl() {
+    Tensor tensor(attrs_.dtype, attrs_.shape);
+    auto tensor_flat = tensor.flat<T>();
+
+    auto ctx = params_->converter->context();
+    CHECK(ctx);
+    auto lib = ctx->function_library();
+
+    const auto& inputs = params_->inputs;
+    const TRT_TensorOrWeights& handle = inputs.at(0);
+
+    // Clone function library runtime in order to get a mutable library
+    // definition to add and run a function with the variable operation.
+    std::unique_ptr<FunctionLibraryDefinition> lib_def;
+    std::unique_ptr<ProcessFunctionLibraryRuntime> lib_pflr;
+    FunctionLibraryRuntime* lib_clone;  // Not owned.
+    TF_RETURN_IF_ERROR(lib->Clone(&lib_def, &lib_pflr, &lib_clone));
+
+    // Create function definition.
+    string func_name = attrs_.name + "/func";
+    FunctionDef fdef = FunctionDefHelper::Define(
+        func_name,         // Name
+        {"in: resource"},  // Args
+        {"out: float"},    // Returns
+        {},                // Attr def
+        // Nodes
+        {{{attrs_.name},
+          "ReadVariableOp",
+          {"in"},  // Name of the Placeholder or VarHandleOp
+          {{"dtype", DT_FLOAT}}},
+         {{"out"}, "Identity", {attrs_.name}, {{"T", DT_FLOAT}}}});
+
+    // Add function definition to the library.
+    lib_def->AddFunctionDef(fdef);
+
+    // Instantiate function.
+    FunctionLibraryRuntime::Handle func_handle;
+    FunctionLibraryRuntime::InstantiateOptions inst_ops;
+    inst_ops.state_handle = "";
+    inst_ops.target = ctx->device()->name();
+    AttrValueMap attr_list;
+    TF_RETURN_IF_ERROR(lib_clone->Instantiate(func_name, AttrSlice(&attr_list),
+                                              inst_ops, &func_handle));
+
+    FunctionLibraryRuntime::Options opts;
+    opts.rendezvous = ctx->rendezvous();
+    opts.cancellation_manager = ctx->cancellation_manager();
+    opts.runner = ctx->runner();
+
+    // Create input tensor with the resource handle.
+    std::vector<Tensor> args;
+    args.emplace_back(handle.resource());
+
+    std::vector<Tensor>* rets = new std::vector<Tensor>();
+    std::unique_ptr<std::vector<Tensor>> outputs_wrapper(rets);
+
+    // Run the new function synchronously.
+    TF_RETURN_IF_ERROR(lib_clone->RunSync(opts, func_handle, args, rets));
+
+    CHECK(ctx->op_device_context());
+    CHECK(ctx->op_device_context()->stream());
+
+    // Copy tensor.
+    const cudaStream_t* stream = CHECK_NOTNULL(
+        reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
+                                                  ->stream()
+                                                  ->implementation()
+                                                  ->GpuStreamMemberHack()));
+
+    auto ret = cudaMemcpyAsync(tensor_flat.data(), rets->at(0).flat<T>().data(),
+                               rets->at(0).NumElements() * sizeof(T),
+                               cudaMemcpyDeviceToHost, *stream);
+    if (ret != 0) {
+      return errors::Internal("Could not copy the variable ", attrs_.name);
+    }
+    cudaStreamSynchronize(*stream);
+
+    TRT_ShapedWeights weights;
+    TF_RETURN_IF_ERROR(
+        TfTensorToTrtWeights(tensor, params_->weight_store, &weights));
+
+    AddOutput(TRT_TensorOrWeights(weights));
+    return Status::OK();
+  }
+
+  Status Convert() {
+    switch (attrs_.dtype) {
+      case DT_FLOAT:
+        return ConvertImpl<float>();
+      case DT_HALF:
+        return ConvertImpl<Eigen::half>();
+    }
+  }
+
+ private:
+  ReadVariableOpAttributes attrs_{};
+};
+REGISTER_DEFAULT_TRT_OP_CONVERTER(
+    MakeConverterFunction<ConvertReadVariableOp>(), {"ReadVariableOp"});
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

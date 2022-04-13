@@ -463,6 +463,7 @@ Status CreateTRTNode(const TRTOptimizationPass::ConversionParams& params,
                            : default_max_batch_size;
 
   if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
+    /// TODO: handle resource inputs in that case?
     TF_RETURN_IF_ERROR(CreateStaticEngine(params, info, max_batch_size,
                                           input_shapes, nullptr,
                                           &segment_string, cluster));

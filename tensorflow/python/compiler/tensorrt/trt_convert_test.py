@@ -1068,17 +1068,18 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           mock.ANY, mock.ANY, mock.ANY, options=options)
 
   @test_util.run_v2_only
-  def testVariableV2(self):
-    """Test conversion of VariableV2 nodes."""
+  def _TestVariableHelper(
+    self, variable_op, tf_model_name, tftrt_model_name,output_name):
+    """Helper with the common code of variable converter tests."""
 
     model_dir = test.test_src_dir_path(
-        "python/compiler/tensorrt/test/testdata/tf_variablev2_saved_model")
-    trt_model_dir = os.path.join(self.mkdtemp(), "tftrt_variablev2_saved_model")
+        "python/compiler/tensorrt/test/testdata/" + tf_model_name)
+    trt_model_dir = os.path.join(self.mkdtemp(), tftrt_model_name)
 
     # Load and convert the TF model.
     conv_params=trt_convert.TrtConversionParams(
         precision_mode='FP16', minimum_segment_size=3,
-        max_workspace_size_bytes=12*1<<30, maximum_cached_engines=1)
+        max_workspace_size_bytes=1<<20, maximum_cached_engines=1)
     with test_utils.experimental_feature_scope("disable_graph_freezing"):
       converter = trt_convert.TrtGraphConverterV2(
           input_saved_model_dir=model_dir, conversion_params=conv_params,
@@ -1110,15 +1111,33 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         node_ops = [node.op for node in lib_function.node_def]
         engines.append(node_ops)
     self.assertEqual(len(engines), 1)
-    self.assertEqual(engines[0].count("VariableV2"), 2)
+    self.assertEqual(engines[0].count(variable_op), 2)
 
     # Run the function and check the output.
     np_input1 = ops.convert_to_tensor(np.ones([4, 1, 1]).astype(np.float32))
     np_input2 = ops.convert_to_tensor(2.*np.ones([4, 1, 1]).astype(np.float32))
-    output = graph_func(input1=np_input1, input2=np_input2)["output"]
+    output = graph_func(input1=np_input1, input2=np_input2)[output_name]
     self.assertEqual(output.shape, (4, 1, 1))
     self.assertAllClose(
         np.asarray([42., 42., 42., 42.]).reshape([4, 1, 1]), output)
+
+  @test_util.run_v2_only
+  def testVariableV2(self):
+    """Test conversion of VariableV2 nodes."""
+
+    self._TestVariableHelper("VariableV2",
+                             "tf_variablev2_saved_model",
+                             "tftrt_variablev2_saved_model",
+                             "output")
+
+  @test_util.run_v2_only
+  def testReadVariableOp(self):
+    """Test conversion of ReadVariableOp nodes."""
+
+    self._TestVariableHelper("ReadVariableOp",
+                             "tf_readvariableop_saved_model",
+                             "tftrt_readvariableop_saved_model",
+                             "output_0")
 
 if __name__ == "__main__" and is_tensorrt_enabled():
   test.main()
