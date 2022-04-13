@@ -134,6 +134,13 @@ class Comparison {
     return primitive_type_ == PrimitiveType::U32 && IsTotalOrder();
   }
 
+  inline bool IsIntegralPrimitiveType() const {
+    return primitive_util::IsIntegralType(primitive_type_);
+  }
+  inline bool IsFloatingPointPrimitiveType() const {
+    return primitive_util::IsFloatingPointType(primitive_type_);
+  }
+
   // Returns whether (a dir a) is always true for this comparison.
   bool IsReflexive() const;
 
