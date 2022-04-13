@@ -4,7 +4,13 @@
 # processes.
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_google",
+    "tf_cc_test",
+    "tf_copts",
+    "tf_cuda_library",
+)
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
@@ -20,7 +26,10 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = if_google(
+        ["//tensorflow:internal"],
+        ["//visibility:public"],
+    ),
     licenses = ["notice"],
 )
 
@@ -136,6 +145,7 @@ cc_library(
     srcs = ["session_mgr.cc"],
     hdrs = ["session_mgr.h"],
     deps = [
+        ":error_payloads",
         ":graph_mgr",
         ":remote_device",
         ":worker_cache_wrapper",
@@ -144,6 +154,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_service",
+        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
+        "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
     ],
 )
@@ -153,6 +166,7 @@ tf_cc_test(
     size = "small",
     srcs = ["session_mgr_test.cc"],
     deps = [
+        ":error_payloads",
         ":session_mgr",
         ":worker_env",
         "//tensorflow/core:framework",
@@ -199,6 +213,12 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "error_payloads",
+    hdrs = ["error_payloads.h"],
+    visibility = ["//visibility:public"],
+)
+
 tf_cuda_library(
     name = "worker",
     srcs = ["worker.cc"],
@@ -206,6 +226,7 @@ tf_cuda_library(
         "worker.h",
     ],
     deps = [
+        ":error_payloads",
         ":graph_mgr",
         ":partial_run_mgr",
         ":recent_request_ids",
@@ -217,6 +238,7 @@ tf_cuda_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:device_profiler_session",
     ],
 )
@@ -334,6 +356,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
     ],
@@ -415,6 +438,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -816,6 +840,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

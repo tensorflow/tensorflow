@@ -40,17 +40,12 @@ add_mlir_dialect_library(ChloDialect
 add_mlir_library(MhloInferShapeEqualityOpInterface
   infer_shape_equality_op_interface.cc
 
+  LINK_LIBS PUBLIC
+  MLIRIR
+
   DEPENDS
   MLIRinfer_shape_equality_op_interfaceIncGen
 )
-
-add_mlir_library(LmhloStructuredInterface
-  lhlo_structured_interface.cc
-
-  DEPENDS
-  MLIRlhlo_structured_interfaceIncGen
-)
-
 
 add_mlir_library(HloOpsCommon
   hlo_ops_common.cc
@@ -78,59 +73,14 @@ target_link_libraries(MhloDialect
   HloOpsCommon
 )
 
-
-add_mlir_dialect_library(LmhloDialect
-  lhlo_ops.cc
-  lhlo_ops_structs.cc
-
-  DEPENDS
-  MLIRlhlo_opsIncGen
-
-  LINK_LIBS PUBLIC
-  HloOpsCommon
-  LmhloStructuredInterface
-  MhloDialect
-  MLIRIR
-)
-
-add_mlir_dialect_library(LmhloGPUDialect
-  lhlo_gpu_ops.cc
-  lhlo_gpu_ops_structs.cc
-  lhlo_gpu_ops_enums.cc
-
-  DEPENDS
-  MLIRlhlo_gpu_opsIncGen
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-  MLIRIR
-  HloOpsCommon
-)
-
-add_mlir_dialect_library(DiscRalDialect
-  disc_ral_ops.cc
-
-  DEPENDS
-  MLIRdisc_ral_opsIncGen
-
-  LINK_LIBS PUBLIC
-  MLIRIR
-  MLIRMemRef
-  MLIRTensor
-)
-
 add_mlir_dialect_library(MhloRegisterDialects
   init.cc
 DEPENDS
   MLIRchlo_opsIncGen
   MLIRhlo_opsIncGen
-  MLIRlhlo_opsIncGen
-  MLIRlhlo_gpu_opsIncGen
 )
 target_link_libraries(MhloRegisterDialects
   PUBLIC
   ChloDialect
   MhloDialect
-  LmhloDialect
-  LmhloGPUDialect
 )

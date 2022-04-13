@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +20,7 @@ from unittest import mock
 
 import numpy as np
 import six
+import tensorflow as tf
 
 # Force loaded shared object symbols to be globally visible. This is needed so
 # that the interpreter_wrapper, in one .so file, can see the test_registerer,
@@ -342,6 +342,25 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
       interpreter._get_tensor_details(4)
     with self.assertRaisesRegex(ValueError, 'Invalid node index'):
       interpreter._get_op_details(4)
+
+  def testEmptyInputTensor(self):
+
+    class TestModel(tf.keras.models.Model):
+
+      @tf.function(
+          input_signature=[tf.TensorSpec(shape=[None], dtype=tf.float32)])
+      def TestSum(self, x):
+        return tf.raw_ops.Sum(input=x, axis=[0])
+
+    test_model = TestModel()
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([
+        test_model.TestSum.get_concrete_function(
+            tf.TensorSpec([None], tf.float32))
+    ], test_model)
+    model = converter.convert()
+    interpreter = tf.lite.Interpreter(model_content=model)
+    # Make sure that passing empty tensor doesn't cause any errors.
+    interpreter.get_signature_runner()(x=tf.zeros([0], tf.float32))
 
 
 class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):

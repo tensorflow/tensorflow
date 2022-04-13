@@ -21,10 +21,6 @@ limitations under the License.
 
 namespace xla {
 
-// EXPERIMENTAL
-// This method is only implemented on TPU, and must have the flag
-// `xla_tpu_nested_dot_fusion` set to true.
-//
 // Computes approximate top-ks by aggregating top-1s in equal-sized windows.
 // The number and the size of the windows are determined by the `recall_target`.
 //
@@ -40,20 +36,34 @@ namespace xla {
 //   only keep the final k elements on TPU. This option is useful when user
 //   wanted to forward the approximate results to host and aggregate the results
 //   on CPU for better throughput.
+// reduction_input_size_override: When set to a positive value, it overrides the
+//   size determined by operands[reduction_dim] for evaluating the recall. This
+//   option is useful when the given operand is only a subset of the overall
+//   computation in SPMD or distributed pipelines, where the true input size
+//   cannot be deferred by the operand shape.
 //
 // Returns a sequence of multidimensional arrays of type T_0, ..., T_{N-1},
-// which
-//   contains the approximate top-ks from the input operands. When
-//   `aggregate_to_topk` is set to true, the output size is just top_k. When
-//   `aggregate_to_topk` is set to false, the output size varied by the target
-//   recall. For target recall = 0.9, the output size is roughly 10 * top_k. For
-//   target recall = 0.99, the output size is roughly 100 * top_k.
+// which contains the approximate top-ks from the input operands. When
+// `aggregate_to_topk` is set to true, the output size is just top_k. When
+// `aggregate_to_topk` is set to false, the output size varied by the target
+// recall. For target recall = 0.9, the output size is roughly 10 * top_k. For
+// target recall = 0.99, the output size is roughly 100 * top_k.
 //
 // TODO(fchern): Support other hardware platforms.
 XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                  absl::Span<const XlaOp> init_values, int64_t top_k,
                  int64_t reduction_dim, const XlaComputation& comparator,
-                 float recall_target = 0.9, bool aggregate_to_topk = true);
+                 float recall_target = 0.9, bool aggregate_to_topk = true,
+                 int64_t reduction_input_size_override = -1);
+
+// Fallback for platforms that haven't been optimized.
+XlaOp ApproxTopKFallback(XlaBuilder* builder, absl::Span<const XlaOp> operands,
+                         absl::Span<const XlaOp> init_values, int64_t top_k,
+                         int64_t reduction_dim,
+                         const XlaComputation& comparator,
+                         float recall_target = 0.9,
+                         bool aggregate_to_topk = true,
+                         int64_t reduction_input_size_override = -1);
 
 }  // namespace xla
 

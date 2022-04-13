@@ -28,7 +28,7 @@ source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 which bazel
 
-tag_filters="gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-no_gpu_presubmit,-no_cuda11""$(maybe_skip_v1)"
+tag_filters="gpu,-no_gpu,-benchmark-test,-no_oss,-oss_serial,-no_gpu_presubmit,-no_cuda11""$(maybe_skip_v1)"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
@@ -36,6 +36,8 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 # Run bazel test command.
 "${BAZEL_WRAPPER_PATH}" \
   test \
+  --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
+  --build_event_binary_file="${KOKORO_ARTIFACTS_DIR}/build_events.pb" \
   --config=rbe_linux_cuda_nvcc_py39 \
   --config=tensorflow_testing_rbe_linux \
   --test_tag_filters="${tag_filters}" \
@@ -43,6 +45,9 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
   --test_lang_filters=cc,py \
   -- \
   ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+
+# Print build time statistics, including critical path.
+bazel analyze-profile "${KOKORO_ARTIFACTS_DIR}/profile.json.gz"
 
 # Copy log to output to be available to GitHub
 ls -la "$(bazel info output_base)/java.log"

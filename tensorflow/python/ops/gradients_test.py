@@ -26,6 +26,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function as framework_function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -255,7 +256,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.identity(x)
-      dy = ops.IndexedSlices(
+      dy = indexed_slices.IndexedSlices(
           array_ops.placeholder(dtypes.float32),
           array_ops.placeholder(dtypes.int32))
       dx, = gradients.gradients(y, x, grad_ys=dy)
@@ -863,7 +864,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       np_val = np.random.rand(4, 4, 4, 4).astype(np.float32)
       c = constant_op.constant(np_val)
       c_sparse = math_ops._as_indexed_slices(c)
-      c_sparse = ops.IndexedSlices(
+      c_sparse = indexed_slices.IndexedSlices(
           c_sparse.values,
           math_ops.cast(c_sparse.indices, dtypes.int64), c_sparse.dense_shape)
       self.assertAllEqual(np_val.shape, c_sparse.dense_shape)
@@ -878,7 +879,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       self.skipTest("Skipped test for Python 3.5+")
 
     # Smaller than the threshold: no warning.
-    c_sparse = ops.IndexedSlices(
+    c_sparse = indexed_slices.IndexedSlices(
         array_ops.placeholder(dtypes.float32),
         array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
     with warnings.catch_warnings(record=True) as w:
@@ -886,7 +887,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, len(w))
 
     # Greater than or equal to the threshold: warning.
-    c_sparse = ops.IndexedSlices(
+    c_sparse = indexed_slices.IndexedSlices(
         array_ops.placeholder(dtypes.float32),
         array_ops.placeholder(dtypes.int32), constant([100, 100, 100, 100]))
     # "always" filter prevents the warning from being suppressed if it was
@@ -900,7 +901,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         str(w[0].message))
 
     # Unknown dense shape: warning.
-    c_sparse = ops.IndexedSlices(
+    c_sparse = indexed_slices.IndexedSlices(
         array_ops.placeholder(dtypes.float32),
         array_ops.placeholder(dtypes.int32),
         array_ops.placeholder(dtypes.int32))
@@ -1122,7 +1123,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testCustomGradientClass(self):
 
-    class Model(object):
+    class Model:
 
       @custom_gradient.custom_gradient
       def Multiply(self, x1, x2):
@@ -1501,6 +1502,14 @@ class VariablesGradientTest(test_util.TensorFlowTestCase,
     sym_jac_back, num_jac = gradient_checker_v2.compute_gradient(
         f, inputs, delta=delta)
     self.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
+
+  def testRecomputeGradWrapped(self):
+
+    def f(x):  # pylint: disable=invalid-name
+      return 2 * x
+
+    g = custom_gradient.recompute_grad(f)
+    self.assertIs(g.__wrapped__, f)
 
   def testRecomputeGradZeroSizeInput(self):
 

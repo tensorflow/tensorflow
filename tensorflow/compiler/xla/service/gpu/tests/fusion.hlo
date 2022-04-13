@@ -63,9 +63,9 @@ HloModule TestModule
 // CHECK:         %[[VAL_66:.*]] = udiv i32 %[[VAL_59]], 802816
 // CHECK:         %[[VAL_67:.*]] = icmp ult i32 %[[VAL_35]], 102760448
 // CHECK:         br i1 %[[VAL_67]], label %[[VAL_68:.*]], label %[[VAL_69:.*]]
-// CHECK:       fusion.1.in_bounds-after:                         ; preds = %[[VAL_68]], %[[VAL_70:.*]]
+// CHECK:       fusion_1.in_bounds-after:                         ; preds = %[[VAL_68]], %[[VAL_70:.*]]
 // CHECK:         ret void
-// CHECK:       fusion.1.in_bounds-true:                          ; preds = %[[VAL_70]]
+// CHECK:       fusion_1.in_bounds-true:                          ; preds = %[[VAL_70]]
 // CHECK:         %[[VAL_71:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_14]], i32 0, i32 %[[VAL_37]]
 // CHECK:         %[[VAL_72:.*]] = load float, float* %[[VAL_71]], align 4, !invariant.load !4
 // CHECK:         %[[VAL_73:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_11]], i32 0, i32 %[[VAL_37]]
@@ -76,7 +76,7 @@ HloModule TestModule
 // CHECK:         %[[VAL_78:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_26]] to half*
 // CHECK:         %[[VAL_79:.*]] = getelementptr inbounds half, half* %[[VAL_78]], i32 %[[VAL_35]]
 // CHECK:         %[[VAL_80:.*]] = load half, half* %[[VAL_79]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_81:.*]] = load half, half* bitcast ([2 x i8]* @1 to half*), align 2
+// CHECK:         %[[VAL_81:.*]] = load half, half* bitcast ([2 x i8]* @2 to half*), align 2
 // CHECK:         %[[VAL_82:.*]] = fcmp ogt half %[[VAL_80]], %[[VAL_81]]
 // CHECK:         %[[VAL_83:.*]] = zext i1 %[[VAL_82]] to i8
 // CHECK:         %[[VAL_84:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_23]] to half*
@@ -85,7 +85,7 @@ HloModule TestModule
 // CHECK:         %[[VAL_87:.*]] = trunc i8 %[[VAL_83]] to i1
 // CHECK:         %[[VAL_88:.*]] = select i1 %[[VAL_87]], half %[[VAL_86]], half %[[VAL_81]]
 // CHECK:         %[[VAL_89:.*]] = fpext half %[[VAL_88]] to float
-// CHECK:         %[[VAL_90:.*]] = load float, float* bitcast ([4 x i8]* @2 to float*), align 4
+// CHECK:         %[[VAL_90:.*]] = load float, float* bitcast ([4 x i8]* @1 to float*), align 4
 // CHECK:         %[[VAL_91:.*]] = fmul float %[[VAL_89]], %[[VAL_90]]
 // CHECK:         %[[VAL_92:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_8]], i32 0, i32 %[[VAL_37]]
 // CHECK:         %[[VAL_93:.*]] = load float, float* %[[VAL_92]], align 4, !invariant.load !4
@@ -98,7 +98,7 @@ HloModule TestModule
 // CHECK:         %[[VAL_100:.*]] = fpext half %[[VAL_99]] to float
 // CHECK:         %[[VAL_101:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_17]], i32 0, i32 %[[VAL_37]]
 // CHECK:         %[[VAL_102:.*]] = load float, float* %[[VAL_101]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_103:.*]] = load float, float* bitcast ([4 x i8]* @3 to float*), align 4
+// CHECK:         %[[VAL_103:.*]] = load float, float* bitcast ([4 x i8]* @0 to float*), align 4
 // CHECK:         %[[VAL_104:.*]] = fmul float %[[VAL_102]], %[[VAL_103]]
 // CHECK:         %[[VAL_105:.*]] = fsub float %[[VAL_100]], %[[VAL_104]]
 // CHECK:         %[[VAL_106:.*]] = fmul float %[[VAL_96]], %[[VAL_105]]
@@ -116,12 +116,12 @@ HloModule TestModule
 // CHECK:         %[[VAL_117:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_11]], i32 0, i32 %[[VAL_45]]
 // CHECK:         %[[VAL_118:.*]] = load float, float* %[[VAL_117]], align 4, !invariant.load !4
 // CHECK:         %[[VAL_119:.*]] = fmul float %[[VAL_116]], %[[VAL_118]]
-// CHECK:         %[[VAL_120:.*]] = load float, float* bitcast ([4 x i8]* @4 to float*), align 4
+// CHECK:         %[[VAL_120:.*]] = load float, float* bitcast ([4 x i8]* @0 to float*), align 4
 // CHECK:         %[[VAL_121:.*]] = fmul float %[[VAL_119]], %[[VAL_120]]
 // CHECK:         %[[VAL_122:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_26]] to half*
 // CHECK:         %[[VAL_123:.*]] = getelementptr inbounds half, half* %[[VAL_122]], i32 %[[VAL_43]]
 // CHECK:         %[[VAL_124:.*]] = load half, half* %[[VAL_123]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_125:.*]] = load half, half* bitcast ([2 x i8]* @5 to half*), align 2
+// CHECK:         %[[VAL_125:.*]] = load half, half* bitcast ([2 x i8]* @2 to half*), align 2
 // CHECK:         %[[VAL_126:.*]] = fcmp ogt half %[[VAL_124]], %[[VAL_125]]
 // CHECK:         %[[VAL_127:.*]] = zext i1 %[[VAL_126]] to i8
 // CHECK:         %[[VAL_128:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_23]] to half*
@@ -130,7 +130,7 @@ HloModule TestModule
 // CHECK:         %[[VAL_131:.*]] = trunc i8 %[[VAL_127]] to i1
 // CHECK:         %[[VAL_132:.*]] = select i1 %[[VAL_131]], half %[[VAL_130]], half %[[VAL_125]]
 // CHECK:         %[[VAL_133:.*]] = fpext half %[[VAL_132]] to float
-// CHECK:         %[[VAL_134:.*]] = load float, float* bitcast ([4 x i8]* @6 to float*), align 4
+// CHECK:         %[[VAL_134:.*]] = load float, float* bitcast ([4 x i8]* @1 to float*), align 4
 // CHECK:         %[[VAL_135:.*]] = fmul float %[[VAL_133]], %[[VAL_134]]
 // CHECK:         %[[VAL_136:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_8]], i32 0, i32 %[[VAL_45]]
 // CHECK:         %[[VAL_137:.*]] = load float, float* %[[VAL_136]], align 4, !invariant.load !4
@@ -143,7 +143,7 @@ HloModule TestModule
 // CHECK:         %[[VAL_144:.*]] = fpext half %[[VAL_143]] to float
 // CHECK:         %[[VAL_145:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_17]], i32 0, i32 %[[VAL_45]]
 // CHECK:         %[[VAL_146:.*]] = load float, float* %[[VAL_145]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_147:.*]] = load float, float* bitcast ([4 x i8]* @7 to float*), align 4
+// CHECK:         %[[VAL_147:.*]] = load float, float* bitcast ([4 x i8]* @0 to float*), align 4
 // CHECK:         %[[VAL_148:.*]] = fmul float %[[VAL_146]], %[[VAL_147]]
 // CHECK:         %[[VAL_149:.*]] = fsub float %[[VAL_144]], %[[VAL_148]]
 // CHECK:         %[[VAL_150:.*]] = fmul float %[[VAL_140]], %[[VAL_149]]
@@ -161,12 +161,12 @@ HloModule TestModule
 // CHECK:         %[[VAL_161:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_11]], i32 0, i32 %[[VAL_53]]
 // CHECK:         %[[VAL_162:.*]] = load float, float* %[[VAL_161]], align 4, !invariant.load !4
 // CHECK:         %[[VAL_163:.*]] = fmul float %[[VAL_160]], %[[VAL_162]]
-// CHECK:         %[[VAL_164:.*]] = load float, float* bitcast ([4 x i8]* @8 to float*), align 4
+// CHECK:         %[[VAL_164:.*]] = load float, float* bitcast ([4 x i8]* @0 to float*), align 4
 // CHECK:         %[[VAL_165:.*]] = fmul float %[[VAL_163]], %[[VAL_164]]
 // CHECK:         %[[VAL_166:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_26]] to half*
 // CHECK:         %[[VAL_167:.*]] = getelementptr inbounds half, half* %[[VAL_166]], i32 %[[VAL_51]]
 // CHECK:         %[[VAL_168:.*]] = load half, half* %[[VAL_167]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_169:.*]] = load half, half* bitcast ([2 x i8]* @9 to half*), align 2
+// CHECK:         %[[VAL_169:.*]] = load half, half* bitcast ([2 x i8]* @2 to half*), align 2
 // CHECK:         %[[VAL_170:.*]] = fcmp ogt half %[[VAL_168]], %[[VAL_169]]
 // CHECK:         %[[VAL_171:.*]] = zext i1 %[[VAL_170]] to i8
 // CHECK:         %[[VAL_172:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_23]] to half*
@@ -175,7 +175,7 @@ HloModule TestModule
 // CHECK:         %[[VAL_175:.*]] = trunc i8 %[[VAL_171]] to i1
 // CHECK:         %[[VAL_176:.*]] = select i1 %[[VAL_175]], half %[[VAL_174]], half %[[VAL_169]]
 // CHECK:         %[[VAL_177:.*]] = fpext half %[[VAL_176]] to float
-// CHECK:         %[[VAL_178:.*]] = load float, float* bitcast ([4 x i8]* @10 to float*), align 4
+// CHECK:         %[[VAL_178:.*]] = load float, float* bitcast ([4 x i8]* @1 to float*), align 4
 // CHECK:         %[[VAL_179:.*]] = fmul float %[[VAL_177]], %[[VAL_178]]
 // CHECK:         %[[VAL_180:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_8]], i32 0, i32 %[[VAL_53]]
 // CHECK:         %[[VAL_181:.*]] = load float, float* %[[VAL_180]], align 4, !invariant.load !4
@@ -188,7 +188,7 @@ HloModule TestModule
 // CHECK:         %[[VAL_188:.*]] = fpext half %[[VAL_187]] to float
 // CHECK:         %[[VAL_189:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_17]], i32 0, i32 %[[VAL_53]]
 // CHECK:         %[[VAL_190:.*]] = load float, float* %[[VAL_189]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_191:.*]] = load float, float* bitcast ([4 x i8]* @11 to float*), align 4
+// CHECK:         %[[VAL_191:.*]] = load float, float* bitcast ([4 x i8]* @0 to float*), align 4
 // CHECK:         %[[VAL_192:.*]] = fmul float %[[VAL_190]], %[[VAL_191]]
 // CHECK:         %[[VAL_193:.*]] = fsub float %[[VAL_188]], %[[VAL_192]]
 // CHECK:         %[[VAL_194:.*]] = fmul float %[[VAL_184]], %[[VAL_193]]
@@ -206,12 +206,12 @@ HloModule TestModule
 // CHECK:         %[[VAL_205:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_11]], i32 0, i32 %[[VAL_61]]
 // CHECK:         %[[VAL_206:.*]] = load float, float* %[[VAL_205]], align 4, !invariant.load !4
 // CHECK:         %[[VAL_207:.*]] = fmul float %[[VAL_204]], %[[VAL_206]]
-// CHECK:         %[[VAL_208:.*]] = load float, float* bitcast ([4 x i8]* @12 to float*), align 4
+// CHECK:         %[[VAL_208:.*]] = load float, float* bitcast ([4 x i8]* @0 to float*), align 4
 // CHECK:         %[[VAL_209:.*]] = fmul float %[[VAL_207]], %[[VAL_208]]
 // CHECK:         %[[VAL_210:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_26]] to half*
 // CHECK:         %[[VAL_211:.*]] = getelementptr inbounds half, half* %[[VAL_210]], i32 %[[VAL_59]]
 // CHECK:         %[[VAL_212:.*]] = load half, half* %[[VAL_211]], align 2, !invariant.load !4
-// CHECK:         %[[VAL_213:.*]] = load half, half* bitcast ([2 x i8]* @13 to half*), align 2
+// CHECK:         %[[VAL_213:.*]] = load half, half* bitcast ([2 x i8]* @2 to half*), align 2
 // CHECK:         %[[VAL_214:.*]] = fcmp ogt half %[[VAL_212]], %[[VAL_213]]
 // CHECK:         %[[VAL_215:.*]] = zext i1 %[[VAL_214]] to i8
 // CHECK:         %[[VAL_216:.*]] = bitcast [128 x [112 x [112 x [64 x half]]]]* %[[VAL_23]] to half*
@@ -220,7 +220,7 @@ HloModule TestModule
 // CHECK:         %[[VAL_219:.*]] = trunc i8 %[[VAL_215]] to i1
 // CHECK:         %[[VAL_220:.*]] = select i1 %[[VAL_219]], half %[[VAL_218]], half %[[VAL_213]]
 // CHECK:         %[[VAL_221:.*]] = fpext half %[[VAL_220]] to float
-// CHECK:         %[[VAL_222:.*]] = load float, float* bitcast ([4 x i8]* @14 to float*), align 4
+// CHECK:         %[[VAL_222:.*]] = load float, float* bitcast ([4 x i8]* @1 to float*), align 4
 // CHECK:         %[[VAL_223:.*]] = fmul float %[[VAL_221]], %[[VAL_222]]
 // CHECK:         %[[VAL_224:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_8]], i32 0, i32 %[[VAL_61]]
 // CHECK:         %[[VAL_225:.*]] = load float, float* %[[VAL_224]], align 4, !invariant.load !4
@@ -233,7 +233,7 @@ HloModule TestModule
 // CHECK:         %[[VAL_232:.*]] = fpext half %[[VAL_231]] to float
 // CHECK:         %[[VAL_233:.*]] = getelementptr inbounds [64 x float], [64 x float]* %[[VAL_17]], i32 0, i32 %[[VAL_61]]
 // CHECK:         %[[VAL_234:.*]] = load float, float* %[[VAL_233]], align 4, !invariant.load !4
-// CHECK:         %[[VAL_235:.*]] = load float, float* bitcast ([4 x i8]* @15 to float*), align 4
+// CHECK:         %[[VAL_235:.*]] = load float, float* bitcast ([4 x i8]* @0 to float*), align 4
 // CHECK:         %[[VAL_236:.*]] = fmul float %[[VAL_234]], %[[VAL_235]]
 // CHECK:         %[[VAL_237:.*]] = fsub float %[[VAL_232]], %[[VAL_236]]
 // CHECK:         %[[VAL_238:.*]] = fmul float %[[VAL_228]], %[[VAL_237]]

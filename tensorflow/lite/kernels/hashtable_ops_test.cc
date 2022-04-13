@@ -654,7 +654,7 @@ class HashtableOpModel : public SingleOpModel {
 TEST(HashtableOpsTest, TestHashtable) {
   HashtableOpModel m(/*table_id=*/1, TensorType_INT64, TensorType_STRING);
   EXPECT_EQ(m.GetResources().size(), 0);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto& resources = m.GetResources();
   EXPECT_EQ(resources.size(), 1);
   int resource_id = m.GetOutput();
@@ -833,7 +833,7 @@ TEST(HashtableOpsTest, TestHashtableLookupStringToInt64) {
   InitHashtableResource<std::string, std::int64_t>(
       &m.GetResources(), kResourceId, kTfLiteString, kTfLiteInt64,
       {"4", "5", "6"}, {1, 2, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput<std::int64_t>(), ElementsAreArray({2, 3, 4}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
@@ -851,7 +851,7 @@ TEST(HashtableOpsTest, TestHashtableLookupInt64ToString) {
   InitHashtableResource<std::int64_t, std::string>(
       &m.GetResources(), kResourceId, kTfLiteInt64, kTfLiteString, {4, 5, 6},
       {"1", "2", "3"});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput<std::string>(), ElementsAreArray({"2", "3", "4"}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
@@ -903,7 +903,7 @@ TEST(HashtableOpsTest, TestHashtableImport) {
   m.SetKeys({1, 2, 3});
   m.SetStringValues({"1", "2", "3"});
   m.CreateHashtableResource(kResourceId);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   auto& resources = m.GetResources();
   EXPECT_EQ(resources.size(), 1);
@@ -924,8 +924,8 @@ TEST(HashtableOpsTest, TestHashtableImportTwice) {
   m.SetKeys({1, 2, 3});
   m.SetStringValues({"1", "2", "3"});
   m.CreateHashtableResource(kResourceId);
-  m.Invoke();
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   auto& resources = m.GetResources();
   EXPECT_EQ(resources.size(), 1);
@@ -965,7 +965,7 @@ TEST(HashtableOpsTest, TestHashtableSize) {
   InitHashtableResource<std::string, std::int64_t>(
       &m.GetResources(), kResourceId, kTfLiteString, kTfLiteInt64,
       {"4", "5", "6"}, {1, 2, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutput<std::int64_t>(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
@@ -978,7 +978,7 @@ TEST(HashtableOpsTest, TestHashtableSizeNonInitialized) {
   m.SetResourceId(kResourceId);
 
   // Invoke without hash table initialization.
-  EXPECT_NE(m.InvokeUnchecked(), kTfLiteOk);
+  EXPECT_NE(m.Invoke(), kTfLiteOk);
 }
 
 }  // namespace

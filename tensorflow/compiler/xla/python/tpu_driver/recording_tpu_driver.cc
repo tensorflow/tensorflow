@@ -24,7 +24,6 @@
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_service.grpc.pb.h"
 #include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 /*
@@ -209,6 +208,9 @@ class RecordingTpuDriver : public TpuDriver {
 
     std::vector<BufferHandle*> unwrapped_children;
     std::vector<int64_t> child_ids;
+    const auto children_size = children.size();
+    unwrapped_children.reserve(children_size);
+    child_ids.reserve(children_size);
     for (auto child : children) {
       BufferHandle* unwrapped_child =
           static_cast<const RecordingBufferHandle*>(child)->handle_.get();
@@ -420,6 +422,9 @@ class RecordingTpuDriver : public TpuDriver {
 
     std::vector<BufferHandle*> unwrapped_inputs;
     std::vector<int64_t> input_ids;
+    const auto inputs_size = inputs.size();
+    unwrapped_inputs.reserve(inputs_size);
+    input_ids.reserve(inputs_size);
     for (auto input : inputs) {
       BufferHandle* unwrapped_input =
           static_cast<const RecordingBufferHandle*>(input)->handle_.get();
@@ -430,6 +435,9 @@ class RecordingTpuDriver : public TpuDriver {
 
     std::vector<BufferHandle*> unwrapped_outputs;
     std::vector<int64_t> output_ids;
+    const auto output_size = outputs.size();
+    unwrapped_outputs.reserve(output_size);
+    output_ids.reserve(output_size);
     for (auto output : outputs) {
       BufferHandle* unwrapped_output =
           static_cast<const RecordingBufferHandle*>(output)->handle_.get();
@@ -496,7 +504,7 @@ class RecordingTpuDriver : public TpuDriver {
         return;
       }
 
-      tensorflow::StringPiece buffer_sp(buffer.data(), buffer.size());
+      absl::string_view buffer_sp(buffer.data(), buffer.size());
       auto data_status = log_file_->Append(buffer_sp);
       if (!data_status.ok()) {
         LOG(WARNING) << "Unable to write data to log file. File possibly "

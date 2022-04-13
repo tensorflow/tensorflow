@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -155,7 +154,7 @@ class TestLinspaceMaxParametric
   }
 };
 
-string PrintTestLinspaceMaxParam(
+std::string PrintTestLinspaceMaxParam(
     const ::testing::TestParamInfo<TestLinspaceMaxParam>& test_param) {
   const TestLinspaceMaxParam& param = test_param.param;
   return absl::StrCat(param.rows, "r", param.cols, "c");

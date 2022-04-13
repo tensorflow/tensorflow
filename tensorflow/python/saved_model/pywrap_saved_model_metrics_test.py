@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for SavedModel and Checkpoint metrics Python bindings."""
 
+import os
+
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.eager import test
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
@@ -80,6 +82,23 @@ class MetricsTest(test.TestCase):
     self.assertEqual(metrics.GetTrainingTimeSaved(api_label="baz"), 0)
     metrics.AddTrainingTimeSaved(api_label="baz", microseconds=1000)
     self.assertEqual(metrics.GetTrainingTimeSaved(api_label="baz"), 1000)
+
+  def test_checkpoint_size(self):
+    self.assertEqual(
+        metrics.GetCheckpointSize(api_label="baz", filesize=100), 0)
+    metrics.RecordCheckpointSize(api_label="baz", filesize=100)
+    metrics.RecordCheckpointSize(api_label="baz", filesize=100)
+    self.assertEqual(
+        metrics.GetCheckpointSize(api_label="baz", filesize=100), 2)
+
+  def test_filesize(self):
+    filename = os.path.join(self.get_temp_dir(), "test.txt")
+    with open(filename, "w") as file:
+      file.write("Hello! \n")
+    self.assertEqual(metrics.CalculateFileSize(filename), 0)
+
+  def test_invalid_file(self):
+    self.assertEqual(metrics.CalculateFileSize("not_a_file.txt"), -1)
 
 
 if __name__ == "__main__":

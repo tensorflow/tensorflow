@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -60,6 +60,8 @@ class FoldConstantsToSubgraphPass
     : public mlir::PassWrapper<FoldConstantsToSubgraphPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FoldConstantsToSubgraphPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-fold-constants-to-subgraph";
   }
@@ -133,7 +135,7 @@ void FoldConstantsToSubgraphPass::runOnOperation() {
       }
 
       for (auto consumer : op->getResult(0).getUsers()) {
-        auto consumer_call = llvm::dyn_cast_or_null<CallOp>(consumer);
+        auto consumer_call = llvm::dyn_cast_or_null<func::CallOp>(consumer);
 
         if (!consumer_call) continue;
 

@@ -24,9 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import immutable_dict
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import type_annotations
 
 # These names may not be used as the name for a ExtensionType field (to prevent
@@ -107,7 +105,7 @@ class ExtensionTypeField(
     try:
       validate_field_value_type(value_type, allow_forward_references=True)
     except TypeError as e:
-      raise TypeError(f'In field {name!r}: {e}')
+      raise TypeError(f'In field {name!r}: {e}') from e
 
     if default is not cls.NO_DEFAULT:
       default = _convert_value(default, value_type,
@@ -150,8 +148,8 @@ def validate_field_value_type(value_type,
         (isinstance(value_type, type) and
          issubclass(value_type, composite_tensor.CompositeTensor))):
     if in_mapping_key:
-      raise TypeError(
-          f"Mapping had a key with type '{type(value_type).__name__}'")
+      raise TypeError(f"Mapping had a key '{value_type.__name__}' with type "
+                      f"'{type(value_type).__name__}'")
   elif (type_annotations.is_generic_tuple(value_type) or
         type_annotations.is_generic_union(value_type)):
     type_args = type_annotations.get_generic_type_args(value_type)
@@ -315,9 +313,8 @@ def _convert_value(value, expected_type, path,
 def _convert_tensor(value, path, context):
   """Converts `value` to a `Tensor`."""
   if context == _ConversionContext.SPEC:
-    if not (isinstance(value, tensor_spec.TensorSpec) or
-            (isinstance(value, ragged_tensor.RaggedTensorSpec) and
-             value.ragged_rank == 0)):
+    if not (isinstance(value, type_spec.TypeSpec) and
+            value.value_type is ops.Tensor):
       raise TypeError(f'{"".join(path)}: expected a TensorSpec, got {value!r}')
     return value
 

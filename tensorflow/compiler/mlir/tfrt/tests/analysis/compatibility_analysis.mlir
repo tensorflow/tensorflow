@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -analyze-tf-for-tfrt %s | FileCheck %s
 
-func @main(%serialized: tensor<32x!tf_type.string>,
+func.func @main(%serialized: tensor<32x!tf_type.string>,
            %names : tensor<32x!tf_type.string>,
            %dense_keys : tensor<2x!tf_type.string>,
            %dense_default_0 : tensor<?xf32>,
@@ -61,5 +61,5 @@ func @main(%serialized: tensor<32x!tf_type.string>,
   %result:2 = "tf.ParseExampleV2"(%serialized, %names, %empty_str_vector, %dense_keys, %empty_str_vector, %dense_default_0, %dense_default_1)
     {dense_shapes = [#tf_type.shape<>, #tf_type.shape<>], num_sparse = 0 : i64, result_segment_sizes = dense<[0, 0, 0, 2, 0, 0]> : vector<6xi32>}
       : (tensor<32x!tf_type.string>, tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<?xf32>, tensor<?xf32>) -> (tensor<32xf32>, tensor<32xf32>)
-  return
+  func.return
 }

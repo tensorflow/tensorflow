@@ -220,11 +220,11 @@ REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, bool);
 // Currently we do not support filling strings on GPU
 
-// A special GPU kernel for int32.
+// A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Fill")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int32>("index_type")
                             .HostMemory("dims")
@@ -279,8 +279,7 @@ REGISTER_CPU(Variant);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
@@ -292,14 +291,14 @@ REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL(Variant, GPU);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#undef REGISTER_KERNEL
+
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         ZerosLikeOp<CPUDevice, int32>);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#undef REGISTER_KERNEL
 
 template <typename Device, typename T>
 class OnesLikeOp : public OpKernel {
@@ -327,8 +326,7 @@ TF_CALL_POD_TYPES(REGISTER_CPU);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
@@ -339,7 +337,7 @@ REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         OnesLikeOp<CPUDevice, int32>);

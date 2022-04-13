@@ -17,13 +17,20 @@ package org.tensorflow.lite;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
 
 /** Unit tests for {@link org.tensorflow.lite.TensorFlowLite}. */
 @RunWith(JUnit4.class)
 public final class TensorFlowLiteTest {
+
+  @Before
+  public void setUp() {
+    TestInit.init();
+  }
 
   @Test
   @SuppressWarnings("deprecation")
@@ -32,14 +39,79 @@ public final class TensorFlowLiteTest {
   }
 
   @Test
-  public void testSchemaVersion() {
-    assertThat(TensorFlowLite.schemaVersion()).isEqualTo("3");
+  public void testSchemaVersionForDefaultRuntime() {
+    try {
+      assertThat(TensorFlowLite.schemaVersion()).isEqualTo("3");
+    } catch (IllegalStateException e) {
+      assertThat(e).hasMessageThat().contains("org.tensorflow");
+      assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      assertThat(e).hasMessageThat().doesNotContain("com.google.android.gms");
+      assertThat(e).hasMessageThat().doesNotContain("play-services-tflite-java");
+    }
   }
 
   @Test
-  public void testRuntimeVersion() {
+  public void testSchemaVersionForSpecifiedRuntime() {
+    assertThat(TensorFlowLite.schemaVersion(TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION))
+        .isEqualTo("3");
+    try {
+      assertThat(TensorFlowLite.schemaVersion(TfLiteRuntime.FROM_APPLICATION_ONLY)).isEqualTo("3");
+    } catch (IllegalStateException e) {
+      assertThat(e).hasMessageThat().contains("org.tensorflow");
+      assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      assertThat(e).hasMessageThat().doesNotContain("com.google.android.gms");
+      assertThat(e).hasMessageThat().doesNotContain("play-services-tflite-java");
+      assertThat(e).hasMessageThat().contains("org.tensorflow.lite.TensorFlowLite#schemaVersion");
+    }
+    try {
+      assertThat(TensorFlowLite.schemaVersion(TfLiteRuntime.FROM_SYSTEM_ONLY)).isEqualTo("3");
+    } catch (IllegalStateException e) {
+      assertThat(e).hasMessageThat().contains("com.google.android.gms");
+      assertThat(e).hasMessageThat().contains("play-services-tflite-java");
+      assertThat(e).hasMessageThat().doesNotContain("org.tensorflow:tensorflow-lite");
+      assertThat(e).hasMessageThat().contains("org.tensorflow.lite.TensorFlowLite#schemaVersion");
+    }
+  }
+
+  @Test
+  public void testRuntimeVersionForDefaultRuntime() {
     // Unlike the schema version, which should almost never change, the runtime version can change
     // with some frequency, so simply ensure that it's non-empty and doesn't fail.
-    assertThat(TensorFlowLite.runtimeVersion()).isNotEmpty();
+    try {
+      assertThat(TensorFlowLite.runtimeVersion()).isNotEmpty();
+    } catch (IllegalStateException e) {
+      assertThat(e).hasMessageThat().contains("org.tensorflow");
+      assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      assertThat(e).hasMessageThat().doesNotContain("com.google.android.gms");
+      assertThat(e).hasMessageThat().doesNotContain("play-services-tflite-java");
+      assertThat(e).hasMessageThat().contains("org.tensorflow.lite.TensorFlowLite#runtimeVersion");
+    }
+  }
+
+  @Test
+  public void testRuntimeVersionForSpecifiedRuntime() {
+    // Unlike the schema version, which should almost never change, the runtime version can change
+    // with some frequency, so simply ensure that it's non-empty and doesn't fail,
+    // or that if it fails due to not having the appropriate runtime linked in,
+    // it reports an appropriate error message.
+    assertThat(TensorFlowLite.runtimeVersion(TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION))
+        .isNotEmpty();
+    try {
+      assertThat(TensorFlowLite.runtimeVersion(TfLiteRuntime.FROM_APPLICATION_ONLY)).isNotEmpty();
+    } catch (IllegalStateException e) {
+      assertThat(e).hasMessageThat().contains("org.tensorflow");
+      assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      assertThat(e).hasMessageThat().doesNotContain("com.google.android.gms");
+      assertThat(e).hasMessageThat().doesNotContain("play-services-tflite-java");
+      assertThat(e).hasMessageThat().contains("org.tensorflow.lite.TensorFlowLite#runtimeVersion");
+    }
+    try {
+      assertThat(TensorFlowLite.runtimeVersion(TfLiteRuntime.FROM_SYSTEM_ONLY)).isNotEmpty();
+    } catch (IllegalStateException e) {
+      assertThat(e).hasMessageThat().contains("com.google.android.gms");
+      assertThat(e).hasMessageThat().contains("play-services-tflite-java");
+      assertThat(e).hasMessageThat().doesNotContain("org.tensorflow:tensorflow-lite");
+      assertThat(e).hasMessageThat().contains("org.tensorflow.lite.TensorFlowLite#runtimeVersion");
+    }
   }
 }

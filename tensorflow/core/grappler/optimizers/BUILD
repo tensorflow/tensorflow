@@ -707,6 +707,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/transforms:PassRegistration",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
     ],
@@ -876,6 +877,7 @@ tf_kernel_library(
         "//tensorflow/core/grappler/utils:graph_view",
         "//tensorflow/core/grappler/utils:symbolic_shapes",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/grappler/utils:pattern_utils",
     ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util"]),
 )
 

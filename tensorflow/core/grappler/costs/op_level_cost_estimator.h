@@ -290,7 +290,7 @@ class OpLevelCostEstimator {
       bool* found_unknown_shapes);
 
   // For Pooling, FusedBatchNorm, and their grad ops.
-  static ConvolutionDimensions OpDimensionsFromInputs(
+  static StatusOr<ConvolutionDimensions> OpDimensionsFromInputs(
       const TensorShapeProto& original_image_shape, const OpInfo& op_info,
       bool* found_unknown_shapes);
 

@@ -177,10 +177,10 @@ class BatchResourceBase : public ResourceBase {
       int max_batch_size,
       std::vector<std::unique_ptr<BatchTask>>* output_tasks);
 
-  // Splits the batch cost to each task.
+  // Splits the batch costs to each task.
   //
   // Inputs:
-  // 1) batch_cost_measurement, which provides the total cost and cost type;
+  // 1) batch_cost_measurements, which provides the total cost of each type;
   // 2) processed_size, it's the batch size plus the padding amount;
   // 3) batch, provides the batch size.
   //
@@ -192,8 +192,9 @@ class BatchResourceBase : public ResourceBase {
   //    and paddings do not share any cost;
   // 2) non-smeared cost: batch cost is split proportionally to each task or
   //    padding's size. Here padding's cost is not assigned to any tasks.
-  static void SplitBatchCost(CostMeasurement* batch_cost_measurement,
-                             const int64_t processed_size, BatchT& batch);
+  static void SplitBatchCosts(
+      std::vector<std::unique_ptr<CostMeasurement>>& batch_cost_measurements,
+      const int64_t processed_size, BatchT& batch);
 
  private:
   // Implementation of calling the process batch function.

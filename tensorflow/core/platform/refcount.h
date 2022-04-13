@@ -74,7 +74,7 @@ class RefCounted {
 
 // A deleter class to form a std::unique_ptr that unrefs objects.
 struct RefCountDeleter {
-  void operator()(RefCounted* o) const { o->Unref(); }
+  void operator()(const RefCounted* o) const { o->Unref(); }
 };
 
 // A unique_ptr that unrefs the owned object on destruction.
@@ -100,6 +100,11 @@ class ScopedUnref {
 template <typename T>
 class WeakPtr;
 
+// A WeakNotifyFn is called when the weakly referred object is being destroyed.
+// The object may already be destructed when the call occurs. A WeakNotifyFn
+// can be passed into WeakPtr at construction.
+using WeakNotifyFn = std::function<void()>;
+
 // A base class for RefCounted objects that allow weak references by WeakPtr.
 // WeakRefCounted and every WeakPtr to it, each holds a strong reference to a
 // WeakRefData.
@@ -117,17 +122,30 @@ class WeakRefCounted : public RefCounted {
   }
 
  protected:
-  ~WeakRefCounted() override { data_->Reset(); }
+  ~WeakRefCounted() override { data_->Notify(); }
 
  private:
   struct WeakRefData : public RefCounted {
-    explicit WeakRefData(WeakRefCounted* ptr) : ptr(ptr) {}
+    explicit WeakRefData(WeakRefCounted* ptr) : ptr(ptr), next_notifier_id(1) {}
 
     mutable mutex mu;
     WeakRefCounted* ptr TF_GUARDED_BY(mu);
+    std::map<int, WeakNotifyFn> notifiers;
+    int next_notifier_id;
 
-    void Reset() {
+    // Notifies WeakPtr instansces that this object is being destructed.
+    void Notify() {
       mutex_lock ml(mu);
+
+      while (!notifiers.empty()) {
+        auto iter = notifiers.begin();
+        WeakNotifyFn notify_fn = std::move(iter->second);
+        notifiers.erase(iter);
+
+        mu.unlock();
+        notify_fn();
+        mu.lock();
+      }
       ptr = nullptr;
     }
 
@@ -137,6 +155,24 @@ class WeakRefCounted : public RefCounted {
         return ptr;
       }
       return nullptr;
+    }
+
+    // Inserts notify_fn and returns a non-zero id.
+    // Returns 0 if insertion fails due to the object is being destroyed.
+    // 0 is also used by WeakPtr to represent "no notify_fn".
+    int AddNotifier(WeakNotifyFn notify_fn) {
+      mutex_lock ml(mu);
+      if (ptr == nullptr) {
+        return 0;
+      }
+      int notifier_id = next_notifier_id++;
+      notifiers.emplace(notifier_id, std::move(notify_fn));
+      return notifier_id;
+    }
+
+    void RemoveNotifier(int notifier_id) {
+      mutex_lock ml(mu);
+      notifiers.erase(notifier_id);
     }
   };
 
@@ -149,18 +185,49 @@ class WeakRefCounted : public RefCounted {
   friend struct WeakRefData;
 };
 
-// A weak reference to a WeakRefCounted object. See WeakRefCounted.
+// A weak reference to a WeakRefCounted object. Refer to WeakRefCounted.
 template <typename T>
 class WeakPtr {
  public:
-  WeakPtr() : data_(nullptr) {}
-  // Creates a weak reference to a WeakRefCounted ptr.
-  // ptr must be valid during the constructor.
-  explicit WeakPtr(WeakRefCounted* ptr) : data_(nullptr) {
+  // Creates a weak reference.
+  // When the object is being destroyed, notify_fn is called.
+  explicit WeakPtr(WeakRefCounted* ptr, WeakNotifyFn notify_fn = nullptr)
+      : data_(nullptr), notifier_id_(0) {
     if (ptr != nullptr) {
       ptr->data_->Ref();
       data_.reset(ptr->data_.get());
+      if (notify_fn) {
+        notifier_id_ = data_->AddNotifier(notify_fn);
+      }
     }
+  }
+
+  ~WeakPtr() {
+    if (data_ != nullptr && notifier_id_ != 0) {
+      data_->RemoveNotifier(notifier_id_);
+    }
+  }
+
+  // NOTE(feyu): change data_ to a IntrusivePtr to make WeakPtr copyable.
+  WeakPtr(const WeakPtr& other) = delete;
+  WeakPtr& operator=(const WeakPtr& other) = delete;
+
+  WeakPtr(WeakPtr&& other) {
+    data_ = std::move(other.data_);
+    notifier_id_ = other.notifier_id_;
+    other.notifier_id_ = 0;
+  }
+
+  WeakPtr& operator=(WeakPtr&& other) {
+    if (this != &other) {
+      if (data_ != nullptr && notifier_id_ != 0) {
+        data_->RemoveNotifier(notifier_id_);
+      }
+      data_ = std::move(other.data_);
+      notifier_id_ = other.notifier_id_;
+      other.notifier_id_ = 0;
+    }
+    return *this;
   }
 
   // Returns a new strong reference to the referred object, or nullptr if the
@@ -175,8 +242,8 @@ class WeakPtr {
   }
 
  private:
-  // NOTE(feyu): change this to a IntrusivePtr to make WeakPtr copiable.
   RefCountPtr<WeakRefCounted::WeakRefData> data_;
+  int notifier_id_;
 };
 
 // Inlined routines, since these are performance critical

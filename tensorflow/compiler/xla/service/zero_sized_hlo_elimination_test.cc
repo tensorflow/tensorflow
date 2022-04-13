@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 
 #include <memory>
-#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal.h"

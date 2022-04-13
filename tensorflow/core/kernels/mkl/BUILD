@@ -24,7 +24,7 @@ MKL_SHORT_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:ops_util",
-    "//tensorflow/core/util:mkl_util",
+    "//tensorflow/core/util:onednn_env_vars",
 ] + mkl_deps()
 
 MKL_DEPS = MKL_SHORT_DEPS + [
@@ -54,7 +54,7 @@ MKL_TEST_DEPS = [
     "//tensorflow/core:testlib",
     "//tensorflow/core/kernels:ops_testutil",
     "//tensorflow/core/kernels:ops_util",
-    "//tensorflow/core/util:mkl_util",
+    "//tensorflow/core/util:onednn_env_vars",
 ]
 
 tf_mkl_kernel_library(
@@ -237,6 +237,20 @@ tf_cc_test_mkl(
     deps = ["@com_google_absl//absl/strings"] + MKL_TEST_DEPS,
 )
 
+tf_cc_test_mkl(
+    name = "mkl_swish_op_test",
+    size = "small",
+    srcs = ["mkl_swish_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        ":mkl_eltwise_activation_base_op",
+        ":mkl_swish_op",
+        "//tensorflow/cc:math_ops",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core:direct_session",
+    ] + MKL_TEST_DEPS,
+)
+
 tf_mkl_kernel_library(
     name = "mkl_tfconv_op",
     prefix = "mkl_tfconv",
@@ -267,6 +281,8 @@ tf_mkl_kernel_library(
     deps = [
         "@gemmlowp",
         "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core:nn_ops_op_lib",
@@ -280,7 +296,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/util:image_resizer_state",
-        "//tensorflow/core/util:mkl_util",
+        "//tensorflow/core/util:onednn_env_vars",
     ] + mkl_deps(),
 )
 
@@ -306,6 +322,26 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_eltwise_activation_base_op",
+    prefix = "mkl_eltwise_activation_base",
+    deps = MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_swish_op",
+    hdrs = ["mkl_eltwise_activation_base_op.h"],
+    prefix = "mkl_swish",
+    deps = MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_fused_mish_op",
+    hdrs = ["mkl_eltwise_activation_base_op.h"],
+    prefix = "mkl_fused_mish",
+    deps = MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
     name = "mkl_softmax_op",
     prefix = "mkl_softmax",
     deps = MKL_SHORT_DEPS + ["//third_party/eigen3"],
@@ -325,6 +361,15 @@ tf_mkl_kernel_library(
     deps = [
         "//tensorflow/core/kernels:fused_batch_norm_op",
         "//tensorflow/core/kernels:no_op",
+    ] + MKL_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_layer_norm_op",
+    srcs = ["mkl_layer_norm_op.cc"],
+    deps = [
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
     ] + MKL_DEPS,
 )
 
@@ -449,4 +494,15 @@ tf_mkl_kernel_library(
         "mkl_transpose_op.cc",
     ],
     deps = MKL_DEPS + ["//tensorflow/core/kernels:transpose_op"],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_matmul_op_benchmark",
+    size = "small",
+    srcs = ["mkl_matmul_op_benchmark.cc"],
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels/mkl:mkl_matmul_op",
+    ] + MKL_TEST_DEPS,
 )

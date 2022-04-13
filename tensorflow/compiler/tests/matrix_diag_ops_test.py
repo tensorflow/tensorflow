@@ -32,7 +32,8 @@ def zip_to_first_list_length(a, b):
 
 
 # Routines to convert test cases to have diagonals in a specified alignment.
-# Copied from //third_party/tensorflow/python/kernel_tests/diag_op_test.py
+# Copied from //third_party/tensorflow/python/kernel_tests/array_ops/
+# diag_op_test.py
 def repack_diagonals(packed_diagonals,
                      diag_index,
                      num_rows,
@@ -87,7 +88,8 @@ def repack_diagonals_in_tests(tests, align=None):
 
 
 # Test cases shared by MatrixDiagV2, MatrixDiagPartV2, and MatrixSetDiagV2.
-# Copied from //third_party/tensorflow/python/kernel_tests/diag_op_test.py
+# Copied from //third_party/tensorflow/python/kernel_tests/array_ops/
+# diag_op_test.py
 def square_cases(align=None):
   # pyformat: disable
   mat = np.array([[[1, 2, 3, 4, 5],

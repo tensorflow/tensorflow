@@ -44,7 +44,7 @@ bool BufferSequencingEvent::EventHasBeenRecorded() const {
   return event_.event() != nullptr;
 }
 
-uint64 BufferSequencingEvent::sequence_number() const {
+uint64_t BufferSequencingEvent::sequence_number() const {
   uint64_t seq = sequence_number_.load(std::memory_order_seq_cst);
   CHECK_NE(seq, 0);
   return seq;

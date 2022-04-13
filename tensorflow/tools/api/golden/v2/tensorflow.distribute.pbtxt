@@ -49,6 +49,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ParameterServerStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ReduceOp"
     mtype: "<class \'enum.EnumMeta\'>"
   }
@@ -82,6 +86,10 @@ tf_module {
   }
   member {
     name: "cluster_resolver"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "coordinator"
     mtype: "<type \'module\'>"
   }
   member {

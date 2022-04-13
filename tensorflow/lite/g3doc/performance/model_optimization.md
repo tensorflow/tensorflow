@@ -90,8 +90,8 @@ The following types of quantization are available in TensorFlow Lite:
 Technique                                                                                               | Data requirements                | Size reduction | Accuracy                    | Supported hardware
 ------------------------------------------------------------------------------------------------------- | -------------------------------- | -------------- | --------------------------- | ------------------
 [Post-training float16 quantization](post_training_float16_quant.ipynb)                                 | No data                          | Up to 50%      | Insignificant accuracy loss | CPU, GPU
-[Post-training dynamic range quantization](post_training_quant.ipynb)                                   | No data                          | Up to 75%      | Accuracy loss               | CPU, GPU (Android)
-[Post-training integer quantization](post_training_integer_quant.ipynb)                                 | Unlabelled representative sample | Up to 75%      | Smaller accuracy loss       | CPU, GPU (Android), EdgeTPU, Hexagon DSP
+[Post-training dynamic range quantization](post_training_quant.ipynb)                                   | No data                          | Up to 75%      | Smallest accuracy loss               | CPU, GPU (Android)
+[Post-training integer quantization](post_training_integer_quant.ipynb)                                 | Unlabelled representative sample | Up to 75%      | Small accuracy loss       | CPU, GPU (Android), EdgeTPU, Hexagon DSP
 [Quantization-aware training](http://www.tensorflow.org/model_optimization/guide/quantization/training) | Labelled training data           | Up to 75%      | Smallest accuracy loss      | CPU, GPU (Android), EdgeTPU, Hexagon DSP
 
 The following decision tree helps you select the quantization schemes you might

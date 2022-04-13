@@ -22,6 +22,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -247,7 +248,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       c = constant_op.constant([[2.]])
       f_c = f(c)
       g, = gradients_impl.gradients(f_c, c)
-      self.assertIsInstance(g, ops.IndexedSlices)
+      self.assertIsInstance(g, indexed_slices.IndexedSlices)
 
     outer()
 

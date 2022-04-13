@@ -31,8 +31,12 @@ namespace {
 
 constexpr char kBadDecompositionMessage[] =
     "Resource ops decomposition did not converge";
-// TODO(prakalps): This can probably be reduced to much smaller number.
-constexpr int kMaxIterations = 100;
+
+// Decomposing resource ops should not take more than a few iterations (2-3) to
+// converge as only a few patterns create new resource ops that can be further
+// decomposed. The rest of the iterations are enough to clean up any dead ops
+// created by decomposition.
+constexpr int kMaxIterations = 10;
 
 // Populates `reachable_functions` with all functions that can be reached from
 // device cluster ops.
@@ -148,14 +152,14 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
 
 struct DecomposeResourceOpsPass
     : public DecomposeResourceOpsPassBase<DecomposeResourceOpsPass> {
-  void runOnFunction() override {
+  void runOnOperation() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
 
-    if (failed(
-            applyPatternsAndFoldGreedily(getFunction(), std::move(patterns)))) {
-      getFunction().emitError() << kBadDecompositionMessage;
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      getOperation().emitError() << kBadDecompositionMessage;
       signalPassFailure();
     }
   }
@@ -166,7 +170,7 @@ struct DecomposeResourceOpsInClusterPass
           DecomposeResourceOpsInClusterPass> {
   void runOnOperation() override {
     // Add lowering patterns to the list.
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
     FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 
@@ -189,4 +193,3 @@ CreateDecomposeResourceOpsInClusterPass() {
 
 }  // namespace TFDevice
 }  // namespace mlir
-

@@ -26,7 +26,7 @@ class GemmTest : public MlirGpuTestBase {};
 TEST_F(GemmTest, SimpleCase1) {
   const char* mlir_text = R"(
       module attributes {hlo.unique_id = 0 : i32} {
-        func @main(%arg0: memref<2x2xf32> {lmhlo.params = 0 : index},
+        func.func @main(%arg0: memref<2x2xf32> {lmhlo.params = 0 : index},
                    %arg1: memref<2x2xf32> {lmhlo.params = 1 : index},
                    %arg2: memref<2x2xf32> {lmhlo.output_index = dense<[0]> : tensor<1xindex>}) attributes {
                        result_xla_shape = "(f32[4]) "

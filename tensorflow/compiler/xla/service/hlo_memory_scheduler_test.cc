@@ -153,7 +153,7 @@ ENTRY root {
       schedule.sequence(module->entry_computation()).instructions();
   EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
 
-  std::unordered_map<string, const HloInstruction*> instructions_by_name;
+  absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name;
   for (const HloInstruction* instruction : sequence) {
     instructions_by_name[instruction->name()] = instruction;
   }
@@ -204,7 +204,7 @@ ENTRY entry {
       schedule.sequence(module->entry_computation()).instructions();
   EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
 
-  std::unordered_map<string, const HloInstruction*> instructions_by_name;
+  absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name;
   for (const HloInstruction* instruction : sequence) {
     instructions_by_name[instruction->name()] = instruction;
   }

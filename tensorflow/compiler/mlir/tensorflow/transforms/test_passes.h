@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
@@ -38,6 +39,21 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTestClusteringPolicyPass();
 
 // Test pass for analyzing side-effect analysis result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTestSideEffectAnalysisPass();
+
+std::unique_ptr<OperationPass<ModuleOp>> CreateTestResourceAliasAnalysisPass();
+
+std::unique_ptr<OperationPass<ModuleOp>> CreateInitTextFileToImportTestPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInitTextFileToImportSavedModelTestPass();
+
+// Variable Lifting test passes: only useful for lit testing.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesTestPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateLiftVariablesInvalidSessionTestPass();
+
+// Create a test pass for the above with a "fake" session, for lit testing.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInitializeVariablesInSessionInitializerTestPass();
 
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"

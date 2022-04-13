@@ -6,7 +6,7 @@
 
 // CHECK: module attributes {gpu.container_module} {
 // CHECK: gpu.module @[[gpu_module:.*]] attributes {
-// CHECK-SAME: nvvm.cubin = "
+// CHECK-SAME: binary = "
 // CHECK-SAME:   .visible .entry _fusion(
 // CHECK-SAME:     .param .u64 _fusion_param_0
 // CHECK-SAME:   )
@@ -15,20 +15,20 @@
 // CHECK:  gpu.return
 // CHECK: }
 // CHECK: func @fusion(%arg0: memref<4096xf32>) {
-func @fusion(%arg0: memref<4096xf32>) {
+func.func @fusion(%arg0: memref<4096xf32>) {
 
-    // CHECK: %[[bx:.*]] = constant 4 : index
-    // CHECK: %[[by:.*]] = constant 1 : index
-    // CHECK: %[[bz:.*]] = constant 1 : index
-    // CHECK: %[[tx:.*]] = constant 256 : index
-    // CHECK: %[[ty:.*]] = constant 1 : index
-    // CHECK: %[[tz:.*]] = constant 1 : index
+    // CHECK-DAG: %[[bx:.*]] = arith.constant 4 : index
+    // CHECK-DAG: %[[by:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[bz:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[tx:.*]] = arith.constant 256 : index
+    // CHECK-DAG: %[[ty:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[tz:.*]] = arith.constant 1 : index
     // CHECK: gpu.launch_func @[[gpu_module]]::@[[kernel]]
     // CHECK-SAME: blocks in (%[[bx]], %[[by]], %[[bz]])
     // CHECK-SAME: threads in (%[[tx]], %[[ty]], %[[tz]])
     // CHECK-SAME: args(%arg0 : memref<4096xf32>)
-    "lmhlo.fusion"() ( {
-      %tensor = memref.tensor_load %arg0 : memref<4096xf32>
+    "lmhlo.fusion"() ({
+      %tensor = bufferization.to_tensor %arg0 : memref<4096xf32>
       %result = mhlo.add %tensor, %tensor : tensor<4096xf32>
       memref.tensor_store %result, %arg0 : memref<4096xf32>
       "lmhlo.terminator"() : () -> ()
@@ -47,40 +47,39 @@ memref.global "private" constant @ones : memref<8xf32> = dense<
 
 // CHECK: module attributes {gpu.container_module} {
 // CHECK: gpu.module @[[gpu_module:.*]] attributes {
-// CHECK-SAME: constants = {ones = dense<[{{.*}}]> : tensor<32xi8>}
-// CHECK-SAME: nvvm.cubin = "
-// CHECK-SAME:   .visible .global .align 64 .b8 zero[4] = {0, 0, 0, 128};
-// CHECK-SAME:   .visible .global .align 64 .b8 ones[32];
+// CHECK-SAME: binary = "
+// CHECK-SAME:   .visible .global .align 128 .b8 zero[4] = {0, 0, 0, 128};
+// CHECK-SAME:   .visible .global .align 128 .b8 ones[32];
 // CHECK-SAME:   .visible .entry _fusion(
 // CHECK-SAME:     .param .u64 _fusion_param_0,
 // CHECK-SAME:     .param .u64 _fusion_param_1
 // CHECK-SAME:   )
-// CHECK-SAME: "} {
+// CHECK-SAME: ", constants = [@ones]} {
 // CHECK: gpu.func @[[kernel:.*]](
 // CHECK-SAME:   %arg0: memref<8x128xf32>, %arg1: memref<8xf32>
 // CHECK-SAME: ) kernel {
 // CHECK:   gpu.return
 // CHECK: }
 // CHECK: func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
-func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
+func.func @fusion(%arg0: memref<8x128xf32>, %arg1: memref<8xf32>) {
 
     %zero = memref.get_global @zero : memref<f32>
     %ones = memref.get_global @ones : memref<8xf32>
 
-    // CHECK: %[[bx:.*]] = constant 1 : index
-    // CHECK: %[[by:.*]] = constant 1 : index
-    // CHECK: %[[bz:.*]] = constant 1 : index
-    // CHECK: %[[tx:.*]] = constant 2 : index
-    // CHECK: %[[ty:.*]] = constant 1 : index
-    // CHECK: %[[tz:.*]] = constant 1 : index
+    // CHECK-DAG: %[[bx:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[by:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[bz:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[tx:.*]] = arith.constant 2 : index
+    // CHECK-DAG: %[[ty:.*]] = arith.constant 1 : index
+    // CHECK-DAG: %[[tz:.*]] = arith.constant 1 : index
     // CHECK: gpu.launch_func @[[gpu_module]]::@[[kernel]]
     // CHECK-SAME: blocks in (%[[bx]], %[[by]], %[[bz]])
     // CHECK-SAME: threads in (%[[tx]], %[[ty]], %[[tz]])
     // CHECK-SAME: args(%arg0 : memref<8x128xf32>, %arg1 : memref<8xf32>)
     "lmhlo.fusion"() ({
-      %clamp = memref.tensor_load %zero : memref<f32>
-      %bias = memref.tensor_load %ones : memref<8xf32>
-      %tensor = memref.tensor_load %arg0 : memref<8x128xf32>
+      %clamp = bufferization.to_tensor %zero : memref<f32>
+      %bias = bufferization.to_tensor %ones : memref<8xf32>
+      %tensor = bufferization.to_tensor %arg0 : memref<8x128xf32>
       %0 = "mhlo.reduce"(%tensor, %clamp) ({
       ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
         %max = mhlo.maximum %arg2, %arg3 : tensor<f32>

@@ -12,8 +12,11 @@ package_group(
         # Authorized users go here.
         # copybara:uncomment "//learning/serving/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
+        # copybara:uncomment "//learning/brain/tfrt/tfrt_session/...",
+        # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/runtime/...",
+        "//tensorflow_serving/...",
     ],
 )
 

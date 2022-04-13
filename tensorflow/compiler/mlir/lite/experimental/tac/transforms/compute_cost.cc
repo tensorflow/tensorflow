@@ -71,6 +71,9 @@ namespace {
 
 class ComputeCostPass
     : public mlir::PassWrapper<ComputeCostPass, mlir::OperationPass<ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ComputeCostPass)
+
  private:
   llvm::StringRef getArgument() const final { return "tfl-compute-cost"; }
   llvm::StringRef getDescription() const final {

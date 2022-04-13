@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/master_session.h"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -56,6 +60,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -1256,7 +1262,7 @@ void MasterSession::UpdateLastAccessTime() {
 }
 
 Status MasterSession::Create(GraphDef&& graph_def,
-                             const WorkerCacheFactoryOptions& options) {
+                             const ClusterDef& cluster_def) {
   if (session_opts_.config.use_per_session_threads() ||
       session_opts_.config.session_inter_op_thread_pool_size() > 0) {
     return errors::InvalidArgument(
@@ -1278,11 +1284,10 @@ Status MasterSession::Create(GraphDef&& graph_def,
         std::move(graph_def), execution_options, &execution_state_));
   }
   should_delete_worker_sessions_ = true;
-  return CreateWorkerSessions(options);
+  return CreateWorkerSessions(cluster_def);
 }
 
-Status MasterSession::CreateWorkerSessions(
-    const WorkerCacheFactoryOptions& options) {
+Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
   const std::vector<string> worker_names = filtered_worker_list_;
   WorkerCacheInterface* worker_cache = get_worker_cache();
 
@@ -1356,12 +1361,11 @@ Status MasterSession::CreateWorkerSessions(
       return status;
     }
 
-    if (options.cluster_def) {
-      *workers[i].request.mutable_server_def()->mutable_cluster() =
-          *options.cluster_def;
-      workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
-      workers[i].request.mutable_server_def()->set_job_name(name.job);
-      workers[i].request.mutable_server_def()->set_task_index(name.task);
+    workers[i].request.mutable_server_def()->set_protocol("grpc");
+    workers[i].request.mutable_server_def()->set_job_name(name.job);
+    workers[i].request.mutable_server_def()->set_task_index(name.task);
+    if (!cluster_def.job().empty()) {
+      *workers[i].request.mutable_server_def()->mutable_cluster() = cluster_def;
       // Session state is always isolated when ClusterSpec propagation
       // is in use.
       workers[i].request.set_isolate_session_state(true);
@@ -1371,6 +1375,24 @@ Status MasterSession::CreateWorkerSessions(
       workers[i].request.set_isolate_session_state(
           session_opts_.config.isolate_session_state());
     }
+    CoordinationServiceConfig coordination_config;
+    // Enable coordination service in session options by default if
+    // unspecified in non-local targets.
+    if (session_opts_.target != "local" &&
+        !session_opts_.config.experimental().has_coordination_config()) {
+      coordination_config.set_service_type("standalone");
+    } else {
+      coordination_config =
+          session_opts_.config.experimental().coordination_config();
+    }
+    // Specify master task as coordination service leader.
+    coordination_config.set_service_leader(task_name);
+    *workers[i]
+         .request.mutable_server_def()
+         ->mutable_default_session_config()
+         ->mutable_experimental()
+         ->mutable_coordination_config() = coordination_config;
+
     if (session_opts_.config.experimental()
             .share_session_state_in_clusterspec_propagation()) {
       // In a dynamic cluster, the ClusterSpec info is usually propagated by

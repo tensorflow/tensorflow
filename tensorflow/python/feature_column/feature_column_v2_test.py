@@ -1765,9 +1765,9 @@ class OldLinearModelTest(test.TestCase):
       bias = get_linear_model_bias()
       price1_var = get_linear_model_column_var(price1)
       price2_var = get_linear_model_column_var(price2)
-      self.assertAllEqual(cols_to_vars['bias'], [bias])
-      self.assertAllEqual(cols_to_vars[price1], [price1_var])
-      self.assertAllEqual(cols_to_vars[price2], [price2_var])
+      self.assertEqual(cols_to_vars['bias'], [bias])
+      self.assertEqual(cols_to_vars[price1], [price1_var])
+      self.assertEqual(cols_to_vars[price2], [price2_var])
 
   def test_fills_cols_to_vars_partitioned_variables(self):
     price1 = fc.numeric_column('price1', shape=2)
@@ -2676,7 +2676,7 @@ class FunctionalInputLayerTest(test.TestCase):
       net = fc_old.input_layer(features, [price1, price2])
       with _initialized_session() as sess:
         with self.assertRaisesRegex(errors.OpError,
-                                    'Dimensions of inputs should match'):
+                                    'Dimension 0 in both shapes must be equal'):
           sess.run(net, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 
   def test_runtime_batch_size_matches(self):

@@ -48,8 +48,8 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Text Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.2.0'
+    // Import the Task Text Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
 }
 ```
 
@@ -61,7 +61,12 @@ anymore.
 
 ```java
 // Initialization
-BertNLClassifier classifier = BertNLClassifier.createFromFile(context, modelFile);
+BertNLClassifierOptions options =
+    BertNLClassifierOptions.builder()
+        .setBaseOptions(BaseOptions.builder().setNumThreads(4).build())
+        .build();
+BertNLClassifier classifier =
+    BertNLClassifier.createFromFileAndOptions(context, modelFile, options);
 
 // Run inference
 List<Category> results = classifier.classify(input);

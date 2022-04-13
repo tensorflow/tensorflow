@@ -22,7 +22,7 @@ API.
     sentiment classification</a> model.
 
 *   Models with `average_word_vec` spec created by
-    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
+    [TensorFlow Lite Model Maker for text Classification](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
@@ -53,8 +53,10 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Task Text Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.2.0'
+    // Import the Task Vision Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
 }
 ```
 
@@ -66,8 +68,14 @@ anymore.
 
 ```java
 // Initialization, use NLClassifierOptions to configure input and output tensors
-NLClassifierOptions options = NLClassifierOptions.builder().setInputTensorName(INPUT_TENSOR_NAME).setOutputScoreTensorName(OUTPUT_SCORE_TENSOR_NAME).build();
-NLClassifier classifier = NLClassifier.createFromFileAndOptions(context, modelFile, options);
+NLClassifierOptions options =
+    NLClassifierOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setInputTensorName(INPUT_TENSOR_NAME)
+        .setOutputScoreTensorName(OUTPUT_SCORE_TENSOR_NAME)
+        .build();
+NLClassifier classifier =
+    NLClassifier.createFromFileAndOptions(context, modelFile, options);
 
 // Run inference
 List<Category> results = classifier.classify(input);
@@ -176,7 +184,7 @@ The compatible models should meet the following requirements:
         the file should be a plain text file with one label per line, and the
         number of labels should match the number of categories as the model
         outputs. See the
-        [exmaple label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/nl_classifier/labels.txt).
+        [example label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/nl_classifier/labels.txt).
 
 *   Output label tensor: (kTfLiteString/kTfLiteInt32)
 

@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -39,7 +38,7 @@ class ReplayTest : public ClientLibraryTestBase {};
 TEST_F(ReplayTest, TwoPlusTwoReplay) {
   // Make 2+2 computation.
   XlaBuilder builder(TestName());
-  auto two = ConstantR0<int32>(&builder, 2);
+  auto two = ConstantR0<int32_t>(&builder, 2);
   Add(two, two);
   XlaComputation computation = builder.Build().ConsumeValueOrDie();
 
@@ -65,7 +64,7 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
           .ConsumeValueOrDie();
 
   // Expect 4.
-  LiteralTestUtil::ExpectR0Equal<int32>(4, literal);
+  LiteralTestUtil::ExpectR0Equal<int32_t>(4, literal);
 }
 
 XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
@@ -93,10 +92,10 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
 
   // Run it.
   std::unique_ptr<GlobalData> x_data =
-      client_->TransferToServer(LiteralUtil::CreateR0<int32>(2))
+      client_->TransferToServer(LiteralUtil::CreateR0<int32_t>(2))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> y_data =
-      client_->TransferToServer(LiteralUtil::CreateR0<int32>(3))
+      client_->TransferToServer(LiteralUtil::CreateR0<int32_t>(3))
           .ConsumeValueOrDie();
   Literal literal =
       client_
@@ -106,7 +105,7 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
           .ConsumeValueOrDie();
 
   // Expect 5.
-  LiteralTestUtil::ExpectR0Equal<int32>(5, literal);
+  LiteralTestUtil::ExpectR0Equal<int32_t>(5, literal);
 }
 
 TEST_F(ReplayTest, MapPlusTwoOverR1) {
@@ -114,11 +113,11 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
   XlaBuilder plus_two_builder("plus two");
   auto input =
       Parameter(&plus_two_builder, 0, ShapeUtil::MakeShape(S32, {}), "input");
-  Add(input, ConstantR0<int32>(&plus_two_builder, 2));
+  Add(input, ConstantR0<int32_t>(&plus_two_builder, 2));
   XlaComputation plus_two = plus_two_builder.Build().ConsumeValueOrDie();
 
   XlaBuilder mapper_builder(TestName());
-  auto original = ConstantR1<int32>(&mapper_builder, {1, 2, 3});
+  auto original = ConstantR1<int32_t>(&mapper_builder, {1, 2, 3});
   Map(&mapper_builder, {original}, plus_two, {0});
 
   XlaComputation computation = mapper_builder.Build().ConsumeValueOrDie();
@@ -145,7 +144,7 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
           .ConsumeValueOrDie();
 
   // Expect result.
-  LiteralTestUtil::ExpectR1Equal<int32>({3, 4, 5}, literal);
+  LiteralTestUtil::ExpectR1Equal<int32_t>({3, 4, 5}, literal);
 }
 
 }  // namespace

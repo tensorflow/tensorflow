@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/op_expander_pass.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_BITCAST_DTYPES_EXPANDER_H_
@@ -25,12 +26,18 @@ namespace xla {
 
 // A pass which expands bitcast-convert between differently sized dtypes to a
 // reduction.
-class BitcastDtypesExpander : public HloModulePass {
+class BitcastDtypesExpander : public OpExpanderPass {
  public:
-  explicit BitcastDtypesExpander() {}
   absl::string_view name() const override { return "bitcast_dtypes_expander"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+ protected:
+  bool InstructionMatchesPattern(HloInstruction* instruction) override;
+
+  StatusOr<HloInstruction*> ExpandInstruction(
+      HloInstruction* instruction) override;
+
+ private:
+  absl::flat_hash_map<std::string, HloComputation*> computation_cache_;
 };
 
 }  // namespace xla

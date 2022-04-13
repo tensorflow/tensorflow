@@ -93,7 +93,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality(options);
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -102,6 +106,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    return input_->Get(ctx, index, out_tensors);
   }
 
  protected:
@@ -576,7 +586,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     const int64_t buffer_size_min_;
     PrefetchAutotuner auto_tuner_ TF_GUARDED_BY(*mu_);
     std::deque<BufferElement> buffer_ TF_GUARDED_BY(*mu_);
-    std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
     bool prefetch_thread_finished_ TF_GUARDED_BY(*mu_) = false;
     const bool legacy_autotune_;
@@ -594,6 +603,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
     int64 interleave_depth_ = -1;
+    std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
   };
 
   const DatasetBase* const input_;

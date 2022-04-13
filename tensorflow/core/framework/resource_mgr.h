@@ -249,16 +249,13 @@ class ResourceMgr {
       return (x.second == y.second) && (x.first == y.first);
     }
   };
-  typedef absl::variant<core::RefCountPtr<ResourceBase>,
-                        core::WeakPtr<ResourceBase>>
-      StrongOrWeakResourcePtr;
-
   struct ResourceAndName {
-    StrongOrWeakResourcePtr resource;
-    std::unique_ptr<string> name;
+    absl::variant<core::RefCountPtr<ResourceBase>, core::WeakPtr<ResourceBase>>
+        resource;
+    std::unique_ptr<std::string> name;
 
     ResourceAndName();
-    ResourceAndName(StrongOrWeakResourcePtr&& resource, std::string name);
+    explicit ResourceAndName(const string& name);
     ResourceAndName(ResourceAndName&& other) noexcept;
     ~ResourceAndName();
 
@@ -271,7 +268,8 @@ class ResourceMgr {
    private:
     TF_DISALLOW_COPY_AND_ASSIGN(ResourceAndName);
   };
-  typedef std::unordered_map<Key, ResourceAndName, KeyHash, KeyEqual> Container;
+  typedef absl::flat_hash_map<Key, ResourceAndName, KeyHash, KeyEqual>
+      Container;
 
   const std::string default_container_;
   mutable mutex mu_;

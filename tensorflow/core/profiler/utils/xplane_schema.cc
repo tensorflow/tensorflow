@@ -74,7 +74,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"RunGraph", kRunGraph},
       {"RunGraphDone", kRunGraphDone},
       {"TfOpRun", kTfOpRun},
-      {"EagerKernelExecute", kEagerKernelExecute},
+      {"EagerExecute", kEagerKernelExecute},
       {"ExecutorState::Process", kExecutorStateProcess},
       {"ExecutorDoneCallback", kExecutorDoneCallback},
       {"MemoryAllocation", kMemoryAllocation},
@@ -138,6 +138,43 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
+      // TPU related.
+      {"EnqueueRequestLocked", kEnqueueRequestLocked},
+      {"RunProgramRequest", kRunProgramRequest},
+      {"StartProgramRequest", kStartProgramRequest},
+      {"HostCallbackRequest", kHostCallbackRequest},
+      {"TransferH2DRequest", kTransferH2DRequest},
+      {"TransferPreprocessedH2DRequest", kTransferPreprocessedH2DRequest},
+      {"TransferD2HRequest", kTransferD2HRequest},
+      {"TransferD2DRequest", kTransferD2DRequest},
+      {"TransferD2DRemoteRequest", kTransferD2DRemoteRequest},
+      {"OnDeviceSendRequest", kOnDeviceSendRequest},
+      {"OnDeviceRecvRequest", kOnDeviceRecvRequest},
+      {"OnDeviceSendRecvLocalRequest", kOnDeviceSendRecvLocalRequest},
+      {"DoEnqueueProgram", kDoEnqueueProgram},
+      {"DoEnqueueContinuationProgram", kDoEnqueueContinuationProgram},
+      {"StartProgram", kStartProgram},
+      {"WriteHbm", kWriteHbm},
+      {"ReadHbm", kReadHbm},
+      {"TpuExecuteOp", kTpuExecuteOp},
+      {"CompleteCallbacks", kCompleteCallbacks},
+      {"TPUPartitionedCallOp-InitializeVarOnTPU",
+       kTpuPartitionedCallOpInitializeVarOnTpu},
+      {"TPUPartitionedCallOp-ExecuteRemote",
+       kTpuPartitionedCallOpExecuteRemote},
+      {"TPUPartitionedCallOp-ExecuteLocal", kTpuPartitionedCallOpExecuteLocal},
+      {"Linearize", kLinearize},
+      {"Delinearize", kDelinearize},
+      {"TransferBufferFromDevice-FastPath", kTransferBufferFromDeviceFastPath},
+      {"tpu::System::TransferToDevice=>IssueEvent",
+       kTransferToDeviceIssueEvent},
+      {"tpu::System::TransferToDevice=>IssueEvent=>Done",
+       kTransferToDeviceDone},
+      {"tpu::System::TransferFromDevice=>IssueEvent",
+       kTransferFromDeviceIssueEvent},
+      {"tpu::System::TransferFromDevice=>IssueEvent=>Done",
+       kTransferFromDeviceDone},
+      {"tpu::System::Execute", kTpuSystemExecute},
   });
   DCHECK_EQ(host_event_type_map->size(), kNumHostEventTypes);
   return *host_event_type_map;
@@ -155,8 +192,10 @@ const StatTypeMap& GetStatTypeMap() {
       {"node_ordinal", kNodeOrdinal},
       {"model_id", kModelId},
       {"queue_addr", kQueueAddr},
+      {"queue_id", kQueueId},
       {"request_id", kRequestId},
       {"run_id", kRunId},
+      {"replica_id", kReplicaId},
       {"graph_type", kGraphType},
       {"step_num", kStepNum},
       {"iter_num", kIterNum},
@@ -195,19 +234,20 @@ const StatTypeMap& GetStatTypeMap() {
       {"Memset_details", kMemsetDetails},
       {"MemoryResidency_details", kMemoryResidencyDetails},
       {"kernel_details", kKernelDetails},
-      {"annotation", kKernelAnnotation},
       {"nvtx_range", kNVTXRange},
       {"stream", kStream},
       // Stats added when processing traces.
       {"group_id", kGroupId},
       {"flow", kFlow},
       {"step_name", kStepName},
-      {"level 0", kLevel0},
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
+      {"hlo_category", kHloCategory},
       {"hlo_module", kHloModule},
+      {"program_id", kProgramId},
       {"equation", kEquation},
       {"is_eager", kIsEager},
+      {"is_func", kIsFunc},
       {"tf_function_call", kTfFunctionCall},
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
@@ -216,13 +256,13 @@ const StatTypeMap& GetStatTypeMap() {
       {"source", kSourceInfo},
       {"model_name", kModelName},
       {"model_version", kModelVersion},
+      {"bytes_transferred", kBytesTransferred},
+      {"queue", kDmaQueue},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
       {"Thread Id", kThreadId},
       // XLA metadata map related.
-      {"SELF_DURATION_PS", kSelfDurationPs},
-      {"MIN_DURATION_PS", kMinDurationPs},
       {"Hlo Proto", kHloProto},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},
@@ -322,7 +362,6 @@ bool IsInternalStat(absl::optional<int64_t> stat_type) {
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {
     case StatType::kKernelDetails:
-    case StatType::kLevel0:
     case StatType::kProducerType:
     case StatType::kProducerId:
     case StatType::kConsumerType:

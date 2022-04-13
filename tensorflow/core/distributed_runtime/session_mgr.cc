@@ -15,22 +15,30 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 
+#include <algorithm>
+#include <string>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
 SessionMgr::SessionMgr(
-    WorkerEnv* worker_env, const string& default_worker_name,
+    WorkerEnv* worker_env, const std::string& default_worker_name,
     std::unique_ptr<WorkerCacheInterface> default_worker_cache,
     WorkerCacheFactory worker_cache_factory)
     : worker_env_(worker_env),
@@ -46,33 +54,37 @@ SessionMgr::SessionMgr(
       worker_cache_factory_(std::move(worker_cache_factory)) {}
 
 /* static */
-string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
+std::string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
   return strings::StrCat("/job:", server_def.job_name(),
                          "/replica:0/task:", server_def.task_index());
 }
 
-Status SessionMgr::CreateSession(const string& session,
+Status SessionMgr::CreateSession(const std::string& session,
                                  const ServerDef& server_def,
-                                 bool isolate_session_state) {
-  return CreateSession(session, server_def, {}, isolate_session_state);
+                                 bool isolate_session_state,
+                                 StatusCallback coordination_error_callback) {
+  return CreateSession(session, server_def, {}, isolate_session_state,
+                       /*master_task=*/"",
+                       /*master_incarnation=*/0, coordination_error_callback);
 }
 
 Status SessionMgr::CreateSession(
-    const string& session, const ServerDef& server_def,
+    const std::string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
     bool isolate_session_state) {
   return CreateSession(session, server_def, cluster_device_attributes,
-                       isolate_session_state, /*master_task=*/"",
+                       isolate_session_state,
+                       /*master_task=*/"",
                        /*master_incarnation=*/0);
 }
 
 Status SessionMgr::CreateSession(
-    const string& session, const ServerDef& server_def,
+    const std::string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
-    bool isolate_session_state, string master_task,
-    int64_t master_incarnation) {
+    bool isolate_session_state, std::string master_task,
+    int64_t master_incarnation, StatusCallback coordination_error_callback) {
   mutex_lock l(mu_);
   if (session.empty()) {
     return errors::InvalidArgument("Session must be non-empty.");
@@ -104,7 +116,7 @@ Status SessionMgr::CreateSession(
   }
 
   WorkerCacheInterface* worker_cache = nullptr;
-  string worker_name;
+  std::string worker_name;
   if (server_def.cluster().job().empty()) {
     worker_cache = new WorkerCacheWrapper(default_worker_cache_.get());
     worker_name = legacy_session_->worker_name();
@@ -181,6 +193,30 @@ Status SessionMgr::CreateSession(
     MasterAssociatedSession s{master_incarnation, session};
     master_to_associated_sessions_.emplace(master_task, s);
   }
+
+  // If configured, enable coordination service and agent in the first worker
+  // session.
+  const CoordinationServiceConfig& coordination_service_config =
+      server_def.default_session_config().experimental().coordination_config();
+  if (!coordination_service_config.service_type().empty() &&
+      coordination_service_agent_ == nullptr) {
+    std::unique_ptr<CoordinationClientCache> client_cache;
+    TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));
+    // Note: If this worker is not the leader, no service instance will be
+    // returned. Hence, only the worker leader in the cluster would hold the
+    // coordination service instance.
+    coordination_service_ =
+        CoordinationServiceInterface::EnableCoordinationService(
+            coordination_service_config.service_type(), worker_env_->env,
+            server_def, std::move(client_cache));
+
+    std::unique_ptr<CoordinationClientCache> agent_cache;
+    TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&agent_cache));
+    coordination_service_agent_ = CreateCoordinationServiceAgent();
+    TF_RETURN_IF_ERROR(coordination_service_agent_->Initialize(
+        worker_env_->env, server_def, std::move(agent_cache),
+        std::move(coordination_error_callback)));
+  }
   return Status::OK();
 }
 
@@ -189,10 +225,9 @@ void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
 }
 
 Status SessionMgr::UpdateSession(
-    const string& session, const ServerDef& server_def,
+    const std::string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&
-        cluster_device_attributes,
-    bool isolate_session_state) {
+        cluster_device_attributes) {
   mutex_lock l(mu_);
   if (session.empty()) {
     return errors::InvalidArgument("Session must be non-empty.");
@@ -210,7 +245,7 @@ Status SessionMgr::UpdateSession(
   } else {
     TF_RETURN_IF_ERROR(worker_cache_factory_(server_def, &worker_cache));
   }
-  std::vector<string> updated_remote_workers;
+  std::vector<std::string> updated_remote_workers;
   worker_cache->ListWorkers(&updated_remote_workers);
 
   std::vector<std::unique_ptr<Device>> cluster_devices;
@@ -234,7 +269,7 @@ Status SessionMgr::UpdateSession(
     }
   }
   for (Device* device : curr_remote_devices) {
-    string task_name;
+    std::string task_name;
     DeviceNameUtils::GetTaskName(device->parsed_name(), &task_name);
     if (std::find(updated_remote_workers.begin(), updated_remote_workers.end(),
                   task_name) == updated_remote_workers.end()) {
@@ -252,7 +287,7 @@ Status SessionMgr::UpdateSession(
   return Status::OK();
 }
 
-Status SessionMgr::DeleteSession(const string& session) {
+Status SessionMgr::DeleteSession(const std::string& session) {
   mutex_lock l(mu_);
   auto it = sessions_.find(session);
   if (it != sessions_.end()) {
@@ -262,16 +297,21 @@ Status SessionMgr::DeleteSession(const string& session) {
 }
 
 Status SessionMgr::WorkerSessionForSessionLocked(
-    const string& session_handle, std::shared_ptr<WorkerSession>* out_session) {
+    const std::string& session_handle,
+    std::shared_ptr<WorkerSession>* out_session) {
   if (session_handle.empty()) {
     *out_session = legacy_session_;
   } else {
     auto it = sessions_.find(session_handle);
     if (it == sessions_.end()) {
-      return errors::Aborted("Session handle is not found: ", session_handle,
-                             ". Possibly this worker (\"",
-                             legacy_session_->worker_name(),
-                             "\") just restarted.");
+      return errors::AbortedWithPayloads(
+          strings::StrCat("Session handle is not found: ", session_handle,
+                          ". Possibly this worker (\"",
+                          legacy_session_->worker_name(),
+                          "\") just restarted."),
+          {{kWorkerPossiblyRestarted,
+            distributed_runtime::WorkerPossiblyRestarted()
+                .SerializeAsString()}});
     } else {
       *out_session = it->second;
     }
@@ -280,13 +320,18 @@ Status SessionMgr::WorkerSessionForSessionLocked(
 }
 
 Status SessionMgr::WorkerSessionForSession(
-    const string& session_handle, std::shared_ptr<WorkerSession>* out_session) {
+    const std::string& session_handle,
+    std::shared_ptr<WorkerSession>* out_session) {
   mutex_lock l(mu_);
   return WorkerSessionForSessionLocked(session_handle, out_session);
 }
 
 std::shared_ptr<WorkerSession> SessionMgr::LegacySession() {
   return legacy_session_;
+}
+
+CoordinationServiceAgent* SessionMgr::GetCoordinationServiceAgent() {
+  return coordination_service_agent_.get();
 }
 
 void SessionMgr::SetLogging(bool active) {
@@ -360,5 +405,13 @@ void SessionMgr::ClearLogs() {
       }
     }
   }
+}
+
+void SessionMgr::TeardownCoordinationService() {
+  coordination_service_ = nullptr;
+}
+
+void SessionMgr::TeardownCoordinationServiceAgent() {
+  coordination_service_agent_ = nullptr;
 }
 }  // namespace tensorflow

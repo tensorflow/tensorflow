@@ -8,6 +8,7 @@ package_group(
     ] + if_google([
         "//learning/brain/experimental/mlir/tflite/tfmrt/...",
         "//learning/brain/experimental/tfrt/...",
+        "//learning/brain/tfrt/...",
         "//learning/brain/mobile/lite/...",
     ]),
 )
@@ -33,7 +34,7 @@ tf_cc_binary(
         # copybara:uncomment "//tensorflow/core/runtime_fallback/test:forwarding_test_kernels",
         # copybara:uncomment "//tensorflow/core/runtime_fallback/test:tfrt_forwarding_kernels_alwayslink",
         "//tensorflow/core/runtime_fallback/conversion:conversion_alwayslink",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_kernels_alwayslink",
+        "//tensorflow/compiler/mlir/tfrt:tf_jitrt_kernels_alwayslink",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext_alwayslink",
@@ -44,7 +45,7 @@ tf_cc_binary(
         # copybara:uncomment "@tf_runtime//backends/cpu:image_alwayslink",
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:test_ops_alwayslink",
-        "@tf_runtime//backends/cpu:cpurt_corert_kernels_alwayslink",
+        "@tf_runtime//backends/jitrt:jitrt_corert_kernels_alwayslink",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -97,6 +98,7 @@ cc_library(
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "//tensorflow/core/tfrt/utils:thread_pool",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
         "//tensorflow/core/runtime_fallback/util:fallback_test_util",
         "@tf_runtime//:bef_executor_driver",
@@ -110,86 +112,4 @@ cc_library(
             "//tensorflow/core/platform:platform_port",
         ],
     }),
-)
-
-tf_cc_binary(
-    name = "tfrt_fallback_opt",
-    srcs = [
-        "tfrt_fallback_opt.cc",
-    ],
-    deps = [
-        ":tfrt_fallback_async_opdefs",
-        ":tfrt_fallback_opdefs",
-        ":tfrt_fallback_sync_opdefs",
-        "@llvm-project//mlir:MlirOptLib",
-        "@tf_runtime//:init_tfrt_dialects",
-    ],
-)
-
-tf_cc_binary(
-    name = "tfrt_fallback_translate",
-    srcs = [
-        "tfrt_fallback_translate_registration.cc",
-    ],
-    deps = [
-        ":tfrt_fallback_async_opdefs",
-        ":tfrt_fallback_opdefs",
-        ":tfrt_fallback_registration",
-        ":tfrt_fallback_sync_opdefs",
-        "@llvm-project//mlir:Translation",
-        "//tensorflow/compiler/mlir/tfrt:tf_cpurt_registration",
-        "@tf_runtime//:init_tfrt_dialects",
-        "@tf_runtime//:mlirtobef_translate",
-    ] + if_google(
-        ["//third_party/tf_runtime_llvm:tfrt_translate_main"],
-        ["@tf_runtime//third_party/llvm_derived:tfrt_translate_main"],
-    ),
-)
-
-cc_library(
-    name = "tfrt_fallback_registration",
-    srcs = [
-        "tfrt_fallback_registration.cc",
-    ],
-    hdrs = [
-        "tfrt_fallback_registration.h",
-    ],
-    visibility = if_google([
-        "//learning/brain/experimental/tfrt/distributed_runtime:__pkg__",
-        "//learning/brain/experimental/tfrt/visualization:__pkg__",
-        # Allow visibility from the mlir language server.
-        "//learning/brain/mlir/mlir_lsp_server:__pkg__",
-    ]),
-    deps = [
-        ":tfrt_fallback_async_opdefs",
-        ":tfrt_fallback_opdefs",
-        ":tfrt_fallback_sync_opdefs",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-alias(
-    name = "tfrt_fallback_async_opdefs",
-    actual = "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_async_opdefs",
-    visibility = [
-        ":internal",
-        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
-    ],
-)
-
-alias(
-    name = "tfrt_fallback_opdefs",
-    actual = "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_opdefs",
-    visibility = [
-        ":internal",
-        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
-        "//third_party/tf_runtime_google:__subpackages__",
-    ],
-)
-
-alias(
-    name = "tfrt_fallback_sync_opdefs",
-    actual = "//tensorflow/core/runtime_fallback/opdefs:tfrt_fallback_sync_opdefs",
 )

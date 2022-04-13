@@ -618,12 +618,12 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(CollectiveParams* cp,
   return irec;
 }
 
-Status CollectiveParamResolverLocal::LookupAndPopulateGroupParams(
-    CollGroupParams* group) {
+Status CollectiveParamResolverLocal::LookupGroup(int32_t group_key,
+                                                 CollGroupParams* group) {
   mutex_lock l(group_mu_);
-  auto group_rec = group_table_.find(group->group_key);
+  auto group_rec = group_table_.find(group_key);
   if (group_rec == group_table_.end()) {
-    return errors::InvalidArgument("Group ", group->group_key,
+    return errors::InvalidArgument("Group ", group_key,
                                    " is not "
                                    "initialized. Please call group "
                                    "initialization op first before invoking "
@@ -658,7 +658,7 @@ void CollectiveParamResolverLocal::CompleteParamsAsync(
   } else {
     // For Collective V3 ops, group is already initialized. Fetch attributes
     // for the already initialized group to pass to Insitance initialization.
-    auto s = LookupAndPopulateGroupParams(&cp->group);
+    const auto s = LookupGroup(cp->group.group_key, &cp->group);
     if (s.ok()) {
       CompleteInstanceLocal(device.name(), cp, done);
     } else {

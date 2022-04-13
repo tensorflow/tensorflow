@@ -30,12 +30,12 @@ class TestEnv : public tensorflow::EnvWrapper {
  public:
   TestEnv() : EnvWrapper(Env::Default()) {}
 
-  uint64 NowMicros() const override { return current_micros_; }
+  uint64_t NowMicros() const override { return current_micros_; }
 
-  void SetCurrentMicros(uint64 micros) { current_micros_ = micros; }
+  void SetCurrentMicros(uint64_t micros) { current_micros_ = micros; }
 
  private:
-  uint64 current_micros_ = 1;
+  uint64_t current_micros_ = 1;
 };
 
 TEST(HloModuleMetadata, RecordsPassStart) {

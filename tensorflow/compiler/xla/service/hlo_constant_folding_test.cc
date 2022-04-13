@@ -235,7 +235,7 @@ TEST_F(HloConstantFoldingTest, ConstantFoldReduce) {
   EXPECT_EQ(6, m->entry_computation()
                    ->root_instruction()
                    ->literal()
-                   .GetFirstElement<int32>());
+                   .GetFirstElement<int32_t>());
 }
 
 TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {
@@ -315,6 +315,59 @@ TEST_F(HloConstantFoldingTest,
   TF_ASSERT_OK_AND_ASSIGN(bool result,
                           RunHloPass(&constant_folding, module.get()));
   EXPECT_FALSE(result);
+}
+
+TEST_F(HloConstantFoldingTest, FoldOpsWhereOneOperandIsBroadcast) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  ENTRY entry {
+    not_folded1 = f32[4] broadcast(f32[] constant(1))
+    not_folded2 = add(f32[4] broadcast(f32[] constant(2)),
+                      f32[4] broadcast(f32[] constant(3)))
+    folded1 = add(f32[4] broadcast(f32[] constant(5)),
+                  f32[4] constant({0,1,2,3}))
+    folded2 = add(f32[4] constant({0,1,2,3}),
+                  f32[4] broadcast(f32[] constant(5)))
+    ROOT root = tuple(not_folded1, not_folded2, folded1, folded2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Broadcast(m::Constant()),
+                                  m::Add(m::Broadcast(m::Constant()),
+                                         m::Broadcast(m::Constant())),
+                                  m::Constant(),
+                                  m::Constant()  //
+                                  )));
+}
+
+TEST_F(HloConstantFoldingTest, BigReduceWindow) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+
+    add_bf16 {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY accumulated_all_reduce {
+      x = bf16[160,10,10,512]{3,2,1,0} broadcast(bf16[] constant(1.0))
+      init = bf16[] constant(0)
+      ROOT reduce-window = reduce-window(x, init), window={size=1x2x2x1 stride=1x2x2x1}, to_apply=add_bf16
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
 }
 
 }  // namespace

@@ -338,7 +338,9 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
     auto uid_callback =
         [&](const xla::gpu::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
       std::vector<int64_t> replicas;
-      for (auto& device : key.devices()) {
+      const auto key_devices = key.devices();
+      replicas.reserve(key_devices.size());
+      for (auto& device : key_devices) {
         replicas.push_back(device.value());
       }
       return nccl_factory->GetUniqueId(replicas);

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/resource_op_lifting_cleanup.h"
 
 #include "llvm/ADT/BitVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -143,10 +144,10 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
     if (cloned == func) continue;
     // Patch up the op attribute to point to the new function.
     for (NamedAttribute attr : op->getAttrs()) {
-      auto symref = attr.second.dyn_cast<FlatSymbolRefAttr>();
+      auto symref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
       if (!symref) continue;
       if (symref.getValue() != func.getName()) continue;
-      op->setAttr(attr.first,
+      op->setAttr(attr.getName(),
                   FlatSymbolRefAttr::get(op->getContext(), cloned.getName()));
       break;
     }

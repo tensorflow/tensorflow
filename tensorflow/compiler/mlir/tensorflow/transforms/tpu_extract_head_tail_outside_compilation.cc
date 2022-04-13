@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -120,6 +121,7 @@ tf_device::LaunchOp CreateLaunchForBlock(OpBuilder* builder, Operation* op,
 bool IsEmbeddingOp(Operation* op) {
   return isa<TF::EnqueueTPUEmbeddingRaggedTensorBatchOp,
              TF::EnqueueTPUEmbeddingSparseTensorBatchOp,
+             TF::EnqueueTPUEmbeddingArbitraryTensorBatchOp,
              TF::RecvTPUEmbeddingActivationsOp,
              TF::SendTPUEmbeddingGradientsOp>(op);
 }

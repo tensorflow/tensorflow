@@ -2,7 +2,6 @@
 #   Contains the legacy TF layers (internal TensorFlow version).
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = [
@@ -61,18 +60,6 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/keras/layers",
-    ],
-)
-
-py_library(
-    name = "normalization",
-    srcs = ["normalization.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":layers_base",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/keras/layers/normalization",
     ],
 )
 
@@ -181,33 +168,6 @@ tf_py_test(
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:random_ops",
-    ],
-)
-
-cuda_py_test(
-    name = "normalization_test",
-    size = "medium",
-    srcs = ["normalization_test.py"],
-    main = "normalization_test.py",
-    python_version = "PY3",
-    shard_count = 10,
-    deps = [
-        ":convolutional",
-        ":normalization",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:saver",
-        "//tensorflow/python:training_lib",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
     ],
 )
 

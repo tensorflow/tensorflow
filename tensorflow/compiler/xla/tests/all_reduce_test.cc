@@ -178,7 +178,7 @@ ENTRY %test_computation {
       ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
           .ValueOrDie();
   auto literal_in = LiteralUtil::CreateR0<float>(0);
-  auto literal0 = LiteralUtil::CreateR1<int32>({1, 0, 0, 0, 0, 0, 0, 0});
+  auto literal0 = LiteralUtil::CreateR1<int32_t>({1, 0, 0, 0, 0, 0, 0, 0});
   EXPECT_EQ(LiteralUtil::MakeTuple({&literal0}),
             ExecuteAndTransfer(std::move(module), {&literal_in}));
 }

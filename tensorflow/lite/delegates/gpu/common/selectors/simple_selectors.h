@@ -113,6 +113,9 @@ std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
 std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
     const QuantizeAndDequantizeAttributes& attr, const OperationDef& op_def);
 
+void SelectCast(const OperationDef& op_def, const GpuInfo& gpu_info,
+                std::unique_ptr<GPUOperation>* ptr);
+
 }  // namespace gpu
 }  // namespace tflite
 

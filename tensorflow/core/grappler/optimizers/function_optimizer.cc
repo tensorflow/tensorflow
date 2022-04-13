@@ -831,10 +831,10 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
       {// LINT.IfChange
        // Op types that should not run in program order, e.g. because they need
        // to run asynchronously to avoid deadlock.
-       "CollectiveGather", "CollectiveGatherV2", "CollectiveReduce",
-       "CollectiveReduceV2", "CollectiveBcastSend", "CollectiveBcastRecv",
-       "CollectiveBcastSendV2", "CollectiveBcastRecvV2", "NcclAllReduce",
-       "Send", "Recv", "CollectiveInitializeCommunicator",
+       "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
+       "CollectiveBcastRecv", "CollectiveBcastSendV2", "CollectiveBcastRecvV2",
+       "NcclAllReduce", "Send", "Recv", "CollectiveAssignGroupsV2",
+       "CollectiveInitializeCommunicator",
 
        // Legacy random ops.
        // See details in tensorflow/python/framework/auto_control_deps.py.
@@ -857,10 +857,17 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
        "EnqueueTPUEmbeddingSparseTensorBatch",
        "EnqueueTPUEmbeddingRaggedTensorBatch",
+       "EnqueueTPUEmbeddingArbitraryTensorBatch"
 
        // SaveV2 and RestoreV2 should be allowed to operate in parallel on
        // multiple hosts.
-       "SaveV2", "RestoreV2"});
+       "SaveV2",
+       "RestoreV2"
+
+       // InfeedEnqueue are stateful but should not be serialized for the
+       // input pipeline
+       "InfeedEnqueue",
+       "InfeedEnqueueTuple"});
   // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
   return exemption->contains(op);
 }

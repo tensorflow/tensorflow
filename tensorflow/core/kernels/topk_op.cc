@@ -120,14 +120,9 @@ struct TopKFunctor<CPUDevice, T> {
 
     // Special case for k == 1.
     if (k == 1) {
-#ifdef EIGEN_HAS_INDEX_LIST
       typename Eigen::IndexList<Eigen::type2index<1>> reduce_on_cols;
       typename Eigen::IndexList<int, Eigen::type2index<1>> rows_by_one;
       rows_by_one.set(0, num_rows);
-#else
-      Eigen::array<int, 1> reduce_on_cols = {1};
-      Eigen::array<int, 2> rows_by_one = {static_cast<int>(num_rows), 1};
-#endif
 
       values.device(d) =
           input.maximum(/*dims=*/reduce_on_cols).eval().reshape(rows_by_one);

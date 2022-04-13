@@ -45,8 +45,7 @@ XlaOp TopK(XlaOp input, int64_t k) {
       }
     }
 
-    Shape iota_shape =
-        ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
+    Shape iota_shape = ShapeUtil::MakeShape(S32, input_shape.dimensions());
     XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
     for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (input_shape.is_dynamic_dimension(i)) {
@@ -55,24 +54,98 @@ XlaOp TopK(XlaOp input, int64_t k) {
       }
     }
     auto input_dims = input_shape.dimensions();
-    XlaOp sort_result =
-        Sort({input, iota_s32},
-             CreateScalarGtComputation({input_shape.element_type(), S32},
-                                       iota_s32.builder()),
-             last_dim, /*is_stable=*/true);
+
+    // We can pack BF16 values to be sorted along with their index values into a
+    // single 32-bit value in some cases.
+    constexpr int32_t kLow16BitsLimit = int32_t{1} << 16;
+    constexpr int32_t kLow16BitsMask = kLow16BitsLimit - 1;
+    constexpr int32_t kHigh16BitsMask = ~kLow16BitsMask;
+
+    // Whether to use the packed sorting algorithm for BF16 data. This change is
+    // good in general, and enables a separate TPU optimization for common cases
+    // as well (top-k for small k).
+    constexpr int kMaxLastDimSizeForSmallBatches = 1500;
+    constexpr int kSmallBatchSizeThreshold = 8;
+    const bool use_packed_bf16_sort =
+        (input_shape.element_type() == BF16 &&
+         last_dim_size < kLow16BitsLimit &&
+         (last_dim_size < kMaxLastDimSizeForSmallBatches ||
+          (input_shape.rank() == 2 &&
+           input_shape.dimensions(0) >= kSmallBatchSizeThreshold)));
+
     std::vector<int64_t> start_indices(input_shape.dimensions_size(), 0);
     std::vector<int64_t> limit_indices(input_dims.begin(), input_dims.end());
     limit_indices[last_dim] = k;
     std::vector<int64_t> strides(input_shape.dimensions_size(), 1);
 
-    XlaOp values = Slice(GetTupleElement(sort_result, 0), start_indices,
-                         limit_indices, strides);
-    // The k in TopK is static so we shouldn't generate a dynamic dimension even
-    // if input is dynamic.
-    values = RemoveDynamicDimension(values, last_dim);
-    XlaOp indices = Slice(GetTupleElement(sort_result, 1), start_indices,
-                          limit_indices, strides);
-    indices = RemoveDynamicDimension(indices, last_dim);
+    XlaOp values;
+    XlaOp indices;
+    if (use_packed_bf16_sort) {
+      // Converts a 32-bit value from sign-magnitude (used for floats) to one's
+      // complement (easy to compare using integer operations) or vice versa.
+      auto sign_magnitude_to_from_ones_complement = [builder](const XlaOp in) {
+        constexpr int32_t kAllNonSignBits = 0x7fffffff;
+        XlaOp in_s32 = BitcastConvertType(in, S32);
+        return Xor(
+            And(in_s32, ConstantR0<int32_t>(builder, kAllNonSignBits)),
+            ShiftRightArithmetic(in_s32, ConstantR0<int32_t>(builder, 31)));
+      };
+
+      // Move input values to the high 16 bits of each 32-bit element, convert
+      // them to allow integer comparisons, set the low 16 bits to one (in order
+      // to reverse the sort order of the element indices), then XOR in the iota
+      // result. This leads to the ones' complement version of the BF16 input in
+      // the high 16 bits and the ones' complement of the indices in the low 16
+      // bits.
+      XlaOp input_f32_trimmed =
+          Or(sign_magnitude_to_from_ones_complement(
+                 BitcastConvertType(ConvertElementType(input, F32), S32)),
+             ConstantR0<int32_t>(builder, kLow16BitsMask));
+      XlaOp input_and_iota = Xor(input_f32_trimmed, iota_s32);
+
+      // Sort in reverse order so the largest elements are at the beginning.
+      // Breaking ties here is why the index bits need to be inverted.
+      XlaOp sort_result_raw = Sort(
+          {input_and_iota}, CreateScalarGtComputation({S32}, builder), last_dim,
+          /*is_stable=*/false);
+
+      // Slice off the first k values.
+      sort_result_raw =
+          Slice(sort_result_raw, start_indices, limit_indices, strides);
+      // The k in TopK is static so we shouldn't generate a dynamic dimension
+      // even if input is dynamic.
+      sort_result_raw = RemoveDynamicDimension(sort_result_raw, last_dim);
+
+      // Get the high 16 bits of each value from the sorted result and convert
+      // them back to BF16.
+      values = ConvertElementType(
+          BitcastConvertType(
+              And(sign_magnitude_to_from_ones_complement(sort_result_raw),
+                  ConstantR0<int32_t>(builder, kHigh16BitsMask)),
+              F32),
+          BF16);
+
+      // Get the index values from the low 16 bits of each value and invert them
+      // again.
+      indices = And(
+          Xor(sort_result_raw, ConstantR0<int32_t>(builder, kLow16BitsMask)),
+          ConstantR0<int32_t>(builder, kLow16BitsMask));
+    } else {
+      XlaOp sort_result =
+          Sort({input, iota_s32},
+               CreateScalarGtComputation({input_shape.element_type(), S32},
+                                         iota_s32.builder()),
+               last_dim, /*is_stable=*/true);
+      values = Slice(GetTupleElement(sort_result, 0), start_indices,
+                     limit_indices, strides);
+      // The k in TopK is static so we shouldn't generate a dynamic dimension
+      // even if input is dynamic.
+      values = RemoveDynamicDimension(values, last_dim);
+      indices = Slice(GetTupleElement(sort_result, 1), start_indices,
+                      limit_indices, strides);
+      indices = RemoveDynamicDimension(indices, last_dim);
+    }
+
     return Tuple(builder, {values, indices});
   });
 }
@@ -92,8 +165,7 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
       return TopK(input, k);
     }
 
-    Shape iota_shape =
-        ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
+    Shape iota_shape = ShapeUtil::MakeShape(S32, input_shape.dimensions());
     XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
     for (int64_t i = 0; i < input_shape.rank(); ++i) {
       if (input_shape.is_dynamic_dimension(i)) {
@@ -111,8 +183,8 @@ XlaOp TopKWithPartitions(XlaOp input, int64_t k, int64_t num_partitions) {
       auto iota_s32 = values_and_indices[3];
 
       // Slice value and indices for this partition.
-      XlaOp start = Mul(Add(partition, ConstantR0<int32>(builder, 1)),
-                        ConstantR0<int32>(builder, per_partition_size));
+      XlaOp start = Mul(Add(partition, ConstantR0<int32_t>(builder, 1)),
+                        ConstantR0<int32_t>(builder, per_partition_size));
       XlaOp sliced_input =
           DynamicSliceInMinorDims(input, {start}, {per_partition_size});
       XlaOp sliced_indices =

@@ -207,6 +207,10 @@ class ParamResolverInterface {
                                      CancellationManager* cancel_mgr,
                                      const StatusCallback& done) = 0;
 
+  // Looks up a group. It returns an error if the group is not ready or not
+  // found.
+  virtual Status LookupGroup(int32_t group_key, CollGroupParams* group) = 0;
+
   // Aborts the resolver. After abortion the resolver can no longer be used.
   virtual void StartAbort(const Status& s) = 0;
 };
@@ -331,6 +335,10 @@ class CollectiveExecutor : public core::RefCounted {
                                   StatusCallback done) {
     return cem_->GetParamResolver()->CompleteGroupAsync(device, group_params,
                                                         cancel_mgr, done);
+  }
+
+  virtual Status LookupGroup(int32_t group_key, CollGroupParams* group) {
+    return cem_->GetParamResolver()->LookupGroup(group_key, group);
   }
 
   // Runs the potentially-blocking closure/expensive callback.

@@ -15,16 +15,6 @@ def workspace():
         ],
     )
 
-    http_archive(
-        name = "tf_toolchains",
-        sha256 = "8613ab9da262fd30d101550eab5780948db7471c7809cbac15a9e9a3143447f2",
-        strip_prefix = "toolchains-1.2.7",
-        urls = [
-            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v1.2.7.tar.gz",
-            "https://github.com/tensorflow/toolchains/archive/v1.2.7.tar.gz",
-        ],
-    )
-
     tf_runtime()
 
     # https://github.com/bazelbuild/bazel-skylib/releases

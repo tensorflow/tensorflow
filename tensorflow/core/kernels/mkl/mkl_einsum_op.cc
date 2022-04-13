@@ -15,6 +15,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 #define EIGEN_DONT_PARALLELIZE
+
 #include "mkl_batch_matmul_helper.h"
 #include "tensorflow/core/kernels/linalg/einsum_op_impl.h"
 
@@ -31,7 +32,7 @@ struct MklEinsumHelper {
   // Contracts the inputs along the last axis. (or the second last if the
   // corresponding value of swap_free_and_contract is true). The batch
   // dimensions are broadcast to the output shape.
-  // TODO(anudhyan): BatchMatMul might devolve into a component-wise
+  // TODO(intel-tf): BatchMatMul might devolve into a component-wise
   // multiplication when the matrix shape is [1,1]; in this case BatchMatMul
   // functor would be very inefficient. The functor should detect if this is the
   // case and perform componentwise multiplication functor instead.
@@ -90,8 +91,9 @@ struct MklEinsumHelper {
 
     out_shape.AddDim(lhs_rows);
     out_shape.AddDim(rhs_cols);
-    // The maximum number of dimensions for a tensor in DNNL is 12.
-    if (!(out_shape.dims() <= 12))
+    // The maximum number of dimensions for a tensor in DNNL is
+    // DNNL_MAX_NDIMS = 12.
+    if (!(out_shape.dims() <= DNNL_MAX_NDIMS))
       return errors::InvalidArgument(
           "Rank of output tensor must be <= 12, ", "but is ", out_shape.dims(),
           ". Current implementation supports upto ", "rank 12 tensors.");
@@ -108,15 +110,19 @@ struct MklEinsumHelper {
                                          trans_x, trans_y);
 
     // Create or retrieve matmul primitive from cache.
-    MklMatMulPrimitive<T>* matmul_prim = MklMatMulPrimitiveFactory<T>::Get(
-        *params, false /* value for do_not_cache */);
+    MklMatMulPrimitive<T, T, T>* matmul_prim =
+        MklMatMulPrimitiveFactory<T, T, T, T>::Get(
+            *params, false /* value for do_not_cache */);
+
+    UserScratchPad<unsigned char> scratch_pad;
+    scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
     MklDnnThreadPool eigen_tp(ctx);
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
-    matmul_prim->Execute(lhs.flat<T>().data(), rhs.flat<T>().data(),
-                         output->flat<T>().data(), cpu_stream);
+    matmul_prim->Execute(cpu_stream, lhs.flat<T>().data(), rhs.flat<T>().data(),
+                         output->flat<T>().data(), scratch_pad.Get());
 
     Tensor output_reshaped;
     if (output->dims() != 3) {
@@ -132,7 +138,7 @@ class MklEinsum : public OpKernel {
  public:
   explicit MklEinsum(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("equation", &mkl_equation_));
-    OP_REQUIRES_OK(c, EinsumHelper::ParseEquation(
+    OP_REQUIRES_OK(c, ParseEinsumEquation(
                           mkl_equation_, &mkl_input_labels_,
                           &mkl_output_labels_, &mkl_label_types_,
                           &mkl_input_label_counts_, &mkl_output_label_counts_,
@@ -147,7 +153,7 @@ class MklEinsum : public OpKernel {
 
     OperandLabels input_labels(mkl_input_labels_);
     Labels output_labels(mkl_output_labels_);
-    std::vector<EinsumHelper::DimensionType> label_types(mkl_label_types_);
+    std::vector<EinsumDimensionType> label_types(mkl_label_types_);
     OperandLabelCounts input_label_counts(mkl_input_label_counts_);
     LabelCounts output_label_counts(mkl_output_label_counts_);
     LabelToDimSizes label_to_dim_sizes;
@@ -192,11 +198,11 @@ class MklEinsum : public OpKernel {
     // All batch dimensions should be present in the contracted result. First
     // the broadcasting dimensions, then the named batch dimensions.
     for (int label = 0; label < num_labels; ++label) {
-      if (label_types[label] == EinsumHelper::kBroadcasting)
+      if (label_types[label] == EinsumDimensionType::kBroadcasting)
         result_labels.push_back(label);
     }
     for (int label = 0; label < num_labels; ++label) {
-      if (label_types[label] == EinsumHelper::kBatch)
+      if (label_types[label] == EinsumDimensionType::kBatch)
         result_labels.push_back(label);
     }
     for (int i = 0; i < num_inputs; ++i) {
@@ -213,7 +219,7 @@ class MklEinsum : public OpKernel {
                                     &contraction_output));
     // Inflate the output if necessary. (E.g. for the equation 'i->iii' which
     // may arise while computing gradient of a regular Einsum).
-    // TODO(anudhyan): It's possible that Eigen's contract and inflate can be
+    // TODO(intel-tf): It's possible that Eigen's contract and inflate can be
     // chained here to avoid materializing an intermediate.
     Tensor output_inflated;
     OP_REQUIRES_OK(
@@ -258,7 +264,7 @@ class MklEinsum : public OpKernel {
   string mkl_equation_;
   OperandLabels mkl_input_labels_;
   Labels mkl_output_labels_;
-  std::vector<EinsumHelper::DimensionType> mkl_label_types_;
+  std::vector<EinsumDimensionType> mkl_label_types_;
   OperandLabelCounts mkl_input_label_counts_;
   LabelCounts mkl_output_label_counts_;
   gtl::InlinedVector<bool, 2> mkl_input_has_ellipsis_;

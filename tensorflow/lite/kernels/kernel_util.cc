@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 
@@ -434,15 +435,21 @@ TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
 // that build. What appears to be happening is that while the linker drops the
 // unsused function, the string library that gets pulled in is not dropped,
 // resulting in the increased binary size.
-std::string GetShapeDebugString(const TfLiteIntArray* shape) {
+const std::string GetShapeDebugString(const TfLiteIntArray* shape) {
   std::string str;
   for (int d = 0; d < shape->size; ++d) {
     if (str.empty())
       str = "[" + std::to_string(shape->data[d]);
     else
-      str += ", " + std::to_string(shape->data[d]);
+      // Don't add space after "," to make the output consistent with
+      // tensorflow::shape_inference::InferenceContext::DebugString()
+      str += "," + std::to_string(shape->data[d]);
   }
-  str += "]";
+  if (str.empty()) {
+    str = "[]";
+  } else {
+    str += "]";
+  }
   return str;
 }
 
@@ -460,10 +467,10 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
     const int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
     const int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
     if (!(d1 == d2 || d1 == 1 || d2 == 1)) {
-      context->ReportError(context,
-                           "Given shapes, %s and %s, are not broadcastable.",
-                           GetShapeDebugString(input1->dims).c_str(),
-                           GetShapeDebugString(input2->dims).c_str());
+      TF_LITE_KERNEL_LOG(context,
+                         "Given shapes, %s and %s, are not broadcastable.",
+                         GetShapeDebugString(input1->dims).c_str(),
+                         GetShapeDebugString(input2->dims).c_str());
       return kTfLiteError;
     }
 
@@ -498,11 +505,11 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
     if (min_value == 0) max_value = 0;
     if (!(d1 == 1 || d1 == max_value) || !(d2 == 1 || d2 == max_value) ||
         !(d3 == 1 || d3 == max_value)) {
-      context->ReportError(
-          context, "Given shapes, %s, %s and %s, are not broadcastable.",
-          GetShapeDebugString(input1->dims).c_str(),
-          GetShapeDebugString(input2->dims).c_str(),
-          GetShapeDebugString(input3->dims).c_str());
+      TF_LITE_KERNEL_LOG(context,
+                         "Given shapes, %s, %s and %s, are not broadcastable.",
+                         GetShapeDebugString(input1->dims).c_str(),
+                         GetShapeDebugString(input2->dims).c_str(),
+                         GetShapeDebugString(input3->dims).c_str());
       return kTfLiteError;
     }
     shape->data[out_dims - i - 1] = max_value;
@@ -523,6 +530,9 @@ int TfLiteTypeGetSize(TfLiteType type) {
       return 1;
     case kTfLiteBool:
       return sizeof(bool);
+    case kTfLiteUInt16:
+      static_assert(sizeof(uint16_t) == 2, "");
+      return 2;
     case kTfLiteInt16:
       static_assert(sizeof(int16_t) == 2, "");
       return 2;
@@ -566,6 +576,17 @@ bool IsMobilePlatform() {
   return true;
 #endif
 #endif
+  return false;
+}
+
+bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
+#ifndef TF_LITE_STATIC_MEMORY
+  if (tensor->dims_signature) {
+    for (int i : TfLiteIntArrayView(tensor->dims_signature)) {
+      if (i == -1) return true;
+    }
+  }
+#endif  // TF_LITE_STATIC_MEMORY
   return false;
 }
 

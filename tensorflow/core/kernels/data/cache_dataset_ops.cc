@@ -14,20 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/cache_dataset_ops.h"
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/cache_ops.h"
+#include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 namespace tensorflow {
@@ -65,8 +70,66 @@ constexpr char kIncompleteCacheErrorMessage[] =
     "contents of the dataset  will be discarded. This can happen if you have "
     "an input pipeline similar to `dataset.cache().take(k).repeat()`. You "
     "should use `dataset.take(k).cache().repeat()` instead.";
-
 }  // namespace
+
+class PartialCache {
+ public:
+  explicit PartialCache(const DatasetBase* dataset) : input_(dataset) {}
+
+  // Extends the temporary cache up to a given index and then updates
+  // out_tensors with the element at that index.
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) {
+    if (!iter_resource_) {
+      TF_ASSIGN_OR_RETURN(iter_resource_,
+                          GetIteratorResourceFromDataset(ctx, input_));
+      TF_RETURN_IF_ERROR(iter_resource_->SetIteratorFromDataset(ctx, input_));
+    }
+    if (index >= cache_.size()) {
+      TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
+    }
+    *out_tensors = cache_.at(index);
+    return Status::OK();
+  }
+
+  // Returns the data which has been cached up to this point.
+  std::vector<std::vector<Tensor>> GetCacheData() { return cache_; }
+
+ private:
+  Status ExtendTempCacheToIndex(int64 index, OpKernelContext* ctx) {
+    bool end_of_sequence;
+    while (cache_.size() <= index) {
+      std::vector<Tensor> out_tensors;
+      TF_RETURN_IF_ERROR(
+          iter_resource_->GetNext(ctx, &out_tensors, &end_of_sequence));
+      if (end_of_sequence) {
+        return tensorflow::errors::OutOfRange("Index out of range [0, ",
+                                              cache_.size(), "):", index);
+      }
+      cache_.push_back(out_tensors);
+    }
+    return Status::OK();
+  }
+
+  StatusOr<core::RefCountPtr<IteratorResource>> GetIteratorResourceFromDataset(
+      OpKernelContext* ctx, const DatasetBase* dataset) {
+    FunctionLibraryRuntime* flr;
+    std::unique_ptr<DeviceMgr> device_mgr(nullptr);
+    std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
+    std::unique_ptr<ProcessFunctionLibraryRuntime> plfr(nullptr);
+    TF_RETURN_IF_ERROR(
+        ctx->function_library()->Clone(&flib_def, &plfr, &flr, true));
+
+    core::RefCountPtr<IteratorResource> iter_resource(new IteratorResource(
+        ctx->env(), dataset->output_dtypes(), dataset->output_shapes(),
+        std::move(device_mgr), std::move(flib_def), std::move(plfr), flr));
+    return iter_resource;
+  }
+
+  const DatasetBase* input_;  // Not owned.
+  core::RefCountPtr<IteratorResource> iter_resource_;
+  std::vector<std::vector<Tensor>> cache_;
+};
 
 class CacheDatasetOp::FileDatasetBase : public DatasetBase {
  public:
@@ -110,7 +173,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -694,7 +757,32 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t Cardinality() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal() const override {
+    return input_->Cardinality();
+  };
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality(options);
+  };
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    mutex_lock l(mu_);
+
+    CardinalityOptions options;
+    options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
+    int64_t cardinality = Cardinality(options);
+
+    if (cardinality != kUnknownCardinality &&
+        cardinality != kInfiniteCardinality && index >= cardinality) {
+      return errors::OutOfRange("Index out of range [0, ", cardinality,
+                                "):", index);
+    }
+    if (!partial_cache_) {
+      partial_cache_ = absl::make_unique<PartialCache>(input_);
+    }
+    return partial_cache_->Get(ctx, index, out_tensors);
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -926,8 +1014,10 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     std::unique_ptr<IteratorBase> iterator_ TF_GUARDED_BY(mu_);
   };  // MemoryIterator
 
+  mutable mutex mu_;
   const DatasetBase* const input_;
   const std::shared_ptr<MemoryCache> cache_;
+  mutable std::unique_ptr<PartialCache> partial_cache_ TF_GUARDED_BY(mu_);
 };  // MemoryDatasetBase
 
 // This version of memory dataset has an exclusive ownership of the memory cache

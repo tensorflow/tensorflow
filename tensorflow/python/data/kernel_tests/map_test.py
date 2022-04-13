@@ -1495,24 +1495,30 @@ class MapRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(self.evaluate(random_access.at(dataset, index=i)), i * 3)
 
   @combinations.generate(
-      combinations.times(test_base.v2_only_combinations(),
-                         combinations.combine(elements=[0, 10, 20, 40])))
-  def testMultipleCombinations(self, elements):
-    dataset = dataset_ops.Dataset.range(elements).map(lambda x: x // 2)
+      combinations.times(
+          test_base.v2_only_combinations(),
+          combinations.combine(
+              elements=[0, 10, 20, 40], num_parallel_calls=[None, 2])))
+  def testMultipleCombinations(self, elements, num_parallel_calls):
+    dataset = dataset_ops.Dataset.range(elements).map(
+        lambda x: x // 2, num_parallel_calls=num_parallel_calls)
     for i in range(elements):
       self.assertEqual(
           self.evaluate(random_access.at(dataset, index=i)), i // 2)
 
   @combinations.generate(
-      combinations.times(test_base.v2_only_combinations(),
-                         combinations.combine(elements=[0, 10, 20, 40])))
-  def testMapFnInFunction(self, elements):
+      combinations.times(
+          test_base.v2_only_combinations(),
+          combinations.combine(
+              elements=[0, 10, 20, 40], num_parallel_calls=[None, 2])))
+  def testMapFnInFunction(self, elements, num_parallel_calls):
 
     @def_function.function
     def _map_fn(x):
       return math_ops.square(x)
 
-    dataset = dataset_ops.Dataset.range(elements).map(_map_fn)
+    dataset = dataset_ops.Dataset.range(elements).map(
+        _map_fn, num_parallel_calls=num_parallel_calls)
     for i in range(elements):
       self.assertEqual(
           self.evaluate(random_access.at(dataset, index=i)),

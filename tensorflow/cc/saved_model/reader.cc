@@ -69,7 +69,10 @@ Status ReadSavedModel(absl::string_view export_dir,
       error::Code::NOT_FOUND,
       strings::StrCat("Could not find SavedModel .pb or .pbtxt at supplied "
                       "export directory path: ",
-                      export_dir));
+                      export_dir,
+                      ". Check that "
+                      "the directory exists and that you have the right "
+                      "permissions for accessing it."));
 }
 
 Status FindMetaGraphDef(const std::unordered_set<string>& tags,

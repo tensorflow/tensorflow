@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Core"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -32,10 +32,13 @@ namespace mlir {
 namespace TFL {
 
 namespace {
-// If sparsity level is below this threadshold, keep the tensor in dense format.
-const float kMinSparsityLevel = 0.3;
-// Heuristic to check if a block configuration is correct.
-const float kBlockOverRandomSparsityRatio = 0.9;
+// If sparsity level is below this threshold, keep the tensor in dense format.
+constexpr float kMinSparsityLevel = 0.3;
+// Heuristic to check if a block configuration is correct for float constants.
+constexpr float kBlockOverRandomSparsityRatio = 0.9;
+// After quantization, some non-zero values are set to 0.
+// Lower the ratio for identifying block configuration for quantized constants.
+constexpr float kBlockOverRandomSparsityRatioQuant = 0.8;
 
 Eigen::half APFloatToEigenHalf(const APFloat& val) {
   uint16_t raw_data = val.bitcastToAPInt().getZExtValue();
@@ -164,8 +167,8 @@ typedef struct InspectResult {
 } InspectResult;
 
 InspectResult InspectWeight(
-    Operation* inst,
-    const std::vector<std::vector<int>>& supported_block_size) {
+    Operation* inst, const std::vector<std::vector<int>>& supported_block_size,
+    const float ratio_threshold) {
   ElementsAttr attr;
   ShapedType type;
   InspectResult result = {};
@@ -201,7 +204,7 @@ InspectResult InspectWeight(
   result.needs_densify = true;
   for (const auto& block_size : supported_block_size) {
     curr_sparsity = CalculateBlockSparsity(attr, type, block_size);
-    if (curr_sparsity / random_sparsity > kBlockOverRandomSparsityRatio) {
+    if (curr_sparsity / random_sparsity > ratio_threshold) {
       selected_block_size = block_size;
       result.can_compress = true;
       result.needs_densify = false;
@@ -251,13 +254,16 @@ std::vector<T> BuildSparsityParameterAttribute(
   for (int i = 0; i < dim_size; i++) {
     if (format[i] == kTfLiteDimDense) {
       dim_metadata[i] = DimensionMetadataAttr::get(
-          builder->getStringAttr("DENSE"),
+          ::mlir::TFL::DimensionTypeAttr::get(
+              builder->getContext(), ::mlir::TFL::DimensionType::DENSE),
           builder->getI32IntegerAttr(metadata[2 * i][0]),
           builder->getArrayAttr({}), builder->getArrayAttr({}),
           builder->getContext());
     } else {
       dim_metadata[i] = DimensionMetadataAttr::get(
-          builder->getStringAttr("SPARSE_CSR"), builder->getI32IntegerAttr(0),
+          ::mlir::TFL::DimensionTypeAttr::get(
+              builder->getContext(), ::mlir::TFL::DimensionType::SPARSE_CSR),
+          builder->getI32IntegerAttr(0),
           builder->getI32ArrayAttr(metadata[2 * i]),
           builder->getI32ArrayAttr(metadata[2 * i + 1]), builder->getContext());
     }
@@ -283,8 +289,11 @@ std::vector<T> BuildSparsityParameterAttribute(
 //     4.1. Return the matching block config if found.
 //     4.2. If no matching block config is found, encode the weight with random
 //          sparsity, and add Densify() op to fall back to dense execution.
-struct DenseToSparse : public PassWrapper<DenseToSparse, FunctionPass> {
-  void runOnFunction() override;
+struct DenseToSparse
+    : public PassWrapper<DenseToSparse, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DenseToSparse)
+
+  void runOnOperation() override;
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -297,8 +306,8 @@ struct DenseToSparse : public PassWrapper<DenseToSparse, FunctionPass> {
   }
 };
 
-void DenseToSparse::runOnFunction() {
-  FuncOp func = getFunction();
+void DenseToSparse::runOnOperation() {
+  FuncOp func = getOperation();
   OpBuilder builder(func);
 
   func.walk([&](SparseOpInterface sparse_op) {
@@ -327,17 +336,20 @@ void DenseToSparse::runOnFunction() {
       }
 
       ShapedType type;
+      float ratio_threshold = kBlockOverRandomSparsityRatio;
       if (isa<ConstOp>(inst)) {
         supported_block_size = sparse_op.GetFloatBlockSize();
         type = dyn_cast<ConstOp>(inst).getType().cast<ShapedType>();
       } else if (isa<QConstOp>(inst)) {
         supported_block_size = sparse_op.GetQuantizedBlockSize();
         type = dyn_cast<QConstOp>(inst).getType().cast<ShapedType>();
+        ratio_threshold = kBlockOverRandomSparsityRatioQuant;
       } else {
         continue;
       }
 
-      InspectResult result = InspectWeight(inst, supported_block_size);
+      InspectResult result =
+          InspectWeight(inst, supported_block_size, ratio_threshold);
       if (!result.can_compress) {
         continue;
       }

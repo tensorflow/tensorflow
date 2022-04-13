@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -58,13 +57,6 @@ using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 
 namespace {
-
-int64_t GlobalRandomValue() {
-  static auto* mu = new tensorflow::mutex();
-  static std::mt19937_64 rng{42};
-  tensorflow::mutex_lock l(*mu);
-  return rng();
-}
 
 StatusOr<llvm::Value*> EmitReducePrecisionIR(
     PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
@@ -528,6 +520,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::round,
                                           {operand_value},
                                           {operand_value->getType()}, b_);
+    case HloOpcode::kRoundNearestEven:
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::roundeven,
+                                          {operand_value},
+                                          {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
@@ -892,6 +888,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
     // unordered comparison.  This makes x != y equivalent to !(x == y), and
     // matches C++'s semantics.
     case HloOpcode::kCompare: {
+      PrimitiveType operand_type = op->operand(0)->shape().element_type();
+      if (operand_type == BF16) {
+        lhs_value = EmitBF16ToF32(lhs_value, b_);
+        rhs_value = EmitBF16ToF32(rhs_value, b_);
+      }
       switch (op->comparison_direction()) {
         case ComparisonDirection::kEq:
           return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
@@ -1724,11 +1725,11 @@ llvm::Value* ElementalIrEmitter::EmitIntegerPow(llvm::Value* base,
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPredBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
   // Per the reference interpreter, pred arithmetic should behave like
-  // `int8(x) OP int8(y) != 0`.  For most permitted ops, we can just emit the
-  // underlying i8 op to achieve this (e.g. kAnd, kOr, kXor, kMultiply).  In the
-  // case of kAdd, we would need to insert a comparison instruction after the
-  // addition, but it's both easier and faster to emit a bitwise or instruction
-  // instead.
+  // `int8_t(x) OP int8_t(y) != 0`.  For most permitted ops, we can just emit
+  // the underlying i8 op to achieve this (e.g. kAnd, kOr, kXor, kMultiply).  In
+  // the case of kAdd, we would need to insert a comparison instruction after
+  // the addition, but it's both easier and faster to emit a bitwise or
+  // instruction instead.
   //
   // For several of these ops, a faster bitwise implementation is available, but
   // LLVM is unlikely to be able to see it, since it gets IR that e.g. loads i8s
@@ -1999,43 +2000,44 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
 
   std::function<llvm::BasicBlock*(
       absl::Span<const std::pair<int64_t, const HloInstruction*>> operands)>
-      emit_tree = [&](absl::Span<
-                      const std::pair<int64_t, const HloInstruction*>>
-                          operands) {
-        llvm::IRBuilder<>::InsertPointGuard guard(*b_);
-        size_t mid = operands.size() / 2;
-        const std::pair<int64_t, const HloInstruction*>& pivot = operands[mid];
-        llvm::BasicBlock* block = llvm_ir::CreateBasicBlock(
-            exit_block, absl::StrCat("concatenate.pivot.", pivot.first, "."),
-            b_);
-        b_->SetInsertPoint(block);
+      emit_tree =
+          [&](absl::Span<const std::pair<int64_t, const HloInstruction*>>
+                  operands) {
+            llvm::IRBuilder<>::InsertPointGuard guard(*b_);
+            size_t mid = operands.size() / 2;
+            const std::pair<int64_t, const HloInstruction*>& pivot =
+                operands[mid];
+            llvm::BasicBlock* block = llvm_ir::CreateBasicBlock(
+                exit_block,
+                absl::StrCat("concatenate.pivot.", pivot.first, "."), b_);
+            b_->SetInsertPoint(block);
 
-        // If there's only one element we're done. The range is contiguous so we
-        // can just jump to the block for it.
-        if (operands.size() == 1) {
-          const std::pair<int64_t, const HloInstruction*>& operand =
-              operands.back();
-          int64_t operand_id = to_unique_operand_id[operand.second];
+            // If there's only one element we're done. The range is contiguous
+            // so we can just jump to the block for it.
+            if (operands.size() == 1) {
+              const std::pair<int64_t, const HloInstruction*>& operand =
+                  operands.back();
+              int64_t operand_id = to_unique_operand_id[operand.second];
 
-          source_index_phis[operand_id]->addIncoming(
-              source_index.GetConstantWithIndexType(operand.first),
-              b_->GetInsertBlock());
-          b_->CreateBr(emit_operand_blocks[operand_id]);
-          return block;
-        }
+              source_index_phis[operand_id]->addIncoming(
+                  source_index.GetConstantWithIndexType(operand.first),
+                  b_->GetInsertBlock());
+              b_->CreateBr(emit_operand_blocks[operand_id]);
+              return block;
+            }
 
-        // Take the middle element and recurse.
-        llvm::Constant* pivot_const = llvm::ConstantInt::get(
-            source_index[concat_dim]->getType(), pivot.first);
-        llvm::Value* comp =
-            b_->CreateICmpULT(source_index[concat_dim], pivot_const);
+            // Take the middle element and recurse.
+            llvm::Constant* pivot_const = llvm::ConstantInt::get(
+                source_index[concat_dim]->getType(), pivot.first);
+            llvm::Value* comp =
+                b_->CreateICmpULT(source_index[concat_dim], pivot_const);
 
-        llvm::BasicBlock* left_block = emit_tree(operands.subspan(0, mid));
-        llvm::BasicBlock* right_block = emit_tree(operands.subspan(mid));
+            llvm::BasicBlock* left_block = emit_tree(operands.subspan(0, mid));
+            llvm::BasicBlock* right_block = emit_tree(operands.subspan(mid));
 
-        b_->CreateCondBr(comp, left_block, right_block);
-        return block;
-      };
+            b_->CreateCondBr(comp, left_block, right_block);
+            return block;
+          };
 
   Br(emit_tree(cases));
 
@@ -2054,7 +2056,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
   llvm::Type* index_type = index.GetType();
   std::vector<llvm::Value*> slice_start_multi_index(rank);
   for (int64_t i = 0; i < rank; ++i) {
-    auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
     llvm_ir::IrArray::Index zero_index(index_type);
@@ -2226,7 +2228,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
 
   for (int64_t i = 0; i < rank; ++i) {
     llvm::Type* index_type = index[0]->getType();
-    auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
 
@@ -2373,7 +2375,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   int64_t rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
   llvm::Type* index_type = dot_result_index.GetType();
-  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+  auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_type, c);
   };
 
@@ -2436,6 +2438,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
   switch (hlo->opcode()) {
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
     case HloOpcode::kConvert:
@@ -2769,7 +2772,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalMap(
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm::Value*> values,
       EmitThreadLocalCall(*map_instr->to_apply(), elemental_operands,
-                          llvm_ir::IrName(map_instr)));
+                          llvm_ir::IrName(map_instr), /*is_reducer=*/false));
   CHECK_EQ(values.size(), 1);
   return values[0];
 }
@@ -2814,14 +2817,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   }
 
   llvm::Type* index_type = index.GetType();
-  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+  auto index_typed_const = [&](uint64_t c) -> llvm::Constant* {
     return index.GetConstantWithIndexType(c);
   };
 
   const Window& window = reduce_window->window();
   llvm_ir::ForLoopNest loops(IrName(reduce_window), b_, index_type);
   std::vector<int64_t> window_size;
-  for (const auto& dim : window.dimensions()) {
+  const auto& dimensions = window.dimensions();
+  window_size.reserve(dimensions.size());
+  for (const auto& dim : dimensions) {
     window_size.push_back(dim.size());
   }
   const IrArray::Index window_index = loops.AddLoopsForShape(
@@ -2882,7 +2887,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
   }
   TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accum_values,
                       EmitThreadLocalCall(*reduce_window->to_apply(),
-                                          input_values, "reducer_function"));
+                                          input_values, "reducer_function",
+                                          /*is_reducer=*/true));
 
   for (int64_t operand_idx = 0; operand_idx < accum_values.size();
        ++operand_idx) {
@@ -2974,7 +2980,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduce(
   TF_ASSIGN_OR_RETURN(
       std::vector<llvm::Value*> results,
       EmitThreadLocalCall(*reduce->to_apply(), reduction_operands,
-                          "reduce_function"));
+                          "reduce_function", /*is_reducer=*/true));
 
   CHECK(results.size() == accumulators_count);
   for (int i = 0; i < accumulators_count; i++) {
@@ -3008,6 +3014,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
     const HloInstruction* convolution,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
     const llvm_ir::IrArray::Index& index) {
+  TF_RET_CHECK(convolution->batch_group_count() == 1);
   const HloInstruction* lhs = convolution->operand(0);
   const auto& input_generator = operand_to_generator.at(lhs);
   const HloInstruction* rhs = convolution->operand(1);
@@ -3047,13 +3054,20 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
                 absl::StrCat("k", i))
             ->GetIndVarValue();
   }
+  const int64_t input_group_size =
+      rhs->shape().dimensions(dnums.kernel_input_feature_dimension());
+  const int64_t feature_group_count = convolution->feature_group_count();
+  const int64_t output_group_size =
+      rhs->shape().dimensions(dnums.kernel_output_feature_dimension()) /
+      feature_group_count;
   llvm::Value* input_feature =
-      loops
-          .AddLoop(0, lhs->shape().dimensions(dnums.input_feature_dimension()),
-                   "iz")
-          ->GetIndVarValue();
+      loops.AddLoop(0, input_group_size, "iz")->GetIndVarValue();
 
   SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);
+
+  llvm::Value* group_id = SDiv(output_feature, b_->getInt64(output_group_size));
+  llvm::Value* lhs_input_feature =
+      NSWAdd(input_feature, NSWMul(group_id, b_->getInt64(input_group_size)));
 
   // Calculate the spatial index in the input array, taking striding, dilation
   // and padding into account. An index in the padding will be out of the bounds
@@ -3120,7 +3134,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitConvolution(
   for (int i = 0; i < num_spatial_dims; ++i) {
     input_multi_index[dnums.input_spatial_dimensions(i)] = input_spatial[i];
   }
-  input_multi_index[dnums.input_feature_dimension()] = input_feature;
+  input_multi_index[dnums.input_feature_dimension()] = lhs_input_feature;
   input_multi_index[dnums.input_batch_dimension()] = batch;
 
   std::vector<llvm::Value*> kernel_multi_index(num_dims);

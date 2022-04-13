@@ -16,6 +16,8 @@
 
 import tempfile
 
+from tensorflow.core.protobuf import data_service_pb2
+from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.distribute import multi_process_lib
@@ -68,20 +70,23 @@ class MultiProcessCluster(object):
                num_local_workers,
                num_remote_workers,
                worker_tags=None,
-               worker_addresses=None):
+               worker_addresses=None,
+               deployment_mode=data_service_pb2.DEPLOYMENT_MODE_COLOCATED):
     self._work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
+    self._deployment_mode = deployment_mode
     self._start_dispatcher(worker_addresses)
     self._start_local_workers(num_local_workers, worker_tags)
     self._start_remote_workers(num_remote_workers, worker_tags)
 
   def _start_dispatcher(self, worker_addresses, port=0):
     self._dispatcher = server_lib.DispatchServer(
-        server_lib.DispatcherConfig(
+        service_config_pb2.DispatcherConfig(
             port=port,
-            work_dir=self._work_dir,
             protocol="grpc",
+            work_dir=self._work_dir,
+            fault_tolerant_mode=True,
             worker_addresses=worker_addresses,
-            fault_tolerant_mode=True),
+            deployment_mode=self._deployment_mode),
         start=True)
 
   def _start_local_workers(self, num_workers, worker_tags=None):

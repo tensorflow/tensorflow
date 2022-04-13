@@ -83,7 +83,7 @@ class DynamicInputShapesTest(trt_test.TfTrtIntegrationTestBase):
     self.DisableNonTrtOptimizers()
 
   def ExpectedEnginesToBuild(self, run_params):
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
   def ShouldRunTest(self, run_params):
     return (run_params.dynamic_engine and not trt_test.IsQuantizationMode(

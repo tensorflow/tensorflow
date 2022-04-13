@@ -70,11 +70,6 @@ class SaveableObject(object):
     self.name = name
 
   @property
-  def optional_restore(self):
-    """A hint to restore assertions that this object is optional."""
-    return False  # Default to required
-
-  @property
   def device(self):
     """The device for SaveSpec Tensors."""
     return self.specs[0].device

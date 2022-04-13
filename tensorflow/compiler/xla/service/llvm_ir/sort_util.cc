@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -118,12 +117,12 @@ Status EmitCompareLoopBody(
       values_to_compare.push_back(element_address(i, current_keys_index));
     }
     llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
+    llvm::Type* pred_type = llvm_ir::PrimitiveTypeToIrType(PRED, module);
     llvm::Value* compare_return_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
-        llvm_ir::PrimitiveTypeToIrType(PRED, module), "compare_return_buffer",
-        b);
+        pred_type, "compare_return_buffer", b);
     TF_RETURN_IF_ERROR(
         emit_compare_callback(values_to_compare, compare_return_buffer));
-    llvm::Value* result = b->CreateLoad(compare_return_buffer);
+    llvm::Value* result = b->CreateLoad(pred_type, compare_return_buffer);
 
     // Check if the 'compare' function returns true.
     llvm::Value* is_smaller_than =
@@ -132,8 +131,12 @@ Status EmitCompareLoopBody(
     ksl.If("is_smaller_than", is_smaller_than, [&]() {
       for (int64_t i = 0; i < num_values; ++i) {
         // Swap the values.
-        auto value1 = b->CreateLoad(values_to_compare[i * 2]);
-        auto value2 = b->CreateLoad(values_to_compare[i * 2 + 1]);
+        auto value1 = b->CreateLoad(
+            values_to_compare[i * 2]->getType()->getPointerElementType(),
+            values_to_compare[i * 2]);
+        auto value2 = b->CreateLoad(
+            values_to_compare[i * 2 + 1]->getType()->getPointerElementType(),
+            values_to_compare[i * 2 + 1]);
         write_element(i, current_keys_index, value1);
         write_element(i, compare_keys_index, value2);
       }
@@ -195,10 +198,12 @@ Status EmitTiledCompareLoop(
       IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
                                 tiled_keys_index.GetType());
       auto value = params[i].EmitReadArrayElement(keys_index, b);
-      b->CreateStore(value,
-                     b->CreateGEP(param_shmem_buffers[i],
-                                  {tiled_keys_index.GetConstantWithIndexType(0),
-                                   cache_index}));
+      b->CreateStore(
+          value,
+          b->CreateGEP(
+              param_shmem_buffers[i]->getType()->getPointerElementType(),
+              param_shmem_buffers[i],
+              {tiled_keys_index.GetConstantWithIndexType(0), cache_index}));
     });
   }
   // Wait until all reads have happened.
@@ -206,9 +211,10 @@ Status EmitTiledCompareLoop(
 
   // Now emit the bodies of the comparison loops.
   auto element_address = [&](int64_t operand, llvm::Value* index) {
-    auto shared_memory_address =
-        b->CreateGEP(param_shmem_buffers[operand],
-                     {tiled_keys_index.GetConstantWithIndexType(0), index});
+    auto shared_memory_address = b->CreateGEP(
+        param_shmem_buffers[operand]->getType()->getPointerElementType(),
+        param_shmem_buffers[operand],
+        {tiled_keys_index.GetConstantWithIndexType(0), index});
     auto ptr_type = shared_memory_address->getType();
     // We need a generic pointer with address space 0 instead of a pointer to
     // shared memory (address space 3) so that we can pass it to the comparison
@@ -222,8 +228,10 @@ Status EmitTiledCompareLoop(
                            llvm::Value* value) {
     b->CreateStore(
         value,
-        b->CreateGEP(param_shmem_buffers[operand],
-                     {tiled_keys_index.GetConstantWithIndexType(0), index}));
+        b->CreateGEP(
+            param_shmem_buffers[operand]->getType()->getPointerElementType(),
+            param_shmem_buffers[operand],
+            {tiled_keys_index.GetConstantWithIndexType(0), index}));
   };
   for (int64_t xor_mask : xor_masks) {
     // The index of the element pair to be compared within the tile stored in
@@ -241,7 +249,7 @@ Status EmitTiledCompareLoop(
               b->CreateMul(tiled_keys_index[dimension_to_sort],
                            tiled_keys_index.GetConstantWithIndexType(2)),
               tiled_keys_index.GetConstantWithIndexType(
-                  RoundDownToNearest(dimension_to_sort_bound, tile_size))),
+                  RoundDownTo(dimension_to_sort_bound, tile_size))),
           [&]() {
             return EmitCompareLoopBody(
                 dimension_to_sort_bound % tile_size, params.size(),
@@ -273,9 +281,11 @@ Status EmitTiledCompareLoop(
       keys_multi_index[dimension_to_sort] = index;
       IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
                                 tiled_keys_index.GetType());
-      auto value = b->CreateLoad(b->CreateGEP(
+      auto gep = b->CreateGEP(
+          param_shmem_buffers[i]->getType()->getPointerElementType(),
           param_shmem_buffers[i],
-          {tiled_keys_index.GetConstantWithIndexType(0), cache_index}));
+          {tiled_keys_index.GetConstantWithIndexType(0), cache_index});
+      auto value = b->CreateLoad(gep->getType()->getPointerElementType(), gep);
       params[i].EmitWriteArrayElement(keys_index, value, b);
     });
   }

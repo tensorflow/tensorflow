@@ -67,7 +67,7 @@ TEST(Irfft2dOpTest, FftLengthMatchesInputSize) {
   });
   // clang-format on
   model.PopulateTensor<int32_t>(model.fft_lengths(), {4, 4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   float expected_result[16] = {1, 2, 3, 4, 3, 8, 6, 3, 5, 2, 7, 6, 9, 5, 8, 3};
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
@@ -82,7 +82,7 @@ TEST(Irfft2dOpTest, FftLengthSmallerThanInputSize) {
   });
   // clang-format on
   model.PopulateTensor<int32_t>(model.fft_lengths(), {2, 2});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   float expected_result[4] = {14, 18.5, 20.5, 22};
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
@@ -97,7 +97,7 @@ TEST(Irfft2dOpTest, FftLengthGreaterThanInputSize) {
   });
   // clang-format on
   model.PopulateTensor<int32_t>(model.fft_lengths(), {4, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   // clang-format off
   float expected_result[32] = {
@@ -122,7 +122,7 @@ TEST(Irfft2dOpTest, InputDimsGreaterThan2) {
   });
   // clang-format on
   model.PopulateTensor<int32_t>(model.fft_lengths(), {2, 4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   float expected_result[16] = {1., 2., 3., 4., 3., 8., 6.,  3.,
                                5., 2., 7., 6., 7., 3., 23., 5.};

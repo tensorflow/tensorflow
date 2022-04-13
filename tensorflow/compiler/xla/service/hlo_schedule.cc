@@ -308,8 +308,8 @@ const HloComputation* IdToComputation(const HloModule* module, int64_t id) {
 
 }  // namespace
 
-string HloSchedule::ToString() const {
-  std::vector<string> pieces;
+std::string HloSchedule::ToString() const {
+  std::vector<std::string> pieces;
 
   pieces.push_back("HloSchedule");
   for (const auto& id_sequence : sequences_) {

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
+#include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 #ifndef CL_DELEGATE_NO_GL
@@ -92,12 +95,12 @@ class Delegate {
     if (options_.max_delegated_partitions <= 0) {
       options_.max_delegated_partitions = 1;
     }
-    if (options->experimental_flags &
+    if (options_.experimental_flags &
             TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_SERIALIZATION &&
-        options->model_token && options->serialization_dir) {
+        options_.model_token && options_.serialization_dir) {
       SerializationParams params;
-      params.model_token = options->model_token;
-      params.cache_dir = options->serialization_dir;
+      params.model_token = options_.model_token;
+      params.cache_dir = options_.serialization_dir;
       serialization_.reset(new Serialization(params));
     }
   }
@@ -174,8 +177,8 @@ class DelegateKernel {
       }
     }
 
-    // At this point tflite didn't allocate tensors yet, therefore, collect
-    // indices and set all input and output tensors from tflite later.
+    // At this point, TFLite hasn't allocated tensors yet, therefore, collect
+    // indices and set all input and output tensors from TFLite later.
     input_indices_.reserve(input_refs.size());
     for (uint32_t tensor_index : input_refs) {
       const int64_t object_index = input_indices_.size();
@@ -284,17 +287,46 @@ class DelegateKernel {
       RETURN_IF_ERROR(BuildFinalModel(context, delegate_params, graph));
     }
 
+    // TfLiteDelegateParams.input_tensors is an array of all input tensors
+    // including static weights.  GraphFloat32.inputs() is an array of runtime
+    // tensors that don't have a producer and the order may not be the same as
+    // defined by TfLiteDelegateParams.input_tensors.  These two sets are not
+    // the same, especially on a multi-partition delegation.  These are matched
+    // by filtering TfLiteDelegateParams.input_tensors with
+    // !tflite::IsConstantTensor() and then inserting them in the order
+    // specified by TfLiteDelegateParams.input_tensors.  This logic is shared
+    // with ModelBuilder::PrecreateIOTensors() which is eventually called with
+    // BuildFinalModel() above.
+    //
+    // Similarly, TfLiteDelegateParams.output_tensors is an array of all output
+    // tensors, and can contain static tensors with buggy conversion.
+    // GraphFloat32.outputs() is an array of runtime tensors that don't have a
+    // consumer (this is a bug in the assumption) and the order may not be the
+    // same as defined by TfLiteDelegateParams.output_tensors.  Again, these two
+    // sets are not the same, especially on a multi-partition delegation.  These
+    // are matched by inserting the tensors by the order defined by
+    // TfLiteDelegateParams.output_tensors.  Similarly, this logic is shared
+    // with ModelBuilder::PrecreateIOTensors() which is eventually called with
+    // BuildFinalModel() above.
+    //
+    // The aforementioned matching in BuildFinalModel() is ported here to match
+    // input/output_refs.
+    // TODO(b/211393366): Fix this at GraphFloat32.inputs/outputs() level.
+    const std::vector<Value*> inputs = graph->inputs();
     input_refs->clear();
-    output_refs->clear();
-    const auto inputs = graph->inputs();
-    input_refs->reserve(inputs.size());
-    for (const auto& input : inputs) {
-      input_refs->push_back(input->tensor.ref);
+    input_refs->reserve(delegate_params->input_tensors->size);
+    for (int i = 0, j = 0; i < delegate_params->input_tensors->size; ++i) {
+      const TfLiteTensor* tensor =
+          context->tensors + delegate_params->input_tensors->data[i];
+      if (tflite::IsConstantTensor(tensor)) continue;
+      input_refs->push_back(inputs[j]->tensor.ref);
+      ++j;
     }
-    const auto outputs = graph->outputs();
-    output_refs->reserve(outputs.size());
-    for (const auto& output : outputs) {
-      output_refs->push_back(output->tensor.ref);
+    const std::vector<Value*> outputs = graph->outputs();
+    output_refs->clear();
+    output_refs->reserve(delegate_params->output_tensors->size);
+    for (int i = 0; i < delegate_params->output_tensors->size; ++i) {
+      output_refs->push_back(outputs[i]->tensor.ref);
     }
 
     return absl::OkStatus();
@@ -341,8 +373,9 @@ class DelegateKernel {
       if (MaybeInitializeSerializedOpenCL(context, delegate_params, builder,
                                           &options, &env_options, &properties,
                                           serialization)
-              .ok())
+              .ok()) {
         return absl::OkStatus();
+      }
 
       RETURN_IF_ERROR(cl::NewInferenceEnvironment(env_options, &cl_environment_,
                                                   &properties));
@@ -529,9 +562,14 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   };
 
   auto* gpu_delegate = GetDelegate(delegate);
+  absl::flat_hash_set<TfLiteBuiltinOperator> excluded_ops;
+  if (!cl::OpenCLSupported()) {
+    excluded_ops.insert(kTfLiteBuiltinSplit);
+    excluded_ops.insert(kTfLiteBuiltinSplitV);
+  }
   TfLiteIntArray* ops_to_replace =
       GetOpsToReplace(context, gpu_delegate->IsQuantOpsAllowed(),
-                      gpu_delegate->MaxDelegatedPartitions());
+                      gpu_delegate->MaxDelegatedPartitions(), &excluded_ops);
   const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
       context, kRegistration, ops_to_replace, delegate);
   TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Created %d GPU delegate kernels.",

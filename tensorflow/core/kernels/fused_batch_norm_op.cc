@@ -169,17 +169,11 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
     const int rest_size = size / depth;
     Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
-    Eigen::array<int, 1> reduce_dims({0});
-    Eigen::array<int, 2> bcast_spec({rest_size, 1});
-#else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
     one_by_depth.set(1, depth);
     Eigen::IndexList<Eigen::type2index<0>> reduce_dims;
     Eigen::IndexList<Eigen::Index, Eigen::type2index<1>> bcast_spec;
     bcast_spec.set(0, rest_size);
-#endif
 
     auto x_rest_by_depth = x.reshape(rest_by_depth).template cast<U>();
     const int rest_size_minus_one = (rest_size > 1) ? (rest_size - 1) : 1;
@@ -317,17 +311,10 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
     const int size = x.size();
     const int rest_size = size / depth;
     Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
-
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
-    Eigen::array<int, 1> reduce_dims({0});
-    Eigen::array<int, 2> bcast_spec({rest_size, 1});
-#else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
     one_by_depth.set(1, depth);
     Eigen::IndexList<Eigen::Index, Eigen::type2index<1>> bcast_spec;
     bcast_spec.set(0, rest_size);
-#endif
 
     auto x_rest_by_depth = x.reshape(rest_by_depth).template cast<U>();
     auto x_centered =
@@ -440,16 +427,10 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
     const int size = x.size();
     const int rest_size = size / depth;
     Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
-
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
-    Eigen::array<int, 2> bcast_spec({rest_size, 1});
-#else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
     one_by_depth.set(1, depth);
     Eigen::IndexList<Eigen::Index, Eigen::type2index<1>> bcast_spec;
     bcast_spec.set(0, rest_size);
-#endif
 
     auto x_rest_by_depth = x.reshape(rest_by_depth).template cast<U>();
     U rest_size_inv = static_cast<U>(1.0f / static_cast<U>(rest_size));
@@ -593,15 +574,10 @@ struct FusedBatchNormFreezeGrad<CPUDevice, T, U> {
     typename TTypes<U, 2>::Tensor scratch3(scratch3_tensor.tensor<U, 2>());
 
     Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
-    Eigen::array<int, 2> rest_by_one({rest_size, 1});
-#else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
     one_by_depth.set(1, depth);
     Eigen::IndexList<Eigen::Index, Eigen::type2index<1>> rest_by_one;
     rest_by_one.set(0, rest_size);
-#endif
 
     // Sum reduction along the 0th dimension using custom CPU functor.
     using ScalarSum = Eigen::internal::scalar_sum_op<U>;
@@ -1586,12 +1562,14 @@ class FusedBatchNormGradOpBase : public OpKernel {
         context, saved_mean_or_pop_mean.NumElements() == num_channels,
         errors::InvalidArgument("reserve_space_1 must have the same number of "
                                 "elements as the channels of x, got ",
-                                scale.NumElements(), " and ", num_channels));
+                                saved_mean_or_pop_mean.NumElements(), " and ",
+                                num_channels));
     OP_REQUIRES(
         context, saved_maybe_inv_var_or_pop_var.NumElements() == num_channels,
         errors::InvalidArgument("reserve_space_2 must have the same number of "
                                 "elements as the channels of x, got ",
-                                scale.NumElements(), " and ", num_channels));
+                                saved_maybe_inv_var_or_pop_var.NumElements(),
+                                " and ", num_channels));
 
     Tensor* x_backprop = nullptr;
     auto alloc_shape = use_reshape ? dest_shape : x_shape;

@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -44,7 +43,7 @@ class HloModuleDceTest : public HloTestBase {
   // 'computation' passes through its tuple element at 'tuple_index' from
   // parameter to root instruction.
   bool WhileBodyHasPassThroughTupleElement(const HloComputation* computation,
-                                           const string& while_name,
+                                           const std::string& while_name,
                                            const int64_t tuple_index) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile &&
@@ -274,7 +273,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElement) {
   SimpleLoop.condition1 {
     loop_var.4 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.6 = s32[] get-tuple-element(loop_var.4), index=0
-    constant.4 = s32[] constant(5)
+    constant.4 = s32[] constant(10)
     ROOT less-than.1 = pred[] compare(get-tuple-element.6, constant.4), direction=LT
   }
   ENTRY SimpleLoop {
@@ -342,7 +341,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElementSwizzled) {
   SimpleLoop.condition1 {
     loop_var.4 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.6 = s32[] get-tuple-element(loop_var.4), index=0
-    constant.4 = s32[] constant(5)
+    constant.4 = s32[] constant(10)
     ROOT less-than.1 = pred[] compare(get-tuple-element.6, constant.4), direction=LT
   }
   ENTRY SimpleLoop {

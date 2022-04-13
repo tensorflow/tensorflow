@@ -118,17 +118,22 @@ std::string TargetWorkersToString(TargetWorkers target_workers) {
 StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s) {
   std::string str_upper = absl::AsciiStrToUpper(s);
   if (str_upper == kColocated) {
-    return DeploymentMode::COLOCATED;
+    return DEPLOYMENT_MODE_COLOCATED;
   }
   if (str_upper == kRemote) {
-    return DeploymentMode::REMOTE;
+    return DEPLOYMENT_MODE_REMOTE;
   }
   if (str_upper == kHybrid) {
-    return DeploymentMode::HYBRID;
+    return DEPLOYMENT_MODE_HYBRID;
   }
   return errors::InvalidArgument("Invalid tf.data service deployment mode: ", s,
                                  ". Supported modes are "
                                  "COLOCATED, REMOTE, and HYBRID.");
+}
+
+bool IsPreemptedError(const Status& status) {
+  return errors::IsAborted(status) || errors::IsCancelled(status) ||
+         errors::IsUnavailable(status);
 }
 }  // namespace data
 }  // namespace tensorflow

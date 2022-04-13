@@ -872,7 +872,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // This is deprecated and is only kept here for backward compatibility.
     use_layer_norm = false;
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "The LSTM Full kernel expects 20 or 24 inputs. Got %d inputs",
         node->inputs->size);
     return kTfLiteError;

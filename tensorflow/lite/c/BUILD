@@ -56,6 +56,29 @@ cc_library(
 
 cc_library(
     name = "c_api",
+    hdrs = ["c_api.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":c_api_types",
+        ":c_api_without_op_resolver",
+        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
+    ],
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+)
+
+cc_library(
+    name = "c_api_for_testing",
+    testonly = True,
+    srcs = ["c_api_for_testing.cc"],
+    hdrs = ["c_api_for_testing.h"],
+    deps = [
+        ":c_api",
+        ":c_api_internal",
+    ],
+)
+
+cc_library(
+    name = "c_api_without_op_resolver",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
     copts = tflite_copts(),
@@ -63,7 +86,7 @@ cc_library(
         ":c_api_internal",
         ":c_api_types",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
+        "//tensorflow/lite:create_op_resolver_header",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/delegates:interpreter_utils",
@@ -75,12 +98,19 @@ cc_library(
 
 cc_library(
     name = "c_api_experimental",
-    srcs = ["c_api_experimental.cc"],
-    hdrs = ["c_api_experimental.h"],
+    srcs = [
+        "c_api_experimental.cc",
+        "c_api_opaque.cc",
+    ],
+    hdrs = [
+        "c_api_experimental.h",
+        "c_api_opaque.h",
+    ],
     copts = tflite_copts(),
     deps = [
         ":c_api",
         ":c_api_internal",
+        ":c_api_types",
         ":common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
@@ -158,7 +188,7 @@ cc_test(
 
 cc_library(
     name = "common",
-    srcs = ["common.c"],
+    srcs = ["common.cc"],
     hdrs = [
         "builtin_op_data.h",
         "common.h",
@@ -175,6 +205,7 @@ cc_library(
 exports_files([
     "c_api.h",
     "c_api_experimental.h",
+    "c_api_opaque.h",
     "c_api_types.h",
     "common.h",
 ])
@@ -194,6 +225,7 @@ cc_test(
     size = "small",
     srcs = ["common_test.cc"],
     deps = [
+        ":c_api_types",
         ":common",
         "@com_google_googletest//:gtest_main",
     ],
@@ -217,6 +249,7 @@ cc_test(
     copts = tflite_copts(),
     data = [
         "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
     deps = [
         ":c_api",

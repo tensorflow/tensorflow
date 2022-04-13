@@ -9,6 +9,10 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "AutotuneAlgorithm"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "AutotuneOptions"
     mtype: "<type \'type\'>"
   }

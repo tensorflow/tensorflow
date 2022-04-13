@@ -46,12 +46,12 @@ class CpuInfeedBuffer : public cpu::runtime::XfeedBuffer {
       : length_(length), buffer_(new char[length]) {}
   ~CpuInfeedBuffer() override { delete[] buffer_; }
 
-  int32 length() override { return length_; }
+  int32_t length() override { return length_; }
   void* data() override { return buffer_; }
   void Done(StatusOr<Shape> /*shape*/) override { delete this; }
 
  private:
-  int32 length_;
+  int32_t length_;
   char* buffer_;
 };
 
@@ -65,7 +65,7 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
     return status_;
   }
 
-  int32 length() override { return length_; }
+  int32_t length() override { return length_; }
   void* data() override { return destination_; }
   void Done(StatusOr<Shape> shape) override {
     status_ = std::move(shape);
@@ -74,7 +74,7 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
 
  private:
   void* destination_;
-  int32 length_;
+  int32_t length_;
   StatusOr<Shape> status_;
   tensorflow::Notification done_;
 };
@@ -83,9 +83,9 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
 // clean up the memory allocated for InfeedBuffer.
 StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
     int64_t size, const void* source) {
-  if (size > std::numeric_limits<int32>::max()) {
+  if (size > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument("CPU infeed of %d bytes exceeds maximum of %d bytes",
-                           size, std::numeric_limits<int32>::max());
+                           size, std::numeric_limits<int32_t>::max());
   }
 
   if (size <= 0) {
@@ -93,7 +93,7 @@ StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
                            size);
   }
 
-  auto size_32 = static_cast<int32>(size);
+  auto size_32 = static_cast<int32_t>(size);
   auto queued_buffer = new CpuInfeedBuffer(size_32);
   std::memcpy(queued_buffer->data(), source, size);
 
@@ -118,7 +118,7 @@ StatusOr<Shape> TransferBuffersFromOutfeedInternal(
   std::vector<std::unique_ptr<CpuOutfeedBuffer>> buffers;
   for (auto b : buffer_data) {
     int64_t size = b.second;
-    if (size > std::numeric_limits<int32>::max()) {
+    if (size > std::numeric_limits<int32_t>::max()) {
       return InvalidArgument("Outfeed shape is too large: needs %d bytes",
                              size);
     }
@@ -128,7 +128,7 @@ StatusOr<Shape> TransferBuffersFromOutfeedInternal(
           "Outfeed shape must have non-negative size; got %d", size);
     }
 
-    auto size_32 = static_cast<int32>(size);
+    auto size_32 = static_cast<int32_t>(size);
     VLOG(2)
         << "Enqueueing outfeed buffer (for the device to populate) of length "
         << size_32 << "B";
@@ -146,6 +146,7 @@ StatusOr<Shape> TransferBuffersFromOutfeedInternal(
   xfeed_manager->outfeed()->EnqueueBuffersAtomically(buffer_pointers);
   VLOG(2) << "Waiting for buffer to be notified as populated.";
   std::vector<Shape> outfed_shapes;
+  outfed_shapes.reserve(buffers.size());
   for (auto& buffer : buffers) {
     TF_ASSIGN_OR_RETURN(Shape outfed_shape, buffer->WaitForNotification());
     outfed_shapes.push_back(std::move(outfed_shape));
@@ -248,7 +249,7 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
   }
 
   std::vector<std::pair<void*, int64_t>> buffer_data;
-  for (int64_t i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
     const Shape& tuple_element_shape =
         ShapeUtil::GetTupleElementShape(literal.shape(), i);
     int64_t size = cpu::runtime::GetByteSizeRequirement(tuple_element_shape,
@@ -298,8 +299,8 @@ Status ReadDynamicShapesOnCpu(
         if (metadata_size == 0) {
           return InvalidArgument("Dynamic shape metadata size should not be 0");
         }
-        auto buffer_8 = static_cast<int8*>(memory);
-        auto metadata_buffer = reinterpret_cast<int32*>(buffer_8 + offset);
+        auto buffer_8 = static_cast<int8_t*>(memory);
+        auto metadata_buffer = reinterpret_cast<int32_t*>(buffer_8 + offset);
 
         // Update shape size from metadata.
         for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {

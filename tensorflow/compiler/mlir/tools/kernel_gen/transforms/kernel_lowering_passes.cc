@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/LoweringOptions.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"  // from @llvm-project
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
@@ -53,13 +56,14 @@ class GpuKernelToNVVMPass
     GPUModuleOp m = getOperation();
 
     RewritePatternSet patterns(&getContext());
-    mlir::LowerToLLVMOptions llvm_opts(
-        m.getContext(),
-        DataLayout(cast<DataLayoutOpInterface>(m.getOperation())));
-    llvm_opts.overrideIndexBitwidth(32);
+    mlir::LowerToLLVMOptions llvm_opts(m.getContext(), DataLayout(m));
+
     LLVMTypeConverter converter(m.getContext(), llvm_opts);
+    arith::populateArithmeticToLLVMConversionPatterns(converter, patterns);
+    populateMathToLLVMConversionPatterns(converter, patterns);
     populateMemRefToLLVMConversionPatterns(converter, patterns);
-    populateStdToLLVMConversionPatterns(converter, patterns);
+    populateFuncToLLVMConversionPatterns(converter, patterns);
+    cf::populateControlFlowToLLVMConversionPatterns(converter, patterns);
     populateGpuToNVVMConversionPatterns(converter, patterns);
     populateComplexToLLVMConversionPatterns(converter, patterns);
     ConversionTarget target(getContext());
@@ -84,9 +88,13 @@ class GpuKernelToROCDLPass
 
     RewritePatternSet patterns(&getContext());
     LLVMTypeConverter converter(m.getContext());
+    arith::populateArithmeticToLLVMConversionPatterns(converter, patterns);
+    populateMathToLLVMConversionPatterns(converter, patterns);
     populateMemRefToLLVMConversionPatterns(converter, patterns);
-    populateStdToLLVMConversionPatterns(converter, patterns);
-    populateGpuToROCDLConversionPatterns(converter, patterns);
+    populateFuncToLLVMConversionPatterns(converter, patterns);
+    cf::populateControlFlowToLLVMConversionPatterns(converter, patterns);
+    populateGpuToROCDLConversionPatterns(converter, patterns,
+                                         gpu::amd::Runtime::Unknown);
     populateComplexToLLVMConversionPatterns(converter, patterns);
     ConversionTarget target(getContext());
     configureGpuToROCDLConversionLegality(target);

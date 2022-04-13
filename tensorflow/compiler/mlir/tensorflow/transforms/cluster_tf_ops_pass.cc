@@ -29,10 +29,11 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
@@ -241,7 +242,7 @@ void CreateFunctions(ModuleOp module_op,
     for (Value result : metadata.results) {
       results_after_mapping.push_back(mapping.lookupOrDefault(result));
     }
-    builder.create<ReturnOp>(loc, results_after_mapping);
+    builder.create<func::ReturnOp>(loc, results_after_mapping);
     symbol_table.insert(func_op, metadata.insertion_point++);
     // Record the actual name. The symbol table might rename the FuncOp if there
     // is name collision.
@@ -298,14 +299,7 @@ void CreateRemoteRunCalls(MLIRContext *context,
 }
 
 class ClusterTFOpsByHostPass
-    : public PassWrapper<ClusterTFOpsByHostPass, OperationPass<ModuleOp>> {
-  StringRef getArgument() const final { return "cluster-tf-ops-by-host"; }
-
-  StringRef getDescription() const final {
-    return "Cluster the TensorFlow ops by host so that each function only "
-           "contains ops placed on the same host";
-  }
-
+    : public ClusterTFOpsByHostPassBase<ClusterTFOpsByHostPass> {
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     ModuleOp module_op = getOperation();
@@ -345,8 +339,6 @@ class ClusterTFOpsByHostPass
 std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateClusterTFOpsByHostPass() {
   return std::make_unique<ClusterTFOpsByHostPass>();
 }
-
-static PassRegistration<ClusterTFOpsByHostPass> pass;
 
 }  // namespace TF
 }  // namespace mlir

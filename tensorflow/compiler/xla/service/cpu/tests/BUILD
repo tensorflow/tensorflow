@@ -2,7 +2,6 @@
 #    Tests for LLVM-based CPU backend for XLA.
 
 load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -250,6 +249,22 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "cpu_spmd_compile_test",
+    srcs = ["cpu_spmd_compile_test.cc"],
+    deps = [
+        ":cpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_query",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

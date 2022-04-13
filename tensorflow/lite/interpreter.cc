@@ -329,7 +329,7 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
     // tflite::MaybeCreateXNNPACKDelegate(...)) will return a nullptr.
     // Therefore, we simply continue with the next one.
     if (delegate_ptr == nullptr) continue;
-    auto status = ModifyGraphWithDelegate(std::move(delegate_ptr));
+    auto status = ModifyGraphWithDelegateImpl(std::move(delegate_ptr));
     switch (status) {
       case kTfLiteOk:
         TFLITE_LOG(
@@ -382,28 +382,31 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
   return kTfLiteOk;
 }
 
-SignatureRunner* Interpreter::GetSignatureRunner(const char* signature_key) {
-  auto iter = signature_runner_map_.find(signature_key);
-  if (iter != signature_runner_map_.end()) {
-    return &(iter->second);
-  }
-
-  // Default delegates are applied once for all subgraphs. Only returns error
-  // when the status is kTfLiteError. For other statuses, it will fall back to
-  // the default implementation.
-  if (ApplyLazyDelegateProviders() == kTfLiteError) {
-    return nullptr;
-  }
-
-  for (const auto& signature : signature_defs_) {
-    if (signature.signature_key == signature_key) {
-      auto status = signature_runner_map_.insert(
-          {signature_key,
-           SignatureRunner(&signature, subgraph(signature.subgraph_index))});
-      return &(status.first->second);
+TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
+    TfLiteDelegate* delegate) {
+  TfLiteStatus status = kTfLiteOk;
+  for (auto& subgraph : subgraphs_) {
+    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
+      continue;
+    }
+    status = subgraph->ModifyGraphWithDelegate(delegate);
+    if (status != kTfLiteOk) {
+      break;
     }
   }
-  return nullptr;
+  // Delegate-specific errors can be recovered from by restoring Interpreter to
+  // its original state.
+  if (status == kTfLiteDelegateError) {
+    TF_LITE_ENSURE_STATUS(RemoveAllDelegates());
+  }
+  return status;
+}
+
+TfLiteStatus Interpreter::RemoveAllDelegates() {
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->RemoveAllDelegates());
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetMetadata(
@@ -412,6 +415,54 @@ TfLiteStatus Interpreter::SetMetadata(
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
     TF_LITE_ENSURE_STATUS(subgraphs_[subgraph_index]->SetMetadata(&metadata_));
+  }
+  return kTfLiteOk;
+}
+
+bool Interpreter::IsFullyDelegated() const {
+  return primary_subgraph().IsFullyDelegated();
+}
+
+void Interpreter::SetProfilerImpl(std::unique_ptr<Profiler> profiler) {
+  owned_profiler_ = std::move(profiler);
+  installed_profiler_ = owned_profiler_.get();
+  SetSubgraphProfiler();
+}
+
+void Interpreter::SetSubgraphProfiler() {
+  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
+       ++subgraph_index) {
+    subgraphs_[subgraph_index]->SetProfiler(installed_profiler_,
+                                            subgraph_index);
+  }
+}
+
+TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
+  if (options == nullptr) {
+    return kTfLiteOk;
+  }
+
+  // Handle `experimental_preserve_all_tensors_`.
+  if (options->GetPreserveAllTensors()) {
+    for (auto& subgraph : subgraphs_) {
+      subgraph->PreserveAllTensorsExperimental();
+    }
+  }
+
+  // Handle `experimental_ensure_dynamic_tensors_are_released_`.
+  if (options->GetEnsureDynamicTensorsAreReleased()) {
+    for (auto& subgraph : subgraphs_) {
+      subgraph->EnsureDynamicTensorsAreReleased();
+    }
+  }
+
+  // Handle `experimental_dynamic_allocation_for_large_tensors_`.
+  if (options->GetDynamicAllocationForLargeTensors() > 0) {
+    for (auto& subgraph : subgraphs_) {
+      subgraph->OptimizeMemoryForLargeTensors(
+          options->GetDynamicAllocationForLargeTensors());
+      subgraph->EnsureDynamicTensorsAreReleased();
+    }
   }
   return kTfLiteOk;
 }

@@ -22,9 +22,7 @@ import re
 import shutil
 import sys
 import tempfile
-from typing import Dict, Sequence
-
-from absl import app
+from typing import Dict
 
 
 class FileCheckVarReplacer:
@@ -87,9 +85,10 @@ def replace_instruction_names(t: str) -> str:
   return "\n".join(out)
 
 
-def main(argv: Sequence[str]) -> None:
+def main() -> None:
+  argv = sys.argv
   if len(argv) != 2:
-    raise app.UsageError("Expecting exactly one filename argument (or -)")
+    raise Exception("Expecting exactly one filename argument (or -)")
 
   r = FileCheckVarReplacer()
 
@@ -111,4 +110,4 @@ def main(argv: Sequence[str]) -> None:
 
 
 if __name__ == "__main__":
-  app.run(main)
+  main()

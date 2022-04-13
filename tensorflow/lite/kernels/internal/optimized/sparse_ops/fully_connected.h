@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -71,6 +72,42 @@ inline void FullyConnectedSparseWeight(
           total + bias_value, output_activation_min, output_activation_max);
     }
   }
+}
+
+inline void FullyConnectedSparseWeight1x16Impl(
+    const TfLiteSparsity& sparsity, const FullyConnectedParams& params,
+    const RuntimeShape& input_shape, const int8_t* input_data,
+    const RuntimeShape& weights_shape, const int8_t* weights_data,
+    const RuntimeShape& bias_shape, const int32_t* bias_data,
+    const RuntimeShape& output_shape, int8_t* output_data, int thread_start,
+    int thread_end, const CpuBackendContext& cpu_backend_context) {
+  ruy::profiler::ScopeLabel label("FullyConnected");
+  ruy::profiler::ScopeLabel inner_label("1x16 Block Sparse");
+
+  const int input_dims_count = input_shape.DimensionsCount();
+  const int output_dims_count = output_shape.DimensionsCount();
+  const int weights_dims_count = weights_shape.DimensionsCount();
+  const int batches = thread_end - thread_start;
+  const int input_depth = MatchingDim(weights_shape, weights_dims_count - 1,
+                                      input_shape, input_dims_count - 1);
+  const int output_depth = MatchingDim(weights_shape, weights_dims_count - 2,
+                                       output_shape, output_dims_count - 1);
+  const int32_t input_offset = params.input_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_multiplier = params.output_multiplier;
+  const int32_t output_shift = params.output_shift;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
+
+  const int* w1_segments = sparsity.dim_metadata[1].array_segments->data;
+  const int* w1_indices = sparsity.dim_metadata[1].array_indices->data;
+
+  tensor_utils::SparseMatrixBatchVectorMultiplyAccumulate1x16(
+      weights_data, w1_segments, w1_indices, weights_shape.Dims(0),
+      weights_shape.Dims(1), input_data + thread_start * input_depth, bias_data,
+      batches, input_offset, output_multiplier, output_shift, output_offset,
+      output_activation_min, output_activation_max,
+      output_data + thread_start * output_depth);
 }
 
 inline void FullyConnectedSparseWeight1x4Impl(
@@ -156,6 +193,26 @@ struct FullyConnectedSparseWeight1x4Task : cpu_backend_threadpool::Task {
   int thread_end;
   const CpuBackendContext& cpu_backend_context;
 };
+
+inline void FullyConnectedSparseWeight1x16(
+    const TfLiteSparsity& sparsity, const FullyConnectedParams& params,
+    const RuntimeShape& input_shape, const int8_t* input_data,
+    const RuntimeShape& weights_shape, const int8_t* weights_data,
+    const RuntimeShape& bias_shape, const int32_t* bias_data,
+    const RuntimeShape& output_shape, int8_t* output_data,
+    CpuBackendContext* cpu_backend_context) {
+  const int output_elements = output_shape.FlatSize();
+  memset(output_data, 0, output_elements * sizeof(int8_t));
+
+  const int batches =
+      FlatSizeSkipDim(output_shape, output_shape.DimensionsCount() - 1);
+
+  // TODO(b/220851507): Add multi-thread support for quantized sparse kernel.
+  return FullyConnectedSparseWeight1x16Impl(
+      sparsity, params, input_shape, input_data, weights_shape, weights_data,
+      bias_shape, bias_data, output_shape, output_data, 0, batches,
+      *cpu_backend_context);
+}
 
 // The multi-threaded kernel slices the workload along the batch dimension. If
 // there's not enough batches of data, the number of threads used is equal to

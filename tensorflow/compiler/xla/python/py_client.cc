@@ -21,22 +21,25 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/service/custom_call_status.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tensorflow/core/profiler/profile.pb.h"
 
 namespace xla {
 
 namespace py = pybind11;
-namespace pprof = tensorflow::tfprof::pprof;
 
 PyClient::PyClient(std::unique_ptr<PjRtClient> pjrt_client)
     : PyClient(std::shared_ptr<PjRtClient>(std::move(pjrt_client))) {}
@@ -116,7 +119,57 @@ std::vector<std::shared_ptr<PyExecutable>> PyClient::LiveExecutables() {
 
 Status PyClient::Defragment() {
   CHECK(PyGILState_Check());
-  return pjrt_client_->Defragment();
+  switch (pjrt_client_->runtime_type()) {
+    case PjRtRuntimeType::kTfrt:
+      return pjrt_client_->Defragment();
+    case PjRtRuntimeType::kStreamExecutor:
+      struct TmpBuffer {
+        PyBuffer* py_buffer;
+        // TODO(skyewm): maybe use py_buffer's HostValue
+        std::shared_ptr<Literal> host_copy;
+      };
+
+      // Synchronously copy all buffers to host
+      std::vector<TmpBuffer> tmp_buffers;
+      for (PyBuffer* device_buffers : buffers_) {
+        for (PyBuffer* buffer = device_buffers; buffer;
+             buffer = buffer->next_) {
+          if (!buffer->is_deleted()) {
+            TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
+                                buffer->buffer_->ToLiteralSync());
+            tmp_buffers.push_back({buffer, literal});
+          }
+        }
+      }
+
+      // All buffers successfully copied to host, delete on-device copies.
+      //
+      // Use blocking delete operation to ensure all memory is actually cleared
+      // before we start rewriting buffers.
+      //
+      // Die instead of returning a bad status because program presumably can't
+      // continue if we fail to reconstitute device buffers.
+      for (TmpBuffer& tmp_buffer : tmp_buffers) {
+        TF_CHECK_OK(tensorflow::down_cast<PjRtStreamExecutorBuffer*>(
+                        tmp_buffer.py_buffer->buffer_.get())
+                        ->Release(/*wait_for_operations_to_complete=*/true)
+                        .status());
+      }
+
+      // Copy host copies back to device and update PyBuffers in-place.
+      for (TmpBuffer& tmp_buffer : tmp_buffers) {
+        std::unique_ptr<PjRtBuffer> new_copy =
+            pjrt_client_
+                ->BufferFromHostLiteral(*tmp_buffer.host_copy,
+                                        tmp_buffer.py_buffer->buffer_->device())
+                .ValueOrDie();
+        TF_CHECK_OK(new_copy->BlockHostUntilReady());
+        tmp_buffer.py_buffer->buffer_.reset(new_copy.release());
+      }
+
+      // TODO(skyewm): delete executables?
+  }
+  return Status::OK();
 }
 
 StatusOr<std::vector<std::vector<ClientAndPtr<PjRtDevice>>>>
@@ -161,6 +214,29 @@ StatusOr<py::object> PyClient::BufferFromPyval(
     device = pjrt_client_->addressable_devices().front();
   }
   CHECK(device != nullptr);
+
+  auto transfer_guard_formatter = [&argument, dst_device = device] {
+    auto type = py::cast<std::string>(py::str(argument.get_type()));
+    // Catch exceptions because shape and dtype properties convertible to str
+    // are not guaranteed to present in an arbitrary argument.
+    std::string shape;
+    std::string dtype;
+    try {
+      shape = py::cast<std::string>(py::str(argument.attr("shape")));
+    } catch (const std::exception& e) {
+      shape = "<unknown>";
+    }
+    try {
+      dtype = py::cast<std::string>(py::str(argument.attr("dtype")));
+    } catch (const std::exception& e) {
+      dtype = "<unknown>";
+    }
+    return absl::StrCat("type=", type, ", shape=", shape, ", dtype=", dtype,
+                        ", dst_device=", dst_device->DebugString());
+  };
+  TF_RETURN_IF_ERROR(
+      jax::ApplyTransferGuardToHostToDevice(transfer_guard_formatter));
+
   TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,
                       pjrt_client_->LookupDevice(device->id()));
   if (found_device != device) {
@@ -175,7 +251,6 @@ StatusOr<py::object> PyClient::BufferFromPyval(
   options.allow_zero_copy =
       (!force_copy &&
        (host_buffer_semantics == PjRtClient::HostBufferSemantics::kZeroCopy));
-  options.force_lazy_arrays = true;
   TF_ASSIGN_OR_RETURN(DevicePutResult put,
                       DevicePut(argument, device, options));
 
@@ -196,6 +271,26 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(executable,
                         pjrt_client_->Compile(computation, std::move(options)));
+    TF_ASSIGN_OR_RETURN(fingerprint,
+                        pjrt_client_->ExecutableFingerprint(*executable));
+  }
+  auto traceback = Traceback::Get();
+  return std::make_shared<PyExecutable>(
+      shared_from_this(), std::move(executable), std::move(traceback),
+      std::move(fingerprint));
+}
+
+StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
+    std::string mlir_module, CompileOptions options) {
+  std::unique_ptr<PjRtExecutable> executable;
+  absl::optional<std::string> fingerprint;
+  {
+    py::gil_scoped_release gil_release;
+    mlir::MLIRContext context;
+    TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                        ParseMlirModuleString(mlir_module, context));
+    TF_ASSIGN_OR_RETURN(
+        executable, pjrt_client_->Compile(module.get(), std::move(options)));
     TF_ASSIGN_OR_RETURN(fingerprint,
                         pjrt_client_->ExecutableFingerprint(*executable));
   }
@@ -227,67 +322,6 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
       std::move(fingerprint));
 }
 
-class ProfileBuilder {
- public:
-  ProfileBuilder();
-  pprof::Profile& profile() { return profile_; }
-
-  // Adds or returns the ID of `s` in the table.
-  int StringId(const std::string& s);
-
-  // Adds or returns the ID of a function.
-  int FunctionId(PyCodeObject* code);
-
-  // Adds or returns the ID of a code location.
-  int LocationId(PyCodeObject* code, int instruction);
-
- private:
-  pprof::Profile profile_;
-
-  absl::flat_hash_map<std::string, int> strings_;
-  absl::flat_hash_map<PyCodeObject*, int> functions_;
-  absl::flat_hash_map<std::pair<PyCodeObject*, int>, int> locations_;
-};
-
-ProfileBuilder::ProfileBuilder() { CHECK_EQ(0, StringId("")); }
-
-int ProfileBuilder::StringId(const std::string& s) {
-  auto ret = strings_.emplace(s, profile_.string_table_size());
-  if (ret.second) {
-    profile_.add_string_table(s);
-  }
-  return ret.first->second;
-}
-
-int ProfileBuilder::FunctionId(PyCodeObject* code) {
-  // +1 because id 0 is reserved.
-  auto ret = functions_.emplace(code, profile_.function_size() + 1);
-  if (ret.second) {
-    auto* function = profile_.add_function();
-    function->set_id(ret.first->second);
-    int name = StringId(py::str(code->co_name));
-    function->set_name(name);
-    function->set_system_name(name);
-    function->set_filename(StringId(py::str(code->co_filename)));
-    function->set_start_line(code->co_firstlineno);
-  }
-  return ret.first->second;
-}
-
-int ProfileBuilder::LocationId(PyCodeObject* code, int instruction) {
-  // +1 because id 0 is reserved.
-  auto ret = locations_.emplace(std::make_pair(code, instruction),
-                                profile_.location_size() + 1);
-  if (ret.second) {
-    auto* location = profile_.add_location();
-    location->set_id(ret.first->second);
-    auto* line = location->add_line();
-    line->set_function_id(FunctionId(code));
-    line->set_line(PyCode_Addr2Line(code, instruction));
-  }
-  return ret.first->second;
-}
-
 namespace {
 
 struct HeapProfileKey {
@@ -313,8 +347,7 @@ bool HeapProfileKey::operator==(const HeapProfileKey& other) const {
 template <typename H>
 H AbslHashValue(H h, const HeapProfileKey& key) {
   if (key.traceback) {
-    h = H::combine_contiguous(std::move(h), key.traceback->raw_frames().begin(),
-                              key.traceback->raw_frames().size());
+    h = H::combine(std::move(h), key.traceback->raw_frames());
   }
   h = H::combine(std::move(h), key.size, key.device);
   return h;
@@ -350,7 +383,7 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
     }
   }
 
-  ProfileBuilder builder;
+  PprofProfileBuilder builder;
   auto* allocations = builder.profile().add_sample_type();
   allocations->set_type(builder.StringId("allocations"));
   allocations->set_unit(builder.StringId("count"));
@@ -417,7 +450,7 @@ class CpuCallback {
         results_(std::move(results)),
         transpose_cache_(/*capacity=*/16) {}
 
-  void Call(void* result, void** arg_ptrs);
+  void Call(void* result, void** arg_ptrs, XlaCustomCallStatus* status);
 
  private:
   py::function callable_;
@@ -426,7 +459,8 @@ class CpuCallback {
   TransposePlanCache transpose_cache_;
 };
 
-void CpuCallback::Call(void* result, void** arg_ptrs) {
+void CpuCallback::Call(void* result, void** arg_ptrs,
+                       XlaCustomCallStatus* status) {
   absl::Span<void* const> inputs(arg_ptrs, args_.size());
   absl::Span<void* const> outputs(reinterpret_cast<void**>(result),
                                   results_.size());
@@ -442,7 +476,16 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
       args[i].attr("flags").attr("writeable") = Py_False;
     }
   }
-  py::object result_tuple = callable_(*py::reinterpret_borrow<py::args>(args));
+  py::object result_tuple;
+  try {
+    result_tuple = callable_(*py::reinterpret_borrow<py::args>(args));
+  } catch (py::error_already_set& e) {
+    PyErr_Clear();
+    std::string error_message = e.what();
+    XlaCustomCallStatusSetFailure(status, error_message.c_str(),
+                                  error_message.length());
+    return;
+  }
   if (!PyTuple_Check(result_tuple.ptr())) {
     throw std::runtime_error(
         absl::StrFormat("CPU callback expected a tuple result, got %s",
@@ -494,10 +537,11 @@ void CpuCallback::Call(void* result, void** arg_ptrs) {
   }
 }
 
-extern "C" void XlaPythonCpuCallback(void* output, void** inputs) {
+extern "C" void XlaPythonCpuCallback(void* output, void** inputs,
+                                     XlaCustomCallStatus* status) {
   CpuCallback* callback =
       absl::bit_cast<CpuCallback*>(*static_cast<uintptr_t*>(inputs[0]));
-  callback->Call(output, inputs + 1);
+  callback->Call(output, inputs + 1, status);
 }
 
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
@@ -509,7 +553,7 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
     pybind11::function callable, XlaBuilder& builder,
     absl::Span<XlaOp const> operands, absl::Span<Shape const> result_shapes,
     absl::optional<std::vector<Shape>> operand_layouts, bool has_side_effect) {
-  if (pjrt_client_->platform_id() != kCpuId) {
+  if (pjrt_client_->platform_id() != CpuId()) {
     return Unimplemented("EmitPythonCallback is only implemented on CPU");
   }
 
@@ -601,10 +645,14 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
       &builder, absl::bit_cast<std::uint64_t>(callback.get()));
 
   Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes_with_layout);
-  XlaOp result = CustomCallWithLayout(&builder, "xla_python_cpu_callback",
-                                      custom_call_args, result_shape,
-                                      custom_call_arg_layouts,
-                                      /*opaque=*/"", has_side_effect);
+  XlaOp result = CustomCallWithLayout(
+      &builder, "xla_python_cpu_callback", custom_call_args, result_shape,
+      custom_call_arg_layouts,
+      /*opaque=*/"", has_side_effect,
+      /*output_operand_aliasing=*/{},
+      /*literal=*/nullptr,
+      /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/API_VERSION_STATUS_RETURNING);
 
   py::capsule callback_capsule(callback.release(), [](void* ptr) {
     delete reinterpret_cast<CpuCallback*>(ptr);

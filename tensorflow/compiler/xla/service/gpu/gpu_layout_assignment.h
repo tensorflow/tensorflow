@@ -40,12 +40,6 @@ class GpuLayoutAssignment : public LayoutAssignment {
 
  protected:
   Status AddBackendConstraints(LayoutConstraints* constraints) override;
-  Status PropagateOperandConstraint(
-      const OperandLayoutConstraint& layout_constraint,
-      LayoutConstraints* constraints) override;
-  Status PropagateBufferConstraint(
-      const BufferLayoutConstraint& buffer_constraint,
-      LayoutConstraints* constraints) override;
 
  private:
   Status AddBackendConstraintsToDnnConvCustomCall(

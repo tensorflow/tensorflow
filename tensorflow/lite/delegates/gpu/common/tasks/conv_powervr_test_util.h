@@ -26,6 +26,7 @@ absl::Status ConvPowerVR1x1SimpleWeightsTest(TestExecutionEnvironment* env);
 absl::Status ConvPowerVR1x1Test(TestExecutionEnvironment* env);
 absl::Status ConvPowerVRSimpleWeightsTest(TestExecutionEnvironment* env);
 absl::Status ConvPowerVRTest(TestExecutionEnvironment* env);
+absl::Status ConvPowerVRGroupedTest(TestExecutionEnvironment* env);
 
 }  // namespace gpu
 }  // namespace tflite

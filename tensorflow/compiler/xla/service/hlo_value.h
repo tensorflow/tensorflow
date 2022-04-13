@@ -19,8 +19,12 @@ limitations under the License.
 #include <stddef.h>
 
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -29,8 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -44,23 +46,22 @@ struct HloPosition {
   // Returns the shape at this position.
   const Shape& shape() const;
 
-  string ToString() const;
+  std::string ToString() const;
 
   bool operator==(const HloPosition& other) const {
     return instruction == other.instruction && index == other.index;
   }
   bool operator!=(const HloPosition& other) const { return !(*this == other); }
 
-  // Stable less-than operator using instruction id and index.
+  // Sort by instruction ID, then index.
   bool operator<(const HloPosition& other) const {
-    return instruction->unique_id() < other.instruction->unique_id() ||
-           (instruction->unique_id() == other.instruction->unique_id() &&
-            index < other.index);
+    return std::forward_as_tuple(instruction->unique_id(), index) <
+           std::forward_as_tuple(other.instruction->unique_id(), other.index);
   }
 
   template <typename H>
   friend H AbslHashValue(H h, const HloPosition& pos) {
-    return H::combine(std::move(h), pos.instruction->Hash(), pos.index);
+    return H::combine(std::move(h), *pos.instruction, pos.index);
   }
 };
 
@@ -77,7 +78,7 @@ struct HloUse {
   // The shape index within the operand in which the value appears.
   ShapeIndex operand_index;
 
-  string ToString() const;
+  std::string ToString() const;
 
   bool operator==(const HloUse& other) const {
     return instruction == other.instruction &&
@@ -104,23 +105,17 @@ class HloValue : public BufferValue {
     return a->id() < b->id();
   }
 
-  // Predicate comparing HloValues by equal id, useful for std::unique.
-  static bool IdEqual(const HloValue* a, const HloValue* b) {
-    return a->id() == b->id();
-  }
-
   // Construct an HloValue defined by 'instruction' at shape index 'index'. If
   // is_phi is true, then this value is a phi value, for example, at the
   // parameter of a while body computation. Phi values are only used in the SSA
   // dataflow analysis (HloDataflowAnalysis::ssa_form_ is true).
   HloValue(Id id, HloInstruction* instruction, const ShapeIndex& index,
            bool is_phi = false);
-  ~HloValue() override {}
 
-  // Sets the positions in the module at which the HloValue appears. Updates
-  // uses. Should be called once and only once. The defining position should not
-  // be included in 'positions' as this is set at construction time.
-  void SetPositionsAndComputeUses(absl::Span<const HloPosition> positions);
+  // Sets the positions in the module at which the HloValue appears. Should be
+  // called once and only once. The defining position should not be included in
+  // 'positions' as this is set at construction time.
+  void SetPositions(absl::Span<const HloPosition> positions);
 
   // Returns whether this value is a phi value.
   bool is_phi() const { return is_phi_; }
@@ -149,32 +144,60 @@ class HloValue : public BufferValue {
   // Return all positions of the HloValue in the module.
   const std::vector<HloPosition>& positions() const { return positions_; }
 
-  // Return all uses of the HloValue.
-  const std::vector<HloUse>& uses() const { return uses_; }
+  // Return all uses of the HloValue. This computes the uses lazily, and the
+  // overhead could be non-trivial for the first invocation. Therefore even
+  // though it is marked `const`, it actually can mutate its data members. It is
+  // kept this way to allow passing around const references.
+  absl::Span<const HloUse> GetUses() const {
+    return uses_.MaybeInitAndGet(
+        [this](std::vector<HloUse>& uses) { ComputeUses(uses); });
+  }
+
+  // Returns true if this has a position that is the root of the given
+  // computation.
+  bool IsRootOf(const HloComputation* computation) const;
 
   // Get whether this HloValue is live out of the module.
   bool live_out_of_module() const { return live_out_of_module_; }
 
-  bool operator==(const HloValue& other) const;
-  bool operator!=(const HloValue& other) const;
+  bool operator==(const HloValue& other) const { return this == &other; }
+  bool operator!=(const HloValue& other) const { return !(*this == other); }
 
   // Return a single-line string representation of the value.
-  string ToShortString() const;
-
-  string ToString(int indent) const;
-
-  string ToString() const override { return ToString(0); }
+  std::string ToShortString() const;
+  std::string ToString(int indent) const;
+  std::string ToString() const override { return ToString(0); }
 
  private:
-  // Whether this instruction is a phi value.
-  const bool is_phi_;
+  template <typename T>
+  class Lazy {
+   public:
+    Lazy() = default;
+    const T& MaybeInitAndGet(absl::FunctionRef<void(T&)> func) const {
+      if (!initialized_) {
+        func(uses_);
+        initialized_ = true;
+      }
+      return uses_;
+    }
+
+   private:
+    mutable T uses_;
+    mutable bool initialized_ = false;
+  };
+  // Called when lazily computing the uses.
+  void ComputeUses(std::vector<HloUse>& uses) const;
 
   // The set of positions of this HloValue. The first element is always the
   // position of the definition.
   std::vector<HloPosition> positions_;
 
-  // The set of uses of this HloValue.
-  std::vector<HloUse> uses_;
+  // The set of uses of this HloValue. This is lazily constructed until getting
+  // accessed.
+  Lazy<std::vector<HloUse>> uses_;
+
+  // Whether this instruction is a phi value.
+  const bool is_phi_;
 
   // Whether this value is live out of the HLO module.
   bool live_out_of_module_ = false;
@@ -194,10 +217,8 @@ class HloValueSet {
  public:
   HloValueSet() = default;
 
-  explicit HloValueSet(absl::Span<const HloValue* const> values)
-      : values_(values.begin(), values.end()) {
-    SortAndUniquifyValues();
-  }
+  explicit HloValueSet(absl::Span<const HloValue* const> values);
+  explicit HloValueSet(const absl::flat_hash_set<const HloValue*>& values);
 
   // Sets this value set to the union of the given value sets. Returns whether
   // this value set changed.
@@ -213,6 +234,8 @@ class HloValueSet {
 
   // Clear all values from the set.
   void Clear() { values_.clear(); }
+
+  std::vector<const HloValue*> TakeValues() { return std::move(values_); }
 
   // Return the unique HLO value in the set. CHECKs if the set does not contain
   // exactly one value.
@@ -232,7 +255,7 @@ class HloValueSet {
   }
   bool operator!=(const HloValueSet& other) const { return !(*this == other); }
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   // Sorts value_ and removes duplicates. This should be called after adding any
@@ -262,7 +285,7 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
   // singleton.
   bool IsAmbiguous() const;
 
-  string ToString() const;
+  std::string ToString() const;
 };
 
 std::ostream& operator<<(std::ostream& out,

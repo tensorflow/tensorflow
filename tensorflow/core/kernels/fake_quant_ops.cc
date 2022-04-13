@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/util/determinism.h"
 
 using tensorflow::BinaryElementWiseOp;
 using tensorflow::DEVICE_CPU;
@@ -235,6 +236,13 @@ class FakeQuantWithMinMaxVarsGradientOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
+    if (std::is_same<Device, Eigen::GpuDevice>::value) {
+      OP_REQUIRES(
+          context, !OpDeterminismRequired(),
+          errors::Unimplemented(
+              "Determinism is not yet supported in GPU implementation of "
+              "FakeQuantWithMinMaxVarsGradient."));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -374,6 +382,13 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
+    if (std::is_same<Device, Eigen::GpuDevice>::value) {
+      OP_REQUIRES(
+          context, !OpDeterminismRequired(),
+          errors::Unimplemented(
+              "Determinism is not yet supported in GPU implementation of "
+              "FakeQuantWithMinMaxVarsPerChannelGradient."));
+    }
   }
 
   void Compute(OpKernelContext* context) override {

@@ -41,12 +41,16 @@ struct FuseParallelMapAndBatch : public OpRewritePattern<BatchDatasetV2Op> {
         op.getLoc(), UnrankedTensorType::get(rewriter.getIntegerType(64)),
         batchInputOp.num_parallel_calls(), rewriter.getBoolAttr(false));
 
+    if (op.metadata() != batchInputOp.metadata()) {
+      return failure();
+    }
+
     auto fused_op = rewriter.create<MapAndBatchDatasetOp>(
         op.getLoc(), op.getType(), batchInputOp.input_dataset(),
         batchInputOp.other_arguments(), op.batch_size(),
         num_parallel_calls_op.y(), op.drop_remainder(), batchInputOp.f(),
         op.output_types(), op.output_shapes(),
-        batchInputOp.preserve_cardinality());
+        batchInputOp.preserve_cardinality(), op.metadata());
     rewriter.replaceOp(op, {fused_op.handle()});
     return failure();
   }
@@ -56,8 +60,8 @@ struct FuseParallelMapAndBatch : public OpRewritePattern<BatchDatasetV2Op> {
 }  // namespace
 
 void PopulateTFDataOptimizationPatterns(MLIRContext *context,
-                                        OwningRewritePatternList *patterns) {
-  patterns->insert<FuseParallelMapAndBatch>(context);
+                                        RewritePatternSet *patterns) {
+  patterns->add<FuseParallelMapAndBatch>(context);
   populateWithGenerated(*patterns);
 }
 

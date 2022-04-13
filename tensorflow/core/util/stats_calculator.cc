@@ -52,11 +52,10 @@ std::string StatsCalculator::HeaderString(const std::string& title) const {
   stream << "============================== " << title
          << " ==============================" << std::endl;
   if (options_.format_as_csv) {
-    stream << "node type, start, first, avg_ms, %, cdf%, mem KB, times called, "
+    stream << "node type, first, avg_ms, %, cdf%, mem KB, times called, "
               "name";
   } else {
     InitField(stream, 24) << "[node type]";
-    InitField(stream, 17) << "[start]";
     InitField(stream, 9) << "[first]";
     InitField(stream, 9) << "[avg ms]";
     InitField(stream, 8) << "[%]";
@@ -72,10 +71,9 @@ std::string StatsCalculator::HeaderString(const std::string& title) const {
 std::string StatsCalculator::ColumnString(const Detail& detail,
                                           const int64_t cumulative_stat_on_node,
                                           const Stat<int64_t>& stat) const {
-  const double start_ms = detail.start_us.avg() / 1000.0;
-  const double first_time_ms = detail.rel_end_us.first() / 1000.0;
-  const double avg_time_ms = detail.rel_end_us.avg() / 1000.0;
-  const double percentage = detail.rel_end_us.sum() * 100.0 / stat.sum();
+  const double first_time_ms = detail.elapsed_time.first() / 1000.0;
+  const double avg_time_ms = detail.elapsed_time.avg() / 1000.0;
+  const double percentage = detail.elapsed_time.sum() * 100.0 / stat.sum();
   const double cdf_percentage = (cumulative_stat_on_node * 100.0f) / stat.sum();
   const int64_t times_called = detail.times_called / num_runs();
 
@@ -83,13 +81,12 @@ std::string StatsCalculator::ColumnString(const Detail& detail,
   if (options_.format_as_csv) {
     std::string name(detail.name);
     std::replace(name.begin(), name.end(), ',', '\t');
-    stream << detail.type << ", " << start_ms << ", " << first_time_ms << ", "
-           << avg_time_ms << ", " << percentage << "%, " << cdf_percentage
-           << "%, " << detail.mem_used.newest() / 1000.0 << ", " << times_called
-           << ", " << name;
+    stream << detail.type << ", " << first_time_ms << ", " << avg_time_ms
+           << ", " << percentage << "%, " << cdf_percentage << "%, "
+           << detail.mem_used.newest() / 1000.0 << ", " << times_called << ", "
+           << name;
   } else {
     InitField(stream, 24) << detail.type;
-    InitField(stream, 17) << start_ms;
     InitField(stream, 9) << first_time_ms;
     InitField(stream, 9) << avg_time_ms;
     InitField(stream, 7) << percentage << "%";
@@ -121,7 +118,7 @@ void StatsCalculator::OrderNodesByMetric(
         stream << num_nodes - detail->run_order;
         break;
       case BY_TIME:
-        stream << detail->rel_end_us.avg();
+        stream << detail->elapsed_time.avg();
         break;
       case BY_MEMORY:
         stream << detail->mem_used.avg();
@@ -157,7 +154,7 @@ void StatsCalculator::ComputeStatsByType(
     const Detail& detail = det.second;
 
     int64_t curr_time_val =
-        static_cast<int64_t>(detail.rel_end_us.sum() / run_count);
+        static_cast<int64_t>(detail.elapsed_time.sum() / run_count);
     *accumulated_us += curr_time_val;
 
     int64_t curr_memory_val = detail.mem_used.newest();
@@ -265,7 +262,7 @@ std::string StatsCalculator::GetStatsByMetric(const std::string& title,
     }
 
     // TODO(andrewharp): Make this keep track of the particular metric for cdf.
-    cumulative_stat_on_node += detail->rel_end_us.sum();
+    cumulative_stat_on_node += detail->elapsed_time.sum();
     stream << ColumnString(*detail, cumulative_stat_on_node, run_total_us_)
            << std::endl;
   }
@@ -298,8 +295,7 @@ std::string StatsCalculator::GetOutputString() const {
 
 void StatsCalculator::AddNodeStats(const std::string& name,
                                    const std::string& type, int64_t run_order,
-                                   int64_t start_us, int64_t rel_end_us,
-                                   int64_t mem_used) {
+                                   int64_t elapsed_time, int64_t mem_used) {
   Detail* detail = nullptr;
   if (details_.find(name) == details_.end()) {
     details_.insert({name, {}});
@@ -310,8 +306,7 @@ void StatsCalculator::AddNodeStats(const std::string& name,
   } else {
     detail = &details_.at(name);
   }
-  detail->start_us.UpdateStat(start_us);
-  detail->rel_end_us.UpdateStat(rel_end_us);
+  detail->elapsed_time.UpdateStat(elapsed_time);
   detail->mem_used.UpdateStat(mem_used);
   detail->times_called++;
 }

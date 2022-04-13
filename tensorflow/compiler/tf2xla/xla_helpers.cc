@@ -133,109 +133,22 @@ xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp& operand,
 }
 
 XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn() {
-  return [](const TensorShape& shape, DataType dtype,
-            bool use_fast_memory) -> StatusOr<xla::Shape> {
+  return [](const TensorShape& shape, DataType dtype, bool use_fast_memory,
+            XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
     return xla_shape;
   };
 }
 
-// Rewrites the layout of xla_shape if there is tiled sharding.
-Status RewriteLayoutWithShardedShape(
-    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-    xla::Shape* xla_shape) {
-  if (sharding && !sharding->IsTileMaximal() && !sharding->IsManual()) {
-    // After sharding, per core shape might have different layout. For example,
-    // before sharding, a shape [128, 128] will be assigned default
-    // minor-to-major {1, 0}. But after we shard this shape to [128, 64] * 2,
-    // the sharded shapes will have minor-to-major {0, 1}.
-    //
-    // As a result, for sharded shapes, we set their layout to per core shape's
-    // layout.
-    //
-    // TODO(endlessroad): for variable input & update, we might have
-    // different layouts which will prevent input output aliasing and
-    // increase memory usage. Investigate such cases.
-    int64_t device = *sharding->tile_assignment().begin();
-    std::vector<int64_t> offset =
-        sharding->TileOffsetForDevice(*xla_shape, device);
-    std::vector<int64_t> limit =
-        sharding->TileLimitForDevice(*xla_shape, device);
-    std::vector<int64_t> dimensions(xla_shape->rank());
-    for (int64_t i = 0; i < xla_shape->rank(); ++i) {
-      dimensions[i] = limit[i] - offset[i];
-    }
-    xla::Shape per_device_xla_shape =
-        xla::ShapeUtil::MakeShape(xla_shape->element_type(), dimensions);
-    TensorShape per_device_tensor_shape;
-    TF_RETURN_IF_ERROR(
-        XLAShapeToTensorShape(per_device_xla_shape, &per_device_tensor_shape));
-    TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
-                                            xla_shape->element_type()));
-    TF_ASSIGN_OR_RETURN(per_device_xla_shape,
-                        shape_representation_fn(per_device_tensor_shape, dtype,
-                                                use_fast_memory));
-    *xla_shape->mutable_layout() = per_device_xla_shape.layout();
-  }
-  return Status::OK();
-}
-
-// There is a shape_representation_fn or sharding for an output, this function
-// uses a reshape to fix the layout.
-StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
-    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-    absl::optional<xla::OpSharding> sharding, bool fast_mem) {
-  if (original_shape.IsTuple()) {
-    std::vector<xla::XlaOp> elements;
-    for (int64_t i = 0; i < original_shape.tuple_shapes_size(); ++i) {
-      auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
-      TF_ASSIGN_OR_RETURN(auto element,
-                          ReshapeWithCorrectRepresentationAndSharding(
-                              builder, xla::GetTupleElement(original, i),
-                              original_shape.tuple_shapes(i),
-                              shape_representation_fn, subsharding, fast_mem));
-      elements.push_back(element);
-    }
-    return xla::Tuple(builder, elements);
-  }
-  if (!original_shape.IsArray()) return original;
-  TensorShape shape;
-  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(original_shape, &shape));
-  TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
-                                          original_shape.element_type()));
-  TF_ASSIGN_OR_RETURN(auto to_shape,
-                      shape_representation_fn(shape, dtype, fast_mem));
-  if (sharding) {
-    TF_ASSIGN_OR_RETURN(auto hlo_sharding,
-                        xla::HloSharding::FromProto(*sharding));
-    TF_RETURN_IF_ERROR(RewriteLayoutWithShardedShape(
-        hlo_sharding, fast_mem, shape_representation_fn, &to_shape));
-  }
-  if (xla::ShapeUtil::Compatible(original_shape, to_shape)) {
-    for (int64_t i = 0; i < original_shape.rank(); ++i) {
-      to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
-    }
-  }
-  return xla::Reshape(to_shape, original);
-}
-
 Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
-    const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
-        collective_reduce_info,
+    const XlaCompilationResult::CollectiveInfo& collective_info,
     xla::ExecutableRunOptions& run_options,
     xla::DeviceAssignment& device_assignment,
     xla::gpu::GpuExecutableRunOptions& gpu_options) {
   // TODO(nnigania): workaround for b/199436990
-  static const int kTimeoutSeconds = 300;
-  if (!collective_reduce_info) {
-    // An empty device assignment is sufficient for the case where no
-    // collectives are present.
-    return Status::OK();
-  }
+  static const int kTimeoutSeconds = 1000;
   if (ctx->collective_executor() == nullptr) {
     return errors::InvalidArgument(
         "CollectiveExecutor is required but not available");
@@ -245,8 +158,8 @@ Status ResolveDeviceAssignment(
   params->name = "xla-reduction-compilation";
   params->group.device_type =
       DeviceType{static_cast<Device*>(ctx->device())->device_type()};
-  params->group.group_size = collective_reduce_info->group_size;
-  params->group.group_key = collective_reduce_info->group_key;
+  params->group.group_size = collective_info.group_size;
+  params->group.group_key = collective_info.group_key;
   params->instance.type = REDUCTION_COLLECTIVE;
   params->instance.impl_details.communication_hint = "nccl";
   params->instance.impl_details.timeout_seconds = kTimeoutSeconds;
@@ -267,6 +180,8 @@ Status ResolveDeviceAssignment(
     return errors::InvalidArgument("Timeout reached");
   }
   TF_RETURN_IF_ERROR(st);
+  VLOG(5) << "Using collective params to resolve device assignment: "
+          << params->ToString();
 
   // Identify the physical device associated with each replica.
   device_assignment = xla::DeviceAssignment(params->group.group_size, 1);
@@ -299,6 +214,7 @@ Status ResolveDeviceAssignment(
             << " for replica " << device_idx << " (" << device.name() << ")";
     device_assignment(device_idx, 0) = device.xla_global_id();
   }
+  VLOG(5) << "Generated device assignment: " << device_assignment.ToString();
   if (params->group.device_type == DEVICE_GPU) {
     // For GPU collectives, `xla_global_id`s are arbitrary integers, and XLA
     // requires a mapping from local device IDs to global device IDs.
@@ -315,9 +231,10 @@ Status ResolveDeviceAssignment(
           device_mgr->LookupDevice(device_attributes.name(), &resolved_device);
       if (lookup_status.ok()) {
         // This is a local device, so include it in the mapping.
-        const DeviceBase::GpuDeviceInfo* gpu_device_info =
-            resolved_device->tensorflow_gpu_device_info();
-        global_device_ids[gpu_device_info->stream->parent()->device_ordinal()] =
+        const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+            resolved_device->tensorflow_accelerator_device_info();
+        global_device_ids[accelerator_device_info->stream->parent()
+                              ->device_ordinal()] =
             device_attributes.xla_global_id();
       }
     }
@@ -326,22 +243,6 @@ Status ResolveDeviceAssignment(
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);
   return Status::OK();
-}
-
-std::string DefinitionLocationMsg(
-    const absl::optional<ManagedStackTrace>& stack_trace) {
-  if (stack_trace) {
-    std::vector<StackFrame> stack_frames =
-        stack_trace->ToStackFrames({}, IsInternalFrameForFilename,
-                                   /*reverse_traversal=*/true,
-                                   /*limit=*/1);
-    if (!stack_frames.empty()) {
-      const StackFrame& last_frame = stack_frames[0];
-      return absl::StrCat(" (defined @ ", last_frame.file_name, ":",
-                          last_frame.line_number, ")");
-    }
-  }
-  return "";
 }
 
 }  // end namespace tensorflow

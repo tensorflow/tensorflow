@@ -36,6 +36,25 @@ namespace profiler {
 
 namespace {
 
+// CUPTI from CUDA 11.6 adds information about the hardware channel that ops
+// run on; this makes its way into the channel_id and channel_type fields in the
+// structs we export.
+//
+// Define some type aliases so we can access the hardware channel id if it's
+// available.
+#if CUDA_VERSION >= 11060  // CUDA 11.6
+#define TF_CUPTI_HAS_CHANNEL_ID 1
+using CuptiActivityKernelTy = CUpti_ActivityKernel7;
+using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy5;
+using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpyPtoP4;
+using CuptiActivityMemsetTy = CUpti_ActivityMemset4;
+#else
+using CuptiActivityKernelTy = CUpti_ActivityKernel4;
+using CuptiActivityMemcpyTy = CUpti_ActivityMemcpy;
+using CuptiActivityMemcpyP2PTy = CUpti_ActivityMemcpy2;
+using CuptiActivityMemsetTy = CUpti_ActivityMemset;
+#endif
+
 static thread_local int internalCuCall = 0;
 
 // Temporary disable cupti api tracing for this thread during the life scope of
@@ -550,7 +569,7 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
 }
 
 void AddKernelActivityEvent(CuptiTraceCollector *collector,
-                            const CUpti_ActivityKernel4 *kernel) {
+                            const CuptiActivityKernelTy *kernel) {
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Kernel;
   event.source = CuptiTracerEventSource::Activity;
@@ -574,11 +593,15 @@ void AddKernelActivityEvent(CuptiTraceCollector *collector,
   event.kernel_info.grid_x = kernel->gridX;
   event.kernel_info.grid_y = kernel->gridY;
   event.kernel_info.grid_z = kernel->gridZ;
+#if TF_CUPTI_HAS_CHANNEL_ID
+  event.kernel_info.channel_id = kernel->channelID;
+  event.kernel_info.channel_type = kernel->channelType;
+#endif
   collector->AddEvent(std::move(event));
 }
 
 void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
-                            const CUpti_ActivityMemcpy *memcpy) {
+                            const CuptiActivityMemcpyTy *memcpy) {
   CuptiTracerEvent event{};
   switch (memcpy->copyKind) {
     case CUPTI_ACTIVITY_MEMCPY_KIND_HTOD:
@@ -619,31 +642,39 @@ void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
   event.memcpy_info.async = memcpy->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
   event.memcpy_info.src_mem_kind = memcpy->srcKind;
   event.memcpy_info.dst_mem_kind = memcpy->dstKind;
+#if TF_CUPTI_HAS_CHANNEL_ID
+  event.memcpy_info.channel_id = memcpy->channelID;
+  event.memcpy_info.channel_type = memcpy->channelType;
+#endif
   collector->AddEvent(std::move(event));
 }
 
 // Invokes callback upon peer-2-peer memcpy between different GPU devices.
-void AddMemcpy2ActivityEvent(CuptiTraceCollector *collector,
-                             const CUpti_ActivityMemcpy2 *memcpy2) {
+void AddMemcpyP2PActivityEvent(CuptiTraceCollector *collector,
+                               const CuptiActivityMemcpyP2PTy *memcpy) {
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::MemcpyP2P;
   event.name = "MemcpyP2P";
   event.source = CuptiTracerEventSource::Activity;
-  event.start_time_ns = memcpy2->start;
-  event.end_time_ns = memcpy2->end;
-  event.device_id = memcpy2->srcDeviceId;
-  event.context_id = memcpy2->contextId;
-  event.stream_id = memcpy2->streamId;
-  event.correlation_id = memcpy2->correlationId;
+  event.start_time_ns = memcpy->start;
+  event.end_time_ns = memcpy->end;
+  event.device_id = memcpy->srcDeviceId;
+  event.context_id = memcpy->contextId;
+  event.stream_id = memcpy->streamId;
+  event.correlation_id = memcpy->correlationId;
   AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
       event.device_id, event.correlation_id);
   event.annotation = info.annotation;
   event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
-  event.memcpy_info.num_bytes = memcpy2->bytes;
-  event.memcpy_info.destination = memcpy2->dstDeviceId;
-  event.memcpy_info.async = memcpy2->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
-  event.memcpy_info.src_mem_kind = memcpy2->srcKind;
-  event.memcpy_info.dst_mem_kind = memcpy2->dstKind;
+  event.memcpy_info.num_bytes = memcpy->bytes;
+  event.memcpy_info.destination = memcpy->dstDeviceId;
+  event.memcpy_info.async = memcpy->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
+  event.memcpy_info.src_mem_kind = memcpy->srcKind;
+  event.memcpy_info.dst_mem_kind = memcpy->dstKind;
+#if TF_CUPTI_HAS_CHANNEL_ID
+  event.memcpy_info.channel_id = memcpy->channelID;
+  event.memcpy_info.channel_type = memcpy->channelType;
+#endif
   collector->AddEvent(std::move(event));
 }
 
@@ -750,7 +781,7 @@ void AddMemoryActivityEvent(CuptiTraceCollector *collector,
 }
 
 void AddMemsetActivityEvent(CuptiTraceCollector *collector,
-                            const CUpti_ActivityMemset *memset) {
+                            const CuptiActivityMemsetTy *memset) {
   auto mem_kind = memset->memoryKind;
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::Memset;
@@ -765,6 +796,10 @@ void AddMemsetActivityEvent(CuptiTraceCollector *collector,
   event.memset_info.num_bytes = memset->bytes;
   event.memset_info.mem_kind = mem_kind;
   event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
+#if TF_CUPTI_HAS_CHANNEL_ID
+  event.memset_info.channel_id = memset->channelID;
+  event.memset_info.channel_type = memset->channelType;
+#endif
   VLOG(5) << "Cuda activity " << event.name << " bytes: " << memset->bytes
           << " async: " << event.memset_info.async;
   collector->AddEvent(std::move(event));
@@ -850,7 +885,7 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
  private:
   void TrackContext(CUpti_CallbackId cbid, CUcontext ctx) {
     if (!option_.sync_devices_before_stop) return;
-    if (ctx == NULL) return;
+    if (ctx == nullptr) return;
     absl::MutexLock lock(&mutex_);
     if (cbid == CUPTI_DRIVER_TRACE_CBID_cuCtxDestroy_v2 ||
         cbid == CUPTI_DRIVER_TRACE_CBID_cuCtxDestroy) {
@@ -1923,15 +1958,15 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
         case CUPTI_ACTIVITY_KIND_KERNEL:  // sequential
         case CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL:
           AddKernelActivityEvent(
-              collector_, reinterpret_cast<CUpti_ActivityKernel4 *>(record));
+              collector_, reinterpret_cast<CuptiActivityKernelTy *>(record));
           break;
         case CUPTI_ACTIVITY_KIND_MEMCPY:
           AddMemcpyActivityEvent(
-              collector_, reinterpret_cast<CUpti_ActivityMemcpy *>(record));
+              collector_, reinterpret_cast<CuptiActivityMemcpyTy *>(record));
           break;
         case CUPTI_ACTIVITY_KIND_MEMCPY2:
-          AddMemcpy2ActivityEvent(
-              collector_, reinterpret_cast<CUpti_ActivityMemcpy2 *>(record));
+          AddMemcpyP2PActivityEvent(
+              collector_, reinterpret_cast<CuptiActivityMemcpyP2PTy *>(record));
           break;
         case CUPTI_ACTIVITY_KIND_OVERHEAD:
           AddCuptiOverheadActivityEvent(
@@ -1948,7 +1983,7 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
         } break;
         case CUPTI_ACTIVITY_KIND_MEMSET:
           AddMemsetActivityEvent(
-              collector_, reinterpret_cast<CUpti_ActivityMemset *>(record));
+              collector_, reinterpret_cast<CuptiActivityMemsetTy *>(record));
           break;
         case CUPTI_ACTIVITY_KIND_SYNCHRONIZATION:
           AddSynchronizationActivityEvent(

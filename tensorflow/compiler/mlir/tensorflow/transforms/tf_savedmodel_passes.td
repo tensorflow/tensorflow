@@ -17,20 +17,6 @@ include "mlir/Pass/PassBase.td"
 
 // TF SavedModel dialect passes.
 
-def SavedModelLiftVariablePass : Pass<"tf-savedmodel-lift-variable-pass",
-    "ModuleOp"> {
-  let summary = "Convert function arguments to global tensors";
-
-  let description = [{
-    This pass takes care of finding all variables from the function arguments
-    and converting them to the corresponding global tensors, that will be
-    located out of function. Also it converts resource arguments from function
-    types to the corresponding saved model arguments accordingly.
-  }];
-
-  let constructor = "::mlir::tf_saved_model::CreateLiftVariablesPass(nullptr)";
-}
-
 def FreezeGlobalTensorsPass : Pass<"tf-saved-model-freeze-global-tensors", "ModuleOp"> {
   let summary = "Freeze tf_saved_model.global_tensor's in func bodies.";
 
@@ -56,4 +42,26 @@ def FreezeGlobalTensorsPass : Pass<"tf-saved-model-freeze-global-tensors", "Modu
     Option<"allow_mutable_tensors", "allow-mutable-tensors", "bool", /*default=*/"false",
            "Allows mutable tensors to be in the graph.">
   ];
+}
+
+def OptimizeGlobalTensorsPass : Pass<"tf-saved-model-optimize-global-tensors", "ModuleOp"> {
+  let summary = "Optimize tf_saved_model.global_tensor's.";
+
+  let constructor = "mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass()";
+}
+
+def RemoveVariablesInSessionInitializerPass : Pass<"tf-saved-model-remove-vars-in-session-initializer", "ModuleOp"> {
+  let summary = "Remove variables in tf saved model's session initializer.";
+
+  let constructor = "mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass()";
+}
+
+def FreezeAssetsPass : Pass<"tf-saved-model-freeze-assets", "ModuleOp"> {
+  let summary = "Freeze tf_saved_model.asset's in func bodies.";
+  let constructor = "mlir::tf_saved_model::CreateFreezeAssetsPass()";
+}
+
+def DedupBoundInputBindingPass : Pass<"tf-saved-model-dedup-bound-input-binding-pass", "mlir::func::FuncOp"> {
+  let summary = "Remove duplicate 'tf_saved_model.bound_input' bindings.";
+  let constructor = "mlir::tf_saved_model::CreateDedupBoundInputBindingPass()";
 }

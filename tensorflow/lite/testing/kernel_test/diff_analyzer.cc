@@ -16,6 +16,9 @@ limitations under the License.
 
 #include <cmath>
 #include <fstream>
+#include <string>
+
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/testing/split.h"
 
 namespace tflite {
@@ -54,7 +57,7 @@ float CalculateNormalizedL2Norm(const std::vector<float>& base,
 }
 
 TfLiteStatus Populate(const string& filename,
-                      std::vector<std::vector<float>>* tensors) {
+                      std::unordered_map<string, std::vector<float>>* tensors) {
   if (filename.empty()) {
     fprintf(stderr, "Empty input file name.");
     return kTfLiteError;
@@ -63,7 +66,12 @@ TfLiteStatus Populate(const string& filename,
   std::ifstream file(filename);
   string content;
   while (std::getline(file, content, '\n')) {
-    tensors->push_back(Split<float>(content, ","));
+    auto parts = Split<string>(content, ":");
+    if (parts.size() != 2) {
+      fprintf(stderr, "Expected <name>:<value>, got %s", content.c_str());
+      return kTfLiteError;
+    }
+    tensors->insert(std::make_pair(parts[0], Split<float>(parts[1], ",")));
   }
 
   file.close();
@@ -100,12 +108,17 @@ TfLiteStatus DiffAnalyzer::WriteReport(const string& filename) {
               << ","
               << "Normalized Max Diff"
               << "\n";
-  for (int i = 0; i < base_tensors_.size(); i++) {
+  for (const auto& item : base_tensors_) {
+    const auto& name = item.first;
+    if (!test_tensors_.count(name)) {
+      fprintf(stderr, "Missing tensor %s in test tensors.", name.c_str());
+      continue;
+    }
     float l2_error =
-        CalculateNormalizedL2Norm(base_tensors_[i], test_tensors_[i]);
+        CalculateNormalizedL2Norm(base_tensors_[name], test_tensors_[name]);
     float max_diff =
-        CalculateNormalizedMaxDiff(base_tensors_[i], test_tensors_[i]);
-    output_file << l2_error << "," << max_diff << "\n";
+        CalculateNormalizedMaxDiff(base_tensors_[name], test_tensors_[name]);
+    output_file << name << ":" << l2_error << "," << max_diff << "\n";
   }
 
   output_file.close();

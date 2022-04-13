@@ -119,7 +119,7 @@ void GpuDelegateProvider::LogParams(const ToolParams& params,
 
 TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
-  TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
+  TfLiteDelegatePtr delegate = CreateNullDelegate();
 
   if (params.Get<bool>("use_gpu")) {
 #if TFLITE_SUPPORTS_GPU_DELEGATE

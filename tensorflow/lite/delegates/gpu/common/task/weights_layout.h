@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+
 namespace tflite {
 namespace gpu {
 
@@ -34,6 +36,7 @@ enum class WeightsLayout {
 };
 
 struct WeightsDescription {
+  DataType type;
   WeightsLayout layout;
   // applicable with layouts that have OGroup.
   int output_group_size;  // OGroup size
@@ -43,6 +46,9 @@ struct WeightsDescription {
   int GetOutputGroupSize() const;
   bool IsI4O4() const;
   bool IsO4I4() const;
+  bool IsCustomSpatial() const;
+
+  bool operator==(const WeightsDescription& t) const;
 };
 
 }  // namespace gpu

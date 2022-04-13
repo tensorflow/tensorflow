@@ -40,10 +40,13 @@ namespace tensorflow {
 // Outputs nudged_min, nudged_max, nudged_scale.
 EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE void Nudge(
     const float min, const float max, const int quant_min, const int quant_max,
-    float* nudged_min, float* nudged_max, float* scale) {
+    float* nudged_min, float* nudged_max, float* scale, float* inv_scale) {
   const float quant_min_float = static_cast<float>(quant_min);
   const float quant_max_float = static_cast<float>(quant_max);
   *scale = (max - min) / (quant_max_float - quant_min_float);
+  // Re-calculate the inverse to avoid loss of precision which would result
+  // from simply taking the reciprocal of *scale
+  *inv_scale = (quant_max_float - quant_min_float) / (max - min);
   const float zero_point_from_min = quant_min_float - min / *scale;
   const uint16 nudged_zero_point = [zero_point_from_min, quant_min,
                                     quant_min_float, quant_max,
@@ -84,16 +87,17 @@ struct FakeQuantWithMinMaxArgsFunctor {
     eigen_assert(max >= 0.0f && "max should be >= 0.0");
     eigen_assert(min < max && "min should be < max");
 
-    float nudged_min, nudged_max, nudged_scale;
+    float nudged_min, nudged_max, nudged_scale, inv_nudged_scale;
     Nudge(min, max, quant_min, quant_max, &nudged_min, &nudged_max,
-          &nudged_scale);
-    const float inv_nudged_scale = 1.0f / nudged_scale;
+          &nudged_scale, &inv_nudged_scale);
+
+    const float quant_zero = floor(-nudged_min * inv_nudged_scale + 0.5f);
 
     auto clamped = inputs.cwiseMin(nudged_max).cwiseMax(nudged_min);
     auto clamped_shifted = clamped - nudged_min;
     outputs.device(d) =
-        (clamped_shifted * inv_nudged_scale + 0.5f).floor() * nudged_scale +
-        nudged_min;
+        (clamped_shifted * inv_nudged_scale - quant_zero + 0.5f).floor() *
+        nudged_scale;
   }
 };
 
@@ -109,9 +113,9 @@ struct FakeQuantWithMinMaxArgsGradientFunctor {
     eigen_assert(max >= 0.0f && "max should be >= 0.0");
     eigen_assert(min < max && "min should be < max");
 
-    float nudged_min, nudged_max, nudged_scale;
+    float nudged_min, nudged_max, nudged_scale, inv_nudged_scale;
     Nudge(min, max, quant_min, quant_max, &nudged_min, &nudged_max,
-          &nudged_scale);
+          &nudged_scale, &inv_nudged_scale);
 
     auto between_nudged_min_max =
         (inputs >= nudged_min && inputs <= nudged_max)
@@ -135,16 +139,19 @@ struct FakeQuantWithMinMaxVarsFunctor {
       outputs.device(d) = outputs.constant(0.0f);
       return;
     }
-    float nudged_min, nudged_max, nudged_scale;
+    float nudged_min, nudged_max, nudged_scale, inv_nudged_scale;
     Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
-          &nudged_scale);
+          &nudged_scale, &inv_nudged_scale);
+
+    const float quant_zero = floor(-nudged_min * inv_nudged_scale + 0.5f);
     const auto nudged_scale_repl = inputs.constant(nudged_scale);
+    // const auto inv_nudged_scale_repl = inputs.constant(inv_nudged_scale);
 
     const auto clamped = inputs.cwiseMin(nudged_max).cwiseMax(nudged_min);
     const auto clamped_shifted = clamped - nudged_min;
-    outputs.device(d) = (clamped_shifted / nudged_scale_repl + 0.5f).floor() *
-                            nudged_scale_repl +
-                        nudged_min;
+    outputs.device(d) =
+        (clamped_shifted / nudged_scale_repl - quant_zero + 0.5f).floor() *
+        nudged_scale_repl;
   }
 };
 
@@ -167,9 +174,9 @@ struct FakeQuantWithMinMaxVarsGradientFunctor {
       backprop_wrt_max.device(d) = backprop_wrt_max.constant(0.0f);
       return;
     }
-    float nudged_min, nudged_max, nudged_scale;
+    float nudged_min, nudged_max, nudged_scale, inv_nudged_scale;
     Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
-          &nudged_scale);
+          &nudged_scale, &inv_nudged_scale);
 
     const auto between_min_max =
         (inputs >= nudged_min && inputs <= nudged_max)
@@ -209,16 +216,19 @@ struct FakeQuantWithMinMaxVarsPerChannelFunctor {
         chip.device(d) = chip.constant(0.0f);
         continue;
       }
-      float nudged_min, nudged_max, nudged_scale;
+      float nudged_min, nudged_max, nudged_scale, inv_nudged_scale;
       Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
-            &nudged_scale);
+            &nudged_scale, &inv_nudged_scale);
+
+      const float quant_zero = floor(-nudged_min * inv_nudged_scale + 0.5f);
+
       const auto clamped =
           inputs.chip<1>(i).cwiseMin(nudged_max).cwiseMax(nudged_min);
       const auto clamped_shifted = clamped - nudged_min;
 
       outputs.chip<1>(i).device(d) =
-          (clamped_shifted / nudged_scale + 0.5f).floor() * nudged_scale +
-          nudged_min;
+          (clamped_shifted * inv_nudged_scale - quant_zero + 0.5f).floor() *
+          nudged_scale;
     }
   }
 };
@@ -249,9 +259,9 @@ struct FakeQuantWithMinMaxVarsPerChannelGradientFunctor {
         max_chip.device(d) = max_chip.constant(0.0f);
         continue;
       }
-      float nudged_min, nudged_max, nudged_scale;
+      float nudged_min, nudged_max, nudged_scale, inv_nudged_scale;
       Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
-            &nudged_scale);
+            &nudged_scale, &inv_nudged_scale);
 
       const auto between_min_max =
           (inputs_chip >= nudged_min && inputs_chip <= nudged_max)

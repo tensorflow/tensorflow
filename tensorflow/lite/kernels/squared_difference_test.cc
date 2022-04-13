@@ -87,7 +87,7 @@ TEST(FloatSquaredDifferenceOpTest, FloatType_SameShape) {
                                   {TensorType_FLOAT32, {}});
   m.PopulateTensor<float>(m.input1(), {-0.2, 0.2, -1.2, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.5, 0.2, -1.5, 0.5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({0.49, 0.0, 0.09, 0.09})));
 }
@@ -101,7 +101,7 @@ TEST(FloatSquaredDifferenceOpTest, FloatType_VariousInputShapes) {
                                     {TensorType_FLOAT32, {}});
     m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.3, 0.8, 1.1, -2.0});
     m.PopulateTensor<float>(m.input2(), {1.0, 0.2, 0.6, 0.4, -1.0, -0.0});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
         m.GetOutput(),
         ElementsAreArray(ArrayFloatNear({9.0, 0.0, 0.09, 0.16, 4.41, 4.0})))
@@ -119,7 +119,7 @@ TEST(FloatSquaredDifferenceOpTest, FloatType_WithBroadcast) {
         {TensorType_FLOAT32, {}});
     m.PopulateTensor<float>(m.input1(), {-0.2, 0.2, 0.5, 0.8, 0.11, 1.1});
     m.PopulateTensor<float>(m.input2(), {0.1});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
         m.GetOutput(),
         ElementsAreArray(ArrayFloatNear({0.09, 0.01, 0.16, 0.49, 0.0001, 1.0})))
@@ -133,7 +133,7 @@ TEST(IntegerSquaredDifferenceOpTest, IntegerType_SameShape) {
                                     {TensorType_INT32, {}});
   m.PopulateTensor<int32_t>(m.input1(), {-2, 2, -15, 8});
   m.PopulateTensor<int32_t>(m.input2(), {5, -2, -3, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({49, 16, 144, 9}));
 }
 
@@ -146,7 +146,7 @@ TEST(IntegerSquaredDifferenceOpTest, IntegerType_VariousInputShapes) {
                                       {TensorType_INT32, {}});
     m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 3, 8, 11, -20});
     m.PopulateTensor<int32_t>(m.input2(), {1, 2, 6, 5, -5, -20});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({441, 0, 9, 9, 256, 0}))
         << "With shape number " << i;
   }
@@ -162,7 +162,7 @@ TEST(IntegerSquaredDifferenceOpTest, IntegerType_WithBroadcast) {
         {TensorType_INT32, {}});
     m.PopulateTensor<int32_t>(m.input1(), {-20, 10, 7, 3, 1, 13});
     m.PopulateTensor<int32_t>(m.input2(), {3});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({529, 49, 16, 0, 4, 100}))
         << "With shape number " << i;
   }
@@ -176,7 +176,7 @@ TEST(QuantizedSquaredDifferenceOpTest, Quantized_SameShape) {
       {TensorType_INT8, {}, 0.0, 0.5});
   m.QuantizeAndPopulate<int8_t>(m.input1(), {-0.2, 0.2, -1.2, 0.8});
   m.QuantizeAndPopulate<int8_t>(m.input2(), {0.5, 0.2, -1.5, 0.5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({0.49, 0.0, 0.09, 0.09},
                                               kQuantizedTolerance)));
@@ -193,7 +193,7 @@ TEST(QuantizedSquaredDifferenceOpTest, Quantized_VariousInputShapes) {
         {TensorType_INT8, {}, 0.0, 9.0});
     m.QuantizeAndPopulate<int8_t>(m.input1(), {-2.0, 0.2, 0.3, 0.8, 1.1, -2.0});
     m.QuantizeAndPopulate<int8_t>(m.input2(), {1.0, 0.2, 0.6, 0.4, -1.0, -0.0});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
                 ElementsAreArray(ArrayFloatNear(
                     {9.0, 0.0, 0.09, 0.16, 4.41, 4.0}, kQuantizedTolerance)))
@@ -211,7 +211,7 @@ TEST(QuantizedSquaredDifferenceOpTest, Quantized_WithBroadcast) {
         {TensorType_INT8, {}, 0.0, 0.1}, {TensorType_INT8, {}, 0.0, 1.0});
     m.QuantizeAndPopulate<int8_t>(m.input1(), {-0.2, 0.2, 0.5, 0.8, 0.11, 1.1});
     m.QuantizeAndPopulate<int8_t>(m.input2(), {0.1});
-    m.Invoke();
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(
         m.GetDequantizedOutput<int8_t>(),
         ElementsAreArray(ArrayFloatNear({0.09, 0.01, 0.16, 0.49, 0.0001, 1.0},

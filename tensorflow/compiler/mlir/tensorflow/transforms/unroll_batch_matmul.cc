@@ -25,8 +25,8 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
@@ -36,33 +36,41 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
 namespace TF {
 
 namespace {
+
+template <typename BatchMatMulOpType>
+class ConvertTFBatchMatMulOp : public OpRewritePattern<BatchMatMulOpType> {
+  using OpRewritePattern<BatchMatMulOpType>::OpRewritePattern;
+
+  static TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
+                                       Type element_type, Location loc,
+                                       PatternRewriter& rewriter);
+
+  static std::vector<Value> sliceInput(Value value, int batch_size,
+                                       Location loc, PatternRewriter& rewriter);
+
+  LogicalResult matchAndRewrite(BatchMatMulOpType op,
+                                PatternRewriter& rewriter) const override;
+};
+
 // Unrolls a BatchMatMul on the batch dimension. We need to slice each batch out
 // of the inputs, matmul them individually, then stack them all back together at
 // the end.
 struct UnrollBatchMatMulPass
-    : public PassWrapper<UnrollBatchMatMulPass, FunctionPass> {
-  StringRef getArgument() const final { return "tf-unroll-batch-matmul"; }
-
-  StringRef getDescription() const final {
-    return "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.";
-  }
-
-  void runOnFunction() override;
+    : public UnrollBatchMatMulPassBase<UnrollBatchMatMulPass> {
+  void runOnOperation() override;
 };
 
-void UnrollBatchMatMulPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
-
-  patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
-                  ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>,
-                  ConvertTFBatchMatMulOp<TF::BatchMatMulV3Op>>(&getContext());
+void UnrollBatchMatMulPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
+  PopulateUnrollTfBatchMatMul(&getContext(), patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
@@ -275,11 +283,16 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   return success();
 }
 
-static PassRegistration<UnrollBatchMatMulPass> pass;
-
 std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass() {
   return std::make_unique<UnrollBatchMatMulPass>();
 }
 
 }  // namespace TF
 }  // namespace mlir
+
+void mlir::TF::PopulateUnrollTfBatchMatMul(MLIRContext* context,
+                                           RewritePatternSet& patterns) {
+  patterns.add<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
+               ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>,
+               ConvertTFBatchMatMulOp<TF::BatchMatMulV3Op>>(context);
+}

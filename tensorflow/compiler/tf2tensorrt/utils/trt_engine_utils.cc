@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
@@ -37,62 +36,77 @@ namespace tensorrt {
 using absl::StrCat;
 
 ExecutionContext ExecutionContext::Create(nvinfer1::ICudaEngine* cuda_engine) {
+  bool has_int32_output = false;
+  for (int i = 0; i < cuda_engine->getNbBindings(); i++) {
+    if (!cuda_engine->bindingIsInput(i) &&
+        cuda_engine->getBindingDataType(i) == nvinfer1::DataType::kINT32) {
+      has_int32_output = true;
+      break;
+    }
+  }
+  if (!IS_TRT_VERSION_GE(8, 0, 0, 0) && has_int32_output) {
+    // TODO(nvbugs/3390469): Remove this workaround when the bug is fixed.
+    nvinfer1::IExecutionContext* execution_context =
+        cuda_engine->createExecutionContext();
+    return ExecutionContext(execution_context, true);
+  }
+
   nvinfer1::IExecutionContext* execution_context =
       cuda_engine->createExecutionContextWithoutDeviceMemory();
-  return ExecutionContext(execution_context);
+  return ExecutionContext(execution_context, false);
 }
 
 Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
                           const nvinfer1::IExecutionContext* execution_context,
                           int binding_index, bool use_implicit_batch,
                           int batch_size, TensorShape& shape) {
-  nvinfer1::Dims dims;
-  if (use_implicit_batch) {
-    dims = cuda_engine->getBindingDimensions(binding_index);
-  } else {
-    // Get dims from context instead of engine in explicit batch mode because
-    // the engine might have dynamic shapes.
-    dims = execution_context->getBindingDimensions(binding_index);
+  nvinfer1::Dims dims =
+      use_implicit_batch
+          ? cuda_engine->getBindingDimensions(binding_index)
+          : execution_context->getBindingDimensions(binding_index);
+  if (!use_implicit_batch) {
     if (dims.nbDims == -1) {
-      // Invalid dimensions. There can be multiple reasons for this. If we have
-      // incompatible input shapes (network invalid for the current profile)
-      // that can trigger this error.
       return errors::Internal(
           "Binding index out of range. This can happen if profile is not set, "
           "or the network is invalid for the current profile.");
     }
   }
-  TF_RETURN_IF_ERROR(TrtDimsToTensorShape(
-      dims, &shape,
+  TF_RETURN_IF_ERROR(DimsAdapter(dims).TensorShape(
+      &shape,
       use_implicit_batch ? absl::optional<int>(batch_size) : absl::nullopt));
   return Status::OK();
 }
 
-Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
-                          const nvinfer1::ICudaEngine* cuda_engine,
-                          int* binding_index) {
-  // If the engine has been built for K profiles, the first getNbBindings() / K
-  // bindings are used by profile number 0, the following getNbBindings() / K
-  // bindings are used by profile number 1 etc.
-  //
-  // GetBindingIndex(tensor_name) returns the binding index for the progile 0.
-  // We can also consider it as a "binding_index_within_profile".
-  *binding_index = cuda_engine->getBindingIndex(tensor_name);
-  if (*binding_index == -1) {
-    const string msg = StrCat("Input node ", tensor_name, " not found");
-    LOG(ERROR) << msg;
-    return errors::NotFound(msg);
+Status SetupBindings(nvinfer1::ICudaEngine* cuda_engine, const Tensor& tensor,
+                     std::vector<void*>& buffers, int binding_index) {
+  const auto dtype = cuda_engine->getBindingDataType(binding_index);
+  VLOG(2) << "<<<<<<<<< SetupBindings with dtype = " << (int)dtype;
+  switch (dtype) {
+    case nvinfer1::DataType::kFLOAT:
+      buffers[binding_index] = const_cast<float*>(tensor.flat<float>().data());
+      break;
+    case nvinfer1::DataType::kHALF:
+      buffers[binding_index] =
+          const_cast<Eigen::half*>(tensor.flat<Eigen::half>().data());
+      break;
+    case nvinfer1::DataType::kINT8:
+      return errors::Internal("INT8 inputs are not supported yet!");
+    case nvinfer1::DataType::kINT32:
+      buffers[binding_index] = const_cast<int32*>(tensor.flat<int32>().data());
+      break;
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    case nvinfer1::DataType::kBOOL:
+      buffers[binding_index] = const_cast<bool*>(tensor.flat<bool>().data());
+      break;
+#endif
+    default:
+      return errors::Internal("Unknown TRT data type: ",
+                              static_cast<int>(dtype));
   }
-  int n_profiles = cuda_engine->getNbOptimizationProfiles();
-  // If we have more then one optimization profile, then we need to shift the
-  // binding index according to the following formula:
-  // binding_index_within_engine = binding_index_within_profile +
-  //                               profile_index * bindings_per_profile
-  const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
-  *binding_index = *binding_index + profile_index * bindings_per_profile;
   return Status::OK();
 }
 
+// Sets up bindings.
 Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                           nvinfer1::IExecutionContext* execution_context,
                           const int trt_profile_idx,
@@ -106,8 +120,17 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     const string input_name =
         ctx ? StrCat(IONamePrefixes::kInputPHName, i) : input_vec->at(i).name;
     int binding_index;
-    TF_RETURN_IF_ERROR(GetTrtBindingIndex(input_name.c_str(), trt_profile_idx,
-                                          cuda_engine, &binding_index));
+    Status status = GetTrtBindingIndex(input_name.c_str(), trt_profile_idx,
+                                       cuda_engine, &binding_index);
+    if (IS_TRT_VERSION_GE(8, 0, 0, 0)) {
+      TF_RETURN_IF_ERROR(status);
+    } else if (!status.ok()) {
+      // Before TRT 8, an input tensor can be pruned if it is not used by the
+      // network (e.g. only its shape is used, but the shape is already defined
+      // by the optimization profile by setting min=max). nvbugs/3153064
+      VLOG(2) << "Skipping pruned input " << input_name;
+      continue;
+    }
     const Tensor& input_tensor = ctx ? ctx->input(i) : input_vec->at(i).tensor;
     const TensorShape& input_shape = input_tensor.shape();
 
@@ -128,10 +151,11 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
 
       if (cuda_engine->isExecutionBinding(binding_index)) {
         nvinfer1::Dims trt_dims;
-        TF_RETURN_IF_ERROR(TensorShapeToTrtDims(input_shape, false, &trt_dims));
+        auto adap = DimsAdapter::Create(input_shape);
+        TRT_ENSURE_OK(adap);
         VLOG(2) << "Setting binding dimensions for idx " << binding_index;
-        bool ret =
-            execution_context->setBindingDimensions(binding_index, trt_dims);
+        bool ret = execution_context->setBindingDimensions(binding_index,
+                                                           adap->AsTrtDims());
         if (!ret) {
           VLOG(2) << "Error setting engine input " << binding_index << " "
                   << DebugString(trt_dims);
@@ -141,26 +165,8 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
       }
     }
     // Setup input bindings.
-    auto dtype = cuda_engine->getBindingDataType(binding_index);
-    switch (dtype) {
-      case nvinfer1::DataType::kFLOAT:
-        buffers[binding_index] =
-            const_cast<float*>(input_tensor.flat<float>().data());
-        break;
-      case nvinfer1::DataType::kHALF:
-        buffers[binding_index] =
-            const_cast<Eigen::half*>(input_tensor.flat<Eigen::half>().data());
-        break;
-      case nvinfer1::DataType::kINT8:
-        return errors::Internal("INT8 inputs are not supported yet!");
-      case nvinfer1::DataType::kINT32:
-        buffers[binding_index] =
-            const_cast<int32*>(input_tensor.flat<int32>().data());
-        break;
-      default:
-        return errors::Internal("Unknown TRT data type: ",
-                                static_cast<int>(dtype));
-    }
+    TF_RETURN_IF_ERROR(
+        SetupBindings(cuda_engine, input_tensor, buffers, binding_index));
   }
 
   // Ensure all network dynamic dimensions (if any) are set in execution
@@ -215,27 +221,9 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
       }
     }
 
-    // Setup output bindings.
-    auto dtype = cuda_engine->getBindingDataType(binding_index);
-    switch (dtype) {
-      case nvinfer1::DataType::kFLOAT:
-        buffers[binding_index] =
-            const_cast<float*>(output_tensor->flat<float>().data());
-        break;
-      case nvinfer1::DataType::kHALF:
-        buffers[binding_index] =
-            const_cast<Eigen::half*>(output_tensor->flat<Eigen::half>().data());
-        break;
-      case nvinfer1::DataType::kINT8:
-        return errors::Internal("int8 is not supported yet!");
-      case nvinfer1::DataType::kINT32:
-        buffers[binding_index] =
-            const_cast<int32*>(output_tensor->flat<int32>().data());
-        break;
-      default:
-        return errors::Internal("Unknown TRT data type: ",
-                                static_cast<int>(dtype));
-    }
+    // Set up output bindings.
+    TF_RETURN_IF_ERROR(
+        SetupBindings(cuda_engine, *output_tensor, buffers, binding_index));
   }
   return Status::OK();
 }

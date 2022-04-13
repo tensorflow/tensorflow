@@ -198,6 +198,7 @@ def poisson_cases():
                                  lam_dtype, out_dtype, (10,)))
 
 
+@test_util.with_eager_op_as_function
 class StatelessOpsTest(test.TestCase, parameterized.TestCase):
 
   def _test_match(self, case, seed):

@@ -21,9 +21,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/op.h"
@@ -70,7 +70,8 @@ int main(int argc, char **argv) {
     llvm::raw_string_ostream os(module_txt);
     module->print(os, mlir::OpPrintingFlags().enableDebugInfo());
 
-    auto new_module = mlir::parseSourceString(os.str(), module->getContext());
+    auto new_module =
+        mlir::parseSourceString<mlir::ModuleOp>(os.str(), module->getContext());
     if (!new_module) {
       llvm::errs() << "Couldn't reparse module: \n" << *module.get() << "\n";
       return 4;
@@ -102,8 +103,8 @@ int main(int argc, char **argv) {
     }
     graph.ToGraphDef(&graphdef);
   }
-  NormalizeTensorData(graphdef);
-  NormalizeTensorData(new_graphdef);
+  NormalizeTensorData(graphdef, /*add_fulltype=*/true);
+  NormalizeTensorData(new_graphdef, /*add_fulltype=*/false);
 #if defined(PLATFORM_GOOGLE)
   // This compares the protos with some extra tolerance (NaN, ordering, ...).
   if (!Matches(::testing::proto::TreatingNaNsAsEqual(

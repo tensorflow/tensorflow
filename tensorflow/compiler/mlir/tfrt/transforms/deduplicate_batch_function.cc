@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -39,16 +39,16 @@ namespace tfrt_compiler {
 namespace {
 
 using ::mlir::ArrayRef;
-using ::mlir::FuncOp;
 using ::mlir::ModuleOp;
 using ::mlir::Operation;
 using ::mlir::SymbolTable;
 using ::mlir::SymbolTableCollection;
 using ::mlir::SymbolUserMap;
+using ::mlir::func::FuncOp;
 
 // This only includes some preliminary checks as this is a short term solution.
 bool AreEquivalent(FuncOp& lhs, FuncOp& rhs) {
-  if (lhs.getType() != rhs.getType()) return false;
+  if (lhs.getFunctionType() != rhs.getFunctionType()) return false;
 
   for (auto arg_pair : llvm::zip(lhs.getArguments(), rhs.getArguments())) {
     auto& lhs_arg = std::get<0>(arg_pair);
@@ -56,8 +56,8 @@ bool AreEquivalent(FuncOp& lhs, FuncOp& rhs) {
     if (lhs_arg.getType() != rhs_arg.getType()) return false;
   }
 
-  auto lhs_ops = lhs.body().getOps();
-  auto rhs_ops = rhs.body().getOps();
+  auto lhs_ops = lhs.getBody().getOps();
+  auto rhs_ops = rhs.getBody().getOps();
   if (std::distance(lhs_ops.begin(), lhs_ops.end()) !=
       std::distance(rhs_ops.begin(), rhs_ops.end()))
     return false;
@@ -90,6 +90,11 @@ bool AreEquivalent(FuncOp& lhs, FuncOp& rhs) {
 class DeduplicateFunctionsInovkedByBatchFunction
     : public mlir::PassWrapper<DeduplicateFunctionsInovkedByBatchFunction,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      DeduplicateFunctionsInovkedByBatchFunction)
+
+ private:
   llvm::StringRef getArgument() const final {
     return "tfrt-deduplicate-functions-invoked-by-batch-function";
   }
@@ -144,7 +149,7 @@ mlir::LogicalResult DeduplicateFunctionsInovkedByBatchFunction::Run() {
             "different");
       }
       if (failed(SymbolTable::replaceAllSymbolUses(
-              func_op_to_remove, func_op_to_keep.sym_nameAttr(), module))) {
+              func_op_to_remove, func_op_to_keep.getSymNameAttr(), module))) {
         return func_op_to_remove.emitError("unable to replace the symbol use");
       }
       symbol_table.erase(func_op_to_remove);

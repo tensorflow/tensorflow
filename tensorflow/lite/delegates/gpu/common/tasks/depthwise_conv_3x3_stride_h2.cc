@@ -223,6 +223,10 @@ DepthWiseConv3x3StrideH2 CreateDepthWiseConv3x3StrideH2(
 
   DepthWiseConv3x3StrideH2 desc(definition);
   desc.local_mem_uploads_ = weights_are_buffer && gpu_info.IsPowerVR();
+  if (gpu_info.IsApple() &&
+      gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+    desc.local_mem_uploads_ = true;
+  }
   desc.work_group_size_ = int3(8, 4, 1);
   desc.code_ = GetKernelDepthWiseConv3x3StrideH2(
       gpu_info, definition, weights_are_buffer, desc.local_mem_uploads_);

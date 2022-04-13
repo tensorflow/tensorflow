@@ -19,6 +19,7 @@ limitations under the License.
 #include <tuple>
 
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -627,7 +628,7 @@ TEST(TPURewriteDeviceUtilTest, TestInvalidAttrForDeviceAssignmentDisallowed) {
 TEST(TPURewriteDeviceUtilTest, TestHasModelParallelismFalse) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
@@ -645,7 +646,7 @@ TEST(TPURewriteDeviceUtilTest, TestHasModelParallelismFalse) {
 TEST(TPURewriteDeviceUtilTest, TestHasModelParallelismTrue) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
@@ -664,7 +665,7 @@ TEST(TPURewriteDeviceUtilTest,
      TestHasModelParallelismFalseMissingCoresPerReplicaAttr) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
@@ -680,7 +681,7 @@ TEST(TPURewriteDeviceUtilTest,
 TEST(TPURewriteDeviceUtilTest, TestGetHostFailDeviceMissingAttributes) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
   llvm::SmallVector<mlir::Type, 8> result_types;
@@ -696,7 +697,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostFailDeviceMissingAttributes) {
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingTopology) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
@@ -716,7 +717,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingTopology) {
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingDeviceAssignment) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
@@ -736,7 +737,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingDeviceAssignment) {
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceAssignment) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
@@ -759,7 +760,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceAssignment) {
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceName) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
   (*module_ref)
@@ -785,7 +786,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceName) {
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceTPUReplicate) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
@@ -812,7 +813,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceTPUReplicate) {
 TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceNotReplicated) {
   mlir::MLIRContext context;
   context.loadDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
   (*module_ref)

@@ -95,6 +95,7 @@ _TT_NORM = 'norm'
 _TT_MAX = 'max'
 _TT_MAX_ABS = 'max-abs'
 _TT_MIN = 'min'
+_TT_SPARSITY = 'sparsity'
 _TT_MEAN = 'mean'
 _TT_VAR = 'var'
 _TT_SIZE = 'size'
@@ -103,13 +104,14 @@ TT_SUMMARY_NORM = '%s_%s' % (_TT_PREFIX, _TT_NORM)
 TT_SUMMARY_MAX = '%s_%s' % (_TT_PREFIX, _TT_MAX)
 TT_SUMMARY_MAX_ABS = '%s_%s' % (_TT_PREFIX, _TT_MAX_ABS)
 TT_SUMMARY_MIN = '%s_%s' % (_TT_PREFIX, _TT_MIN)
+TT_SUMMARY_SPARSITY = '%s_%s' % (_TT_PREFIX, _TT_SPARSITY)
 TT_SUMMARY_MEAN = '%s_%s' % (_TT_PREFIX, _TT_MEAN)
 TT_SUMMARY_VAR = '%s_%s' % (_TT_PREFIX, _TT_VAR)
 TT_SUMMARY_SIZE = '%s_%s' % (_TT_PREFIX, _TT_SIZE)
 
 TT_SUMMARY_SIGNATURES = (TT_SUMMARY_NORM, TT_SUMMARY_MAX, TT_SUMMARY_MIN,
-                         TT_SUMMARY_MEAN, TT_SUMMARY_VAR, TT_SUMMARY_SIZE,
-                         TT_SUMMARY_MAX_ABS)
+                         TT_SUMMARY_SPARSITY, TT_SUMMARY_MEAN, TT_SUMMARY_VAR,
+                         TT_SUMMARY_SIZE, TT_SUMMARY_MAX_ABS)
 
 
 class TTParameters(object):
@@ -151,6 +153,10 @@ class TTParameters(object):
                                                 _TT_DEFAULT_TRACE_LEVEL)
     self.summary_signatures = self._get_summary_signatures()
     self.collect_summary_per_core = self.is_flag_on(FLAG_NAME_SUMMARY_PER_CORE)
+    # TODO(b/199284834): Will be resolved with referenced bug.
+    if self.collect_summary_per_core:
+      logging.warning('Aggregate signatures are approximate for mean, variance'
+                      ' and sparsity.')
     self.flush_summaries_with_outside_compile = self.is_flag_on(
         FLAG_FLUSH_SUMMARY)
     # Do not produce errors or warnings if Tensor Tracer is not enabled.
@@ -314,6 +320,9 @@ class TTParameters(object):
 
   def get_signature_to_agg_fn_map(self):
     """Returns a map that contains the aggregate function for each signature."""
+    # TODO(b/199284834): Aggregations are not accurate for mean and sparsity if
+    # cores have a different number of elements. Variance uses the maximal core
+    # variance.
     return {TRACE_MODE_NORM: linalg_ops.norm,
             TRACE_MODE_MAX_ABS: math_ops.reduce_max,
             TRACE_MODE_NAN_INF: math_ops.reduce_max,
@@ -323,6 +332,8 @@ class TTParameters(object):
                 lambda t, axis=0: math_ops.reduce_max(math_ops.abs(t),  # pylint: disable=g-long-lambda
                                                       axis=axis),
             TT_SUMMARY_MIN: math_ops.reduce_min,
+            # Exact if each part has the same number of values.
+            TT_SUMMARY_SPARSITY: math_ops.reduce_mean,
             TT_SUMMARY_MEAN: math_ops.reduce_mean,
             TT_SUMMARY_VAR: math_ops.reduce_max,  # Simply reduce max variance.
             TT_SUMMARY_SIZE: math_ops.reduce_sum}

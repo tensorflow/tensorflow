@@ -25,8 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
@@ -199,10 +197,10 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   const GemmBackendConfig &backend_config = gemm_config.backend_config;
   const DotDimensionNumbers &dim_nums = backend_config.dot_dimension_numbers();
   absl::Span<const int64_t> output_batch_dims =
-      AsInt64Slice((dim_nums.lhs_batch_dimensions_size() >
-                    dim_nums.rhs_batch_dimensions_size())
-                       ? dim_nums.lhs_batch_dimensions()
-                       : dim_nums.rhs_batch_dimensions());
+      (dim_nums.lhs_batch_dimensions_size() >
+       dim_nums.rhs_batch_dimensions_size())
+          ? dim_nums.lhs_batch_dimensions()
+          : dim_nums.rhs_batch_dimensions();
 
   int64_t batch_size = backend_config.batch_size();
   int64_t output_row_dim = output_batch_dims.size();
@@ -315,19 +313,20 @@ Status RunGemm(const GpuGemmConfig &gemm_config,
   switch (output_shape.element_type()) {
     case S32: {
       if (!best_algorithm) {
-        return InternalError("Only extended GEMM is supported for int32");
+        return InternalError("Only extended GEMM is supported for int32_t");
       }
       CHECK_EQ(alpha.imag(), 0);
       if (lhs_shape.element_type() == PrimitiveType::S8 &&
           rhs_shape.element_type() == lhs_shape.element_type()) {
-        return DoGemmWithAlgorithm<int8, int32>(
+        return DoGemmWithAlgorithm<int8_t, int32_t>(
             batch_size, lhs_matrix, rhs_matrix, output_matrix,
-            static_cast<int32>(alpha.real()), static_cast<int32>(beta), stream,
-            *best_algorithm,
+            static_cast<int32_t>(alpha.real()), static_cast<int32_t>(beta),
+            stream, *best_algorithm,
             /*output_profile_result=*/profile_result);
       }
       return InternalError(
-          "For int32 gemm output only int8 input is supported, got input: %s",
+          "For int32_t gemm output only int8_t input is supported, got input: "
+          "%s",
           primitive_util::LowercasePrimitiveTypeName(lhs_shape.element_type()));
     }
     case F16:

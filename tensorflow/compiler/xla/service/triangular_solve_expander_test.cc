@@ -29,7 +29,7 @@ namespace xla {
 namespace {
 
 class TriangularExpanderTest : public HloTestBase,
-                               public ::testing::WithParamInterface<int32> {};
+                               public ::testing::WithParamInterface<int32_t> {};
 
 TEST_P(TriangularExpanderTest, TestBlockSize) {
   auto block_size = GetParam();

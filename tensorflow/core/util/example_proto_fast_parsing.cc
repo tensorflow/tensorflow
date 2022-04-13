@@ -385,12 +385,27 @@ bool ParseFeatureMapEntry(protobuf::io::CodedInputStream* stream,
   uint32 length;
   if (!stream->ReadVarint32(&length)) return false;
   auto limit = stream->PushLimit(length);
-  if (!stream->ExpectTag(kDelimitedTag(1))) return false;
-  if (!ParseString(stream, &feature_map_entry->first)) return false;
-  if (!stream->ExpectTag(kDelimitedTag(2))) return false;
-  StringPiece feature_string_piece;
-  if (!ParseString(stream, &feature_string_piece)) return false;
-  feature_map_entry->second = parsed::Feature(feature_string_piece);
+
+  // Protobufs allow an arbitrary order for the key and value fields.
+  for (int n = 0; n < 2; ++n) {
+    const uint32_t tag = stream->ReadTag();
+    switch (tag) {
+      case kDelimitedTag(1):
+        if (!ParseString(stream, &feature_map_entry->first)) return false;
+        break;
+
+      case kDelimitedTag(2): {
+        StringPiece feature_string_piece;
+        if (!ParseString(stream, &feature_string_piece)) return false;
+        feature_map_entry->second = parsed::Feature(feature_string_piece);
+        break;
+      }
+
+      default:
+        return false;
+    }
+  }
+
   if (!stream->ExpectAtEnd()) return false;
   stream->PopLimit(limit);
   return true;

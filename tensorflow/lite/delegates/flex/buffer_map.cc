@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
+#include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/string_type.h"
 
@@ -46,7 +47,7 @@ const tensorflow::Tensor* BufferMap::GetTensorPtr(int tensor_index) const {
 void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor) {
   TFLITE_CHECK(
       SetTfTensorFromTfLite(tensor, &id_to_tensor_[tensor_index]).ok());
-  if (tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant) {
+  if (IsResourceOrVariant(tensor)) {
     owned_by_tf_.insert(tensor_index);
     return;
   }

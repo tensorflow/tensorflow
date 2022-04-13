@@ -146,24 +146,6 @@ TEST_F(HloComputationTest, PostOrderSimple) {
               ElementsAre(constant, negate1, negate2));
 }
 
-TEST_F(HloComputationTest, PostOrderTrace) {
-  // Test GetInstructionPostOrder for a computation with a trace instruction.
-  auto builder = HloComputation::Builder(TestName());
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  auto negate1 = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
-  auto trace =
-      builder.AddInstruction(HloInstruction::CreateTrace("foobar", negate1));
-  auto negate2 = builder.AddInstruction(
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, negate1));
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
-  // Trace instructions should be at the end of the sort.
-  EXPECT_THAT(computation->MakeInstructionPostOrder(),
-              ElementsAre(constant, negate1, negate2, trace));
-}
-
 TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
   // Test GetInstructionPostOrder for a computation with multiple instructions
   // which are not connected.
@@ -559,7 +541,7 @@ TEST_F(HloComputationTest, Stringification) {
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options = HloPrintOptions().set_print_metadata(false);
-  const string expected_computation =
+  const std::string expected_computation =
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
@@ -595,7 +577,7 @@ TEST_F(HloComputationTest, StringificationIndent) {
 
   auto options =
       HloPrintOptions().set_print_metadata(false).set_indent_amount(2);
-  const string expected_computation =
+  const std::string expected_computation =
       R"(    %TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
       %x = f32[5,10]{1,0} parameter(0)
       %y = f32[20,10]{1,0} parameter(1)
@@ -630,7 +612,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options = HloPrintOptions().set_print_metadata(false);
-  const string expected_computation1 =
+  const std::string expected_computation1 =
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
@@ -640,7 +622,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
   EXPECT_EQ(computation->ToString(options), expected_computation1);
 
   options = HloPrintOptions().Canonical();
-  const string expected_computation2 = R"(TransposeDot {
+  const std::string expected_computation2 = R"(TransposeDot {
   tmp_0 = f32[5,10]{1,0} parameter(0)
   tmp_1 = f32[20,10]{1,0} parameter(1)
   tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}

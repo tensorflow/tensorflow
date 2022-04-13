@@ -94,19 +94,21 @@ def find_function_to_export(saveable_view):
   """Function to export, None if no suitable function was found."""
   # If the user did not specify signatures, check the root object for a function
   # that can be made into a signature.
-  functions = saveable_view.list_functions(saveable_view.root)
-  signature = functions.get(DEFAULT_SIGNATURE_ATTR, None)
-  if signature is not None:
-    return signature
+  children = saveable_view.list_children(saveable_view.root)
 
-  # TODO(andresp): Discuss removing this behaviour. It can lead to WTFs when a
-  # user decides to annotate more functions with tf.function and suddenly
+  # TODO(b/205014194): Discuss removing this behaviour. It can lead to WTFs when
+  # a user decides to annotate more functions with tf.function and suddenly
   # serving that model way later in the process stops working.
   possible_signatures = []
-  for function in functions.values():
-    concrete = _get_signature(function)
+  for name, child in children:
+    if not isinstance(child, (def_function.Function, defun.ConcreteFunction)):
+      continue
+    if name == DEFAULT_SIGNATURE_ATTR:
+      return child
+    concrete = _get_signature(child)
     if concrete is not None and _valid_signature(concrete):
       possible_signatures.append(concrete)
+
   if len(possible_signatures) == 1:
     single_function = possible_signatures[0]
     signature = _get_signature(single_function)
@@ -253,7 +255,10 @@ class _SignatureMap(collections_abc.Mapping, base.Trackable):
   def __repr__(self):
     return "_SignatureMap({})".format(self._signatures)
 
-  def _list_functions_for_serialization(self, unused_serialization_cache):
+  def _trackable_children(self, save_type=base.SaveType.CHECKPOINT, **kwargs):
+    if save_type != base.SaveType.SAVEDMODEL:
+      return {}
+
     return {
         key: value for key, value in self.items()
         if isinstance(value, (def_function.Function, defun.ConcreteFunction))
@@ -294,14 +299,14 @@ def create_signature_map(signatures):
   return signature_map
 
 
-def validate_saveable_view(saveable_view):
-  """Performs signature-related sanity checks on `saveable_view`."""
-  for name, dep in saveable_view.list_dependencies(
-      saveable_view.root):
+def validate_augmented_graph_view(augmented_graph_view):
+  """Performs signature-related sanity checks on `augmented_graph_view`."""
+  for name, dep in augmented_graph_view.list_children(
+      augmented_graph_view.root):
     if name == SIGNATURE_ATTRIBUTE_NAME:
       if not isinstance(dep, _SignatureMap):
         raise ValueError(
-            f"Exporting an object {saveable_view.root} which has an attribute "
+            f"Exporting an object {augmented_graph_view.root} which has an attribute "
             f"named '{SIGNATURE_ATTRIBUTE_NAME}'. This is a reserved attribute "
             "used to store SavedModel signatures in objects which come from "
             "`tf.saved_model.load`. Delete this attribute "

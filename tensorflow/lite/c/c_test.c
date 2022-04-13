@@ -60,7 +60,177 @@ static void TestVersion(void) {
   CHECK(version[0] != '\0');
 }
 
-static void TestSmokeTest(void) {
+static void TestInferenceUsingSignature(void) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/multi_signatures.bin");
+  ASSERT_NE(model, NULL);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  ASSERT_NE(options, NULL);
+  TfLiteInterpreterOptionsSetNumThreads(options, 2);
+
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  ASSERT_NE(interpreter, NULL);
+
+  // The options can be deleted immediately after interpreter creation.
+  TfLiteInterpreterOptionsDelete(options);
+
+  // (optional) Validate signatures
+  ASSERT_EQ(TfLiteInterpreterGetSignatureCount(interpreter), 2);
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 0), "add");
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 1), "sub");
+
+  // Validate signature "add"
+  TfLiteSignatureRunner* add_runner =
+      TfLiteInterpreterGetSignatureRunner(interpreter, "add");
+  ASSERT_NE(add_runner, NULL);
+  ASSERT_EQ(TfLiteSignatureRunnerGetInputCount(add_runner), 1);
+  ASSERT_STREQ(TfLiteSignatureRunnerGetInputName(add_runner, 0), "x");
+  ASSERT_EQ(TfLiteSignatureRunnerGetOutputCount(add_runner), 1);
+  ASSERT_STREQ(TfLiteSignatureRunnerGetOutputName(add_runner, 0), "output_0");
+
+  // Resize signature "add" input tensor "x"
+  int input_dims[1] = {2};
+  ASSERT_EQ(
+      TfLiteSignatureRunnerResizeInputTensor(add_runner, "x", input_dims, 1),
+      kTfLiteOk);
+
+  // Allocate tensors for signature "add"
+  ASSERT_EQ(TfLiteSignatureRunnerAllocateTensors(add_runner), kTfLiteOk);
+
+  // Validate signature "add" input tensor "x"
+  TfLiteTensor* input_tensor =
+      TfLiteSignatureRunnerGetInputTensor(add_runner, "x");
+  ASSERT_NE(input_tensor, NULL);
+  ASSERT_EQ(TfLiteTensorType(input_tensor), kTfLiteFloat32);
+  ASSERT_EQ(TfLiteTensorNumDims(input_tensor), 1);
+  ASSERT_EQ(TfLiteTensorDim(input_tensor, 0), 2);
+  ASSERT_EQ(TfLiteTensorByteSize(input_tensor), sizeof(float) * 2);
+  ASSERT_NE(TfLiteTensorData(input_tensor), NULL);
+
+  TfLiteQuantizationParams input_params =
+      TfLiteTensorQuantizationParams(input_tensor);
+  ASSERT_EQ(input_params.scale, 0.f);
+  ASSERT_EQ(input_params.zero_point, 0);
+
+  float input[2] = {2.f, 4.f};
+  ASSERT_EQ(TfLiteTensorCopyFromBuffer(input_tensor, input, 2 * sizeof(float)),
+            kTfLiteOk);
+  ASSERT_EQ(TfLiteSignatureRunnerInvoke(add_runner), kTfLiteOk);
+
+  const TfLiteTensor* output_tensor =
+      TfLiteSignatureRunnerGetOutputTensor(add_runner, "output_0");
+  ASSERT_NE(output_tensor, NULL);
+  ASSERT_EQ(TfLiteTensorType(output_tensor), kTfLiteFloat32);
+  ASSERT_EQ(TfLiteTensorNumDims(output_tensor), 1);
+  ASSERT_EQ(TfLiteTensorDim(output_tensor, 0), 2);
+  ASSERT_EQ(TfLiteTensorByteSize(output_tensor), sizeof(float) * 2);
+  ASSERT_NE(TfLiteTensorData(output_tensor), NULL);
+
+  TfLiteQuantizationParams output_params =
+      TfLiteTensorQuantizationParams(output_tensor);
+  ASSERT_EQ(output_params.scale, 0.f);
+  ASSERT_EQ(output_params.zero_point, 0);
+
+  float output[2];
+  ASSERT_EQ(TfLiteTensorCopyToBuffer(output_tensor, output, 2 * sizeof(float)),
+            kTfLiteOk);
+  // Verify the result
+  ASSERT_EQ(output[0], input[0] + 2.f);
+  ASSERT_EQ(output[1], input[1] + 2.f);
+
+  // The signature runner should be deleted before interpreter deletion.
+  TfLiteSignatureRunnerDelete(add_runner);
+  TfLiteInterpreterDelete(interpreter);
+  // The model should only be deleted after destroying the interpreter.
+  TfLiteModelDelete(model);
+}
+
+// This test checks if resizing the input (decreasing or increasing it's size)
+// would invalidate input/output tensors.
+static void TestRepeatResizeInputTensor(void) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/multi_signatures.bin");
+  ASSERT_NE(model, NULL);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  ASSERT_NE(options, NULL);
+  TfLiteInterpreterOptionsSetNumThreads(options, 2);
+
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  ASSERT_NE(interpreter, NULL);
+
+  TfLiteInterpreterOptionsDelete(options);
+
+  ASSERT_EQ(TfLiteInterpreterGetSignatureCount(interpreter), 2);
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 0), "add");
+  ASSERT_STREQ(TfLiteInterpreterGetSignatureKey(interpreter, 1), "sub");
+
+  TfLiteSignatureRunner* add_runner =
+      TfLiteInterpreterGetSignatureRunner(interpreter, "add");
+  ASSERT_NE(add_runner, NULL);
+  ASSERT_EQ(TfLiteSignatureRunnerGetInputCount(add_runner), 1);
+  ASSERT_STREQ(TfLiteSignatureRunnerGetInputName(add_runner, 0), "x");
+  ASSERT_EQ(TfLiteSignatureRunnerGetOutputCount(add_runner), 1);
+  ASSERT_STREQ(TfLiteSignatureRunnerGetOutputName(add_runner, 0), "output_0");
+
+  TfLiteTensor* input_tensor =
+      TfLiteSignatureRunnerGetInputTensor(add_runner, "x");
+  const TfLiteTensor* output_tensor =
+      TfLiteSignatureRunnerGetOutputTensor(add_runner, "output_0");
+
+  // For different input sizes, resize the input/output tensors and check if
+  // inferences runs as expected.
+
+  int sizes[] = {3, 1, 5};
+  float inputs_1[] = {3.f, 6.f, 11.f};
+  float inputs_2[] = {4.f};
+  float inputs_3[] = {5.f, 8.f, 11.f, 12.f, 20.f};
+  float* all_inputs[] = {inputs_1, inputs_2, inputs_3};
+  float actual_outputs1[] = {0.f, 0.f, 0.f};
+  float actual_outputs2[] = {0.f};
+  float actual_outputs3[] = {0.f, 0.f, 0.f, 0.f, 0.f};
+  float* all_actual_outputs[] = {actual_outputs1, actual_outputs2,
+                                 actual_outputs3};
+
+  for (int i = 0; i < 3; i++) {
+    int input_dims[] = {sizes[i]};
+    float* inputs = all_inputs[i];
+    ASSERT_EQ(
+        TfLiteSignatureRunnerResizeInputTensor(add_runner, "x", input_dims, 1),
+        kTfLiteOk);
+    ASSERT_EQ(TfLiteSignatureRunnerAllocateTensors(add_runner), kTfLiteOk);
+    ASSERT_NE(input_tensor, NULL);
+    ASSERT_EQ(TfLiteTensorType(input_tensor), kTfLiteFloat32);
+    ASSERT_EQ(TfLiteTensorNumDims(input_tensor), 1);
+    ASSERT_EQ(TfLiteTensorDim(input_tensor, 0), sizes[i]);
+    ASSERT_EQ(TfLiteTensorByteSize(input_tensor), sizes[i] * sizeof(float));
+    ASSERT_NE(TfLiteTensorData(input_tensor), NULL);
+    ASSERT_EQ(TfLiteTensorCopyFromBuffer(input_tensor, inputs,
+                                         sizes[i] * sizeof(float)),
+              kTfLiteOk);
+    ASSERT_EQ(TfLiteSignatureRunnerInvoke(add_runner), kTfLiteOk);
+    ASSERT_NE(output_tensor, NULL);
+    ASSERT_EQ(TfLiteTensorType(output_tensor), kTfLiteFloat32);
+    ASSERT_EQ(TfLiteTensorNumDims(output_tensor), 1);
+    ASSERT_EQ(TfLiteTensorDim(output_tensor, 0), sizes[i]);
+    ASSERT_EQ(TfLiteTensorByteSize(output_tensor), sizes[i] * sizeof(float));
+    ASSERT_NE(TfLiteTensorData(output_tensor), NULL);
+    float* actual_outputs = all_actual_outputs[i];
+    ASSERT_EQ(TfLiteTensorCopyToBuffer(output_tensor, actual_outputs,
+                                       sizes[i] * sizeof(float)),
+              kTfLiteOk);
+    for (int j = 0; j < sizes[i]; j++) {
+      ASSERT_EQ(actual_outputs[j], inputs[j] + 2);
+    }
+  }
+
+  TfLiteSignatureRunnerDelete(add_runner);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
+}
+
+static void TestInferenceUsingInterpreter(void) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, NULL);
@@ -72,17 +242,15 @@ static void TestSmokeTest(void) {
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   ASSERT_NE(interpreter, NULL);
 
-  // The options/model can be deleted immediately after interpreter creation.
+  // The options can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
-  TfLiteModelDelete(model);
 
   ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
   ASSERT_EQ(TfLiteInterpreterGetInputTensorCount(interpreter), 1);
   ASSERT_EQ(TfLiteInterpreterGetOutputTensorCount(interpreter), 1);
 
   int input_dims[1] = {2};
-  ASSERT_EQ(TfLiteInterpreterResizeInputTensor(
-                interpreter, 0, input_dims, 1),
+  ASSERT_EQ(TfLiteInterpreterResizeInputTensor(interpreter, 0, input_dims, 1),
             kTfLiteOk);
   ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
 
@@ -101,8 +269,7 @@ static void TestSmokeTest(void) {
   ASSERT_EQ(input_params.zero_point, 0);
 
   float input[2] = {1.f, 3.f};
-  ASSERT_EQ(TfLiteTensorCopyFromBuffer(input_tensor, input,
-                                       2 * sizeof(float)),
+  ASSERT_EQ(TfLiteTensorCopyFromBuffer(input_tensor, input, 2 * sizeof(float)),
             kTfLiteOk);
 
   ASSERT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
@@ -123,18 +290,22 @@ static void TestSmokeTest(void) {
   ASSERT_EQ(output_params.zero_point, 0);
 
   float output[2];
-  ASSERT_EQ(TfLiteTensorCopyToBuffer(output_tensor, output,
-                                     2 * sizeof(float)),
+  ASSERT_EQ(TfLiteTensorCopyToBuffer(output_tensor, output, 2 * sizeof(float)),
             kTfLiteOk);
   ASSERT_EQ(output[0], 3.f);
   ASSERT_EQ(output[1], 9.f);
 
   TfLiteInterpreterDelete(interpreter);
+
+  // The model should only be deleted after destroying the interpreter.
+  TfLiteModelDelete(model);
 }
 
 static void RunTests(void) {
   TestVersion();
-  TestSmokeTest();
+  TestInferenceUsingSignature();
+  TestRepeatResizeInputTensor();
+  TestInferenceUsingInterpreter();
 }
 
 int main(void) {

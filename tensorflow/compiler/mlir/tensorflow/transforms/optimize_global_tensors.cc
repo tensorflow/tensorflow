@@ -20,7 +20,7 @@ limitations under the License.
 #include <set>
 
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -36,20 +36,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
 namespace {
 struct OptimizeGlobalTensorsPass
-    : public PassWrapper<OptimizeGlobalTensorsPass, OperationPass<ModuleOp>> {
-  StringRef getArgument() const final {
-    return "tf-saved-model-optimize-global-tensors";
-  }
-
-  StringRef getDescription() const final {
-    return "Optimize tf_saved_model.global_tensor's.";
-  }
-
+    : public OptimizeGlobalTensorsPassBase<OptimizeGlobalTensorsPass> {
   void runOnOperation() override;
 };
 
@@ -143,11 +136,11 @@ void EraseUnusedGlobalTensors(ModuleOp module,
 
 void EraseUnusedBoundInputs(ModuleOp module) {
   for (auto func : module.getOps<FuncOp>()) {
-    SmallVector<unsigned, 4> args_to_erase;
+    llvm::BitVector args_to_erase(func.getNumArguments());
     for (int i = 0, e = func.getNumArguments(); i < e; i++) {
       if (func.getArgAttr(i, "tf_saved_model.bound_input") &&
           func.getArgument(i).use_empty()) {
-        args_to_erase.push_back(i);
+        args_to_erase.set(i);
       }
     }
     func.eraseArguments(args_to_erase);
@@ -170,9 +163,6 @@ void OptimizeGlobalTensorsPass::runOnOperation() {
 
   EraseUnusedGlobalTensors(module, global_tensor_uses);
 }
-
-// For "opt" to pick up this pass.
-PassRegistration<OptimizeGlobalTensorsPass> pass;
 
 }  // namespace
 

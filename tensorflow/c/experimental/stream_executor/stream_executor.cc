@@ -24,6 +24,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device/device_utils.h"

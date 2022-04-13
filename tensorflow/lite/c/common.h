@@ -98,7 +98,7 @@ typedef struct TfLiteIntArray {
 
 // Given the size (number of elements) in a TfLiteIntArray, calculate its size
 // in bytes.
-int TfLiteIntArrayGetSizeInBytes(int size);
+size_t TfLiteIntArrayGetSizeInBytes(int size);
 
 #ifndef TF_LITE_STATIC_MEMORY
 // Create a array of a given `size` (uninitialized entries).
@@ -173,8 +173,9 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                 \
   } while (false)
 #else  // TF_LITE_STRIP_ERROR_STRINGS
-#define TF_LITE_KERNEL_LOG(context, ...)
-#define TF_LITE_MAYBE_KERNEL_LOG(context, ...)
+#define UNUSED(...) (void)sizeof(#__VA_ARGS__)
+#define TF_LITE_KERNEL_LOG(context, ...) UNUSED(__VA_ARGS__)
+#define TF_LITE_MAYBE_KERNEL_LOG(context, ...) UNUSED(__VA_ARGS__)
 #endif  // TF_LITE_STRIP_ERROR_STRINGS
 
 // Check whether value is true, and if not return kTfLiteError from
@@ -316,6 +317,7 @@ typedef union TfLitePtrUnion {
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
+  uint16_t* ui16;
   TfLiteComplex64* c64;
   TfLiteComplex128* c128;
   int8_t* int8;
@@ -459,7 +461,8 @@ typedef struct TfLiteTensor {
   // Optional. Encodes shapes with unknown dimensions with -1. This field is
   // only populated when unknown dimensions exist in a read-write tensor (i.e.
   // an input or output tensor). (e.g.  `dims` contains [1, 1, 1, 3] and
-  // `dims_signature` contains [1, -1, -1, 3]).
+  // `dims_signature` contains [1, -1, -1, 3]). Note that this field only
+  // exists when TF_LITE_STATIC_MEMORY is not defined.
   const TfLiteIntArray* dims_signature;
 } TfLiteTensor;
 
@@ -625,6 +628,16 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        size_t size, TfLiteAllocationType allocation_type,
                        const void* allocation, bool is_variable,
                        TfLiteTensor* tensor);
+
+// Copies the contents of 'src' in 'dst'.
+// Function does nothing if either 'src' or 'dst' is passed as nullptr and
+// return kTfLiteOk.
+// Returns kTfLiteError if 'src' and 'dst' doesn't have matching data size.
+// Note function copies contents, so it won't create new data pointer
+// or change allocation type.
+// All Tensor related properties will be copied from 'src' to 'dst' like
+// quantization, sparsity, ...
+TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst);
 
 // Resize the allocated data of a (dynamic) tensor. Tensors with allocation
 // types other than kTfLiteDynamic will be ignored.
@@ -831,6 +844,9 @@ typedef struct TfLiteContext {
 
 typedef struct TfLiteRegistration {
   // Initializes the op from serialized data.
+  // Called only *once* for the lifetime of the op, so any one-time allocations
+  // should be made here (unless they depend on tensor sizes).
+  //
   // If a built-in op:
   //   `buffer` is the op's params data (TfLiteLSTMParams*).
   //   `length` is zero.
@@ -853,6 +869,7 @@ typedef struct TfLiteRegistration {
   // prepare is called when the inputs this node depends on have been resized.
   // context->ResizeTensor() can be called to request output tensors to be
   // resized.
+  // Can be called multiple times for the lifetime of the op.
   //
   // Returns kTfLiteOk on success.
   TfLiteStatus (*prepare)(TfLiteContext* context, TfLiteNode* node);

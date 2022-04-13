@@ -256,5 +256,34 @@ class StridedSliceTest(xla_test.XLATestCase):
                              [[2, 4],
                               [5, 7]]], result)
 
+  # Test shrink_axis_mask. This `strided_slice` call is equivalent to `i[1,:]`.
+  def testShrinkAxisMask(self):
+    for dtype in self.numeric_types:
+      with self.session():
+        i = array_ops.placeholder(dtype, shape=[2, 3])
+        with self.test_scope():
+          o = array_ops.strided_slice(i, [1, 0], [10, 3], shrink_axis_mask=1)
+        params = {
+            i: [[0, 1, 2], [3, 4, 5]],
+        }
+        result = o.eval(feed_dict=params)
+
+        self.assertAllEqual([3, 4, 5], result)
+
+  # Test shrink_axis_mask with the range for the second dimension implicit.
+  # This `strided_slice` call is equivalent to `i[1]`.
+  def testShrinkAxisMaskImplicitRange(self):
+    for dtype in self.numeric_types:
+      with self.session():
+        i = array_ops.placeholder(dtype, shape=[2, 3])
+        with self.test_scope():
+          o = array_ops.strided_slice(i, [1], [10], shrink_axis_mask=1)
+        params = {
+            i: [[0, 1, 2], [3, 4, 5]],
+        }
+        result = o.eval(feed_dict=params)
+
+        self.assertAllEqual([3, 4, 5], result)
+
 if __name__ == "__main__":
   googletest.main()

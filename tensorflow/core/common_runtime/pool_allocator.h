@@ -100,6 +100,10 @@ class PoolAllocator : public Allocator {
     return pool_size_limit_;
   }
 
+  AllocatorMemoryType GetMemoryType() const override {
+    return allocator_->GetMemoryType();
+  }
+
  private:
   struct PtrRecord {
     void* ptr;
@@ -161,6 +165,10 @@ class BasicCPUAllocator : public SubAllocator {
   void Free(void* ptr, size_t num_bytes) override;
 
   bool SupportsCoalescing() const override { return false; }
+
+  AllocatorMemoryType GetMemoryType() const override {
+    return AllocatorMemoryType::kHostPageable;
+  }
 
  private:
   int numa_node_;

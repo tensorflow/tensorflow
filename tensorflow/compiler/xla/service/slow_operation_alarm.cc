@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 
+#include <functional>
 #include <list>
+#include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
@@ -33,7 +36,9 @@ absl::once_flag init_flag;
 std::list<SlowOperationAlarm*>* outstanding_alarms ABSL_PT_GUARDED_BY(mu) =
     nullptr;
 
-void AlarmLoop() {
+}  // namespace
+
+void SlowOperationAlarm::AlarmLoop() {
   while (true) {
     absl::MutexLock lock(&mu);
 
@@ -50,6 +55,7 @@ void AlarmLoop() {
             alarm->counter() == nullptr ? 0 : alarm->counter()->fetch_add(1);
         // If the alarm has a counter, only fire if the count is a power of 2.
         if (count == 0 || (count & (count - 1)) == 0) {
+          alarm->fired_.store(true);
           // We fire alarms with LOG(ERROR) because otherwise it might not show
           // up without --logtostderr.
           LOG(ERROR) << alarm->msg();
@@ -72,7 +78,7 @@ void AlarmLoop() {
   }
 }
 
-void ScheduleAlarm(SlowOperationAlarm* alarm) {
+void SlowOperationAlarm::ScheduleAlarm(SlowOperationAlarm* alarm) {
   absl::call_once(init_flag, [] {
     ready = new absl::CondVar();
     outstanding_alarms = new std::list<SlowOperationAlarm*>();
@@ -85,7 +91,7 @@ void ScheduleAlarm(SlowOperationAlarm* alarm) {
   ready->Signal();
 }
 
-void UnscheduleAlarm(const SlowOperationAlarm* alarm) {
+void SlowOperationAlarm::UnscheduleAlarm(const SlowOperationAlarm* alarm) {
   absl::MutexLock lock(&mu);
   CHECK(outstanding_alarms != nullptr);
   auto it = absl::c_find(*outstanding_alarms, alarm);
@@ -93,14 +99,20 @@ void UnscheduleAlarm(const SlowOperationAlarm* alarm) {
     outstanding_alarms->erase(it);
   }
 }
-
-}  // namespace
+SlowOperationAlarm::SlowOperationAlarm(
+    absl::Duration timeout, std::string msg,
+    std::atomic<int64_t>* counter /*=nullptr*/)
+    : SlowOperationAlarm(
+          timeout,
+          // TODO(b/157309856): Once we have C++17, capture msg "by move".
+          [msg] { return msg; },  //
+          counter) {}
 
 SlowOperationAlarm::SlowOperationAlarm(
-    absl::Duration timeout, string msg,
+    absl::Duration timeout, std::function<std::string()> msg_fn,
     std::atomic<int64_t>* counter /*=nullptr*/)
     : deadline_(absl::Now() + timeout),
-      msg_(std::move(msg)),
+      msg_fn_(std::move(msg_fn)),
       counter_(counter) {
   ScheduleAlarm(this);
 }

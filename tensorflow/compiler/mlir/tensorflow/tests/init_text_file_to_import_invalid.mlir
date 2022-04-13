@@ -2,12 +2,12 @@
 
 // Tests that the given vocabulary file does not exist.
 
-func @init_all_tables() {
-  %cst = constant dense<"vocab_file_does_not_exist.txt"> : tensor<!tf_type.string>
+func.func @init_all_tables() {
+  %cst = arith.constant dense<"vocab_file_does_not_exist.txt"> : tensor<!tf_type.string>
   %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "hash_table_/tmp/vocab.txt_-2_-1", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
   // expected-error @+1 {{'tf.InitializeTableFromTextFileV2' op failed to open vocabulary file (vocab_file_does_not_exist.txt): cannot open input file 'vocab_file_does_not_exist.txt': No such file or directory}}
   "tf.InitializeTableFromTextFileV2"(%0, %cst) {delimiter = " ", device = "", key_index = -2 : i64, value_index = -1 : i64, vocab_size = -1 : i64} : (tensor<!tf_type.resource>, tensor<!tf_type.string>) -> ()
-  return
+  func.return
 }
 
 // -----
@@ -15,10 +15,10 @@ func @init_all_tables() {
 // Tests that the tf.InitializeTableFromTextFileV2 op is not converted since
 // unsupported key_index, -1.
 
-func @init_all_tables() {
-  %cst = constant dense<"vocab_file_does_not_exist.txt"> : tensor<!tf_type.string> %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "hash_table_/tmp/vocab.txt_-2_-1", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
+func.func @init_all_tables() {
+  %cst = arith.constant dense<"vocab_file_does_not_exist.txt"> : tensor<!tf_type.string> %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "hash_table_/tmp/vocab.txt_-2_-1", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
   "tf.InitializeTableFromTextFileV2"(%0, %cst) {delimiter = " ", device = "", key_index = -1 : i64, value_index = -1 : i64, vocab_size = -1 : i64} : (tensor<!tf_type.resource>, tensor<!tf_type.string>) -> ()
-  return
+  func.return
   // CHECK: [[VAL:%.*]] = "tf.HashTableV2"()
   // CHECK: tf.InitializeTableFromTextFileV2"
 }
@@ -28,11 +28,11 @@ func @init_all_tables() {
 // Tests that the tf.InitializeTableFromTextFileV2 op is not converted since
 // unsupported value_index, 0.
 
-func @init_all_tables() {
-  %cst = constant dense<"vocab_file_does_not_exist.txt"> : tensor<!tf_type.string>
+func.func @init_all_tables() {
+  %cst = arith.constant dense<"vocab_file_does_not_exist.txt"> : tensor<!tf_type.string>
   %0 = "tf.HashTableV2"() {container = "", device = "", key_dtype = !tf_type.string, shared_name = "hash_table_/tmp/vocab.txt_-2_-1", use_node_name_sharing = false, value_dtype = i64} : () -> tensor<!tf_type.resource>
   "tf.InitializeTableFromTextFileV2"(%0, %cst) {delimiter = " ", device = "", key_index = -2 : i64, value_index = 0 : i64, vocab_size = -1 : i64} : (tensor<!tf_type.resource>, tensor<!tf_type.string>) -> ()
-  return
+  func.return
   // CHECK: [[VAL:%.*]] = "tf.HashTableV2"()
   // CHECK: tf.InitializeTableFromTextFileV2"
 }

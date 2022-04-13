@@ -67,9 +67,8 @@ class TensorFlowDialect final : public Dialect {
   // A hook may use the public addOperations() method to add additional
   // operations to the dialect. Hooks will only apply to subsequent
   // instantations of the Dialect/MLIRContext.
-  static void RegisterAdditionalOperationHook(AdditionalOpFunction fn) {
-    GetAdditionalOperationHooks()->push_back(std::move(fn));
-  }
+  static void RegisterAdditionalOperationHook(TypeID uniqueId,
+                                              AdditionalOpFunction fn);
 
   // Re-define publicly the protected addOperations() method from the Dialect
   // class, usually used in a Dialect constructor. This allows hook
@@ -107,10 +106,6 @@ class TensorFlowDialect final : public Dialect {
                                     mlir::OperationName opName) override;
 
  private:
-  // Hook functions which may add additional operations to the dialect.
-  // These are invoked at construction time.
-  static std::vector<AdditionalOpFunction> *GetAdditionalOperationHooks();
-
   static ConstantFoldHook constant_fold_hook_;
   static DecodeConstantHook decode_constant_hook_;
 
@@ -120,5 +115,12 @@ class TensorFlowDialect final : public Dialect {
 
 }  // namespace TF
 }  // namespace mlir
+
+#define TF_DIALECT_REGISTER_ADDITIONAL_OPERATIONS(hookFn)           \
+  {                                                                 \
+    static bool key;                                                \
+    ::mlir::TF::TensorFlowDialect::RegisterAdditionalOperationHook( \
+        ::mlir::TypeID::getFromOpaquePointer(&key), hookFn);        \
+  }
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_DIALECT_H_

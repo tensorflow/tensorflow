@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // Implements a quantized eight-bit version of the matmul operation with bias,
-// relu and requantization fusion support utilizing mkldnn u8s8s32 inner
+// relu and requantization fusion support utilizing oneDNN u8s8s32 inner
 // product API. Right now, this version can support
 //   - Input: quantized as uint8 via either MIN_FIRST or SCALE mode.
 //            SCALE mode is selected when input is guaranteed to be non-
@@ -91,7 +91,6 @@ limitations under the License.
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
 #ifdef INTEL_MKL
 
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/mkl/mkl_matmul_ops_common.h"
@@ -99,6 +98,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_threadpool.h"
+#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace {
@@ -178,7 +178,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       memory::dims src_dims, weight_dims;
       memory::dims dst_dims_tf_order, dst_dims_mkl_order;
 
-      // Get shapes of input tensors in MKL-DNN order
+      // Get shapes of input tensors in oneDNN order
       auto src_tf_shape = src_mkl_shape.IsMklTensor()
                               ? src_mkl_shape.GetTfShape()
                               : src_tensor.shape();
@@ -205,7 +205,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
 
       // If input is in MKL layout, then simply take input layout; otherwise,
       // construct input TF layout. For TF layout, although input shape
-      // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
+      // (src_dims) required is in oneDNN order, the layout is Tensorflow's
       // layout depending on data format.
       auto src_md =
           src_mkl_shape.IsMklTensor()
@@ -213,7 +213,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
               : memory::desc(src_dims, MklDnnType<Tinput>(), input_output_fmt);
       src.SetUsrMem(src_md, &src_tensor);
 
-      // Although weight shape (weight_dims) required is in MKL-DNN order,
+      // Although weight shape (weight_dims) required is in oneDNN order,
       // the layout is TensorFlow's layout.
       auto weight_md = weight_mkl_shape.IsMklTensor()
                            ? weight_mkl_shape.GetMklLayout()
@@ -237,7 +237,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
                                           Toutput>::Get(matmul_fwd_dims, 0);
 
       // Allocate output Tensor.
-      std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>
+      std::shared_ptr<dnnl::inner_product_forward::primitive_desc>
           matmul_fwd_pd = matmul_fwd->GetPrimitiveDesc();
       this->AllocateOutputTensor(context, *matmul_fwd_pd, dst_dims_mkl_order,
                                  input_output_fmt_mkldnn, &dst_tensor,
@@ -261,7 +261,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       Tweight* weight_data = nullptr;
       if (weight_md != matmul_fwd_pd->weights_desc()) {
         bool is_weight_cached = false;
-        // For batch size 1, MKL-DNN expects that weight format is OI whereas
+        // For batch size 1, oneDNN expects that weight format is OI whereas
         // TF default format is IO. So in that case convert weight from IO
         // to OI for the first iteration and cache it to reuse in the
         // subsequent iterations, if the weight is constant.
@@ -293,12 +293,16 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       std::shared_ptr<stream> cpu_stream;
       MklDnnThreadPool eigen_tp(context);
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_fwd->GetEngine()));
+
+      UserScratchPad<unsigned char> scratch_pad;
+      scratch_pad.AllocateSPTensor(matmul_fwd, context);
+
       // Execute inner-product
       Tbias* bias_data = this->GetBiasHandle(
           context, matmul_fwd_pd, bias_tensor, weight_tensor, cpu_stream);
       matmul_fwd->Execute(src_data, weight_data, bias_data, dst_data,
-                          cpu_stream);
-    } catch (mkldnn::error& e) {
+                          scratch_pad.Get(), cpu_stream);
+    } catch (dnnl::error& e) {
       string error_msg = tensorflow::strings::StrCat(
           "Status: ", e.status, ", message: ", string(e.message), ", in file ",
           __FILE__, ":", __LINE__);
@@ -379,7 +383,8 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       } else if (std::is_same<Toutput, float>::value) {
         scale = scale_int32 / static_cast<float>(1u << 31);
       } else {
-        // @TODO:keeping the default qint8 as before. Change to error later.
+        // TODO(intel-tf): Keep the default qint8 as before.
+        // Change to error later.
         scale = scale_int32 / scale_eightbit / static_cast<float>(1u << 24);
       }
       std::vector<float> output_scale;
@@ -395,7 +400,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
   //   Bs32 = Qa * Qw * Bf32.
   Tbias* GetBiasHandle(
       OpKernelContext* context,
-      std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>&
+      std::shared_ptr<dnnl::inner_product_forward::primitive_desc>&
           mkldnn_matmul_fwd_pd,
       const Tensor& bias_tensor, const Tensor& weight_tensor,
       std::shared_ptr<stream> reorder_stream) {
@@ -411,7 +416,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       const float min_weight = context->input(5).flat<float>()(0);
       const float max_weight = context->input(6).flat<float>()(0);
 
-      std::vector<mkldnn::primitive> net;
+      std::vector<dnnl::primitive> net;
       float out_scale;
       // If the bias is float and input quantize is MIN_FIRST, bias has to be
       // compensated with B's32 = Q'a * Qw * Bf32 + Q'a * Qw * Min(Af32) * 1 *
@@ -473,7 +478,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
 
         std::vector<float> scales;
         scales.push_back(out_scale);
-        mkldnn::primitive_attr bias_attr;
+        dnnl::primitive_attr bias_attr;
         bias_attr.set_output_scales(0, scales);
 
         void* bias_buf = static_cast<void*>(
@@ -483,11 +488,11 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
         scaled_bias_ =
             new memory(mkldnn_matmul_fwd_pd->bias_desc(), this->cpu_engine_);
 
-        auto reorder_desc = mkldnn::reorder::primitive_desc(
+        auto reorder_desc = dnnl::reorder::primitive_desc(
             *input_bias_, *scaled_bias_, bias_attr);
-        net.push_back(mkldnn::reorder(reorder_desc));
+        net.push_back(dnnl::reorder(reorder_desc));
         std::unordered_map<int, memory> reorder_net_args = {
-            {MKLDNN_ARG_FROM, *input_bias_}, {MKLDNN_ARG_TO, *scaled_bias_}};
+            {DNNL_ARG_FROM, *input_bias_}, {DNNL_ARG_TO, *scaled_bias_}};
         net.at(0).execute(*reorder_stream, reorder_net_args);
 
         return reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());

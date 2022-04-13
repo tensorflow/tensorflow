@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <stdio.h>
+
 #include <memory>
 #include <string>
 
@@ -95,7 +96,7 @@ int main(int argc, char** argv) {
        "If true, compile the computation using the default client before "
        "dumping the HLO. Otherwise dump the raw (uncompiled) HLO."},
   };
-  const xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  const std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   QCHECK(parsed_flags_ok) << "\n" << usage;
 

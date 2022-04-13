@@ -31,7 +31,10 @@ from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import resource_variable_ops
 
 
-def function_def_to_graph(fdef, input_shapes=None):
+def function_def_to_graph(fdef,
+                          structured_input_signature=None,
+                          structured_outputs=None,
+                          input_shapes=None):
   """Converts a FunctionDef to a FuncGraph (sub-class Graph).
 
   The returned FuncGraph's `name`, `inputs` and `outputs` fields will be set.
@@ -42,6 +45,12 @@ def function_def_to_graph(fdef, input_shapes=None):
 
   Args:
     fdef: FunctionDef.
+    structured_input_signature: Optional. The structured input signature to
+      use for initializing the FuncGraph. See the docstring for FuncGraph for
+      more information.
+    structured_outputs: Optional. The structured outputs to use for
+      initializing the FuncGraph. See the docstring for FuncGraph for more
+      information.
     input_shapes: Optional. A list of TensorShape objects of the shapes of
       function inputs. Defaults to the function's "_input_shapes" attribute. If
       specified, its length must match length of `fdef.signature.input_arg`. If
@@ -51,11 +60,25 @@ def function_def_to_graph(fdef, input_shapes=None):
   Returns:
     A FuncGraph.
   """
-  func_graph = FuncGraph(fdef.signature.name)
+  func_graph = FuncGraph(fdef.signature.name,
+                         structured_input_signature=structured_input_signature,
+                         structured_outputs=structured_outputs)
   if input_shapes is None:
     input_shapes_attr = fdef.attr.get("_input_shapes", None)
     if input_shapes_attr is not None:
-      input_shapes = input_shapes_attr.list.shape
+      raw_input_shapes = input_shapes_attr.list.shape
+
+      # Replace resource handle shapes in the inputs to disable shape inference.
+      # Setting the shape to either the variable handle shape (which is always
+      # `[]`) or the variable shape can cause shape inference issues.
+      input_shapes = []
+      for input_shape, arg_def in zip(raw_input_shapes,
+                                      fdef.signature.input_arg):
+        if arg_def.type == types_pb2.DT_RESOURCE and arg_def.handle_data:
+          input_shapes.append(None)
+        else:
+          input_shapes.append(input_shape)
+
   graph_def, nested_to_flat_tensor_name = function_def_to_graph_def(
       fdef, input_shapes)
 
@@ -181,7 +204,10 @@ def function_def_to_graph_def(fdef, input_shapes=None):
       # Only copy internal attributes. Normal attributes for nodes cannot be
       # applied to these Placeholder nodes.
       if k == "_output_shapes":
-        node_def.attr["shape"].shape.CopyFrom(arg_attrs[k].list.shape[0])
+        if arg_attrs[k].WhichOneof("value") == "list":
+          node_def.attr["shape"].shape.CopyFrom(arg_attrs[k].list.shape[0])
+        elif arg_attrs[k].WhichOneof("value") == "shape":
+          node_def.attr["shape"].shape.CopyFrom(arg_attrs[k].shape)
       elif k.startswith("_"):
         node_def.attr[k].CopyFrom(arg_attrs[k])
 
@@ -209,12 +235,13 @@ def function_def_to_graph_def(fdef, input_shapes=None):
       graph = graph.outer_graph
 
     if f is not None:
-      op_def = f.definition.signature
+      fdef = f.definition
+      op_def = fdef.signature
       if node_def.op not in copied_functions:
         # Since this function is referenced as an op type, we have no choice but
         # to copy it into the GraphDef if we want downstream tools to process
         # it.
-        graph_def.library.function.add().CopyFrom(f.definition)
+        graph_def.library.function.add().CopyFrom(fdef)
         copied_functions.add(node_def.op)
         if f.grad_func_name:
           grad_def = function_pb2.GradientDef()
@@ -276,10 +303,15 @@ def _get_num_args(arg_def, node_def):
 
 def _set_handle_data(func_graph, fdef):
   """Adds handle data for resource type inputs and outputs."""
+  # The shape of the handle itself is [], while the variable shape is
+  # saved in `handle_data`. Previously, the shape of the resource handle
+  # was set to `None`. Correct both shapes here.
   for tensor, arg_def in itertools.chain(
       zip(func_graph.inputs, fdef.signature.input_arg),
       zip(func_graph.outputs, fdef.signature.output_arg)):
     if arg_def.handle_data:
+      tensor.set_shape([])
+
       shape_and_dtype = arg_def.handle_data[0]
       handle_data = cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData()
       handle_data.is_set = True

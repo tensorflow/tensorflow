@@ -8,6 +8,16 @@ load(
 )
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
+def _concat(lists):
+    """Concatenate a list of lists, without requiring the inner lists to be iterable.
+
+    This allows the inner lists to be obtained by calls to select().
+    """
+    result = []
+    for selected_list in lists:
+        result = result + selected_list
+    return result
+
 def alias_with_tflite(name, actual, **kwargs):
     """Defines an alias for a target that uses the TFLite shims.
 
@@ -62,6 +72,7 @@ def cc_library_with_tflite(
         tflite_jni_binaries = [],
         deps = [],
         tflite_deps = [],
+        tflite_deps_selects = [],
         **kwargs):
     """Defines a cc_library that uses the TFLite shims.
 
@@ -81,12 +92,14 @@ def cc_library_with_tflite(
       deps: as for cc_library.
       tflite_deps: dependencies on rules that are themselves defined using
         'cc_library_with_tflite'.
+      tflite_deps_selects: A list of dictionaries that will be converted to dependencies
+        with select on rules.
       **kwargs: Additional cc_library parameters.
     """
     native.cc_library(
         name = name,
         srcs = srcs + tflite_jni_binaries,
-        deps = deps + tflite_deps,
+        deps = deps + tflite_deps + _concat([select(map) for map in tflite_deps_selects]),
         **kwargs
     )
 

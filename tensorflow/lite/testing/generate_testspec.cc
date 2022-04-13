@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <iostream>
 #include <random>
+#include <string>
+#include <utility>
 
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/lite/testing/join.h"
@@ -28,49 +30,59 @@ namespace tflite {
 namespace testing {
 namespace {
 
+// Generates input name / value pairs according to given shape and distribution.
+// Fills `out` with a pair of string, which the first element is input name and
+// the second element is comma separated values in string.
 template <typename T, typename RandomEngine, typename RandomDistribution>
-void GenerateCsv(const std::vector<int>& shape, RandomEngine* engine,
-                 RandomDistribution distribution, string* out) {
+void GenerateCsv(const string& name, const std::vector<int>& shape,
+                 RandomEngine* engine, RandomDistribution distribution,
+                 std::pair<string, string>* out) {
   std::vector<T> data =
       GenerateRandomTensor<T>(shape, [&]() { return distribution(*engine); });
-  *out = Join(data.data(), data.size(), ",");
+  *out = std::make_pair(name, Join(data.data(), data.size(), ","));
 }
 
+// Generates random values for `input_layer` according to given value types and
+// shapes.
+// Fills `out` with a vector of string pairs, which the first element in the
+// pair is the input name from `input_layer` and the second element is comma
+// separated values in string.
 template <typename RandomEngine>
-std::vector<string> GenerateInputValues(
+std::vector<std::pair<string, string>> GenerateInputValues(
     RandomEngine* engine, const std::vector<string>& input_layer,
     const std::vector<string>& input_layer_type,
     const std::vector<string>& input_layer_shape) {
-  std::vector<string> input_values;
+  std::vector<std::pair<string, string>> input_values;
   input_values.resize(input_layer.size());
   for (int i = 0; i < input_layer.size(); i++) {
     tensorflow::DataType type;
     CHECK(DataTypeFromString(input_layer_type[i], &type));
     auto shape = Split<int>(input_layer_shape[i], ",");
+    const auto& name = input_layer[i];
 
     switch (type) {
       case tensorflow::DT_FLOAT:
-        GenerateCsv<float>(shape, engine,
+        GenerateCsv<float>(name, shape, engine,
                            std::uniform_real_distribution<float>(-0.5, 0.5),
                            &input_values[i]);
         break;
       case tensorflow::DT_UINT8:
-        GenerateCsv<uint8_t>(shape, engine,
-                             std::uniform_int_distribution<uint8_t>(0, 255),
+        GenerateCsv<uint8_t>(name, shape, engine,
+                             std::uniform_int_distribution<uint32_t>(0, 255),
                              &input_values[i]);
         break;
       case tensorflow::DT_INT32:
-        GenerateCsv<int32_t>(shape, engine,
+        GenerateCsv<int32_t>(name, shape, engine,
                              std::uniform_int_distribution<int32_t>(-100, 100),
                              &input_values[i]);
         break;
       case tensorflow::DT_INT64:
-        GenerateCsv<int64_t>(shape, engine,
+        GenerateCsv<int64_t>(name, shape, engine,
                              std::uniform_int_distribution<int64_t>(-100, 100),
                              &input_values[i]);
         break;
       case tensorflow::DT_BOOL:
-        GenerateCsv<int>(shape, engine,
+        GenerateCsv<int>(name, shape, engine,
                          std::uniform_int_distribution<int>(0, 1),
                          &input_values[i]);
         break;
@@ -90,9 +102,22 @@ bool GenerateTestSpecFromRunner(std::iostream& stream, int num_invocations,
                                 const std::vector<string>& input_layer_shape,
                                 const std::vector<string>& output_layer,
                                 TestRunner* runner) {
+  auto input_size = input_layer.size();
+  if (input_layer_shape.size() != input_size ||
+      input_layer_type.size() != input_size) {
+    fprintf(stderr,
+            "Input size not match. Expected %lu, got %lu input types, %lu "
+            "input shapes.\n",
+            input_size, input_layer_type.size(), input_layer_shape.size());
+    return false;
+  }
+
   stream << "reshape {\n";
-  for (const auto& shape : input_layer_shape) {
-    stream << "  input: \"" << shape << "\"\n";
+  for (int i = 0; i < input_size; i++) {
+    const auto& name = input_layer[i];
+    const auto& shape = input_layer_shape[i];
+    stream << "  input { key: \"" << name << "\" value: \"" << shape
+           << "\" }\n";
   }
   stream << "}\n";
 
@@ -101,7 +126,7 @@ bool GenerateTestSpecFromRunner(std::iostream& stream, int num_invocations,
   for (int i = 0; i < num_invocations; ++i) {
     // Note that the input values are random, so each invocation will have a
     // different set.
-    std::vector<string> input_values = GenerateInputValues(
+    auto input_values = GenerateInputValues(
         &random_engine, input_layer, input_layer_type, input_layer_shape);
     if (input_values.empty()) {
       std::cerr << "Unable to generate input values for the TensorFlow model. "
@@ -112,16 +137,7 @@ bool GenerateTestSpecFromRunner(std::iostream& stream, int num_invocations,
     }
 
     // Run TensorFlow.
-    auto inputs = runner->GetInputs();
-    for (int j = 0; j < input_values.size(); j++) {
-      runner->SetInput(inputs[j], input_values[j]);
-      if (!runner->IsValid()) {
-        std::cerr << runner->GetErrorMessage() << std::endl;
-        return false;
-      }
-    }
-
-    runner->Invoke();
+    runner->Invoke(input_values);
     if (!runner->IsValid()) {
       std::cerr << runner->GetErrorMessage() << std::endl;
       return false;
@@ -129,12 +145,13 @@ bool GenerateTestSpecFromRunner(std::iostream& stream, int num_invocations,
 
     // Write second part of test spec, with inputs and outputs.
     stream << "invoke {\n";
-    for (const auto& value : input_values) {
-      stream << "  input: \"" << value << "\"\n";
+    for (const auto& entry : input_values) {
+      stream << "  input { key: \"" << entry.first << "\" value: \""
+             << entry.second << "\" }\n";
     }
-    auto outputs = runner->GetOutputs();
-    for (int j = 0; j < output_layer.size(); j++) {
-      stream << "  output: \"" << runner->ReadOutput(outputs[j]) << "\"\n";
+    for (const auto& name : output_layer) {
+      stream << "  output { key: \"" << name << "\" value: \""
+             << runner->ReadOutput(name) << "\" }\n";
       if (!runner->IsValid()) {
         std::cerr << runner->GetErrorMessage() << std::endl;
         return false;

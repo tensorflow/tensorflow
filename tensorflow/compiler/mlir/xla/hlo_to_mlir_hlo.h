@@ -31,7 +31,7 @@ class HloModuleProto;
 // If import_all_computation is set to true, imports all computations
 // irrespective if transitively called from entry computation.
 Status ConvertHloToMlirHlo(mlir::ModuleOp module,
-                           xla::HloModuleProto* hlo_module,
+                           xla::HloModuleProto const* hlo_module,
                            bool import_all_computations = false);
 
 // Converts an HLO module to a MLIR module in HLO dialect.

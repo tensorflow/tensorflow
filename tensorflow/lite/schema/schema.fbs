@@ -53,6 +53,7 @@ enum TensorType : byte {
   RESOURCE = 13,
   VARIANT = 14,
   UINT32 = 15,
+  UINT16 = 16
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -380,6 +381,11 @@ enum BuiltinOperator : int32 {
   ASSIGN_VARIABLE = 144,
   BROADCAST_ARGS = 145,
   RANDOM_STANDARD_NORMAL = 146,
+  BUCKETIZE = 147,
+  RANDOM_UNIFORM = 148,
+  MULTINOMIAL = 149,
+  GELU = 150,
+  DYNAMIC_UPDATE_SLICE = 151,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -499,10 +505,14 @@ union BuiltinOptions {
   ReadVariableOptions,
   AssignVariableOptions,
   RandomOptions,
+  BucketizeOptions,
+  GeluOptions,
+  DynamicUpdateSliceOptions,
 }
 
 enum Padding : byte { SAME, VALID }
 
+// LINT.IfChange
 enum ActivationFunctionType : byte {
   NONE = 0,
   RELU = 1,
@@ -511,6 +521,7 @@ enum ActivationFunctionType : byte {
   TANH = 4,
   SIGN_BIT = 5,
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td)
 
 table Conv2DOptions {
   padding:Padding;
@@ -1085,8 +1096,19 @@ table AssignVariableOptions {
 }
 
 table RandomOptions {
-  seed: int;
-  seed2: int;
+  seed: long;
+  seed2: long;
+}
+
+table BucketizeOptions {
+  boundaries: [float];  // The bucket boundaries.
+}
+
+table GeluOptions {
+  approximate: bool;
+}
+
+table DynamicUpdateSliceOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

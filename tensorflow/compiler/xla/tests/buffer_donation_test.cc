@@ -62,6 +62,7 @@ class BufferDonationTest : public HloTestBase {
                    absl::Span<bool const> donate_arguments,
                    absl::Span<bool const> expected_runtime_aliasing,
                    const Literal& expected, std::string expected_failure = "") {
+    UpdateEntryComputationLayout(hlo_module.get());
     // Create a copy of the output shape because the HLO module is std::moved
     // into the compiler and may be deallocated.
     const Shape output_shape = hlo_module->result_shape();
@@ -174,7 +175,7 @@ class BufferDonationTest : public HloTestBase {
   //   param[(s32,f32[4])] --- get-tuple-element[0] --- less-than
   //
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
-      const string& name) {
+      const std::string& name) {
     auto builder = HloComputation::Builder(name);
     auto const4 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(4)));
@@ -200,7 +201,7 @@ class BufferDonationTest : public HloTestBase {
   //   const1[s32] -----------------------------------------/
   //
   std::unique_ptr<HloComputation> BuildWhileBodyComputation(
-      const string& name) {
+      const std::string& name) {
     auto builder = HloComputation::Builder(name);
     auto const1 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(1)));

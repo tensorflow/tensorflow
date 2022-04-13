@@ -210,9 +210,10 @@ def main(_):
         "The --debug and --tensorboard_debug_address flags are mutually "
         "exclusive.")
   if FLAGS.debug:
-    config_file_path = (
-        tempfile.mktemp(".tfdbg_config")
-        if FLAGS.use_random_config_path else None)
+    if FLAGS.use_random_config_path:
+      _, config_file_path = tempfile.mkstemp(".tfdbg_config")
+    else:
+      config_file_path = None
     sess = tf_debug.LocalCLIDebugWrapperSession(
         sess, ui_type=FLAGS.ui_type, config_file_path=config_file_path)
   elif FLAGS.tensorboard_debug_address:

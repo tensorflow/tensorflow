@@ -280,7 +280,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
           TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
         }
       } else if (input->type == kTfLiteInt16) {
-        TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt64);
+        TF_LITE_ENSURE(context, (bias->type == kTfLiteInt64) ||
+                                    (bias->type == kTfLiteInt32));
         TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
       } else {
         TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input->type);
@@ -353,7 +354,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(
         context, GetTemporarySafe(context, node, data->scratch_tensor_index,
                                   &scratch_buffer));
-    if (input->type == kTfLiteInt16) {
+    if (input->type == kTfLiteInt16 && bias && bias->type == kTfLiteInt64) {
       scratch_buffer->type = kTfLiteInt64;
     } else {
       scratch_buffer->type = kTfLiteInt32;
@@ -530,6 +531,7 @@ void EvalQuantizedPerChannel(
   }
 }
 
+template <KernelType kernel_type>
 void EvalQuantizedPerChannel16x8(
     TfLiteContext* context, const TfLiteTransposeConvParams* params,
     OpData* data, const TfLiteTensor* input, const TfLiteTensor* weights,
@@ -550,15 +552,43 @@ void EvalQuantizedPerChannel16x8(
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  // Need to add optimized kernel
-  reference_integer_ops::TransposeConv(
-      op_params, data->per_channel_output_multiplier.data(),
-      data->per_channel_output_shift.data(), GetTensorShape(input),
-      GetTensorData<int16>(input), GetTensorShape(weights),
-      GetTensorData<int8>(weights), GetTensorShape(bias),
-      GetTensorData<int64_t>(bias), GetTensorShape(output),
-      GetTensorData<int16>(output), GetTensorShape(col2im),
-      GetTensorData<int8>(col2im), GetTensorData<int64_t>(scratch_buffer));
+  // To prevent 32bit accum overflow for 16x8 quantization, it enables the
+  // optimized path only when zero_point is 0.
+  bool has_non_zero_point = input->params.zero_point ||
+                            weights->params.zero_point ||
+                            output->params.zero_point;
+
+  // Fallback to reference kernel when bias_type is int64 as
+  // there is no optimized kernel for int64 bias yet.
+  if (bias && bias->type == kTfLiteInt64) {
+    reference_integer_ops::TransposeConv(
+        op_params, data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data(), GetTensorShape(input),
+        GetTensorData<int16>(input), GetTensorShape(weights),
+        GetTensorData<int8>(weights), GetTensorShape(bias),
+        GetTensorData<int64_t>(bias), GetTensorShape(output),
+        GetTensorData<int16>(output), GetTensorShape(col2im),
+        GetTensorData<int8>(col2im), GetTensorData<int64_t>(scratch_buffer));
+  } else if (kernel_type == kReference || has_non_zero_point) {
+    reference_integer_ops::TransposeConv(
+        op_params, data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data(), GetTensorShape(input),
+        GetTensorData<int16>(input), GetTensorShape(weights),
+        GetTensorData<int8>(weights), GetTensorShape(bias),
+        GetTensorData<int32_t>(bias), GetTensorShape(output),
+        GetTensorData<int16>(output), GetTensorShape(col2im),
+        GetTensorData<int8>(col2im), GetTensorData<int32_t>(scratch_buffer));
+  } else {
+    optimized_integer_ops::TransposeConvV2(
+        op_params, data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data(), GetTensorShape(input),
+        GetTensorData<int16>(input), GetTensorShape(transposed_weights),
+        GetTensorData<int8>(transposed_weights), GetTensorShape(bias),
+        GetTensorData<int32>(bias), GetTensorShape(output),
+        GetTensorData<int16>(output), GetTensorShape(col2im),
+        GetTensorData<int32>(col2im), GetTensorData<int32>(scratch_buffer),
+        CpuBackendContext::GetFromContext(context));
+  }
 }
 
 template <KernelType kernel_type>
@@ -677,14 +707,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       if (data->weights_are_transposed && !IsConstantTensor(weights)) {
         ResizeAndTransposeWeights(context, weights, transposed_weights);
       }
-      EvalQuantizedPerChannel16x8(context, params, data, input, weights,
-                                  transposed_weights, bias, col2im, output,
-                                  scratch_buffer);
+      EvalQuantizedPerChannel16x8<kernel_type>(
+          context, params, data, input, weights, transposed_weights, bias,
+          col2im, output, scratch_buffer);
       break;
     }
     default:
-      context->ReportError(context, "Type '%s' is not currently supported.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not currently supported.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

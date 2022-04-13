@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
 
+#include <algorithm>
+#include <fstream>
+#include <map>
+#include <numeric>
 #include <queue>
-#include <set>
+#include <tuple>
 #include <unordered_map>
-#include <vector>
+#include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
@@ -29,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
@@ -256,8 +260,9 @@ void StableDFS(const SimpleGraph& g, bool reverse,
     stack[i] = Work{start[i], false};
   }
 
-  auto get_nodes = reverse ? [](const SimpleNode* n) { return n->in_nodes(); }
-                           : [](const SimpleNode* n) { return n->out_nodes(); };
+  auto get_nodes = [reverse](const SimpleNode* n) {
+    return reverse ? n->in_nodes() : n->out_nodes();
+  };
   std::vector<bool> visited(g.num_node_ids(), false);
   while (!stack.empty()) {
     Work w = stack.back();
@@ -679,6 +684,159 @@ void AddSegmentForNode(const grappler::GraphProperties* graph_properties,
 
 }  // namespace
 
+Status ExportNonConversionReportToCSV(
+    string filename,
+    std::map<string, std::map<string, int>>& nonconverted_ops_map,
+    string sep = "|") {
+  std::fstream csv_file(filename, std::fstream::out | std::fstream::trunc);
+
+  if (!csv_file || !csv_file.good()) {
+    return errors::Internal("Failed to open output file: `", filename, "`");
+  }
+
+  LOG(WARNING) << "TF-TRT Non-Conversion Report saved at: `" << filename << "`";
+
+  csv_file << "OP Name" << sep << "Reason" << sep << "Count" << std::endl;
+
+  for (auto& op_details : nonconverted_ops_map) {
+    auto op_name = op_details.first;
+    auto op_data = op_details.second;
+
+    for (auto& reject_data : op_data) {
+      auto reason = reject_data.first;
+      auto count = reject_data.second;
+      csv_file << op_name << sep << reason << sep << count << std::endl;
+    }
+  }
+
+  csv_file.close();
+
+  if (csv_file.bad() || csv_file.fail()) {
+    return errors::Internal("Error closing the file `", filename,
+                            "`. The file might be corrupted.");
+  }
+
+  return Status::OK();
+}
+
+string GenerateNonConversionReport(
+    std::map<string, std::map<string, int>>& nonconverted_ops_map) {
+  // Fetch whether to print a detailed version of the TF-TRT conversion report.
+  // TF_TRT_SHOW_DETAILED_REPORT triggers three possible behaviors:
+  // - If Number >= 1:      Print detailed non-conversion report on stdout.
+  //                        Usage: TF_TRT_SHOW_DETAILED_REPORT=1
+  // - If non empty string: Exports the non-conversion report in CSV format at
+  //                        the path defined by the environment variable.
+  //                        This will also print the detailed non-conversion
+  //                        report on stdout.
+  //                        Usage: TF_TRT_SHOW_DETAILED_REPORT=/path/to/file.csv
+  // - Else:                Print normal (undetailed) non-conversion report on
+  //                        stdout.
+
+  string detailed_report_var;
+  TF_CHECK_OK(ReadStringFromEnvVar("TF_TRT_SHOW_DETAILED_REPORT",
+                                   /*default_value=*/"", &detailed_report_var));
+
+  bool show_detailed_conversion_report = false;
+
+  if (detailed_report_var != "") {
+    // Checking if `TF_TRT_SHOW_DETAILED_REPORT` env var is a string or a number
+    if (detailed_report_var.find_first_not_of("-0123456789") != string::npos) {
+      const Status status = ExportNonConversionReportToCSV(
+          detailed_report_var, nonconverted_ops_map);
+
+      if (!status.ok()) {
+        // Log the error in case of issue, however do not stop execution.
+        LOG(ERROR) << "Problem encountered while generating the TF-TRT "
+                   << "Non-Conversion Report in CSV Format:\n"
+                   << status.error_message();
+      }
+      show_detailed_conversion_report = true;
+    } else if (std::stoi(detailed_report_var) >= 1) {
+      show_detailed_conversion_report = true;
+    }
+  }
+
+  string unsupported_op_report =
+      StrCat("\n\n", string(80, '#'), "\n",
+             "TensorRT unsupported/non-converted OP Report:");
+  int total_nonconverted_ops{0};
+
+  // <Reason, Count for this reason>
+  using ReasonCounterVector = std::vector<std::pair<string, int>>;
+  // <OP Name, Total Non-Converted for OP, <Reason, Count for this reason>>>
+  using NotConvertedOPTuple = std::tuple<string, int, ReasonCounterVector>;
+
+  std::vector<NotConvertedOPTuple> nonconverted_ops_vec;
+
+  // Populate the vector from the map
+  for (auto& nonconverted_op_data : nonconverted_ops_map) {
+    int total_nonconverted_op{0};
+    ReasonCounterVector reason_occurances_vect;
+
+    auto op_name = nonconverted_op_data.first;
+    auto op_data = nonconverted_op_data.second;
+
+    for (auto& notconversion_reason_data : op_data) {
+      auto reason_count = notconversion_reason_data.second;
+      total_nonconverted_op += reason_count;
+      reason_occurances_vect.push_back(notconversion_reason_data);
+    }
+
+    // Sort in descending number of occurances for the reasons why a given
+    // TensorFlow OP was not converted.
+    std::sort(reason_occurances_vect.begin(), reason_occurances_vect.end(),
+              [](const std::pair<string, int>& a,
+                 const std::pair<string, int>& b) -> bool {
+                return a.second > b.second;
+              });
+
+    nonconverted_ops_vec.push_back(std::make_tuple(
+        op_name, total_nonconverted_op, reason_occurances_vect));
+  }
+
+  // Sort the vector by descending OP names.
+  std::sort(nonconverted_ops_vec.begin(), nonconverted_ops_vec.end(),
+            [](const NotConvertedOPTuple& a, const NotConvertedOPTuple& b) {
+              return std::get<1>(a) > std::get<1>(b);
+            });
+
+  for (auto& notconverted_op_detail : nonconverted_ops_vec) {
+    auto& op_name = std::get<0>(notconverted_op_detail);
+    auto& op_total_nonconverted = std::get<1>(notconverted_op_detail);
+    total_nonconverted_ops += op_total_nonconverted;
+
+    unsupported_op_report = StrCat(unsupported_op_report, "\n\t- ", op_name,
+                                   " -> ", op_total_nonconverted, "x");
+
+    if (show_detailed_conversion_report) {
+      auto& nonconverted_ops_details = std::get<2>(notconverted_op_detail);
+
+      for (auto& nonconversion_details : nonconverted_ops_details) {
+        auto& reason = nonconversion_details.first;
+        auto& reason_count = nonconversion_details.second;
+        if (reason_count == 0) {
+          continue;
+        }
+
+        unsupported_op_report = StrCat(unsupported_op_report, "\n\t\t- ",
+                                       "[Count: ", reason_count, "x] ", reason);
+      }
+      unsupported_op_report = StrCat(unsupported_op_report, "\n");
+    }
+  }
+
+  unsupported_op_report =
+      StrCat(unsupported_op_report, "\n", string(80, '-'),
+             "\n\t- Total nonconverted OPs: ", total_nonconverted_ops,
+             "\n\t- Total nonconverted OP Types: ", nonconverted_ops_map.size(),
+             "\nFor more information see https://docs.nvidia.com/deeplearning",
+             "/frameworks/tf-trt-user-guide/index.html#supported-ops.", "\n",
+             string(80, '#'), "\n");
+
+  return unsupported_op_report;
+}
+
 Status SegmentGraph(const Graph* tf_graph,
                     const grappler::GraphProperties* graph_properties,
                     const std::function<Status(const Node*)>& candidate_fn,
@@ -709,36 +867,45 @@ Status SegmentGraph(const Graph* tf_graph,
 
   // --------------------------------- Step 1 ---------------------------------
   auto graph = std::unique_ptr<SimpleGraph>(new SimpleGraph(tf_graph));
+
+  // Fetch the user-provide TF operations denylisted for conversion by TF-TRT.
+  const absl::flat_hash_set<string> tftrt_op_denylist = [] {
+    string tftrt_op_denylist_str;
+    TF_CHECK_OK(ReadStringFromEnvVar("TF_TRT_OP_DENYLIST", /*default_value=*/"",
+                                     &tftrt_op_denylist_str));
+    absl::flat_hash_set<string> tftrt_op_denylist{};
+    for (const auto& x : str_util::Split(tftrt_op_denylist_str, ",")) {
+      tftrt_op_denylist.insert(x);
+    }
+    // Force a rehash of the flat hash set
+    tftrt_op_denylist.rehash(0);
+    return tftrt_op_denylist;
+  }();
+
   // Use a union-find to collect the nodes that belong to the same
   // segment. A node value of nullptr indicates that the node is not a candidate
   // for TRT.
-  std::map<string, int> unsupported_ops_map = {};
 
-  // Getting the operations denylisted for conversion
-  string tftrt_op_denylist_str;
-  TF_CHECK_OK(
-      ReadStringFromEnvVar("TF_TRT_OP_DENYLIST", "", &tftrt_op_denylist_str));
-
-  auto tftrt_op_denylist = gtl::FlatSet<string>{};  // non-absl ok
-
-  for (const auto& x : str_util::Split(tftrt_op_denylist_str, ",")) {
-    tftrt_op_denylist.insert(x);
-  }
+  std::map<string, std::map<string, int>> nonconverted_ops_map = {};
 
   // Parsing each node of the graph
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
+
     if (!node) {
       VLOG(3) << "Node " << i << " doesn't exist in the graph";
       continue;
     }
+
+    const string node_op_type{node->tf_node()->type_string()};
+
     auto exclude_node = [&](absl::string_view reason) {
       VLOG(1) << "Not a TF-TRT candidate, "
-              << "(Op type: " << node->tf_node()->type_string() << "), "
+              << "(Op type: " << node_op_type << "), "
               << "(Op name: " << node->name() << "), "
               << "(Reason: " << reason << ")";
-      unsupported_ops_map[node->tf_node()->type_string()]++;
+      nonconverted_ops_map[node_op_type][string(reason)]++;
       node = nullptr;
     };
     absl::optional<DeviceNameUtils::ParsedName> device_name =
@@ -748,7 +915,9 @@ Status SegmentGraph(const Graph* tf_graph,
         (device_name->has_type && device_name->type != "GPU")) {
       exclude_node("node can't be placed on GPU");
     } else if (options.exclude_node_list.count(node->name()) != 0) {
-      exclude_node("excluded by segmenter option");
+      exclude_node(
+          "excluded by segmenter option. Most likely an input or "
+          "output node.");
     } else if (options.use_implicit_batch &&
                !OperationCanBeTranslatedToImplicitBatch(graph_properties,
                                                         node->tf_node())) {
@@ -763,7 +932,7 @@ Status SegmentGraph(const Graph* tf_graph,
       const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
         exclude_node(status.error_message());
-      } else if (tftrt_op_denylist.count(node->tf_node()->type_string())) {
+      } else if (tftrt_op_denylist.contains(node->tf_node()->type_string())) {
         // WARNING verbosity since the user explicitly requests this behavior.
         LOG_WARNING_WITH_PREFIX
             << "Denylisted as TF-TRT candidate, "
@@ -779,39 +948,8 @@ Status SegmentGraph(const Graph* tf_graph,
     AddSegmentForNode(graph_properties, &node_segments, node, *device_name,
                       options.use_implicit_batch);
   }
-  string unsupported_op_report =
-      StrCat("\n", string(80, '#'), "\n",
-             "TensorRT unsupported/unconverted OP Report:");
-  int total_unconverted_ops{0};
 
-  // Copy key-value pair from unsupported_ops_map to vector of pairs
-  std::vector<std::pair<std::string, int>> _vect;
-  for (auto& _it : unsupported_ops_map) {
-    _vect.push_back(_it);
-  }
-
-  // Sort in descending order using the number of uses of the OP that are not
-  // converted.
-  std::sort(_vect.begin(), _vect.end(),
-            [](const std::pair<std::string, int>& _a,
-               const std::pair<std::string, int>& _b) -> bool {
-              return _a.second > _b.second;
-            });
-
-  for (auto& _it : _vect) {
-    unsupported_op_report = StrCat(unsupported_op_report, "\n\t- ", _it.first,
-                                   " -> ", _it.second, "x");
-    total_unconverted_ops += _it.second;
-  }
-
-  unsupported_op_report =
-      StrCat(unsupported_op_report, "\n", string(80, '-'),
-             "\n\t - Total unconverted OPs: ", total_unconverted_ops,
-             "\n\t - Total unconverted OP Types: ", unsupported_ops_map.size(),
-             "\nFor more information see https://docs.nvidia.com/deeplearning",
-             "/frameworks/tf-trt-user-guide/index.html#supported-ops.", "\n",
-             string(80, '#'));
-  LOG(INFO) << unsupported_op_report;
+  LOG(WARNING) << GenerateNonConversionReport(nonconverted_ops_map);
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs
@@ -1041,6 +1179,7 @@ Status SegmentGraph(const Graph* tf_graph,
 
   // --------------------------------- Step 3 ---------------------------------
   // Convert the segments into the expected return format
+  std::vector<int> effective_nodes_counts;
   for (const auto& itr : sg_map) {
     const string& segment_root = itr.first;
     // Return format does not require set comparator.
@@ -1070,6 +1209,80 @@ Status SegmentGraph(const Graph* tf_graph,
       continue;
     }
     segments->emplace_back(itr.second.property, segment_nodes);
+    effective_nodes_counts.push_back(num_effective_nodes);
+  }
+
+  // --------------------------------- Step 4 ---------------------------------
+  // If the number of segments exceeds max_engines, prune the smallest ones.
+
+  int64_t max_trt_engine_ops;
+  TF_CHECK_OK(ReadInt64FromEnvVar("TF_TRT_MAX_ALLOWED_ENGINES",
+                                  /*default_value=*/20, &max_trt_engine_ops));
+
+  if (max_trt_engine_ops <= 0) {
+    LOG(WARNING) << "The environment variable TF_TRT_MAX_ALLOWED_ENGINES is "
+                 << "<= 0. TF-TRT did not limit the number of TensorRT engines "
+                 << "created.";
+
+  } else {
+    if (segments->size() > max_trt_engine_ops) {
+      LOG(WARNING) << "A total of " << segments->size() << " segments with at "
+                   << "least minimum_segment_size="
+                   << options.minimum_segment_size << " nodes have been found. "
+                   << "TF-TRT will only convert the " << max_trt_engine_ops
+                   << " largest segments. You can change this behavior by "
+                   << "modifying the environment variable "
+                   << "TF_TRT_MAX_ALLOWED_ENGINES=" << max_trt_engine_ops;
+
+      // Stable sort of the segment indices according to their effective sizes.
+      std::vector<int> indices(segments->size());
+      std::iota(indices.begin(), indices.end(), 0);
+
+      std::stable_sort(indices.begin(), indices.end(),
+                       [&effective_nodes_counts](int i1, int i2) {
+                         return effective_nodes_counts[i1] >
+                                effective_nodes_counts[i2];
+                       });
+
+      // Create a mask of segments to keep.
+      std::vector<bool> mask = std::vector<bool>(segments->size(), false);
+
+      for (int i = 0; i < max_trt_engine_ops; i++) {
+        mask[indices[i]] = true;
+      }
+
+      // Gather the masked elements at the start of the array, in place.
+      int j = 0;
+      VLOG(1) << "The following segments have been accepted by TF-TRT:";
+      for (int i = 0; i < segments->size(); i++) {
+        if (mask[i]) {
+          VLOG(1) << "[*] Segment " << i
+                  << " [node count: " << effective_nodes_counts[i]
+                  << "] accepted. Re-assigned "
+                  << "segment id=" << j;
+          segments->at(j) = segments->at(i);
+          j++;
+        }
+      }
+
+      VLOG(1) << "The following segments have been rejected by TF-TRT:";
+      for (int i = 0; i < segments->size(); i++) {
+        if (!mask[i]) {
+          VLOG(1) << "[*] Segment " << i
+                  << " [node count: " << effective_nodes_counts[i]
+                  << "] rejected.";
+        }
+      }
+
+      // Resize the array.
+      segments->resize(max_trt_engine_ops);
+    } else {
+      LOG(WARNING) << "The environment variable TF_TRT_MAX_ALLOWED_ENGINES="
+                   << max_trt_engine_ops << " has no effect since there are "
+                   << "only " << segments->size() << " TRT Engines with  at "
+                   << "least minimum_segment_size="
+                   << options.minimum_segment_size << " nodes.";
+    }
   }
 
   return Status::OK();

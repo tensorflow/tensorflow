@@ -38,6 +38,7 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -94,7 +95,7 @@ def _fake_mirrored(value, devices):
 
 def _make_indexed_slices(values, indices, dense_shape, device):
   with ops.device(device):
-    tensor = ops.IndexedSlices(
+    tensor = indexed_slices_lib.IndexedSlices(
         values=constant_op.constant(values),
         indices=constant_op.constant(indices),
         dense_shape=constant_op.constant(dense_shape))
@@ -115,8 +116,8 @@ _cpu_device = "/device:CPU:0"
 class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
 
   def _assert_indexed_slices_equal(self, left, right):
-    self.assertIsInstance(left, ops.IndexedSlices)
-    self.assertIsInstance(right, ops.IndexedSlices)
+    self.assertIsInstance(left, indexed_slices_lib.IndexedSlices)
+    self.assertIsInstance(right, indexed_slices_lib.IndexedSlices)
     self.assertEqual(
         device_util.resolve(left.device), device_util.resolve(right.device))
     self.assertAllEqual(
@@ -465,8 +466,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       else:
         devices = ["/device:CPU:0"]
 
+      comm_options = collective_util.Options(implementation=communication)
       if use_strategy_object:
-        comm_options = collective_util.Options(implementation=communication)
         strategy = (mwms_lib.CollectiveAllReduceStrategy
                     ._from_local_devices(devices, comm_options))  # pylint: disable=protected-access
         return strategy, devices, ""
@@ -474,6 +475,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
             devices=devices,
             group_size=len(devices),
+            options=comm_options,
             collective_keys=collective_keys)
         return collective_all_reduce_ops, devices, ""
     else:
@@ -490,6 +492,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
             "/job:%s/task:%d/replica:0/device:CPU:0" % (task_type, task_id)
         ]
 
+      comm_options = collective_util.Options(implementation=communication)
       if use_strategy_object:
         resolver = cluster_resolver.SimpleClusterResolver(
             cluster_spec=multi_worker_util.normalize_cluster_spec(
@@ -497,7 +500,6 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
             task_type=task_type,
             task_id=task_id,
             num_accelerators={"GPU": num_gpus})
-        comm_options = collective_util.Options(implementation=communication)
         strategy = mwms_lib.CollectiveAllReduceStrategy(
             communication_options=comm_options, cluster_resolver=resolver)
         return (strategy, devices,
@@ -506,6 +508,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
             devices=devices,
             group_size=len(devices) * NUM_WORKERS,
+            options=comm_options,
             collective_keys=collective_keys)
         return (collective_all_reduce_ops, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])

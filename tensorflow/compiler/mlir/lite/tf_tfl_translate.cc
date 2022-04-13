@@ -27,11 +27,12 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -55,9 +56,9 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
+using mlir::func::FuncOp;
 using stream_executor::port::StatusOr;
 
 // Debugging flag to print function mapping in the flatbuffer.
@@ -150,7 +151,7 @@ int main(int argc, char **argv) {
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
-  StatusOr<mlir::OwningModuleRef> module;
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module;
   std::unordered_set<std::string> tags;
 
   tensorflow::GraphImportConfig specs;
@@ -217,8 +218,8 @@ int main(int argc, char **argv) {
     } else if (hlo_import_type == HloImportType::proto) {
       module = xla::HloToMlirHloTranslateFunction(content, &context, false);
     } else {
-      module =
-          mlir::OwningModuleRef(mlir::parseSourceString(content, &context));
+      module = mlir::OwningOpRef<mlir::ModuleOp>(
+          mlir::parseSourceString<mlir::ModuleOp>(content, &context));
     }
   } else {
     // Graphdef import path.
@@ -232,13 +233,10 @@ int main(int argc, char **argv) {
   // message. So we can just return here.
   if (!module.ok()) return kTrFailure;
 
-  mlir::PassManager pm(&context, mlir::OpPassManager::Nesting::Implicit);
-  mlir::applyPassManagerCLOptions(pm);
-
   // Set the quantization specifications from the command line flags.
-  mlir::TFL::QuantizationSpecs quant_specs;
-  if (mlir::TFL::ParseInputNodeQuantSpecs(input_arrays, min_values, max_values,
-                                          inference_type, &quant_specs)) {
+  mlir::quant::QuantizationSpecs quant_specs;
+  if (mlir::quant::ParseInputNodeQuantSpecs(
+          input_arrays, min_values, max_values, inference_type, &quant_specs)) {
     llvm::errs() << "Failed to get input quant spec.";
     return kTrFailure;
   }
@@ -271,30 +269,24 @@ int main(int argc, char **argv) {
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
-  pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
   pass_config.unfold_batch_matmul = unfold_batchmatmul;
   pass_config.unfold_large_splat_constant = unfold_large_splat_constant;
   pass_config.guarantee_all_funcs_one_use = guarantee_all_funcs_one_use;
+  pass_config.enable_dynamic_update_slice = enable_dynamic_update_slice;
+  pass_config.runtime_verification = true;
+  pass_config.outline_tf_while = true;
+  pass_config.preserve_assert_op = preserve_assert_op;
 
   if (enable_hlo_to_tf_conversion) {
     pass_config.enable_hlo_to_tf_conversion = true;
   }
-
-  // TODO(b/153507667): Pass the session object when importing logic is removed.
-  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,
-                                         /*session=*/llvm::None);
-  // TODO(b/150901738): Move those into tf_tfl_translate.cc.
-  // Convert back to outlined while format for export back to flatbuffer.
-  if (pass_config.legalize_tf_while) {
-    pm.addPass(mlir::TFL::CreateWhileOutlinePass());
-  }
-  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 
   toco::TocoFlags toco_flags;
   toco_flags.set_force_select_tf_ops(!emit_builtin_tflite_ops);
   toco_flags.set_enable_select_tf_ops(emit_select_tf_ops);
   toco_flags.set_allow_custom_ops(emit_custom_ops);
   toco_flags.set_allow_all_select_tf_ops(allow_all_select_tf_ops);
+  toco_flags.set_enable_dynamic_update_slice(enable_dynamic_update_slice);
   // Read list of user select ops.
   llvm::SmallVector<llvm::StringRef, 2> user_ops;
   (llvm::StringRef(select_user_tf_ops))
@@ -305,9 +297,10 @@ int main(int argc, char **argv) {
   });
 
   std::string result;
+  // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
-      module.ValueOrDie().get(), output_mlir, toco_flags, quant_specs, tags,
-      &result, &pm);
+      module.ValueOrDie().get(), output_mlir, toco_flags, pass_config, tags,
+      /*saved_model_dir=*/"", /*session=*/llvm::None, &result);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

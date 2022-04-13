@@ -1,5 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_google",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -31,7 +32,13 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
-    features = ["-layering_check"],
+    features = if_google(
+        [
+            "-layering_check",
+            "-parse_headers",
+        ],
+        ["-layering_check"],
+    ),
     licenses = ["notice"],
 )
 
@@ -174,6 +181,7 @@ tf_cuda_library(
     name = "gpu_runtime",
     hdrs = [":gpu_runtime_headers"],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",

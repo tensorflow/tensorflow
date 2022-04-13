@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -53,14 +53,8 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
 }
 
 StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
-    llvm::StringRef input) {
-  llvm::Optional<mlir::lmhlo_gpu::Activation> activation =
-      mlir::lmhlo_gpu::symbolizeActivation(input);
-  if (!activation) {
-    return InternalError("Unexpected activation");
-  }
-
-  switch (activation.getValue()) {
+    mlir::lmhlo_gpu::Activation activation) {
+  switch (activation) {
     case mlir::lmhlo_gpu::Activation::None:
       return stream_executor::dnn::kNone;
     case mlir::lmhlo_gpu::Activation::Sigmoid:

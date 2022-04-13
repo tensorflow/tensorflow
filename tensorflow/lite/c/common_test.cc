@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 
 namespace tflite {
 
@@ -82,6 +83,7 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteFloat32), "FLOAT32");
   EXPECT_EQ(type_name(kTfLiteFloat16), "FLOAT16");
   EXPECT_EQ(type_name(kTfLiteInt16), "INT16");
+  EXPECT_EQ(type_name(kTfLiteUInt16), "UINT16");
   EXPECT_EQ(type_name(kTfLiteInt32), "INT32");
   EXPECT_EQ(type_name(kTfLiteUInt32), "UINT32");
   EXPECT_EQ(type_name(kTfLiteUInt8), "UINT8");
@@ -136,6 +138,64 @@ TEST(Sparsity, TestSparsityFree) {
   t.sparsity->dim_metadata[1].array_indices = TfLiteIntArrayCreate(3);
 
   TfLiteTensorFree(&t);
+}
+
+TEST(TensorCopy, TensorCopy_VALID) {
+  const int kNumElements = 32;
+  const int kBytes = sizeof(float) * kNumElements;
+  TfLiteTensor src;
+  TfLiteTensor dst;
+  TfLiteDelegate delegate;
+  memset(&delegate, 0, sizeof(delegate));
+  memset(&src, 0, sizeof(TfLiteTensor));
+  memset(&dst, 0, sizeof(TfLiteTensor));
+  src.data.raw = static_cast<char*>(malloc(kBytes));
+  for (int i = 0; i < kNumElements; ++i) {
+    src.data.f[i] = i;
+  }
+  dst.data.raw = static_cast<char*>(malloc(kBytes));
+
+  src.bytes = dst.bytes = kBytes;
+  src.delegate = &delegate;
+  src.data_is_stale = true;
+  src.allocation_type = kTfLiteDynamic;
+  src.type = kTfLiteFloat32;
+  src.dims = TfLiteIntArrayCreate(1);
+  src.dims->data[0] = 1;
+  src.dims_signature = TfLiteIntArrayCopy(src.dims);
+  src.buffer_handle = 5;
+
+  EXPECT_EQ(kTfLiteOk, TfLiteTensorCopy(&src, &dst));
+
+  EXPECT_EQ(dst.bytes, src.bytes);
+  EXPECT_EQ(dst.delegate, src.delegate);
+  EXPECT_EQ(dst.data_is_stale, src.data_is_stale);
+  EXPECT_EQ(dst.type, src.type);
+  EXPECT_EQ(1, TfLiteIntArrayEqual(dst.dims, src.dims));
+  EXPECT_EQ(dst.buffer_handle, src.buffer_handle);
+  for (int i = 0; i < kNumElements; ++i) {
+    EXPECT_EQ(dst.data.f[i], src.data.f[i]);
+  }
+
+  TfLiteTensorFree(&src);
+  // We don't change allocation type, and since the test keeps the dst
+  // allocation as non dynamic, then we have to delete it manually.
+  free(dst.data.raw);
+  TfLiteTensorFree(&dst);
+}
+
+TEST(TensorCopy, TensorCopy_INVALID) {
+  TfLiteTensor src;
+  TfLiteTensor dst;
+
+  // Nullptr passed, should just return.
+  EXPECT_EQ(kTfLiteOk, TfLiteTensorCopy(&src, nullptr));
+  EXPECT_EQ(kTfLiteOk, TfLiteTensorCopy(nullptr, &dst));
+
+  // Incompatible sizes passed.
+  src.bytes = 10;
+  dst.bytes = 12;
+  EXPECT_EQ(kTfLiteError, TfLiteTensorCopy(&src, &dst));
 }
 
 }  // namespace tflite

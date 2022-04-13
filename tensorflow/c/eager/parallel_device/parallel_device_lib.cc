@@ -354,7 +354,7 @@ void ParallelDevice::StartExecute(TFE_Context* context,
        ++device_index) {
     DeviceThread* device_thread = device_threads_[device_index].get();
     std::vector<TFE_TensorHandle*> device_inputs;
-    device_inputs.reserve(device_inputs.size());
+    device_inputs.reserve(inputs.size());
     for (int input_index = 0; input_index < inputs.size(); ++input_index) {
       // Parallel tensors are divided between operations by device.
       device_inputs.push_back(inputs[input_index]->tensor(device_index));

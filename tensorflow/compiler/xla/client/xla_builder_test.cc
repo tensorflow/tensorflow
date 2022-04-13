@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -64,7 +65,7 @@ class XlaBuilderTest : public ::testing::Test {
   }
 
   // Returns the name of the test currently being run.
-  string TestName() const {
+  std::string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 };
@@ -82,7 +83,7 @@ TEST_F(XlaBuilderTest, UnaryOperatorsBuildExpectedHLO) {
       [&](std::function<XlaOp(XlaOp)> op,
           ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
         XlaBuilder b(TestName());
-        op(ConstantR0<int32>(&b, 1));
+        op(ConstantR0<int32_t>(&b, 1));
         TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
         auto root = module->entry_computation()->root_instruction();
         EXPECT_THAT(root, matches_pattern);
@@ -96,7 +97,7 @@ TEST_F(XlaBuilderTest, BinaryOperatorsBuildExpectedHLO) {
       [&](std::function<XlaOp(XlaOp, XlaOp)> op,
           ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
         XlaBuilder b(TestName());
-        op(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+        op(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
         TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
         auto root = module->entry_computation()->root_instruction();
         EXPECT_THAT(root, matches_pattern);
@@ -127,7 +128,7 @@ TEST_F(XlaBuilderTest, BinaryOperatorsBuildExpectedHLO) {
       [&](std::function<XlaOp(XlaOp, XlaOp)> op,
           ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
         XlaBuilder b(TestName());
-        op(ConstantR0<uint32>(&b, 1), ConstantR0<uint32>(&b, 2));
+        op(ConstantR0<uint32_t>(&b, 1), ConstantR0<uint32_t>(&b, 2));
         TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
         auto root = module->entry_computation()->root_instruction();
         EXPECT_THAT(root, matches_pattern);
@@ -561,7 +562,9 @@ TEST_F(XlaBuilderTest, BuildWithSpecificRootWithWrongBuilder) {
 
 TEST_F(XlaBuilderTest, ProtoMatches) {
   std::vector<XlaComputation> computations;
-  for (int i = 0; i < 2; ++i) {
+  const int n = 2;
+  computations.reserve(n);
+  for (int i = 0; i < n; ++i) {
     XlaBuilder b_call("the_only_to_apply");
     auto p0 = Parameter(&b_call, 0, ShapeUtil::MakeShape(F32, {}), "p0");
     auto p1 = Parameter(&b_call, 1, ShapeUtil::MakeShape(F32, {}), "p1");
@@ -1358,12 +1361,38 @@ TEST_F(XlaBuilderTest, AddFrontendAttribute) {
 
 TEST_F(XlaBuilderTest, ComparisonType) {
   XlaBuilder b(TestName());
-  (void)Le(ConstantR0<int32>(&b, 1), ConstantR0<int32>(&b, 2));
+  (void)Le(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
   ASSERT_THAT(root, op::Compare(op::Constant(), op::Constant()));
   EXPECT_EQ(Comparison::Type::kSigned,
             DynCast<HloCompareInstruction>(root)->type());
+}
+
+TEST_F(XlaBuilderTest, StableLookUpInstructionByHandle) {
+  XlaBuilder b(TestName());
+  internal::XlaBuilderFriend builder_friend;
+  XlaOp le = Le(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
+  HloInstructionProto* first_op = builder_friend.GetInstruction(le);
+  // Create some more instructions.
+  for (int i = 0; i < 100; ++i) {
+    (void)Le(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
+  }
+  // Make sure first_op hasn't changed.
+  HloInstructionProto* first_op_now = builder_friend.GetInstruction(le);
+  EXPECT_EQ(first_op, first_op_now);
+}
+
+TEST_F(XlaBuilderTest, ComplexAbsConstant) {
+  XlaBuilder b(TestName());
+  XlaOp out =
+      Abs(ConstantR0<std::complex<float>>(&b, std::complex<float>{-1, -1}));
+  ValueInference value_inference(&b);
+  StatusOr<OptionalLiteral> analyzed =
+      value_inference.AnalyzeConstant(out, kUpperBound);
+  EXPECT_IS_OK(analyzed.status());
+  EXPECT_EQ(analyzed->GetValue().value().shape().element_type(),
+            PrimitiveType::F32);
 }
 
 }  // namespace

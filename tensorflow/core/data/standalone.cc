@@ -116,9 +116,9 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   OpKernelContext ctx(&op_params, /*num_outputs=*/0);
   TF_RETURN_IF_ERROR(data::FinalizeDataset(&ctx, dataset, &finalized_dataset));
   core::ScopedUnref unref(finalized_dataset);
-  *result = WrapUnique(new Dataset(finalized_dataset, device_mgr.release(),
-                                   pflr.release(), flib_def.release(),
-                                   pool.release(), std::move(runner)));
+  *result = WrapUnique(new Dataset(
+      finalized_dataset, dataset, device_mgr.release(), pflr.release(),
+      flib_def.release(), pool.release(), std::move(runner)));
   return Status::OK();
 }  // static
 
@@ -146,8 +146,8 @@ Status Dataset::MakeIterator(
 
   // Create the iterator from the dataset.
   std::unique_ptr<IteratorBase> iterator;
-  TF_RETURN_IF_ERROR(dataset_->MakeIterator(ctx.get(), /*parent=*/nullptr,
-                                            "Iterator", &iterator));
+  TF_RETURN_IF_ERROR(finalized_dataset_->MakeIterator(
+      ctx.get(), /*parent=*/nullptr, "Iterator", &iterator));
   *result = WrapUnique(new Iterator(iterator.release(), ctx.release()));
 
   return Status::OK();
@@ -159,28 +159,33 @@ Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
 
 Status Dataset::MakeSplitProviders(
     std::vector<std::unique_ptr<SplitProvider>>* result) {
-  return dataset_->MakeSplitProviders(result);
+  return finalized_dataset_->MakeSplitProviders(result);
 }
 
-const DatasetBase* Dataset::Get() const { return dataset_; }
+const DatasetBase* Dataset::Get() const { return finalized_dataset_; }
 
-Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
-                 ProcessFunctionLibraryRuntime* pflr,
+Dataset::Dataset(DatasetBase* finalized_dataset, DatasetBase* original_dataset,
+                 DeviceMgr* device_mgr, ProcessFunctionLibraryRuntime* pflr,
                  FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool,
                  std::function<void(std::function<void()>)> runner)
-    : dataset_(dataset),
+    : finalized_dataset_(finalized_dataset),
+      original_dataset_(original_dataset),
       device_mgr_(device_mgr),
       flib_def_(flib_def),
       pflr_(pflr),
       interop_threadpool_(pool),
       runner_(std::move(runner)),
       unbounded_thread_pool_(Env::Default(), "tf_data_standalone") {
-  dataset_->Ref();
+  finalized_dataset_->Ref();
+  original_dataset_->Ref();
   function_handle_cache_ =
       absl::make_unique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));
 }
 
-Dataset::~Dataset() { dataset_->Unref(); }
+Dataset::~Dataset() {
+  finalized_dataset_->Unref();
+  original_dataset_->Unref();
+}
 
 }  // namespace standalone
 }  // namespace data

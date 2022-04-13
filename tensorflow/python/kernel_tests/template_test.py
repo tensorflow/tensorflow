@@ -442,9 +442,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1_1/nested/dummy:0", v5.name)
     self.assertEqual("s1_1/nested_1/dummy:0", v6.name)
 
-    self.assertEqual(2, len(tmpl1._checkpoint_dependencies))
-    self.assertEqual("nested", tmpl1._checkpoint_dependencies[0].name)
-    self.assertEqual("nested_1", tmpl1._checkpoint_dependencies[1].name)
+    self.assertEqual(["nested", "nested_1"], list(tmpl1._trackable_children()))
 
   @test_util.run_in_graph_and_eager_modes
   def test_nested_templates_with_defun(self):

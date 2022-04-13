@@ -72,7 +72,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     }
   }
 
-  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t start_micros = tensorflow::Env::Default()->NowMicros();
 
   const HloComputation* computation = module().entry_computation();
   if (computation->num_parameters() != arguments.size()) {
@@ -108,7 +108,9 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   // Transform the ShapedBuffer arguments into literals which the evaluator
   // consumes.
   std::vector<Literal> arg_literals;
-  for (int64_t p = 0; p < computation->num_parameters(); ++p) {
+  const int64_t num_parameters = computation->num_parameters();
+  arg_literals.reserve(num_parameters);
+  for (int64_t p = 0; p < num_parameters; ++p) {
     TF_ASSIGN_OR_RETURN(Literal arg_literal,
                         transfer_manager->TransferLiteralFromDevice(
                             run_options->stream(), argument_buffers[p]));
@@ -134,7 +136,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
       run_options->stream(), result_literal, result_buffers));
   ExecutionOutput result(std::move(result_buffers));
 
-  uint64 end_micros = tensorflow::Env::Default()->NowMicros();
+  uint64_t end_micros = tensorflow::Env::Default()->NowMicros();
 
   ExecutionProfile* profile = run_options->run_options().execution_profile();
   if (profile) {

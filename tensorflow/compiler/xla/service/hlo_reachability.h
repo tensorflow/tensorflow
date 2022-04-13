@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -196,7 +195,7 @@ class HloReachabilityMap {
     }
 
    private:
-    using Word = uint64;
+    using Word = uint64_t;
     static constexpr size_t kBits = 64;
 
     // Number of bits in the bitvector.
@@ -224,10 +223,10 @@ class HloReachabilityMap {
   void SetReachabilityToUnionHelper(absl::Span<const Index> input_indices,
                                     Index index);
 
-  uint64 GetKey(const HloInstruction* instruction) const {
-    uint64 unique_id = absl::bit_cast<uint32>(instruction->unique_id());
-    uint64 module_id =
-        absl::bit_cast<uint32>(instruction->parent()->parent()->unique_id());
+  uint64_t GetKey(const HloInstruction* instruction) const {
+    uint64_t unique_id = absl::bit_cast<uint32_t>(instruction->unique_id());
+    uint64_t module_id =
+        absl::bit_cast<uint32_t>(instruction->parent()->parent()->unique_id());
     return (module_id << 32) | unique_id;
   }
   // Return the index of the given instruction.
@@ -240,7 +239,7 @@ class HloReachabilityMap {
 
   // Dense assignment from HloInstruction::unique_id to number. These numbers
   // index into the bit_vectors_ vector and into the bits within a BitVector.
-  absl::flat_hash_map<uint64, int> indices_;
+  absl::flat_hash_map<uint64_t, int> indices_;
 
   // Bitvectors holding the reachability to each instruction. The bit vector for
   // instruction X includes ones for each instruction which X is reachable from.

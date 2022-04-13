@@ -74,11 +74,15 @@ class DispatcherState {
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-    explicit Dataset(int64_t dataset_id, int64_t fingerprint)
-        : dataset_id(dataset_id), fingerprint(fingerprint) {}
+    explicit Dataset(int64_t dataset_id, int64_t fingerprint,
+                     const DataServiceMetadata& metadata)
+        : dataset_id(dataset_id),
+          fingerprint(fingerprint),
+          metadata(metadata) {}
 
     const int64_t dataset_id;
     const int64_t fingerprint;
+    const DataServiceMetadata metadata;
   };
 
   // A worker registered with the dispatcher.
@@ -87,40 +91,45 @@ class DispatcherState {
         : address(register_worker.worker_address()),
           transfer_address(register_worker.transfer_address()),
           tags(register_worker.worker_tags().begin(),
-               register_worker.worker_tags().end()) {}
+               register_worker.worker_tags().end()),
+          uid(register_worker.worker_uid()) {}
 
     const std::string address;
     const std::string transfer_address;
     const std::vector<std::string> tags;
+    const int64_t uid;
   };
 
-  // A key for identifying a named job. The key contains a user-specified name,
-  // as well as an index describing which iteration of the job we are on.
-  struct NamedJobKey {
-    explicit NamedJobKey(absl::string_view name, int64_t index)
-        : name(name), index(index) {}
+  // A key for identifying a job. The key contains a job name,
+  // as well as a iteration number describing which iteration of the job we are
+  // on.
+  struct JobKey {
+    explicit JobKey(absl::string_view name, int64_t iteration)
+        : name(name), iteration(iteration) {}
 
-    friend bool operator==(const NamedJobKey& lhs, const NamedJobKey& rhs) {
-      return lhs.name == rhs.name && lhs.index == rhs.index;
+    friend bool operator==(const JobKey& lhs, const JobKey& rhs) {
+      return lhs.name == rhs.name && lhs.iteration == rhs.iteration;
     }
 
     template <typename H>
-    friend H AbslHashValue(H h, const NamedJobKey& k) {
-      return H::combine(std::move(h), k.name, k.index);
+    friend H AbslHashValue(H h, const JobKey& k) {
+      return H::combine(std::move(h), k.name, k.iteration);
     }
 
-    std::string DebugString() const { return absl::StrCat(name, "/", index); }
+    std::string DebugString() const {
+      return absl::StrCat(name, "/", iteration);
+    }
 
     const std::string name;
-    const int64_t index;
+    const int64_t iteration;
   };
 
   struct DistributedEpochState {
     explicit DistributedEpochState(int64_t num_split_providers)
-        : repetitions(num_split_providers), indices(num_split_providers) {}
+        : iterations(num_split_providers), indices(num_split_providers) {}
 
-    // The current repetition for each split provider.
-    std::vector<int64_t> repetitions;
+    // The current iteration for each split provider.
+    std::vector<int64_t> iterations;
     // Number of splits produced so far by each split provider.
     std::vector<int64_t> indices;
   };
@@ -145,14 +154,13 @@ class DispatcherState {
   struct Job {
     explicit Job(int64_t job_id, int64_t dataset_id,
                  const ProcessingModeDef& processing_mode,
-                 int64_t num_split_providers,
-                 absl::optional<NamedJobKey> named_job_key,
+                 int64_t num_split_providers, JobKey job_key,
                  absl::optional<int64_t> num_consumers,
                  TargetWorkers target_workers)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
-          named_job_key(named_job_key),
+          job_key(job_key),
           num_consumers(num_consumers),
           target_workers(target_workers) {
       if (IsDynamicShard(processing_mode)) {
@@ -163,17 +171,13 @@ class DispatcherState {
     bool IsRoundRobin() const { return num_consumers.has_value(); }
 
     std::string DebugString() const {
-      if (named_job_key.has_value()) {
-        return absl::StrCat(named_job_key.value().name, "_",
-                            named_job_key.value().index);
-      }
-      return absl::StrCat(job_id);
+      return absl::StrCat(job_key.name, "_", job_key.iteration);
     }
 
     const int64_t job_id;
     const int64_t dataset_id;
     const ProcessingModeDef processing_mode;
-    const absl::optional<NamedJobKey> named_job_key;
+    const JobKey job_key;
     absl::optional<DistributedEpochState> distributed_epoch_state;
     const absl::optional<int64_t> num_consumers;
     const TargetWorkers target_workers;
@@ -193,13 +197,15 @@ class DispatcherState {
           worker_address(create_task_update.worker_address()),
           transfer_address(create_task_update.transfer_address()),
           worker_tags(create_task_update.worker_tags().begin(),
-                      create_task_update.worker_tags().end()) {}
+                      create_task_update.worker_tags().end()),
+          worker_uid(create_task_update.worker_uid()) {}
 
     const int64_t task_id;
     const std::shared_ptr<Job> job;
     const std::string worker_address;
     const std::string transfer_address;
     const std::vector<std::string> worker_tags;
+    const int64_t worker_uid;
     int64_t starting_round = 0;
     bool finished = false;
     bool removed = false;
@@ -209,8 +215,6 @@ class DispatcherState {
 
   // Returns the next available dataset id.
   int64_t NextAvailableDatasetId() const;
-  // Gets the element_spec by searching for the dataset_id key.
-  Status GetElementSpec(int64_t dataset_id, std::string& element_spec) const;
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
   Status DatasetFromId(int64_t id,
                        std::shared_ptr<const Dataset>& dataset) const;
@@ -231,8 +235,8 @@ class DispatcherState {
   std::vector<std::shared_ptr<const Job>> ListJobs();
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
   Status JobFromId(int64_t id, std::shared_ptr<const Job>& job) const;
-  // Gets a named job by key. Returns NOT_FOUND if there is no such job.
-  Status NamedJobByKey(NamedJobKey key, std::shared_ptr<const Job>& job) const;
+  // Gets a job by key. Returns NOT_FOUND if there is no such job.
+  Status JobByKey(JobKey key, std::shared_ptr<const Job>& job) const;
 
   // Returns the job associated with the given job client id. Returns NOT_FOUND
   // if the job_client_id is unknown or has been released.
@@ -278,7 +282,6 @@ class DispatcherState {
   void ClientHeartbeat(const ClientHeartbeatUpdate& client_heartbeat);
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
-  void SetElementSpec(const SetElementSpecUpdate& set_element_spec);
 
   int64_t next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
@@ -286,8 +289,6 @@ class DispatcherState {
   // Registered datasets, keyed by dataset fingerprints.
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>>
       datasets_by_fingerprint_;
-  // Saved element_spec, keyed by dataset ids.
-  absl::flat_hash_map<int64_t, std::string> id_element_spec_info_;
 
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;
@@ -299,9 +300,8 @@ class DispatcherState {
   int64_t next_available_job_id_ = 2000;
   // Jobs, keyed by job ids.
   absl::flat_hash_map<int64_t, std::shared_ptr<Job>> jobs_;
-  // Named jobs, keyed by their names and indices. Not all jobs have names, so
-  // this is a subset of the jobs stored in `jobs_`.
-  absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_;
+  // Jobs, keyed by their job keys.
+  absl::flat_hash_map<JobKey, std::shared_ptr<Job>> jobs_by_key_;
 
   int64_t next_available_job_client_id_ = 3000;
   // Mapping from client ids to the jobs they are associated with.

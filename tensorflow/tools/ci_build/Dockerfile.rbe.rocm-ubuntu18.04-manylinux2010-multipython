@@ -9,18 +9,16 @@
 
 FROM ubuntu:18.04
 COPY --from=local-toolchain-ubuntu18.04-manylinux2010 /dt7 /dt7
-COPY --from=local-toolchain-ubuntu18.04-manylinux2010 /dt8 /dt8
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 # Install ROCm packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl libnuma-dev gnupg sudo libelf1 build-essential \
-  && curl -sL http://repo.radeon.com/rocm/apt/4.3.1/rocm.gpg.key | apt-key add - \
-  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/4.3.1/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
+  && curl -k -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - \
+  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/5.0/ ubuntu main" | tee /etc/apt/sources.list.d/rocm.list \
   && apt-get update && apt-get install -y --no-install-recommends \
-    rocm-dev rocm-libs hipcub rocm-utils rocm-cmake \
-    rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl \
+    rocm-dev rocm-libs rccl \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set ROCm environment variables and paths.
@@ -36,7 +34,7 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
 # Set target file to help determine which device(s) to build for
 RUN bash -c "ls -al /opt/roc*"
-RUN bash -c "echo -e 'gfx803\ngfx900\ngfx906\ngfx908' > $ROCM_PATH/bin/target.lst"
+RUN bash -c "echo -e 'gfx900\ngfx906\ngfx908' > $ROCM_PATH/bin/target.lst"
 
 # Copy and run the install scripts.
 COPY install/install_bootstrap_deb_packages.sh /install/
@@ -61,17 +59,20 @@ RUN apt-get update && apt-get install -y \
       && \
     rm -rf /var/lib/apt/lists/*
 
+# Install openjdk 11
+RUN yes "" | add-apt-repository ppa:openjdk-r/ppa
+RUN apt-get update && apt-get install -y openjdk-11-jdk && \
+    update-alternatives --auto java
+
 COPY install/install_bazel.sh /install/
 RUN /install/install_bazel.sh
 
 COPY install/build_and_install_python.sh /install/
-RUN /install/build_and_install_python.sh "3.6.9"
 RUN /install/build_and_install_python.sh "3.7.7"
 RUN /install/build_and_install_python.sh "3.8.2"
 RUN /install/build_and_install_python.sh "3.9.4"
 
 COPY install/install_pip_packages_by_version.sh /install/
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.6"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.7"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9"

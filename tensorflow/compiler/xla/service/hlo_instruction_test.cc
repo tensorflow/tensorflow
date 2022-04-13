@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 #include <set>
-#include <unordered_map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -1603,6 +1603,68 @@ TEST_F(HloInstructionTest, StringifyScatter) {
       "to_apply=%Scatter.update");
 }
 
+TEST_F(HloInstructionTest, StringifyAsyncOps) {
+  const Shape s1 = ShapeUtil::MakeShape(F32, {10});
+  const Shape s2 = ShapeUtil::MakeShape(F32, {20});
+  const Shape s_tuple =
+      ShapeUtil::MakeTupleShape({s1, s2, ShapeUtil::MakeShape(S32, {})});
+
+  HloComputation::Builder async_builder("AsyncOp");
+  HloInstruction* param = async_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s1, "p0"));
+  async_builder.AddInstruction(
+      HloInstruction::CreateCustomCall(s2, {param},
+                                       /*custom_call_target=*/"foo"));
+  std::unique_ptr<HloComputation> async_computation = async_builder.Build();
+
+  HloComputation::Builder entry_builder("Entry");
+  HloInstruction* entry_param = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s1, "p0"));
+  HloInstruction* async_start =
+      entry_builder.AddInstruction(HloInstruction::CreateAsyncStart(
+          s_tuple, {entry_param}, async_computation.get()));
+  HloInstruction* async_update =
+      entry_builder.AddInstruction(HloInstruction::CreateAsyncUpdate(
+          s_tuple, async_start, async_computation.get()));
+  entry_builder.AddInstruction(HloInstruction::CreateAsyncDone(
+      s2, async_update, async_computation.get()));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(entry_builder.Build());
+  module->AddEmbeddedComputation(std::move(async_computation));
+
+  const std::string expected_with_syntax_sugar =
+      R"(HloModule StringifyAsyncOps
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = (f32[10]{0}, f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = (f32[10]{0}, f32[20]{0}, s32[]) custom-call-update((f32[10]{0}, f32[20]{0}, s32[]) %async-start), custom_call_target="foo"
+  ROOT %async-done = f32[20]{0} custom-call-done((f32[10]{0}, f32[20]{0}, s32[]) %async-update), custom_call_target="foo"
+}
+
+)";
+  EXPECT_EQ(module->ToString(), expected_with_syntax_sugar);
+  const std::string expected_without_syntax_sugar =
+      R"(HloModule StringifyAsyncOps
+
+%AsyncOp (p0.1: f32[10]) -> f32[20] {
+  %p0.1 = f32[10]{0} parameter(0)
+  ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1), custom_call_target="foo"
+}
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = (f32[10]{0}, f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%AsyncOp
+  %async-update = (f32[10]{0}, f32[20]{0}, s32[]) async-update((f32[10]{0}, f32[20]{0}, s32[]) %async-start), calls=%AsyncOp
+  ROOT %async-done = f32[20]{0} async-done((f32[10]{0}, f32[20]{0}, s32[]) %async-update), calls=%AsyncOp
+}
+
+)";
+  auto options = HloPrintOptions().set_syntax_sugar_async_op(false);
+  EXPECT_EQ(module->ToString(options), expected_without_syntax_sugar);
+}
+
 TEST_F(HloInstructionTest, CanonicalStringificationFusion) {
   // Tests stringification of a simple op, fusion, while, and conditional.
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
@@ -1634,7 +1696,7 @@ TEST_F(HloInstructionTest, CanonicalStringificationFusion) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kLoop);
 
-  const string expected_fusion =
+  const std::string expected_fusion =
       R"(f32[5,20]{1,0} fusion(f32[5,10]{1,0}, f32[20,10]{1,0}), kind=kLoop, calls=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)
@@ -1674,7 +1736,7 @@ TEST_F(HloInstructionTest, CanonicalStringificationWhile) {
       HloInstruction::CreateWhile(sout, computation, computation, x));
 
   auto options = HloPrintOptions().Canonical();
-  const string expected_loop =
+  const std::string expected_loop =
       R"(f32[5,20]{1,0} while(f32[5,10]{1,0}), condition=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)
@@ -1735,7 +1797,7 @@ TEST_F(HloInstructionTest, CanonicalStringificationConditional) {
       builder.AddInstruction(HloInstruction::CreateConditional(
           sout, pred, x, computation, x, computation));
   auto options = HloPrintOptions().Canonical();
-  const string expected_conditional =
+  const std::string expected_conditional =
       R"(f32[5,20]{1,0} conditional(pred[], f32[5,10]{1,0}, f32[5,10]{1,0}), true_computation=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)

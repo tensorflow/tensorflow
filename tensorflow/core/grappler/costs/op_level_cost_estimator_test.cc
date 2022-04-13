@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 
@@ -558,9 +559,10 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     }
 
     bool found_unknown_shapes;
-    auto dims = OpLevelCostEstimator::OpDimensionsFromInputs(
-        op_context.op_info.inputs(0).shape(), op_context.op_info,
-        &found_unknown_shapes);
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto dims, OpLevelCostEstimator::OpDimensionsFromInputs(
+                       op_context.op_info.inputs(0).shape(), op_context.op_info,
+                       &found_unknown_shapes));
     Padding padding_enum;
     if (padding == "VALID") {
       padding_enum = Padding::VALID;
@@ -579,6 +581,38 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     EXPECT_EQ(wo, dims.oy);
     EXPECT_EQ(c, dims.oz);
     EXPECT_EQ(padding_enum, dims.padding);
+  }
+
+  StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
+  CallOpDimensionsFromInputs(const int n, const int h, const int w, const int c,
+                             const int kx, const int ky, const int sx,
+                             const int sy, const string& data_format,
+                             const string& padding) {
+    OpContext op_context;
+
+    const std::vector<int> x = {n, h, w, c};
+    const std::vector<int> ksize = {1, kx, ky, 1};
+    std::vector<int> strides;
+    if (data_format == "NHWC") {
+      strides = {1, sy, sx, 1};
+    } else {
+      strides = {1, 1, sy, sx};
+    }
+
+    auto& op_info = op_context.op_info;
+    SetCpuDevice(&op_info);
+    op_info.set_op("MaxPool");
+
+    DescribeTensor4D(x[0], x[1], x[2], x[3], op_info.add_inputs());
+    auto* attr = op_info.mutable_attr();
+    SetAttrValue(data_format, &(*attr)["data_format"]);
+    SetAttrValue(padding, &(*attr)["padding"]);
+    SetAttrValue(strides, &(*attr)["strides"]);
+    SetAttrValue(ksize, &(*attr)["ksize"]);
+    bool found_unknown_shapes;
+    return OpLevelCostEstimator::OpDimensionsFromInputs(
+        op_context.op_info.inputs(0).shape(), op_context.op_info,
+        &found_unknown_shapes);
   }
 
   OpLevelCostEstimator estimator_;
@@ -1054,7 +1088,7 @@ TEST_F(OpLevelCostEstimatorTest, UnaryOpExecutionTime) {
   std::vector<std::pair<std::string, int>> unary_ops = {
       {"All", 1},      {"ArgMax", 1}, {"Cast", 1},  {"Max", 1},
       {"Min", 1},      {"Prod", 1},   {"Relu", 1},  {"Relu6", 1},
-      {"Softmax", 43}, {"Sum", 1},    {"TopKV2", 1}};
+      {"Softmax", 40}, {"Sum", 1},    {"TopKV2", 1}};
 
   const int kTensorSize = 1000;
   for (auto unary_op : unary_ops) {
@@ -1379,6 +1413,26 @@ TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputs) {
       ValidateOpDimensionsFromInputs(10, 20, 20, 100, 1, 1, 3, 3, f, p);
       ValidateOpDimensionsFromInputs(10, 200, 200, 100, 5, 5, 3, 3, f, p);
       ValidateOpDimensionsFromInputs(10, 14, 14, 3840, 3, 3, 2, 2, f, p);
+    }
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputsError) {
+  std::vector<string> paddings = {"VALID", "SAME"};
+  std::vector<string> formats = {"NHWC", "NCHW"};
+  for (const auto& p : paddings) {
+    for (const auto& f : formats) {
+      // n, h, w, c, kx, ky, sx, sy, data_format, padding.
+      ASSERT_THAT(
+          CallOpDimensionsFromInputs(10, 14, 14, 3840, 3, 3, 0, 2, f, p),
+          testing::StatusIs(
+              error::INVALID_ARGUMENT,
+              "Stride must be > 0 for Height and Width, but got (2, 0)"));
+      ASSERT_THAT(
+          CallOpDimensionsFromInputs(10, 14, 14, 3840, 3, 3, 2, 0, f, p),
+          testing::StatusIs(
+              error::INVALID_ARGUMENT,
+              "Stride must be > 0 for Height and Width, but got (0, 2)"));
     }
   }
 }

@@ -107,11 +107,21 @@ class CostAnalysisTest(test.TestCase):
 
     self.assertTrue(b"MatMul" in report)
     self.assertTrue(b"ApplyAdam" in report)
-    self.assertTrue(b"Conv2D" in report)
     self.assertTrue(b"Conv2DBackpropFilter" in report)
     self.assertTrue(b"Softmax" in report)
 
-    for op_type in [b"MatMul", b"Conv2D", b"Conv2DBackpropFilter"]:
+    # When mkl is enabled, Conv2D and MatMul op followed by
+    # 1-dimension Add in this graph will be fused, but not
+    # in the mkl disabled case.
+    expected_matmul_count = 2
+    op_types = [b"MatMul", b"Conv2DBackpropFilter"]
+
+    if not test_util.IsMklEnabled():
+      self.assertTrue(b"Conv2D" in report)
+      expected_matmul_count = 3
+      op_types.append(b"Conv2D")
+
+    for op_type in op_types:
       matcher = re.compile(
           br"\s+" + op_type + br",\s*(\d+),\s*(\d+),\s*([\d\.eE+-]+)%,\s*" +
           br"([\d\.eE+-]+)%,\s*(-?\d+),\s*(\d+),", re.MULTILINE)
@@ -121,7 +131,7 @@ class CostAnalysisTest(test.TestCase):
       # upper = int(m.group(5))
       lower = int(m.group(6))
       if op_type == b"MatMul":
-        self.assertEqual(3, op_count)
+        self.assertEqual(expected_matmul_count, op_count)
       else:
         self.assertEqual(1, op_count)
       self.assertTrue(0 <= lower)

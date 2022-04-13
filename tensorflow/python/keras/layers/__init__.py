@@ -25,29 +25,6 @@ from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.base_preprocessing_layer import PreprocessingLayer
 
-# Image preprocessing layers.
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import CenterCrop
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomCrop
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomFlip
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomContrast
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomHeight
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomRotation
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomTranslation
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomWidth
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomZoom
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Resizing
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Rescaling
-
-# Preprocessing layers.
-from tensorflow.python.keras.layers.preprocessing.category_crossing import CategoryCrossing
-from tensorflow.python.keras.layers.preprocessing.category_encoding import CategoryEncoding
-from tensorflow.python.keras.layers.preprocessing.discretization import Discretization
-from tensorflow.python.keras.layers.preprocessing.hashing import Hashing
-from tensorflow.python.keras.layers.preprocessing.integer_lookup import IntegerLookup
-from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
-from tensorflow.python.keras.layers.preprocessing.string_lookup import StringLookup
-from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization
-
 # Advanced activations.
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU
 from tensorflow.python.keras.layers.advanced_activations import PReLU
@@ -142,19 +119,6 @@ from tensorflow.python.keras.layers.noise import AlphaDropout
 from tensorflow.python.keras.layers.noise import GaussianNoise
 from tensorflow.python.keras.layers.noise import GaussianDropout
 
-# Normalization layers.
-from tensorflow.python.keras.layers.normalization.layer_normalization import LayerNormalization
-from tensorflow.python.keras.layers.normalization.batch_normalization import SyncBatchNormalization
-
-if tf2.enabled():
-  from tensorflow.python.keras.layers.normalization.batch_normalization import BatchNormalization
-  from tensorflow.python.keras.layers.normalization.batch_normalization_v1 import BatchNormalization as BatchNormalizationV1
-  BatchNormalizationV2 = BatchNormalization
-else:
-  from tensorflow.python.keras.layers.normalization.batch_normalization_v1 import BatchNormalization
-  from tensorflow.python.keras.layers.normalization.batch_normalization import BatchNormalization as BatchNormalizationV2
-  BatchNormalizationV1 = BatchNormalization
-
 # Kernelized layers.
 from tensorflow.python.keras.layers.kernelized import RandomFourierFeatures
 
@@ -227,11 +191,6 @@ from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM2D
 # CuDNN recurrent layers.
 from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNLSTM
 from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNGRU
-
-# Wrapper functions
-from tensorflow.python.keras.layers.wrappers import Wrapper
-from tensorflow.python.keras.layers.wrappers import Bidirectional
-from tensorflow.python.keras.layers.wrappers import TimeDistributed
 
 # # RNN Cell wrappers.
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DeviceWrapper

@@ -53,6 +53,8 @@ proto::Delegate ConvertDelegate(Delegate delegate) {
       return proto::Delegate::EDGETPU;
     case Delegate_EDGETPU_CORAL:
       return proto::Delegate::EDGETPU_CORAL;
+    case Delegate_CORE_ML:
+      return proto::Delegate::CORE_ML;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -246,6 +248,28 @@ proto::XNNPackSettings ConvertXNNPackSettings(const XNNPackSettings& settings) {
   return proto_settings;
 }
 
+proto::CoreMLSettings ConvertCoreMLSettings(const CoreMLSettings& settings) {
+  proto::CoreMLSettings proto_settings;
+  switch (settings.enabled_devices()) {
+    case CoreMLSettings_::EnabledDevices_DEVICES_ALL:
+      proto_settings.set_enabled_devices(proto::CoreMLSettings::DEVICES_ALL);
+      break;
+    case CoreMLSettings_::EnabledDevices_DEVICES_WITH_NEURAL_ENGINE:
+      proto_settings.set_enabled_devices(
+          proto::CoreMLSettings::DEVICES_WITH_NEURAL_ENGINE);
+      break;
+    default:
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Invalid devices enum: %d",
+                      settings.enabled_devices());
+  }
+  proto_settings.set_coreml_version(settings.coreml_version());
+  proto_settings.set_max_delegated_partitions(
+      settings.max_delegated_partitions());
+  proto_settings.set_min_nodes_per_partition(
+      settings.min_nodes_per_partition());
+  return proto_settings;
+}
+
 proto::CPUSettings ConvertCPUSettings(const CPUSettings& settings) {
   proto::CPUSettings proto_settings;
   proto_settings.set_num_threads(settings.num_threads());
@@ -334,6 +358,11 @@ proto::TFLiteSettings ConvertTfliteSettings(const TFLiteSettings& settings) {
   if (settings.xnnpack_settings() != nullptr) {
     *(proto_settings.mutable_xnnpack_settings()) =
         ConvertXNNPackSettings(*settings.xnnpack_settings());
+  }
+
+  if (settings.coreml_settings() != nullptr) {
+    *(proto_settings.mutable_coreml_settings()) =
+        ConvertCoreMLSettings(*settings.coreml_settings());
   }
 
   if (settings.cpu_settings() != nullptr) {

@@ -96,7 +96,12 @@ class NodeFileWriterTest(test.TestCase):
       node_def.ParseFromString(node_def_bytes[cur_pos:cur_pos + size])
       # When running eager op as function is enabled we expect these extra nodes
       # to show up in the list of executed nodes.
-      if node_def.op not in ('_Arg', '_Retval'):
+      ignored_ops = []
+      if context.run_eager_op_as_function_enabled():
+        ignored_ops.extend(['_Arg', '_Retval', 'NoOp'])
+        # TODO(b/206047926): Fix or remove _Recv/_HostRecv from the ignored_ops.
+        ignored_ops.extend(['_Recv', '_HostRecv'])
+      if node_def.op not in ignored_ops:
         node_defs.append(node_def)
       cur_pos += size
     self.assertEqual(cur_pos, len(node_def_bytes))

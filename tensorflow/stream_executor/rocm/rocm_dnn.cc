@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "rocm/include/miopen/miopen.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -507,7 +508,7 @@ dnn::ProfileResult GetProfileResultFromConvSolution(
     miopenConvSolution_t solution) {
   dnn::ProfileResult profile_result;
   profile_result.set_algorithm(
-      {static_cast<AlgorithmDesc::Index>(solution.solution_id), false});
+      {solution.solution_id, false, solution.workspace_size});
   profile_result.set_elapsed_time_in_ms(solution.time);
   profile_result.set_scratch_size(solution.workspace_size);
   return profile_result;
@@ -515,25 +516,24 @@ dnn::ProfileResult GetProfileResultFromConvSolution(
 
 dnn::ProfileResult GetProfileResultFromConvAlgoPerf(
     dnn::ConvolutionKind kind, miopenConvAlgoPerf_t algorithm) {
-  dnn::ProfileResult profile_result;
+  int64_t algo_id;
   switch (kind) {
     case dnn::ConvolutionKind::FORWARD:
-      profile_result.set_algorithm(
-          {static_cast<AlgorithmDesc::Index>(algorithm.fwd_algo), false});
+      algo_id = algorithm.fwd_algo;
       break;
     case dnn::ConvolutionKind::BACKWARD_DATA:
-      profile_result.set_algorithm(
-          {static_cast<AlgorithmDesc::Index>(algorithm.bwd_data_algo), false});
+      algo_id = algorithm.bwd_data_algo;
       break;
     case dnn::ConvolutionKind::BACKWARD_FILTER:
-      profile_result.set_algorithm(
-          {static_cast<AlgorithmDesc::Index>(algorithm.bwd_weights_algo),
-           false});
+      algo_id = algorithm.bwd_weights_algo;
       break;
     default:
       LOG(FATAL) << "Unexpected convolution kind " << static_cast<int>(kind);
       break;
   }
+
+  dnn::ProfileResult profile_result;
+  profile_result.set_algorithm({algo_id, false, algorithm.memory});
   profile_result.set_elapsed_time_in_ms(algorithm.time);
   profile_result.set_scratch_size(algorithm.memory);
   return profile_result;
@@ -2946,6 +2946,166 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
   return port::Status::OK();
 }
 
+class RocmConvRunner : public dnn::ConvRunner {
+ public:
+  RocmConvRunner(GpuExecutor* parent, MIOpenAccess* miopen, int64_t algo_id,
+                 size_t workspace_size, dnn::ConvolutionKind kind,
+                 dnn::DataType input_type, bool use_immediate_mode,
+                 BatchDescriptor input_descriptor,
+                 BatchDescriptor output_descriptor,
+                 FilterDescriptor filter_descriptor,
+                 ConvolutionDescriptor conv_descriptor)
+      : parent_(parent),
+        miopen_(miopen),
+        algo_id_(algo_id),
+        workspace_size_(workspace_size),
+        kind_(kind),
+        use_immediate_mode_(use_immediate_mode),
+        input_desc_{input_descriptor, ToMIOpenDataType(input_type)},
+        output_desc_{output_descriptor, ToMIOpenDataType(input_type)},
+        filter_desc_{filter_descriptor, ToMIOpenDataType(input_type)},
+        conv_desc_{conv_descriptor, ToMIOpenDataType(input_type)} {}
+
+  std::string ToString() const override {
+    return dnn::AlgorithmDesc{algo_id_, false, workspace_size_}.ToString();
+  }
+
+  size_t GetWorkspaceSize() const override { return workspace_size_; }
+
+  port::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const override {
+    return {{algo_id_, false, workspace_size_}};
+  }
+
+  port::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
+                          DeviceMemoryBase scratch_memory,
+                          DeviceMemoryBase input_data,
+                          DeviceMemoryBase filter_data,
+                          DeviceMemoryBase output_data) const override {
+    auto miopen = miopen_->GetHandle(parent_, stream);
+    // Alpha is the scaling factor for input.
+    float alpha = 1.0;
+    // Beta is the scaling factor for output.
+    float beta = 0.0;
+
+    const bool is_profiling = profile_result != nullptr;
+
+    std::unique_ptr<GpuTimer> timer;
+    if (is_profiling) {
+      timer.reset(new GpuTimer(parent_));
+      if (!timer->Init()) {
+        return port::Status(port::error::INTERNAL, "Failed to init timer");
+      }
+      // The start and stop of the timer should be as close to the MIOpen call
+      // as possible. It is still possible for other threads to issue workload
+      // on to this stream. So it could take multiple profiling measurements.
+      if (!timer->Start(AsGpuStream(stream))) {
+        timer->Destroy();
+        return port::Status(port::error::INTERNAL, "Failed to start timer");
+      }
+    }
+
+    miopenStatus_t status = miopenStatusSuccess;
+    switch (kind_) {
+      case dnn::ConvolutionKind::FORWARD: {
+        if (use_immediate_mode_) {
+          status = wrap::miopenConvolutionForwardImmediate(
+              miopen.handle(), filter_desc_.handle(), filter_data.opaque(),
+              input_desc_.handle(), input_data.opaque(), conv_desc_.handle(),
+              output_desc_.handle(), output_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size(),
+              static_cast<uint64_t>(algo_id_));
+        } else {
+          status = wrap::miopenConvolutionForward(
+              miopen.handle(), &alpha, input_desc_.handle(),
+              input_data.opaque(), filter_desc_.handle(), filter_data.opaque(),
+              conv_desc_.handle(),
+              static_cast<miopenConvFwdAlgorithm_t>(algo_id_), &beta,
+              output_desc_.handle(), output_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size());
+        }
+
+        break;
+      }
+      case dnn::ConvolutionKind::BACKWARD_DATA: {
+        if (use_immediate_mode_) {
+          status = wrap::miopenConvolutionBackwardDataImmediate(
+              miopen.handle(), output_desc_.handle(), output_data.opaque(),
+              filter_desc_.handle(), filter_data.opaque(), conv_desc_.handle(),
+              input_desc_.handle(), input_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size(),
+              static_cast<uint64_t>(algo_id_));
+        } else {
+          status = wrap::miopenConvolutionBackwardData(
+              miopen.handle(), &alpha, output_desc_.handle(),
+              output_data.opaque(), filter_desc_.handle(), filter_data.opaque(),
+              conv_desc_.handle(),
+              static_cast<miopenConvBwdDataAlgorithm_t>(algo_id_), &beta,
+              input_desc_.handle(), input_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size());
+        }
+        break;
+      }
+      case dnn::ConvolutionKind::BACKWARD_FILTER: {
+        if (use_immediate_mode_) {
+          status = wrap::miopenConvolutionBackwardWeightsImmediate(
+              miopen.handle(), output_desc_.handle(), output_data.opaque(),
+              input_desc_.handle(), input_data.opaque(), conv_desc_.handle(),
+              filter_desc_.handle(), filter_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size(),
+              static_cast<uint64_t>(algo_id_));
+        } else {
+          status = wrap::miopenConvolutionBackwardWeights(
+              miopen.handle(), &alpha, output_desc_.handle(),
+              output_data.opaque(), input_desc_.handle(), input_data.opaque(),
+              conv_desc_.handle(),
+              static_cast<miopenConvBwdWeightsAlgorithm_t>(algo_id_), &beta,
+              filter_desc_.handle(), filter_data.opaque(),
+              scratch_memory.opaque(), scratch_memory.size());
+        }
+        break;
+      }
+      default:
+        return port::InternalError(absl::StrCat("Unexpected convolution kind ",
+                                                static_cast<int>(kind_)));
+    }
+
+    if (is_profiling) {
+      if (!timer->Stop(AsGpuStream(stream))) {
+        timer->Destroy();
+        return port::Status(port::error::INTERNAL, "Failed to stop timer");
+      }
+      if (status == miopenStatusSuccess) {
+        dnn::AlgorithmDesc algotype(algo_id_, false);
+        profile_result->set_algorithm(algotype);
+        profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
+        profile_result->set_scratch_size(scratch_memory.size());
+      }
+      timer->Destroy();
+    }
+
+    if (status != miopenStatusSuccess) {
+      return port::InternalError(
+          absl::StrCat("Failed to enqueue convolution on stream: ",
+                       ::stream_executor::gpu::ToString(status)));
+    }
+
+    return port::Status::OK();
+  }
+
+ private:
+  GpuExecutor* parent_;
+  MIOpenAccess* miopen_;
+  int64_t algo_id_;
+  size_t workspace_size_;
+  dnn::ConvolutionKind kind_;
+  bool use_immediate_mode_;
+
+  ScopedTensorDescriptor input_desc_;
+  ScopedTensorDescriptor output_desc_;
+  ScopedFilterDescriptor filter_desc_;
+  ScopedConvolutionDescriptor conv_desc_;
+};
+
 port::Status MIOpenSupport::DoConvolve(
     dnn::ConvolutionKind kind, dnn::DataType element_type,
     dnn::DataType output_type, Stream* stream,
@@ -2956,122 +3116,14 @@ port::Status MIOpenSupport::DoConvolve(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
     dnn::ProfileResult* output_profile_result) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-  ScopedTensorDescriptor input_nd{input_descriptor,
-                                  ToMIOpenDataType(element_type)};
-  ScopedTensorDescriptor output_nd{output_descriptor,
-                                   ToMIOpenDataType(element_type)};
-  ScopedFilterDescriptor filter{filter_descriptor,
-                                ToMIOpenDataType(element_type)};
-  ScopedConvolutionDescriptor conv{convolution_descriptor,
-                                   ToMIOpenDataType(element_type)};
+  SE_ASSIGN_OR_RETURN(
+      auto runner,
+      ConvolveRunnerFromDesc(stream, algorithm_desc, kind, element_type,
+                             output_type, input_descriptor, filter_descriptor,
+                             output_descriptor, convolution_descriptor));
 
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  const bool is_profiling = output_profile_result != nullptr;
-
-  std::unique_ptr<GpuTimer> timer;
-  if (is_profiling) {
-    timer.reset(new GpuTimer(parent_));
-    if (!timer->Init()) {
-      return port::Status(port::error::INTERNAL, "Failed to init timer");
-    }
-    // The start and stop of the timer should be as close to the MIOpen call
-    // as possible. It is still possible for other threads to issue workload
-    // on to this stream. So it could take multiple profiling measurements.
-    if (!timer->Start(AsGpuStream(stream))) {
-      timer->Destroy();
-      return port::Status(port::error::INTERNAL, "Failed to start timer");
-    }
-  }
-
-  miopenStatus_t status = miopenStatusSuccess;
-  switch (kind) {
-    case dnn::ConvolutionKind::FORWARD: {
-      if (use_immediate_mode_) {
-        status = wrap::miopenConvolutionForwardImmediate(
-            miopen.handle(), filter.handle(), filter_data.opaque(),
-            input_nd.handle(), input_data.opaque(), conv.handle(),
-            output_nd.handle(), output_data.opaque(), scratch_memory.opaque(),
-            scratch_memory.size(),
-            static_cast<uint64_t>(algorithm_desc.algo_id()));
-      } else {
-        status = wrap::miopenConvolutionForward(
-            miopen.handle(), &alpha, input_nd.handle(), input_data.opaque(),
-            filter.handle(), filter_data.opaque(), conv.handle(),
-            static_cast<miopenConvFwdAlgorithm_t>(algorithm_desc.algo_id()),
-            &beta, output_nd.handle(), output_data.opaque(),
-            scratch_memory.opaque(), scratch_memory.size());
-      }
-
-      break;
-    }
-    case dnn::ConvolutionKind::BACKWARD_DATA: {
-      if (use_immediate_mode_) {
-        status = wrap::miopenConvolutionBackwardDataImmediate(
-            miopen.handle(), output_nd.handle(), output_data.opaque(),
-            filter.handle(), filter_data.opaque(), conv.handle(),
-            input_nd.handle(), input_data.opaque(), scratch_memory.opaque(),
-            scratch_memory.size(),
-            static_cast<uint64_t>(algorithm_desc.algo_id()));
-      } else {
-        status = wrap::miopenConvolutionBackwardData(
-            miopen.handle(), &alpha, output_nd.handle(), output_data.opaque(),
-            filter.handle(), filter_data.opaque(), conv.handle(),
-            static_cast<miopenConvBwdDataAlgorithm_t>(algorithm_desc.algo_id()),
-            &beta, input_nd.handle(), input_data.opaque(),
-            scratch_memory.opaque(), scratch_memory.size());
-      }
-      break;
-    }
-    case dnn::ConvolutionKind::BACKWARD_FILTER: {
-      if (use_immediate_mode_) {
-        status = wrap::miopenConvolutionBackwardWeightsImmediate(
-            miopen.handle(), output_nd.handle(), output_data.opaque(),
-            input_nd.handle(), input_data.opaque(), conv.handle(),
-            filter.handle(), filter_data.opaque(), scratch_memory.opaque(),
-            scratch_memory.size(),
-            static_cast<uint64_t>(algorithm_desc.algo_id()));
-      } else {
-        status = wrap::miopenConvolutionBackwardWeights(
-            miopen.handle(), &alpha, output_nd.handle(), output_data.opaque(),
-            input_nd.handle(), input_data.opaque(), conv.handle(),
-            static_cast<miopenConvBwdWeightsAlgorithm_t>(
-                algorithm_desc.algo_id()),
-            &beta, filter.handle(), filter_data.opaque(),
-            scratch_memory.opaque(), scratch_memory.size());
-      }
-      break;
-    }
-    default:
-      return port::InternalError(
-          absl::StrCat("Unexpected convolution kind ", static_cast<int>(kind)));
-  }
-
-  if (is_profiling) {
-    if (!timer->Stop(AsGpuStream(stream))) {
-      timer->Destroy();
-      return port::Status(port::error::INTERNAL, "Failed to stop timer");
-    }
-    if (status == miopenStatusSuccess) {
-      dnn::AlgorithmDesc algotype(algorithm_desc.algo_id(), false);
-      output_profile_result->set_algorithm(algotype);
-      output_profile_result->set_elapsed_time_in_ms(
-          timer->GetElapsedMilliseconds());
-      output_profile_result->set_scratch_size(scratch_memory.size());
-    }
-    timer->Destroy();
-  }
-
-  if (status != miopenStatusSuccess) {
-    return port::InternalError(absl::StrCat(
-        "Failed to euqueue convolution on stream: ", ToString(status)));
-  }
-
-  return port::Status::OK();
+  return (*runner)(stream, output_profile_result, scratch_memory, input_data,
+                   filter_data, output_data);
 }
 
 bool MIOpenSupport::GetConvolveAlgorithms(
@@ -3087,6 +3139,72 @@ bool MIOpenSupport::GetConvolveAlgorithms(
       // clang-format on
   });
   return true;
+}
+
+port::Status MIOpenSupport::GetConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemoryBase output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
+    ScratchAllocator* scratch_allocator,
+    std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners) {
+  if (input_type != output_type) {
+    return port::UnimplementedError(
+        absl::StrFormat("MIOpen backend does not support different input and "
+                        "output types: %d != %d",
+                        input_type, output_type));
+  }
+
+  std::vector<dnn::ProfileResult> profile_results;
+  if (!GetMIOpenConvolveAlgorithms(
+          kind, input_type, stream, input_descriptor, input_data,
+          filter_descriptor, filter_data, output_descriptor, output_data,
+          convolution_descriptor, scratch_allocator, &profile_results)) {
+    return port::Status(
+        port::error::UNKNOWN,
+        "GetConvolveRunners: GetMIOpenConvolveAlgorithms failed");
+  }
+
+  for (const auto& profile_result : profile_results) {
+    SE_ASSIGN_OR_RETURN(
+        auto runner, ConvolveRunnerFromDesc(
+                         stream, profile_result.algorithm(), kind, input_type,
+                         output_type, input_descriptor, filter_descriptor,
+                         output_descriptor, convolution_descriptor));
+    out_runners->push_back(std::move(runner));
+  }
+
+  return port::Status::OK();
+}
+
+port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+MIOpenSupport::ConvolveRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor) {
+  if (input_type != output_type) {
+    return port::UnimplementedError(
+        absl::StrFormat("MIOpen backend does not support different input and "
+                        "output types: %d != %d",
+                        input_type, output_type));
+  }
+
+  auto workspace_size = algorithm_desc.workspace_size();
+  if (!workspace_size) {
+    return port::InvalidArgumentError(
+        "MIOpenSupport::ConvolveRunnerFromDesc requires "
+        "AlgorithmProto.workspace_size, but it was missing.");
+  }
+  return {std::make_unique<RocmConvRunner>(
+      parent_, miopen_.get(), algorithm_desc.algo_id(), *workspace_size, kind,
+      input_type, use_immediate_mode_, input_descriptor, output_descriptor,
+      filter_descriptor, convolution_descriptor)};
 }
 
 bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
@@ -3894,14 +4012,76 @@ bool MIOpenSupport::DoActivate(Stream* stream,
   return false;
 }
 
-bool MIOpenSupport::DoPoolForward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<double>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<double>* output_data, ScratchAllocator* workspace_allocator) {
-  LOG(ERROR) << "miopen does not support pooling for double type yet";
-  return false;
+port::Status MIOpenSupport::DoPoolForward(
+    dnn::DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
+    ScratchAllocator* workspace_allocator) {
+  if (element_type == dnn::DataType::kDouble) {
+    return port::Status(port::error::INVALID_ARGUMENT,
+                        "MIOpen does not support pooling for double type yet");
+  }
+
+  auto miopen = miopen_->GetHandle(parent_, stream);
+  // Alpha is the scaling factor for input.
+  float alpha = 1.0;
+  // Beta is the scaling factor for output.
+  float beta = 0.0;
+
+  auto miopen_dtype =
+      element_type == dnn::DataType::kFloat ? miopenFloat : miopenHalf;
+
+  ScopedTensorDescriptor src_desc{input_dimensions, miopen_dtype};
+  ScopedTensorDescriptor dest_desc{output_dimensions, miopen_dtype};
+  ScopedPoolingDescriptor pooling_desc{pooling_dimensions};
+
+  bool do_backward = false;
+  uint8* workspace = nullptr;
+  size_t workspace_size = 0;
+  std::unique_ptr<TemporaryDeviceMemory<uint8>> wsp_mem;
+  if (m_pooling_cache_enabled && element_type == dnn::DataType::kFloat) {
+    do_backward = true;
+    auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
+        pooling_desc.handle(), dest_desc.handle(), &workspace_size);
+    if (status != miopenStatusSuccess) {
+      return port::InternalError(absl::StrCat(
+          "Failed to obtain workspace size for backward pooling on stream: ",
+          ToString(status)));
+    }
+    if (workspace_size != 0) {
+      PoolingWorkspaceDescriptor* pdesc = 0;
+      bool cache_hit =
+          m_pooling_cache_allowed &&
+          m_pooling_cache.find(input_data.opaque(), input_dimensions,
+                               output_dimensions, pooling_dimensions,
+                               miopenFloat, pdesc);
+      if (cache_hit) {
+        // reusing the same buffer
+        workspace = reinterpret_cast<uint8*>(
+            pdesc->workspace->mutable_device_memory()->opaque());
+      } else {
+        wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size)
+                      .ConsumeValueOrDie();
+        workspace = reinterpret_cast<uint8*>(
+            wsp_mem->mutable_device_memory()->opaque());
+        m_pooling_cache.insert(input_data.opaque(), input_dimensions,
+                               output_dimensions, pooling_dimensions,
+                               miopenFloat, wsp_mem, workspace_size,
+                               AsGpuStreamValue(stream));
+      }
+    }
+  }
+
+  auto status = wrap::miopenPoolingForward(
+      miopen.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
+      input_data.opaque(), &beta, dest_desc.handle(), output_data.opaque(),
+      do_backward, workspace, workspace_size);
+  if (status != miopenStatusSuccess) {
+    return port::InternalError(absl::StrCat(
+        "Failed to enqueue forward pooling on stream: ", ToString(status)));
+  }
+  return port::Status::OK();
 }
 
 bool PoolingWorkspaceDescriptor::IsSame(
@@ -3988,110 +4168,18 @@ void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
   }
 }
 
-bool MIOpenSupport::DoPoolForward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<float>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<float>* output_data, ScratchAllocator* workspace_allocator) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  ScopedTensorDescriptor src_desc{input_dimensions, miopenFloat};
-  ScopedTensorDescriptor dest_desc{output_dimensions, miopenFloat};
-  ScopedPoolingDescriptor pooling_desc{pooling_dimensions};
-
-  bool do_backward = false;
-  uint8* workspace = 0;
-  size_t workspace_size = 0;
-  std::unique_ptr<TemporaryDeviceMemory<uint8>> wsp_mem;
-  if (m_pooling_cache_enabled) {
-    do_backward = true;
-    auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
-        pooling_desc.handle(), dest_desc.handle(), &workspace_size);
-    if (status != miopenStatusSuccess) {
-      LOG(ERROR)
-          << "failed to obtain workspace size for backward pooling on stream: "
-          << ToString(status);
-      return false;
-    }
-    if (workspace_size != 0) {
-      PoolingWorkspaceDescriptor* pdesc = 0;
-      bool cache_hit =
-          m_pooling_cache_allowed &&
-          m_pooling_cache.find(input_data.opaque(), input_dimensions,
-                               output_dimensions, pooling_dimensions,
-                               miopenFloat, pdesc);
-      if (cache_hit) {
-        // reusing the same buffer
-        workspace = reinterpret_cast<uint8*>(
-            pdesc->workspace->mutable_device_memory()->opaque());
-      } else {
-        wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size)
-                      .ConsumeValueOrDie();
-        workspace = reinterpret_cast<uint8*>(
-            wsp_mem->mutable_device_memory()->opaque());
-        m_pooling_cache.insert(input_data.opaque(), input_dimensions,
-                               output_dimensions, pooling_dimensions,
-                               miopenFloat, wsp_mem, workspace_size,
-                               AsGpuStreamValue(stream));
-      }
-    }
-  }
-
-  auto status = wrap::miopenPoolingForward(
-      miopen.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
-      input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque(),
-      do_backward, workspace, workspace_size);
-  if (status != miopenStatusSuccess) {
-    LOG(ERROR) << "failed to enqueue forward pooling on stream: "
-               << ToString(status);
-    return false;
-  }
-  return true;
-}
-
-bool MIOpenSupport::DoPoolForward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<Eigen::half>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<Eigen::half>* output_data,
+port::Status MIOpenSupport::DoPoolBackward(
+    dnn::DataType element_type, Stream* stream,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
+    DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
     ScratchAllocator* workspace_allocator) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-
-  // Alpha is the scaling factor for input.
-  float alpha = 1.0;
-  // Beta is the scaling factor for output.
-  float beta = 0.0;
-
-  ScopedTensorDescriptor src_desc{input_dimensions, miopenHalf};
-  ScopedTensorDescriptor dest_desc{output_dimensions, miopenHalf};
-  ScopedPoolingDescriptor pooling_desc{pooling_dimensions};
-
-  auto status = wrap::miopenPoolingForward(
-      miopen.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
-      input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque(),
-      false, nullptr, 0);
-  if (status != miopenStatusSuccess) {
-    LOG(ERROR) << "failed to enqueue forward pooling on stream: "
-               << ToString(status);
-    return false;
+  if (element_type == dnn::DataType::kDouble) {
+    return port::Status(port::error::INVALID_ARGUMENT,
+                        "MIOpen does not support pooling for double type yet");
   }
-  return true;
-}
 
-template <class T>
-bool MIOpenSupport::DoPoolBackwardImpl(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<T>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    const DeviceMemory<T>& output_data, const DeviceMemory<T>& input_diff_data,
-    DeviceMemory<T>* output_diff_data, ScratchAllocator* workspace_allocator) {
   auto miopen = miopen_->GetHandle(parent_, stream);
   if (m_pooling_cache_allowed) m_pooling_cache_enabled = true;
   // Alpha is the scaling factor for input.
@@ -4099,14 +4187,11 @@ bool MIOpenSupport::DoPoolBackwardImpl(
   // Beta is the scaling factor for output.
   float beta = 0.0;
 
-  auto type =
-      std::is_same<T, float>::value
-          ? miopenFloat
-          : (std::is_same<T, Eigen::half>::value ? miopenHalf
-                                                 : (miopenDataType_t)-1);
+  auto miopen_dtype =
+      element_type == dnn::DataType::kFloat ? miopenFloat : miopenHalf;
 
-  ScopedTensorDescriptor src_desc{input_dimensions, type};
-  ScopedTensorDescriptor dest_desc{output_dimensions, type};
+  ScopedTensorDescriptor src_desc{input_dimensions, miopen_dtype};
+  ScopedTensorDescriptor dest_desc{output_dimensions, miopen_dtype};
   ScopedPoolingDescriptor pooling_desc{pooling_dimensions};
 
   uint8* workspace_ptr = 0;
@@ -4117,10 +4202,9 @@ bool MIOpenSupport::DoPoolBackwardImpl(
   auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
       pooling_desc.handle(), dest_desc.handle(), &workspace_size_in_bytes);
   if (status != miopenStatusSuccess) {
-    LOG(ERROR)
-        << "failed to obtain workspace size for backward pooling on stream: "
-        << ToString(status);
-    return false;
+    return port::InternalError(absl::StrCat(
+        "Failed to obtain workspace size for backward pooling on stream: ",
+        ToString(status)));
   }
 
   // Allocate the workspace.
@@ -4128,7 +4212,7 @@ bool MIOpenSupport::DoPoolBackwardImpl(
     bool cache_hit = m_pooling_cache_allowed &&
                      m_pooling_cache.find(input_data.opaque(), input_dimensions,
                                           output_dimensions, pooling_dimensions,
-                                          type, pdesc);
+                                          miopen_dtype, pdesc);
     if (cache_hit) {
       assert(pdesc != 0);
       workspace_ptr = reinterpret_cast<uint8*>(
@@ -4140,8 +4224,8 @@ bool MIOpenSupport::DoPoolBackwardImpl(
       auto allocated =
           workspace_allocator->AllocateBytes(workspace_size_in_bytes);
       if (!allocated.ok() || (workspace = allocated.ValueOrDie()) == nullptr) {
-        LOG(ERROR) << "Failed to allocate backward pooling workspace";
-        return false;
+        return port::InternalError(
+            "Failed to allocate backward pooling workspace");
       }
       DeviceMemory<uint8> dest2;  // duplicated dest from forward:
       int64_t dest2_size = 0;
@@ -4152,15 +4236,15 @@ bool MIOpenSupport::DoPoolBackwardImpl(
       // miopen does not use strides and must have 4D tensor.
       // std::vector<int> dims(pooling_dimensions.ndims() + 2);
 
-      dest2_size = sizeof(T);
+      dest2_size == dnn::DataType::kFloat ? sizeof(float) : sizeof(Eigen::half);
       for (auto& x : dims64) dest2_size *= x;
 
       if (dest2_size > 0) {
         assert(workspace_allocator);
         auto allocated = workspace_allocator->AllocateBytes(dest2_size);
         if (!allocated.ok() || (dest2 = allocated.ValueOrDie()) == nullptr) {
-          LOG(ERROR) << "Failed to allocate backward pooling workspace";
-          return false;
+          return port::InternalError(
+              "Failed to allocate backward pooling workspace");
         }
       } else {
         LOG(ERROR) << "Failed to calculate tensor size to chain forward and "
@@ -4173,70 +4257,25 @@ bool MIOpenSupport::DoPoolBackwardImpl(
           workspace.opaque(), workspace_size_in_bytes);
 
       if (status != miopenStatusSuccess) {
-        LOG(ERROR)
-            << "failed to enqueue forward pooling (before backward) on stream: "
-            << ToString(status);
-        return false;
+        return port::InternalError(absl::StrCat(
+            "Failed to enqueue forward pooling (before backward) on stream: ",
+            ToString(status)));
       }
       workspace_ptr = reinterpret_cast<uint8*>(workspace.opaque());
     }
   }
+
   status = wrap::miopenPoolingBackward(
       miopen.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
       output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
       src_desc.handle(), input_data.opaque(), &beta, src_desc.handle(),
-      output_diff_data->opaque(), workspace_ptr);
+      output_diff_data.opaque(), workspace_ptr);
 
   if (status != miopenStatusSuccess) {
-    LOG(ERROR) << "failed to enqueue backward pooling on stream: "
-               << ToString(status);
-    return false;
+    return port::InternalError(absl::StrCat(
+        "Failed to enqueue backward pooling on stream: ", ToString(status)));
   }
-
-  return true;
-}
-
-bool MIOpenSupport::DoPoolBackward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<double>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    const DeviceMemory<double>& output_data,
-    const DeviceMemory<double>& input_diff_data,
-    DeviceMemory<double>* output_diff_data,
-    ScratchAllocator* workspace_allocator) {
-  LOG(ERROR) << "miopen does not support backward pooling on double type yet";
-  return false;
-}
-
-bool MIOpenSupport::DoPoolBackward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<float>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    const DeviceMemory<float>& output_data,
-    const DeviceMemory<float>& input_diff_data,
-    DeviceMemory<float>* output_diff_data,
-    ScratchAllocator* workspace_allocator) {
-  return DoPoolBackwardImpl(stream, pooling_dimensions, input_dimensions,
-                            input_data, output_dimensions, output_data,
-                            input_diff_data, output_diff_data,
-                            workspace_allocator);
-}
-
-bool MIOpenSupport::DoPoolBackward(
-    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions,
-    const DeviceMemory<Eigen::half>& input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    const DeviceMemory<Eigen::half>& output_data,
-    const DeviceMemory<Eigen::half>& input_diff_data,
-    DeviceMemory<Eigen::half>* output_diff_data,
-    ScratchAllocator* workspace_allocator) {
-  return DoPoolBackwardImpl(stream, pooling_dimensions, input_dimensions,
-                            input_data, output_dimensions, output_data,
-                            input_diff_data, output_diff_data,
-                            workspace_allocator);
+  return port::Status::OK();
 }
 
 bool MIOpenSupport::DoNormalizeWithDimensions(

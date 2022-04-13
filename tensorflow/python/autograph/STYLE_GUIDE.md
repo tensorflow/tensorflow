@@ -6,8 +6,8 @@ contributing code to AutoGraph.
 ## TensorFlow Style
 
 Follow the [TensorFlow style
-guide](https://www.tensorflow.org/community/style_guide), the [documentation
-guide](https://www.tensorflow.org/community/documentation) and the
+guide](https://www.tensorflow.org/community/contribute/code_style), the [documentation
+guide](https://www.tensorflow.org/community/contribute/docs) and the
 [Google Python style guide](https://google.github.io/styleguide/pyguide.html).
 
 Naming conventions:

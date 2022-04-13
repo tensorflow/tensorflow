@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,8 +45,9 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -57,7 +58,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
@@ -93,7 +94,6 @@ using llvm::StringRef;
 using llvm::Twine;
 using mlir::Dialect;
 using mlir::ElementsAttr;
-using mlir::FuncOp;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::NoneType;
@@ -105,6 +105,7 @@ using mlir::Type;
 using mlir::UnknownLoc;
 using mlir::Value;
 using mlir::WalkResult;
+using mlir::func::FuncOp;
 using tensorflow::OpOrArgLocNameMapper;
 using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
@@ -168,7 +169,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
         return itype.isUnsigned() ? tflite::TensorType_UINT8
                                   : tflite::TensorType_INT8;
       case 16:
-        return tflite::TensorType_INT16;
+        return itype.isUnsigned() ? tflite::TensorType_UINT16
+                                  : tflite::TensorType_INT16;
       case 32:
         return itype.isUnsigned() ? tflite::TensorType_UINT32
                                   : tflite::TensorType_INT32;
@@ -198,8 +200,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 }
 
 static bool IsConst(Operation* op) {
-  return isa<mlir::ConstantOp, mlir::TF::ConstOp, tfl::ConstOp, tfl::QConstOp,
-             tfl::SparseConstOp, tfl::SparseQConstOp>(op);
+  return isa<mlir::func::ConstantOp, mlir::arith::ConstantOp, mlir::TF::ConstOp,
+             tfl::ConstOp, tfl::QConstOp, tfl::SparseConstOp,
+             tfl::SparseQConstOp, mlir::TFL::NoValueOp>(op);
 }
 
 static bool IsTFResourceOp(Operation* op) {
@@ -216,6 +219,11 @@ static bool IsTFResourceOp(Operation* op) {
     }
   }
   return false;
+}
+
+// Returns whether the current op is not supported by the TF Lite runtime.
+static bool IsUnsupportedFlexOp(const std::string& op_name) {
+  return op_name == "PartitionedCall" || op_name == "StatefulPartitionedCall";
 }
 
 // Create description of operation that could not be converted.
@@ -251,16 +259,15 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
     for (auto& named_attr : inst->getAttrDictionary()) {
       os << (!first ? ", " : "");
       first = false;
-      named_attr.first.print(os);
-      os << " = ";
-      if (auto element_attr = named_attr.second.dyn_cast<ElementsAttr>()) {
+      os << named_attr.getName().getValue() << " = ";
+      if (auto element_attr = named_attr.getValue().dyn_cast<ElementsAttr>()) {
         if (element_attr.getNumElements() <= kLargeElementsAttr) {
           element_attr.print(os);
         } else {
           os << "<large>";
         }
       } else {
-        named_attr.second.print(os);
+        named_attr.getValue().print(os);
       }
     }
     os << "}";
@@ -712,9 +719,9 @@ std::string Translator::UniqueName(mlir::Value val) {
 Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     Operation* inst) {
   ElementsAttr attr;
-  if (auto cst = dyn_cast<mlir::ConstantOp>(inst)) {
-    // ConstantOp have ElementAttr at this point due to validation of the TFLite
-    // module.
+  if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
+    // arith::ConstantOp have ElementAttr at this point due to validation of the
+    // TFLite module.
     attr = cst.getValue().cast<ElementsAttr>();
   } else if (auto cst = dyn_cast<mlir::TF::ConstOp>(inst)) {
     attr = cst.value();
@@ -945,8 +952,8 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
   auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
   auto get_call_index = [&](mlir::Block& b) -> Optional<int> {
     if (b.getOperations().size() != 2) return llvm::None;
-    if (auto call_op = dyn_cast<mlir::CallOp>(b.front()))
-      return subgraph_index_map_.at(call_op.callee().str());
+    if (auto call_op = dyn_cast<mlir::func::CallOp>(b.front()))
+      return subgraph_index_map_.at(call_op.getCallee().str());
     return llvm::None;
   };
   auto body_subgraph_index = get_call_index(op.body().front());
@@ -1217,10 +1224,13 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     }
 
     const bool is_allowed_flex_op =
-        IsAllowlistedFlexOp(node_def->op()) ||
-        (((select_user_tf_ops_.count(node_def->op()) != 0) ||
-          allow_all_select_tf_ops_) &&
-         (tensorflow::OpRegistry::Global()->LookUp(node_def->op()) != nullptr));
+        !IsUnsupportedFlexOp(node_def->op()) &&
+        (IsAllowlistedFlexOp(node_def->op()) ||
+         (((select_user_tf_ops_.count(node_def->op()) != 0) ||
+           allow_all_select_tf_ops_) &&
+          (tensorflow::OpRegistry::Global()->LookUp(node_def->op()) !=
+           nullptr)));
+
     // Flex op case
     // Eventually, the allowlist will go away and we will rely on some TF op
     // trait (e.g. No side effect) to determine if it is a supported "Flex"
@@ -1550,8 +1560,8 @@ Translator::CreateMetadataVector() {
   std::vector<BufferOffset<tflite::Metadata>> metadata;
   if (dict_attr) {
     for (const auto& named_attr : dict_attr) {
-      StringRef name = named_attr.first;
-      mlir::Attribute attr = named_attr.second;
+      StringRef name = named_attr.getName();
+      mlir::Attribute attr = named_attr.getValue();
       if (auto content = attr.dyn_cast<StringAttr>()) {
         metadata.push_back(BuildMetadata(name, content.getValue()));
       } else {
@@ -1603,8 +1613,8 @@ std::vector<std::string> GetStringsFromDictionaryAttr(
 
     auto attrs = arg_attr.getValue();
     for (const auto attr : attrs) {
-      if (attr.first.str() == attr_name) {
-        auto array_attr = attr.second.dyn_cast_or_null<mlir::ArrayAttr>();
+      if (attr.getName().str() == attr_name) {
+        auto array_attr = attr.getValue().dyn_cast_or_null<mlir::ArrayAttr>();
         if (!array_attr || array_attr.empty()) continue;
         auto string_attr = array_attr[0].dyn_cast_or_null<mlir::StringAttr>();
         if (!string_attr) continue;
@@ -2000,6 +2010,11 @@ Optional<std::string> Translator::TranslateInternal() {
                                    description, builder_.CreateVector(buffers_),
                                    metadata_buffer, *metadata, *signature_defs);
   tflite::FinishModelBuffer(builder_, model);
+  // There is a limit of 2GB for a flatbuffer.
+  if (builder_.GetSize() > 2147483648) {
+    LOG(ERROR) << "Model size is bigger than 2gb";
+    return llvm::None;
+  }
   tflite::UpdateOpVersion(builder_.GetBufferPointer());
   tflite::UpdateMinimumRuntimeVersionForModel(builder_.GetBufferPointer());
   if (supported_backends_.find("GPU") != supported_backends_.end()) {
@@ -2021,7 +2036,7 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
   for (int i = 0; i < dim_size; i++) {
     const auto dim_metadata =
         s_attr.dim_metadata()[i].dyn_cast<mlir::TFL::DimensionMetadataAttr>();
-    if (dim_metadata.format().getValue() == "DENSE") {
+    if (dim_metadata.format().getValue() == mlir::TFL::DimensionType::DENSE) {
       fb_dim_metadata[i] =
           tflite::CreateDimensionMetadata(builder_, tflite::DimensionType_DENSE,
                                           dim_metadata.dense_size().getInt());

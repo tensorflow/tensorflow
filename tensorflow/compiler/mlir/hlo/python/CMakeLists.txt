@@ -33,7 +33,7 @@ declare_mlir_python_extension(MLIRHLOPythonExtensions.Main
   MODULE_NAME _mlirHlo
   ADD_TO_PARENT MLIRHLOPythonExtensions
   SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/MlirHloModule.cpp
+    MlirHloModule.cpp
   EMBED_CAPI_LINK_LIBS
     MLIRHLOCAPIDialects
   PRIVATE_LINK_LIBS

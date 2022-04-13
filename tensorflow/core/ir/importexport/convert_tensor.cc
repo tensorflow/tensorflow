@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/convert_types.h"
 #include "tensorflow/core/ir/importexport/mangling.h"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/errors.h"
@@ -128,7 +129,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   case tensorflow::DTYPE:          \
     return ConvertFlatTensor<CTYPE>(input_tensor, type);
 
-  // TODO(fengliuai): customize the conversions for quantized and string types.
+  // TODO(fengliuai): customize the conversions for quantized types.
   switch (input_dtype) {
     CONVERT_FLAT(DT_BOOL, bool)
     CONVERT_FLAT(DT_FLOAT, float)
@@ -150,10 +151,8 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
       return ConvertBf16Tensor(input_tensor, type);
     case tensorflow::DT_HALF:
       return ConvertHalfTensor(input_tensor, type);
-
     case tensorflow::DT_STRING:
       return ConvertStringTensor(input_tensor, type);
-
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
@@ -231,7 +230,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
     return ElementsAttr(
         SplatElementsAttr::get(single_attr.getType().clone(original_dimensions),
-                               single_attr.getValue({0})));
+                               single_attr.getValues<Attribute>()[0]));
   }
 
   Tensor t;
@@ -281,7 +280,7 @@ ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type) {
 }
 
 // Converts the tensor shape proto into an MLIR shape attribute.
-tensorflow::StatusOr<Attribute> ConvertTensorShapeProto(
+tensorflow::StatusOr<ShapeAttr> ConvertTensorShapeProto(
     const TensorShapeProto& shape, MLIRContext* context) {
   if (shape.unknown_rank()) return ShapeAttr::get(context, llvm::None);
 

@@ -18,6 +18,7 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
+#include <map>
 #include <utility>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -30,19 +31,31 @@ namespace metal {
 /// Returns system default device on iOS or Intel GPU on macOS.
 id<MTLDevice> GetBestSupportedMetalDevice();
 
-/// Metal compute shader compilation
-/// @param device The device on which that shader program will be stored.
-/// @param code Shader source.
-/// @param functionName The name of the main shader function.
-/// @param macros Compile-time definitions.
-/// @param program A non-nil pointer to the program object that will be filled.
-/// @return Returns a valid program pointer or error string. At least one pointer is valid but not
-///     both.
-/// @discussion The function autoselects the maximum shader language version supported by the target
-///     OS. FastMath is enabled.
-absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
-                                  NSDictionary<NSString*, NSString*>* macros,
-                                  id<MTLComputePipelineState>* program);
+absl::Status CreateComputeProgram(
+    id<MTLDevice> device, const std::string& code,
+    const std::string& function_name,
+    const std::map<std::string, std::string>& macros,
+    id<MTLComputePipelineState>* program);
+
+absl::Status CreateComputeProgramWithArgumentBuffer(
+    id<MTLDevice> device, const std::string& code,
+    const std::string& function_name,
+    const std::map<std::string, std::string>& macros,
+    id<MTLComputePipelineState>* program,
+    id<MTLArgumentEncoder>* arguments_encoder);
+
+// ICB - indirect command buffer
+absl::Status CreateComputeProgramWithICBSupport(
+    id<MTLDevice> device, const std::string& code,
+    const std::string& function_name,
+    const std::map<std::string, std::string>& macros,
+    id<MTLComputePipelineState>* program,
+    id<MTLArgumentEncoder>* arguments_encoder);
+
+absl::Status CreateFunction(id<MTLDevice> device, const std::string& code,
+                            const std::string& function_name,
+                            const std::map<std::string, std::string>& macros,
+                            id<MTLFunction>* function);
 
 int PixelFormatToSizeInBytes(MTLPixelFormat pixel_format);
 MTLPixelFormat DataTypeToRGBAPixelFormat(DataType type, bool normalized = false);

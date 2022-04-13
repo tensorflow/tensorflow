@@ -16,6 +16,7 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python import tf2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -24,12 +25,14 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest
@@ -218,6 +221,15 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     with test_util.use_gpu():
       res = math_ops.reduce_logsumexp(-np.inf)
       self.assertEqual(-np.inf, self.evaluate(res))
+
+  def testRaggedTensor(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.double]:
+      x_rt = ragged_factory_ops.constant([[1, 2], [], [3, 4, 5]], dtype=dtype)
+      x_np = np.array(self.evaluate(x_rt.flat_values))
+      with test_util.use_gpu():
+        y_rt = math_ops.reduce_logsumexp(x_rt)
+        y_np = np.log(np.sum(np.exp(x_np - np.max(x_np)))) + np.max(x_np)
+        self.assertAllClose(y_rt, y_np)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -489,7 +501,7 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
   def testAcceptsIndexedSlices(self):
     values = constant_op.constant([2, 3, 5, 7, 0, -1], shape=[3, 2])
     indices = constant_op.constant([0, 2, 5])
-    x = math_ops.scalar_mul(-3, ops.IndexedSlices(values, indices))
+    x = math_ops.scalar_mul(-3, indexed_slices.IndexedSlices(values, indices))
     with test_util.device(use_gpu=True):
       self.assertAllEqual(
           self.evaluate(x.values), [[-6, -9], [-15, -21], [0, 3]])
@@ -558,7 +570,7 @@ class AddNTest(test_util.TensorFlowTestCase):
             [self.evaluate(g) for g in add_n_grad])
 
   def testIndexedSlices(self):
-    slc = ops.IndexedSlices(
+    slc = indexed_slices.IndexedSlices(
         array_ops.constant([1, 2], shape=[1, 2]), array_ops.constant([1]),
         array_ops.constant([2, 2]))
     slc_as_dense = np.array([[0, 0], [1, 2]])
@@ -1029,7 +1041,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       error = TypeError
       error_message = (r"Failed to convert elements of .* to Tensor")
 
-    class RHSReturnsTrue(object):
+    class RHSReturnsTrue:
 
       def __radd__(self, other):
         return True
@@ -1037,7 +1049,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
     a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsTrue()
     self.assertEqual(a, True)
 
-    class RHSRaisesError(object):
+    class RHSRaisesError:
 
       def __radd__(self, other):
         raise TypeError("RHS not implemented")
@@ -1046,7 +1058,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSRaisesError()
       self.evaluate(a)
 
-    class RHSReturnsNotImplemented(object):
+    class RHSReturnsNotImplemented:
 
       def __radd__(self, other):
         return NotImplemented
@@ -1055,7 +1067,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsNotImplemented()
       self.evaluate(a)
 
-    class RHSNotImplemented(object):
+    class RHSNotImplemented:
       pass
 
     with self.assertRaisesRegex(error, error_message):
@@ -1197,6 +1209,17 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase):
       values = array_ops.zeros(shape=(193681,), dtype=dtype)
       self.assertAllEqual(math_ops.argmax(values), 0)
 
+  def testArgMaxUint16(self):
+    shape = (24, 8)
+    for dtype in self._getValidDtypes():
+      tf_values = self._generateRandomTensor(dtype, shape)
+      np_values = self.evaluate(tf_values)
+      for axis in range(0, len(shape)):
+        np_max = np.argmax(np_values, axis=axis)
+        tf_max = math_ops.argmax(
+            tf_values, axis=axis, output_type=dtypes.uint16)
+        self.assertAllEqual(tf_max, np_max)
+
   def testArgMin(self):
     shape = (24, 8)
     for dtype in self._getValidDtypes():
@@ -1219,6 +1242,26 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase):
       values = array_ops.zeros(shape=(193681,), dtype=dtype)
       self.assertAllEqual(math_ops.argmin(values), 0)
 
+
+class CastTest(test_util.TensorFlowTestCase):
+
+  def testCastWithFullType(self):
+
+    @def_function.function
+    def test_fn():
+      ta = tensor_array_ops.TensorArray(dtypes.int32, size=1)
+      h = math_ops.cast(ta.flow, dtypes.variant)
+
+      t = full_type_pb2.FullTypeDef(
+          type_id=full_type_pb2.TFT_PRODUCT,
+          args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_ARRAY)])
+      h.op.experimental_set_type(t)
+
+      ta = tensor_array_ops.TensorArray(dtypes.int32, flow=h)
+      ta = ta.write(0, constant_op.constant(1))
+      return ta.stack()
+
+    self.assertAllEqual(self.evaluate(test_fn()), [1])
 
 if __name__ == "__main__":
   googletest.main()

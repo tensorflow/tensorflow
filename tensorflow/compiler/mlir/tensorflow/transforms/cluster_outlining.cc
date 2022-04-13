@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -47,8 +47,8 @@ struct LaunchOutliningPass
 
 void ReplaceClusterReturnWithReturn(tf_device::ReturnOp cluster_return_op,
                                     OpBuilder* builder) {
-  builder->create<ReturnOp>(cluster_return_op.getLoc(),
-                            cluster_return_op.getOperands());
+  builder->create<func::ReturnOp>(cluster_return_op.getLoc(),
+                                  cluster_return_op.getOperands());
   cluster_return_op.erase();
 }
 
@@ -108,12 +108,12 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
   FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), cluster_op, symbol_table, builder);
   cluster_op->setAttr(
-      builder->getIdentifier(kFuncAttr),
+      builder->getStringAttr(kFuncAttr),
       mlir::SymbolRefAttr::get(builder->getContext(), outlined_func.getName()));
 
   builder->setInsertionPoint(cluster_op);
   auto cluster_func_op = builder->create<tf_device::ClusterFuncOp>(
-      cluster_op.getLoc(), outlined_func.getType().getResults(),
+      cluster_op.getLoc(), outlined_func.getFunctionType().getResults(),
       live_ins.getArrayRef(), cluster_op->getAttrs());
 
   cluster_op.replaceAllUsesWith(cluster_func_op);
@@ -131,12 +131,12 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
   FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), launch_op, symbol_table, builder);
   launch_op->setAttr(
-      builder->getIdentifier(kFuncAttr),
+      builder->getStringAttr(kFuncAttr),
       mlir::SymbolRefAttr::get(builder->getContext(), outlined_func.getName()));
 
   builder->setInsertionPoint(launch_op);
   auto cluster_func_op = builder->create<tf_device::LaunchFuncOp>(
-      launch_op.getLoc(), outlined_func.getType().getResults(),
+      launch_op.getLoc(), outlined_func.getFunctionType().getResults(),
       live_ins.getArrayRef(), launch_op->getAttrs());
 
   launch_op.replaceAllUsesWith(cluster_func_op);

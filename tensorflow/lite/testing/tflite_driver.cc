@@ -16,11 +16,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <cstdlib>
+#include <iterator>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/escaping.h"
+#include "absl/strings/numbers.h"
 #include "tensorflow/lite/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
@@ -31,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
+#include "tensorflow/lite/signature_runner.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
@@ -42,6 +50,7 @@ namespace testing {
 namespace {
 const double kRelativeThreshold = 1e-2f;
 const double kAbsoluteThreshold = 1e-4f;
+const char kDefaultSignatureKey[] = "serving_default";
 
 // For quantized tests, we use a different error measurement from float ones.
 // Assumes the baseline is a always a float TF model.
@@ -195,8 +204,8 @@ class TfLiteDriver::DataExpectation {
       if (CompareTwoValues(computed, reference)) {
         good_output = false;
         if (verbose) {
-          std::cerr << "  index " << i << ": got " << computed
-                    << ", but expected " << reference << std::endl;
+          std::cerr << "  Tensor[" << tensor.name << "] index " << i << ": got "
+                    << computed << ", but expected " << reference << std::endl;
         }
       }
     }
@@ -351,6 +360,8 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
       return TypedCheck<uint8_t, float>(verbose, tensor);
     case kTfLiteInt8:
       return TypedCheck<int8_t, float>(verbose, tensor);
+    case kTfLiteUInt16:
+      return TypedCheck<uint16_t, float>(verbose, tensor);
     case kTfLiteInt16:
       return TypedCheck<int16_t, float>(verbose, tensor);
     case kTfLiteBool:
@@ -438,7 +449,8 @@ void TfLiteDriver::AllocateTensors() {
   }
 }
 
-void TfLiteDriver::LoadModel(const string& bin_file_path) {
+void TfLiteDriver::LoadModel(const string& bin_file_path,
+                             const string& signature) {
   if (!IsValid()) return;
 
   model_ = FlatBufferModel::BuildFromFile(GetFullPath(bin_file_path).c_str());
@@ -470,28 +482,118 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   }
 
   must_allocate_tensors_ = true;
+
+  signature_runner_ = interpreter_->GetSignatureRunner(signature.c_str());
+  if (signature_runner_) {
+    signature_inputs_ = interpreter_->signature_inputs(signature.c_str());
+    signature_outputs_ = interpreter_->signature_outputs(signature.c_str());
+  } else {
+    Invalidate("Unable to the fetch signature runner.");
+  }
 }
 
-void TfLiteDriver::ResetTensor(int id) {
-  if (!IsValid()) return;
-  auto* tensor = interpreter_->tensor(id);
-  memset(tensor->data.raw, 0, tensor->bytes);
+void TfLiteDriver::LoadModel(const string& bin_file_path) {
+  LoadModel(bin_file_path, kDefaultSignatureKey);
 }
 
-void TfLiteDriver::ReshapeTensor(int id, const string& csv_values) {
+void TfLiteDriver::ReshapeTensor(const string& name, const string& csv_values) {
   if (!IsValid()) return;
-  if (interpreter_->ResizeInputTensor(
-          id, testing::Split<int>(csv_values, ",")) != kTfLiteOk) {
-    Invalidate("Failed to resize input tensor " + std::to_string(id));
+  if (signature_runner_->ResizeInputTensor(
+          name.c_str(), testing::Split<int>(csv_values, ",")) != kTfLiteOk) {
+    Invalidate("Failed to resize input tensor " + name);
     return;
   }
   must_allocate_tensors_ = true;
 }
 
-void TfLiteDriver::SetInput(int id, const string& csv_values) {
+void TfLiteDriver::ResetTensor(const std::string& name) {
   if (!IsValid()) return;
-  auto* tensor = interpreter_->tensor(id);
+  auto* tensor = signature_runner_->input_tensor(name.c_str());
+  memset(tensor->data.raw, 0, tensor->bytes);
+}
+
+void TfLiteDriver::Invoke(
+    const std::vector<std::pair<string, string>>& inputs) {
+  if (!IsValid()) return;
+  for (const auto& input : inputs) {
+    SetInput(input.first, input.second);
+  }
+  if (signature_runner_->Invoke() != kTfLiteOk) {
+    Invalidate("Failed to invoke interpreter");
+  }
+}
+
+string TfLiteDriver::ReadOutput(const string& name) {
+  if (!IsValid()) return "";
+  return TensorValueToCsvString(signature_runner_->output_tensor(name.c_str()));
+}
+
+bool TfLiteDriver::CheckResults(
+    const std::vector<std::pair<string, string>>& expected_outputs,
+    const std::vector<std::pair<string, string>>& expected_output_shapes) {
+  if (!IsValid()) return false;
+  bool success = true;
+  for (const auto& output : expected_outputs) {
+    SetExpectation(output.first, output.second);
+  }
+  for (const auto& shape : expected_output_shapes) {
+    SetShapeExpectation(shape.first, shape.second);
+  }
+
+  for (const auto& p : expected_output_) {
+    int id = p.first;
+    auto* tensor = interpreter_->tensor(id);
+    if (!p.second->Check(/*verbose=*/false, *tensor)) {
+      // Do not invalidate anything here. Instead, simply output the
+      // differences and return false. Invalidating would prevent all
+      // subsequent invocations from running..
+      std::cerr << "TfLiteDriver: There were errors in invocation '"
+                << GetInvocationId() << "', validating output tensor '" << id
+                << "':" << std::endl;
+      p.second->Check(/*verbose=*/true, *tensor);
+      success = false;
+      SetOverallSuccess(false);
+    }
+  }
+  for (const auto& p : expected_output_shape_) {
+    int id = p.first;
+    auto* tensor = interpreter_->tensor(id);
+    if (!p.second->CheckShape(/*verbose=*/false, *tensor)) {
+      // Do not invalidate anything here. Instead, simply output the
+      // differences and return false. Invalidating would prevent all
+      // subsequent invocations from running..
+      std::cerr << "TfLiteDriver: There were errors in invocation '"
+                << GetInvocationId()
+                << "', validating the shape of output tensor '" << id
+                << "':" << std::endl;
+      p.second->CheckShape(/*verbose=*/true, *tensor);
+      success = false;
+      SetOverallSuccess(false);
+    }
+  }
+  expected_output_.clear();
+  return success;
+}
+
+std::vector<string> TfLiteDriver::GetOutputNames() {
+  if (!IsValid()) return {};
+  std::vector<string> names;
+  for (const auto* name : signature_runner_->output_names()) {
+    names.push_back(name);
+  }
+  return names;
+}
+
+void TfLiteDriver::SetInput(const string& name, const string& csv_values) {
+  auto id = signature_inputs_[name];
+  auto* tensor = signature_runner_->input_tensor(name.c_str());
   switch (tensor->type) {
+    case kTfLiteFloat64: {
+      const auto& values = testing::Split<double>(csv_values, ",");
+      if (!CheckSizes<double>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     case kTfLiteFloat32: {
       const auto& values = testing::Split<float>(csv_values, ",");
       if (!CheckSizes<float>(tensor->bytes, values.size())) return;
@@ -537,6 +639,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
     case kTfLiteInt16: {
       const auto& values = testing::Split<int16_t>(csv_values, ",");
       if (!CheckSizes<int16_t>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
+    case kTfLiteUInt16: {
+      const auto& values = testing::Split<uint16_t>(csv_values, ",");
+      if (!CheckSizes<uint16_t>(tensor->bytes, values.size())) return;
       SetTensorData(values, tensor->data.raw);
       break;
     }
@@ -589,9 +697,10 @@ void TfLiteDriver::SetQuantizationErrorMultiplier(
   quantization_error_multiplier_ = quantization_error_multiplier;
 }
 
-void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
-  if (!IsValid()) return;
-  auto* tensor = interpreter_->tensor(id);
+void TfLiteDriver::SetExpectation(const string& name,
+                                  const string& csv_values) {
+  auto id = signature_outputs_[name];
+  auto* tensor = signature_runner_->output_tensor(name.c_str());
   if (expected_output_.count(id) != 0) {
     Invalidate(absl::StrCat("Overridden expectation for tensor '", id, "'"));
   }
@@ -626,6 +735,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
     case kTfLiteInt8:
       expected_output_[id]->SetData<int8_t>(csv_values);
       break;
+    case kTfLiteUInt16:
+      expected_output_[id]->SetData<uint16_t>(csv_values);
+      break;
     case kTfLiteInt16:
       expected_output_[id]->SetData<int16_t>(csv_values);
       break;
@@ -652,8 +764,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
   }
 }
 
-void TfLiteDriver::SetShapeExpectation(int id, const string& csv_values) {
-  if (!IsValid()) return;
+void TfLiteDriver::SetShapeExpectation(const string& name,
+                                       const string& csv_values) {
+  auto id = signature_outputs_[name];
   if (expected_output_shape_.count(id) != 0) {
     Invalidate(
         absl::StrCat("Overridden shape expectation for tensor '", id, "'"));
@@ -661,54 +774,11 @@ void TfLiteDriver::SetShapeExpectation(int id, const string& csv_values) {
   expected_output_shape_[id].reset(new ShapeExpectation(csv_values));
 }
 
-void TfLiteDriver::Invoke() {
-  if (!IsValid()) return;
-  if (interpreter_->Invoke() != kTfLiteOk) {
-    Invalidate("Failed to invoke interpreter");
-  }
-}
-
-bool TfLiteDriver::CheckResults() {
-  if (!IsValid()) return false;
-  bool success = true;
-  for (const auto& p : expected_output_) {
-    int id = p.first;
-    auto* tensor = interpreter_->tensor(id);
-    if (!p.second->Check(/*verbose=*/false, *tensor)) {
-      // Do not invalidate anything here. Instead, simply output the
-      // differences and return false. Invalidating would prevent all
-      // subsequent invocations from running..
-      std::cerr << "There were errors in invocation '" << GetInvocationId()
-                << "', output tensor '" << id << "':" << std::endl;
-      p.second->Check(/*verbose=*/true, *tensor);
-      success = false;
-      SetOverallSuccess(false);
-    }
-  }
-  for (const auto& p : expected_output_shape_) {
-    int id = p.first;
-    auto* tensor = interpreter_->tensor(id);
-    if (!p.second->CheckShape(/*verbose=*/false, *tensor)) {
-      // Do not invalidate anything here. Instead, simply output the
-      // differences and return false. Invalidating would prevent all
-      // subsequent invocations from running..
-      std::cerr << "There were errors in invocation '" << GetInvocationId()
-                << "', output tensor '" << id << "':" << std::endl;
-      p.second->CheckShape(/*verbose=*/true, *tensor);
-      success = false;
-      SetOverallSuccess(false);
-    }
-  }
-  expected_output_.clear();
-  return success;
-}
-
 void TfLiteDriver::ResetLSTMStateTensors() {
   interpreter_->ResetVariableTensors();
 }
 
-string TfLiteDriver::ReadOutput(int id) {
-  auto* tensor = interpreter_->tensor(id);
+string TfLiteDriver::TensorValueToCsvString(const TfLiteTensor* tensor) {
   int num_elements = 1;
 
   for (int i = 0; i < tensor->dims->size; ++i) {
@@ -730,6 +800,8 @@ string TfLiteDriver::ReadOutput(int id) {
       return Join(tensor->data.uint8, num_elements, ",");
     case kTfLiteInt8:
       return Join(tensor->data.int8, num_elements, ",");
+    case kTfLiteUInt16:
+      return Join(tensor->data.ui16, num_elements, ",");
     case kTfLiteInt16:
       return Join(tensor->data.i16, num_elements, ",");
     case kTfLiteBool:

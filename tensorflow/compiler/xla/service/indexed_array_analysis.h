@@ -249,7 +249,7 @@ class IndexedArrayAnalysis {
   StatusOr<Array*> GetArrayFor(const HloInstruction* instr);
 
   // Pretty-prints the expression rooted at `root`.
-  string ToString(Array* root, bool print_constants = false);
+  std::string ToString(Array* root, bool print_constants = false);
 
  private:
   // Helper function that ensures that every HLO instruction that is

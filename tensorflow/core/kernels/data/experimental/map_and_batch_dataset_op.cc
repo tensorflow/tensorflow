@@ -123,7 +123,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     if (!preserve_cardinality_) {
       return kUnknownCardinality;
     }
@@ -218,7 +218,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       interleave_depth_ = ctx->interleave_depth();
 
       if (num_parallel_calls_->value == model::kAutotune) {
-        num_parallel_calls_->value = ctx->runner_threadpool_size();
+        num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
       }
       cancellation_manager_ = absl::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
@@ -682,8 +682,6 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // `batch_results_`, call `RecordBufferEnqueue` or `RecordBufferDequeue`
     // respectively.
     std::deque<std::shared_ptr<BatchResult>> batch_results_ TF_GUARDED_BY(*mu_);
-    // Background thread used for coordinating input processing.
-    std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
     // Determines whether the transformation has been cancelled.
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
     // Identifies the number of callers currently waiting for a batch result.
@@ -700,6 +698,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
     int64 interleave_depth_ = -1;
+    // Background thread used for coordinating input processing. The thread
+    // should be destroyed before the variables it accesses are destroyed.
+    std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
   };
 
   const DatasetBase* const input_;

@@ -38,6 +38,11 @@ Status PartitionFunctionGraph(
     std::unordered_map<string, std::unique_ptr<Graph>>* subgraphs,
     std::function<string(const Edge*)> get_tensor_name_attr = nullptr);
 
+// Inserts send/recv ops to `graph` if nodes are assigned to multiple devices.
+// Returns the new graph with the added nodes.
+StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
+    const DeviceSet& device_set, std::unique_ptr<Graph> graph);
+
 // This function performs bookkeeping to track which `Arg` and `Retval` nodes
 // were placed on a particular device / graph.
 //
@@ -63,12 +68,16 @@ Status PartitionFunctionGraph(
 //  (2) records the subsets of `Arg` and `Retval` nodes assigned to the
 //      device in `*_indices`, and
 //  (3) records which `Arg` and `Retval` nodes live in host memory in
-//      `*_alloc_attrs`. If these vectors are NULL, do nothing here.
+//      `*_alloc_attrs`. If these vectors are NULL, do nothing here. If
+//      `ints_on_device` is false, int32 `Arg` and `Retval` nodes are placed on
+//      host else not. This is needed because in certain special cases e.g.
+//      when graph is placed on TPU/XLA device or when the `Retval` is an output
+//      of an iterator, int32 tensors live on device.
 Status UpdateArgAndRetvalMetadata(
-    Graph* graph, const string& device_type,
-    std::vector<FunctionArgIndex>* arg_indices, std::vector<int>* ret_indices,
+    Graph* graph, std::vector<FunctionArgIndex>* arg_indices,
+    std::vector<int>* ret_indices,
     std::vector<AllocatorAttributes>* arg_alloc_attrs,
-    std::vector<AllocatorAttributes>* ret_alloc_attrs);
+    std::vector<AllocatorAttributes>* ret_alloc_attrs, bool ints_on_device);
 
 // Utility for generating function names not present in `flib_def`, using
 // given `name` as the base for the name.

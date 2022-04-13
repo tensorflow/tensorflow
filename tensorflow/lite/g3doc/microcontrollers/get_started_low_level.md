@@ -92,7 +92,7 @@ following header files:
 -   [`schema_generated.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/schema/schema_generated.h)
     contains the schema for the TensorFlow Lite
     [`FlatBuffer`](https://google.github.io/flatbuffers/) model file format.
--   [`version.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/version.h)
+-   [`version.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/version.h)
     provides versioning information for the TensorFlow Lite schema.
 
 ### 2. Include the model header

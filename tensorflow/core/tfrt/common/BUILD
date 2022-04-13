@@ -15,6 +15,7 @@ package_group(
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         "//tensorflow/core/tfrt/...",
+        "//tensorflow/dtensor/...",
     ],
 )
 

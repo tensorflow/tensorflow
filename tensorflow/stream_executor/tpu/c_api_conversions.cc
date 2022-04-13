@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 
+#include <memory>
+#include <vector>
+
+#include "absl/types/span.h"
 #include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/c_api_defn.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
@@ -153,7 +158,7 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base) {
 // memory-identical types, e.g. int64_t and int64_t. This should not be used
 // with types that require a static_cast.
 template <typename Src, typename Dst, typename DstList>
-static void CopyVectorBase(const absl::Span<Src> src, DstList* dst) {
+static void CreateVectorBase(const absl::Span<Src> src, DstList* dst) {
   static_assert(sizeof(Src) == sizeof(Dst), "Mismatched types");
   dst->size = src.size();
   if (dst->size > TPU_C_API_MAX_INLINED) {
@@ -164,14 +169,17 @@ static void CopyVectorBase(const absl::Span<Src> src, DstList* dst) {
   }
 }
 
-static void CopyVector(const absl::Span<const int64_t> src, Int64List* dst) {
-  return CopyVectorBase<const int64_t, int64_t, Int64List>(src, dst);
+static void CreateVector(const absl::Span<const int64_t> src, Int64List* dst) {
+  return CreateVectorBase<const int64_t, int64_t, Int64List>(src, dst);
 }
-static void CopyVector(const absl::Span<const bool> src, BoolList* dst) {
-  return CopyVectorBase<const bool, bool, BoolList>(src, dst);
+void CreateVector(const absl::Span<const float> src, FloatList* dst) {
+  return CreateVectorBase<const float, float, FloatList>(src, dst);
+}
+static void CreateVector(const absl::Span<const bool> src, BoolList* dst) {
+  return CreateVectorBase<const bool, bool, BoolList>(src, dst);
 }
 
-static void CopyVector(const absl::Span<const xla::Tile> src, TileList* dst) {
+static void CreateVector(const absl::Span<const xla::Tile> src, TileList* dst) {
   dst->size = src.size();
   XLA_Tile* c_tiles;
   if (dst->size > TPU_C_API_MAX_INLINED) {
@@ -202,6 +210,10 @@ static absl::Span<const Dst> MakeSpanBase(const SrcList& src_list) {
 static absl::Span<const int64_t> MakeSpan(const Int64List& src_list) {
   return MakeSpanBase<int64_t, int64_t, Int64List>(src_list);
 }
+
+absl::Span<const float> MakeSpan(const FloatList& src_list) {
+  return MakeSpanBase<float, float, FloatList>(src_list);
+}
 static absl::Span<const bool> MakeSpan(const BoolList& src_list) {
   return MakeSpanBase<bool, bool, BoolList>(src_list);
 }
@@ -209,8 +221,8 @@ static absl::Span<const bool> MakeSpan(const BoolList& src_list) {
 void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape) {
   c_shape->element_type = xla_shape.element_type();
 
-  CopyVector(xla_shape.dimensions(), &c_shape->dimensions);
-  CopyVector(xla_shape.dynamic_dimensions(), &c_shape->dynamic_dimensions);
+  CreateVector(xla_shape.dimensions(), &c_shape->dimensions);
+  CreateVector(xla_shape.dynamic_dimensions(), &c_shape->dynamic_dimensions);
 
   c_shape->ntuple_shapes = xla_shape.tuple_shapes_size();
   if (c_shape->ntuple_shapes > 0) {
@@ -245,7 +257,7 @@ xla::Shape FromC(const XLA_Shape* c_shape) {
   return result;
 }
 
-void Free(XLA_Shape* c_shape) {
+void Destroy(XLA_Shape* c_shape) {
   if (c_shape->dimensions.size > TPU_C_API_MAX_INLINED) {
     delete[] c_shape->dimensions.heap;
   }
@@ -254,21 +266,21 @@ void Free(XLA_Shape* c_shape) {
   }
   if (c_shape->ntuple_shapes > 0) {
     for (int i = 0; i < c_shape->ntuple_shapes; ++i) {
-      Free(&c_shape->tuple_shapes[i]);
+      Destroy(&c_shape->tuple_shapes[i]);
     }
     delete[] c_shape->tuple_shapes;
   }
   if (c_shape->layout.format != xla::INVALID_FORMAT) {
-    Free(&c_shape->layout);
+    Destroy(&c_shape->layout);
   }
 }
 
 void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   c_layout->format = layout.format();
-  CopyVector(layout.minor_to_major(), &c_layout->minor_to_major);
+  CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
   c_layout->element_size_in_bits = layout.element_size_in_bits();
   c_layout->memory_space = layout.memory_space();
-  CopyVector(layout.tiles(), &c_layout->tiles);
+  CreateVector(layout.tiles(), &c_layout->tiles);
 }
 
 xla::Layout FromC(const XLA_Layout* c_layout) {
@@ -284,7 +296,7 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
                      c_layout->memory_space);
 }
 
-void Free(XLA_Layout* c_layout) {
+void Destroy(XLA_Layout* c_layout) {
   if (c_layout->minor_to_major.size > TPU_C_API_MAX_INLINED) {
     delete[] c_layout->minor_to_major.heap;
   }
@@ -294,7 +306,7 @@ void Free(XLA_Layout* c_layout) {
 }
 
 void ToC(const xla::Tile& tile, XLA_Tile* c_tile) {
-  CopyVector(tile.dimensions(), &c_tile->dimensions);
+  CreateVector(tile.dimensions(), &c_tile->dimensions);
 }
 
 xla::Tile FromC(const XLA_Tile* c_tile) {
@@ -302,7 +314,7 @@ xla::Tile FromC(const XLA_Tile* c_tile) {
   return xla::Tile(dims);
 }
 
-void Free(XLA_Tile* c_tile) {
+void Destroy(XLA_Tile* c_tile) {
   if (c_tile->dimensions.size > TPU_C_API_MAX_INLINED) {
     delete[] c_tile->dimensions.heap;
   }
@@ -357,17 +369,27 @@ void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer) {
   }
 }
 
-void Free(XLA_ShapeIndex* shape_index) { delete[] shape_index; }
-void Free(SE_DeviceMemoryBase*) {}
-
-void Free(XLA_Literal* c_literal) {
-  delete[] c_literal->buffers;
-  delete[] c_literal->sizes;
-  ApiConverter::Free(&c_literal->shape);
+std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables) {
+  auto data = std::make_unique<TpuEmbeddingEngineParametersData>();
+  data->c_params.num_tables = num_tables;
+  for (int i = 0; i < 8; i++) {
+    data->vectors[i].resize(num_tables);
+    data->c_params.parameters[i] = data->vectors[i].data();
+  }
+  return data;
 }
 
-void Free(XLA_ShapedBuffer* c_buffer) {
-  ApiConverter::Free(&c_buffer->on_device_shape);
+void Destroy(XLA_ShapeIndex* shape_index) { delete[] shape_index; }
+void Destroy(SE_DeviceMemoryBase*) {}
+
+void Destroy(XLA_Literal* c_literal) {
+  delete[] c_literal->buffers;
+  delete[] c_literal->sizes;
+  ApiConverter::Destroy(&c_literal->shape);
+}
+
+void Destroy(XLA_ShapedBuffer* c_buffer) {
+  ApiConverter::Destroy(&c_buffer->on_device_shape);
   delete[] c_buffer->bases;
 }
 
@@ -387,9 +409,9 @@ xla::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
       module_proto, ApiConverter::FromC(c_module.module_config));
 }
 
-void Free(XLA_HloModule* c_module) {
+void Destroy(XLA_HloModule* c_module) {
   stream_executor::tpu::SerializedProto_Free(c_module->proto);
-  Free(&c_module->module_config);
+  Destroy(&c_module->module_config);
 }
 
 static xla::HloModuleConfig ConfigWithLayout(
@@ -412,6 +434,11 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
   hlo_config.replica_count = config.replica_count();
   hlo_config.num_partitions = config.num_partitions();
   hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
+  hlo_config.use_auto_spmd_partitioning = config.use_auto_spmd_partitioning();
+  CreateVector(config.auto_spmd_partitioning_mesh_shape(),
+               &hlo_config.auto_spmd_partitioning_mesh_shape);
+  CreateVector(config.auto_spmd_partitioning_mesh_ids(),
+               &hlo_config.auto_spmd_partitioning_mesh_ids);
   hlo_config.has_static_device_assignment =
       config.has_static_device_assignment();
   hlo_config.has_entry_computation_layout =
@@ -453,6 +480,16 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
   config.set_replica_count(c_config.replica_count);
   config.set_num_partitions(c_config.num_partitions);
   config.set_use_spmd_partitioning(c_config.use_spmd_partitioning);
+  config.set_use_auto_spmd_partitioning(c_config.use_auto_spmd_partitioning);
+  absl::Span<const int64_t> mesh_shape_span =
+      MakeSpan(c_config.auto_spmd_partitioning_mesh_shape);
+  std::vector<int64_t> mesh_shape(mesh_shape_span.begin(),
+                                  mesh_shape_span.end());
+  config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+  absl::Span<const int64_t> mesh_ids_span =
+      MakeSpan(c_config.auto_spmd_partitioning_mesh_ids);
+  std::vector<int64_t> mesh_ids(mesh_ids_span.begin(), mesh_ids_span.end());
+  config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
   if (c_config.has_static_device_assignment) {
     auto device_assignment = xla::DeviceAssignment::Deserialize(
         stream_executor::tpu::DeserializeProto<xla::DeviceAssignmentProto>(
@@ -466,19 +503,25 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
   return config;
 }
 
-void Free(XLA_HloModuleConfig* c_config) {
+void Destroy(XLA_HloModuleConfig* c_config) {
   for (auto i = 0; i < c_config->entry_computation_layout.parameter_count;
        ++i) {
-    ApiConverter::Free(
+    ApiConverter::Destroy(
         &c_config->entry_computation_layout.parameter_layouts[i]);
   }
   delete[] c_config->entry_computation_layout.parameter_layouts;
-  ApiConverter::Free(&c_config->entry_computation_layout.result_layout);
+  ApiConverter::Destroy(&c_config->entry_computation_layout.result_layout);
   if (c_config->has_static_device_assignment) {
     stream_executor::tpu::SerializedProto_Free(
         c_config->static_device_assignment);
   }
   stream_executor::tpu::SerializedProto_Free(c_config->debug_options);
+}
+
+void Destroy(FloatList* float_list) {
+  if (float_list->size > TPU_C_API_MAX_INLINED) {
+    delete[] float_list->heap;
+  }
 }
 
 }  // namespace ApiConverter

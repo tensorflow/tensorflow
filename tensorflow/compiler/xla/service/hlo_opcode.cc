@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
-string HloOpcodeString(HloOpcode opcode) {
+std::string HloOpcodeString(HloOpcode opcode) {
   switch (opcode) {
 #define CASE_OPCODE_STRING(enum_name, opcode_name, ...) \
   case HloOpcode::enum_name:                            \
@@ -30,8 +31,8 @@ string HloOpcodeString(HloOpcode opcode) {
   }
 }
 
-StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
-  static auto* opcode_map = new absl::flat_hash_map<string, HloOpcode>({
+StatusOr<HloOpcode> StringToHloOpcode(const std::string& opcode_name) {
+  static auto* opcode_map = new absl::flat_hash_map<std::string, HloOpcode>({
 #define STRING_TO_OPCODE_ENTRY(enum_name, opcode_name, ...) \
   {opcode_name, HloOpcode::enum_name},
       HLO_OPCODE_LIST(STRING_TO_OPCODE_ENTRY)
@@ -67,6 +68,11 @@ absl::optional<int> HloOpcodeArity(HloOpcode opcode) {
     HLO_OPCODE_LIST(CASE_ARITY)
 #undef CASE_ARITY
   }
+}
+
+bool HloOpcodeIsAsync(HloOpcode opcode) {
+  return opcode == HloOpcode::kAsyncStart ||
+         opcode == HloOpcode::kAsyncUpdate || opcode == HloOpcode::kAsyncDone;
 }
 
 }  // namespace xla

@@ -497,7 +497,7 @@ class Template(trackable.Trackable):
     return self._variable_scope
 
 
-class _EagerTemplateVariableStore(object):
+class _EagerTemplateVariableStore:
   """Wrapper around EagerVariableStore to support nesting EagerTemplates."""
 
   def __init__(self, variable_scope_name):

@@ -233,6 +233,7 @@ void Tape::RecordOperation(absl::Span<AbstractTensorHandle* const> inputs,
     input_dtypes[i] = inputs[i]->DataType();
   }
   std::vector<TapeTensor> tape_tensors;
+  tape_tensors.reserve(outputs.size());
   for (auto t : outputs) {
     tape_tensors.push_back(TapeTensor(t));
   }

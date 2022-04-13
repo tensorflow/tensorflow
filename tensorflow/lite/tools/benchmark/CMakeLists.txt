@@ -33,6 +33,7 @@ list(APPEND TFLITE_BENCHMARK_SRCS
   ${TFLITE_SOURCE_DIR}/tools/delegates/delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
+  ${TFLITE_SOURCE_DIR}/tools/utils.cc
 )
 
 list(APPEND TFLITE_BENCHMARK_LIBS
@@ -53,6 +54,12 @@ if(TFLITE_ENABLE_XNNPACK)
 else()
   set(TFLITE_BENCHMARK_CC_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")
 endif()  # TFLITE_ENABLE_XNNPACK
+
+if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
+  list(APPEND TFLITE_BENCHMARK_SRCS
+    ${TFLITE_SOURCE_DIR}/tools/delegates/external_delegate_provider.cc
+  )
+endif()  # TFLITE_ENABLE_EXTERNAL_DELEGATE
 
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   if(_TFLITE_ENABLE_NNAPI)

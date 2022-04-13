@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
@@ -69,7 +73,7 @@ class HloDomainTest : public HloTestBase {
 // HLO instructions with the same metadata().op_name() values.
 class OpNameMetadata : public DomainMetadata {
  public:
-  explicit OpNameMetadata(string opname) : opname_(std::move(opname)) {}
+  explicit OpNameMetadata(std::string opname) : opname_(std::move(opname)) {}
 
   std::unique_ptr<DomainMetadata> Clone() const override {
     return absl::make_unique<OpNameMetadata>(opname_);
@@ -87,14 +91,14 @@ class OpNameMetadata : public DomainMetadata {
     return opname_ == other_ptr->opname_;
   }
 
-  string ToString() const override { return opname_; }
+  std::string ToString() const override { return opname_; }
 
   static absl::string_view KindName() { return "opname"; }
 
-  size_t Hash() const override { return std::hash<string>()(opname_); }
+  size_t Hash() const override { return std::hash<std::string>()(opname_); }
 
  private:
-  string opname_;
+  std::string opname_;
 };
 
 // Creator function for OpNameMetadata domains.
@@ -119,6 +123,60 @@ Status OpNameDomainNormalizer(const DomainMetadata::Domain& domain,
                               const DomainMetadata* metadata) {
   // Nothing to do for the particular use this test make of the OpName domains.
   return Status::OK();
+}
+
+TEST_F(HloDomainTest, CheckDomainWithCallInlining) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+%add_block {
+  l = f32[4] parameter(0)
+  r = f32[4] parameter(1)
+  ROOT m = f32[4] add(l, r), sharding={maximal device=1}
+}
+
+ENTRY entry {
+  p0 = (f32[4], f32[4]) parameter(0)
+  a = f32[4] get-tuple-element(p0), index=0
+  b = f32[4] get-tuple-element(p0), index=1
+  c = f32[4] call(f32[4] a, f32[4] b), to_apply=%add_block
+  d = f32[4] subtract(a, b), sharding={maximal device=1}
+  e = f32[4] multiply(c, d), sharding={maximal device=1}
+  ROOT f = (f32[4], f32[4], f32[4]) tuple(c, d, e)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LOG(INFO) << "Original module:\n" << module->ToString();
+
+  HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  EXPECT_TRUE(isolator_changed);
+
+  CallInliner call_inliner(/*single_call_site=*/false,
+                           /*update_domain=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  EXPECT_TRUE(inlined);
+
+  EXPECT_TRUE(HasDomainEdge(module.get(), "m.1", "a"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "m.1", "b"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "d", "a"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "d", "b"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "m.1"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "d"));
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingMetadata::NormalizeShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  EXPECT_TRUE(remover_changed);
+
+  EXPECT_FALSE(HasDomainEdge(module.get(), "m.1", "a"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "m.1", "b"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "d", "a"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "d", "b"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "m.1"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "d"));
 }
 
 TEST_F(HloDomainTest, CheckDomainLinks) {
