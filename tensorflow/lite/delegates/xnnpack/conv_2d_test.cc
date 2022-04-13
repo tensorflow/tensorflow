@@ -105,6 +105,36 @@ TEST(Conv2D, 3x3Stride2) {
       .Test(xnnpack_delegate.get());
 }
 
+TEST(Conv2D, Grouped) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto input_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
+  auto channel_per_group_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
+  auto groups_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 8), std::ref(rng));
+
+  auto groups = groups_rng();
+  Conv2DTester()
+      .BatchSize(batch_rng())
+      .InputHeight(input_rng())
+      .InputWidth(input_rng())
+      .InputChannels(groups * channel_per_group_rng())
+      .OutputChannels(groups * channel_per_group_rng())
+      .Groups(groups)
+      .KernelHeight(3)
+      .KernelWidth(3)
+      .SamePadding()
+      .Test(xnnpack_delegate.get());
+}
+
 TEST(Conv2D, SmallKernelWithSamePadding) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),

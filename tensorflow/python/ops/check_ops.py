@@ -1235,7 +1235,8 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
             '%sTensor %s must have rank %d.  Received rank %d, shape %s' %
             (message, name, e.args[2], e.args[1], x.get_shape()))
       else:
-        raise
+        raise ValueError(e.args[0])
+
 
   return assert_op
 
@@ -1624,14 +1625,9 @@ def assert_type(tensor, tf_type, message=None, name=None):
     if not isinstance(tensor, sparse_tensor.SparseTensor):
       tensor = ops.convert_to_tensor(tensor, name='tensor')
     if tensor.dtype != tf_type:
-      if context.executing_eagerly():
-        raise TypeError('%s tensor must be of type %s' % (message, tf_type))
-      else:
-        raise TypeError(
-            '%s%s must be of type %s' %
-            (_message_prefix(message),
-             tensor.name if hasattr(tensor, 'name') else '',
-             tf_type))
+      raise TypeError(
+          f'{_message_prefix(message)}{getattr(tensor, "name", "tensor")}'
+          f' must be of type {tf_type!r}; got {tensor.dtype!r}')
 
     return control_flow_ops.no_op('statically_determined_correct_type')
 

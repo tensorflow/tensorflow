@@ -23,9 +23,9 @@ limitations under the License.
 #include "llvm/ADT/Bitfields.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -44,8 +44,8 @@ namespace {
 struct PropagateTfAbiKnowledgeToKernelsPass
     : public PropagateTfAbiKnowledgeToKernelsBase<
           PropagateTfAbiKnowledgeToKernelsPass> {
-  void runOnFunction() override {
-    FuncOp function = getFunction();
+  void runOnOperation() override {
+    FuncOp function = getOperation();
     llvm::SmallVector<Value, 4> worklist;
     // We currently only handle entry functions and do not propagate across
     // functions.
@@ -210,7 +210,8 @@ struct PropagateTfAbiKnowledgeToKernelsPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels() {
+std::unique_ptr<OperationPass<FuncOp>>
+CreatePropagateTfAbiKnowledgeToKernels() {
   return std::make_unique<PropagateTfAbiKnowledgeToKernelsPass>();
 }
 

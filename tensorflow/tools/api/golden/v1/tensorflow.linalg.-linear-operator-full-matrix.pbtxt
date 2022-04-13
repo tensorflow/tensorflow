@@ -44,6 +44,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "matrix"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "name"
     mtype: "<type \'property\'>"
   }

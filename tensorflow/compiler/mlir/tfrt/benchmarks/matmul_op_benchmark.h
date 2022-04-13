@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
+#include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
 
 namespace tensorflow {
 
@@ -34,6 +35,7 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 using ::tfrt::jitrt::Executable;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::JitExecutable;
 using ::tfrt::jitrt::MemrefDesc;
 using ::tfrt::jitrt::ReturnValueConverter;
@@ -76,13 +78,25 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   auto result_values = std::array<RCReference<AsyncValue>, 2>{{}};
   RemainingResults results(result_values);
 
+  // Record data ptrs of inputs.
+  llvm::SmallVector<void*> input_ptrs;
+  for (auto& operand : operands) {
+    input_ptrs.push_back(operand.data);
+  }
+
   // Free memory owned by the returned memrefs.
-  ReturnValueConverter<ResultConversionCtx> converter(results);
+  ResultConversionCtx result_ctx(std::move(input_ptrs));
+  ReturnValueConverter<ResultConversionCtx> converter(results, result_ctx);
   converter.AddConversion(FreeReturnedMemref);
+
+  // Execute async tasks in the HostContext work queue.
+  Executable::ExecuteOpts opts;
+  HostContextAsyncTaskRunner async_task_runner(host.get());
+  opts.async_task_runner = &async_task_runner;
 
   // Get an executable that might be specialized to the operands.
   llvm::Expected<AsyncValuePtr<Executable>> executable =
-      jit_executable.GetExecutable(operands, exec_ctx);
+      jit_executable.GetExecutable(operands);
   if (auto err = executable.takeError())
     LOG(FATAL) << "Failed to specialize executable";
 
@@ -99,9 +113,8 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
-    (*executable)->Execute(call_frame, exec_ctx);
-    if (auto err =
-            (*executable)->ReturnResults(converter, exec_ctx, &call_frame))
+    (*executable)->Execute(call_frame, opts);
+    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 

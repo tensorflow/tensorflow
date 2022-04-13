@@ -132,9 +132,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   } else if (output->type == kTfLiteInt32) {
     TF_LITE_ENSURE_OK(context, EvalAddN<int32_t>(context, node));
   } else {
-    context->ReportError(context,
-                         "AddN only supports FLOAT32|INT32 now, got %s.",
-                         TfLiteTypeGetName(output->type));
+    TF_LITE_KERNEL_LOG(context, "AddN only supports FLOAT32|INT32 now, got %s.",
+                       TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
   return kTfLiteOk;

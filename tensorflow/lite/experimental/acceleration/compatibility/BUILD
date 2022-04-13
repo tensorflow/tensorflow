@@ -150,7 +150,10 @@ cc_test(
     ],
 )
 
-exports_files(["gpu_compatibility.bin"])
+exports_files([
+    "database.fbs",
+    "gpu_compatibility.bin",
+])
 
 genrule(
     name = "gpu_compatibility_binary",

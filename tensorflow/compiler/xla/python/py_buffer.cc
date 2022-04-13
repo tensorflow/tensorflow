@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
 #include <functional>
+#include <string>
 #include <type_traits>
 
 #include "absl/base/casts.h"
@@ -25,7 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
+#include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
+#include "tensorflow/compiler/xla/python/util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -184,6 +187,16 @@ PyBuffer::object PyBuffer::Clone() const {
 StatusOr<py::object> PyBuffer::CopyToDevice(
     const ClientAndPtr<PjRtDevice>& dst_device) const {
   CHECK(dst_device.get() != nullptr);
+  auto transfer_guard_formatter = [this, &dst_device] {
+    auto shape = py::cast<std::string>(py::str(python_shape()));
+    auto dtype = py::cast<std::string>(py::str(python_dtype()));
+    return absl::StrCat("shape=", shape, ", dtype=", dtype,
+                        ", device=", device()->DebugString(),
+                        ", dst_device=", dst_device->DebugString());
+  };
+  TF_RETURN_IF_ERROR(
+      jax::ApplyTransferGuardToDeviceToDevice(transfer_guard_formatter));
+
   GlobalPyRefManager()->CollectGarbage();
   std::unique_ptr<PjRtBuffer> out;
   {
@@ -202,6 +215,15 @@ Status PyBuffer::BlockHostUntilReady() {
 
 Status PyBuffer::CopyToHostAsync() {
   if (!buffer_->IsOnCpu() && !host_value_) {
+    auto transfer_guard_formatter = [this] {
+      auto shape = py::cast<std::string>(py::str(python_shape()));
+      auto dtype = py::cast<std::string>(py::str(python_dtype()));
+      return absl::StrCat("shape=", shape, ", dtype=", dtype,
+                          ", device=", device()->DebugString());
+    };
+    TF_RETURN_IF_ERROR(
+        jax::ApplyTransferGuardToDeviceToHost(transfer_guard_formatter));
+
     std::shared_ptr<HostValue> host_value = std::make_shared<HostValue>();
     host_value_ = host_value;
     // TODO(b/182461453): This is a blocking call. If we further implemented
@@ -533,8 +555,6 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       [](PyBuffer::object self, absl::optional<bool> weak_type) {
         return self.buf()->set_weak_type(weak_type);
       });
-  type.attr("_lazy_expr") =
-      property_readonly([](py::handle self) { return py::none(); });
   type.attr("device_buffer") =
       property_readonly([](py::object self) { return self; });
   type.attr(
@@ -570,7 +590,19 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   type.attr("delete") = py::cpp_function(
       [](PyBuffer::object self) { self.buf()->Delete(); }, py::is_method(type));
   type.attr("block_host_until_ready") = py::cpp_function(
-      [](PyBuffer::object self) { return self.buf()->BlockHostUntilReady(); },
+      [](PyBuffer::object self) {
+        // TODO(phawkins): remove 3 months after the release of jaxlib >= 0.3.2.
+        PythonDeprecationWarning(
+            "block_host_until_ready() on a JAX array object is deprecated, use "
+            "block_until_ready() instead.");
+        return self.buf()->BlockHostUntilReady();
+      },
+      py::is_method(type));
+  type.attr("is_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsReady(); },
+      py::is_method(type));
+  type.attr("is_known_ready") = py::cpp_function(
+      [](PyBuffer::object self) { return self.buf()->IsKnownReady(); },
       py::is_method(type));
   type.attr("block_until_ready") = py::cpp_function(
       [](PyBuffer::object self) -> StatusOr<PyBuffer::object> {

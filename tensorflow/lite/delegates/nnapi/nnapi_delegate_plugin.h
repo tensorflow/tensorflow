@@ -82,7 +82,7 @@ typedef struct NnapiDelegateVendorPlugin {
   // the operation. In case of success it returns kTfLiteOk and stores the
   // corresponding NNAPI operand indices and operation code through the mapping
   // utility interface. Returns kTfLiteError in case of failures during mapping.
-  TfLiteStatus (*MapNode)(const TfLiteContext* context, const TfLiteNode* node,
+  TfLiteStatus (*MapNode)(TfLiteContext* context, const TfLiteNode* node,
                           int node_index, NnapiMappingUtilCInterface* mapping,
                           ANeuralNetworksModel* model);
 

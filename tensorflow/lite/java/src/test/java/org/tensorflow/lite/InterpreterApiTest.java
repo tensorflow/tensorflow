@@ -101,12 +101,15 @@ public final class InterpreterApiTest {
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
       assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getClass().getCanonicalName()).contains("org.tensorflow.lite");
     } catch (IllegalStateException e) {
       // This can occur when this code is not linked against the TF Lite runtime.
       // Verify that the error message has some hints about how to link
       // against the runtime ("org.tensorflow:tensorflow-lite:<version>").
       assertThat(e).hasMessageThat().contains("org.tensorflow");
       assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      assertThat(e).hasMessageThat().doesNotContain("com.google.android.gms");
+      assertThat(e).hasMessageThat().doesNotContain("play-services-tflite-java");
     }
   }
 
@@ -120,12 +123,15 @@ public final class InterpreterApiTest {
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
       assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getClass().getCanonicalName()).contains("org.tensorflow.lite");
     } catch (IllegalStateException e) {
       // This can occur when this code is not linked against the TF Lite runtime.
       // Verify that the error message has some hints about how to link
       // against the runtime ("org.tensorflow:tensorflow-lite:<version>").
       assertThat(e).hasMessageThat().contains("org.tensorflow");
       assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      assertThat(e).hasMessageThat().doesNotContain("com.google.android.gms");
+      assertThat(e).hasMessageThat().doesNotContain("play-services-tflite-java");
     }
   }
 
@@ -139,13 +145,28 @@ public final class InterpreterApiTest {
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
       assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getClass().getCanonicalName()).contains("com.google.android.gms");
     } catch (IllegalStateException e) {
-      // This can occur when this code is not linked against the TF Lite runtime.
+      // This can occur when this code is not linked against the right TF Lite runtime client.
       // Verify that the error message has some hints about how to link in the
       // client library for TF Lite in Google Play Services
       // ("com.google.android.gms:play-services-tflite-java:<version>").
       assertThat(e).hasMessageThat().contains("com.google.android.gms");
       assertThat(e).hasMessageThat().contains("play-services-tflite-java");
+      assertThat(e).hasMessageThat().doesNotContain("org.tensorflow:tensorflow-lite");
+    }
+  }
+
+  @Test
+  public void testRuntimePreferSystemOverApplication() throws Exception {
+    InterpreterApi.Options options =
+        new InterpreterApi.Options().setRuntime(TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION);
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, options)) {
+      assertThat(interpreter).isNotNull();
+      assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
     }
   }
 

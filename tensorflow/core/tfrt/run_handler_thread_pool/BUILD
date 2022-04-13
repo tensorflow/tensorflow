@@ -16,6 +16,7 @@ package_group(
         # copybara:uncomment "//third_party/auroraml/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/runtime_fallback/runtime/...",
+        "//tensorflow_serving/...",
     ],
 )
 

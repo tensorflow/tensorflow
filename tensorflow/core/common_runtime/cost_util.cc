@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/cost_util.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 #include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
@@ -39,14 +44,15 @@ const char* GetRequestCostAccessorType() {
 
 }  // namespace
 
-std::vector<std::unique_ptr<CostMeasurement>> CreateCostMeasurements() {
+std::vector<std::unique_ptr<CostMeasurement>> CreateCostMeasurements(
+    const CostMeasurement::Context& context) {
   static const std::vector<std::string>& types =
       *new std::vector<std::string>(GetCostMeasurementTypes());
 
   std::vector<std::unique_ptr<CostMeasurement>> measurements;
   for (const auto& type : types) {
     std::unique_ptr<CostMeasurement> measurement =
-        CostMeasurementRegistry::CreateByNameOrNull(type);
+        CostMeasurementRegistry::CreateByNameOrNull(type, context);
     if (measurement != nullptr) {
       measurements.push_back(std::move(measurement));
     }

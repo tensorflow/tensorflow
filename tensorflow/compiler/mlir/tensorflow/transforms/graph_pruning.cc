@@ -41,7 +41,7 @@ class GraphPruningPass
  public:
   GraphPruningPass() = default;
   explicit GraphPruningPass(llvm::ArrayRef<std::string> ops_to_preserve);
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   bool ShouldPreserveOp(Operation* op);
@@ -111,12 +111,13 @@ GraphPruningPass::GraphPruningPass(
   ops_to_preserve_ = ops_to_preserve;
 }
 
-void GraphPruningPass::runOnFunction() {
+void GraphPruningPass::runOnOperation() {
   for (const auto& op_name : ops_to_preserve_) {
     ops_to_preserve_ids_.insert(mlir::StringAttr::get(&getContext(), op_name));
   }
-  if (!CanPruneGraph(getFunction())) return;
-  getFunction().walk([this](tf_executor::GraphOp graph) { PruneGraph(graph); });
+  if (!CanPruneGraph(getOperation())) return;
+  getOperation().walk(
+      [this](tf_executor::GraphOp graph) { PruneGraph(graph); });
 }
 
 // An op should be preserved if either its identifier is contained in

@@ -279,9 +279,23 @@ ENTRY %computation {
 HloModule RowToLong
 
 ENTRY main {
-  %param_0 = f32[2024]{0} parameter(0)
-  ROOT %broadcastRowToLong = f32[3025,2024]{1,0} broadcast(%param_0), dimensions={1}
+  %param_0 = f32[2025]{0} parameter(0)
+  ROOT %broadcastRowToLong = f32[3025,2025]{1,0} broadcast(%param_0), dimensions={1}
 }
 // Check that we didn't emit the simpler row broadcasting.
 // CHECK-LLVM-LABEL: @broadcastRowToLong
 // CHECK-LLVM-NOT: row_index
+
+// -----
+
+HloModule module
+
+ENTRY computation {
+  p0 = f16[5000,64,64,32] parameter(0)
+  zero = f16[] constant(0)
+
+  ROOT pad1 = f16[5000,65,65,32] pad(p0, zero), padding=0_0x0_1x0_1x0_0
+}
+
+// Check that we emit vectorized read.
+// CHECK: ld.global.nc.v4.f32

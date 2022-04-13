@@ -107,6 +107,9 @@ class GraphExecutor {
       absl::Span<const std::string> target_tensor_names,
       std::vector<tensorflow::Tensor>* outputs);
 
+  // Extends the current graph by `graph`.
+  tensorflow::Status Extend(const GraphDef& graph);
+
   tensorflow::tfrt_stub::TfrtGraphExecutionState& graph_execution_state()
       const {
     return *graph_execution_state_;
@@ -138,9 +141,9 @@ class GraphExecutor {
   // A set of methods to load a client graph.
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(
       const GraphExecutor::ClientGraph& client_graph);
-  tensorflow::StatusOr<mlir::OwningModuleRef> ImportClientGraphToMlirModule(
-      const GraphExecutor::ClientGraph& client_graph,
-      mlir::MLIRContext* context) const;
+  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+  ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
+                                mlir::MLIRContext* context) const;
   StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(mlir::ModuleOp module) const;
   tensorflow::Status InitBef(tfrt::BEFFile* bef_file,
                              tfrt::ResourceContext* resource_context);

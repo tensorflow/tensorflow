@@ -291,7 +291,7 @@ TEST(FloatActivationsOpTest, Elu) {
       0, -6, 2, -4,     //
       3, -2, 10, -0.1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  0.0, -0.997521, 2.0, -0.981684,    //
                                  3.0, -0.864665, 10.0, -0.0951626,  //
@@ -311,7 +311,7 @@ TEST(QuantizedActivationsOpTest, EluInt8) {
       3, -2, 6, -0.1,  //
   });
 
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -328,7 +328,7 @@ TEST(FloatActivationsOpTest, Relu) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  0, 0, 2, 4,   //
                                  3, 0, 10, 1,  //
@@ -342,7 +342,7 @@ TEST(FloatActivationsOpTest, Relu1) {
       0.0, -0.6, 0.2, -0.4,  //
       0.3, -2.0, 1.1, -0.1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  0.0, -0.6, 0.2, -0.4,  //
                                  0.3, -1.0, 1.0, -0.1,  //
@@ -356,7 +356,7 @@ TEST(FloatActivationsOpTest, Relu6) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  0, 0, 2, 4,  //
                                  3, 0, 6, 1,  //
@@ -408,7 +408,7 @@ void TestFloatHardSwish(int size, std::minstd_rand* random_engine) {
                             /*output=*/{TensorType_FLOAT32, {1, 1, 1, size}});
   m.SetInput(float_input_values);
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(float_ref_output_values)));
 }
@@ -432,7 +432,7 @@ void TestQuantizedHardSwish(TensorType tensor_type, int size, float input_min,
       /*output=*/{tensor_type, {1, 1, 1, size}, output_min, output_max});
   m.SetInput<QuantizedType>(float_input_values);
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   const std::vector<float>& dequantized_output =
       m.GetDequantizedOutput<QuantizedType>();
   // The numerical error for any 8bit quantized function is at least one half
@@ -486,7 +486,7 @@ void TestQuantizedHardSwishBias(TensorType tensor_type, float input_min,
       /*output=*/{tensor_type, {1, 1, 1, size}, output_min, output_max});
   m.SetInput<QuantizedType>(float_input_values);
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   const std::vector<float>& dequantized_output =
       m.GetDequantizedOutput<QuantizedType>();
 
@@ -544,7 +544,7 @@ TEST_P(TanhOpTest, Tanh) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  0, -0.9999877, 0.9640275, 0.999329,    //
                                  0.99505475, -0.9640275, 1, 0.7615941,  //
@@ -562,7 +562,7 @@ TEST(QuantizedActivationsOpTest, Relu6Uint8) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -597,7 +597,7 @@ TEST_P(LeakyReluOpTest, LeakyReluUint8) {
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -625,7 +625,7 @@ void QuantizedActivationsOpTestLeakyRelu(TfLiteRegistration* registration) {
       1.0f,  1.4f,  1.8f,  2.2f,  2.6f,   // Row 4
       3.0f,  3.4f,  3.8f,  4.2f,  4.6f,   // Row 5
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   float kTestQuantizedTolerance = tensor_type == TensorType_INT16
                                       ? kQuantizedToleranceInt16
@@ -670,7 +670,7 @@ void QuantizedActivationsOpTestRelu1() {
       0.0, -0.6, 0.2, -0.4,  //
       0.3, -2.0, 1.1, -0.1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   float kTestQuantizedTolerance =
       GetTensorType<integer_dtype>() == TensorType_INT16
@@ -709,7 +709,7 @@ TEST(QuantizedActivationsOpTest, Relu6Int8) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(), ElementsAreArray(ArrayFloatNear(
                                                     {
                                                         0, 0, 2, 4,  //
@@ -731,7 +731,7 @@ TEST(QuantizedActivationsOpTest, Relu6Int16) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -754,7 +754,7 @@ TEST(QuantizedActivationsOpTest, ReluUint8) {
       0, -6, 2, 4,  //
       3, -2, 7, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -777,7 +777,7 @@ TEST(QuantizedActivationsOpTest, ReluInt8) {
       0, -6, 2, 4,  //
       3, -2, 7, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(), ElementsAreArray(ArrayFloatNear(
                                                     {
                                                         0, 0, 2, 4,  //
@@ -799,7 +799,7 @@ TEST(QuantizedActivationsOpTest, ReluInt16) {
       0, -6, 2, 4,  //
       3, -2, 7, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -844,7 +844,7 @@ TEST_P(TanhOpTest, TanhUint8) {
        6.5454545455,  6.7272727273,  6.9090909091,  7.0909090909,
        7.2727272727,  7.4545454545,  7.6363636364,  7.8181818182,
        8.0000000000});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {-0.9999997749, -0.9999996762, -0.9999995342, -0.9999993300,
@@ -906,7 +906,7 @@ TEST_P(TanhOpTest, TanhInt8) {
        6.5454545455,  6.7272727273,  6.9090909091,  7.0909090909,
        7.2727272727,  7.4545454545,  7.6363636364,  7.8181818182,
        8.0000000000});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {-0.9999997749, -0.9999996762, -0.9999995342, -0.9999993300,
@@ -988,7 +988,7 @@ TEST_P(TanhOpTest, TanhInt16) {
        18.1818181818,  18.4090909091,  18.6363636364,  18.8636363636,
        19.0909090909,  19.3181818182,  19.5454545455,  19.7727272727,
        20.0000000000});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {-1.0000000000, -1.0000000000, -1.0000000000, -1.0000000000,
@@ -1048,7 +1048,7 @@ TEST_P(TanhOpTest, TanhInt16General) {
       /*output=*/{TensorType_INT16, {10}, kMin, kMax});
   m.SetInput<int16_t>({-10, -4, 1, 0.5, 0.25,  //
                        0, -0.1, 6, 7.0909090909, 8});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {-1.0, -0.999329, 0.761594, 0.462117, 0.244919,  //
@@ -1063,7 +1063,7 @@ TEST_P(LogisticOpTest, Sigmoid) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  0.5, 0.002473, 0.880797, 0.982014,       //
                                  0.952574, 0.119203, 0.999955, 0.731059,  //
@@ -1098,7 +1098,7 @@ TEST_P(LogisticOpTest, SigmoidUint8) {
        8.1818181818,   8.4090909091,  8.6363636364,  8.8636363636,
        9.0909090909,   9.3181818182,  9.5454545455,  9.7727272727,
        10.0000000000});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput<uint8_t>(),
       ElementsAreArray(ArrayFloatNear(
@@ -1151,7 +1151,7 @@ TEST_P(LogisticOpTest, SigmoidInt8) {
        8.1818181818,   8.4090909091,  8.6363636364,  8.8636363636,
        9.0909090909,   9.3181818182,  9.5454545455,  9.7727272727,
        10.0000000000});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput<int8_t>(),
       ElementsAreArray(ArrayFloatNear(
@@ -1229,7 +1229,7 @@ TEST_P(LogisticOpTest, SigmoidInt16) {
        18.1818181818,  18.4090909091,  18.6363636364,  18.8636363636,
        19.0909090909,  19.3181818182,  19.5454545455,  19.7727272727,
        20.0000000000});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput<int16_t>(),
       ElementsAreArray(ArrayFloatNear(
@@ -1283,7 +1283,7 @@ TEST_P(LogisticOpTest, SigmoidInt16General) {
       0, -6, 2, 4, 0.1, 12,    //
       3, -2, 10, 1, 0.25, -12  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {0.5, 0.002473, 0.880797, 0.982014, 0.524979, 0.999994,  //
@@ -1299,7 +1299,7 @@ TEST_P(SoftmaxOpTest, Softmax4D) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  .23463, .12877, .28658, .35003,  //
                                  .22528, .13664, .45365, .18443,  //
@@ -1315,7 +1315,7 @@ TEST_P(SoftmaxOpTest, Softmax4D) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                   0.645656, 0.354344,  //
                                   0.450166, 0.549834,  //
@@ -1332,7 +1332,7 @@ TEST_P(SoftmaxOpTest, Softmax4DUint8) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1351,7 +1351,7 @@ TEST_P(SoftmaxOpTest, Softmax4DUint8) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1371,7 +1371,7 @@ TEST_P(SoftmaxOpTest, Softmax4DUint8Int16) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1390,7 +1390,7 @@ TEST_P(SoftmaxOpTest, Softmax4DUint8Int16) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1408,7 +1408,7 @@ TEST_P(SoftmaxOpTest, Softmax1DInt8) {
   QuantizedActivationsOpModel m(
       GetRegistration(), 0.1, {TensorType_INT8, {8}, -10, 10}, TensorType_INT8);
   m.SetInput<int8_t>({0, -6, 2, 4, 3, -2, 10, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput<int8_t>(),
       ElementsAreArray(ArrayFloatNear({0.09766, 0.05469, 0.12109, 0.14453,
@@ -1426,7 +1426,7 @@ TEST_P(SoftmaxOpTest, Softmax1DInt16) {
       /*input=*/{TensorType_INT16, {3}, 3 * kMin, 3 * kMax},
       /*output_type-*/ TensorType_INT16);
   m.SetInput<int16_t>({1, 2, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput<int16_t>(),
       ElementsAreArray(ArrayFloatNear({0.0900269, 0.2447285, 0.66524096},
@@ -1440,7 +1440,7 @@ TEST_P(SoftmaxOpTest, Softmax1DInt16ZeroElement) {
       GetRegistration(), 0.1,
       /*input=*/{TensorType_INT16, {1}, 1 * kMin, 1 * kMax}, TensorType_INT16);
   m.SetInput<int16_t>({0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear({1}, kQuantizedToleranceInt16)));
 }
@@ -1456,7 +1456,7 @@ TEST_P(SoftmaxOpTest, Softmax2DInt16) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1476,7 +1476,7 @@ TEST_P(SoftmaxOpTest, Softmax2DInt16) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1499,7 +1499,7 @@ TEST_P(SoftmaxOpTest, Softmax3DInt16) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1519,7 +1519,7 @@ TEST_P(SoftmaxOpTest, Softmax3DInt16) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1544,7 +1544,7 @@ TEST_P(SoftmaxOpTest, Softmax4DInt16) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1564,7 +1564,7 @@ TEST_P(SoftmaxOpTest, Softmax4DInt16) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1584,7 +1584,7 @@ TEST_P(SoftmaxOpTest, Softmax1DInt8Int16) {
                                 {TensorType_INT8, {8}, -10, 10},
                                 TensorType_INT16);
   m.SetInput<int8_t>({0, -6, 2, 4, 3, -2, 10, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput<int16_t>(),
       ElementsAreArray(ArrayFloatNear({0.09766, 0.05469, 0.12109, 0.14453,
@@ -1602,7 +1602,7 @@ TEST_P(SoftmaxOpTest, Softmax2DInt8) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1621,7 +1621,7 @@ TEST_P(SoftmaxOpTest, Softmax2DInt8) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1644,7 +1644,7 @@ TEST_P(SoftmaxOpTest, Softmax2DInt8Int16) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1663,7 +1663,7 @@ TEST_P(SoftmaxOpTest, Softmax2DInt8Int16) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1685,7 +1685,7 @@ TEST_P(SoftmaxOpTest, Softmax3DInt8) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1704,7 +1704,7 @@ TEST_P(SoftmaxOpTest, Softmax3DInt8) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1726,7 +1726,7 @@ TEST_P(SoftmaxOpTest, Softmax3DInt8Int16) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1745,7 +1745,7 @@ TEST_P(SoftmaxOpTest, Softmax3DInt8Int16) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1767,7 +1767,7 @@ TEST_P(SoftmaxOpTest, Softmax4DInt8) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
                                          -68, -95, -54, -38,  //
                                          -70, -93, -12, -81,  //
@@ -1790,7 +1790,7 @@ TEST_P(SoftmaxOpTest, Softmax4DInt8) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1812,7 +1812,7 @@ TEST_P(SoftmaxOpTest, Softmax4DInt8Int16) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1831,7 +1831,7 @@ TEST_P(SoftmaxOpTest, Softmax4DInt8Int16) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1851,7 +1851,7 @@ TEST_P(SoftmaxOpTest, Softmax3D) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  .23463, .12877, .28658, .35003,  //
                                  .22528, .13664, .45365, .18443,  //
@@ -1867,7 +1867,7 @@ TEST_P(SoftmaxOpTest, Softmax3D) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                   0.645656, 0.354344,  //
                                   0.450166, 0.549834,  //
@@ -1884,7 +1884,7 @@ TEST_P(SoftmaxOpTest, Softmax3DUint8) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1903,7 +1903,7 @@ TEST_P(SoftmaxOpTest, Softmax3DUint8) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1923,7 +1923,7 @@ TEST_P(SoftmaxOpTest, Softmax3DUint8Int16) {
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1942,7 +1942,7 @@ TEST_P(SoftmaxOpTest, Softmax3DUint8Int16) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1958,7 +1958,7 @@ TEST_P(SoftmaxOpTest, Softmax1D) {
   FloatActivationsOpModel m(GetRegistration(), 0.1f, {TensorType_FLOAT32, {8}},
                             TensorType_FLOAT32);
   m.SetInput({0, -6, 2, 4, 3, -2, 10, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput(),
       ElementsAreArray(ArrayFloatNear(
@@ -1969,7 +1969,7 @@ TEST_P(SoftmaxOpTest, Softmax1DMax) {
   FloatActivationsOpModel m(GetRegistration(), 0.1f, {TensorType_FLOAT32, {8}},
                             TensorType_FLOAT32);
   m.SetInput({std::numeric_limits<float>::max(), -6, 2, 4, 3, -2, 10, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({1, 0, 0, 0, 0, 0, 0, 0})));
 }
@@ -1978,7 +1978,7 @@ TEST_P(SoftmaxOpTest, Softmax1DInf) {
   FloatActivationsOpModel m(GetRegistration(), 0.1f, {TensorType_FLOAT32, {8}},
                             TensorType_FLOAT32);
   m.SetInput({std::numeric_limits<float>::infinity(), -6, 2, 4, 3, -2, 10, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto output = m.GetOutput();
   for (int i = 0; i < 8; ++i) {
     EXPECT_TRUE(std::isnan(output[i]));
@@ -1990,7 +1990,7 @@ TEST_P(SoftmaxOpTest, Softmax1DUint8) {
                                 {TensorType_UINT8, {8}, -10, 10},
                                 TensorType_UINT8);
   m.SetInput<uint8_t>({0, -6, 2, 4, 3, -2, 10, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput<uint8_t>(),
       ElementsAreArray(ArrayFloatNear({0.09766, 0.05469, 0.12109, 0.14453,
@@ -2003,7 +2003,7 @@ TEST_P(SoftmaxOpTest, Softmax1DUint8Int16) {
                                 {TensorType_UINT8, {8}, -10, 10},
                                 TensorType_INT16);
   m.SetInput<uint8_t>({0, -6, 2, 4, 3, -2, 10, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput<int16_t>(),
       ElementsAreArray(ArrayFloatNear({0.09766, 0.05469, 0.12109, 0.14453,
@@ -2018,7 +2018,7 @@ TEST_P(SoftmaxOpTest, Softmax2D) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  .23463, .12877, .28658, .35003,  //
                                  .22528, .13664, .45365, .18443,  //
@@ -2033,7 +2033,7 @@ TEST_P(SoftmaxOpTest, Softmax2D) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                   0.645656, 0.354344,  //
                                   0.450166, 0.549834,  //
@@ -2064,7 +2064,7 @@ TEST_P(SoftmaxOpTest, Softmax2DMultithreading) {
       0, -6, 2,  4,  //
   });
   m.SetNumThreads(2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  .23463, .12877, .28658, .35003,  //
                                  .22528, .13664, .45365, .18443,  //
@@ -2106,7 +2106,7 @@ TEST_P(SoftmaxOpTest, Softmax2DMultithreading) {
       0,  -6,  //
   });
   m2.SetNumThreads(2);
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                   0.645656, 0.354344,  //
                                   0.450166, 0.549834,  //
@@ -2135,7 +2135,7 @@ TEST_P(SoftmaxOpTest, Softmax2DUint8) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2154,7 +2154,7 @@ TEST_P(SoftmaxOpTest, Softmax2DUint8) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2174,7 +2174,7 @@ TEST_P(SoftmaxOpTest, Softmax2DUint8Int16) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2193,7 +2193,7 @@ TEST_P(SoftmaxOpTest, Softmax2DUint8Int16) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2222,7 +2222,7 @@ TEST_P(LogSoftmaxOpTest, LogSoftmax) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  -4.14297, -10.14297, -2.14297, -.142971,    //
                                  -7.00104, -12.00104, -.00104087, -9.00104,  //
@@ -2237,7 +2237,7 @@ TEST_P(LogSoftmaxOpTest, LogSoftmax) {
       3, -2,  //
       10, 1,  //
   });
-  m2.Invoke();
+  ASSERT_EQ(m2.Invoke(), kTfLiteOk);
   EXPECT_THAT(m2.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                   -.00247565, -6.00247,   //
                                   -2.12692, -.126928,     //
@@ -2257,7 +2257,7 @@ TEST_P(LogSoftmaxOpTest, LogSoftmaxUint8) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2279,7 +2279,7 @@ TEST_P(LogSoftmaxOpTest, LogSoftmaxInt8) {
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2303,7 +2303,7 @@ TEST(QuantizedActivationsOpTest, LogSoftmaxInt8LargeNegativeNumber) {
       -9.9, -9.9, 0, 0,  //
       7.8, -2, 2, 1,     //
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetDequantizedOutput<int8_t>(),
       ElementsAreArray(ArrayFloatNear(
@@ -2394,7 +2394,7 @@ TEST_P(PReluOpTest, PReluFloat32) {
       -2.0f, -2.0f, -2.0f,  // Row 2, Column 2
   });
   m.SetAlpha({0.0f, 1.0f, 2.0f});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  0.0f, 0.0f, 0.0f,    // Row 1, Column 1
                                  1.0f, 1.0f, 1.0f,    // Row 1, Column 2
@@ -2419,7 +2419,7 @@ TEST_P(PReluOpTest, PReluFloat32SameShapes) {
       0.0f, 1.0f, 2.0f,  // Row 2, Column 1
       0.0f, 1.0f, 2.0f,  // Row 2, Column 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  0.0f, 0.0f, 0.0f,    // Row 1, Column 1
                                  1.0f, 1.0f, 1.0f,    // Row 1, Column 2
@@ -2440,7 +2440,7 @@ TEST_P(PReluOpTest, PReluUInt8) {
       -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
   });
   m.SetAlpha<uint8_t>({0.0f, 0.5f, -0.5f});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2475,7 +2475,7 @@ TEST_P(PReluOpTest, PReluUInt8SameShapes) {
       0.0f, 0.5f, -0.5f,  // Row 2, Column 1
       0.0f, 0.5f, -0.5f,  // Row 2, Column 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2505,7 +2505,7 @@ TEST_P(PReluOpTest, PReluInt8) {
       -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
   });
   m.SetAlpha<int8_t>({0.0f, 0.5f, -0.5f});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2540,7 +2540,7 @@ TEST_P(PReluOpTest, PReluInt8SameShapes) {
       0.0f, 0.5f, -0.5f,  // Row 2, Column 1
       0.0f, 0.5f, -0.5f,  // Row 2, Column 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2570,7 +2570,7 @@ TEST_P(PReluOpTest, PReluInt16) {
       -0.25f, -0.25f, -0.25f,  // Row 2, Column 2
   });
   m.SetAlpha<int16_t>({0.0f, 0.5f, -0.5f});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2606,7 +2606,7 @@ TEST_P(PReluOpTest, PReluInt16SameShapes) {
       0.0f, 0.5f, -0.5f,  // Row 2, Column 1
       0.0f, 0.5f, -0.5f,  // Row 2, Column 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -2651,7 +2651,7 @@ TEST(FloatActivationsOpTest, LeakyRelu) {
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  0.0f, 1.0f, 3.0f,    // Row 1
                                  1.0f, -0.5f, -1.0f,  // Row 2
@@ -2732,7 +2732,7 @@ TEST(FloatActivationsOpTest, Gelu) {
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  0.0f, 0.841345f, 2.99595f,           // Row 1
                                  0.841345f, -0.158655f, -0.0455003f,  // Row 2
@@ -2746,7 +2746,7 @@ TEST(FloatActivationsOpTest, GeluApproximate) {
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  0.0f, 0.841192f, 2.99636f,           // Row 1
                                  0.841192f, -0.158808f, -0.0454023f,  // Row 2
@@ -2762,7 +2762,7 @@ TEST(QuantizedGeluOpTest, GeluInt8) {
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({
                   0.f, 0.84375f, 2.97656f,          // Row 1
@@ -2779,7 +2779,7 @@ TEST(QuantizedGeluOpTest, GeluInt8Approximate) {
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({
                   0.f, 0.84375f, 2.97656f,          // Row 1
@@ -2795,7 +2795,7 @@ TEST(QuantizedGeluOpTest, GeluUInt8) {
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
                   0.f, 0.84375f, 2.97656f,          // Row 1
@@ -2812,7 +2812,7 @@ TEST(QuantizedGeluOpTest, GeluUInt8Approximate) {
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({
                   0.f, 0.84375f, 2.97656f,          // Row 1

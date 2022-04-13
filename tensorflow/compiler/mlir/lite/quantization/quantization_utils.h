@@ -32,10 +32,10 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -66,18 +66,31 @@ constexpr char kVolatileOpAttrName[] = "volatile";
 constexpr char kDebugModeOpFloatAttrName[] = "debug_float";
 constexpr char kDebugModeOpQuantAttrName[] = "debug_quant";
 
+// Used to annotate custom ops if they are quantizable.
+constexpr char kQuantTraitAttrName[] = "_tfl_quant_trait";
+enum QuantizationTrait { FullyQuantizable = 0, NotQuantizable = 1 };
+constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
+                                                  "not_quantizable"};
+
 constexpr double kNearZeroTolerance = 1.0e-6;
 
-enum QuantizationTrait { FullyQuantizable, NotQuantizable };
-
 using QuantParams = quant::QuantizedType;
-using QuantSpec = mlir::TFL::QuantizationSpecs;
+using QuantSpec = mlir::quant::QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
 using AccumulatorScaleFunc =
     std::function<QuantParams(const std::vector<QuantParams>&, bool)>;
+using BiasParamsMap =
+    std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>;
+// UniformQuantizedType GetFixedOutputRange(bool sign, int bit_width)
+using GetFixedOutputRangeFunc = std::function<UniformQuantizedType(bool, int)>;
+// bool RequiredSameOperandsAndResultsScale(bool sign, int $bit_width)
+using RequiredSameOperandsAndResultsScaleFunc = std::function<bool(bool, int)>;
+// bool RequiredSameQuantizedAxes()
+using RequiredSameQuantizedAxesFunc = std::function<bool()>;
+
 using StringSet = absl::flat_hash_set<std::string>;
-using CustomMap = TFL::CustomOpMap;
+using CustomMap = quant::CustomOpMap;
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {
@@ -85,8 +98,7 @@ struct OpQuantSpec {
   // including the non-bias operand indexes and the method retrieving
   // quantization parameters from list of parameters of the non-bias operands.
   // This map is empty if the op doesn't have a bias operand.
-  std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>
-      biases_params;
+  BiasParamsMap biases_params;
 
   // Quantization parameters for value restricted outputs. This is the
   // "hard-coded" parameters and should be used unconditionally for the
@@ -100,6 +112,25 @@ struct OpQuantSpec {
   // from the tensor content and op property. A "-1" value indicates the
   // operand doesn't support per-channel quantization.
   llvm::DenseMap<int, int> coeff_op_quant_dim;
+};
+
+// Quantization scale spec of an op. The information defined in the MLIR
+// interfaces FixedOutputRangeInterface and SameOperandsAndResultsScale should
+// be checked first if present.
+struct OpQuantScaleSpec {
+  // Whether this op has a fixed range requirement (e.g. sigmoid)
+  bool has_fixed_output_range = false;
+  // Whether this op should have same result and operand scales (e.g. concat)
+  bool has_same_scale_requirement = false;
+  // Returns the fixed output range, when has_fixed_output_range is set.
+  GetFixedOutputRangeFunc fixed_output_range_func;
+  // Returns whether same operands and results scales are required.
+  RequiredSameOperandsAndResultsScaleFunc required_same_scale_func =
+      [](bool sign, int bit_width) { return true; };
+  // Returns whether operands and results must have the same quantized axis.
+  RequiredSameQuantizedAxesFunc required_same_quantized_axes_func = []() {
+    return true;
+  };
 };
 
 // Used in TFL Numeric Verify
@@ -130,6 +161,10 @@ struct QuantPassSpec {
 // A function signature for getting the particular OpQuantSpec for the provided
 // op.
 typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
+// A function signature for getting the particular OpQuantScaleSpec for the
+// provided op.
+typedef std::unique_ptr<OpQuantScaleSpec> (*OpQuantScaleSpecGetter)(
+    Operation* op);
 
 // Re-calculates scales again in float instead of simply downcasting existing
 // scales.
@@ -250,6 +285,42 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     }
   }
 };
+
+template <typename VerifierT>
+bool UsedBy(Operation* op) {
+  for (Operation* user : op->getUsers()) {
+    if (llvm::isa_and_nonnull<VerifierT>(user)) return true;
+  }
+  return false;
+}
+
+template <typename VerifierT>
+void CreateVerifier(Operation* quantizing_op, Operation* quantized_op,
+                    PatternRewriter& rewriter, int result_idx,
+                    const QuantPassSpec& quant_params) {
+  rewriter.setInsertionPointAfter(quantized_op);
+  FloatAttr tolerance = rewriter.getF32FloatAttr(
+      quant_params.numeric_verify_spec.error_tolerance);
+  BoolAttr log =
+      rewriter.getBoolAttr(quant_params.numeric_verify_spec.log_if_failed_flag);
+  // Verify the quantized value by sending the result to the verifier.
+  rewriter.create<VerifierT>(
+      quantizing_op->getLoc(), quantized_op->getResult(result_idx).getType(),
+      quantized_op->getResult(result_idx), quantizing_op->getResult(result_idx),
+      tolerance, log);
+}
+
+template <>
+inline bool UsedBy<void>(Operation* op) {
+  return false;
+}
+
+// This specialization is not going to be called, but needed for compilation.
+template <>
+inline void CreateVerifier<void>(Operation* quantizing_op,
+                                 Operation* quantized_op,
+                                 PatternRewriter& rewriter, int result_idx,
+                                 const QuantPassSpec& quant_params) {}
 
 // A base rewrite pattern which matches any N-in-M-out operations with
 // quantization parameters propagated to at least one of its operands. The
@@ -378,7 +449,7 @@ class QuantizationPattern : public RewritePattern {
 
       // An op with float inputs and outputs are expected when it's used by a
       // NumericVerify op. Skip this op.
-      if (enable_verify && usedByVerifier(quantizing_op)) {
+      if (enable_verify && UsedBy<VERIFIER>(quantizing_op)) {
         continue;
       }
 
@@ -405,7 +476,7 @@ class QuantizationPattern : public RewritePattern {
                   custom_map)) {
             // Dynamic range quantization is applied by having Q as an input.
             // Only int8 weight is supported for now.
-            inputs.push_back(dq_op.input());
+            inputs.push_back(dq_op.getOperand());
           } else {
             // Otherwise, it's the case where the operand is activations or the
             // quantizing_op is non-supported/weight-only.
@@ -413,7 +484,7 @@ class QuantizationPattern : public RewritePattern {
           }
         } else {
           if (auto dq_op = dyn_cast_or_null<DQ>(operand.getDefiningOp())) {
-            inputs.push_back(dq_op.input());
+            inputs.push_back(dq_op.getOperand());
           } else if (!ele_type.isF32()) {
             // If the operand is an integer tensor, then it doesn't require the
             // DQ op in the pattern.
@@ -445,7 +516,8 @@ class QuantizationPattern : public RewritePattern {
         // If the user is the Quantize op, it must be the only user.
         if (result.hasOneUse() && llvm::isa<Q>(*result.user_begin())) {
           auto user = llvm::cast<Q>(*result.user_begin());
-          outputs_replaced.insert({user.output(), enumerated_result.index()});
+          outputs_replaced.insert(
+              {user.getResult(), enumerated_result.index()});
           output_types.push_back(user.getType());
         } else if (!result_ele_type.isF32()) {
           // If the result is an integer tensor, then it doesn't require the
@@ -469,7 +541,7 @@ class QuantizationPattern : public RewritePattern {
       for (int i = 0; i < quantizing_op->getNumRegions(); ++i) {
         new_state.addRegion();
       }
-      Operation* quantized_op = rewriter.createOperation(new_state);
+      Operation* quantized_op = rewriter.create(new_state);
       if (quantizing_op->getNumRegions() != 0) {
         for (const auto& indexed_regions :
              llvm::enumerate(quantizing_op->getRegions())) {
@@ -487,14 +559,14 @@ class QuantizationPattern : public RewritePattern {
       // To verify the numericals, the original floating-point ops are
       // preserved in the graph. The result of these floating-point ops are sent
       // to a numeric verifier op as the reference.
-      if (enable_verify) {
+      if (enable_verify && !std::is_same<VERIFIER, void>()) {
         // For constant operands, the floating-point constant is duplicated in
         // case it is quantized.
         for (int i = 0, e = quantized_op->getNumOperands(); i < e; ++i) {
           auto def = quantized_op->getOperand(i).getDefiningOp();
           if (auto q = llvm::dyn_cast_or_null<Q>(def)) {
             DenseFPElementsAttr attr;
-            if (!matchPattern(q.input(), m_Constant(&attr))) {
+            if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
               continue;
             }
             auto cst = rewriter.create<arith::ConstantOp>(
@@ -511,16 +583,8 @@ class QuantizationPattern : public RewritePattern {
                    .isa<FloatType>()) {
             continue;
           }
-          rewriter.setInsertionPointAfter(quantized_op);
-          FloatAttr tolerance = rewriter.getF32FloatAttr(
-              quant_params_.numeric_verify_spec.error_tolerance);
-          BoolAttr log = rewriter.getBoolAttr(
-              quant_params_.numeric_verify_spec.log_if_failed_flag);
-          // Verify the quantized value by sending the result to the verifier.
-          rewriter.create<VERIFIER>(
-              quantizing_op->getLoc(), quantized_op->getResult(i).getType(),
-              quantized_op->getResult(i), quantizing_op->getResult(i),
-              tolerance, log);
+          CreateVerifier<VERIFIER>(quantizing_op, quantized_op, rewriter, i,
+                                   quant_params_);
 
           if (enable_whole_model_verify) {
             RewireFloatModelBackbone(quantized_op, quantizing_op);
@@ -532,13 +596,6 @@ class QuantizationPattern : public RewritePattern {
   }
 
  private:
-  bool usedByVerifier(Operation* op) const {
-    for (Operation* user : op->getUsers()) {
-      if (llvm::isa_and_nonnull<VERIFIER>(user)) return true;
-    }
-    return false;
-  }
-
   // Reconnects float ops in the whole-model verify mode. Works for both
   // Quantizable ops and Unquantizable ops
   void RewireFloatModelBackbone(Operation* quantized_op,
@@ -678,7 +735,7 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
   LogicalResult matchAndRewrite(RQ op,
                                 PatternRewriter& rewriter) const override {
-    Value pre_quantized = op.input();
+    Value pre_quantized = op->getOperand(0);
     auto pre_quantized_type =
         quant::QuantizedType::getQuantizedElementType(pre_quantized.getType());
     if (!pre_quantized_type) return failure();
@@ -700,7 +757,7 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
     llvm::SmallVector<Type, 4> new_output_types;
     for (auto result : def->getResults()) {
       if (result.hasOneUse() && *result.getUsers().begin() == op) {
-        new_output_types.push_back(op.qtype());
+        new_output_types.push_back(op.getResult().getType());
       } else {
         new_output_types.push_back(result.getType());
       }
@@ -714,7 +771,7 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
     OperationState new_state(def->getLoc(), def->getName().getStringRef(),
                              def->getOperands(), new_output_types,
                              def->getAttrs());
-    Operation* new_op = rewriter.createOperation(new_state);
+    Operation* new_op = rewriter.create(new_state);
 
     rewriter.replaceOp(def, new_op->getResults());
     return success();
@@ -806,17 +863,30 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // Setting `infer_tensor_range` to true, to infer quantization parameters from
 // the activation ops and weight constants. This is only used for post-training
 // quantization.
-void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
+void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
                                         bool legacy_float_scale = false);
 
+void ApplyQuantizationParamsPropagation(
+    mlir::func::FuncOp func, bool is_signed, bool disable_per_channel,
+    OpQuantSpecGetter op_quant_spec_getter,
+    OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
+    bool legacy_float_scale = false);
+
+// Gets quantization scale specs (e.g. fixed output range, same result and
+// operand scales) from the default quantization interfaces. The op should
+// outlive returned spec for its interface methods to be properly referenced.
+std::unique_ptr<OpQuantScaleSpec> GetDefaultQuantScaleSpec(Operation* op);
+
 // The function might contain more stats ops than required, and it will
 // introduce requantize if the calibration stats have conflicts. This method
 // tries to remove all the redundant stats ops.
-bool RemoveRedundantStatsOps(mlir::FuncOp func,
-                             OpQuantSpecGetter op_quant_spec_getter);
+bool RemoveRedundantStatsOps(mlir::func::FuncOp func,
+                             OpQuantSpecGetter op_quant_spec_getter,
+                             OpQuantScaleSpecGetter op_quant_scale_spec_getter =
+                                 GetDefaultQuantScaleSpec);
 
 // Given quantization parameters for int8, compute the quantization parameters
 // for uint if it is required, and wrap the result in an UniformQuantizedType.

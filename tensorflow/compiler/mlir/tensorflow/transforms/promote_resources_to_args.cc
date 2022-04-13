@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -125,7 +125,7 @@ mlir::LogicalResult PromoteVarHandlesToArguments(
     FuncOp function, bool add_validation,
     llvm::SmallVectorImpl<std::string>* var_handle_shared_names) {
   Block& block = function.front();
-  auto func_type = function.getType();
+  auto func_type = function.getFunctionType();
 
   auto func_arg_types = llvm::to_vector<4>(func_type.getInputs());
   llvm::SmallDenseMap<llvm::StringRef, int> var_arg_index_by_name;
@@ -171,13 +171,15 @@ LogicalResult PromoteResourcesToArguments(
     FuncOp function, llvm::ArrayRef<std::string> var_handle_shared_names) {
   Block& block = function.front();
 
-  auto return_op = llvm::dyn_cast_or_null<ReturnOp>(block.getTerminator());
+  auto return_op =
+      llvm::dyn_cast_or_null<func::ReturnOp>(block.getTerminator());
   if (!return_op)
     return function.emitError() << "expects function '" << function.getName()
                                 << "' to have a MLIR ReturnOp";
 
   llvm::SmallVector<ResourceInfo, 4> resources(function.getNumArguments());
-  auto argument_types = llvm::to_vector<4>(function.getType().getInputs());
+  auto argument_types =
+      llvm::to_vector<4>(function.getFunctionType().getInputs());
   bool has_resources = false;
   auto add_resource_argument = [&](BlockArgument arg,
                                    TF::ResourceType resource_type) {
@@ -317,7 +319,7 @@ LogicalResult PromoteResourcesToArguments(
   // Rewrite return if there are variable writes.
   const int return_operands_size = return_operands.size();
   if (return_operands_size > num_results_before) {
-    builder.create<ReturnOp>(return_op.getLoc(), return_operands);
+    builder.create<func::ReturnOp>(return_op.getLoc(), return_operands);
     return_op.erase();
   }
 

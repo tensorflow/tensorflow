@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 
 #include "absl/strings/str_split.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -68,13 +68,13 @@ Status MapFunctionSignaturesFromTFSavedModelMLIR(
   // Create bound inputs for each functions.
   mlir::SymbolTable symbol_table(module);
   tensorflow::Status status = tensorflow::Status::OK();
-  module.walk([&symbol_table, map_fn, &status](mlir::FuncOp func) {
+  module.walk([&symbol_table, map_fn, &status](mlir::func::FuncOp func) {
     // Use the exported name as the function name, and skip non-exported
     // functions.
     auto func_names = mlir::tf_saved_model::GetExportedNames(func);
     if (func_names.empty()) return mlir::WalkResult::advance();
 
-    auto func_type = func.getType();
+    auto func_type = func.getFunctionType();
 
     // Here we walk through each arguments and find out the input/output names,
     // and input devices, variables used by this function.

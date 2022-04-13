@@ -48,7 +48,7 @@ using ::tflite::nnapi::NnApiSupportLibrary;
 ValidatorRunner::ValidatorRunner(const std::string& model_path,
                                  const std::string& storage_path,
                                  const std::string& data_directory_path,
-                                 const NnApiSupportLibrary* nnapi_sl,
+                                 const NnApiSLDriverImplFL5* nnapi_sl,
                                  const std::string validation_function_name,
                                  ErrorReporter* error_reporter)
     : model_path_(model_path),
@@ -63,7 +63,7 @@ ValidatorRunner::ValidatorRunner(int model_fd, size_t model_offset,
                                  size_t model_size,
                                  const std::string& storage_path,
                                  const std::string& data_directory_path,
-                                 const NnApiSupportLibrary* nnapi_sl,
+                                 const NnApiSLDriverImplFL5* nnapi_sl,
                                  const std::string validation_function_name,
                                  ErrorReporter* error_reporter)
     :

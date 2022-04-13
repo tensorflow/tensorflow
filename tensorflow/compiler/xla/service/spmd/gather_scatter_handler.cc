@@ -487,6 +487,7 @@ StatusOr<HloInstruction*> ParititonTrivialIndexedOperandDimension(
     VLOG(5) << "[Gather partitioning]: Partitioned as trivial operand "
                "batch_dim slice";
     ar->set_sharding(HloSharding::Replicate());
+    operand.hlo()->set_sharding(original_operand_sharding);
     return PartitionedHlo(ar, output_shape, operand.state())
         .Reshard(output_sharding)
         .hlo();

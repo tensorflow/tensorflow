@@ -395,86 +395,90 @@ void ProcessActiveAllocations(int64_t peak_bytes_profile_step_id,
           << memory_profile->active_allocations_size();
 }
 
-struct Sample {
-  int64_t orig_index;  // original index to the snapshot.
-  MemoryProfileSnapshot* snapshot;
-};
-
-// This function samples max_num_snapshots from snapshots. We first keep the
-// snapshots referenced by active_allocations in the samples. After this, if
-// there is still room for more samples, we pick more from snapshots into the
-// samples. Then, we sort the samples in time (so that they can be correctly
-// displayed on the timeline). Finally, we need to adjust the original indices
-// (to snapshots) in active_allocations to the new indices in the samples.
-void SampleSnapshots(
-    int64_t max_num_snapshots,
+// This function saves the MemoryProfileSnapshots referenced by
+// <active_allocations> max_num_snapshots.
+void SaveActiveAllocationSnapshots(
     protobuf::RepeatedPtrField<MemoryProfileSnapshot>* snapshots,
     protobuf::RepeatedPtrField<ActiveAllocation>* active_allocations) {
-  if (snapshots->size() <= max_num_snapshots) return;
-
-  std::vector<Sample> samples;
-
-  // First, puts the snapshots referenced by active_allocations in samples[].
-  absl::flat_hash_set<int64_t> allocation_snapshot_indices;
+  std::vector<MemoryProfileSnapshot*> samples;
+  // Puts the snapshots referenced by active_allocations in <samples>.
   for (const auto& allocation : *active_allocations) {
     auto orig_index = allocation.snapshot_index();
     if (orig_index < 0) continue;
-    allocation_snapshot_indices.insert(orig_index);
-    samples.push_back({orig_index, &(*snapshots)[orig_index]});
-    if (allocation_snapshot_indices.size() >= max_num_snapshots) break;
+    samples.push_back(&(*snapshots)[orig_index]);
   }
 
-  // Second, extracts remaining samples from snapshots.
-  int64_t num_samples_remained =
-      max_num_snapshots - allocation_snapshot_indices.size();
-  if (num_samples_remained > 0) {
-    std::vector<Sample> remaining;
-    for (int64_t i = 0; i < snapshots->size(); i++) {
-      if (allocation_snapshot_indices.contains(i)) continue;
-      // snapshots[i] is not yet sampled; put it in remaining[] for further
-      // consideration.
-      remaining.push_back({i, &(*snapshots)[i]});
-    }
-    // Moves the num_samples_remained snapshots with least free bytes to the
-    // beginning of remaining[].
-    absl::c_partial_sort(
-        remaining, remaining.begin() + num_samples_remained,
-        [](const Sample& a, const Sample& b) {
-          return a.snapshot->aggregation_stats().free_memory_bytes() <
-                 b.snapshot->aggregation_stats().free_memory_bytes();
-        });
-    // Copies the first num_samples_remained in remaining[] to samples[].
-    for (int64_t i = 0; i < num_samples_remained; i++)
-      samples.push_back(remaining[i]);
-  }
-
-  // Third, sorts samples[] in ascending order of time_offset_ps.
-  absl::c_sort(samples, [](const Sample& a, const Sample& b) {
-    return a.snapshot->time_offset_ps() < b.snapshot->time_offset_ps();
-  });
-
-  // Fourth, constructs a map from the original snapshot index to samples index.
-  absl::flat_hash_map</*original=*/int64_t, /*new=*/int64_t> index_map;
-  for (int64_t i = 0; i < samples.size(); i++) {
-    index_map[samples[i].orig_index] = i;
-  }
-
-  // Fifth, changes the original snapshot indices in active_allocations to the
-  // sample indices.
+  // Change the reference index in <active_allocations>.
+  int new_index = 0;
   for (auto& allocation : *active_allocations) {
-    auto orig_index = allocation.snapshot_index();
-    if (orig_index < 0) continue;
-    auto new_index = gtl::FindWithDefault(index_map, orig_index, -1);
+    int64_t origin_index = allocation.snapshot_index();
+    if (origin_index < 0) continue;
     allocation.set_snapshot_index(new_index);
+    new_index++;
   }
 
-  // Sixth, replaces *snapshot by samples[]
   protobuf::RepeatedPtrField<MemoryProfileSnapshot> new_snapshots;
   new_snapshots.Reserve(samples.size());
   for (const auto& sample : samples) {
-    *new_snapshots.Add() = std::move(*sample.snapshot);
+    *new_snapshots.Add() = std::move(*sample);
   }
   *snapshots = std::move(new_snapshots);
+}
+
+// Sample <max_num_snapshots> memory profile snapshots from the original memory
+// profile data.
+void SampleMemoryProfileTimeline(int64_t max_num_snapshots,
+                                 PerAllocatorMemoryProfile* memory_profile) {
+  const protobuf::RepeatedPtrField<MemoryProfileSnapshot>& original_snapshots =
+      memory_profile->memory_profile_snapshots();
+  protobuf::RepeatedPtrField<MemoryProfileSnapshot>* timeline_snapshots =
+      memory_profile->mutable_sampled_timeline_snapshots();
+  int64_t snapshot_count = original_snapshots.size();
+  if (snapshot_count > max_num_snapshots) {
+    // When there are more memory profile data than <max_num_snapshots>, we
+    // sample the origin data using a max box filter. Filter width is
+    // <filter_width>, collect <count> samples starting from the <start> index
+    // in the original snapshots.
+    auto max_box_filter = [&](int filter_width, int count, int start) {
+      for (int i = 0; i < count; i++) {
+        // Use a max function to get the MemoryProfileSnapshot with the largest
+        // memory usage in the box filter.
+        const MemoryProfileSnapshot* max_snapshot =
+            &original_snapshots[start + filter_width * i];
+        int64_t max_bytes =
+            max_snapshot->aggregation_stats().heap_allocated_bytes() +
+            max_snapshot->aggregation_stats().stack_reserved_bytes();
+        for (int index = start + filter_width * i + 1;
+             index < start + filter_width * (i + 1); index++) {
+          int64_t bytes = original_snapshots[index]
+                              .aggregation_stats()
+                              .heap_allocated_bytes() +
+                          original_snapshots[index]
+                              .aggregation_stats()
+                              .stack_reserved_bytes();
+          if (bytes > max_bytes) {
+            max_snapshot = &original_snapshots[index];
+            max_bytes = bytes;
+          }
+        }
+        *timeline_snapshots->Add() = *max_snapshot;
+      }
+    };
+
+    int width = snapshot_count / max_num_snapshots;
+    int count1 = max_num_snapshots * (width + 1) - snapshot_count;
+    int count2 = max_num_snapshots - count1;
+
+    // Collect <count1> samples with box filter width <width>, then collect
+    // <count2> samples with box filter width <width+1>, the total number of
+    // samples collected will be <max_num_snapshot>.
+    max_box_filter(width, count1, 0);
+    max_box_filter(width + 1, count2, width * count1);
+  } else {
+    // When the number of original snapshots are smaller than
+    // <max_num_snapshots>, just copy all the data points to the timeline.
+    *timeline_snapshots = original_snapshots;
+  }
 }
 
 // Post-process the memory profile to correctly update proto fields, and break
@@ -506,14 +510,18 @@ void ProcessMemoryProfileProto(int64_t max_num_snapshots,
     UpdateStepId(allocator_memory_profile);
     UpdateDeallocation(allocator_memory_profile);
 
+    // Sample a subset of MemoryProfileSnapshots to display in the frontend
+    // memory timeline graph.
+    SampleMemoryProfileTimeline(max_num_snapshots, allocator_memory_profile);
+
     int64_t peak_step_id =
         GetPeakMemoryStep(allocator_memory_profile->profile_summary()
                               .peak_stats()
                               .peak_bytes_in_use(),
                           allocator_memory_profile);
     ProcessActiveAllocations(peak_step_id, allocator_memory_profile);
-    SampleSnapshots(max_num_snapshots, snapshots,
-                    allocator_memory_profile->mutable_active_allocations());
+    SaveActiveAllocationSnapshots(
+        snapshots, allocator_memory_profile->mutable_active_allocations());
   }
 }
 
@@ -540,6 +548,9 @@ MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
                                            int64_t max_num_snapshots) {
   MemoryProfile memory_profile = GenerateMemoryProfile(&host_plane);
   ProcessMemoryProfileProto(max_num_snapshots, &memory_profile);
+  // Default version number is 0, set version number to 1 here due to the new
+  // memory profile sampling algorithm.
+  memory_profile.set_version(1);
   return memory_profile;
 }
 

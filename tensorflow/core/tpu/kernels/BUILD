@@ -19,6 +19,7 @@ package(
     default_visibility = [
         "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
+        "//tensorflow/dtensor:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],
@@ -39,6 +40,7 @@ tf_kernel_library(
         ":tpu_compile_op",
         ":tpu_configuration_ops",
         ":tpu_embedding_configuration_ops",
+        ":tpu_embedding_enqueue_ops",
         ":tpu_embedding_load_retrieve_ops",
         ":tpu_embedding_ops",
         ":tpu_execute_op",
@@ -203,6 +205,24 @@ cc_library(
         "//tensorflow/stream_executor/tpu:status_helper",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_embedding_enqueue_ops",
+    srcs = ["tpu_embedding_enqueue_ops.cc"],
+    hdrs = ["tpu_embedding_enqueue_ops.h"],
+    deps = [
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
+        "//tensorflow/stream_executor/tpu:status_helper",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
@@ -847,6 +867,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/numeric:bits",
     ],
     alwayslink = 1,
 )

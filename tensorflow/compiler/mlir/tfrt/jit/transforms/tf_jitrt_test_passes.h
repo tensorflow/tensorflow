@@ -20,12 +20,15 @@ limitations under the License.
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 
 namespace tensorflow {
 
 // See `tf_jitrt_test_passes.td` for the passes documentation.
-std::unique_ptr<mlir::FunctionPass> CreateTestTfJitRtClusteringPass();
-std::unique_ptr<mlir::FunctionPass> CreateTestTfJitRtClusteringPolicyPass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTestTfJitRtClusteringPass();
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateTestTfJitRtClusteringPolicyPass();
 
 }  // namespace tensorflow
 

@@ -1280,7 +1280,7 @@ class Lower_UnaryOpsComposition
       // result type.
       OperationState state(op.getLoc(), full_name, /*operands=*/{result},
                            /*types=*/{op.getType()}, /*attributes=*/{});
-      Operation *op = rewriter.createOperation(state);
+      Operation *op = rewriter.create(state);
       result = op->getResult(0);
     }
     rewriter.replaceOp(op, {result});
@@ -1692,7 +1692,7 @@ class LowerSoftmaxOp : public OpRewritePattern<OpTy> {
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       LowerAddNOp,
       LowerExp1mOp,
       ConvertFakeQuantWithMinMaxVarsOp,
@@ -1714,7 +1714,7 @@ void PopulateLoweringTFPatterns(MLIRContext *context,
 void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
                                          RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       ConvertFakeQuantWithMinMaxVarsOp,
       LowerAddNOp,
       LowerBatchToSpaceND,
@@ -1733,7 +1733,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
 
   // Populate the relevant generated patterns.
   // clang-format off
-  patterns->insert<
+  patterns->add<
       LowerAddOp,
       LowerBiasAddGradOp,
       LowerDivNoNanOp,
@@ -1771,7 +1771,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
 void PopulateLoweringQuantizedPatterns(MLIRContext *context,
                                        RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       LowerDequantizeOp>(context);
   // clang-format on
 }

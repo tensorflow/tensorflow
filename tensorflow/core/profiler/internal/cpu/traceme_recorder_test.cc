@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
@@ -42,7 +43,7 @@ MATCHER_P(Named, name, "") { return arg.name == name; }
 
 TEST(RecorderTest, SingleThreaded) {
   int64_t start_time = GetCurrentTimeNanos();
-  int64_t end_time = start_time + SecondsToNanos(1);
+  int64_t end_time = start_time + UniToNano(1);
 
   TraceMeRecorder::Record({"before", start_time, end_time});
   TraceMeRecorder::Start(/*level=*/1);
@@ -82,7 +83,7 @@ TEST(RecorderTest, Multithreaded) {
       bool was_active = false;
       auto record_event = [&j]() {
         int64_t start_time = GetCurrentTimeNanos();
-        int64_t end_time = start_time + SecondsToNanos(1);
+        int64_t end_time = start_time + UniToNano(1);
         TraceMeRecorder::Record(
             {/*name=*/absl::StrCat(j++), start_time, end_time});
       };

@@ -18,6 +18,10 @@ set(LLVM_TARGET_DEFINITIONS passes.td)
 mlir_tablegen(passes.h.inc -gen-pass-decls -name GmlSt)
 add_public_tablegen_target(MLIRGmlStPassIncGen)
 
+set(LLVM_TARGET_DEFINITIONS test_passes.td)
+mlir_tablegen(test_passes.h.inc -gen-pass-decls -name GmlStTest)
+add_public_tablegen_target(MLIRGmlStTestPassIncGen)
+
 set(LLVM_TARGET_DEFINITIONS tiling_interface.td)
 mlir_tablegen(tiling_interface.h.inc -gen-op-interface-decls)
 mlir_tablegen(tiling_interface.cc.inc -gen-op-interface-defs)

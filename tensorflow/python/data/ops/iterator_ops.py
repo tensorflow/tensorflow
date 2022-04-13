@@ -34,7 +34,6 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -647,29 +646,6 @@ class IteratorBase(collections_abc.Iterator, trackable.Trackable,
     raise NotImplementedError("Iterator.get_next_as_optional()")
 
 
-# TODO(b/202447704): Merge into IteratorSpec.
-class IteratorType(trace.TraceType):
-  """Represents Iterators (and specs) for function tracing purposes."""
-
-  def __init__(self, spec, local_id):
-    self._components = (spec, local_id)
-
-  def is_subtype_of(self, other):
-    # TODO(b/202429845): Implement for subtyping.
-    return self == other
-
-  def most_specific_common_supertype(self, others):
-    # TODO(b/202430155) Implement for shape relaxation.
-    return None
-
-  def __hash__(self) -> int:
-    return hash(self._components)
-
-  def __eq__(self, other) -> bool:
-    return isinstance(
-        other, IteratorType) and self._components == other._components
-
-
 class OwnedIterator(IteratorBase):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
@@ -870,10 +846,9 @@ class OwnedIterator(IteratorBase):
 
     return {"ITERATOR": _saveable_factory}
 
-  def __tf_tracing_type__(self, tracing_context):
-    return IteratorType(
-        self._type_spec,
-        tracing_context.get_local_id(self._iterator_resource._id))  # pylint:disable=protected-access
+  def __tf_tracing_type__(self, signature_context):
+    return signature_context.make_reference_type(self._type_spec,
+                                                 self._iterator_resource._id)  # pylint:disable=protected-access
 
 
 @tf_export("data.IteratorSpec", v1=[])
@@ -927,10 +902,10 @@ class IteratorSpec(type_spec.TypeSpec):
   def from_value(value):
     return IteratorSpec(value.element_spec)  # pylint: disable=protected-access
 
-  def __tf_tracing_type__(self, tracing_context):
+  def __tf_tracing_type__(self, signature_context):
     # TODO(b/202772221): Validate and enforce this assumption of uniqueness per
     # spec instance.
-    return IteratorType(self, tracing_context.get_local_id(id(self)))
+    return signature_context.make_reference_type(self, id(self))
 
 
 # TODO(b/71645805): Expose trackable stateful objects from dataset.

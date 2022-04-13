@@ -148,7 +148,7 @@ class AttrSlice {
   AttrSlice();  // Empty
   explicit AttrSlice(const AttrValueMap* a);
 
-  int size() const { return attrs_->size(); }
+  int size() const { return attrs()->size(); }
 
   // Returns the attr with attr_name if found.  Otherwise, returns
   // nullptr.
@@ -183,12 +183,16 @@ class AttrSlice {
   std::string SummarizeNode() const;
 
   // Iteration over all attrs
-  AttrValueMap::const_iterator begin() const { return attrs_->begin(); }
-  AttrValueMap::const_iterator end() const { return attrs_->end(); }
+  AttrValueMap::const_iterator begin() const { return attrs()->begin(); }
+  AttrValueMap::const_iterator end() const { return attrs()->end(); }
 
   std::string DebugString() const;
 
  private:
+  const AttrValueMap* attrs() const {
+    return ndef_ != nullptr ? &ndef_->attr() : attrs_;
+  }
+
   const NodeDef* ndef_;
   const AttrValueMap* attrs_;
 };

@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
@@ -36,7 +37,7 @@ class FuncOpConverter : public OpConversionPattern<FuncOp> {
       FuncOp func, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
     // Convert function arguments using the provided TypeConverter.
-    auto func_type = func.getType();
+    auto func_type = func.getFunctionType();
     TypeConverter::SignatureConversion conversion(func_type.getNumInputs());
 
     conversion.addInputs(OpKernelContextType::get(rewriter.getContext()));
@@ -122,12 +123,12 @@ struct DeallocOpConverter : public OpConversionPattern<memref::DeallocOp> {
 
 // Converts std.assert to tf_framework.assert with using OpKernelContextType
 // arg of the parent function.
-struct AssertOpConverter : public OpConversionPattern<AssertOp> {
+struct AssertOpConverter : public OpConversionPattern<cf::AssertOp> {
  public:
-  using OpConversionPattern<AssertOp>::OpConversionPattern;
+  using OpConversionPattern<cf::AssertOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      AssertOp op, OpAdaptor adaptor,
+      cf::AssertOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     llvm::Optional<Value> ctx = FindOpKernelContext(op);
     if (!ctx) return failure();
@@ -173,12 +174,12 @@ struct JITCompileFromStrOpConverter
 }  // namespace
 
 void PopulateEmbedTFFrameworkAssertPattern(RewritePatternSet *patterns) {
-  patterns->insert<AssertOpConverter>(patterns->getContext());
+  patterns->add<AssertOpConverter>(patterns->getContext());
 }
 
 void PopulateEmbedTFFrameworkPatterns(RewritePatternSet *patterns) {
   // clang-format off
-  patterns->insert<
+  patterns->add<
       AllocOpConverter,
       AssertOpConverter,
       DeallocOpConverter,

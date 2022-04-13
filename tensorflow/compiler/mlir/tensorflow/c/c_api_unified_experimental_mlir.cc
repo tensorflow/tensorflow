@@ -20,7 +20,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -218,7 +218,7 @@ class MlirAbstractOp : public TracingOperation {
 class MlirFunction : public AbstractFunction {
  public:
   explicit MlirFunction(std::unique_ptr<MLIRContext> context,
-                        OwningModuleRef module, FuncOp func)
+                        OwningOpRef<mlir::ModuleOp> module, FuncOp func)
       : AbstractFunction(kMlir),
         context_(std::move(context)),
         module_(std::move(module)),
@@ -233,7 +233,7 @@ class MlirFunction : public AbstractFunction {
 
  private:
   std::unique_ptr<MLIRContext> context_;
-  OwningModuleRef module_;
+  OwningOpRef<mlir::ModuleOp> module_;
   FuncOp func_;
   std::unique_ptr<tensorflow::FunctionDef> fdef_;
 };
@@ -280,7 +280,7 @@ class MlirFunctionContext : public TracingContext {
   std::unique_ptr<MLIRContext> context_;
   OpBuilder builder_;
   FuncOp func_;
-  OwningModuleRef module_;
+  OwningOpRef<mlir::ModuleOp> module_;
 };
 
 Status MlirAbstractOp::Reset(const char* op, const char* device_name) {
@@ -554,7 +554,7 @@ Status MlirAbstractOp::Execute(absl::Span<AbstractTensorHandle*> retvals,
 
 Operation* MlirFunctionContext::CreateOperationFromState(
     const OperationState& state) {
-  return builder_.createOperation(state);
+  return builder_.create(state);
 }
 
 Status MlirFunctionContext::AddParameter(
@@ -667,7 +667,7 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
           "Capturing tensors from other context is not supported.");
     ret_operands.push_back(operand->getValue());
   }
-  builder_.create<ReturnOp>(func_.getLoc(), ret_operands);
+  builder_.create<func::ReturnOp>(func_.getLoc(), ret_operands);
 
   auto arg_types = body.getArgumentTypes();
   auto result_types = body.getTerminator()->getOperandTypes();

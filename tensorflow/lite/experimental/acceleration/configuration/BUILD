@@ -321,6 +321,20 @@ cc_library(
     alwayslink = 1,  # For registration to always run.
 )
 
+cc_test(
+    name = "xnnpack_plugin_test",
+    srcs = ["xnnpack_plugin_test.cc"],
+    deps = [
+        ":configuration_fbs",
+        ":delegate_registry",
+        ":xnnpack_plugin",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+        "@pthreadpool",
+    ],
+)
+
 cc_library(
     name = "coreml_plugin",
     srcs = ["coreml_plugin.cc"],

@@ -192,11 +192,11 @@ void IrFunction::Initialize(const std::string& function_name,
 llvm::Value* IrFunction::GetDynamicLoopBound(const int64_t offset) {
   CHECK_GT(num_dynamic_loop_bounds_, 0);
   CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
-  llvm::Type* type =
-      dynamic_loop_bounds_arg_->getType()->getPointerElementType();
-  auto gep = b_->CreateGEP(type, CHECK_NOTNULL(dynamic_loop_bounds_arg_),
+  llvm::Type* int64_ty = b_->getInt64Ty();
+  auto gep = b_->CreateGEP(int64_ty, CHECK_NOTNULL(dynamic_loop_bounds_arg_),
                            b_->getInt64(offset));
-  return b_->CreateLoad(type, gep, "dynamic_loop_bound_" + llvm::Twine(offset));
+  return b_->CreateLoad(int64_ty, gep,
+                        "dynamic_loop_bound_" + llvm::Twine(offset));
 }
 
 llvm::Value* EncodeArrayFunctionArguments(

@@ -131,18 +131,13 @@ class DelegatingTrackableMixin(object):
   def _gather_saveables_for_checkpoint(self, *args, **kwargs):
     return self._trackable._gather_saveables_for_checkpoint(*args, **kwargs)
 
-  def _list_extra_dependencies_for_serialization(self, *args, **kwargs):
-    return self._trackable._list_extra_dependencies_for_serialization(
-        *args, **kwargs)
-
-  def _list_functions_for_serialization(self, *args, **kwargs):
-    return self._trackable._list_functions_for_serialization(*args, **kwargs)
-
   def _trackable_children(self, *args, **kwargs):
     return self._trackable._trackable_children(*args, **kwargs)
 
   def _deserialization_dependencies(self, *args, **kwargs):
     return self._trackable._deserialization_dependencies(*args, **kwargs)
 
+  def _export_to_saved_model_graph(self, *args, **kwargs):
+    return self._trackable._export_to_saved_model_graph(*args, **kwargs)
   # pylint: enable=protected-access
 

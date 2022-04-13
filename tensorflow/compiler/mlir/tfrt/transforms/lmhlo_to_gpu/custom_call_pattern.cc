@@ -34,9 +34,9 @@ namespace tensorflow {
 namespace {
 
 struct CustomCallRewritePattern
-    : tfrt::gpu::GpuAsyncOpConversionPattern<lmhlo::CustomCallOp> {
-  using tfrt::gpu::GpuAsyncOpConversionPattern<
-      lmhlo::CustomCallOp>::GpuAsyncOpConversionPattern;
+    : tfrt::gpu::StreamifyOpConversionPattern<lmhlo::CustomCallOp> {
+  using tfrt::gpu::StreamifyOpConversionPattern<
+      lmhlo::CustomCallOp>::StreamifyOpConversionPattern;
   FailureOr<Value> matchAndRewriteOp(
       lmhlo::CustomCallOp op, OpAdaptor adaptor, Value chain, Value stream,
       ConversionPatternRewriter& rewriter) const override {

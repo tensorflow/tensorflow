@@ -22,6 +22,12 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_compiler {
 
+inline llvm::StringRef GetDefaultCpuDeviceName() {
+  static constexpr char kCpuDeviceName[] =
+      "/job:localhost/replica:0/task:0/device:CPU:0";
+  return kCpuDeviceName;
+}
+
 class FallbackConverter : public mlir::TypeConverter {
  public:
   explicit FallbackConverter(mlir::MLIRContext *context);

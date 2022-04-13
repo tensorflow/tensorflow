@@ -338,14 +338,16 @@ Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
   }
 }
 
+// Similar to std::upper_bound, this returns the index of the first element in
+// [first, first + count) that is greater than `val`, or `count` if no such
+// element is found. Assumes [first, first + count) is sorted.
 namespace gpu_helper {
-template <typename T, typename OutType = int32>
-__device__ OutType upper_bound(const T* first, OutType count, T val) {
-  const T* orig = first;
-  const T* it = nullptr;
+template <typename T, typename OutType = int32, typename Iterator = const T*>
+__device__ OutType upper_bound(Iterator first, OutType count, T val) {
+  Iterator orig = first;
   OutType step = 0;
   while (count > 0) {
-    it = first;
+    Iterator it = first;
     step = count / 2;
     it += step;
     if (!(val < *it)) {
@@ -359,13 +361,15 @@ __device__ OutType upper_bound(const T* first, OutType count, T val) {
   return first - orig;
 }
 
-template <typename T, typename OutType = int32>
-__device__ OutType lower_bound(const T* first, OutType count, T val) {
-  const T* orig = first;
-  const T* it = nullptr;
+// Similar to std::lower_bound, this returns the index of the first element in
+// [first, first + count) that is not less than `val`, or `count` if no such
+// element is found. Assumes [first, first + count) is sorted.
+template <typename T, typename OutType = int32, typename Iterator = const T*>
+__device__ OutType lower_bound(Iterator first, OutType count, T val) {
+  Iterator orig = first;
   OutType step = 0;
   while (count > 0) {
-    it = first;
+    Iterator it = first;
     step = count / 2;
     it += step;
     if (*it < val) {

@@ -57,8 +57,8 @@ class MlirGpuTestBase : public HloTestBase {
       mlir::ModuleOp module, se::Stream* stream,
       absl::Span<const se::DeviceMemoryBase> arguments);
 
-  StatusOr<mlir::OwningModuleRef> ParseMlirModule(absl::string_view module_text,
-                                                  mlir::MLIRContext& context);
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModule(
+      absl::string_view module_text, mlir::MLIRContext& context);
 
   std::unique_ptr<xla::Backend> backend_;
 };

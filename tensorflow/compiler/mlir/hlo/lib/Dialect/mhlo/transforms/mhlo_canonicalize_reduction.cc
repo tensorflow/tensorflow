@@ -164,7 +164,7 @@ struct HloCanonicalizeReductionPass
           Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), v);
           nelems = b.create<arith::MulIOp>(
               loc, nelems,
-              b.create<arith::IndexCastOp>(loc, dim_index, shape_scalar_type));
+              b.create<arith::IndexCastOp>(loc, shape_scalar_type, dim_index));
         }
         return nelems;
       };
@@ -230,7 +230,7 @@ struct HloCanonicalizeReductionPass
         for (int64_t i : dims_to_keep) {
           Value dim_index = b.create<tensor::DimOp>(loc, op.getOperand(0), i);
           result_dims.push_back(
-              b.create<arith::IndexCastOp>(loc, dim_index, shape_scalar_type));
+              b.create<arith::IndexCastOp>(loc, shape_scalar_type, dim_index));
         }
         Value result_shape = b.create<tensor::FromElementsOp>(loc, result_dims);
         for (auto&& e : llvm::zip(op.getResults(), new_op.getResults())) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -30,8 +31,10 @@ namespace {
 // TPUCompileSucceededAssertOp.
 class FuseTpuCompileAndExecutePass
     : public mlir::PassWrapper<FuseTpuCompileAndExecutePass,
-                               mlir::FunctionPass> {
+                               mlir::OperationPass<mlir::func::FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(FuseTpuCompileAndExecutePass)
+
   llvm::StringRef getArgument() const final {
     return "tfrt-fuse-tpu-compile-and-execute-ops";
   }
@@ -39,8 +42,8 @@ class FuseTpuCompileAndExecutePass
     return "Fuse TPU Ops according to TFRT's requirements.";
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
 
     // remove TPUCompileSucceededAssertOp
     func.walk([&](mlir::Operation *op) {
@@ -73,7 +76,7 @@ class FuseTpuCompileAndExecutePass
       }
     });
 
-    mlir::OpBuilder builder(&func.body());
+    mlir::OpBuilder builder(&func.getBody());
 
     for (auto exec_op : tpu_execute_ops) {
       auto compile_cache_entry = exec_op.key();
@@ -114,12 +117,16 @@ class FuseTpuCompileAndExecutePass
         }
       }
 
+      auto producer_name =
+          exec_op->getAttrOfType<mlir::StringAttr>("_producer_name");
+      if (!producer_name)
+        producer_name = mlir::StringAttr::get(&getContext(), "default");
       auto compile_and_execute_op =
           builder.create<mlir::TF::TPUCompileMlirAndExecuteOp>(
               exec_op.getLoc(), output_types, exec_op_args,
               static_shape_tensors,
               builder.getI32ArrayAttr(static_shaped_operand_indices_attr),
-              compile_op.mlir_module(), compile_op.metadata());
+              compile_op.mlir_module(), compile_op.metadata(), producer_name);
 
       exec_op.replaceAllUsesWith(compile_and_execute_op.results());
       for (auto program_result : compile_op.program()) {
@@ -139,7 +146,7 @@ class FuseTpuCompileAndExecutePass
 
 namespace tfrt_compiler {
 
-std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateFuseTpuCompileAndExecutePass() {
   return std::make_unique<FuseTpuCompileAndExecutePass>();
 }

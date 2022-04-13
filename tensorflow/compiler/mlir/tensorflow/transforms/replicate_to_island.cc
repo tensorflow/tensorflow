@@ -53,7 +53,7 @@ constexpr char kTPUCore0[] = "TPU_REPLICATED_CORE_0";
 
 struct ReplicateToIslandPass
     : public TF::ReplicateToIslandPassBase<ReplicateToIslandPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Returns whether op requires `_xla_replica_id` attribute.
@@ -298,7 +298,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
   return success();
 }
 
-void ReplicateToIslandPass::runOnFunction() {
+void ReplicateToIslandPass::runOnOperation() {
   const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     getOperation().emitError() << "'tf' dialect is not registered";

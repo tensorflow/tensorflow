@@ -827,6 +827,10 @@ mlir::LogicalResult VerifyCluster(const Cluster& cluster) {
     (void)inserted;
   }
 
+  // TODO(ezhulenev): Too large clusters with dynamic shapes can take a very
+  // long time to compile. Skip them for now.
+  if (ops.size() > 20) return failure();
+
   // TODO(ezhulenev): This is a temporary workaround to disable forming clusters
   // with known compilation problems.
   for (Operation* op : ops) {

@@ -154,7 +154,8 @@ message NNAPISettings {
   // instance is to be used for multiple inferences.
   optional bool use_burst_computation = 11;
 
-  // Optional handle to NNAPI Support Library which can be used to construct the
+  // Optional pointer to NNAPI Support Library provided pointer to
+  // NnApiSLDriverImplFL5 which can be used to construct the
   // NNAPI delegate.
   optional int64 support_library_handle = 12;
 }

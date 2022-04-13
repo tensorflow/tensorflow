@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/full_type_util.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -67,7 +68,7 @@ Status ForwardTypeInferencePass::Run(
 
   static FullTypeDef* no_type = new FullTypeDef();
 
-  auto process_node = [&flib_def](Node* n, bool& updated) {
+  auto process_node = [&flib_def](Node* n, bool& updated, bool& no_type_info) {
     VLOG(3) << "  processing " << n->name();
     VLOG(4) << "\n  node: " << n->def().DebugString()
             << "\n  op def: " << n->op_def().DebugString();
@@ -76,6 +77,7 @@ Status ForwardTypeInferencePass::Run(
 
     if (reg->fwd_type_fn == nullptr) {
       VLOG(4) << "  " << n->name() << " no type inference function";
+      no_type_info = true;
       return Status::OK();
     }
 
@@ -102,7 +104,10 @@ Status ForwardTypeInferencePass::Run(
       }
     }
 
-    const auto& infer_ret = reg->fwd_type_fn(input_types);
+    // TODO(b/224775462): Populate with types from function references.
+    TypeRefMap type_vars;
+
+    const auto& infer_ret = reg->fwd_type_fn(input_types, type_vars);
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         infer_ret.status(), "while inferring type of node '", n->name(), "'");
     const auto& infer_type = *infer_ret;
@@ -164,18 +169,19 @@ Status ForwardTypeInferencePass::Run(
       int nid = queue.front();
       Node* n = g->FindNodeId(nid);
       bool updated = false;
+      bool no_type_info = false;
       VLOG(3) << "  visiting " << n->name();
       visits++;
       visit_count[nid]++;
 
-      TF_RETURN_IF_ERROR(process_node(n, updated));
+      TF_RETURN_IF_ERROR(process_node(n, updated, no_type_info));
       VLOG(4) << "  done " << n->def().DebugString();
 
       queue.pop_front();
       in_queue.erase(nid);
       open.erase(nid);
 
-      if (all_inputs_closed(*n, closed)) {
+      if (all_inputs_closed(*n, closed) || no_type_info) {
         VLOG(3) << "  closing " << n->name();
         closed.emplace(nid);
       }

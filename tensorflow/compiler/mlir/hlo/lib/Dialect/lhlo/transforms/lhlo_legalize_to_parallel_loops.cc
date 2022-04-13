@@ -19,10 +19,10 @@ limitations under the License.
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -512,13 +512,13 @@ class SelectAndScatterOpConverter
         loc, s_and_s_op.source(), loop_over_src.getInductionVars());
 
     // Compute `out[selected_ivs]` = scatter(out[selected_ivs], src_element)`.
-    auto rmw = rewriter.create<GenericAtomicRMWOp>(loc, s_and_s_op.out(),
-                                                   selected_ivs);
+    auto rmw = rewriter.create<memref::GenericAtomicRMWOp>(
+        loc, s_and_s_op.out(), selected_ivs);
     OpBuilder rmw_builder = OpBuilder::atBlockEnd(rmw.getBody());
     auto acc_result =
         ApplySingleResultLhloCode(loc, {src_elem, rmw.getCurrentValue()},
                                   &s_and_s_op.scatter().front(), &rmw_builder);
-    rmw_builder.create<AtomicYieldOp>(loc, acc_result);
+    rmw_builder.create<memref::AtomicYieldOp>(loc, acc_result);
 
     rewriter.replaceOp(s_and_s_op, llvm::None);
     return success();
@@ -709,7 +709,7 @@ struct LhloLegalizeToParallelLoopsPass
     : public LhloLegalizeToParallelLoopsPassBase<
           LhloLegalizeToParallelLoopsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<arith::ArithmeticDialect, StandardOpsDialect,
+    registry.insert<arith::ArithmeticDialect, func::FuncDialect,
                     memref::MemRefDialect, scf::SCFDialect>();
   }
 
@@ -718,7 +718,7 @@ struct LhloLegalizeToParallelLoopsPass
 
     RewritePatternSet patterns(&getContext());
     // clang-format off
-    patterns.insert<
+    patterns.add<
         ReduceOpConverter,
         ReduceWindowOpConverter,
         SelectAndScatterOpConverter
@@ -727,7 +727,7 @@ struct LhloLegalizeToParallelLoopsPass
 
     ConversionTarget target(getContext());
     target.addLegalDialect<arith::ArithmeticDialect, linalg::LinalgDialect,
-                           memref::MemRefDialect, StandardOpsDialect,
+                           memref::MemRefDialect, func::FuncDialect,
                            scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<lmhlo::ReduceOp, lmhlo::ReduceWindowOp,
                         lmhlo::SelectAndScatterOp>();

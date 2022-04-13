@@ -23,11 +23,11 @@ namespace tensorflow {
 namespace {
 
 const char* kSoftmaxIR = R"(
-  func @main(%input: {0}) -> {0} {
+  func.func @main(%input: {0}) -> {0} {
     %result = "tf.Softmax"(%input)
       {{device = "/job:localhost/replica:0/task:0/device:CPU:0"}
       : ({0}) -> {0}
-    return %result : {0}
+    func.return %result : {0}
   }
 )";
 

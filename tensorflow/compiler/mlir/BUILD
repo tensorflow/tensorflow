@@ -19,7 +19,7 @@ package_group(
     packages = ["//tensorflow/compiler/mlir/..."],
 )
 
-exports_files(glob(["g3doc/*.md"]))
+exports_files(glob(["g3doc/*.md"] + ["g3doc/_includes/tf_passes.md"]))
 
 # To reference all tablegen files here when checking for updates to them.
 filegroup(
@@ -156,9 +156,9 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:StandardOps",
     ],
     alwayslink = 1,
 )
@@ -265,6 +265,7 @@ tf_cc_test(
     srcs = ["mlir_graph_optimization_pass_test.cc"],
     deps = [
         ":mlir_graph_optimization_pass",
+        "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@llvm-project//mlir:IR",

@@ -227,6 +227,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     options = options_lib.Options()
     options.autotune.enabled = autotune
+    options.experimental_optimization.map_and_batch_fusion = False
     dataset = dataset.with_options(options)
 
     self.assertDatasetProduces(dataset, expected_output=[np.array([x]) for x in

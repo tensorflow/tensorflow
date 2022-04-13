@@ -159,7 +159,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "sparse_split_op_test",
     size = "small",
     srcs = ["sparse_split_op_test.py"],

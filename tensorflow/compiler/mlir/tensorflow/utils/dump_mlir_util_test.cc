@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -28,7 +29,7 @@ namespace {
 
 TEST(DumpMlirModuleTest, NoEnvPrefix) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   unsetenv("TF_DUMP_GRAPH_PREFIX");
 
@@ -38,7 +39,7 @@ TEST(DumpMlirModuleTest, NoEnvPrefix) {
 
 TEST(DumpMlirModuleTest, LogInfo) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   setenv("TF_DUMP_GRAPH_PREFIX", "-", 1);
 
@@ -48,7 +49,7 @@ TEST(DumpMlirModuleTest, LogInfo) {
 
 TEST(DumpMlirModuleTest, Valid) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);
   std::string expected_txt_module;
@@ -72,7 +73,7 @@ TEST(DumpMlirModuleTest, Valid) {
 
 TEST(DumpCrashReproducerTest, NoEnvPrefix) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::PassManager pm(&context);
   unsetenv("TF_DUMP_GRAPH_PREFIX");
@@ -84,7 +85,7 @@ TEST(DumpCrashReproducerTest, NoEnvPrefix) {
 
 TEST(DumpCrashReproducerTest, LogInfo) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::PassManager pm(&context);
   setenv("TF_DUMP_GRAPH_PREFIX", "-", 1);
@@ -96,7 +97,7 @@ TEST(DumpCrashReproducerTest, LogInfo) {
 
 TEST(DumpCrashReproducerTest, Valid) {
   mlir::MLIRContext context;
-  mlir::OwningModuleRef module_ref =
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::PassManager pm(&context);
   setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);

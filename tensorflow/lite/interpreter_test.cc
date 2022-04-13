@@ -191,9 +191,13 @@ TEST(BasicInterpreter, CheckAllocate) {
     TfLiteType type;
     size_t size;
   } cases[] = {
-      {kTfLiteFloat32, sizeof(float)},         {kTfLiteInt32, sizeof(int32_t)},
-      {kTfLiteUInt32, sizeof(uint32_t)},       {kTfLiteUInt8, sizeof(uint8_t)},
-      {kTfLiteInt64, sizeof(int64_t)},         {kTfLiteInt16, sizeof(int16_t)},
+      {kTfLiteFloat32, sizeof(float)},
+      {kTfLiteInt32, sizeof(int32_t)},
+      {kTfLiteUInt32, sizeof(uint32_t)},
+      {kTfLiteUInt8, sizeof(uint8_t)},
+      {kTfLiteInt64, sizeof(int64_t)},
+      {kTfLiteInt16, sizeof(int16_t)},
+      {kTfLiteUInt16, sizeof(uint16_t)},
       {kTfLiteFloat16, sizeof(TfLiteFloat16)},
   };
 
@@ -1099,7 +1103,9 @@ TEST(BasicInterpreter, ReleaseDynamicTensors) {
   ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
   ASSERT_NE(interpreter.tensor(2)->data.raw, nullptr);
 
-  interpreter.EnsureDynamicTensorsAreReleased();
+  InterpreterOptions options;
+  options.SetEnsureDynamicTensorsAreReleased();
+  interpreter.ApplyOptions(&options);
   ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
 
   // Check that the intermediate dynamic tensor's memory is released.

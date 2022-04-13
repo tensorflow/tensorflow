@@ -605,11 +605,11 @@ kernel void ComputeFunction(
 
 std::vector<uint8_t> ReorderWeightsForConv(
     const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
-    const WeightsDescription& weights_desc, const DataType& weights_type) {
+    const WeightsDescription& weights_desc) {
   const int flt_count =
       GetTotalElementsCountForLayout(weights_desc, weights.shape);
-  std::vector<uint8_t> result(flt_count * SizeOf(weights_type));
-  RearrangeWeights(weights, weights_desc, weights_type, absl::MakeSpan(result));
+  std::vector<uint8_t> result(flt_count * SizeOf(weights_desc.type));
+  RearrangeWeights(weights, weights_desc, absl::MakeSpan(result));
   return result;
 }
 
@@ -1130,14 +1130,13 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
   desc.padding_ = int2(-attr.padding.prepended.w, -attr.padding.prepended.h);
   desc.dilation_ = int2(attr.dilations.w, attr.dilations.h);
 
-  auto weights_type = DeduceDataTypeFromPrecision(definition.precision);
-
   MemoryType mem_type =
       params.weights_upload_type ==
               ConvolutionMetal::WeightsUploadType::CONSTANT_MEM
           ? MemoryType::CONSTANT
           : MemoryType::GLOBAL;
 
+  const auto weights_layout_desc = desc.GetWeightsDescription();
   if (definition.src_tensors.size() == 2) {
     // dynamic weights
     BufferDescriptor weights_desc;
@@ -1147,22 +1146,22 @@ ConvolutionMetal CreateConvolutionMetal(const OperationDef& definition,
     desc.AddSrcBuffer("weights", weights_desc);
   } else {
     BufferDescriptor weights_desc;
-    weights_desc.element_type = weights_type;
+    weights_desc.element_type = weights_layout_desc.type;
     weights_desc.element_size = 4;
     weights_desc.memory_type = mem_type;
-    weights_desc.data = ReorderWeightsForConv(
-        attr.weights, desc.GetWeightsDescription(), weights_type);
+    weights_desc.data =
+        ReorderWeightsForConv(attr.weights, weights_layout_desc);
     weights_desc.size = weights_desc.data.size();
     desc.args_.AddObject("weights", absl::make_unique<BufferDescriptor>(
                                         std::move(weights_desc)));
   }
 
   BufferDescriptor bias_desc;
-  bias_desc.element_type = weights_type;
+  bias_desc.element_type = weights_layout_desc.type;
   bias_desc.element_size = 4;
   bias_desc.memory_type = mem_type;
   bias_desc.data = ReorderBiasesForConv(
-      attr.bias, weights_type,
+      attr.bias, weights_layout_desc.type,
       AlignByN(attr.weights.shape.o, params.block_size.z * 4));
   bias_desc.size = bias_desc.data.size();
   desc.args_.AddObject(
@@ -1255,28 +1254,26 @@ ConvolutionMetal CreateConvolutionMetalWino4x4To6x6(
   desc.padding_ = int2(0, 0);
   desc.dilation_ = int2(1, 1);
 
-  auto weights_type = DeduceDataTypeFromPrecision(definition.precision);
-
   tflite::gpu::Tensor<OHWI, DataType::FLOAT32> wino_weights;
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> wino_biases;
   RearrangeWeightsToWinograd4x4To6x6Weights(attr.weights, &wino_weights);
   wino_biases.shape = Linear(attr.weights.shape.o);
   wino_biases.data.resize(attr.weights.shape.o, 0.0f);
 
+  const auto weights_layout_desc = desc.GetWeightsDescription();
   BufferDescriptor weights_desc;
-  weights_desc.element_type = weights_type;
+  weights_desc.element_type = weights_layout_desc.type;
   weights_desc.element_size = 4;
-  weights_desc.data = ReorderWeightsForConv(
-      wino_weights, desc.GetWeightsDescription(), weights_type);
+  weights_desc.data = ReorderWeightsForConv(wino_weights, weights_layout_desc);
   weights_desc.size = weights_desc.data.size();
   desc.args_.AddObject(
       "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
   BufferDescriptor bias_desc;
-  bias_desc.element_type = weights_type;
+  bias_desc.element_type = weights_layout_desc.type;
   bias_desc.element_size = 4;
   bias_desc.data = ReorderBiasesForConv(
-      wino_biases, weights_type,
+      wino_biases, weights_layout_desc.type,
       AlignByN(attr.weights.shape.o, params.block_size.z * 4));
   bias_desc.size = bias_desc.data.size();
   desc.args_.AddObject(

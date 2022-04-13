@@ -219,7 +219,7 @@ TEST_F(ValidatorRunnerTest, ShouldUseNnApiSl) {
       LoadNnApiSupportLibrary();
   ASSERT_THAT(nnapi_sl.get(), ::testing::NotNull());
   ValidatorRunner validator(model_path_, storage_path, ::testing::TempDir(),
-                            nnapi_sl.get());
+                            nnapi_sl->getFL5());
 
   ASSERT_EQ(validator.Init(), kMinibenchmarkSuccess);
 
@@ -252,7 +252,7 @@ TEST_F(ValidatorRunnerTest, ShouldFailIfItCannotFindNnApiSlPath) {
   (void)unlink(storage_path.c_str());
 
   // Building an NNAPI SL structure with invalid handle.
-  NnApiSupportLibrary wrong_handle_nnapi_sl({}, nullptr);
+  NnApiSLDriverImplFL5 wrong_handle_nnapi_sl{};
 
   ValidatorRunner validator(model_path_, storage_path, ::testing::TempDir(),
                             &wrong_handle_nnapi_sl);

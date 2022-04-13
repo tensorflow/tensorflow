@@ -62,8 +62,8 @@ template <class T>
 ThreadSafeBuffer<T>::ThreadSafeBuffer(size_t buffer_size)
     : buffer_size_(buffer_size) {
   DCHECK_GT(buffer_size, 0)
-      << "ThreadSafeBuffer must have a postive buffer size. Got " << buffer_size
-      << ".";
+      << "ThreadSafeBuffer must have a positive buffer size. Got "
+      << buffer_size << ".";
 }
 
 template <class T>

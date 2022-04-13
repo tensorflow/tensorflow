@@ -42,7 +42,7 @@ LogicalResult UnwrapTFCustomOps(FuncOp fn, OpBuilder& builder) {
     OperationState state(op->getLoc(), op->getName().getStringRef(),
                          parent_op->getOperands(), parent_op->getResultTypes(),
                          op->getAttrs(), op->getSuccessors());
-    Operation* inlined = builder.createOperation(state);
+    Operation* inlined = builder.create(state);
 
     parent_op->replaceAllUsesWith(inlined);
     parent_op->erase();

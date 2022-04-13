@@ -20,6 +20,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
+include "tensorflow/compiler/mlir/lite/ir/tfl_op_enums.td"
 
 def DimensionMetadataAttr : StructAttr<"DimensionMetadataAttr", TFL_Dialect, [
                             StructFieldAttr<"format", TFL_DimensionTypeAttr>,

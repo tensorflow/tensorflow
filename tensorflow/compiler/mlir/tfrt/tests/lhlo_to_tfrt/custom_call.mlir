@@ -10,7 +10,7 @@
 // CHECK-SAME:   %arg4: !tfrt_gpu.buffer,
 // CHECK-SAME:   %arg5: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @custom_call(%input0: memref<2x2xf32>, %input1: memref<2x2xf32>, %output0: memref<2x2xf32>, %output1: memref<2x2xf32>) {
+func.func @custom_call(%input0: memref<2x2xf32>, %input1: memref<2x2xf32>, %output0: memref<2x2xf32>, %output1: memref<2x2xf32>) {
   // CHECK-NOT: cast
   // CHECK-NOT: async.execute
 

@@ -282,7 +282,7 @@ TEST(TransposeTest, TestPermOutOfBounds) {
 TEST(TransposeTest, Test1DInputConstTensor) {
   TransposeOpConstModel m({3}, {1}, {0});
   m.SetInput({1, 2, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
 }
@@ -291,7 +291,7 @@ TEST(TransposeTest, Test1DInputDynamicTensor) {
   TransposeOpDynamicModel m({3}, {1});
   m.SetInput({1, 2, 3});
   m.SetPerm({0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
 }
@@ -299,7 +299,7 @@ TEST(TransposeTest, Test1DInputDynamicTensor) {
 TEST(TransposeTest, Test2DInputConstTensor) {
   TransposeOpConstModel m({3, 2}, {2}, {1, 0});
   m.SetInput({0, 1, 2, 3, 4, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 4, 1, 3, 5}));
 }
@@ -308,7 +308,7 @@ TEST(TransposeTest, Test2D4x4KernelTestLeftOverRightSide) {
   TransposeOpConstModel m({4, 6}, {2}, {1, 0});
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
               12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 4}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 6, 12, 18, 1, 7,  13, 19, 2, 8,  14, 20,
@@ -319,7 +319,7 @@ TEST(TransposeTest, Test2D4x4KernelTest2LeftOverBottomSide) {
   TransposeOpConstModel m({6, 4}, {2}, {1, 0});
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
               12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 6}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 4, 8,  12, 16, 20, 1, 5, 9,  13, 17, 21,
@@ -330,7 +330,7 @@ TEST(TransposeTest, Test2DInputDynamicTensor) {
   TransposeOpDynamicModel m({3, 2}, {2});
   m.SetInput({0, 1, 2, 3, 4, 5});
   m.SetPerm({1, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 4, 1, 3, 5}));
 }
@@ -339,7 +339,7 @@ TEST(TransposeTest, Test3DInputConstTensor) {
   TransposeOpConstModel m({2, 3, 4}, {3}, {2, 0, 1});
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
               12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 4, 8,  12, 16, 20, 1, 5, 9,  13, 17, 21,
@@ -351,7 +351,7 @@ TEST(TransposeTest, Test3DInputDynamicTensor) {
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
               12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
   m.SetPerm({2, 0, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 4, 8,  12, 16, 20, 1, 5, 9,  13, 17, 21,
@@ -361,7 +361,7 @@ TEST(TransposeTest, Test3DInputDynamicTensor) {
 TEST(TransposeTest, Test1DNotShrinked) {
   TransposeOpConstModel m({1}, {1}, {0});
   m.SetInput({0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
 }
@@ -369,7 +369,7 @@ TEST(TransposeTest, Test1DNotShrinked) {
 TEST(TransposeTest, Test2DShrinkedOneTime) {
   TransposeOpConstModel m({2, 1}, {2}, {1, 0});
   m.SetInput({0, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1}));
 }
@@ -377,7 +377,7 @@ TEST(TransposeTest, Test2DShrinkedOneTime) {
 TEST(TransposeTest, Test2DShrinkedTwoTimes) {
   TransposeOpConstModel m({1, 1}, {2}, {1, 0});
   m.SetInput({0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
 }
@@ -385,7 +385,7 @@ TEST(TransposeTest, Test2DShrinkedTwoTimes) {
 TEST(TransposeTest, Test3DShrinkedOneTime) {
   TransposeOpConstModel m({2, 1, 3}, {3}, {0, 2, 1});
   m.SetInput({0, 1, 2, 3, 4, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2, 3, 4, 5}));
 }
@@ -393,7 +393,7 @@ TEST(TransposeTest, Test3DShrinkedOneTime) {
 TEST(TransposeTest, Test3DShrinkedTwoTimes) {
   TransposeOpConstModel m({1, 1, 3}, {3}, {1, 2, 0});
   m.SetInput({0, 1, 2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2}));
 }
@@ -401,7 +401,7 @@ TEST(TransposeTest, Test3DShrinkedTwoTimes) {
 TEST(TransposeTest, Test3DShrinkedAll) {
   TransposeOpConstModel m({1, 1, 1}, {3}, {1, 2, 0});
   m.SetInput({0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
 }
@@ -409,7 +409,7 @@ TEST(TransposeTest, Test3DShrinkedAll) {
 TEST(TransposeTest, Test4DShrinkedOneTimes) {
   TransposeOpConstModel m({2, 2, 3, 1}, {4}, {3, 0, 1, 2});
   m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 3}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
@@ -418,7 +418,7 @@ TEST(TransposeTest, Test4DShrinkedOneTimes) {
 TEST(TransposeTest, Test4DShrinkedTwoTimes) {
   TransposeOpConstModel m({2, 1, 3, 1}, {4}, {0, 3, 1, 2});
   m.SetInput({0, 1, 2, 3, 4, 5});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 1, 3}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2, 3, 4, 5}));
 }
@@ -426,7 +426,7 @@ TEST(TransposeTest, Test4DShrinkedTwoTimes) {
 TEST(TransposeTest, Test4DShrinkedThirdTimes) {
   TransposeOpConstModel m({2, 1, 1, 1}, {4}, {3, 2, 1, 0});
   m.SetInput({0, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1}));
 }
@@ -434,7 +434,7 @@ TEST(TransposeTest, Test4DShrinkedThirdTimes) {
 TEST(TransposeTest, Test4DShrinkedFourTimes) {
   TransposeOpConstModel m({1, 1, 1, 1}, {4}, {2, 3, 1, 0});
   m.SetInput({0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0}));
 }
@@ -442,7 +442,7 @@ TEST(TransposeTest, Test4DShrinkedFourTimes) {
 TEST(TransposeTest, Test3DFlatten) {
   TransposeOpConstModel m({2, 2, 3}, {3}, {0, 2, 1});
   m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 3, 1, 4, 2, 5, 6, 9, 7, 10, 8, 11}));
@@ -451,7 +451,7 @@ TEST(TransposeTest, Test3DFlatten) {
 TEST(TransposeTest, Test4DFlattenOne) {
   TransposeOpConstModel m({2, 2, 2, 2}, {4}, {0, 1, 3, 2});
   m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9,
                                                11, 12, 14, 13, 15}));
@@ -460,7 +460,7 @@ TEST(TransposeTest, Test4DFlattenOne) {
 TEST(TransposeTest, Test4DFlattenTwo) {
   TransposeOpConstModel m({2, 2, 2, 2}, {4}, {0, 2, 3, 1});
   m.SetInput({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 4, 1, 5, 2, 6, 3, 7, 8, 12, 9,
                                                13, 10, 14, 11, 15}));
@@ -472,7 +472,7 @@ TEST(TransposeTest, 3DDividedIntoTwo2DsOne) {
   TransposeOpConstModel m({2, 3, 4}, {3}, {1, 2, 0});
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
               12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
 
@@ -482,7 +482,7 @@ TEST(TransposeTest, 3DDividedIntoTwo2DsTwo) {
   TransposeOpConstModel m({2, 3, 4}, {3}, {2, 0, 1});
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
               12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
 
@@ -493,7 +493,7 @@ TEST(TransposeTest, 4DDividedIntoTwo2DsOne) {
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
               16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
               32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
 
@@ -504,7 +504,7 @@ TEST(TransposeTest, 4DDividedIntoTwo2DsTwo) {
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
               16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
               32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
 
@@ -515,7 +515,7 @@ TEST(TransposeTest, 4DDividedIntoTwo2DsThird) {
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
               16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
               32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
 
@@ -526,7 +526,7 @@ TEST(TransposeTest, 5DDividedIntoTwo2DsOne) {
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
               16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
               32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
 
@@ -537,7 +537,7 @@ TEST(TransposeTest, 5DDividedIntoTwo2DsTwo) {
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
               16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
               32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
 
@@ -548,7 +548,7 @@ TEST(TransposeTest, 5DDividedIntoTwo2DsThird) {
   m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15,
               16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
               32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_EQ(m.GetOutput(), out);
 }
 
@@ -562,7 +562,7 @@ TEST(TransposeTest, Test6DInputTensor) {
 TEST(TransposeTest, SimpleTestNoReorderConstTensor) {
   TransposeOpConstModel m({1, 2, 3, 1}, {4}, {0, 1, 2, 3});
   m.SetInput({1, 2, 3, 4, 5, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -571,7 +571,7 @@ TEST(TransposeTest, SimpleTestNoReorderDynamicTensor) {
   TransposeOpDynamicModel m({1, 2, 3, 1}, {4});
   m.SetInput({1, 2, 3, 4, 5, 6});
   m.SetPerm({0, 1, 2, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
@@ -579,7 +579,7 @@ TEST(TransposeTest, SimpleTestNoReorderDynamicTensor) {
 TEST(TransposeTest, SimpleTestWithReorderConstTensor) {
   TransposeOpConstModel m({1, 2, 3, 1}, {4}, {2, 1, 3, 0});
   m.SetInput({1, 2, 3, 4, 5, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2, 1, 1}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
 }
@@ -596,7 +596,7 @@ TEST(TransposeTest, ComplexTestWithReorderConstTensor) {
               84,  85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,
               96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107,
               108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3, 5}));
   auto result = ElementsAreArray(
@@ -624,7 +624,7 @@ TEST(TransposeTest, ComplexTestWithReorderDynamicTensor) {
               96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107,
               108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119});
   m.SetPerm({2, 0, 1, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3, 5}));
   auto result = ElementsAreArray(
@@ -651,7 +651,7 @@ TEST(TransposeTest, Complex5DTestWithReorderConstTensor) {
               84,  85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,
               96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107,
               108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 3, 5, 2}));
   auto result = ElementsAreArray(
@@ -679,7 +679,7 @@ TEST(TransposeTest, Complex5DTestWithReorderDynamicTensor) {
               96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107,
               108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119});
   m.SetPerm({2, 0, 1, 4, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 3, 5, 2}));
   auto result = ElementsAreArray(

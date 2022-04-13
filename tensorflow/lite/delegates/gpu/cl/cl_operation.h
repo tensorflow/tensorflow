@@ -79,6 +79,13 @@ class ClOperation {
                            operation_->work_group_size_);
   }
 
+  absl::Status AddToQueue(ProfilingCommandQueue* queue, CLEvent* event) {
+    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
+    return queue->CLCommandQueue::Dispatch(kernel_,
+                                           operation_->GetWorkGroupsCount(),
+                                           operation_->work_group_size_, event);
+  }
+
   // for better profiling
   absl::Status AddToQueueNTimes(ProfilingCommandQueue* queue, int n,
                                 int flush_period = 0) {
@@ -92,13 +99,13 @@ class ClOperation {
 
   absl::Status Compile(const CreationContext& creation_context);
 
-  absl::Status RestoreDeserialized(const CreationContext& creation_context);
-  absl::Status InitFromCache(uint64_t fingerprint,
-                             const ProgramCache& program_cache);
+  absl::Status RestoreDeserialized(const ProgramCache& program_cache,
+                                   uint64_t fingerprint,
+                                   const GpuInfo& gpu_info,
+                                   const int3& work_group_size,
+                                   CLContext* context);
 
   int3 GetWorkGroupSize() const { return operation_->work_group_size_; }
-
-  void SetWorkGroupSize(const int3& work_group_size);
 
  private:
   std::unique_ptr<GPUOperation> operation_;

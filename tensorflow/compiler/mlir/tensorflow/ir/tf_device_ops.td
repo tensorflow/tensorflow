@@ -48,7 +48,7 @@ def TfDevice_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 
 // Base class for the operation in this dialect.
-class TfDevice_Op<string mnemonic, list<OpTrait> traits = []> :
+class TfDevice_Op<string mnemonic, list<Trait> traits = []> :
     Op<TfDevice_Dialect, mnemonic, traits> { }
 
 def TfDevice_LaunchOp : TfDevice_Op<"launch",
@@ -174,7 +174,7 @@ def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
     OpBuilder<(ins "int":$num_regions, "TypeRange":$output_types)>,
   ];
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TfDevice_ReplicateOp : TfDevice_Op<"replicate",
@@ -305,9 +305,8 @@ For example:
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
   ];
 
-  let parser = [{ return Parse$cppClass(&parser, &result); }];
-  let printer = [{ return Print(*this, &p); }];
-  let verifier = [{ return Verify(*this); }];
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 def TfDevice_ClusterOp : TfDevice_Op<"cluster",

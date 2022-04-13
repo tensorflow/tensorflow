@@ -32,11 +32,9 @@ namespace grappler {
 namespace {
 
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
-constexpr std::array<const char*, 8> kAsyncTransforms = {
-    "ParallelBatchDataset",        "ParallelInterleaveDataset",
-    "ParallelInterleaveDatasetV2", "ParallelInterleaveDatasetV3",
-    "ParallelInterleaveDatasetV4", "ParallelMapDataset",
-    "ParallelMapDatasetV2",        "PrefetchDataset"};
+constexpr std::array<const char*, 5> kAsyncTransforms = {
+    "MapAndBatchDataset", "ParallelBatchDataset", "ParallelInterleaveDataset",
+    "ParallelMapDataset", "PrefetchDataset"};
 constexpr std::array<const char*, 7> kDatasetsToSkip = {
     "AssertNextDataset",        "ExperimentalAssertNextDataset",
     "OptionsDataset",           "ModelDataset",

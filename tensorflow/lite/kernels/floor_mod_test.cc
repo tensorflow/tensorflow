@@ -33,7 +33,7 @@ TEST(FloorModModel, Simple) {
                                {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {10, 9, 11, 3});
   model.PopulateTensor<int32_t>(model.input2(), {2, 2, 3, 4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
 }
@@ -44,7 +44,7 @@ TEST(FloorModModel, NegativeValue) {
                                {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
   model.PopulateTensor<int32_t>(model.input2(), {2, 2, -3, -4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, -2, -1));
 }
@@ -54,7 +54,7 @@ TEST(FloorModModel, BroadcastFloorMod) {
                                {TensorType_INT32, {1}}, {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
   model.PopulateTensor<int32_t>(model.input2(), {-3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(-2, 0, -2, -2));
 }
@@ -64,7 +64,7 @@ TEST(FloorModModel, Int64WithBroadcast) {
                                {TensorType_INT64, {1}}, {TensorType_INT64, {}});
   model.PopulateTensor<int64_t>(model.input1(), {10, -9, -11, (1LL << 34) + 9});
   model.PopulateTensor<int64_t>(model.input2(), {-(1LL << 33)});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(),
               ElementsAre(-8589934582, -9, -11, -8589934583));
@@ -76,7 +76,7 @@ TEST(FloorModModel, FloatSimple) {
                              {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {10, 9, 11, 3});
   model.PopulateTensor<float>(model.input2(), {2, 2, 3, 4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
 }
@@ -87,7 +87,7 @@ TEST(FloorModModel, FloatNegativeValue) {
                              {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {10, -9, -11, 7});
   model.PopulateTensor<float>(model.input2(), {2, 2, -3, -4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, -2, -1));
 }
@@ -98,7 +98,7 @@ TEST(FloorModModel, FloatBroadcastFloorMod) {
                              {TensorType_FLOAT32, {}});
   model.PopulateTensor<float>(model.input1(), {10, -9, -11, 7});
   model.PopulateTensor<float>(model.input2(), {-3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(-2, 0, -2, -2));
 }
