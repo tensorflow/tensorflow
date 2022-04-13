@@ -136,14 +136,26 @@ def InvokeNvcc(argv, log=False):
   m_options = ["-m64"]
 
   nvccopts = ['-D_FORCE_INLINES']
-  compute_capabilities, argv = GetOptionValue(argv, "--cuda-gpu-arch")
-  for capability in compute_capabilities:
+  capabilities_sm, argv = GetOptionValue(argv, "--cuda-gpu-arch")
+  capabilities_compute, argv = GetOptionValue(argv, '--cuda-include-ptx')
+  capabilities_sm = set(capabilities_sm)
+  capabilities_compute = set(capabilities_compute)
+  # When both "code=sm_xy" and "code=compute_xy" are requested for a single
+  # arch, they can be combined using "code=xy,compute_xy" which avoids a
+  # redundant PTX generation during compilation.
+  capabilities_both = capabilities_sm.intersection(capabilities_compute)
+  for capability in capabilities_both:
+    capability = capability[len('sm_'):]
+    nvccopts += [
+        r'-gencode=arch=compute_%s,"code=sm_%s,compute_%s"' % (
+            capability, capability, capability)
+    ]
+  for capability in capabilities_sm - capabilities_both:
     capability = capability[len('sm_'):]
     nvccopts += [
         r'-gencode=arch=compute_%s,"code=sm_%s"' % (capability, capability)
     ]
-  compute_capabilities, argv = GetOptionValue(argv, '--cuda-include-ptx')
-  for capability in compute_capabilities:
+  for capability in capabilities_compute - capabilities_both:
     capability = capability[len('sm_'):]
     nvccopts += [
         r'-gencode=arch=compute_%s,"code=compute_%s"' % (capability, capability)
