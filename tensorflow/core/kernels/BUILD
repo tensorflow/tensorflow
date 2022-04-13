@@ -6726,6 +6726,7 @@ filegroup(
         "transpose_op.cc",
         "unicode_ops.cc",
         "unique_op.cc",
+        "unsorted_segment_join_op.cc",
         "where_op.cc",
         "whole_file_read_ops.cc",
         "xent_op.cc",
