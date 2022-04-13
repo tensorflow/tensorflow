@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RUN: tf-quant-opt %s -split-input-file -tf-fused-kernel-matcher -quant-lift-quantizable-spots-as-functions | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-lift-quantizable-spots-as-functions | FileCheck %s
 
 // CHECK-LABEL: float_conv
 func.func @float_conv(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) {
@@ -52,18 +52,23 @@ func.func @float_conv(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>) ->
 // CHECK: }
 
 // CHECK-LABEL: private @fused_conv2d_with_bias_and_relu6_fn_1
-// CHECK-NEXT: %[[conv:.*]] = "tf._FusedConv2D"(%arg0, %arg1, %arg2)
+// CHECK-NEXT: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %arg1)
 // CHECK-SAME: {attr_map = "0:strides,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations"
-// CHECK-SAME: data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], epsilon = 0.000000e+00 : f32, explicit_paddings = [], fused_ops = ["BiasAdd", "Relu6"], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
-// CHECK-NEXT: return %[[conv]]
+// CHECK-SAME: data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
+// CHECK-NEXT: %[[BIASADD_0:.*]] = "tf.BiasAdd"(%[[CONV2D_0]], %arg2)
+// CHECK-NEXT: %[[RELU6_0:.*]] = "tf.Relu6"(%[[BIASADD_0]])
+// CHECK-NEXT: return %[[RELU6_0]]
 
 // CHECK-LABEL: private @fused_conv2d_with_bias_and_relu_fn_1
-// CHECK-NEXT: tf._FusedConv2D"(%arg0, %arg1, %arg2)
-// CHECK-SAME: fused_ops = ["BiasAdd", "Relu"]
+// CHECK-NEXT: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %arg1)
+// CHECK-NEXT: %[[BIASADD_0:.*]] = "tf.BiasAdd"(%[[CONV2D_0]], %arg2)
+// CHECK-NEXT: %[[RELU6_0:.*]] = "tf.Relu"(%[[BIASADD_0]])
+// CHECK-NEXT: return %[[RELU6_0]]
 
 // CHECK-LABEL: private @fused_conv2d_with_bias_fn_1
-// CHECK-NEXT: tf._FusedConv2D"(%arg0, %arg1, %arg2)
-// CHECK-SAME: fused_ops = ["BiasAdd"]
+// CHECK-NEXT: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %arg1)
+// CHECK-NEXT: %[[BIASADD_0:.*]] = "tf.BiasAdd"(%[[CONV2D_0]], %arg2)
+// CHECK-NEXT: return %[[BIASADD_0]]
 }
 
 // -----
@@ -82,10 +87,12 @@ func.func @float_conv_strides_equals_to_dilations(%arg0: tensor<1x3x4x3xf32>, %a
 // CHECK: return %[[PARTITIONEDCALL_0]] : tensor<*xf32>
 // CHECK: }
 // CHECK-LABEL: func private @fused_conv2d_with_bias_and_relu6_fn_1(%arg0: tensor<1x3x4x3xf32>, %arg1: tensor<2x3x3x2xf32>, %arg2: tensor<2xf32>) -> tensor<*xf32> attributes {tf_quant.fused_function} {
-// CHECK-NEXT: %[[CONV2D_0:.*]] = "tf._FusedConv2D"(%arg0, %arg1, %arg2)
+// CHECK-NEXT: %[[CONV2D_0:.*]] = "tf.Conv2D"(%arg0, %arg1)
 // CHECK-SAME: {attr_map = "0:dilations,1:use_cudnn_on_gpu,2:padding,3:explicit_paddings,4:dilations"
-// CHECK-SAME: data_format = "NHWC", device = "", dilations = [1, 1, 2, 1], epsilon = 0.000000e+00 : f32, explicit_paddings = [], fused_ops = ["BiasAdd", "Relu6"], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
-// CHECK-NEXT: return %[[CONV2D_0]] : tensor<*xf32>
+// CHECK-SAME: data_format = "NHWC", device = "", dilations = [1, 1, 2, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true}
+// CHECK-NEXT: %[[BIASADD_0:.*]] = "tf.BiasAdd"(%[[CONV2D_0]], %arg2)
+// CHECK-NEXT: %[[RELU6_0:.*]] = "tf.Relu6"(%[[BIASADD_0]])
+// CHECK-NEXT: return %[[RELU6_0]]
 
 // -----
 
@@ -163,17 +170,22 @@ func.func @float_matmul(
 // CHECK: }
 
 // CHECK-LABEL: private @fused_matmul_with_bias_and_relu6_fn_1
-// CHECK-NEXT: %[[matmul:.*]] = "tf._FusedMatMul"(%arg0, %arg1, %arg2)
+// CHECK-NEXT: %[[matmul:.*]] = "tf.MatMul"(%arg0, %arg1)
 // CHECK-SAME: {attr_map = "0:transpose_a,1:transpose_a"
-// CHECK-NEXT: return %[[matmul]]
+// CHECK-NEXT: tf.BiasAdd
+// CHECK-NEXT: tf.Relu6
+// CHECK-NEXT: return
 
 // CHECK-LABEL: private @fused_matmul_with_bias_and_relu_fn_1
-// CHECK-NEXT: tf._FusedMatMul"(%arg0, %arg1, %arg2)
-// CHECK-SAME: fused_ops = ["BiasAdd", "Relu"]
+// CHECK-NEXT: tf.MatMul"(%arg0, %arg1)
+// CHECK-NEXT: tf.BiasAdd
+// CHECK-NEXT: tf.Relu
+// CHECK-NEXT: return
 
 // CHECK-LABEL: private @fused_matmul_with_bias_fn_1
-// CHECK-NEXT: tf._FusedMatMul"(%arg0, %arg1, %arg2)
-// CHECK-SAME: fused_ops = ["BiasAdd"]
+// CHECK-NEXT: tf.MatMul"(%arg0, %arg1)
+// CHECK-NEXT: tf.BiasAdd
+// CHECK-NEXT: return
 }
 
 // -----
