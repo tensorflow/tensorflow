@@ -18,6 +18,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Returns true if oneDNN is enabled. Implementation is in util.cc.
+bool IsMKLEnabled();
+
 // Returns true if GOOGLE_CUDA is defined.
 bool IsGoogleCudaEnabled();
 
