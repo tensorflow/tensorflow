@@ -2675,7 +2675,9 @@ Status DistributedTPURewritePass::BuildCompileNode(
         (params_info.IsVariableArg(i) || params_info.IsBroadcastArg(i) ||
          params_info.IsConstantArg(i)));
     if (params_info.mirrored_variable_indices().count(i) > 0) {
-      CHECK_EQ(type, DT_RESOURCE);
+      TF_RET_CHECK(type == DT_RESOURCE)
+          << "Arg type: " << type << " name: " << arg->name()
+          << " shape: " << arg->shape().DebugString();
       arg->set_is_same_data_across_replicas(true);
       // 64-bit type is not shardable by XLA:TPU yet.
       bool sharding_enabled = (arg_shape.handle_type != DT_COMPLEX64 &&
