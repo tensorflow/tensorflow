@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -175,9 +176,9 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   Tensor GPUToCPU(const Tensor& device_tensor) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     CHECK(gpu_device_);
-    CHECK(gpu_device_->tensorflow_gpu_device_info() != nullptr);
+    CHECK(gpu_device_->tensorflow_accelerator_device_info() != nullptr);
     DeviceContext* device_context =
-        gpu_device_->tensorflow_gpu_device_info()->default_context;
+        gpu_device_->tensorflow_accelerator_device_info()->default_context;
 
     Tensor cpu_tensor(device_tensor.dtype(), device_tensor.shape());
     CHECK(device_context
@@ -193,9 +194,9 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   Tensor CPUToGPU(const Tensor& cpu_tensor) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     CHECK(gpu_device_);
-    CHECK(gpu_device_->tensorflow_gpu_device_info() != nullptr);
+    CHECK(gpu_device_->tensorflow_accelerator_device_info() != nullptr);
     DeviceContext* device_context =
-        gpu_device_->tensorflow_gpu_device_info()->default_context;
+        gpu_device_->tensorflow_accelerator_device_info()->default_context;
 
     Tensor device_tensor(gpu_device_->GetAllocator({}), cpu_tensor.dtype(),
                          cpu_tensor.shape(), {});
@@ -508,9 +509,6 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, InstantiateFunctionOnRemovedDevice) {
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRSerialTest) {
   Init({test::function::FindDevice()});
-  FunctionLibraryRuntime::Options opts;
-  opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:b/replica:0/task:0/device:CPU:0";
   FunctionLibraryRuntime::Handle h;
@@ -537,9 +535,6 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRSerialTest) {
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRParallelTest) {
   Init({test::function::FindDevice()});
-  FunctionLibraryRuntime::Options opts;
-  opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:b/replica:0/task:0/device:CPU:0";
 
@@ -606,6 +601,38 @@ void TestTwoDeviceMult(
   Tensor y_gpu_on_cpu = fixture->GPUToCPU(y_gpu);
   test::ExpectTensorEqual<float>(y_gpu_on_cpu,
                                  test::AsTensor<float>({3, 6, 9}));
+}
+
+void TestInstantiateSimpleFunction(
+    ProcessFunctionLibraryRuntimeTest* fixture,
+    const FunctionLibraryRuntime::InstantiateOptions& orig_opts) {
+  fixture->Init({test::function::FindDevice()});
+  FunctionLibraryRuntime::InstantiateOptions opts_copy = orig_opts;
+  opts_copy.input_devices.clear();
+  FunctionLibraryRuntime::Handle h;
+  TF_CHECK_OK(fixture->Instantiate(
+      "FindDevice", {{"_target", "/job:b/replica:0/task:0/device:CPU:0"}},
+      opts_copy, &h));
+}
+
+void TestControlFlow(
+    ProcessFunctionLibraryRuntimeTest* fixture,
+    const FunctionLibraryRuntime::InstantiateOptions& inst_opts) {
+  fixture->Init({test::function::ControlFlow()});
+
+  FunctionLibraryRuntime::Options opts;
+  Tensor x1 = test::AsTensor<float>({3, 5, 17, 257});
+  if (absl::StrContains(inst_opts.input_devices[0], "GPU")) {
+    x1 = fixture->CPUToGPU(x1);
+  }
+  Tensor y1;
+  TF_CHECK_OK(fixture->Run("ControlFlow", opts, {}, inst_opts, {x1}, {&y1}));
+
+  if (absl::StrContains(inst_opts.output_devices[0], "GPU")) {
+    EXPECT_TRUE(IsCUDATensor(y1));
+    y1 = fixture->GPUToCPU(y1);
+  }
+  test::ExpectTensorEqual<float>(y1, test::AsTensor<float>({3, 5, 17, 257}));
 }
 
 void TestTwoDeviceInputOutput(
@@ -1258,6 +1285,45 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresentAfterCloning) {
                                                     &read_metadata));
   EXPECT_EQ(session_metadata.name(), read_metadata.name());
   EXPECT_EQ(session_metadata.version(), read_metadata.version());
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, SimpleGraphAllowsSync) {
+  auto async_safe =
+      metrics::TestDelta("subgraph_async_summary", "safe_for_sync");
+  FunctionLibraryRuntime::InstantiateOptions opts =
+      MakeOptions("CPU:0", {}, {});
+  opts.allow_small_function_optimizations = true;
+  TestInstantiateSimpleFunction(this, opts);
+  EXPECT_GT(async_safe.Get(), 0);
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, UnsafeOpRequiresAsync) {
+  auto async_safe =
+      metrics::TestDelta("subgraph_async_summary", "safe_for_sync");
+  auto async_unsafe_op =
+      metrics::TestDelta("subgraph_async_summary", "unsafe_op");
+  FunctionLibraryRuntime::InstantiateOptions opts =
+      MakeOptions("CPU:0", {"CPU:0"}, {"CPU:0"});
+  opts.allow_small_function_optimizations = true;
+  TestControlFlow(this, opts);
+  EXPECT_EQ(async_safe.Get(), 0);
+  EXPECT_GT(async_unsafe_op.Get(), 0);
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, PartitionedGraphRequiresAsync) {
+  if (gpu_device_ == nullptr) {
+    GTEST_SKIP() << "No GPUs available";
+  }
+  auto async_send_only =
+      metrics::TestDelta("subgraph_async_summary", "send_only");
+  auto async_recv_only =
+      metrics::TestDelta("subgraph_async_summary", "recv_only");
+  FunctionLibraryRuntime::InstantiateOptions opts =
+      MakeOptions("CPU:0", {"CPU:0"}, {"CPU:0", "GPU:0"});
+  opts.allow_small_function_optimizations = true;
+  TestTwoDeviceMult(this, opts);
+  EXPECT_GT(async_send_only.Get(), 0);
+  EXPECT_GT(async_recv_only.Get(), 0);
 }
 
 }  // anonymous namespace

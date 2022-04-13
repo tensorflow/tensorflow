@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_value_typed_analyzer.h"
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -41,7 +42,7 @@ FuncOp GetSessionInitializerFunc(ModuleOp module) {
   auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
   if (session_init_op && !session_init_op.initializers().empty()) {
     SymbolTable symbol_table(module);
-    FuncOp init_func_op = symbol_table.lookup<mlir::FuncOp>(
+    FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
     return init_func_op;
   }
@@ -111,7 +112,7 @@ LogicalResult ResourceAnalyzer::AnalyzeRegion(Region& region) {
   }
 
   region.walk([&](Operation* op) {
-    if (isa<TF::ReadVariableOp, ReturnOp, YieldOp>(op)) {
+    if (isa<TF::ReadVariableOp, func::ReturnOp, YieldOp>(op)) {
       return;
     }
     if (auto assign_variable = dyn_cast<TF::AssignVariableOp>(op)) {

@@ -68,11 +68,11 @@ class HostTransferManager {
  public:
   explicit HostTransferManager(TpuNodeContext*, xla::Backend*) {}
 
-  using HostCommmandHandler = TpuOpExecutable::HostCommandHandler;
+  using HostCommandHandler = TpuOpExecutable::HostCommandHandler;
 
   // Returns a function to be called when the TPU triggers a host command
   // interrupt while executing the current program.
-  xla::StatusOr<HostCommmandHandler> Initialize(
+  xla::StatusOr<HostCommandHandler> Initialize(
       const TPUHostTransferInfoProto& program,
       const std::string& rendezvous_key_base, OpKernelContext* ctx);
 
@@ -80,11 +80,11 @@ class HostTransferManager {
   TF_DISALLOW_COPY_AND_ASSIGN(HostTransferManager);
 };
 
-xla::StatusOr<HostTransferManager::HostCommmandHandler>
+xla::StatusOr<HostTransferManager::HostCommandHandler>
 HostTransferManager::Initialize(const TPUHostTransferInfoProto& program,
                                 const string& rendezvous_key_base,
                                 OpKernelContext* ctx) {
-  return HostCommmandHandler([](uint32, int64_t) {
+  return HostCommandHandler([](uint32_t, int64_t) {
     LOG(WARNING) << "HostTransferManager is unimplemented.";
   });
 }
@@ -112,8 +112,8 @@ xla::Shape HostShapeToDeviceShape(const xla::Shape& host_shape) {
   tensorflow::tpu::OpsApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
       &c_host_shape, &c_device_shape);
   xla::Shape device_shape = ApiConverter::FromC(&c_device_shape);
-  ApiConverter::Free(&c_host_shape);
-  ApiConverter::Free(&c_device_shape);
+  ApiConverter::Destroy(&c_host_shape);
+  ApiConverter::Destroy(&c_device_shape);
   return device_shape;
 }
 
@@ -122,7 +122,7 @@ int64_t ShapeSizeCompact(const xla::Shape& shape) {
   ApiConverter::ToC(shape, &c_shape);
   int64_t size =
       tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactFn(&c_shape);
-  ApiConverter::Free(&c_shape);
+  ApiConverter::Destroy(&c_shape);
   return size;
 }
 
@@ -132,7 +132,7 @@ int64_t ShapeSizeCompactRaw(const xla::Shape& shape) {
   int64_t size =
       tensorflow::tpu::OpsApiFn()->HardwareLayout_ShapeSizeCompactRawFn(
           &c_shape);
-  ApiConverter::Free(&c_shape);
+  ApiConverter::Destroy(&c_shape);
   return size;
 }
 
@@ -152,7 +152,7 @@ xla::Status FixTupleTableAsync(se::Stream* stream,
         std::vector<se::DeviceMemoryBase> elements;
         xla::ShapeIndex element_index = index;
         element_index.push_back(0);
-        for (int64_t i = 0; i < element_shape.tuple_shapes_size(); ++i) {
+        for (int i = 0; i < element_shape.tuple_shapes_size(); ++i) {
           // Gather all children of the tuple element.
           element_index.back() = i;
           elements.push_back(mem->Buffer(element_index).AsDeviceMemoryBase());
@@ -257,8 +257,8 @@ xla::Status UpdateDynamicInputs(
 
             tensorflow::tpu::OpsApiFn()->TpuExecute_RuntimeInputToPaddedDataFn(
                 &params);
-            ApiConverter::Free(&c_runtime_shape);
-            ApiConverter::Free(&c_compile_time_shape);
+            ApiConverter::Destroy(&c_runtime_shape);
+            ApiConverter::Destroy(&c_compile_time_shape);
             return status.status();
           });
           // Allocate new input and transfer the padded and transposed data to
@@ -351,9 +351,11 @@ std::pair<CancellationToken, bool> RegisterCancellation(
   CancellationToken token = cancellation_manager->get_cancellation_token();
   // Don't rely on OpKernelContext being available when the callback runs.
   Env* env = ctx->env();
-  bool already_cancelled = !cancellation_manager->RegisterCallback(
-      token,
-      [device_ordinal, env]() { TPUCancelExecution(env, device_ordinal); });
+  bool already_cancelled =
+      !cancellation_manager->RegisterCallbackWithErrorLogging(
+          token,
+          [device_ordinal, env]() { TPUCancelExecution(env, device_ordinal); },
+          absl::StrCat("TPUCancellation on device ", device_ordinal));
   return std::pair<CancellationToken, bool>(token, already_cancelled);
 }
 
@@ -432,7 +434,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   // Create a HostTransferManager to handle Send/Recv operations from the TPU.
   std::shared_ptr<HostTransferManager> host_transfer_manager =
       std::make_shared<HostTransferManager>(node_context, backend);
-  TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommmandHandler handler,
+  TF_ASSIGN_OR_RETURN(HostTransferManager::HostCommandHandler handler,
                       host_transfer_manager->Initialize(
                           host_transfers, rendezvous_key_base, ctx));
 

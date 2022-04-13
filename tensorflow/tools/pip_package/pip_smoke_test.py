@@ -37,8 +37,11 @@ BUILD_DENYLIST = [
     "tensorflow/python/kernel_tests/signal",
     "tensorflow/examples",
     "tensorflow/tools/android",
+    "tensorflow/tools/toolchains",
+    "tensorflow/python/autograph/tests",
     "tensorflow/python/eager/benchmarks",
 ]
+
 
 def GetBuild(dir_base):
   """Get the list of BUILD file all targets recursively startind at dir_base."""
@@ -115,8 +118,10 @@ def main():
   """
 
   # pip_package_dependencies_list is the list of included files in pip packages
-  pip_package_dependencies = subprocess.check_output(
-      ["bazel", "cquery", PIP_PACKAGE_QUERY_EXPRESSION])
+  pip_package_dependencies = subprocess.check_output([
+      "bazel", "cquery", "--experimental_cc_shared_library",
+      PIP_PACKAGE_QUERY_EXPRESSION
+  ])
   if isinstance(pip_package_dependencies, bytes):
     pip_package_dependencies = pip_package_dependencies.decode("utf-8")
   pip_package_dependencies_list = pip_package_dependencies.strip().split("\n")
@@ -127,8 +132,10 @@ def main():
 
   # tf_py_test_dependencies is the list of dependencies for all python
   # tests in tensorflow
-  tf_py_test_dependencies = subprocess.check_output(
-      ["bazel", "cquery", PY_TEST_QUERY_EXPRESSION])
+  tf_py_test_dependencies = subprocess.check_output([
+      "bazel", "cquery", "--experimental_cc_shared_library",
+      PY_TEST_QUERY_EXPRESSION
+  ])
   if isinstance(tf_py_test_dependencies, bytes):
     tf_py_test_dependencies = tf_py_test_dependencies.decode("utf-8")
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
@@ -140,7 +147,8 @@ def main():
   missing_dependencies = []
   # File extensions and endings to ignore
   ignore_extensions = [
-      "_test", "_test.py", "_test_gpu", "_test_gpu.py", "_test_lib"
+      "_test", "_test.py", "_test_cpu", "_test_cpu.py", "_test_gpu",
+      "_test_gpu.py", "_test_lib"
   ]
 
   ignored_files_count = 0
@@ -169,7 +177,8 @@ def main():
       print("Affected Tests:")
       rdep_query = ("rdeps(kind(py_test, %s), %s)" %
                     (" + ".join(PYTHON_TARGETS), missing_dependency))
-      affected_tests = subprocess.check_output(["bazel", "cquery", rdep_query])
+      affected_tests = subprocess.check_output(
+          ["bazel", "cquery", "--experimental_cc_shared_library", rdep_query])
       affected_tests_list = affected_tests.split("\n")[:-2]
       print("\n".join(affected_tests_list))
 

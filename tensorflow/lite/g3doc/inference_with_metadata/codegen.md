@@ -47,7 +47,7 @@ ML Model Binding provides a way for developers to accelerate their code through
 the use of delegates and the number of threads.
 
 Note: The TensorFlow Lite Interpreter must be created on the same thread as when
-is is run. Otherwise, TfLiteGpuDelegate Invoke: GpuDelegate must run on the same
+is run. Otherwise, TfLiteGpuDelegate Invoke: GpuDelegate must run on the same
 thread where it was initialized. may occur.
 
 Step 1. Check the module `build.gradle` file that it contains the following
@@ -228,7 +228,7 @@ if(null != myImageClassifier) {
 
 The generated code provides a way for developers to accelerate their code
 through the use of [delegates](../performance/delegates.md) and the number of
-threads. These can be set when initiatizing the model object as it takes three
+threads. These can be set when initializing the model object as it takes three
 parameters:
 
 *   **`Context`**: Context from the Android Activity or Service

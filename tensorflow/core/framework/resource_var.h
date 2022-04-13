@@ -73,6 +73,14 @@ class Var : public ResourceBase {
   mutex* mu() { return &mu_; }
   Tensor* tensor() { return &tensor_; }
 
+  // Uninitializes the variable, by reverting the state of the tensor to
+  // the state when the variable is first created.
+  void Uninitialize() {
+    // move frees the buffer of the tensor after unused goes out of scope.
+    Tensor unused = std::move(tensor_);
+    is_initialized = false;
+  }
+
   Status AsGraphDef(GraphDefBuilder* builder, Node** out) const override;
 
   std::string DebugString() const override {

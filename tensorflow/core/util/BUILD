@@ -17,10 +17,6 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
-)
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "filegroup")
@@ -173,6 +169,7 @@ filegroup(
         "mirror_pad_mode.h",
         "mkl_threadpool.h",
         "mkl_util.h",
+        "onednn_env_vars.h",
         "overflow.h",
         "padding.h",
         "permutation_input_iterator.h",
@@ -303,6 +300,7 @@ filegroup(
     srcs = [
         "mkl_threadpool.h",
         "mkl_util.h",
+        "onednn_env_vars.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -378,8 +376,14 @@ filegroup(
 # is written.
 tf_version_info_genrule(
     name = "version_info_gen",
-    out = "version_info.cc",
+    out = "version_info.h",
     compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
+    name = "version_info",
+    hdrs = ["version_info.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -398,17 +402,16 @@ cc_library(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_util",
-    srcs = ["mkl_util.cc"],
-    hdrs = ["mkl_util.h"],
+    name = "onednn_env_vars",
+    srcs = ["onednn_env_vars.cc"],
+    hdrs = ["onednn_env_vars.h"],
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:ops_util",
-    ] + mkl_deps(),
+    ],
 )
 
 cc_library(
@@ -552,15 +555,6 @@ cc_library(
 )
 
 cc_library(
-    name = "version_info",
-    srcs = ["version_info.cc"],
-    hdrs = ["//tensorflow/core/public:version.h"],
-    compatible_with = get_compatible_with_portable(),
-    copts = tf_copts(),
-    alwayslink = if_static(0, 1),
-)
-
-cc_library(
     name = "tensor_format",
     srcs = ["tensor_format.cc"],
     hdrs = ["tensor_format.h"],
@@ -593,6 +587,7 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/gtl:inlined_vector",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )

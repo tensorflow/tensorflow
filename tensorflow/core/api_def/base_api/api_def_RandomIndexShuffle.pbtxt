@@ -1,0 +1,48 @@
+op {
+  graph_op_name: "RandomIndexShuffle"
+  in_arg {
+    name: "index"
+    description: <<END
+A scalar tensor or a vector of dtype `dtype`. The index (or indices) to be shuffled. Must be within [0, max_index].
+END
+  }
+  in_arg {
+    name: "seed"
+    description: <<END
+A tensor of dtype `Tseed` and shape [3] or [n, 3]. The random seed.
+END
+  }
+  in_arg {
+    name: "max_index"
+    description: <<END
+A scalar tensor or vector of dtype `dtype`. The upper bound(s) of the interval (inclusive).
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A scalar tensor of dtype `dtype`, within [0, max_index]. The randomly shuffled index.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The dtype of the input and output.
+END
+  }
+  attr {
+    name: "Tseed"
+    description: <<END
+The type of `seed`.
+END
+  }
+  summary: "Outputs the position of `value` in a permutation of [0, ..., max_index]."
+  description: <<END
+Output values are a bijection of the `index` for any combination and `seed` and `max_index`.
+
+If multiple inputs are vectors (matrix in case of seed) then the size of the
+first dimension must match.
+
+The outputs are deterministic.
+END
+}

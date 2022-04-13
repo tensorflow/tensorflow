@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
@@ -47,8 +46,8 @@ void TensorShape::CheckDimsEqual(int NDIMS) const {
                           << " from a tensor of " << dims() << " dimensions";
 }
 
-void TensorShape::CheckDimsAtLeast(int NDIMS) const {
-  CHECK_GE(NDIMS, dims()) << "Asking for tensor of at least " << NDIMS
+void TensorShape::CheckDimsAtMost(int NDIMS) const {
+  CHECK_GE(NDIMS, dims()) << "Asking for tensor of at most " << NDIMS
                           << " dimensions from a tensor of " << dims()
                           << " dimensions";
 }
@@ -229,7 +228,7 @@ Status TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64_t> dim_sizes) {
   if (!kIsPartial && !large_size) {
     for (auto s : dim_sizes) {
       if (TF_PREDICT_FALSE(s < 0)) {
-        return errors::Internal(
+        return errors::InvalidArgument(
             "Expected shape dimensions to be non-negative, got ", s);
       }
     }
@@ -411,7 +410,8 @@ template <class Shape>
 Status TensorShapeBase<Shape>::AddDimWithStatus(int64_t size) {
   if (!kIsPartial) {
     if (TF_PREDICT_FALSE(size < 0)) {
-      return errors::Internal("Expected a non-negative size, got ", size);
+      return errors::InvalidArgument("Expected a non-negative size, got ",
+                                     size);
     }
   }
 
@@ -420,7 +420,7 @@ Status TensorShapeBase<Shape>::AddDimWithStatus(int64_t size) {
   }
 
   if (TF_PREDICT_FALSE(ndims_byte() >= MaxDimensions())) {
-    return errors::Internal("Too many dimensions in tensor");
+    return errors::InvalidArgument("Too many dimensions in tensor");
   }
 
   int64_t new_num_elements;
@@ -429,9 +429,9 @@ Status TensorShapeBase<Shape>::AddDimWithStatus(int64_t size) {
   } else {
     new_num_elements = MultiplyWithoutOverflow(num_elements(), size);
     if (TF_PREDICT_FALSE(new_num_elements < 0)) {
-      return errors::Internal("Encountered overflow when multiplying ",
-                              num_elements(), " with ", size,
-                              ", result: ", new_num_elements);
+      return errors::InvalidArgument("Encountered overflow when multiplying ",
+                                     num_elements(), " with ", size,
+                                     ", result: ", new_num_elements);
     }
   }
 
@@ -522,7 +522,8 @@ template <class Shape>
 Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
   if (!kIsPartial) {
     if (TF_PREDICT_FALSE(size < 0)) {
-      return errors::Internal("Expected a non-negative size, got ", size);
+      return errors::InvalidArgument("Expected a non-negative size, got ",
+                                     size);
     }
   }
 
@@ -594,13 +595,14 @@ void TensorShapeBase<Shape>::set_dim(int d, int64_t size) {
 template <class Shape>
 Status TensorShapeBase<Shape>::SetDimWithStatus(int d, int64_t size) {
   if (TF_PREDICT_FALSE(d < 0)) {
-    return errors::Internal("Index must be non-negative, got ", d);
+    return errors::InvalidArgument("Index must be non-negative, got ", d);
   }
   if (TF_PREDICT_FALSE(d >= dims())) {
-    return errors::Internal("Index must be less than ", dims(), ", got ", d);
+    return errors::InvalidArgument("Index must be less than ", dims(), ", got ",
+                                   d);
   }
   if (TF_PREDICT_FALSE(!kIsPartial && size < 0)) {
-    return errors::Internal("Expected a non-negative size, got ", size);
+    return errors::InvalidArgument("Expected a non-negative size, got ", size);
   }
 
   if (tag() == REP16 && size < kMaxRep16) {
@@ -712,6 +714,13 @@ void TensorShapeBase<Shape>::AsProto(TensorShapeProto* proto) const {
       proto->add_dim()->set_size(dim_size(i));
     }
   }
+}
+
+template <class Shape>
+TensorShapeProto TensorShapeBase<Shape>::AsProto() const {
+  TensorShapeProto out;
+  AsProto(&out);
+  return out;
 }
 
 template <class Shape>

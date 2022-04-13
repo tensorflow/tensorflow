@@ -37,13 +37,23 @@ enum class DataType {
   INT64 = 11,
 };
 
-size_t SizeOf(DataType type);
+size_t SizeOf(DataType data_type);
 
-std::string ToString(DataType t);
+std::string ToString(DataType data_type);
 
 std::string ToCLDataType(DataType data_type, int vec_size = 1);
 
 std::string ToMetalDataType(DataType data_type, int vec_size = 1);
+
+DataType ToMetalTextureType(DataType data_type);
+
+// When add_precision enabled it will add:
+//   highp for INT32/UINT32/FLOAT32
+//   mediump for INT16/UINT16/FLOAT16(if explicit_fp16 not enabled)
+//   lowp for INT8/UINT8
+std::string ToGlslShaderDataType(DataType data_type, int vec_size = 1,
+                                 bool add_precision = false,
+                                 bool explicit_fp16 = false);
 
 }  // namespace gpu
 }  // namespace tflite

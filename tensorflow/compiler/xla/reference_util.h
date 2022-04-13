@@ -31,8 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -169,6 +167,18 @@ class ReferenceUtil {
   // inputs arrays and returns the result.
   static std::unique_ptr<Array2D<float>> MapArray2D(
       const Array2D<float>& lhs, const Array2D<float>& rhs,
+      const std::function<float(float, float)>& map_function);
+
+  // Applies map_function to each element in the input (3D array) and returns
+  // the result.
+  static std::unique_ptr<Array3D<float>> MapArray3D(
+      const Array3D<float>& array,
+      const std::function<float(float)>& map_function);
+
+  // Applies map_function to each pair of corresponding elements in the two
+  // inputs arrays and returns the result.
+  static std::unique_ptr<Array3D<float>> MapArray3D(
+      const Array3D<float>& lhs, const Array3D<float>& rhs,
       const std::function<float(float, float)>& map_function);
 
   // Number of windows in a given dimension. Calculation taken from
@@ -620,26 +630,25 @@ class ReferenceUtil {
 
     Array4D<NativeT> result(output_bounds[0], output_bounds[1],
                             output_bounds[2], output_bounds[3]);
-    result.Each(
-        [&](absl::Span<const int64_t> indices, NativeT* value) {
-          for (int i = 0; i < 4; ++i) {
-            bool in_low_padding = indices[i] < pad_low[i];
-            bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
-            if (in_low_padding || in_high_padding) {
-              *value = pad;
-              return;
-            }
-            if (pad_interior[i] &&
-                (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
-              *value = pad;
-              return;
-            }
-          }
-          *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
-                           (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
-                           (indices[2] - pad_low[2]) / (pad_interior[2] + 1),
-                           (indices[3] - pad_low[3]) / (pad_interior[3] + 1));
-        });
+    result.Each([&](absl::Span<const int64_t> indices, NativeT* value) {
+      for (int i = 0; i < 4; ++i) {
+        bool in_low_padding = indices[i] < pad_low[i];
+        bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
+        if (in_low_padding || in_high_padding) {
+          *value = pad;
+          return;
+        }
+        if (pad_interior[i] &&
+            (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
+          *value = pad;
+          return;
+        }
+      }
+      *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
+                       (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
+                       (indices[2] - pad_low[2]) / (pad_interior[2] + 1),
+                       (indices[3] - pad_low[3]) / (pad_interior[3] + 1));
+    });
     return result;
   }
 
@@ -683,7 +692,8 @@ class ReferenceUtil {
   template <typename Array1>
   static void AssertSameSize2D(const Array1& array1) {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ReferenceUtil);
+  ReferenceUtil(const ReferenceUtil&) = delete;
+  ReferenceUtil& operator=(const ReferenceUtil&) = delete;
 };
 
 }  // namespace xla

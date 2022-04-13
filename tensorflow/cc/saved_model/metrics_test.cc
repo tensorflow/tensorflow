@@ -61,5 +61,11 @@ TEST(MetricsTest, TestTrainingTimeSaved) {
   EXPECT_EQ(TrainingTimeSaved("foo").value(), 100);
 }
 
+TEST(MetricsTest, TestCheckpointSize) {
+  EXPECT_EQ(CheckpointSize("foo", 10).value(), 0);
+  CheckpointSize("foo", 10).IncrementBy(1);
+  EXPECT_EQ(CheckpointSize("foo", 10).value(), 1);
+}
+
 }  // namespace metrics
 }  // namespace tensorflow

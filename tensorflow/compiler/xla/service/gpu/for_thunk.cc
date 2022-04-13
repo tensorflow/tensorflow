@@ -41,6 +41,7 @@ Status ForThunk::Initialize(const GpuExecutable& executable,
 Status ForThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(2) << "Executing ForThunk with " << loop_limit_ << " iters";
   for (int64_t i = 0; i < loop_limit_; ++i) {
+    VLOG(3) << "Executing iteration # " << i;
     // Invoke loop body thunk sequence.
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
   }

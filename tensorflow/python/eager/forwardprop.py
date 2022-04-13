@@ -174,7 +174,7 @@ def _jvp_helper_wrapper(op_name, attr_tuple, inputs, outputs, tangents,
   return _jvp_helper(op_name, attr_tuple, inputs, outputs, tangents)
 
 
-# TODO(allenl): experimental_relax_shapes for gradients which rely on static
+# TODO(allenl): reduce_retracing for gradients which rely on static
 # shape information are underspecialized. We may want hand-written forward
 # implementations, or a more satisfying story about how we re-specialize
 # gradients which were traced with relaxed shapes (e.g. use conds instead of
@@ -186,9 +186,9 @@ def _jvp_helper_wrapper(op_name, attr_tuple, inputs, outputs, tangents,
 # run unnecessary computation. The function does not create variables, so the
 # two symbols are otherwise equivalent.
 _jvp_relaxed_shapes = function.defun(
-    _jvp_helper_wrapper, experimental_relax_shapes=True)
+    _jvp_helper_wrapper, reduce_retracing=True)
 _jvp_exact_shapes = function.defun(
-    _jvp_helper_wrapper, experimental_relax_shapes=False)
+    _jvp_helper_wrapper, reduce_retracing=False)
 
 # The maximum number of exact-shape traces to perform for a single op before
 # switching to shape relaxation.

@@ -16,6 +16,7 @@
 
 import contextlib
 import os
+import pathlib
 import shutil
 import tempfile
 
@@ -198,6 +199,19 @@ class CheckpointStateTest(test.TestCase):
     self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
     self.assertEqual(ckpt.all_model_checkpoint_paths[-1], rel_path)
     self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
+
+  def testFSPath(self):
+    save_dir = self._get_test_dir("fspath")
+    os.chdir(save_dir)
+    # Make a temporary train directory.
+    train_dir = "train"
+    os.mkdir(train_dir)
+    abs_path = os.path.join(save_dir, "model-0")
+    rel_path = os.path.join("train", "model-2")
+    checkpoint_management.update_checkpoint_state(
+        train_dir, rel_path, all_model_checkpoint_paths=[abs_path, rel_path])
+    ckpt = checkpoint_management.get_checkpoint_state(pathlib.Path(train_dir))
+    self.assertEqual(ckpt.model_checkpoint_path, rel_path)
 
   def testUpdateCheckpointStateSaveRelativePaths(self):
     save_dir = self._get_test_dir("update_checkpoint_state")
@@ -596,6 +610,32 @@ class CheckpointManagerTest(test.TestCase):
     # Save a checkpoint and second call should restore from the checkpoints.
     manager.save()
     self.assertIsNotNone(manager.restore_or_initialize())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCheckpointManagerFSpathDirectory(self):
+    directory = pathlib.Path(self.get_temp_dir())
+    v = variables.Variable(0.0)
+    checkpoint = util.Checkpoint(v=v)
+    self.evaluate(v.initializer)
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=2, checkpoint_name="ckpt_name")
+    save_path = manager.save()
+    expected = str(directory / "ckpt_name-1")
+    self.assertEqual(expected, save_path)
+
+    restore_path = manager.restore_or_initialize()
+    self.assertEqual(str(directory / "ckpt_name-1"), restore_path)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testLatestCheckpointFSpathDirectory(self):
+    directory = pathlib.Path(self.get_temp_dir())
+    checkpoint = util.Checkpoint()
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=2, checkpoint_name="ckpt_name")
+    manager.save()
+
+    cp_dir = checkpoint_management.latest_checkpoint(directory)
+    self.assertEqual(str(directory / "ckpt_name-1"), cp_dir)
 
   @test_util.run_in_graph_and_eager_modes
   def testCheckpointInterval(self):

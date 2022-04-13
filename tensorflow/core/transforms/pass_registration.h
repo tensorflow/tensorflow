@@ -18,14 +18,26 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/transforms/cf_sink/cf_sink.h"
+#include "tensorflow/core/transforms/consolidate_attrs/pass.h"
+#include "tensorflow/core/transforms/const_dedupe_hoist/pass.h"
+#include "tensorflow/core/transforms/constant_folding/pass.h"
+#include "tensorflow/core/transforms/drop_unregistered_attribute/output_shapes.h"
+#include "tensorflow/core/transforms/eliminate_passthrough_iter_args/pass.h"
+#include "tensorflow/core/transforms/functional_to_region/pass.h"
 #include "tensorflow/core/transforms/graph_to_func/graph_to_func_pass.h"
+#include "tensorflow/core/transforms/region_to_functional/pass.h"
+#include "tensorflow/core/transforms/remapper/remapper_pass.h"
+#include "tensorflow/core/transforms/shape_inference/pass.h"
 #include "tensorflow/core/transforms/toposort/toposort_pass.h"
 
 namespace mlir {
 namespace tfg {
-/// Generate the code for registering passes for command-line parsing.
+
+// Generate the code for registering passes for command-line parsing.
 #define GEN_PASS_REGISTRATION
 #include "tensorflow/core/transforms/passes.h.inc"
+
 }  // namespace tfg
 }  // namespace mlir
 

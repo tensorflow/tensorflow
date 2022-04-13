@@ -29,6 +29,8 @@ namespace tflite {
 namespace {
 
 const float kThreshold_zero_buffer_ratio = 10.0f;
+constexpr char kSectionSplitter[] =
+    "---------------------------------------------------------------\n";
 
 // Returns string representation of the given tensor of the subgraph.
 const std::string tensor_str(const int tensor_idx, const int subgraph_idx) {
@@ -71,7 +73,7 @@ void dump_tensor_detail(std::stringstream& out_stream,
       }
     }
     out_stream << "]";
-  } else {
+  } else if (tensor->shape()) {
     out_stream << "shape:[";
     for (int i = 0; i < tensor->shape()->Length(); ++i) {
       const int j = tensor->shape()->Get(i);
@@ -81,6 +83,8 @@ void dump_tensor_detail(std::stringstream& out_stream,
       }
     }
     out_stream << "]";
+  } else {
+    out_stream << "shape:n/a";
   }
   out_stream << ", type:" << EnumNameTensorType(tensor->type());
 
@@ -100,6 +104,9 @@ void dump_tensor_detail(std::stringstream& out_stream,
 void dump_tensor_list(std::stringstream& out_stream,
                       const flatbuffers::Vector<int32_t>* tensors,
                       const int subgraph_idx, bool verbose = false) {
+  if (tensors == nullptr) {
+    return;
+  }
   for (int i = 0; i < tensors->Length(); ++i) {
     const int tensor_idx = tensors->Get(i);
     if (verbose) {
@@ -163,8 +170,8 @@ void dump_model_summary(std::stringstream& out_stream,
                         const ::tflite::Model* model) {
   auto* subgraphs = model->subgraphs();
   out_stream
-      << "Your TFLite model has ‘" << subgraphs->Length()
-      << "’ subgraph(s). In the subgraph description below,\nT# represents the "
+      << "Your TFLite model has '" << subgraphs->Length()
+      << "' subgraph(s). In the subgraph description below,\nT# represents the "
          "Tensor numbers. ";
   if (subgraphs->Length() > 0 && subgraphs->Get(0)->operators()->Length() > 0) {
     const Operator* first_op = subgraphs->Get(0)->operators()->Get(0);
@@ -176,6 +183,42 @@ void dump_model_summary(std::stringstream& out_stream,
     out_stream << " as input and produces ";
     dump_tensor_list(out_stream, first_op->outputs(), 0, /*verbose=*/true);
     out_stream << " as output.\n\n";
+  }
+}
+
+// Dump the signature definitions of the given TFLite flatbuffer model.
+void dump_model_signature_defs(std::stringstream& out_stream,
+                               const ::tflite::Model* model) {
+  auto* signatures = model->signature_defs();
+  if (signatures == nullptr || signatures->Length() == 0) {
+    return;
+  }
+  out_stream << kSectionSplitter;
+  out_stream << "Your TFLite model has ‘" << signatures->Length()
+             << "’ signature_def(s).\n\n";
+  for (int i = 0; i < signatures->Length(); ++i) {
+    auto* signature_def = signatures->Get(i);
+    out_stream << "Signature#" << i << " key: '"
+               << signature_def->signature_key()->str() << "'\n";
+    out_stream << "- Subgraph: "
+               << subgraph_str(signature_def->subgraph_index()) << "\n";
+    out_stream << "- Inputs: \n";
+    for (int j = 0; j < signature_def->inputs()->Length(); ++j) {
+      auto* input = signature_def->inputs()->Get(j);
+      out_stream << "    '" << input->name()->str() << "' : "
+                 << tensor_str(input->tensor_index(),
+                               signature_def->subgraph_index())
+                 << "\n";
+    }
+    out_stream << "- Outputs: \n";
+    for (int j = 0; j < signature_def->outputs()->Length(); ++j) {
+      auto* output = signature_def->outputs()->Get(j);
+      out_stream << "    '" << output->name()->str() << "' : "
+                 << tensor_str(output->tensor_index(),
+                               signature_def->subgraph_index())
+                 << "\n";
+    }
+    out_stream << "\n";
   }
 }
 
@@ -206,7 +249,7 @@ void dump_model_stats(std::stringstream& out_stream,
     total_buffer_size += buffer->data()->size();
   }
 
-  out_stream << "\n";
+  out_stream << kSectionSplitter;
   char temp[2048];
   snprintf(temp, sizeof(temp), "%24s: %10zu bytes\n", "Model size", model_size);
   out_stream << temp;
@@ -354,6 +397,7 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
            "delegate.\nThere could be some runtime incompatibililty happen.\n";
   }
 
+  dump_model_signature_defs(out_stream, model);
   dump_model_stats(out_stream, model, fb_model->allocation()->bytes(), &stats);
 
   return out_stream.str();

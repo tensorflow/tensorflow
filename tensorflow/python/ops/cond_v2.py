@@ -29,9 +29,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
@@ -303,7 +305,9 @@ def _build_cond(pred,
   # correct output structure
   tensors = [array_ops.identity(t) for t in tensors]
 
-  return _pack_sequence_as(true_graph.structured_outputs, tensors)
+  structured_output_specs = _get_compatible_structured_output_specs(true_graph,
+                                                                    false_graph)
+  return _pack_sequence_as(structured_output_specs, tensors)
 
 
 def get_func_graphs(op):
@@ -343,6 +347,44 @@ def get_func_graphs(op):
             for i, branch_fn in enumerate(op.get_attr("branches"))]
   else:
     raise ValueError("Unsupported op type: {}".format(op.type))
+
+
+def _get_compatible_structured_output_specs(true_graph, false_graph):
+  """Returns the most specific compatible specs of graph structured outputs."""
+  return nest.map_structure(_get_compatible_spec,
+                            true_graph.structured_outputs,
+                            false_graph.structured_outputs)
+
+
+def _get_compatible_spec(value_or_spec1, value_or_spec2):
+  """Returns the most specific compatible spec.
+
+  Args:
+    value_or_spec1: A TypeSpecs or a value that has a defined TypeSpec.
+    value_or_spec2: A TypeSpecs or a value that has a defined TypeSpec.
+
+  Returns:
+    The most specific compatible TypeSpecs of the input.
+
+  Raises:
+    ValueError: If value_or_spec1 is not compatible with value_or_spec2.
+  """
+  spec1 = _get_spec_for(value_or_spec1)
+  spec2 = _get_spec_for(value_or_spec2)
+
+  # pylint: disable=protected-access
+  common = spec1._without_tensor_names().most_specific_common_supertype(
+      [spec2._without_tensor_names()])
+  if common is None:
+    raise TypeError(f"No common supertype of {spec1} and {spec2}.")
+  return common
+
+
+def _get_spec_for(value_or_spec):
+  """Returns TypeSpec of a value or itself if it is a TypeSpec already."""
+  if isinstance(value_or_spec, type_spec.TypeSpec):
+    return value_or_spec
+  return type_spec.type_spec_from_value(value_or_spec)
 
 
 def _grad_fn(func_graph, grads):
@@ -600,10 +642,11 @@ def _make_output_composite_tensors_match(op_type, branch_graphs):
   for output_idx, branch_outs in enumerate(zip(*branch_outputs)):
     if len(set(type(out) for out in branch_outs)) == 1:
       continue
-    if not any(isinstance(out, ops.IndexedSlices) for out in branch_outs):
+    if not any(
+        isinstance(out, indexed_slices.IndexedSlices) for out in branch_outs):
       continue
     for branch_idx, branch_out in enumerate(branch_outs):
-      if isinstance(branch_out, ops.IndexedSlices):
+      if isinstance(branch_out, indexed_slices.IndexedSlices):
         continue
       elif isinstance(branch_out, ops.Tensor):
         with branch_graphs[branch_idx].as_default():
@@ -642,16 +685,19 @@ def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
   # Store indices of IndexedSlices.indices in `indexed_slice_indices`.
   for output_idx, branch_outs in enumerate(
       zip(*branch_outputs_flat_with_composites)):
-    if len(set(isinstance(out, ops.IndexedSlices) for out in branch_outs)) != 1:
+    if len(
+        set(
+            isinstance(out, indexed_slices.IndexedSlices)
+            for out in branch_outs)) != 1:
       raise TypeError("Cannot reconcile tf.{op_name} {output_idx}-th outputs:\n"
                       "  branches returned: {outputs}".format(
                           op_name="cond" if op_type == _COND else "switch_case",
                           output_idx=output_idx,
                           outputs=branch_outs))
-    if isinstance(branch_outs[0], ops.IndexedSlices):
+    if isinstance(branch_outs[0], indexed_slices.IndexedSlices):
       # indices is the second component of the composite tensor.
       indexed_slice_indices.append(current_index + 1)
-    if nest.is_sequence_or_composite(branch_outs[0]):
+    if nest.is_nested_or_composite(branch_outs[0]):
       current_index += len(nest.flatten(branch_outs[0], expand_composites=True))
     elif branch_outs[0] is not None:
       # `FuncGraph.outputs` does not contain Nones so no need to update the

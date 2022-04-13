@@ -17,6 +17,7 @@
 import functools
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -671,7 +672,8 @@ def rot90(image, k=1, name=None):
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    k: A scalar integer. The number of times the image is rotated by 90 degrees.
+    k: A scalar integer tensor. The number of times the image(s) are
+      rotated by 90 degrees.
     name: A name for this operation (optional).
 
   Returns:
@@ -1043,6 +1045,53 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
       `target_*` arguments, or either `offset_height` or `offset_width` is
       negative.
   """
+  return pad_to_bounding_box_internal(
+      image,
+      offset_height,
+      offset_width,
+      target_height,
+      target_width,
+      check_dims=True)
+
+
+# TODO(b/190099338) Remove this internal method and remap call sites to call
+# image_ops.pad_to_bounding_box when asserts are no longer serialized. See also
+# b/204377079#comment6 for more context.
+def pad_to_bounding_box_internal(image, offset_height, offset_width,
+                                 target_height, target_width, check_dims):
+  """Pad `image` with zeros to the specified `height` and `width`.
+
+  Adds `offset_height` rows of zeros on top, `offset_width` columns of
+  zeros on the left, and then pads the image on the bottom and right
+  with zeros until it has dimensions `target_height`, `target_width`.
+
+  This op does nothing if `offset_*` is zero and the image already has size
+  `target_height` by `target_width`.
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    offset_height: Number of rows of zeros to add on top.
+    offset_width: Number of columns of zeros to add on the left.
+    target_height: Height of output image.
+    target_width: Width of output image.
+    check_dims: If True, assert that dimensions are non-negative and in range.
+      In multi-GPU distributed settings, assertions can cause program slowdown.
+      Setting this parameter to `False` avoids this, resulting in faster speed
+      in some situations, with the tradeoff being that some error checking is
+      not happening.
+
+  Returns:
+    If `image` was 4-D, a 4-D float Tensor of shape
+    `[batch, target_height, target_width, channels]`
+    If `image` was 3-D, a 3-D float Tensor of shape
+    `[target_height, target_width, channels]`
+
+  Raises:
+    ValueError: If the shape of `image` is incompatible with the `offset_*` or
+      `target_*` arguments, or either `offset_height` or `offset_width` is
+      negative. Not raised if `check_dims` is `False`.
+  """
   with ops.name_scope(None, 'pad_to_bounding_box', [image]):
     image = ops.convert_to_tensor(image, name='image')
 
@@ -1060,22 +1109,23 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
           '\'image\' (shape %s) must have either 3 or 4 dimensions.' %
           image_shape)
 
-    assert_ops = _CheckAtLeast3DImage(image, require_static=False)
     batch, height, width, depth = _ImageDimensions(image, rank=4)
 
     after_padding_width = target_width - offset_width - width
 
     after_padding_height = target_height - offset_height - height
 
-    assert_ops += _assert(offset_height >= 0, ValueError,
-                          'offset_height must be >= 0')
-    assert_ops += _assert(offset_width >= 0, ValueError,
-                          'offset_width must be >= 0')
-    assert_ops += _assert(after_padding_width >= 0, ValueError,
-                          'width must be <= target - offset')
-    assert_ops += _assert(after_padding_height >= 0, ValueError,
-                          'height must be <= target - offset')
-    image = control_flow_ops.with_dependencies(assert_ops, image)
+    if check_dims:
+      assert_ops = _CheckAtLeast3DImage(image, require_static=False)
+      assert_ops += _assert(offset_height >= 0, ValueError,
+                            'offset_height must be >= 0')
+      assert_ops += _assert(offset_width >= 0, ValueError,
+                            'offset_width must be >= 0')
+      assert_ops += _assert(after_padding_width >= 0, ValueError,
+                            'width must be <= target - offset')
+      assert_ops += _assert(after_padding_height >= 0, ValueError,
+                            'height must be <= target - offset')
+      image = control_flow_ops.with_dependencies(assert_ops, image)
 
     # Do not pad on the depth dimensions.
     paddings = array_ops.reshape(
@@ -1356,7 +1406,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
 
 
 @tf_export(v1=['image.ResizeMethod'])
-class ResizeMethodV1(object):
+class ResizeMethodV1:
   """See `v1.image.resize` for details."""
   BILINEAR = 0
   NEAREST_NEIGHBOR = 1
@@ -1365,7 +1415,7 @@ class ResizeMethodV1(object):
 
 
 @tf_export('image.ResizeMethod', v1=[])
-class ResizeMethod(object):
+class ResizeMethod:
   """See `tf.image.resize` for details."""
   BILINEAR = 'bilinear'
   NEAREST_NEIGHBOR = 'nearest'
@@ -1939,6 +1989,7 @@ def per_image_standardization(image):
 
 
 @tf_export('image.random_brightness')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def random_brightness(image, max_delta, seed=None):
   """Adjust the brightness of images by a random factor.
@@ -1981,6 +2032,7 @@ def random_brightness(image, max_delta, seed=None):
 
 
 @tf_export('image.stateless_random_brightness', v1=[])
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def stateless_random_brightness(image, max_delta, seed):
   """Adjust the brightness of images by a random factor deterministically.
@@ -2120,6 +2172,7 @@ def stateless_random_contrast(image, lower, upper, seed):
 
 
 @tf_export('image.adjust_brightness')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
@@ -2229,6 +2282,7 @@ def adjust_contrast(images, contrast_factor):
 
 
 @tf_export('image.adjust_gamma')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs [Gamma Correction](http://en.wikipedia.org/wiki/Gamma_correction).
@@ -2294,6 +2348,7 @@ def adjust_gamma(image, gamma=1, gain=1):
 
 
 @tf_export('image.convert_image_dtype')
+@dispatch.register_unary_elementwise_api
 @dispatch.add_dispatch_support
 def convert_image_dtype(image, dtype, saturate=False, name=None):
   """Convert `image` to `dtype`, scaling its values if needed.
@@ -2686,6 +2741,11 @@ def adjust_hue(image, delta, name=None):
   Returns:
     Adjusted image(s), same shape and DType as `image`.
 
+  Raises:
+    InvalidArgumentError: image must have at least 3 dimensions.
+    InvalidArgumentError: The size of the last dimension must be 3.
+    ValueError: if `delta` is not in the interval of `[-1, 1]`.
+
   Usage Example:
 
   >>> image = [[[1, 2, 3], [4, 5, 6]],
@@ -2702,6 +2762,9 @@ def adjust_hue(image, delta, name=None):
         [17, 16, 18]]], dtype=int32)>
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
+    if context.executing_eagerly():
+      if delta < -1 or delta > 1:
+        raise ValueError('delta must be in the interval [-1, 1]')
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
@@ -2727,12 +2790,12 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
 
   Usage Example:
 
-  >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],
-  ...     [[7.0, 8.0, 9.0],
-  ...       [10.0, 11.0, 12.0]]]
+  >>> x = tf.constant([[[1, 2, 3],
+  ...                   [4, 5, 6]],
+  ...                  [[7, 8, 9],
+  ...                   [10, 11, 12]]], dtype=tf.uint8)
   >>> tf.image.random_jpeg_quality(x, 75, 95)
-  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=...>
+  <tf.Tensor: shape=(2, 2, 3), dtype=uint8, numpy=...>
 
   For producing deterministic results given a `seed` value, use
   `tf.image.stateless_random_jpeg_quality`. Unlike using the `seed` param
@@ -2788,13 +2851,12 @@ def stateless_random_jpeg_quality(image,
 
   Usage Example:
 
-  >>> x = [[[1, 2, 3],
-  ...       [4, 5, 6]],
-  ...      [[7, 8, 9],
-  ...       [10, 11, 12]]]
-  >>> x_uint8 = tf.cast(x, tf.uint8)
+  >>> x = tf.constant([[[1, 2, 3],
+  ...                   [4, 5, 6]],
+  ...                  [[7, 8, 9],
+  ...                   [10, 11, 12]]], dtype=tf.uint8)
   >>> seed = (1, 2)
-  >>> tf.image.stateless_random_jpeg_quality(x_uint8, 75, 95, seed)
+  >>> tf.image.stateless_random_jpeg_quality(x, 75, 95, seed)
   <tf.Tensor: shape=(2, 2, 3), dtype=uint8, numpy=
   array([[[ 0,  4,  5],
           [ 1,  5,  6]],
@@ -2838,7 +2900,21 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
   `jpeg_quality` must be in the interval `[0, 100]`.
 
-  Usage Example:
+  Usage Examples:
+
+  >>> x = [[[0.01, 0.02, 0.03],
+  ...       [0.04, 0.05, 0.06]],
+  ...      [[0.07, 0.08, 0.09],
+  ...       [0.10, 0.11, 0.12]]]
+  >>> x_jpeg = tf.image.adjust_jpeg_quality(x, 75)
+  >>> x_jpeg.numpy()
+  array([[[0.00392157, 0.01960784, 0.03137255],
+          [0.02745098, 0.04313726, 0.05490196]],
+         [[0.05882353, 0.07450981, 0.08627451],
+          [0.08235294, 0.09803922, 0.10980393]]], dtype=float32)
+
+  Note that floating point values are expected to have values in the range
+  [0,1) and values outside this range are clipped.
 
   >>> x = [[[1.0, 2.0, 3.0],
   ...       [4.0, 5.0, 6.0]],
@@ -2850,6 +2926,19 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
           [1., 1., 1.]],
          [[1., 1., 1.],
           [1., 1., 1.]]], dtype=float32)>
+
+  Note that `jpeg_quality` 100 is still lossy compresson.
+
+  >>> x = tf.constant([[[1, 2, 3],
+  ...                   [4, 5, 6]],
+  ...                  [[7, 8, 9],
+  ...                   [10, 11, 12]]], dtype=tf.uint8)
+  >>> tf.image.adjust_jpeg_quality(x, 100)
+  <tf.Tensor: shape(2, 2, 3), dtype=uint8, numpy=
+  array([[[ 0,  1,  3],
+          [ 3,  4,  6]],
+         [[ 6,  7,  9],
+          [ 9, 10, 12]]], dtype=uint8)>
 
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
@@ -3742,14 +3831,17 @@ def non_max_suppression_with_scores(boxes,
   Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
   of other overlapping boxes instead of directly causing them to be pruned.
   Consequently, in contrast to `tf.image.non_max_suppression`,
-  `tf.image.non_max_suppression_padded` returns the new scores of each input box
-  in the second output, `selected_scores`.
+  `tf.image.non_max_suppression_with_scores` returns the new scores of each
+  input box in the second output, `selected_scores`.
 
   To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
   larger than 0.  When `soft_nms_sigma` equals 0, the behavior of
-  `tf.image.non_max_suppression_padded` is identical to that of
+  `tf.image.non_max_suppression_with_scores` is identical to that of
   `tf.image.non_max_suppression` (except for the extra output) both in function
   and in running time.
+
+  Note that when `soft_nms_sigma` > 0, Soft-NMS is performed and `iou_threshold`
+  is ignored. `iou_threshold` is only used for standard NMS.
 
   Args:
     boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.

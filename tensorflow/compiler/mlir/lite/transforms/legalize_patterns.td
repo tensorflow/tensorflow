@@ -16,10 +16,13 @@ limitations under the License.
 // TFLite legalization patterns
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+
+def CreateEmptyBoolAttr : NativeCodeCall<"::mlir::BoolAttr()">;
 
 def NonOpaqueElementsAttr : ElementsAttrBase<
   CPred<"!$_self.isa<OpaqueElementsAttr>()">,
@@ -46,6 +49,10 @@ def ConvertToQuantTypeFromAttrs : NativeCodeCall<
 def convertIntAttrTo32Bit : NativeCodeCall<
     "$_builder.getI32IntegerAttr($0.cast<IntegerAttr>().getInt())">;
 
+// Converts an integer attribute $0 to 64-bit with builder.
+def convertIntAttrTo64Bit : NativeCodeCall<
+    "$_builder.getI64IntegerAttr($0.cast<IntegerAttr>().getInt())">;
+
 // Extracts the single integer element from $_self.
 def ExtractSingleElementAsInteger : NativeCodeCall<
     "ExtractSingleElementAsInteger($_self.cast<ElementsAttr>())">;
@@ -64,14 +71,17 @@ def HasSameStaticShapes : Constraint<HasSameStaticShapesPred, "op must have stat
 def HasNotSameStaticShapes : Constraint<Neg<HasSameStaticShapesPred>, "op must have not static same input shapes">;
 
 def CreateNoneValue : NativeCodeCall<
-  "$_builder.create<mlir::ConstantOp>($0.getLoc(), $_builder.getNoneType(), $_builder.getUnitAttr())">;
+  "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
 
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
 //===----------------------------------------------------------------------===//
 
-def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp ElementsAttr:$value),
-                                   (TFL_ConstOp $value)>;
+def createConstOp
+  : NativeCodeCall<"$_builder.create<ConstOp>($_loc, $0.getType(), $1)">;
+
+def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp:$res ElementsAttr:$value),
+                                   (createConstOp $res, $value)>;
 
 // Convert to std constant for statically shaped, non-opaque constants.
 def ConvertTfConstToStdConst : Pat<
@@ -95,6 +105,10 @@ def IsSameOrValid : AttrConstraint<
     CPred<"$_self.cast<StringAttr>().getValue() == \"SAME\" || " #
           "$_self.cast<StringAttr>().getValue() == \"VALID\"">,
     "'SAME' or 'VALID' paddings">;
+
+def TFL_GetMirrorPaddingType : NativeCodeCall<
+    "mlir::TFL::MirrorPaddingTypeAttr::get($_builder.getContext(), " #
+        "GetTFLMirrorPaddingFromString($0));">;
 
 def LegalizeAbs : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
 def LegalizeAddN : Pat<(TF_AddNOp $inputs), (TFL_AddNOp $inputs)>;
@@ -285,15 +299,16 @@ def LegalizeDiv : Pat<(TF_DivOp $lhs, $rhs),
 // When batch size is known, TF BatchMatMul gets unfolded to TFL FullyConnected
 // with additional ops. In the case of unknown batch size, the match will
 // fall through to here and convert to TF Lite BatchMatMul.
+// TODO(b/207064634): CreateEmptyBoolAttr is a temporary workaround for this bug.
 def LegalizeBatchMatMulV3UnknownBatch : Pat<
   (TF_BatchMatMulV3Op $lhs, $rhs, $adj_x, $adj_y),
-  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
+  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y, CreateEmptyBoolAttr:$adj_y)>;
 def LegalizeBatchMatMulV2UnknownBatch : Pat<
   (TF_BatchMatMulV2Op $lhs, $rhs, $adj_x, $adj_y),
-  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
+  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y, CreateEmptyBoolAttr:$adj_y)>;
 def LegalizeBatchMatMulUnknownBatch : Pat<
   (TF_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y),
-  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y)>;
+  (TFL_BatchMatMulOp $lhs, $rhs, $adj_x, $adj_y, CreateEmptyBoolAttr:$adj_y)>;
 
 def LegalizeFakeQuantWithMinMaxVars: Pat<
   (TF_FakeQuantWithMinMaxVarsOp $inputs, (Arith_ConstantOp F32ElementsAttr:$min),
@@ -393,8 +408,8 @@ def LegalizeResizeNearestNeighbor : Pat<
   (TFL_ResizeNearestNeighborOp $images, $size, $align_corners,
     $half_pixel_centers)>;
 
-def LegalizeMirrorPad : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst),
-                            (TFL_MirrorPadOp $arg0, $arg1, $cst)>;
+def LegalizeMirrorPad : Pat<(TF_MirrorPadOp $arg0, $arg1, $mode),
+                            (TFL_MirrorPadOp $arg0, $arg1, (TFL_GetMirrorPaddingType $mode))>;
 
 def LegalizeSparseToDense : Pat<
   (TF_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values,
@@ -462,8 +477,8 @@ def IsRankZeroAttr
   : CPred<"$_self.cast<DenseElementsAttr>().getType().getRank() == 0">;
 
 def HasValueZero
-  : CPred<"$_self.cast<DenseElementsAttr>().getSplatValue()."
-          "cast<::mlir::IntegerAttr>().getInt() == 0">;
+  : CPred<"$_self.cast<DenseElementsAttr>()."
+          "getSplatValue<::mlir::IntegerAttr>().getInt() == 0">;
 
 // TFLite only supports MatrixSetDiag ops with scalar zero k attribute.
 def IsSupportedByTFLiteMatrixSetDiag
@@ -513,3 +528,26 @@ def LegalizeComplexAbs : Pat<(TF_ComplexAbsOp $arg), (TFL_ComplexAbsOp $arg)>;
 def LegalizeReal : Pat<(TF_RealOp $arg), (TFL_RealOp $arg)>;
 
 def LegalizeImag : Pat<(TF_ImagOp $arg), (TFL_ImagOp $arg)>;
+
+def LegalizeBucketize : Pat<
+  (TF_BucketizeOp $input, F32ArrayAttr:$boundaries),
+  (TFL_BucketizeOp $input, $boundaries)>;
+
+def LegalizeRandomUniform : Pat<
+  (TF_RandomUniformOp $shape, $seed, $seed2),
+  (TFL_RandomUniformOp $shape, (convertIntAttrTo64Bit $seed),
+   (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeRandomStandardNormal : Pat<
+  (TF_RandomStandardNormalOp $shape, $seed, $seed2),
+  (TFL_RandomStandardNormalOp $shape, (convertIntAttrTo64Bit $seed),
+   (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeMultinomial : Pat<
+  (TF_MultinomialOp $logits, $num_samples, $seed, $seed2),
+  (TFL_MultinomialOp $logits, $num_samples, (convertIntAttrTo64Bit $seed),
+   (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeXlaDynamicUpdateSlice : Pat<
+  (TF_XlaDynamicUpdateSliceOp $operand, $update, $start_indices),
+  (TFL_DynamicUpdateSliceOp $operand, $update, $start_indices)>;

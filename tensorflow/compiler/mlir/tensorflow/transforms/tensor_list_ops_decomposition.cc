@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -74,14 +74,15 @@ void ModifyFunctionSignature(
     llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size,
     llvm::function_ref<llvm::Optional<Type>(int64_t)> arg_to_buffer_type,
     llvm::function_ref<bool(int64_t)> arg_buffer_size_is_fixed) {
-  auto new_input_types = llvm::to_vector<8>(func.getType().getInputs());
+  auto new_input_types = llvm::to_vector<8>(func.getFunctionType().getInputs());
   int64_t original_arg_count = new_input_types.size();
+  Location loc = func.getLoc();
   for (int64_t i = 0; i < original_arg_count; ++i) {
     auto buffer_type = arg_to_buffer_type(i);
     if (!buffer_type.hasValue()) continue;
     func.getArgument(i).setType(*buffer_type);
     new_input_types[i] = *buffer_type;
-    auto size_arg = func.front().addArgument(size_type);
+    auto size_arg = func.front().addArgument(size_type, loc);
     new_input_types.push_back(size_arg.getType());
     if (buffer_to_size) {
       (*buffer_to_size)[func.getArgument(i)] = {size_arg,
@@ -138,8 +139,8 @@ AddTensorListSizesToTerminator(
 // size_return_index, fixed_size).
 llvm::SmallVector<std::tuple<int64_t, int64_t, bool>, 8> ModifyFunctionReturn(
     FuncOp func, const llvm::SmallDenseMap<Value, SizeInfo>& buffer_to_size) {
-  auto output_buffer_to_size =
-      AddTensorListSizesToTerminator<ReturnOp>(func.front(), buffer_to_size);
+  auto output_buffer_to_size = AddTensorListSizesToTerminator<func::ReturnOp>(
+      func.front(), buffer_to_size);
   UpdateFuncType(func);
   return output_buffer_to_size;
 }
@@ -190,9 +191,9 @@ LogicalResult HandleWhileOp(
     if (it == buffer_to_size->end()) continue;
     new_while_operands.push_back(it->getSecond().size);
   }
-  auto new_while =
-      builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
-                                  new_while_operands, while_op->getAttrs());
+  auto new_while = builder.create<TF::WhileOp>(
+      while_op.getLoc(), body.getFunctionType().getInputs(), new_while_operands,
+      while_op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_while.getResult(std::get<0>(entry))] = {
         new_while.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -251,7 +252,7 @@ LogicalResult HandleCaseOrIfOp(
   }
   FuncOp first_branch = branches.front();
   auto new_op = OpBuilder(op).create<CaseOrIfOp>(
-      op.getLoc(), first_branch.getType().getResults(), new_operands,
+      op.getLoc(), first_branch.getFunctionType().getResults(), new_operands,
       op->getAttrs());
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
@@ -276,7 +277,8 @@ LogicalResult HandleWhileRegionOp(
       if (it == buffer_to_size->end()) continue;
       auto buffer_type = it->getFirst().getType();
       region.getArgument(i).setType(buffer_type);
-      auto size_arg = region.addArgument(cutil::GetSizeType(builder));
+      auto size_arg =
+          region.addArgument(cutil::GetSizeType(builder), region.getLoc());
       (*buffer_to_size)[region.getArgument(i)] = {size_arg,
                                                   it->getSecond().fixed};
     }
@@ -439,7 +441,7 @@ LogicalResult HandlePartitionedCallOp(
     }
     OpBuilder builder(call);
     auto new_call = builder.create<CallOp>(
-        call.getLoc(), info.decomposed_callee.getType().getResults(),
+        call.getLoc(), info.decomposed_callee.getFunctionType().getResults(),
         new_operands, call->getAttrs());
     new_call->setAttr(
         "f", SymbolRefAttr::get(

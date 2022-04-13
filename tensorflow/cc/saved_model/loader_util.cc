@@ -34,9 +34,14 @@ Status GetInitOp(const string& export_dir, const MetaGraphDef& meta_graph_def,
   const auto& init_op_sig_it =
       meta_graph_def.signature_def().find(kSavedModelInitOpSignatureKey);
   if (init_op_sig_it != sig_def_map.end()) {
-    *init_op_name = init_op_sig_it->second.outputs()
-                        .find(kSavedModelInitOpSignatureKey)
-                        ->second.name();
+    const auto& sig_def_outputs = init_op_sig_it->second.outputs();
+    const auto& sig_def_outputs_it =
+        sig_def_outputs.find(kSavedModelInitOpSignatureKey);
+    if (sig_def_outputs_it == sig_def_outputs.end()) {
+      return errors::FailedPrecondition("Could not find output ",
+                                        kSavedModelInitOpSignatureKey);
+    }
+    *init_op_name = sig_def_outputs_it->second.name();
     return Status::OK();
   }
 

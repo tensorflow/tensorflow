@@ -82,7 +82,7 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
   explicit DispatchGrpcDataServer(const experimental::DispatcherConfig& config);
   ~DispatchGrpcDataServer() override;
 
-  // Returns the number of workers registerd with the dispatcher.
+  // Returns the number of workers registered with the dispatcher.
   Status NumWorkers(int* num_workers);
   // Returns the number of active (non-finished) jobs running on the dispatcher.
   size_t NumActiveJobs();

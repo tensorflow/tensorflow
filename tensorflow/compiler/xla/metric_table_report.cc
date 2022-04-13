@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/metric_table_report.h"
 
-#include <unordered_map>
+#include <algorithm>
+#include <string>
+#include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -29,11 +31,11 @@ void MetricTableReport::AddEntry(Entry entry) {
   entries_.push_back(std::move(entry));
 }
 
-void MetricTableReport::SetMetricName(string metric_name) {
+void MetricTableReport::SetMetricName(std::string metric_name) {
   metric_name_ = std::move(metric_name);
 }
 
-void MetricTableReport::SetEntryName(string entry_name) {
+void MetricTableReport::SetEntryName(std::string entry_name) {
   entry_name_ = std::move(entry_name);
 }
 
@@ -47,7 +49,7 @@ void MetricTableReport::SetShowCategoryTable() { show_category_table_ = true; }
 
 void MetricTableReport::SetShowEntryTable() { show_entry_table_ = true; }
 
-string MetricTableReport::MakeReport(double expected_metric_sum) {
+std::string MetricTableReport::MakeReport(double expected_metric_sum) {
   expected_metric_sum_ = expected_metric_sum;
   report_.clear();
 
@@ -79,11 +81,11 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
   LOG(INFO) << "Writing report to log.";
 
   int64_t pos = 0;
-  const string report = MakeReport(expected_metric_sum);
+  const std::string report = MakeReport(expected_metric_sum);
   const int report_size = report.size();
   while (pos < report_size) {
     int64_t end_of_line = report.find('\n', pos);
-    const int64_t _npos = string::npos;
+    const int64_t _npos = std::string::npos;
     if (end_of_line == _npos) {
       end_of_line = report.size();
     }
@@ -100,7 +102,7 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
 std::vector<MetricTableReport::Category> MetricTableReport::MakeCategories(
     const std::vector<Entry>* entries) {
   // Create the categories using a category_text -> category map.
-  std::unordered_map<string, Category> category_map;
+  absl::flat_hash_map<std::string, Category> category_map;
   for (const Entry& entry : *entries) {
     Category& category = category_map[entry.category_text];
     category.metric_sum += entry.metric;
@@ -151,7 +153,7 @@ void MetricTableReport::AppendCategoryTable() {
     metric_sum += category.metric_sum;
 
     // Show the category.
-    string text = category.category_text;
+    std::string text = category.category_text;
     if (text.empty()) {
       text = "[no category]";
     }
@@ -202,7 +204,7 @@ void MetricTableReport::AppendEntryTable() {
     ++entries_shown;
     metric_sum += entry.metric;
 
-    string text = entry.text;
+    std::string text = entry.text;
     if (text.empty()) {
       text = "[no entry text]";
     }
@@ -216,13 +218,14 @@ void MetricTableReport::AppendEntryTable() {
   }
 }
 
-void MetricTableReport::AppendTableRow(const string& text, const double metric,
+void MetricTableReport::AppendTableRow(const std::string& text,
+                                       const double metric,
                                        const double running_metric_sum) {
   // This is the widest metric number possible, assuming non-negative metrics,
   // so align to that width.
   const int64_t max_metric_string_size =
       MetricString(expected_metric_sum_).size();
-  string metric_string = MetricString(metric);
+  std::string metric_string = MetricString(metric);
 
   // Don't try to make a gigantic string and crash if expected_metric_sum_ is
   // wrong somehow.
@@ -231,7 +234,7 @@ void MetricTableReport::AppendTableRow(const string& text, const double metric,
   if (max_metric_string_size >= metric_string_size) {
     padding_len += max_metric_string_size - metric_string.size();
   }
-  string padding(padding_len, ' ');
+  std::string padding(padding_len, ' ');
   AppendLine(padding, metric_string, " (", MetricPercent(metric), " Σ",
              MetricPercent(running_metric_sum), ")   ", text);
 }
@@ -244,13 +247,13 @@ double MetricTableReport::UnaccountedMetric() {
   return expected_metric_sum_ - metric_sum;
 }
 
-string MetricTableReport::MetricString(double metric) {
+std::string MetricTableReport::MetricString(double metric) {
   // Round to integer and stringify.
-  string s1 = absl::StrCat(std::llround(metric));
+  std::string s1 = absl::StrCat(std::llround(metric));
 
   // Code below commafies the string, e.g. "1234" becomes "1,234".
   absl::string_view sp1(s1);
-  string output;
+  std::string output;
   // Copy leading non-digit characters unconditionally.
   // This picks up the leading sign.
   while (!sp1.empty() && !absl::ascii_isdigit(sp1[0])) {
@@ -267,7 +270,7 @@ string MetricTableReport::MetricString(double metric) {
   return output;
 }
 
-string MetricTableReport::MetricPercent(double metric) {
+std::string MetricTableReport::MetricPercent(double metric) {
   return absl::StrFormat("%5.2f%%", metric / expected_metric_sum_ * 100.0);
 }
 

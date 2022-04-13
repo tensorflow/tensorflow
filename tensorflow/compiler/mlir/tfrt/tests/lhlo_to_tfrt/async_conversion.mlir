@@ -1,7 +1,5 @@
-// RUN: lhlo-tfrt-opt %s    \
-// RUN:   -lmhlo-to-gpu     \
-// RUN:   -gpu-async-region \
-// RUN:   -gpu-to-tfrt-gpu  \
+// RUN: lhlo-tfrt-opt %s     \
+// RUN:   -lmhlo-to-tfrt-gpu \
 // RUN: | FileCheck %s
 
 // CHECK:      func @async(
@@ -9,7 +7,7 @@
 // CHECK-SAME:   %arg1: !tfrt_gpu.stream,
 // CHECK-SAME:   %arg2: !tfrt_gpu.buffer
 // CHECK-SAME: ) -> !tfrt.chain
-func @async(%memref: memref<4x4xf32>) {
+func.func @async(%memref: memref<4x4xf32>) {
   // CHECK-NOT: cast
   // CHECK: %[[ctx:.*]] = tfrt_gpu.stream.get_context %arg1
   // CHECK: %[[e0:.*]] = tfrt_gpu.event.create %[[ctx]]
@@ -28,8 +26,8 @@ func @async(%memref: memref<4x4xf32>) {
   %a0 = async.execute () {
     // CHECK: %[[s0:.*]] = tfrt_gpu.stream.create %[[ctx]]
     // CHECK: %[[ch1:.*]] = tfrt_gpu.stream.wait %[[s0]], %[[e0]], %[[ch0]]
-    // CHECK: %[[h0:.*]] = tfrt_gpu.blas.create %[[s0]]
-    // CHECK: %[[ch2:.*]] = tfrt_gpu.blas.gemm %[[h0]]
+    // CHECK: %[[h0:.*]] = tfrt.once @tfrt_gpu.blas.create
+    // CHECK: %[[ch2:.*]] = tfrt_gpu.blas.gemm %[[h0]], %[[s0]]
     // CHECK-SAME: %[[ch1]]
     "lmhlo_gpu.gemm"(%memref, %memref, %memref) {
       dot_dimension_numbers = #mhlo.dot<
@@ -63,8 +61,8 @@ func @async(%memref: memref<4x4xf32>) {
   %a1 = async.execute [%a0] () {
     // CHECK: %[[s1:.*]] = tfrt_gpu.stream.create %[[ctx]]
     // CHECK: %[[ch4:.*]] = tfrt_gpu.stream.wait %[[s1]], %[[t0]]#1, %[[t0]]#0
-    // CHECK: %[[h1:.*]] = tfrt_gpu.blas.create %[[s1]]
-    // CHECK: %[[ch5:.*]] = tfrt_gpu.blas.gemm %[[h1]]
+    // CHECK: %[[h1:.*]] = tfrt.once @tfrt_gpu.blas.create
+    // CHECK: %[[ch5:.*]] = tfrt_gpu.blas.gemm %[[h1]], %[[s1]]
     // CHECK-SAME: %[[ch4]]
     "lmhlo_gpu.gemm"(%memref, %memref, %memref) {
       dot_dimension_numbers = #mhlo.dot<
@@ -88,8 +86,8 @@ func @async(%memref: memref<4x4xf32>) {
   // CHECK: %[[ch7:.*]] = tfrt_gpu.stream.wait %arg1, %[[t1]]#1, %[[t1]]#0
   async.await %a1 : !async.token
 
-  // CHECK: %[[h2:.*]] = tfrt_gpu.blas.create %arg1
-  // CHECK: %[[ch8:.*]] = tfrt_gpu.blas.gemm %[[h2]]
+  // CHECK: %[[h2:.*]] = tfrt.once @tfrt_gpu.blas.create
+  // CHECK: %[[ch8:.*]] = tfrt_gpu.blas.gemm %[[h2]], %arg1
   // CHECK-SAME: %[[ch7]]
   "lmhlo_gpu.gemm"(%memref, %memref, %memref) {
     dot_dimension_numbers = #mhlo.dot<

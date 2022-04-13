@@ -63,6 +63,67 @@ namespace interpreter_wrapper {
 class InterpreterWrapper;  // Class for friend declarations.
 }  // namespace interpreter_wrapper
 
+/// Options class for `Interpreter`.
+/// WARNING: This is an experimental API and subject to change.
+class InterpreterOptions {
+ public:
+  InterpreterOptions()
+      : experimental_preserve_all_tensors_(false),
+        experimental_ensure_dynamic_tensors_are_released_(false),
+        experimental_optimize_memory_for_large_tensors_(0) {}
+
+  /// Preserving all intermediates tensors for debugging.
+  /// WARNING: This is an experimental API and subject to change.
+  void SetPreserveAllTensors(bool value = true) {
+    experimental_preserve_all_tensors_ = value;
+  }
+
+  /// Returns if the `experimental_preserve_all_tensors_` feature is enabled.
+  /// WARNING: This is an experimental API and subject to change.
+  bool GetPreserveAllTensors() { return experimental_preserve_all_tensors_; }
+
+  /// Force all intermediate dynamic tensors to be released once they are not
+  /// used by the model. Please use this configuration with caution, since it
+  /// might reduce the peak memory usage of the model at the cost of a slower
+  /// inference speed.
+  /// WARNING: This is an experimental API and subject to change.
+  void SetEnsureDynamicTensorsAreReleased(bool value = true) {
+    experimental_ensure_dynamic_tensors_are_released_ = value;
+  }
+
+  /// Returns if the `experimental_ensure_dynamic_tensors_are_released_` feature
+  /// is enabled.
+  /// WARNING: This is an experimental API and subject to change.
+  bool GetEnsureDynamicTensorsAreReleased() {
+    return experimental_ensure_dynamic_tensors_are_released_;
+  }
+
+  /// Use dynamic tensor allocation and deallocation method for large tensors
+  /// instead of static memory planner. Dynamic tensors are allocated just
+  /// before when they're needed and released when they're not needed anymore.
+  /// It improves peak memory usage but there could be some latency impact. The
+  /// value (in bytes, and default is 1024 * 1024) is used to determine large
+  /// tensors.
+  /// WARNING: This is an experimental API and subject to change.
+  void OptimizeMemoryForLargeTensors(int value = 1 << 20) {
+    if (value > 0) {
+      experimental_optimize_memory_for_large_tensors_ = value;
+    }
+  }
+
+  /// Returns the size (in bytes) threshold for dynamic tensor allocation
+  /// method. It returns zero if the feature is not enabled.
+  /// WARNING: This is an experimental API and subject to change.
+  int GetDynamicAllocationForLargeTensors() {
+    return experimental_optimize_memory_for_large_tensors_;
+  }
+
+ private:
+  bool experimental_preserve_all_tensors_;
+  bool experimental_ensure_dynamic_tensors_are_released_;
+  int experimental_optimize_memory_for_large_tensors_;
+};
+
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
 /// set of output Tensors. All inputs/output tensors are referenced by index.
@@ -319,9 +380,9 @@ class Interpreter {
   SignatureRunner* GetSignatureRunner(const char* signature_key);
 
   /// WARNING: Experimental interface, subject to change
-  // Return the subgraph index that corresponds to a SignatureDef, defined by
-  // 'signature_key'.
-  // If invalid name passed, -1 will be returned.
+  /// Return the subgraph index that corresponds to a SignatureDef, defined by
+  /// 'signature_key'.
+  /// If invalid name passed, -1 will be returned.
   int GetSubgraphIndexFromSignature(const char* signature_key) const {
     for (const auto& signature : signature_defs_) {
       if (signature.signature_key == signature_key) {
@@ -443,29 +504,30 @@ class Interpreter {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
-  // Change the dimensionality of a given tensor. This is only acceptable for
-  // tensor indices that are inputs or variables. Only unknown dimensions can be
-  // resized with this function. Unknown dimensions are indicated as `-1` in the
-  // `dims_signature` attribute of a `TfLiteTensor`. Returns status of failure
-  // or success.  Note that this doesn't actually resize any existing buffers.
-  /// A call to AllocateTensors() is required to change the tensor input buffer.
+  /// Change the dimensionality of a given tensor. This is only acceptable for
+  /// tensor indices that are inputs or variables. Only unknown dimensions can
+  /// be resized with this function. Unknown dimensions are indicated as `-1` in
+  /// the `dims_signature` attribute of a `TfLiteTensor`. Returns status of
+  /// failure or success.  Note that this doesn't actually resize any existing
+  /// buffers. A call to AllocateTensors() is required to change the tensor
+  /// input buffer.
   TfLiteStatus ResizeInputTensorStrict(int tensor_index,
                                        const std::vector<int>& dims);
 
-  // This releases memory held by non-persistent tensors. It does NOT re-perform
-  // memory planning.
-  // AllocateTensors needs to be called before next invocation.
-  /// WARNING: Experimental interface, subject to change
+  /// This releases memory held by non-persistent tensors. It does NOT
+  /// re-perform memory planning. AllocateTensors needs to be called before next
+  /// invocation. WARNING: Experimental interface, subject to change
   TfLiteStatus ReleaseNonPersistentMemory();
 
-  // Update allocations for all tensors. This will redim dependent tensors
-  // using the input tensor dimensionality as given. This is relatively
-  // expensive. This *must be* called after the interpreter has been created
-  // and before running inference (and accessing tensor buffers), and *must be*
-  // called again if (and only if) an input tensor is resized. Returns status of
-  // success or failure.  Will fail if any of the ops in the model (other than
-  // those which were rewritten by delegates, if any) are not supported by the
-  // Interpreter's OpResolver.
+
+  /// Update allocations for all tensors. This will redim dependent tensors
+  /// using the input tensor dimensionality as given. This is relatively
+  /// expensive. This *must be* called after the interpreter has been created
+  /// and before running inference (and accessing tensor buffers), and *must be*
+  /// called again if (and only if) an input tensor is resized. Returns status
+  /// of success or failure.  Will fail if any of the ops in the model (other
+  /// than those which were rewritten by delegates, if any) are not supported by
+  /// the Interpreter's OpResolver.
   TfLiteStatus AllocateTensors();
 
   /// Invoke the interpreter (run the whole graph in dependency order).
@@ -478,18 +540,22 @@ class Interpreter {
 
   /// Set the number of threads available to the interpreter.
   ///
-  /// NOTE: num_threads should be >= -1. Setting num_threads to 0 has the effect
-  /// to disable multithreading, which is equivalent to setting num_threads
-  /// to 1. If set to the value -1, the number of threads used will be
-  /// implementation-defined and platform-dependent.
+  /// NOTE: `num_threads` should be >= -1. Setting `num_threads` to 0 has the
+  /// effect to disable multithreading, which is equivalent to setting
+  /// `num_threads` to 1. If set to the value -1, the number of threads used
+  /// will be implementation-defined and platform-dependent.
   ///
   /// As TfLite interpreter could internally apply a TfLite delegate by default
   /// (i.e. XNNPACK), the number of threads that are available to the default
   /// delegate *should be* set via InterpreterBuilder APIs as follows:
-  /// std::unique_ptr<tflite::Interpreter> interpreter;
-  /// tflite::InterpreterBuilder builder(tflite model, op resolver);
-  /// builder.SetNumThreads(...)
-  /// ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ///
+  ///     std::unique_ptr<tflite::Interpreter> interpreter;
+  ///     tflite::InterpreterBuilder builder(tflite model, op resolver);
+  ///     builder.SetNumThreads(...)
+  ///     ASSERT_EQ(builder(&interpreter), kTfLiteOk);
+  ///
+  /// WARNING: This API is deprecated: prefer using
+  /// `InterpreterBuilder::SetNumThreads`, as documented above.
   TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
@@ -647,30 +713,35 @@ class Interpreter {
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
-  // Assigns (or reassigns) a custom memory allocation for the given tensor.
-  // `flags` is a bitmask, see TfLiteCustomAllocationFlags.
-  // The runtime does NOT take ownership of the underlying memory.
-  //
-  // NOTE: User needs to call AllocateTensors() after this.
-  // Invalid/insufficient buffers will cause an error during AllocateTensors or
-  // Invoke (in case of dynamic shapes in the graph).
-  //
-  // Parameters should satisfy the following conditions:
-  // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
-  //    In general, this is true for I/O tensors & variable tensors.
-  // 2. allocation->data has the appropriate permissions for runtime access
-  //    (Read-only for inputs, Read-Write for others), and outlives Interpreter.
-  // 3. allocation->bytes >= tensor->bytes.
-  //    This condition is checked again if any tensors are resized.
-  // 4. allocation->data should be aligned to kDefaultTensorAlignment
-  //    defined in lite/util.h. (Currently 64 bytes)
-  //    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
-  //    set through `flags`.
-  //
-  // WARNING: This is an experimental interface that is subject to change.
+  /// Assigns (or reassigns) a custom memory allocation for the given tensor.
+  /// `flags` is a bitmask, see TfLiteCustomAllocationFlags.
+  /// The runtime does NOT take ownership of the underlying memory.
+  ///
+  /// NOTE: User needs to call AllocateTensors() after this.
+  /// Invalid/insufficient buffers will cause an error during AllocateTensors or
+  /// Invoke (in case of dynamic shapes in the graph).
+  ///
+  /// Parameters should satisfy the following conditions:
+  /// 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+  ///    In general, this is true for I/O tensors & variable tensors.
+  /// 2. allocation->data has the appropriate permissions for runtime access
+  ///    (Read-only for inputs, Read-Write for others), and outlives
+  ///    Interpreter.
+  /// 3. allocation->bytes >= tensor->bytes.
+  ///    This condition is checked again if any tensors are resized.
+  /// 4. allocation->data should be aligned to kDefaultTensorAlignment
+  ///    defined in lite/util.h. (Currently 64 bytes)
+  ///    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+  ///    set through `flags`.
+  ///
+  /// WARNING: This is an experimental interface that is subject to change.
   TfLiteStatus SetCustomAllocationForTensor(
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
+
+  /// Apply InterpreterOptions which tunes behavior of the interpreter.
+  /// WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus ApplyOptions(InterpreterOptions* options);
 
 #ifndef DOXYGEN_SKIP
   /// Return the number of subgraphs in the model.
@@ -744,7 +815,31 @@ class Interpreter {
   // Applies TFLite default delegates.
   TfLiteStatus ApplyLazyDelegateProviders();
 
-  // Overrides execution plan. This bounds checks indices sent in.
+  // Private non-experimental implementation of ModifyGraphWithDelegate.
+  // Unlike ModifyGraphWithDelegate, ModifyGraphWithDelegateImpl is defined in
+  // interpreter.cc rather than in interpreter_experimental.cc, so it can be
+  // used to implement other non-experimental methods.
+  TfLiteStatus ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate);
+
+  // Same as ModifyGraphWithDelegateImpl except that it takes ownership of the
+  // delegate.
+  template <typename Delegate, typename Deleter>
+  inline TfLiteStatus ModifyGraphWithDelegateImpl(
+      std::unique_ptr<Delegate, Deleter>&& delegate) {
+    Deleter deleter = std::move(delegate.get_deleter());
+
+    // Note that we retain ownership of the delegate even if graph modification
+    // fails, as delegate use will be in an indeterminate state at that point.
+    owned_delegates_.emplace_back(
+        delegate.release(), [deleter](TfLiteDelegate* delegate_to_delete) {
+          deleter(
+              static_cast<typename std::unique_ptr<Delegate, Deleter>::pointer>(
+                  delegate_to_delete));
+        });
+    return ModifyGraphWithDelegateImpl(owned_delegates_.back().get());
+  }
+
+  // Overrides execution plan. ImplThis bounds checks indices sent in.
   // Note: Only used during initialization.
   TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
 
@@ -769,10 +864,6 @@ class Interpreter {
     signature_defs_ = std::move(signature_defs);
   }
 
-  // Enables preserving intermediates for debugging.  Should only be set by
-  // InterpreterBuilder before allocating any tensors.
-  TfLiteStatus PreserveAllTensorsExperimental();
-
   // Sets model metadata as a mapping of name (key) and buffer (value) strings.
   // Used by InterpreterBuilder, should be called after setting up subgraphs.
   TfLiteStatus SetMetadata(const std::map<std::string, std::string>& metadata);
@@ -783,6 +874,13 @@ class Interpreter {
   /// non-null.
   void AddSubgraphs(int subgraphs_to_add,
                     int* first_new_subgraph_index = nullptr);
+
+  /// Implementation of SetProfiler.
+  /// Unlike SetProfiler, this is defined in interpreter.cc rather than in
+  /// intepreter_experimental.cc, so it can be used by interpreter_builder.cc.
+  void SetProfilerImpl(std::unique_ptr<Profiler> profiler);
+
+  TfLiteStatus ApplyOptionsImpl(InterpreterOptions* options);
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

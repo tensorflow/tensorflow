@@ -42,7 +42,6 @@ cc_library(
         ":xla_service_proto_cc",
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
     ],
 )

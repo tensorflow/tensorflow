@@ -1,0 +1,15 @@
+// RUN: tf-mlir-translate -mlir-print-debuginfo  -hlo-text-to-mlir-hlo %s  2>&1 | FileCheck %s
+
+HloModule Test
+
+// CHECK-LABEL: func @main
+ENTRY Test {
+  constant.2 = pred[] constant(false)
+  constant.1 = s32[3]{0} constant({0, 1, 2})
+  ROOT convert.3 = pred[3]{0} convert(constant.1)
+}
+// Conversion to "pred" is like a "cast to bool" in C/C++, it has to be
+// translated to a compared instead of a convert to i1 (which is truncating).
+// CHECK: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<3xi32>
+// CHECK: "mhlo.compare"(%{{.*}}, %[[ZERO]])
+// CHECK-SAME: comparison_direction = #mhlo<"comparison_direction NE">

@@ -316,7 +316,7 @@ class FakeOperation : public ImmediateExecutionOperation {
  private:
   std::string op_name_;
   std::string device_name_;
-  SmallVector<tensorflow::core::RefCountPtr<FakeTensorHandle>, 8> args_;
+  llvm::SmallVector<tensorflow::core::RefCountPtr<FakeTensorHandle>, 8> args_;
   AttrBuilder attrs_;
 };
 

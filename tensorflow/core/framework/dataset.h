@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/tracing.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
@@ -733,6 +734,11 @@ class IteratorBase {
   virtual Status Skip(IteratorContext* ctx, int num_to_skip,
                       bool* end_of_sequence, int* num_skipped) = 0;
 
+  virtual Status Skip(IteratorContext&& ctx, int num_to_skip,
+                      bool* end_of_sequence, int* num_skipped) {
+    return Skip(&ctx, num_to_skip, end_of_sequence, num_skipped);
+  }
+
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
   // iterator.
@@ -978,7 +984,24 @@ class DatasetBase : public core::RefCounted {
   virtual int64_t TotalBytes() const { return 0; }
 
   // Returns the cardinality of this dataset.
-  virtual int64_t Cardinality() const { return kUnknownCardinality; }
+  // TODO(shilpakrish): Remove this overload once all callers are migrated
+  // to the API which passes in the options parameter.
+  ABSL_DEPRECATED("Use the overload that passes in the options parameter.")
+  int64_t Cardinality() const;
+
+  // Returns the cardinality of this dataset based on the options.
+  int64_t Cardinality(CardinalityOptions options) const;
+
+  // Internal implementation of cardinality for a dataset.
+  // TODO(shilpakrish): Remove this overload once all callers are migrated
+  // to the API which passes in the options parameter.
+  ABSL_DEPRECATED("Use the overload that passes in the options parameter.")
+  virtual int64_t CardinalityInternal() const { return kUnknownCardinality; }
+
+  // Internal implementation of cardinality for a dataset based on the options.
+  virtual int64_t CardinalityInternal(CardinalityOptions options) const {
+    return kUnknownCardinality;
+  }
 
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
@@ -1004,6 +1027,13 @@ class DatasetBase : public core::RefCounted {
   virtual Status Get(OpKernelContext* ctx, int64 index,
                      std::vector<Tensor>* out_tensors) const;
 
+  // Return a finalized version of the dataset.  The returned DatasetBase is
+  // unowned and lives for as long as this dataset.
+  virtual StatusOr<DatasetBase*> Finalize(
+      OpKernelContext* ctx,
+      std::function<StatusOr<core::RefCountPtr<DatasetBase>>()>
+          make_finalized_dataset) const;
+
   // Wrapper around a GraphDefBuilder which provides support for serializing
   // Datasets as GraphDefs.
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
@@ -1026,10 +1056,6 @@ class DatasetBase : public core::RefCounted {
   };
 
  protected:
-  friend Status AsGraphDef(
-      OpKernelContext* ctx, const DatasetBase* dataset,
-      SerializationContext&& serialization_ctx,
-      GraphDef* graph_def);  // For access to graph related members.
   friend class CapturedFunction;
 
   // Serializes the dataset into a `GraphDef`, which has two uses:
@@ -1069,10 +1095,14 @@ class DatasetBase : public core::RefCounted {
   const string node_name_;
   Metadata metadata_;
   Options options_;
-  // The number of source datasets feeding into the dataset. A source dataset is
-  // a leaf in the subtree of dataset inputs.
+  mutable mutex mu_;
+  mutable mutex cardinality_mu_;
+  mutable core::RefCountPtr<DatasetBase> finalized_dataset_;
+  //  The number of source datasets feeding into the dataset. A source dataset
+  //  is a leaf in the subtree of dataset inputs.
   int64_t num_sources_ = -1;
-  int64_t cardinality_ = kUnknownCardinality;
+  mutable int64_t cardinality_ TF_GUARDED_BY(cardinality_mu_) =
+      kUnknownCardinality;
 };
 
 // Represents an iterator that is associated with a particular dataset.

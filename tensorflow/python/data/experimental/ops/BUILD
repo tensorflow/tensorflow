@@ -65,6 +65,7 @@ py_library(
         "//tensorflow/python/data/experimental/service:_pywrap_utils",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/data/ops:structured_function",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -365,6 +366,7 @@ py_library(
     srcs = ["testing.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",

@@ -28,17 +28,17 @@ namespace {
 // Perform tf.data optimizations.
 struct TFDataOptimization
     : public TFDataOptimizationPassBase<TFDataOptimization> {
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     mlir::TF::PopulateTFDataOptimizationPatterns(&getContext(), &patterns);
 
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateTFDataOptimizationPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFDataOptimizationPass() {
   return std::make_unique<TFDataOptimization>();
 }
 

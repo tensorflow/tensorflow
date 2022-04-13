@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H_
+#ifndef MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H
+#define MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -43,6 +43,8 @@ class HloClientDialect : public Dialect {
                 TypeID::get<HloClientDialect>()) {
     initialize();
   }
+  Operation* materializeConstant(OpBuilder& builder, Attribute value, Type type,
+                                 Location loc) override;
   static StringRef getDialectNamespace() { return "chlo"; }
 };
 
@@ -93,4 +95,4 @@ Value getConstantLikeSmallestFiniteValue(OpBuilder& b, Location loc, Value val);
 }  // namespace chlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H_
+#endif  // MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H

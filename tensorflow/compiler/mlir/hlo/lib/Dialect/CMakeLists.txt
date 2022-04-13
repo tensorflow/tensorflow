@@ -1,4 +1,3 @@
-#
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,4 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+add_subdirectory(gml_st)
+add_subdirectory(lhlo)
+add_subdirectory(lhlo_gpu)
 add_subdirectory(mhlo)

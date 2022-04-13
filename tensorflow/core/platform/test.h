@@ -46,6 +46,12 @@ limitations under the License.
 #endif
 #include <gmock/gmock.h>
 
+#define DISABLED_ON_GPU_ROCM(X) X
+#if TENSORFLOW_USE_ROCM
+#undef DISABLED_ON_GPU_ROCM
+#define DISABLED_ON_GPU_ROCM(X) DISABLED_##X
+#endif  // TENSORFLOW_USE_ROCM
+
 namespace tensorflow {
 namespace testing {
 

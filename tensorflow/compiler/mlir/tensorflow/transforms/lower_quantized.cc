@@ -28,10 +28,10 @@ namespace {
 
 class LowerQuantizedPass : public LowerQuantizedPassBase<LowerQuantizedPass> {
  public:
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     mlir::TF::PopulateLoweringQuantizedPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 

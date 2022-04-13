@@ -438,7 +438,7 @@ tensorflow::Status TensorHandleInterface::Shape(
   if (num_dims == -1) {
     return tensorflow::Status::OK();
   }
-  SmallVector<Index, 8> dims;
+  llvm::SmallVector<Index, 8> dims;
   metadata.getValue()->shape.GetDimensions(&dims);
   TF_RETURN_IF_ERROR(tensorflow::TensorShapeUtils::MakeShape(dims, shape));
   return tensorflow::Status::OK();
@@ -603,7 +603,7 @@ AsyncValueRef<Chain>* ContextInterface::GetChain() {
   {
     tensorflow::mutex_lock l(chain_map_mu_);
     if (thread_local_chain_.find(thread_id) == thread_local_chain_.end()) {
-      auto chain = GetReadyChain(GetHostContext());
+      auto chain = GetReadyChain();
       thread_local_chain_[thread_id] = std::move(chain);
     }
     return &thread_local_chain_[thread_id];
@@ -1007,7 +1007,7 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
 }
 
 tensorflow::Status ContextInterface::BuildFunctionRequestContext(
-    tensorflow::tfd::OpKernelRunnerTable* runner_table,
+    tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
     RCReference<tfrt::RequestContext>* request_context) {
   auto* step_container = GetEagerContext()->StepContainer();
   RequestContextBuilder request_context_builder(
@@ -1315,10 +1315,10 @@ tensorflow::Status OperationInterface::Execute(
   auto* corert = context_->GetCoreRuntime();
   auto* chain = context_->GetChain();
   auto* host = corert->GetHostContext();
-  SmallVector<TensorHandle, 8> th_args;
+  llvm::SmallVector<TensorHandle, 8> th_args;
   th_args.reserve(args_.size());
 
-  SmallVector<TensorHandle, 8> result_ths;
+  llvm::SmallVector<TensorHandle, 8> result_ths;
   result_ths.resize(*num_retvals);
 
   if (function_state_) {
@@ -1354,6 +1354,11 @@ tensorflow::Status OperationInterface::Execute(
 
     ExecutionContext exec_ctx{std::move(request_ctx),
                               abort_location_handler_.GetCurrentLocation()};
+
+    // Make BEF executor to use TfThreadPoolWorkQueue to dispatch kernels.
+    exec_ctx.set_work_queue(
+        context_->GetTfrtContext()->GetTfThreadPoolWorkQueue());
+
     // Execute the function.
     function_state_->GetFunc()(exec_ctx, th_args, OpAttrsRef(attrs_),
                                result_ths, chain);
@@ -1391,7 +1396,7 @@ tensorflow::Status OperationInterface::Execute(
   if (TF_PREDICT_FALSE(chain->IsError())) {
     s = CreateTfErrorStatus(chain->GetError());
     // TODO(tfrt-devs): Assess if we need a explicit API to clear error.
-    *chain = GetReadyChain(host);
+    *chain = GetReadyChain();
   }
 
   for (size_t i = 0, e = result_ths.size(); i != e; ++i) {
@@ -1520,7 +1525,7 @@ tensorflow::Status OperationInterface::Initialize() {
     }
   }
 
-  tfrt::SmallVector<const tfrt::Device*, 4> input_devices;
+  llvm::SmallVector<const tfrt::Device*, 4> input_devices;
   input_devices.reserve(args_.size());
   for (auto& arg : args_) {
     auto arg_th = down_cast<TensorHandleInterface*>(arg.get())->Handle();
@@ -1535,7 +1540,7 @@ tensorflow::Status OperationInterface::Initialize() {
   TF_RETURN_IF_ERROR(context_->GetFunctionCache().GetOrAddFunction(
       op_name_, device_name_, dev_set, context_->GetEagerContext(), corert,
       /*request_ctx_fn=*/
-      [this](tensorflow::tfd::OpKernelRunnerTable* runner_table,
+      [this](tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
              RCReference<RequestContext>* request_ctx) {
         return context_->BuildFunctionRequestContext(runner_table, request_ctx);
       },
@@ -1740,7 +1745,7 @@ static size_t SerializeTFETensorToDenseAttr(
 
   const auto element_type =
       tensorflow::tfd::ConvertTfDataTypeToBefAttrType(tensor->Type());
-  SmallVector<int64_t, 4> shape;
+  llvm::SmallVector<int64_t, 4> shape;
   for (int i = 0; i < tensor->NumDims(); ++i) {
     shape.push_back(tensor->Dim(i));
   }
@@ -1816,7 +1821,7 @@ tensorflow::Status OperationInterface::SetAttrTypeList(
                       tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
                           values, num_values));
   // Convert to OpAttrType first.
-  SmallVector<tfrt::DType, 4> tfrt_dtypes;
+  llvm::SmallVector<tfrt::DType, 4> tfrt_dtypes;
   tfrt_dtypes.reserve(num_values);
   for (int i = 0; i < num_values; ++i) {
     tfrt_dtypes.push_back(
@@ -1841,7 +1846,7 @@ tensorflow::Status OperationInterface::SetAttrBoolList(
       attr_name, tensorflow::gtl::ArraySlice<const bool>(b.get(), num_values));
 
   // Convert to bool first.
-  SmallVector<bool, 4> bool_array;
+  llvm::SmallVector<bool, 4> bool_array;
   bool_array.reserve(num_values);
   for (int i = 0; i < num_values; ++i) {
     bool_array.push_back(static_cast<bool>((values[i])));

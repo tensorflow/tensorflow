@@ -15,6 +15,7 @@
 """Tests for utility functions in distribute_utils."""
 
 import collections
+import collections.abc
 
 from absl.testing import parameterized
 import wrapt
@@ -82,8 +83,9 @@ class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
     self._is_per_replica(result["b"], ["b1", "b2"])
 
   def testRegroupCollectionsMapping(self):
-    class CollectionsMappingBasedClass(collections.Mapping):
-      """Class inherited from collections.Mapping."""
+
+    class CollectionsMappingBasedClass(collections.abc.Mapping):
+      """Class inherited from collections.abc.Mapping."""
 
       def __init__(self, *args, **kwargs):
         self._d = dict(*args, **kwargs)

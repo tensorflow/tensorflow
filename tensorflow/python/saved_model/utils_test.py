@@ -101,10 +101,9 @@ class UtilsTest(test.TestCase):
     self.assertEqual(types_pb2.DT_INT64,
                      x_tensor_info.composite_tensor.components[1].dtype)
     # Check type_spec.
-    struct_coder = nested_structure_coder.StructureCoder()
     spec_proto = struct_pb2.StructuredValue(
         type_spec_value=x_tensor_info.composite_tensor.type_spec)
-    spec = struct_coder.decode_proto(spec_proto)
+    spec = nested_structure_coder.decode_proto(spec_proto)
     self.assertEqual(spec, x._type_spec)
 
   def testBuildTensorInfoEager(self):

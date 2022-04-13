@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -253,6 +254,7 @@ class Subgraph {
 
   // Return the subgraph specific context.
   TfLiteContext* context() { return &context_; }
+  const TfLiteContext* context() const { return &context_; }
 
   // Set the value of an external context.
   void SetExternalContext(TfLiteExternalContextType type,
@@ -366,6 +368,38 @@ class Subgraph {
   // information about tenosrs and ops.
   void DumpMemoryPlannerDebugInfo() const;
 
+  // WARNING: This is an experimental API and subject to change.
+  // Force all intermediate dynamic tensors to be released once they are not
+  // used by the model. Please use this configuration with caution, since it
+  // might reduce the peak memory usage of the model at the cost of a slower
+  // inference speed. This API needs to be called before calling
+  // `AllocateTensors`.
+  void EnsureDynamicTensorsAreReleased() {
+    release_dynamic_tensors_if_unused_ = true;
+  }
+
+  /// WARNING: This is an experimental API and subject to change.
+  /// Use dynamic tensor allocation and deallocation method for large tensors
+  /// instead of static memory planner. Dynamic tensors are allocated just
+  /// before when they're needed and released when they're not needed anymore.
+  /// It improves peak memory usage but there could be some latency impact. The
+  /// parameter `large_tensors_thresholds_in_bytes` is used to determine large
+  /// tensors. This API must be called before `AllocateTensors`.
+  void OptimizeMemoryForLargeTensors(int large_tensors_thresholds_in_bytes);
+
+  // WARNING: This is an experimental API and subject to change.
+  // True if dynamic tensor allocation / deallocation method is enabled by
+  // `OptimizeMemoryForLargeTensors` API.
+  inline bool IsMemoryOptimizationForLargeTensorsEnabled() {
+    return (large_tensors_thresholds_in_bytes_ > 0);
+  }
+
+  // WARNING: This is an experimental API and subject to change.
+  // Remove unused inputs of the subgraph. It checks usage of inputs and mark it
+  // as kTfLiteOptionalTensor if the input is not used in graph execution.
+  // Currently, it's used to remove unused inputs of WHILE cond subgraphs.
+  TfLiteStatus RemoveUnusedInputs();
+
  private:
   friend class InterpreterBuilder;
   friend class TestDelegate;
@@ -398,11 +432,10 @@ class Subgraph {
       profiler_->EndEvent(event_handle, event_metadata1, event_metadata2);
     }
 
-    void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                  uint64_t end, int64_t event_metadata1,
-                  int64_t event_metadata2) override {
+    void AddEvent(const char* tag, EventType event_type, uint64_t elapsed_time,
+                  int64_t event_metadata1, int64_t event_metadata2) override {
       if (!profiler_) return;
-      profiler_->AddEvent(tag, event_type, start, end, event_metadata1,
+      profiler_->AddEvent(tag, event_type, elapsed_time, event_metadata1,
                           subgraph_index_);
     }
 
@@ -673,6 +706,19 @@ class Subgraph {
   // Also sets relevant fields on context_ based on known metadata.
   TfLiteStatus SetMetadata(const std::map<std::string, std::string>* metadata);
 
+  // Initializes the mapping between tensor index to the index of the
+  // last operation that uses the tensor as input.
+  void InitializeTensorReleaseMap();
+
+  // May allocate dynamic tensor memory of node outputs. It's used when
+  // `EnsureDynamicTensorsAreReleased` or`UseDynamicAllocationForLargeTensors`
+  // API is used.
+  TfLiteStatus MayAllocateOpOutput(TfLiteNode* node);
+
+  // Checks the options for releasing dynamic tensors and release dynamic
+  // tensors if configured.
+  void MaybeReleaseDynamicTensors(const TfLiteNode& node, size_t node_index);
+
   // The state of the Interpreter.
   enum State {
     // The interpreter isn't ready to be invoked.
@@ -828,6 +874,16 @@ class Subgraph {
 
   // Model-metadata owned by the Interpreter.
   const std::map<std::string, std::string>* metadata_ = nullptr;
+
+  // Release dynamic tensor's memory once they are not used by the graph.
+  bool release_dynamic_tensors_if_unused_ = false;
+
+  // Mapping between tensor index to the last index of the execution plan that
+  // uses this tensor.
+  std::map<int, int> tensor_to_last_op_index_;
+
+  // Threshold bytes of tensors to apply dymamic allocation.
+  size_t large_tensors_thresholds_in_bytes_;
 };
 
 }  // namespace tflite

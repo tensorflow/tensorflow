@@ -17,18 +17,14 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "absl/base/dynamic_annotations.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
-
-using tensorflow::int32;
-using tensorflow::uint64;
 
 using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
                                      void*, int64_t*, uint64_t*);
@@ -61,7 +57,7 @@ using ComputeFunctionType = void (*)(void*, const void*, const void**, void**,
 //   [partition1_dim2_start]
 //   [partition1_dim2_limit]
 //
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
     void* result_ptr, const void* run_options_ptr, const void** params,
     void** buffer_table, void* status, uint64_t* prof_counters,
     int32_t num_partitions, int64_t* partitions, int32_t num_partitioned_dims,

@@ -274,7 +274,7 @@ class DirectSession : public Session {
   // multiple pools are configured.
   bool ShouldUseRunHandlerPool(const RunOptions& run_options) const;
 
-  ::tensorflow::Status ExtendLocked(GraphDef graph)
+  ::tensorflow::Status ExtendLocked(GraphDef&& graph)
       TF_EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   ::tensorflow::Status ResourceHandleToInputTensor(

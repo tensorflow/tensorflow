@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_description.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -67,61 +66,61 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return port::UnimplementedError("Not Implemented");
   }
 
-  DeviceMemoryBase Allocate(uint64 size, int64_t memory_space) override;
-  void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
-                     uint64 size_bytes) override;
+  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
+  void *GetSubBuffer(DeviceMemoryBase *parent, uint64_t offset_bytes,
+                     uint64_t size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
 
-  void *HostMemoryAllocate(uint64 size) override { return new char[size]; }
+  void *HostMemoryAllocate(uint64_t size) override { return new char[size]; }
   void HostMemoryDeallocate(void *mem) override {
     delete[] static_cast<char *>(mem);
   }
-  bool HostMemoryRegister(void *mem, uint64 size) override { return true; }
+  bool HostMemoryRegister(void *mem, uint64_t size) override { return true; }
   bool HostMemoryUnregister(void *mem) override { return true; }
 
   bool Memcpy(Stream *stream, void *host_dst, const DeviceMemoryBase &dev_src,
-              uint64 size) override;
+              uint64_t size) override;
   bool Memcpy(Stream *stream, DeviceMemoryBase *dev_dst, const void *host_src,
-              uint64 size) override;
+              uint64_t size) override;
   bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *pop_dst,
                             const DeviceMemoryBase &host_src,
-                            uint64 size) override {
+                            uint64_t size) override {
     return false;
   }
 
   port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
-                       uint64 size) override {
+                       uint64_t size) override {
     return port::InternalError("Interpreter can not memzero");
   }
-  port::Status Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-                      uint64 size) override {
+  port::Status Memset(Stream *stream, DeviceMemoryBase *location,
+                      uint8_t pattern, uint64_t size) override {
     return port::InternalError("Interpreter can not memset");
   }
   port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
-                        uint32 pattern, uint64 size) override {
+                        uint32_t pattern, uint64_t size) override {
     return port::InternalError("Interpreter can not memset");
   }
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
   port::Status SynchronousMemZero(DeviceMemoryBase *location,
-                                  uint64 size) override {
+                                  uint64_t size) override {
     return port::InternalError("Interpreter can not memzero");
   }
 
   port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                 uint64 size) override {
+                                 uint64_t size) override {
     return port::InternalError("Interpreter can not memset");
   }
 
   port::Status SynchronousMemcpy(DeviceMemoryBase *dev_dst,
-                                 const void *host_src, uint64 size) override;
+                                 const void *host_src, uint64_t size) override;
   port::Status SynchronousMemcpy(void *host_dst,
                                  const DeviceMemoryBase &dev_src,
-                                 uint64 size) override;
+                                 uint64_t size) override;
   port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *pop_dst,
                                                const DeviceMemoryBase &pop_src,
-                                               uint64 size) override {
+                                               uint64_t size) override {
     return port::Status{port::error::UNIMPLEMENTED, ""};
   }
 

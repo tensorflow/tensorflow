@@ -830,7 +830,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           &op_data->bw_compute_row_sums);
     }
     default:
-      context->ReportError(context, "Type not currently supported.");
+      TF_LITE_KERNEL_LOG(context, "Type not currently supported.");
       return kTfLiteError;
   }
 }

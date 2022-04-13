@@ -56,10 +56,6 @@ class TpuProgramGroupInterface {
   // Program fingerprints.
   virtual const std::string& fingerprint(int index) const = 0;
 
-  // Logs TPU Compilation statistics.
-  virtual Status LogCompilationStats(const TpuCompilationCacheKey& key,
-                                     absl::Duration duration) = 0;
-
   // Hlo metadatas. The pointers can only be used as long as the cache entry is
   // referenced.
   virtual absl::Span<const xla::HloProto* const> hlo_metadatas() const = 0;

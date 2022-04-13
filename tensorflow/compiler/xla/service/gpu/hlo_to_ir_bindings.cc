@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace gpu {
@@ -173,11 +172,12 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
       << "IrEmitterUnnested should instead use LMHLO to get the IrArray";
 
   llvm::Value* base_ptr = GetBasePointer(hlo, shape_index);
+  Shape new_shape = ShapeUtil::GetSubshape(hlo.shape(), shape_index);
+  llvm::Type* pointee_type = llvm_ir::ShapeToIrType(new_shape, module_);
   CHECK_NE(base_ptr, nullptr)
       << "Buffer not assigned for shape_index " << shape_index.ToString()
       << " of " << hlo.ToString();
-  llvm_ir::IrArray ir_array(base_ptr,
-                            ShapeUtil::GetSubshape(hlo.shape(), shape_index));
+  llvm_ir::IrArray ir_array(base_ptr, pointee_type, new_shape);
 
   return ir_array;
 }
@@ -196,8 +196,8 @@ void HloToIrBindings::UnbindAllLocalIrValues() {
   }
 }
 
-string HloToIrBindings::ToString() const {
-  string s = StrCat("** HloToIrBindings **\n");
+std::string HloToIrBindings::ToString() const {
+  std::string s = StrCat("** HloToIrBindings **\n");
   StrAppend(&s, "  is_nested_=", is_nested_, "\n");
   StrAppend(&s,
             "  temp_buffer_base_=", llvm_ir::DumpToString(*temp_buffer_base_),

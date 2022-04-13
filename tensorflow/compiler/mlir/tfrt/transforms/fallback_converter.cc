@@ -15,17 +15,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback.h"
-#include "tensorflow/core/runtime_fallback/opdefs/tfrt_fallback_async.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
+#include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/types.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_compiler {
-namespace {
-constexpr char kCpuDeviceName[] =
-    "/job:localhost/replica:0/task:0/device:CPU:0";
-}
 
 FallbackConverter::FallbackConverter(mlir::MLIRContext *context)
     : builder_(context) {
@@ -54,6 +50,20 @@ mlir::Value ConvertCoreRTTensorHandleToFallbackTensor(
 
   mlir::OpBuilder::InsertionGuard guard(rewriter);
 
+  if (device.endswith("CPU:0") && !device.startswith("/job:")) {
+    // Canonicalize CPU device name. This is needed as corert library only uses
+    // the default CPU device name (i.e.
+    // "/job:localhost/replica:0/task:0/device:CPU:0") and cannot recoganize
+    // other legal variants (e.g. "/device:CPU:0").
+    //
+    // Note that we don't want to make change to the device name if it is
+    // already canonicalized by users.
+    // e.g. "/job:tpu_worker/replica:0/task:x/device:CPU:0".
+    // TODO(tfrt-devs): to make the canonicalization more robust we should
+    // introduce a util to check each component of the TF device name.
+    device = GetDefaultCpuDeviceName();
+  }
+
   auto *def = value.getDefiningOp();
   if (def) {
     rewriter.setInsertionPointAfter(def);
@@ -75,7 +85,7 @@ mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
   if (!value.getType().isa<tfrt::fallback::TFTensorType>()) return {};
 
   // Use CPU device by default if no device is specified.
-  std::string device = kCpuDeviceName;
+  llvm::StringRef device = GetDefaultCpuDeviceName();
   if (auto *def = value.getDefiningOp()) {
     if (auto device_attr = def->getAttrOfType<mlir::StringAttr>("device")) {
       // NOTE: The TPU_SYSTEM check is just a short term workaround. The long
@@ -84,7 +94,7 @@ mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
       // annotation is set for an output tensor, we should use CPU device here.
       // TODO(b/200896904): Support HostMemory annotation.
       if (!device_attr.getValue().endswith("TPU_SYSTEM:0")) {
-        device = device_attr.getValue().str();
+        device = device_attr.getValue();
       }
     }
   }
@@ -97,7 +107,7 @@ mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
 }
 
 mlir::LogicalResult ConvertCoreRTOperands(
-    mlir::Operation *op, llvm::ArrayRef<mlir::Value> operands,
+    mlir::Operation *op, mlir::ValueRange operands,
     llvm::SmallVectorImpl<mlir::Value> *new_operands,
     mlir::ConversionPatternRewriter &rewriter) {
   mlir::OpBuilder::InsertionGuard guard(rewriter);
@@ -118,8 +128,7 @@ mlir::LogicalResult ConvertCoreRTOperands(
 }
 
 mlir::LogicalResult ConvertFallbackOperands(
-    mlir::Operation *op, llvm::StringRef device,
-    llvm::ArrayRef<mlir::Value> operands,
+    mlir::Operation *op, llvm::StringRef device, mlir::ValueRange operands,
     llvm::SmallVectorImpl<mlir::Value> *new_operands,
     mlir::ConversionPatternRewriter &rewriter) {
   for (auto operand : operands) {

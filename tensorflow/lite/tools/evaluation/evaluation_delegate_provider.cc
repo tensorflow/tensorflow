@@ -91,7 +91,7 @@ DelegateProviders::DelegateProviders()
 
 std::vector<Flag> DelegateProviders::GetFlags() {
   std::vector<Flag> flags;
-  delegate_list_util_.AppendCmdlineFlags(&flags);
+  delegate_list_util_.AppendCmdlineFlags(flags);
   return flags;
 }
 

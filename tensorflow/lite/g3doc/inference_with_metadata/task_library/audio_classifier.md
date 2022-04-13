@@ -63,8 +63,10 @@ android {
 dependencies {
     // Other dependencies
 
-    // Import the Audio Task Library dependency
-    implementation 'org.tensorflow:tensorflow-lite-task-audio:0.2.0'
+    // Import the Audio Task Library dependency (NNAPI is included)
+    implementation 'org.tensorflow:tensorflow-lite-task-audio:0.3.0'
+    // Import the GPU delegate plugin Library for GPU inference
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
 }
 ```
 
@@ -76,7 +78,13 @@ anymore.
 
 ```java
 // Initialization
-AudioClassifier classifier = AudioClassifier.createFromFileAndOptions(context, modelFile);
+AudioClassifierOptions options =
+    AudioClassifierOptions.builder()
+        .setBaseOptions(BaseOptions.builder().useGpu().build())
+        .setMaxResults(1)
+        .build();
+AudioClassifier classifier =
+    AudioClassifier.createFromFileAndOptions(context, modelFile, options);
 
 // Start recording
 AudioRecord record = classifier.createAudioRecord();

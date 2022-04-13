@@ -90,11 +90,24 @@ class SideEffectAnalysisInfo {
       Operation* op,
       llvm::function_ref<bool(Operation*)> filter = nullptr) const;
 
+  // Returns a vector of ops that are control sinks (i.e. side-effecting ops
+  // with no control successors).
+  llvm::ArrayRef<Operation*> ControlSinks() const {
+    return sorted_control_sinks_;
+  }
+
   // Returns a vector with IDs of all resources that might be accessed by `op`.
   // This includes both op-based and value-based resources. The bool indicates
   // whether a resource is accessed read-only.
   const llvm::SmallVector<std::pair<ResourceId, bool>>& GetResourceIds(
       Operation* op) const;
+
+  // Returns true iff given resource is allocated by op with
+  // `UniqueResourceAllocation` trait. This can be utilized for while-loop
+  // parallelization.
+  bool IsUniqueResourceAllocationId(ResourceId resource_id) const {
+    return alias_analysis_.IsUniqueResourceAllocationId(resource_id);
+  }
 
  private:
   // Runs the analysis and populates `sorted_control_predecessors_` and
@@ -130,6 +143,9 @@ class SideEffectAnalysisInfo {
   // Maps from an op to its control successors sorted in program order.
   llvm::SmallDenseMap<Operation*, llvm::SmallVector<Operation*, 4>, 8>
       sorted_control_successors_;
+  // Side-effecting ops with no control successors in this function.
+  llvm::SmallVector<Operation*, 4> sorted_control_sinks_;
+
   // Maps from an op to its resource IDs along with a bool indicating if the
   // resource is accessed `read-only`.
   llvm::SmallDenseMap<Operation*,
@@ -178,6 +194,9 @@ class SideEffectAnalysis : public detail::PerFunctionAggregateAnalysis<
  public:
   // Constructs analysis by analyzing the given module operation.
   explicit SideEffectAnalysis(ModuleOp module);
+
+ private:
+  ResourceAliasAnalysis alias_analysis_;
 };
 
 }  // namespace TF

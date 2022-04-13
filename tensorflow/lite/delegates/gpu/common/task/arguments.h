@@ -34,10 +34,6 @@ namespace cl {
 class CLArguments;
 }
 
-namespace metal {
-class MetalArguments;
-}
-
 class ArgumentsBinder {
  public:
   virtual absl::Status SetInt(const std::string& name, int value) = 0;
@@ -46,10 +42,10 @@ class ArgumentsBinder {
   virtual ~ArgumentsBinder() = default;
 };
 
-class Arguments {
+class Arguments : public ArgumentsBinder {
  public:
   Arguments() = default;
-  ~Arguments() = default;
+  ~Arguments() override = default;
 
   // Move only
   Arguments(Arguments&& args) = default;
@@ -60,6 +56,9 @@ class Arguments {
   void AddFloat(const std::string& name, float value = 0.0f);
   void AddHalf(const std::string& name, half value = half(0.0f));
   void AddInt(const std::string& name, int value = 0);
+  absl::Status SetInt(const std::string& name, int value) override;
+  absl::Status SetFloat(const std::string& name, float value) override;
+  absl::Status SetHalf(const std::string& name, half value) override;
   void AddObjectRef(const std::string& name, AccessType access_type,
                     GPUObjectDescriptorPtr&& descriptor_ptr);
   void AddObject(const std::string& name,
@@ -77,8 +76,7 @@ class Arguments {
 
   void ReleaseCPURepresentation();
 
-  void GetActiveArguments(const std::string& args_prefix,
-                          const std::string& code);
+  void GetActiveArguments(const std::string& code);
 
   void SetStateValueForAllObjects(const std::string& key,
                                   const std::string& value);
@@ -125,14 +123,48 @@ class Arguments {
     *result = std::move(object_refs_);
   }
 
+  absl::Status Compile(const GpuInfo& gpu_info,
+                       const std::map<std::string, std::string>& linkables,
+                       std::string* code);
+
+  absl::Status ResolveConstExprPass(const GpuInfo& gpu_info,
+                                    std::string* code) const;
+
+  absl::Status ResolveConstExpr(const GpuInfo& gpu_info,
+                                const std::string& object_name,
+                                const std::string& const_expr,
+                                std::string* result) const;
+
+  absl::Status ResolveSelectorsPass(
+      const GpuInfo& gpu_info,
+      const std::map<std::string, std::string>& linkables,
+      std::string* code) const;
+
+  absl::Status ResolveSelector(
+      const GpuInfo& gpu_info,
+      const std::map<std::string, std::string>& linkables,
+      const std::string& object_name, const std::string& selector,
+      const std::vector<std::string>& function_args,
+      const std::vector<std::string>& template_args, std::string* result) const;
+
+  void ResolveObjectNames(const std::string& object_name,
+                          const std::vector<std::string>& member_names,
+                          std::string* code) const;
+  absl::Status AddObjectsScalarArgs(const GpuInfo& gpu_info);
+  void ResolveArgsPass(std::string* code) const;
+
  private:
   friend flatbuffers::Offset<tflite::gpu::data::Arguments> Encode(
       const Arguments& args, flatbuffers::FlatBufferBuilder* builder);
   friend absl::Status Decode(const tflite::gpu::data::Arguments* fb_args,
                              Arguments* args);
 
+  absl::Status ResolveKernelGlobalSpaceBuffers(const GpuInfo& gpu_info,
+                                               std::string* code);
+
   friend class cl::CLArguments;
-  friend class metal::MetalArguments;
+
+  static constexpr char kArgsPrefix[] = "args.";
 
   std::map<std::string, IntValue> int_values_;
   std::map<std::string, FloatValue> float_values_;

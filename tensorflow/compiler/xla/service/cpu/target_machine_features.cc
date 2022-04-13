@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 
+#include <algorithm>
+
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -46,7 +48,7 @@ int64_t LLVMTargetMachineFeatures::minimum_alignment_for_allocation(
   // Allow small buffers to be underaligned, there is no vectorization benefit
   // anyways.
   return std::min<int64_t>(llvm::PowerOf2Ceil(size_bytes),
-                           cpu_function_runtime::kMinAlign);
+                           cpu_function_runtime::MinAlign());
 }
 
 }  // namespace cpu

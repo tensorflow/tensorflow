@@ -24,7 +24,7 @@ namespace internal {
 
 // Helper functions which delegate to `AbstractOperation`, update
 // the state of the ForwardOperation and call the tape as appropriate.
-// These APIs are mainly to faciliate testing and are subject to change.
+// These APIs are mainly to facilitate testing and are subject to change.
 
 // Records the op name in the `ForwardOperation`.
 Status Reset(AbstractOperation*, const char* op, const char* raw_device_name,

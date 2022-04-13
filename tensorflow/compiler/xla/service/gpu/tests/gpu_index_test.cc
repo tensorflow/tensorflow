@@ -120,6 +120,8 @@ TEST_F(GpuIndexTest,
                      /*match_optimized_ir=*/false);
 }
 
+#if TENSORFLOW_USE_ROCM
+#else
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
   HloModuleConfig config;
   config.set_debug_options(HloTestBase::GetDebugOptionsForTest());
@@ -151,6 +153,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithReshapeAndBroadcast) {
       )",
                      /*match_optimized_ir=*/true);
 }
+#endif
 
 TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
   HloModuleConfig config;

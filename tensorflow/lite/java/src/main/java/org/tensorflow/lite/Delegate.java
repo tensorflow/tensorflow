@@ -31,6 +31,12 @@ public interface Delegate {
    * <p>Note: The Java {@link Delegate} maintains ownership of the native delegate instance, and
    * must ensure its existence for the duration of usage with any {@link InterpreterApi} instance.
    *
+   * <p>Note: the native delegate instance may not be created until the delegate has been attached
+   * to an interpreter, so this method should not be called until after an interpreter has been
+   * constructed with this delegate.
+   *
+   * @throws IllegalStateException if called before the native delegate instance has been
+   *     constructed.
    * @return The native delegate handle. In C/C++, this should be a pointer to
    *     'TfLiteOpaqueDelegate'.
    */

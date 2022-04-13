@@ -183,12 +183,18 @@ struct LaunchGrouped {
     auto on_shuffled = [&]() { shuffles_completed.DecrementCount(); };
 
     // Shuffle input into temporary tensor.
-    Tensor input_shuffled(input.dtype(), TensorShape(post_shuffle(input)));
+    Tensor input_shuffled;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(input.dtype(), TensorShape(post_shuffle(input)),
+                                &input_shuffled));
     input_shuffled.tensor<T, 5>().device(device, on_shuffled) =
         input.shaped<T, 5>(pre_shuffle(input)).shuffle(shuffle);
 
     // Shuffle filter into temporary tensor.
-    Tensor filter_shuffled(filter.dtype(), TensorShape(post_shuffle(filter)));
+    Tensor filter_shuffled;
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(filter.dtype(),
+                                           TensorShape(post_shuffle(filter)),
+                                           &filter_shuffled));
     filter_shuffled.tensor<T, 5>().device(device, on_shuffled) =
         filter.shaped<T, 5>(pre_shuffle(filter)).shuffle(shuffle);
 
@@ -196,7 +202,10 @@ struct LaunchGrouped {
     shuffles_completed.Wait();
 
     // Write group convolution results into temporary output tensor.
-    Tensor output_shuffled(output->dtype(), TensorShape(post_shuffle(*output)));
+    Tensor output_shuffled;
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(output->dtype(),
+                                           TensorShape(post_shuffle(*output)),
+                                           &output_shuffled));
 
     for (int64_t i = 0; i < num_groups; ++i) {
       // TODO(ezhulenev): Run this loop using `parallelFor` (regular parallelFor

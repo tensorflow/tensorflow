@@ -212,6 +212,11 @@ message GPUOptions {
 
     // When true, use CUDA cudaMallocAsync API instead of TF gpu allocator.
     bool use_cuda_malloc_async = 11;
+
+    // By default, BFCAllocator may sleep when it runs out of memory, in the
+    // hopes that another thread will free up memory in the meantime.  Setting
+    // this to true disables the sleep; instead we'll OOM immediately.
+    bool disallow_retry_on_allocation_failure = 12;
   }
 
   // Everything inside experimental is subject to change and is not subject

@@ -27,7 +27,7 @@ from tensorflow.python.platform import googletest
 
 
 # TODO(edloper): Move this to a common util package (forked from ragged).
-class _SliceBuilder(object):
+class _SliceBuilder:
   """Helper to construct arguments for __getitem__.
 
   Usage: _SliceBuilder()[<expr>] slice_spec Python generates for <expr>.

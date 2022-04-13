@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 
 #include <cstdlib>
+#include <functional>
 #include <numeric>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -61,13 +63,15 @@ StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
                                   a_shape.dimensions().end() - 2);
   std::vector<int64_t> batch_dim_ids(batch_dims.size());
   absl::c_iota(batch_dim_ids, 0);
+  int64_t batch_size = absl::c_accumulate(batch_dims, 1, std::multiplies<>{});
 
   // Find the workspace size.
   se::blas::UpperLower uplo = options.lower() ? se::blas::UpperLower::kLower
                                               : se::blas::UpperLower::kUpper;
   int64_t workspace_size;  // Number of elements of size a_shape.element_type()
-  TF_ASSIGN_OR_RETURN(workspace_size, context->PotrfBufferSize(
-                                          a_shape.element_type(), uplo, n, n));
+  TF_ASSIGN_OR_RETURN(
+      workspace_size,
+      context->PotrfBufferSize(a_shape.element_type(), uplo, n, n, batch_size));
 
   // TODO(phawkins): Ideally we would relax this constraint. What we actually
   // want is that:

@@ -28,8 +28,8 @@ limitations under the License.
 ABSL_DECLARE_FLAG(bool, enable_optimizer);
 ABSL_DECLARE_FLAG(std::string, force_data_format);
 
-namespace tfrt {
-namespace saved_model_test {
+namespace tensorflow {
+namespace tfrt_stub {
 
 std::unique_ptr<tensorflow::tfrt_stub::Runtime> DefaultTfrtRuntime(
     int num_threads);
@@ -45,7 +45,9 @@ class TFRTSavedModelTest {
 
   SavedModel* GetSavedModel() { return saved_model_.get(); }
 
-  HostContext* GetHostContext() const { return saved_model_->GetHostContext(); }
+  tfrt::HostContext* GetHostContext() const {
+    return saved_model_->GetHostContext();
+  }
 
  private:
   std::unique_ptr<tensorflow::tfrt_stub::Runtime> runtime_;
@@ -101,7 +103,7 @@ void ComputeCurrentTFResult(const std::string& saved_model_dir,
 void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
                        absl::optional<double> error = absl::nullopt);
 
-}  // namespace saved_model_test
-}  // namespace tfrt
+}  // namespace tfrt_stub
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_TFRT_SAVED_MODEL_SAVED_MODEL_TESTUTIL_H_

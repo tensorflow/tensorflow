@@ -29,7 +29,13 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
     : GPUOperation(definition), padding_(padding) {
   work_group_size_ = int3(8, 4, 1);
   work_group_launch_order_ = int3(2, 0, 1);
-  if (gpu_info.IsPowerVR()) {
+  if (gpu_info.IsApple()) {
+    if (gpu_info.apple_info.IsBionic()) {
+      weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
+    } else {
+      weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    }
+  } else if (gpu_info.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
   } else if (gpu_info.IsNvidia() || gpu_info.IsIntel()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
@@ -386,15 +392,12 @@ std::vector<int> ConvolutionTransposed3x3::GetSpatialWeightsRemap() const {
 
 void ConvolutionTransposed3x3::UploadWeights(
     const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights) {
+  const auto weights_desc = GetWeightsDescription();
   const int flt_count =
-      GetTotalElementsCountForLayout(GetWeightsDescription(), weights.shape);
-
-  DataType weights_type = definition_.precision == CalculationsPrecision::F32
-                              ? DataType::FLOAT32
-                              : DataType::FLOAT16;
+      GetTotalElementsCountForLayout(weights_desc, weights.shape);
 
   BufferDescriptor desc;
-  desc.element_type = weights_type;
+  desc.element_type = weights_desc.type;
   desc.element_size = 4;
   desc.memory_type =
       weights_upload_type_ ==
@@ -404,8 +407,7 @@ void ConvolutionTransposed3x3::UploadWeights(
   desc.size = flt_count * SizeOf(desc.element_type);
   desc.data.resize(desc.size);
 
-  RearrangeWeights(weights, GetWeightsDescription(), weights_type,
-                   absl::MakeSpan(desc.data));
+  RearrangeWeights(weights, weights_desc, absl::MakeSpan(desc.data));
 
   args_.AddObject("weights",
                   absl::make_unique<BufferDescriptor>(std::move(desc)));

@@ -38,7 +38,7 @@ class WhileTransformerTest : public HloTestBase {
       const int64_t tuple_index, const int64_t limit) {
     auto builder = HloComputation::Builder(TestName() + ".Condition");
     auto limit_const = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(limit)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(limit)));
     auto loop_state = builder.AddInstruction(HloInstruction::CreateParameter(
         0, GetLoopStateShape(tuple_index), "loop_state"));
     auto induction_variable =
@@ -62,7 +62,7 @@ class WhileTransformerTest : public HloTestBase {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, ind_var_tuple_index));
     auto inc = builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(increment)));
+        LiteralUtil::CreateR0<int32_t>(increment)));
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
     // Update data GTE(data_tuple_index).
@@ -89,7 +89,7 @@ class WhileTransformerTest : public HloTestBase {
     auto builder = HloComputation::Builder(TestName() + ".While");
     auto induction_var_init =
         builder.AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32>(ind_var_init)));
+            LiteralUtil::CreateR0<int32_t>(ind_var_init)));
     auto data_init = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
             {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f})));

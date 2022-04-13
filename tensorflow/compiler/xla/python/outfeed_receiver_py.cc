@@ -113,7 +113,7 @@ class OutfeedReceiverForPython {
  private:
   CallbackToPython callback_python_;
   absl::Mutex mu_;
-  bool outfeed_receiver_shutting_down_ TF_GUARDED_BY(mu_) = false;
+  bool outfeed_receiver_shutting_down_ ABSL_GUARDED_BY(mu_) = false;
   std::vector<std::shared_ptr<PyClient>> clients_;
   std::unique_ptr<OutfeedReceiver> outfeed_receiver_;
 };

@@ -19,6 +19,7 @@ import numpy as np
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
@@ -26,6 +27,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_without_tensor_float_32("Avoid TF32 matmul on GPU")
 class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
   """Testing conversion of BiasAdd MatMul in TF-TRT conversion."""
 
@@ -121,9 +123,9 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
       # Increased conversion rate in dynamic shape mode due to a few additional
       # conversions for MatMul, Reshape and Concat ops. This increases the size
       # of the candidate segments and results in two more TrtEngineOps.
-      return ["TRTEngineOp_0", "TRTEngineOp_1", "TRTEngineOp_2"]
+      return ["TRTEngineOp_000", "TRTEngineOp_001", "TRTEngineOp_002"]
     else:
-      return ["TRTEngineOp_0"]
+      return ["TRTEngineOp_000"]
 
 
 if __name__ == "__main__":

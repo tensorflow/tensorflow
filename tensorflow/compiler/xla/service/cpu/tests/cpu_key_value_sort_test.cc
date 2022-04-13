@@ -26,7 +26,7 @@ namespace {
 using CpuKeyValueSortTest = CpuCodegenTest;
 
 TEST_F(CpuKeyValueSortTest, SortR1) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule KeyValueSort
 
 compare {
@@ -42,7 +42,7 @@ ENTRY main {
 }
 )";
 
-  string filecheck_pattern = R"(
+  std::string filecheck_pattern = R"(
 CHECK: call void @__xla_cpu_runtime_KeyValueSort
 )";
 

@@ -1,5 +1,6 @@
 op {
   graph_op_name: "BoostedTreesUpdateEnsemble"
+  deprecation_message: "Boosted Trees kernels in TF are deprecated. Please use TensorFlow Decision Forests instead (https://github.com/tensorflow/decision-forests)"
   visibility: HIDDEN
   in_arg {
     name: "tree_ensemble_handle"

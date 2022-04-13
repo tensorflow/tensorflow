@@ -50,10 +50,9 @@ XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64_t> start,
 
     const int64_t n_dims = shape.rank();
     TF_RET_CHECK(n_minor_dims <= n_dims);
-    auto major_dims = AsInt64Slice(shape.dimensions())
-                          .subspan(
-                              /*pos=*/0,
-                              /*len=*/n_dims - n_minor_dims);
+    auto major_dims = shape.dimensions().subspan(
+        /*pos=*/0,
+        /*len=*/n_dims - n_minor_dims);
 
     // Prepends 0s in the major dim
     std::vector<int64_t> padded_start(n_dims, 0);
@@ -78,8 +77,9 @@ XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64_t> start) {
     const int64_t start_size = start.size();
     TF_RET_CHECK(start_size == n_dims);
 
-    // TODO(phawkins): make int64_t work on all backends, remove the int32 cast.
-    std::vector<int32> start_as_int32(start.begin(), start.end());
+    // TODO(phawkins): make int64_t work on all backends, remove the int32_t
+    // cast.
+    std::vector<int32_t> start_as_int32(start.begin(), start.end());
     std::vector<XlaOp> start_ops(start.size());
     for (int i = 0, end = start.size(); i < end; ++i) {
       start_ops[i] = ConstantR0(builder, start_as_int32[i]);
@@ -118,7 +118,7 @@ StatusOr<std::vector<XlaOp>> PrependZerosInMajorDims(
   XlaBuilder* builder = x.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
   const int64_t n_dims = shape.rank();
-  auto zero = ConstantR0<int32>(builder, 0);
+  auto zero = ConstantR0<int32_t>(builder, 0);
   std::vector<XlaOp> padded_starts(n_dims, zero);
   for (int i = 0; i < starts.size(); ++i) {
     padded_starts[n_dims - starts.size() + i] = starts[i];
@@ -137,10 +137,9 @@ XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
     int64_t n_minor_dims = starts.size();
     TF_RET_CHECK(n_minor_dims == sizes.size());
     TF_RET_CHECK(n_minor_dims <= n_dims);
-    auto major_dims = AsInt64Slice(shape.dimensions())
-                          .subspan(
-                              /*pos=*/0,
-                              /*len=*/n_dims - sizes.size());
+    auto major_dims = shape.dimensions().subspan(
+        /*pos=*/0,
+        /*len=*/n_dims - sizes.size());
     TF_ASSIGN_OR_RETURN(auto padded_starts, PrependZerosInMajorDims(x, starts));
     auto padded_sizes = ConcatVectors(major_dims, sizes);
     return DynamicSlice(x, padded_starts, padded_sizes);
@@ -162,7 +161,7 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64_t dim, bool sparse) {
     TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     if (ShapeUtil::ElementHasBitWidth(index_shape, 64) &&
-        input_shape.dimensions(dim) < std::numeric_limits<uint32>::max()) {
+        input_shape.dimensions(dim) < std::numeric_limits<uint32_t>::max()) {
       index = ConvertElementType(index, U32);
       index_shape.set_element_type(U32);
     }
@@ -173,6 +172,7 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64_t dim, bool sparse) {
       std::vector<int64_t> index_broadcast_dims;
       std::vector<int64_t> input_broadcast_dims;
       std::vector<int64_t> sizes;
+      sizes.reserve(index_shape.rank());
       for (int64_t i = 0; i < index_shape.rank(); ++i) {
         if (i < dim) {
           input_broadcast_dims.push_back(i);
@@ -232,6 +232,8 @@ XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64_t dim,
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     std::vector<int64_t> index_broadcast_dims;
     std::vector<int64_t> sizes;
+    const auto rank = index_shape.rank();
+    sizes.reserve(rank + 1);
     for (int64_t i = 0; i < index_shape.rank(); ++i) {
       if (i < dim) {
         index_broadcast_dims.push_back(i);
@@ -273,7 +275,7 @@ XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64_t dim,
           "dims");
     }
     if (ShapeUtil::ElementHasBitWidth(index_shape, 64) &&
-        input_shape.dimensions(dim) < std::numeric_limits<uint32>::max()) {
+        input_shape.dimensions(dim) < std::numeric_limits<uint32_t>::max()) {
       index = ConvertElementType(index, U32);
       index_shape.set_element_type(U32);
     }

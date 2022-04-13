@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
@@ -36,27 +37,42 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/hash.h"
 
 namespace xla {
 
 namespace {
+
+template <bool kIsLayoutSensitive>
+struct ConstantKey {
+  template <typename H>
+  friend H AbslHashValue(H h, const ConstantKey& key) {
+    h = H::combine(std::move(h), key.domain);
+    return Literal::Hash<H, kIsLayoutSensitive, /*kByteLimit=*/64>(
+        std::move(h), key.hlo->literal());
+  }
+  friend bool operator==(const ConstantKey& lhs, const ConstantKey& rhs) {
+    return lhs.domain == rhs.domain &&
+           (kIsLayoutSensitive ? Shape::Equal()
+                               : Shape::Equal().IgnoreLayout())(
+               lhs.hlo->shape(), rhs.hlo->shape()) &&
+           lhs.hlo->literal() == rhs.hlo->literal();
+  }
+  HloConstantInstruction* hlo;
+  int64_t domain;
+};
 
 // Find and combine identical constants. Constants are identical if they have
 // the same type and value.
 //
 // While we're here, also combine identical iota instructions, since they need
 // similar treatment.
-StatusOr<bool> CombineConstants(HloComputation* computation,
-                                bool is_layout_sensitive) {
+template <bool kIsLayoutSensitive>
+StatusOr<bool> CombineConstants(HloComputation* computation) {
   TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
-  // Map from ShortDebugString of the layoutless shape of the constant/iota to
-  // the set of constant instructions with that shape. Layoutless shape is used
-  // to bin possible common constants together to reduce number of constant
-  // comparisons. If we end up having too many constant comparisons, a more
-  // precise binning might have to be used.
-  std::multimap<string, HloInstruction*> instrs;
+  // Map from the literal hash of a constant or the shape hash of an iota all
+  // equivalent instructions. This avoids extreme quadratic behavior with many
+  // scalar constants.
+  absl::flat_hash_set<ConstantKey<kIsLayoutSensitive>> constants;
   int64_t combined = 0;
   auto inst_it = computation->instructions().begin();
   while (inst_it != computation->instructions().end()) {
@@ -66,37 +82,20 @@ StatusOr<bool> CombineConstants(HloComputation* computation,
     // invalidated due to deletion.
     ++inst_it;
 
-    if (instruction->opcode() == HloOpcode::kConstant ||
-        instruction->opcode() == HloOpcode::kIota) {
-      Shape shape = instruction->shape();
-      if (!is_layout_sensitive) {
-        LayoutUtil::ClearLayout(&shape);
+    HloInstruction* match = nullptr;
+    if (auto* constant_inst = DynCast<HloConstantInstruction>(instruction)) {
+      auto insert_result = constants.insert(ConstantKey<kIsLayoutSensitive>{
+          constant_inst, domain_map->GetDomainId(instruction)});
+      if (!insert_result.second) {
+        match = insert_result.first->hlo;
       }
-      string shape_string = shape.ShortDebugString();
+    }
 
-      // Compare against all iotas/constants with the same shape.
-      HloInstruction* match = nullptr;
-      auto range = instrs.equal_range(shape_string);
-      for (auto it = range.first; it != range.second; ++it) {
-        if (instruction->opcode() == it->second->opcode() &&
-            domain_map->InSameDomain(it->second, instruction) &&
-            ((instruction->opcode() == HloOpcode::kConstant &&
-              instruction->literal() == it->second->literal()) ||
-             (instruction->opcode() == HloOpcode::kIota &&
-              Cast<HloIotaInstruction>(instruction)->iota_dimension() ==
-                  Cast<HloIotaInstruction>(it->second)->iota_dimension()))) {
-          match = it->second;
-          break;
-        }
-      }
-      if (match == nullptr) {
-        instrs.emplace(shape_string, instruction);
-      } else {
-        // Match found, replace this instruction with the one in the multimap.
-        TF_CHECK_OK(instruction->ReplaceAllUsesWith(match));
-        TF_CHECK_OK(computation->RemoveInstruction(instruction));
-        ++combined;
-      }
+    if (match != nullptr) {
+      // Match found, replace this instruction with the one in the set.
+      TF_CHECK_OK(instruction->ReplaceAllUsesWith(match));
+      TF_CHECK_OK(computation->RemoveInstruction(instruction));
+      ++combined;
     }
   }
   VLOG(4) << "Combined " << combined << " constants and iotas in "
@@ -106,70 +105,131 @@ StatusOr<bool> CombineConstants(HloComputation* computation,
 
 // An instruction is considered to be equivalent to another only if they
 // share the exact same set of operands.
-int64_t CseHash(const HloInstruction* instruction) {
-  int64_t hash =
-      std::hash<int64_t>()(static_cast<int64_t>(instruction->opcode()));
-  auto c_hash = [](auto c) {
-    return tensorflow::Hash64(reinterpret_cast<const char*>(c.data()),
-                              c.size() * sizeof(c[0]));
-  };
-  auto proto_hash = [](auto proto) {
-    return std::hash<int64_t>{}(proto.ByteSizeLong());
-  };
-  hash = tensorflow::Hash64Combine(
-      hash, instruction->opcode() == HloOpcode::kGetTupleElement
-                ? instruction->tuple_index()
-                : c_hash(instruction->shape().dimensions()));
-  for (auto operand : instruction->operands()) {
-    hash = tensorflow::Hash64Combine(hash, operand->unique_id());
+struct CseKey {
+  template <typename H>
+  friend H AbslHashValue(H h, const CseKey& key) {
+    auto instruction = key.hlo;
+    h = H::combine(std::move(h), instruction->opcode(),
+                   instruction->shape().dimensions());
+    auto window_hash = [](H h, const Window& window) {
+      const auto& window_dims = window.dimensions();
+      for (const auto& window_dim : window_dims) {
+        h = H::combine(std::move(h), window_dim.size(), window_dim.stride(),
+                       window_dim.padding_low(), window_dim.padding_high(),
+                       window_dim.window_dilation(), window_dim.base_dilation(),
+                       window_dim.window_reversal());
+      }
+      return H::combine(std::move(h), window_dims.size());
+    };
+
+    // Hash operands, ignoring operand order on commutative ops.
+    if (HloOpcodeIsBinaryCommutative(instruction->opcode())) {
+      CHECK_EQ(instruction->operand_count(), 2);
+      auto id0 = instruction->operand(0)->unique_id();
+      if (instruction->operand(0)->opcode() == HloOpcode::kIota) {
+        id0 = 0;
+      }
+      auto id1 = instruction->operand(1)->unique_id();
+      if (instruction->operand(1)->opcode() == HloOpcode::kIota) {
+        id1 = 0;
+      }
+      if (id0 > id1) {
+        std::swap(id0, id1);
+      }
+      h = H::combine(std::move(h), id0, id1);
+    } else {
+      for (auto operand : instruction->operands()) {
+        if (operand->opcode() == HloOpcode::kIota) {
+          continue;
+        }
+        h = H::combine(std::move(h), operand->unique_id());
+      }
+    }
+
+    for (auto c : instruction->called_computations()) {
+      h = H::combine(std::move(h), c->root_instruction()->opcode());
+    }
+    switch (instruction->opcode()) {
+      case HloOpcode::kSlice:
+        return H::combine(std::move(h), instruction->slice_starts(),
+                          instruction->slice_strides());
+      case HloOpcode::kPad: {
+        const auto& padding_dims = instruction->padding_config().dimensions();
+        for (const auto& padding_dim : padding_dims) {
+          h = H::combine(std::move(h), padding_dim.edge_padding_low(),
+                         padding_dim.edge_padding_high(),
+                         padding_dim.interior_padding());
+        }
+        h = H::combine(std::move(h), padding_dims.size());
+        return std::move(h);
+      }
+      case HloOpcode::kDot: {
+        const auto& dot_dimension_numbers =
+            instruction->dot_dimension_numbers();
+        h = H::combine(
+            std::move(h),
+            absl::MakeSpan(dot_dimension_numbers.lhs_contracting_dimensions()),
+            absl::MakeSpan(dot_dimension_numbers.rhs_contracting_dimensions()),
+            absl::MakeSpan(dot_dimension_numbers.lhs_batch_dimensions()),
+            absl::MakeSpan(dot_dimension_numbers.rhs_batch_dimensions()));
+        return std::move(h);
+      }
+      case HloOpcode::kConvolution: {
+        const auto& conv_dimension_numbers =
+            instruction->convolution_dimension_numbers();
+        h = H::combine(
+            std::move(h), conv_dimension_numbers.input_batch_dimension(),
+            conv_dimension_numbers.input_feature_dimension(),
+            absl::MakeSpan(conv_dimension_numbers.input_spatial_dimensions()),
+            conv_dimension_numbers.kernel_input_feature_dimension(),
+            conv_dimension_numbers.kernel_output_feature_dimension(),
+            absl::MakeSpan(conv_dimension_numbers.kernel_spatial_dimensions()),
+            conv_dimension_numbers.output_batch_dimension(),
+            conv_dimension_numbers.output_feature_dimension(),
+            absl::MakeSpan(conv_dimension_numbers.output_spatial_dimensions()));
+        return window_hash(std::move(h), instruction->window());
+      }
+      case HloOpcode::kReduceWindow:
+        return window_hash(std::move(h), instruction->window());
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kTranspose:
+      case HloOpcode::kReduce:
+        return H::combine(std::move(h), instruction->dimensions());
+      case HloOpcode::kGetTupleElement:
+        return H::combine(std::move(h), instruction->tuple_index());
+      default:
+        return std::move(h);
+    }
   }
-  for (auto c : instruction->called_computations()) {
-    hash = tensorflow::Hash64Combine(
-        hash, std::hash<int64_t>()(
-                  static_cast<int64_t>(c->root_instruction()->opcode())));
-  }
-  switch (instruction->opcode()) {
-    case HloOpcode::kSlice:
-      return tensorflow::Hash64Combine(
-          tensorflow::Hash64Combine(hash, c_hash(instruction->slice_starts())),
-          c_hash(instruction->slice_strides()));
-    case HloOpcode::kPad:
-      return tensorflow::Hash64Combine(
-          hash, proto_hash(instruction->padding_config()));
-    case HloOpcode::kDot:
-      return tensorflow::Hash64Combine(
-          hash, proto_hash(instruction->dot_dimension_numbers()));
-    case HloOpcode::kConvolution:
-      return tensorflow::Hash64Combine(
-          tensorflow::Hash64Combine(
-              hash, proto_hash(instruction->convolution_dimension_numbers())),
-          proto_hash(instruction->window()));
-    case HloOpcode::kReduceWindow:
-      return tensorflow::Hash64Combine(hash, proto_hash(instruction->window()));
-    case HloOpcode::kConcatenate:
-    case HloOpcode::kBroadcast:
-    case HloOpcode::kTranspose:
-    case HloOpcode::kReduce:
-      return tensorflow::Hash64Combine(hash, c_hash(instruction->dimensions()));
-    default:
-      return hash;
-  }
-}
+  HloInstruction* hlo;
+};
 
 }  // namespace
 
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
 
-  const std::function<bool(const HloInstruction*, const HloInstruction*)>
-      eq_instructions = std::equal_to<const HloInstruction*>();
+  const auto eq_instructions = [&](const HloInstruction* a,
+                                   const HloInstruction* b) {
+    if (a == b) {
+      return true;
+    }
+    if (a->opcode() != b->opcode() || a->opcode() != HloOpcode::kIota) {
+      return false;
+    }
+    return a->dimensions(0) == b->dimensions(0) &&
+           (is_layout_sensitive_
+                ? ShapeUtil::Equal(a->shape(), b->shape())
+                : ShapeUtil::Compatible(a->shape(), b->shape()));
+  };
   const std::function<bool(const HloComputation*, const HloComputation*)>
       eq_computations = [](const HloComputation* lhs,
                            const HloComputation* rhs) { return *lhs == *rhs; };
 
-  auto cse_equal = [&](const HloInstruction* lhs, const HloInstruction* rhs) {
-    return lhs->Identical(*rhs, eq_instructions, eq_computations,
-                          is_layout_sensitive_);
+  auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
+    return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
+        *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_);
   };
 
   for (auto* computation : module->computations()) {
@@ -178,16 +238,17 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
     }
 
     TF_ASSIGN_OR_RETURN(bool combined,
-                        CombineConstants(computation, is_layout_sensitive_));
+                        is_layout_sensitive_
+                            ? CombineConstants<true>(computation)
+                            : CombineConstants<false>(computation));
     changed |= combined;
 
     // HLO instructions are grouped into equivalency classes by using the
     // cse_equal predicate defined above. This set holds a representative
     // instruction for each class.
-    absl::flat_hash_set<HloInstruction*, decltype(&CseHash),
-                        decltype(cse_equal)>
-        representatives(/*N=*/computation->instruction_count() + 1, &CseHash,
-                        cse_equal);
+    absl::flat_hash_set<CseKey, absl::Hash<CseKey>, decltype(cse_equal)>
+        representatives(/*N=*/computation->instruction_count() + 1,
+                        absl::Hash<CseKey>{}, cse_equal);
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // If the instruction has zero operands (constants, parameters, etc.) skip
       // over it.
@@ -201,14 +262,32 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
         continue;
       }
 
-      auto pair = representatives.insert(instruction);
+      auto pair = representatives.insert(CseKey{instruction});
       if (!pair.second) {
-        HloInstruction* equivalent_instruction = *pair.first;
+        HloInstruction* equivalent_instruction = pair.first->hlo;
         TF_RETURN_IF_ERROR(
             instruction->ReplaceAllUsesWith(equivalent_instruction));
-        TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
+        TF_RETURN_IF_ERROR(
+            computation->RemoveInstructionAndUnusedOperands(instruction));
         changed = true;
         continue;
+      }
+      for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+        HloInstruction* a = instruction->mutable_operand(i);
+        if (a->opcode() != HloOpcode::kIota) {
+          continue;
+        }
+        for (int64_t j = i + 1; j < instruction->operand_count(); ++j) {
+          HloInstruction* b = instruction->mutable_operand(j);
+          if (a == b || !eq_instructions(a, b)) {
+            continue;
+          }
+          TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(j, a));
+          changed = true;
+          if (b->IsDead()) {
+            TF_RETURN_IF_ERROR(computation->RemoveInstruction(b));
+          }
+        }
       }
     }
   }

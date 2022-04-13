@@ -70,7 +70,7 @@ class Window : public DatasetBase {
     return total_bytes;
   }
 
-  int64_t Cardinality() const override { return elements_.size(); }
+  int64_t CardinalityInternal() const override { return elements_.size(); }
 
   string DebugString() const override { return kWindow; }
 

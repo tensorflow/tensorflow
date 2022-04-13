@@ -55,7 +55,7 @@ class LRUCacheTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
   def ShouldRunTest(self, run_params):
     return (run_params.dynamic_engine and not trt_test.IsQuantizationMode(

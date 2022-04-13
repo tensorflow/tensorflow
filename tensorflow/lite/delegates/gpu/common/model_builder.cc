@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -297,6 +298,9 @@ class CastOperationParser : public TFLiteOperationParser {
     }
     if (IsLogicalCode(input_tensor_info.producers[0].second->builtin_code)) {
       return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+    } else if (context->tensors[tflite_node->inputs->data[0]].type !=
+               kTfLiteBool) {
+      return CheckGpuDelegateCompatibility(context, tflite_node, registration);
     }
     return absl::UnimplementedError("Not supported Cast case.");
   }
@@ -305,14 +309,23 @@ class CastOperationParser : public TFLiteOperationParser {
                      const TfLiteRegistration* registration,
                      GraphFloat32* graph, ObjectReader* reader) final {
     Node* node = graph->NewNode();
-    // Adding Identity reshape that will be removed.
-    node->operation.type = ToString(OperationType::RESHAPE);
+    TfLiteType tflite_type = reader->GetInputTensor(0)->type;
+    if (tflite_type == kTfLiteBool) {
+      // Adding Identity reshape that will be removed with bool type.
+      node->operation.type = ToString(OperationType::RESHAPE);
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+      // New shape comes from output shape.
+      ReshapeAttributes attr;
+      attr.new_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
+      node->operation.attributes = attr;
+      return absl::OkStatus();
+    }
+    node->operation.type = ToString(OperationType::CAST);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    // New shape comes from output shape.
-    ReshapeAttributes attr;
-    attr.new_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
-    node->operation.attributes = attr;
+    Value* output = graph->FindOutputs(node->id)[0];
+    output->tensor.type = ToDataType(reader->GetOutputTensor(0)->type);
     return absl::OkStatus();
   }
 };
@@ -2406,10 +2419,11 @@ class UnsupportedOperationParser : public TFLiteOperationParser {
   }
 };
 
-absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
-                         const TfLiteRegistration* registration,
-                         bool allow_quant_ops = false) {
-  return NewOperationParser(registration, allow_quant_ops)
+absl::Status IsSupported(
+    const TfLiteContext* context, TfLiteNode* node,
+    const TfLiteRegistration* registration, bool allow_quant_ops = false,
+    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops = nullptr) {
+  return NewOperationParser(registration, allow_quant_ops, excluded_ops)
       ->IsSupported(context, node, registration);
 }
 
@@ -2439,8 +2453,14 @@ bool IsAllAllowedTensors(TfLiteContext* context,
 }  // namespace
 
 std::unique_ptr<TFLiteOperationParser> NewOperationParser(
-    const TfLiteRegistration* registration, bool allow_quant_ops) {
+    const TfLiteRegistration* registration, bool allow_quant_ops,
+    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops) {
   const auto builtin_code = registration->builtin_code;
+  if (excluded_ops != nullptr &&
+      excluded_ops->contains(
+          static_cast<TfLiteBuiltinOperator>(builtin_code))) {
+    return std::make_unique<UnsupportedOperationParser>();
+  }
   switch (builtin_code) {
     case kTfLiteBuiltinAbs:
       return std::make_unique<ElementwiseOperationParser>(OperationType::ABS);
@@ -2620,14 +2640,15 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
 
 // TODO(impjdi): Check number of input/output tensors and their dimensions.
 // TODO(impjdi): Check ops' parameters.
-TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
-                                int max_delegated_partitions) {
+TfLiteIntArray* GetOpsToReplace(
+    TfLiteContext* context, bool allow_quant_ops, int max_delegated_partitions,
+    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops) {
   delegates::IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
           TfLiteRegistration* registration,
           std::string* unsupported_details) -> bool {
     const auto status =
-        IsSupported(context, node, registration, allow_quant_ops);
+        IsSupported(context, node, registration, allow_quant_ops, excluded_ops);
     if (!status.ok()) {
       if (unsupported_details) {
         *unsupported_details = std::string(status.message());
@@ -2650,12 +2671,16 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
     }
     if (registration->builtin_code == kTfLiteBuiltinCast) {
       allowed_in_types.push_back(kTfLiteBool);
+      allowed_in_types.push_back(kTfLiteFloat32);
+      allowed_in_types.push_back(kTfLiteInt32);
+      allowed_out_types.push_back(kTfLiteFloat32);
+      allowed_out_types.push_back(kTfLiteInt32);
     }
     if (!IsAllAllowedTensors(context, node->inputs, allowed_in_types) ||
         !IsAllAllowedTensors(context, node->outputs, allowed_out_types)) {
       if (unsupported_details) {
         *unsupported_details =
-            "OP is supported, but tensor type/shape doesn't supported.";
+            "OP is supported, but tensor type/shape isn't compatible.";
       }
       return false;
     }

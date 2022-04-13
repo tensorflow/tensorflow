@@ -110,7 +110,8 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
   // Emit the loop conditional branch. Load and compare indvar with ending
   // index and jump to loop exit if equal. Jump to body otherwise.
   b->SetInsertPoint(header_bb_);
-  indvar_ = b->CreateLoad(indvar_address, GetQualifiedName("indvar"));
+  indvar_ = b->CreateLoad(start_index_->getType(), indvar_address,
+                          GetQualifiedName("indvar"));
   llvm::Value* exit_cond = b->CreateICmpUGE(indvar_, end_index_);
   b->CreateCondBr(/*Cond=*/exit_cond,
                   /*True=*/exit_bb_, /*False=*/body_bb_);
@@ -165,7 +166,7 @@ std::vector<llvm::Metadata*> ForLoop::GetLoopMetadata(llvm::IRBuilder<>* b) {
   return result;
 }
 
-string ForLoop::GetQualifiedName(absl::string_view name) {
+std::string ForLoop::GetQualifiedName(absl::string_view name) {
   return llvm_ir::IrName(prefix_, llvm_ir::IrName(name, suffix_));
 }
 

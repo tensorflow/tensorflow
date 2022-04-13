@@ -9,8 +9,9 @@ package(
         "//tensorflow/compiler/mlir:__subpackages__",
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/compiler/xrt:__subpackages__",
-        "//tensorflow/core/profiler/internal/tpu:__subpackages__",
+        "//tensorflow/core/profiler/backends/tpu:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
+        "//tensorflow/dtensor:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -60,6 +61,7 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -272,6 +274,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor",
+        "@com_google_absl//absl/cleanup",
     ],
 )
 
@@ -374,6 +377,7 @@ cc_library(
         ":tpu_executor",
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/core/tpu:tpu_executor_api",
+        "@com_google_absl//absl/cleanup",
     ],
 )
 

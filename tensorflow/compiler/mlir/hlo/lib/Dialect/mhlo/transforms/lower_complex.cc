@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -28,7 +29,9 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/utils/hlo_utils.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -43,29 +46,31 @@ namespace {
 class LowerComplexPass : public LowerComplexPassBase<LowerComplexPass> {
  public:
   /// Performs the lowering to MHLO dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 #include "generated_lower_complex.inc"
 
 // Lowers the complex operations that can be represented using other operations.
-void LowerComplexPass::runOnFunction() {
+void LowerComplexPass::runOnOperation() {
   // Add lowering patterns to the list.
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   mlir::mhlo::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
-  (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+  if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
+    return signalPassFailure();
 }
 
 }  // end anonymous namespace
 }  // end namespace mhlo
 }  // end namespace mlir
 
-void mlir::mhlo::PopulateComplexLoweringPatterns(
-    MLIRContext* context, OwningRewritePatternList* patterns) {
+void mlir::mhlo::PopulateComplexLoweringPatterns(MLIRContext* /*context*/,
+                                                 RewritePatternSet* patterns) {
   populateWithGenerated(*patterns);
 }
 
-std::unique_ptr<mlir::FunctionPass> mlir::mhlo::createLowerComplexPass() {
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+mlir::mhlo::createLowerComplexPass() {
   return std::make_unique<mlir::mhlo::LowerComplexPass>();
 }

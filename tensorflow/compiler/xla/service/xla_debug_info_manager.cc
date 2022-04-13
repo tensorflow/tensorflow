@@ -22,7 +22,7 @@ namespace xla {
 void XlaDebugInfoManager::RegisterModule(
     const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   if (active_modules_.find(module_id) != active_modules_.end()) {
     active_modules_[module_id].instances.emplace_back(hlo_module,
                                                       buffer_assignment);
@@ -40,7 +40,7 @@ void XlaDebugInfoManager::RegisterModule(
 void XlaDebugInfoManager::UnregisterModule(
     const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
     std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   CHECK(active_modules_.find(module_id) != active_modules_.end());
   XlaModuleEntry& active_module = active_modules_[module_id];
   auto instance_it =
@@ -62,7 +62,7 @@ void XlaDebugInfoManager::UnregisterModule(
 }
 
 void XlaDebugInfoManager::StartTracing() {
-  tensorflow::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   tracing_active_ = true;
 }
 
@@ -70,7 +70,7 @@ void XlaDebugInfoManager::StopTracing(
     std::vector<XlaModuleDebugInfo>* module_debug_info) {
   std::vector<XlaModuleEntry> modules_to_serialize;
   {
-    tensorflow::mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     if (!tracing_active_) return;
     tracing_active_ = false;
     for (const auto& traced_module_id : active_modules_) {

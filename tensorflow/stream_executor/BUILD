@@ -95,6 +95,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -142,6 +143,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -207,6 +209,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -355,6 +358,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -439,25 +443,24 @@ cc_library(
         ":device_memory",
         ":dnn_proto_cc",
         ":stream_executor_headers",
-        "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
-        "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-    ],
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+    ] + if_static(["@com_google_protobuf//:protobuf"]),
 )
 
 cc_library(
     name = "lazy_op_runner",
     hdrs = ["lazy_op_runner.h"],
     deps = [
-        ":device_memory",
         ":dnn",
-        ":stream_executor_pimpl",
+        ":stream_header",
     ],
 )
 
@@ -520,6 +523,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 

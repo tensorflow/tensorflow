@@ -18,7 +18,6 @@ import abc
 import contextlib
 
 import numpy as np
-import six
 
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -49,8 +48,8 @@ __all__ = ["LinearOperator"]
 
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
 @tf_export("linalg.LinearOperator")
-@six.add_metaclass(abc.ABCMeta)
-class LinearOperator(module.Module, composite_tensor.CompositeTensor):
+class LinearOperator(
+    module.Module, composite_tensor.CompositeTensor, metaclass=abc.ABCMeta):
   """Base class defining a [batch of] linear operator[s].
 
   Subclasses of `LinearOperator` provide access to common methods on a
@@ -166,7 +165,7 @@ class LinearOperator(module.Module, composite_tensor.CompositeTensor):
      )
      ...
      super().__init__(..., parameters=parameters)
-   ```
+  ```
 
    Users can then access `my_linear_operator.parameters` to see all arguments
    passed to its initializer.
@@ -184,7 +183,7 @@ class LinearOperator(module.Module, composite_tensor.CompositeTensor):
                is_square=None,
                name=None,
                parameters=None):
-    r"""Initialize the `LinearOperator`.
+    """Initialize the `LinearOperator`.
 
     **This is a private method for subclass use.**
     **Subclasses should copy-paste this `__init__` documentation.**
@@ -1193,7 +1192,7 @@ class LinearOperator(module.Module, composite_tensor.CompositeTensor):
     pass
 
 
-class _LinearOperatorSpec(type_spec.TypeSpec):
+class _LinearOperatorSpec(type_spec.BatchableTypeSpec):
   """A tf.TypeSpec for `LinearOperator` objects."""
 
   __slots__ = ("_param_specs", "_non_tensor_params", "_prefer_static_fields")
@@ -1267,6 +1266,29 @@ class _LinearOperatorSpec(type_spec.TypeSpec):
     return (self._param_specs,
             self._non_tensor_params,
             self._prefer_static_fields)
+
+  def _copy(self, **overrides):
+    kwargs = {
+        "param_specs": self._param_specs,
+        "non_tensor_params": self._non_tensor_params,
+        "prefer_static_fields": self._prefer_static_fields
+    }
+    kwargs.update(overrides)
+    return type(self)(**kwargs)
+
+  def _batch(self, batch_size):
+    """Returns a TypeSpec representing a batch of objects with this TypeSpec."""
+    return self._copy(
+        param_specs=nest.map_structure(
+            lambda spec: spec._batch(batch_size),  # pylint: disable=protected-access
+            self._param_specs))
+
+  def _unbatch(self, batch_size):
+    """Returns a TypeSpec representing a single element of this TypeSpec."""
+    return self._copy(
+        param_specs=nest.map_structure(
+            lambda spec: spec._unbatch(),  # pylint: disable=protected-access
+            self._param_specs))
 
 
 def make_composite_tensor(cls, module_name="tf.linalg"):

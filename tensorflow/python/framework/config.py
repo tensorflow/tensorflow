@@ -243,7 +243,7 @@ def set_optimizer_experimental_options(options):
 
 @tf_export('config.get_soft_device_placement')
 def get_soft_device_placement():
-  """Get if soft device placement is enabled.
+  """Return status of soft device placement flag.
 
   If enabled, an op will be placed on CPU if any of the following are true
     1. there's no GPU implementation for the OP
@@ -254,22 +254,25 @@ def get_soft_device_placement():
   An error is raised when an Op cannot be placed onto its intended device.
 
   Returns:
-    If soft placement is enabled.
+   A boolean indicating if soft placement is enabled.
   """
   return context.context().soft_device_placement
 
 
 @tf_export('config.set_soft_device_placement')
 def set_soft_device_placement(enabled):
-  """Set if soft device placement is enabled.
+  """Enable or disable soft device placement.
 
   If enabled, an op will be placed on CPU if any of the following are true
     1. there's no GPU implementation for the OP
     2. no GPU devices are known or registered
     3. need to co-locate with reftype input(s) which are from CPU
 
+  Note: by default soft device placement is enabled when running in eager mode
+  (for convenience) and disabled in graph mode (for performance).
+
   Args:
-    enabled: Whether to enable soft placement.
+    enabled: A boolean indicating whether to enable soft placement.
   """
   context.context().soft_device_placement = enabled
 
@@ -297,6 +300,7 @@ def get_device_policy():
   elif device_policy == context.DEVICE_PLACEMENT_EXPLICIT:
     return 'explicit'
   else:
+    # pylint: disable-next=no-value-for-parameter
     raise errors.InternalError(
         f'Got an invalid device policy: {device_policy!r}.')
 

@@ -80,6 +80,24 @@ class ManagedStackTrace {
   ToStackFramesFunctor* to_stack_frames_;
 };
 
+// Generates a message with a definition location based on a provided stack
+// trace, or an empty one if the stack trace is empty.
+inline std::string DefinitionLocationMsg(
+    const absl::optional<ManagedStackTrace>& stack_trace) {
+  if (stack_trace.has_value()) {
+    std::vector<StackFrame> stack_frames =
+        stack_trace->ToStackFrames({}, IsInternalFrameForFilename,
+                                   /*reverse_traversal=*/true,
+                                   /*limit=*/1);
+    if (!stack_frames.empty()) {
+      const StackFrame& last_frame = stack_frames[0];
+      return absl::StrCat(" (defined @ ", last_frame.file_name, ":",
+                          last_frame.line_number, ")");
+    }
+  }
+  return "";
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_

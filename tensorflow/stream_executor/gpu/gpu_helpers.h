@@ -36,8 +36,7 @@ class DeviceMemory;
 namespace gpu {
 
 // Converts a const DeviceMemory reference to its underlying typed pointer in
-// CUDA
-// device memory.
+// CUDA device memory.
 template <typename T>
 const T* GpuMemory(const DeviceMemory<T>& mem) {
   return static_cast<const T*>(mem.opaque());

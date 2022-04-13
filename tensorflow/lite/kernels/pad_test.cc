@@ -216,7 +216,7 @@ TEST(PadOpTest, SimpleConstTest) {
   PadOpConstModel m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
                     {1, 1, 0, 0, 1, 1, 0, 0}, {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0,
                                 0, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
@@ -229,7 +229,7 @@ TEST(PadOpTest, SimpleConstImageStyleTest) {
   PadOpConstModel m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
                     {0, 0, 1, 1, 1, 1, 0, 0}, {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
                                                0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -240,7 +240,7 @@ TEST(PadOpTest, ZeroHeightConstImageStyleTest) {
   PadOpConstModel m({TensorType_FLOAT32, {1, 0, 2, 1}}, {4, 2},
                     {0, 0, 1, 1, 1, 1, 0, 0}, {TensorType_FLOAT32});
   // Nothing to SetInput().
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 4, 1}));
 }
@@ -250,7 +250,7 @@ TEST(PadOpTest, ZeroWidthConstImageStyleTest) {
   PadOpConstModel m({TensorType_FLOAT32, {1, 2, 0, 1}}, {4, 2},
                     {0, 0, 1, 1, 1, 1, 0, 0}, {TensorType_FLOAT32});
   // Nothing to SetInput().
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 2, 1}));
 }
@@ -259,7 +259,7 @@ TEST(PadOpTest, SimpleConst1DTest) {
   PadOpConstModel m({TensorType_FLOAT32, {2}}, {1, 2}, {1, 2},
                     {TensorType_FLOAT32});
   m.SetInput({2, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 2, 3, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({5}));
 }
@@ -271,7 +271,7 @@ TEST(PadOpTest, SimpleConst1DDim0Test) {
   PadOpConstModel m({TensorType_FLOAT32, {0}}, {1, 2}, {1, 2},
                     {TensorType_FLOAT32});
   // NumElements(input) = 0, so there is no input data.
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
 }
@@ -281,7 +281,7 @@ TEST(PadOpTest, SimpleDynamicTest) {
                       {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
                                                0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -295,14 +295,14 @@ TEST(PadOpTest, DynamicUnequalDimensions) {
   // Skip invoking m.SetInput() since the method doesn't work with dynamic
   // shapes.
   m.SetPaddings({0, 0, 1, 1, 1, 1});
-  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions.";
+  ASSERT_NE(m.Invoke(), kTfLiteOk) << "Unequal dimensions.";
 }
 
 TEST(PadOpTest, AdvancedConstTest) {
   PadOpConstModel m({TensorType_FLOAT32, {1, 2, 3, 1}}, {4, 2},
                     {1, 0, 0, 2, 0, 3, 0, 0}, {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4, 5, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput(),
       ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -315,7 +315,7 @@ TEST(PadOpTest, AdvancedConstImageStyleTest) {
   PadOpConstModel m({TensorType_FLOAT32, {1, 2, 3, 1}}, {4, 2},
                     {0, 0, 0, 2, 1, 3, 0, 0}, {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4, 5, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 1, 2, 3, 0, 0, 0, 0, 4, 5, 6, 0, 0, 0,
                                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
@@ -327,7 +327,7 @@ TEST(PadOpTest, AdvancedDynamicTest) {
                       {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4, 5, 6});
   m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 1, 2, 3, 0, 0, 0, 0, 4, 5, 6, 0, 0, 0,
                                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
@@ -375,7 +375,7 @@ void SimpleConstTest() {
   PadOpConstModel m({tensor_dtype, {1, 2, 2, 1}, kMin, kMax}, {4, 2},
                     {0, 0, 1, 1, 1, 1, 0, 0}, {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
@@ -402,7 +402,7 @@ void SimpleDynamicTest() {
                       {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
@@ -428,7 +428,7 @@ void AdvancedConstTest() {
   PadOpConstModel m({tensor_dtype, {1, 2, 3, 1}, kMin, kMax}, {4, 2},
                     {0, 0, 0, 2, 1, 3, 0, 0}, {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
@@ -456,7 +456,7 @@ void AdvancedDynamicTest() {
                       {tensor_dtype, {}, kMin, kMax});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
@@ -506,7 +506,7 @@ TEST(PadV2OpTest, SimpleConstTestUint8) {
                              {0, 0, 1, 1, 1, 1, 0, 0}, 0.0,
                              {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
                                                0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -519,7 +519,7 @@ TEST(PadV2OpTest, SimpleConstTestInt8) {
                              {0, 0, 1, 1, 1, 1, 0, 0}, 0.0,
                              {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
                                                0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -531,7 +531,7 @@ TEST(PadV2OpTest, SimpleConstFloat32ValuedTestUint8) {
   PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
                              {0, 0, 1, 1, 1, 1, 0, 0}, 5, {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
                                                5, 5, 5, 5, 5}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -543,7 +543,7 @@ TEST(PadV2OpTest, SimpleConstFloat32ValuedTestInt8) {
   PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
                              {0, 0, 1, 1, 1, 1, 0, 0}, 5, {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
                                                5, 5, 5, 5, 5}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -555,7 +555,7 @@ TEST(PadV2OpTest, Simple4DConstFloat32ValuedTest) {
   PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 1, 2, 1}}, {4, 2},
                              {0, 1, 0, 0, 0, 0, 0, 1}, 5, {TensorType_FLOAT32});
   m.SetInput({3, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 5, 3, 5, 5, 5, 5, 5}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2, 2}));
 }
@@ -566,7 +566,7 @@ TEST(PadV2OpTest, SimpleConstInt32ValuedTest) {
   PadV2OpConstModel<int32_t> m({TensorType_INT32, {1, 2, 2, 1}}, {4, 2},
                                {0, 0, 1, 1, 1, 1, 0, 0}, 5, {TensorType_INT32});
   m.SetInput({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
                                                5, 5, 5, 5, 5}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -577,7 +577,7 @@ TEST(PadV2OpTest, SimpleDynamicTest) {
                                {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
                                                0, 0, 0, 0, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -592,7 +592,7 @@ TEST(PadV2OpTest, DynamicUnequalDimensions) {
   // Skip invoking m.SetInput() since the method doesn't work with dynamic
   // shapes.
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
-  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "Unequal dimensions";
+  ASSERT_NE(m.Invoke(), kTfLiteOk) << "Unequal dimensions";
 }
 
 TEST(PadV2OpTest, SimpleDynamicValuedTest) {
@@ -600,7 +600,7 @@ TEST(PadV2OpTest, SimpleDynamicValuedTest) {
                                {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
                                                5, 5, 5, 5, 5}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
@@ -611,13 +611,13 @@ TEST(PadV2OpTest, SimpleTensorWithDim0Test) {
                                {TensorType_FLOAT32});
   // NumElements(input) = 0, so there is no input data.
   m.SetPaddings({0, 0, 1, 1, 0, 0, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
                                                5, 5, 5, 5, 5}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 2, 2}));
 
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // Since NumElements(output) = 0 in this case, there is no data.
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 0}));
 }
@@ -627,7 +627,7 @@ TEST(PadV2OpTest, Simple5DConstFloat32ValuedTest) {
                              {0, 1, 0, 0, 1, 1, 0, 0, 0, 1}, 5,
                              {TensorType_FLOAT32});
   m.SetInput({3, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 4, 1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 3, 5, 3, 5, 5, 5, 5, 5, 5,
                                                5, 5, 5, 5, 5}));
@@ -638,7 +638,7 @@ TEST(PadV2OpTest, Simple5DConstInt32ValuedTest) {
                                {0, 0, 1, 1, 1, 1, 0, 0, 1, 1}, 5,
                                {TensorType_INT32});
   m.SetInput({1, 2, 3, 4});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1, 3}));
   EXPECT_THAT(
       m.GetOutput(),
@@ -652,7 +652,7 @@ TEST(PadV2OpTest, Simple5DDynamicValuedTest) {
                                {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0, 1, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1, 3}));
   EXPECT_THAT(
       m.GetOutput(),
@@ -665,7 +665,7 @@ TEST(PadV2OpTest, AdvancedConstTest) {
   PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 2, 3, 1}}, {4, 2},
                              {0, 0, 0, 2, 1, 3, 0, 0}, 0, {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4, 5, 6});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 1, 2, 3, 0, 0, 0, 0, 4, 5, 6, 0, 0, 0,
                                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
@@ -677,7 +677,7 @@ TEST(PadV2OpTest, AdvancedDynamicTest) {
                                {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4, 5, 6});
   m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray({0, 1, 2, 3, 0, 0, 0, 0, 4, 5, 6, 0, 0, 0,
                                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
@@ -721,7 +721,7 @@ void SimpleConstTestV2() {
       {tensor_dtype, {1}, -1.0, 1.0}, {tensor_dtype, {}, -1.0, 1.0});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
   m.template SetQuantizedPadValue<integer_type>(0);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
@@ -744,7 +744,7 @@ void SimpleDynamicTestV2() {
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
   m.template SetQuantizedPadValue<integer_type>(0);
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
@@ -766,7 +766,7 @@ void AdvancedConstTestV2() {
       {tensor_dtype, {1}, -1.0, 1.0}, {tensor_dtype, {}, -1.0, 1.0});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.template SetQuantizedPadValue<integer_type>(0);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
@@ -790,7 +790,7 @@ void AdvancedDynamicTestV2() {
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.template SetQuantizedPadValue<integer_type>(0);
   m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
@@ -815,7 +815,7 @@ void SimpleConstValuedTest() {
       {tensor_dtype, {1}, -1.0, 1.0}, {tensor_dtype, {}, -1.0, 1.0});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
   m.template SetQuantizedPadValue<integer_type>(-0.5);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {-0.5, -0.5, -0.5, -0.5, -0.5, -0.8, 0.2, -0.5, -0.5, 0.9,
@@ -839,7 +839,7 @@ void SimpleDynamicValuedTest() {
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
   m.template SetQuantizedPadValue<integer_type>(-0.5);
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {-0.5, -0.5, -0.5, -0.5, -0.5, -0.8, 0.2, -0.5, -0.5, 0.9,
@@ -862,7 +862,7 @@ void AdvancedConstValuedTest() {
       {tensor_dtype, {1}, -1.0, 1.0}, {tensor_dtype, {}, -1.0, 1.0});
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.template SetQuantizedPadValue<integer_type>(-0.5);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {-0.5, -0.8, 0.2,  0.9,  -0.5, -0.5, -0.5, -0.5, 0.7,  0.1,
@@ -887,7 +887,7 @@ void AdvancedDynamicValuedTest() {
   m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.template SetQuantizedPadValue<integer_type>(-0.5);
   m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
               ElementsAreArray(DequantizedArrayNear(
                   {-0.5, -0.8, 0.2,  0.9,  -0.5, -0.5, -0.5, -0.5, 0.7,  0.1,

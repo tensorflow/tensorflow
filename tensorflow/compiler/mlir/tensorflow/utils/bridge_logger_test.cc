@@ -29,18 +29,18 @@ namespace {
 // Define test modules that are deserialized to module ops.
 static const char *const module_with_add =
     R"(module {
-func @main(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x4x5xf32>) -> tensor<3x4x5xf32> {
+func.func @main(%arg0: tensor<3x4x5xf32>, %arg1: tensor<3x4x5xf32>) -> tensor<3x4x5xf32> {
   %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<3x4x5xf32>, tensor<3x4x5xf32>) -> tensor<3x4x5xf32>
-  return %0 : tensor<3x4x5xf32>
+  func.return %0 : tensor<3x4x5xf32>
 }
 }
 )";
 
 static const char *const module_with_sub =
     R"(module {
-func @main(%arg0: tensor<7x8x9xi8>, %arg1: tensor<7x8x9xi8>) -> tensor<7x8x9xi8> {
+func.func @main(%arg0: tensor<7x8x9xi8>, %arg1: tensor<7x8x9xi8>) -> tensor<7x8x9xi8> {
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<7x8x9xi8>, tensor<7x8x9xi8>) -> tensor<7x8x9xi8>
-  return %0 : tensor<7x8x9xi8>
+  func.return %0 : tensor<7x8x9xi8>
 }
 }
 )";
@@ -50,7 +50,7 @@ TEST(BridgeLoggerFilters, TestPassFilter) {
   mlir::DialectRegistry mlir_registry;
   mlir::RegisterAllTensorFlowDialects(mlir_registry);
   mlir::MLIRContext mlir_context(mlir_registry);
-  mlir::OwningModuleRef mlir_module_with_add;
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_with_add;
   TF_ASSERT_OK(DeserializeMlirModule(module_with_add, &mlir_context,
                                      &mlir_module_with_add));
 
@@ -79,7 +79,7 @@ TEST(BridgeLoggerFilters, TestStringFilter) {
   mlir::DialectRegistry mlir_registry;
   mlir::RegisterAllTensorFlowDialects(mlir_registry);
   mlir::MLIRContext mlir_context(mlir_registry);
-  mlir::OwningModuleRef mlir_module_with_add, mlir_module_with_sub;
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_with_add, mlir_module_with_sub;
   TF_ASSERT_OK(DeserializeMlirModule(module_with_add, &mlir_context,
                                      &mlir_module_with_add));
   TF_ASSERT_OK(DeserializeMlirModule(module_with_sub, &mlir_context,
@@ -119,7 +119,7 @@ TEST(BridgeLoggerFilters, TestBothFilters) {
   mlir::DialectRegistry mlir_registry;
   mlir::RegisterAllTensorFlowDialects(mlir_registry);
   mlir::MLIRContext mlir_context(mlir_registry);
-  mlir::OwningModuleRef mlir_module_with_add;
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_with_add;
   TF_ASSERT_OK(DeserializeMlirModule(module_with_add, &mlir_context,
                                      &mlir_module_with_add));
 

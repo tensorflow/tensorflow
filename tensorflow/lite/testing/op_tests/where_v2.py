@@ -127,7 +127,6 @@ def make_where_v2_tests(options):
       return [input_condition, input_value1, input_value2], sess.run(
           outputs, feed_dict=dict(zip(inputs, [input_condition])))
 
-  options.use_experimental_converter = True
   make_zip_of_tests(
       options,
       test_parameters,

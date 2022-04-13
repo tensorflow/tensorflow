@@ -231,15 +231,16 @@ TEST_P(CppTests, TestFunctionCacheWithAdd) {
                      .build();
   ExecutionContext exec_ctx(std::move(*req_ctx));
 
-  auto request_ctx_fn = [host = corert->GetHostContext()](
-                            tensorflow::tfd::OpKernelRunnerTable* runner_table,
-                            RCReference<RequestContext>* request_ctx) {
-    *request_ctx =
-        std::move(*RequestContextBuilder(host,
-                                         /*resource_context=*/nullptr)
-                       .build());
-    return Status::OK();
-  };
+  auto request_ctx_fn =
+      [host = corert->GetHostContext()](
+          tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
+          RCReference<RequestContext>* request_ctx) {
+        *request_ctx =
+            std::move(*RequestContextBuilder(host,
+                                             /*resource_context=*/nullptr)
+                           .build());
+        return Status::OK();
+      };
 
   // Inserts a new cache entry.
   FunctionCache::FunctionCacheResult result;

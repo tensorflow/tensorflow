@@ -25,13 +25,15 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -91,6 +93,8 @@ class AlternativeSubgraphPass
     : public mlir::PassWrapper<AlternativeSubgraphPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AlternativeSubgraphPass)
+
   llvm::StringRef getArgument() const final {
     return "tfl-get-alternative-subgraph";
   }
@@ -135,7 +139,7 @@ class AlternativeSubgraphPass
       *this, "device-specs",
       llvm::cl::desc(
           "comma separated list of device specs, like CPU, GPU, DPS."),
-      llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated};
+      llvm::cl::ZeroOrMore};
 };
 
 void AlternativeSubgraphPass::GetAlternativeGraphForFunc(
@@ -192,7 +196,9 @@ bool AlternativeSubgraphPass::IsAllSupportedbySpec(
     FuncOp func, const InferenceDeviceType& device_inference_type) {
   bool found_unsupported = false;
   func.walk([&](Operation* op) {
-    if (IsTFLDialectNonConstOp(op) && IsTFLNonQuantDequantizeOp(op) &&
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        NotTFLQuantDequantizeOp(op) &&
+        !llvm::isa<func::ReturnOp, FuncOp, CallOpInterface>(op) &&
         !IsSupported(op, device_inference_type.hardware)) {
       found_unsupported = true;
     }
@@ -203,7 +209,7 @@ bool AlternativeSubgraphPass::IsAllSupportedbySpec(
 void AlternativeSubgraphPass::Optimize(FuncOp func,
                                        const std::string& hardware) {
   auto* ctx = &getContext();
-  OwningRewritePatternList patterns = GetHardwareRewritePatterns(ctx, hardware);
+  RewritePatternSet patterns = GetHardwareRewritePatterns(ctx, hardware);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
@@ -245,7 +251,8 @@ FuncOp AlternativeSubgraphPass::GetAlternativeViewForSpec(
 
   // Set device for each op.
   cloned_func.walk([&](Operation* op) {
-    if (IsTFLDialectNonConstOp(op)) {
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
+        !llvm::isa<func::ReturnOp, FuncOp, CallableOpInterface>(op)) {
       op->setAttr(kDevice, builder->getStringAttr(
                                target_device_inference_type.hardware));
       op->setAttr(kInferenceType,

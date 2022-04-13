@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -35,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -77,18 +79,19 @@ XLA_TEST_F(ArrayElementwiseOpTest, NegConstantF64) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, NegConstantS32) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder,
-                             {-1, 0, 1, 324, std::numeric_limits<int32>::min(),
-                              std::numeric_limits<int32>::max()});
+  auto a = ConstantR1<int32_t>(
+      &builder, {-1, 0, 1, 324, std::numeric_limits<int32_t>::min(),
+                 std::numeric_limits<int32_t>::max()});
   Neg(a);
 
-  // -min == min for int32 due to an overflow. In C++ it is undefined behavior
+  // -min == min for int32_t due to an overflow. In C++ it is undefined behavior
   // to do this calculation. For XLA we have not specified that, so it
   // ought to work.
-  ComputeAndCompareR1<int32>(&builder,
-                             {1, 0, -1, -324, std::numeric_limits<int32>::min(),
-                              -std::numeric_limits<int32>::max()},
-                             {});
+  ComputeAndCompareR1<int32_t>(
+      &builder,
+      {1, 0, -1, -324, std::numeric_limits<int32_t>::min(),
+       -std::numeric_limits<int32_t>::max()},
+      {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, NegConstantZeroElementC64) {
@@ -149,14 +152,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, IntPow) {
   XlaBuilder builder(TestName());
   XlaOp lhs =
-      ConstantR1<int32>(&builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1});
+      ConstantR1<int32_t>(&builder, {0, 1, 2, 3, 4, 5, -1, -2, 3, 5, 3, 1});
   XlaOp rhs =
-      ConstantR1<int32>(&builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2});
+      ConstantR1<int32_t>(&builder, {0, 3, 3, 3, 3, 3, 2, 3, 2, 10, -100, -2});
   Pow(lhs, rhs);
 
-  std::vector<int32> expected = {1, 1, 8, 27, 64, 125, 1, -8, 9, 9765625, 0, 1};
+  std::vector<int32_t> expected = {1, 1,  8, 27,      64, 125,
+                                   1, -8, 9, 9765625, 0,  1};
 
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, IntPowLarge) {
@@ -347,6 +351,8 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
   XlaBuilder builder(TestName());
   std::vector<float> a_values;
   std::vector<float> b_values;
+  a_values.reserve(count);
+  b_values.reserve(count);
   for (int i = 0; i < count; ++i) {
     a_values.push_back(i / static_cast<float>(count));
     b_values.push_back(2 * i / static_cast<float>(count + 2));
@@ -374,6 +380,7 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
   sum = Add(sum, sum4);
 
   std::vector<float> expected;
+  expected.reserve(count);
   for (int64_t i = 0; i < count; ++i) {
     expected.push_back(4 * (a_values[i] + b_values[i]));
   }
@@ -439,20 +446,20 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantZeroElementF32s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {-1, 0, 2, 1000000000});
-  auto b = ConstantR1<int32>(&builder, {-1, 2, 1, -1});
+  auto a = ConstantR1<int32_t>(&builder, {-1, 0, 2, 1000000000});
+  auto b = ConstantR1<int32_t>(&builder, {-1, 2, 1, -1});
   Sub(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {0, -2, 1, 1000000001}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {0, -2, 1, 1000000001}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantZeroElementS32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {});
-  auto b = ConstantR1<int32>(&builder, {});
+  auto a = ConstantR1<int32_t>(&builder, {});
+  auto b = ConstantR1<int32_t>(&builder, {});
   Sub(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantC64s) {
@@ -579,13 +586,13 @@ class IntegerDivideOpTest : public ArrayElementwiseOpTest {
 XLA_TEST_F(IntegerDivideOpTest, DivS32s) {
   // clang-format off
   // Some interesting values to test.
-  std::vector<int32> vals = {
+  std::vector<int32_t> vals = {
     INT32_MIN, INT32_MIN + 1, INT32_MIN + 2, -0x40000000, -0x3fffffff,
     -271181, -1309, -17, -10, -5, -3, -2, -1, 0, 1, 2, 3, 5, 10, 17, 26, 101,
     7919, 0x40000000, INT32_MAX - 2, INT32_MAX - 1, INT32_MAX};
   // clang-format on
 
-  std::vector<int32> dividends, divisors, quotients, remainders;
+  std::vector<int32_t> dividends, divisors, quotients, remainders;
   for (int32_t divisor : vals) {
     if (divisor != 0) {
       for (int32_t dividend : vals) {
@@ -600,28 +607,28 @@ XLA_TEST_F(IntegerDivideOpTest, DivS32s) {
     }
   }
 
-  TestDivRem<int32>(dividends, divisors, quotients, remainders);
+  TestDivRem<int32_t>(dividends, divisors, quotients, remainders);
 }
 
 XLA_TEST_F(IntegerDivideOpTest, SignedOverflow) {
-  std::vector<int32> dividends = {5, INT32_MIN}, divisors = {0, -1},
-                     quotients = {-1, INT32_MIN}, remainders = {5, 0};
+  std::vector<int32_t> dividends = {5, INT32_MIN}, divisors = {0, -1},
+                       quotients = {-1, INT32_MIN}, remainders = {5, 0};
 
-  TestDivRem<int32>(dividends, divisors, quotients, remainders);
+  TestDivRem<int32_t>(dividends, divisors, quotients, remainders);
 }
 
 XLA_TEST_F(IntegerDivideOpTest, DivU32s) {
   // clang-format off
   // Some interesting values to test.
-  std::vector<uint32> vals = {
+  std::vector<uint32_t> vals = {
     0, 1, 2, 17, 101, 3333, 0x7FFFFFFF, 0xABCDEF12, 0xCAFEBEEF, 0x80000000,
     0x80000001, UINT32_MAX - 2, UINT32_MAX - 1, UINT32_MAX};
   // clang-format on
 
-  std::vector<uint32> dividends, divisors, quotients, remainders;
-  for (uint32 divisor : vals) {
+  std::vector<uint32_t> dividends, divisors, quotients, remainders;
+  for (uint32_t divisor : vals) {
     if (divisor != 0) {
-      for (uint32 dividend : vals) {
+      for (uint32_t dividend : vals) {
         dividends.push_back(dividend);
         divisors.push_back(divisor);
         quotients.push_back(dividend / divisor);
@@ -630,14 +637,14 @@ XLA_TEST_F(IntegerDivideOpTest, DivU32s) {
     }
   }
 
-  TestDivRem<uint32>(dividends, divisors, quotients, remainders);
+  TestDivRem<uint32_t>(dividends, divisors, quotients, remainders);
 }
 
 XLA_TEST_F(IntegerDivideOpTest, UnsignedOverflow) {
-  std::vector<int32> dividends = {5}, divisors = {0}, quotients = {-1},
-                     remainders = {5};
+  std::vector<int32_t> dividends = {5}, divisors = {0}, quotients = {-1},
+                       remainders = {5};
 
-  TestDivRem<int32>(dividends, divisors, quotients, remainders);
+  TestDivRem<int32_t>(dividends, divisors, quotients, remainders);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantC64s) {
@@ -716,48 +723,48 @@ XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantZeroElementF32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantS32s) {
-  std::vector<int32> data = {0,
-                             1,
-                             -1,
-                             1234,
-                             0x1a243514,
-                             std::numeric_limits<int32>::max(),
-                             std::numeric_limits<int32>::min()};
+  std::vector<int32_t> data = {0,
+                               1,
+                               -1,
+                               1234,
+                               0x1a243514,
+                               std::numeric_limits<int32_t>::max(),
+                               std::numeric_limits<int32_t>::min()};
   // Form the test data set using all products of 'data' with itself.
-  std::vector<int32> a_data, b_data, expected;
+  std::vector<int32_t> a_data, b_data, expected;
   for (int32_t a : data) {
     for (int32_t b : data) {
       a_data.push_back(a);
       b_data.push_back(b);
-      expected.push_back(static_cast<uint32>(a) * static_cast<uint32>(b));
+      expected.push_back(static_cast<uint32_t>(a) * static_cast<uint32_t>(b));
     }
   }
 
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, a_data);
-  auto b = ConstantR1<int32>(&builder, b_data);
+  auto a = ConstantR1<int32_t>(&builder, a_data);
+  auto b = ConstantR1<int32_t>(&builder, b_data);
   Mul(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantZeroElementS32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {});
-  auto b = ConstantR1<int32>(&builder, {});
+  auto a = ConstantR1<int32_t>(&builder, {});
+  auto b = ConstantR1<int32_t>(&builder, {});
   Mul(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantU32s) {
-  std::vector<uint32> data = {0,          1,          0xDEADBEEF, 1234,
-                              0x1a243514, 0xFFFFFFFF, 0x80808080};
+  std::vector<uint32_t> data = {0,          1,          0xDEADBEEF, 1234,
+                                0x1a243514, 0xFFFFFFFF, 0x80808080};
 
   // Form the test data set using all products of 'data' with itself.
-  std::vector<uint32> a_data, b_data, expected;
-  for (uint32 a : data) {
-    for (uint32 b : data) {
+  std::vector<uint32_t> a_data, b_data, expected;
+  for (uint32_t a : data) {
+    for (uint32_t b : data) {
       a_data.push_back(a);
       b_data.push_back(b);
       expected.push_back(a * b);
@@ -765,11 +772,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantU32s) {
   }
 
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder, a_data);
-  auto b = ConstantR1<uint32>(&builder, b_data);
+  auto a = ConstantR1<uint32_t>(&builder, a_data);
+  auto b = ConstantR1<uint32_t>(&builder, b_data);
   Mul(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder, expected, {});
+  ComputeAndCompareR1<uint32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MulTwoConstantC64s) {
@@ -824,58 +831,58 @@ XLA_TEST_F(ArrayElementwiseOpTest, AndZeroElementPredR1) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, AndS32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {0, -1, -8});
-  auto b = ConstantR1<int32>(&builder, {5, -7, 12});
+  auto a = ConstantR1<int32_t>(&builder, {0, -1, -8});
+  auto b = ConstantR1<int32_t>(&builder, {5, -7, 12});
   And(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {0, -7, 8}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {0, -7, 8}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AndS32R2) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR2<int32>(&builder, {{0, -5}, {-1, 5}});
-  auto b = ConstantR2<int32>(&builder, {{1, -6}, {4, 5}});
+  auto a = ConstantR2<int32_t>(&builder, {{0, -5}, {-1, 5}});
+  auto b = ConstantR2<int32_t>(&builder, {{1, -6}, {4, 5}});
   And(a, b);
 
-  Array2D<int32> expected_array({{0, -6}, {4, 5}});
-  ComputeAndCompareR2<int32>(&builder, expected_array, {});
+  Array2D<int32_t> expected_array({{0, -6}, {4, 5}});
+  ComputeAndCompareR2<int32_t>(&builder, expected_array, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AndZeroElementS32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {});
-  auto b = ConstantR1<int32>(&builder, {});
+  auto a = ConstantR1<int32_t>(&builder, {});
+  auto b = ConstantR1<int32_t>(&builder, {});
   And(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AndU32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {0, 1, 8});
-  auto b = ConstantR1<int32>(&builder, {5, 7, 12});
+  auto a = ConstantR1<int32_t>(&builder, {0, 1, 8});
+  auto b = ConstantR1<int32_t>(&builder, {5, 7, 12});
   And(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {0, 1, 8}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {0, 1, 8}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AndU32R2) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR2<uint32>(&builder, {{0, 1}, {3, 8}});
-  auto b = ConstantR2<uint32>(&builder, {{1, 0}, {7, 6}});
+  auto a = ConstantR2<uint32_t>(&builder, {{0, 1}, {3, 8}});
+  auto b = ConstantR2<uint32_t>(&builder, {{1, 0}, {7, 6}});
   And(a, b);
 
-  Array2D<uint32> expected_array({{0, 0}, {3, 0}});
-  ComputeAndCompareR2<uint32>(&builder, expected_array, {});
+  Array2D<uint32_t> expected_array({{0, 0}, {3, 0}});
+  ComputeAndCompareR2<uint32_t>(&builder, expected_array, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AndZeroElementU32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder, {});
-  auto b = ConstantR1<uint32>(&builder, {});
+  auto a = ConstantR1<uint32_t>(&builder, {});
+  auto b = ConstantR1<uint32_t>(&builder, {});
   And(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder, {}, {});
+  ComputeAndCompareR1<uint32_t>(&builder, {}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, OrPredR1) {
@@ -908,58 +915,58 @@ XLA_TEST_F(ArrayElementwiseOpTest, OrZeroElementPredR1) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, OrS32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {0, -1, 8});
-  auto b = ConstantR1<int32>(&builder, {5, -7, 4});
+  auto a = ConstantR1<int32_t>(&builder, {0, -1, 8});
+  auto b = ConstantR1<int32_t>(&builder, {5, -7, 4});
   Or(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {5, -1, 12}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {5, -1, 12}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, OrS32R2) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR2<int32>(&builder, {{0, -1}, {8, 8}});
-  auto b = ConstantR2<int32>(&builder, {{5, -7}, {4, 1}});
+  auto a = ConstantR2<int32_t>(&builder, {{0, -1}, {8, 8}});
+  auto b = ConstantR2<int32_t>(&builder, {{5, -7}, {4, 1}});
   Or(a, b);
 
-  Array2D<int32> expected_array({{5, -1}, {12, 9}});
-  ComputeAndCompareR2<int32>(&builder, expected_array, {});
+  Array2D<int32_t> expected_array({{5, -1}, {12, 9}});
+  ComputeAndCompareR2<int32_t>(&builder, expected_array, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, OrZeroElementS32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {});
-  auto b = ConstantR1<int32>(&builder, {});
+  auto a = ConstantR1<int32_t>(&builder, {});
+  auto b = ConstantR1<int32_t>(&builder, {});
   Or(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, OrU32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder, {0, 1, 8});
-  auto b = ConstantR1<uint32>(&builder, {5, 7, 4});
+  auto a = ConstantR1<uint32_t>(&builder, {0, 1, 8});
+  auto b = ConstantR1<uint32_t>(&builder, {5, 7, 4});
   Or(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder, {5, 7, 12}, {});
+  ComputeAndCompareR1<uint32_t>(&builder, {5, 7, 12}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, OrU32R2) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR2<uint32>(&builder, {{0, 1}, {8, 8}});
-  auto b = ConstantR2<uint32>(&builder, {{5, 7}, {4, 1}});
+  auto a = ConstantR2<uint32_t>(&builder, {{0, 1}, {8, 8}});
+  auto b = ConstantR2<uint32_t>(&builder, {{5, 7}, {4, 1}});
   Or(a, b);
 
-  Array2D<uint32> expected_array({{5, 7}, {12, 9}});
-  ComputeAndCompareR2<uint32>(&builder, expected_array, {});
+  Array2D<uint32_t> expected_array({{5, 7}, {12, 9}});
+  ComputeAndCompareR2<uint32_t>(&builder, expected_array, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, OrZeroElementU32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder, {});
-  auto b = ConstantR1<uint32>(&builder, {});
+  auto a = ConstantR1<uint32_t>(&builder, {});
+  auto b = ConstantR1<uint32_t>(&builder, {});
   Or(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder, {}, {});
+  ComputeAndCompareR1<uint32_t>(&builder, {}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, XorPredR1) {
@@ -992,58 +999,58 @@ XLA_TEST_F(ArrayElementwiseOpTest, XorZeroElementPredR1) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, XorS32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {0, -1, 8});
-  auto b = ConstantR1<int32>(&builder, {5, -7, 4});
+  auto a = ConstantR1<int32_t>(&builder, {0, -1, 8});
+  auto b = ConstantR1<int32_t>(&builder, {5, -7, 4});
   Xor(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {5, 6, 12}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {5, 6, 12}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, XorS32R2) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR2<int32>(&builder, {{0, -1}, {8, 8}});
-  auto b = ConstantR2<int32>(&builder, {{5, -7}, {4, 1}});
+  auto a = ConstantR2<int32_t>(&builder, {{0, -1}, {8, 8}});
+  auto b = ConstantR2<int32_t>(&builder, {{5, -7}, {4, 1}});
   Xor(a, b);
 
-  Array2D<int32> expected_array({{5, 6}, {12, 9}});
-  ComputeAndCompareR2<int32>(&builder, expected_array, {});
+  Array2D<int32_t> expected_array({{5, 6}, {12, 9}});
+  ComputeAndCompareR2<int32_t>(&builder, expected_array, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, XorZeroElementS32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {});
-  auto b = ConstantR1<int32>(&builder, {});
+  auto a = ConstantR1<int32_t>(&builder, {});
+  auto b = ConstantR1<int32_t>(&builder, {});
   Xor(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, XorU32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder, {0, 1, 8});
-  auto b = ConstantR1<uint32>(&builder, {5, 7, 4});
+  auto a = ConstantR1<uint32_t>(&builder, {0, 1, 8});
+  auto b = ConstantR1<uint32_t>(&builder, {5, 7, 4});
   Xor(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder, {5, 6, 12}, {});
+  ComputeAndCompareR1<uint32_t>(&builder, {5, 6, 12}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, XorU32R2) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR2<uint32>(&builder, {{0, 1}, {8, 8}});
-  auto b = ConstantR2<uint32>(&builder, {{5, 7}, {4, 1}});
+  auto a = ConstantR2<uint32_t>(&builder, {{0, 1}, {8, 8}});
+  auto b = ConstantR2<uint32_t>(&builder, {{5, 7}, {4, 1}});
   Xor(a, b);
 
-  Array2D<uint32> expected_array({{5, 6}, {12, 9}});
-  ComputeAndCompareR2<uint32>(&builder, expected_array, {});
+  Array2D<uint32_t> expected_array({{5, 6}, {12, 9}});
+  ComputeAndCompareR2<uint32_t>(&builder, expected_array, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, XorZeroElementU32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder, {});
-  auto b = ConstantR1<uint32>(&builder, {});
+  auto a = ConstantR1<uint32_t>(&builder, {});
+  auto b = ConstantR1<uint32_t>(&builder, {});
   Xor(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder, {}, {});
+  ComputeAndCompareR1<uint32_t>(&builder, {}, {});
 }
 XLA_TEST_F(ArrayElementwiseOpTest, NotPredR1) {
   XlaBuilder builder(TestName());
@@ -1072,67 +1079,67 @@ XLA_TEST_F(ArrayElementwiseOpTest, NotZeroElementPredR1) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, NotS32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {-1, 0, 1});
+  auto a = ConstantR1<int32_t>(&builder, {-1, 0, 1});
   Not(a);
 
-  ComputeAndCompareR1<int32>(&builder, {0, -1, -2}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {0, -1, -2}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, NotS32R2) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR2<int32>(&builder, {{-1, 0}, {1, 8}});
+  auto a = ConstantR2<int32_t>(&builder, {{-1, 0}, {1, 8}});
   Not(a);
 
-  Array2D<int32> expected_array({{0, -1}, {-2, -9}});
-  ComputeAndCompareR2<int32>(&builder, expected_array, {});
+  Array2D<int32_t> expected_array({{0, -1}, {-2, -9}});
+  ComputeAndCompareR2<int32_t>(&builder, expected_array, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, NotZeroElementS32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {});
+  auto a = ConstantR1<int32_t>(&builder, {});
   Not(a);
 
-  ComputeAndCompareR1<int32>(&builder, {}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, NotU32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder, {0, 4294967295});
+  auto a = ConstantR1<uint32_t>(&builder, {0, 4294967295});
   Not(a);
 
-  ComputeAndCompareR1<uint32>(&builder, {4294967295, 0}, {});
+  ComputeAndCompareR1<uint32_t>(&builder, {4294967295, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, NotU32R2) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR2<uint32>(&builder, {{0, 4294967295}, {1, 4294967294}});
+  auto a = ConstantR2<uint32_t>(&builder, {{0, 4294967295}, {1, 4294967294}});
   Not(a);
 
-  Array2D<uint32> expected_array({{4294967295, 0}, {4294967294, 1}});
-  ComputeAndCompareR2<uint32>(&builder, expected_array, {});
+  Array2D<uint32_t> expected_array({{4294967295, 0}, {4294967294, 1}});
+  ComputeAndCompareR2<uint32_t>(&builder, expected_array, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, NotZeroElementU32R1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder, {});
+  auto a = ConstantR1<uint32_t>(&builder, {});
   Not(a);
 
-  ComputeAndCompareR1<uint32>(&builder, {}, {});
+  ComputeAndCompareR1<uint32_t>(&builder, {}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PopcntR1) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {0, 1, -15, 341});
+  auto a = ConstantR1<int32_t>(&builder, {0, 1, -15, 341});
   PopulationCount(a);
-  ComputeAndCompareR1<int32>(&builder, {0, 1, 29, 5}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {0, 1, 29, 5}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PopcntR2) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR2<int32>(&builder, {{0, 1}, {-15, 341}});
+  auto a = ConstantR2<int32_t>(&builder, {{0, 1}, {-15, 341}});
   PopulationCount(a);
-  Array2D<int32> expected_array({{0, 1}, {29, 5}});
-  ComputeAndCompareR2<int32>(&builder, expected_array, {});
+  Array2D<int32_t> expected_array({{0, 1}, {29, 5}});
+  ComputeAndCompareR2<int32_t>(&builder, expected_array, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PopcntS64) {
@@ -1145,76 +1152,76 @@ XLA_TEST_F(ArrayElementwiseOpTest, PopcntS64) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftLeftS32) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(
-      &builder, {static_cast<int32>(0x12345678), static_cast<int32>(0xF0001000),
-                 1, 3, 77, 1, -3, 77});
-  auto b = ConstantR1<int32>(&builder, {4, 8, 2, 7, 15, 32, 100, -1});
+  auto a = ConstantR1<int32_t>(
+      &builder, {static_cast<int32_t>(0x12345678),
+                 static_cast<int32_t>(0xF0001000), 1, 3, 77, 1, -3, 77});
+  auto b = ConstantR1<int32_t>(&builder, {4, 8, 2, 7, 15, 32, 100, -1});
   ShiftLeft(a, b);
 
-  ComputeAndCompareR1<int32>(&builder,
-                             {static_cast<int32>(0x23456780), 0x00100000, 0x4,
-                              0x180, 2523136, 0, 0, 0},
-                             {});
+  ComputeAndCompareR1<int32_t>(&builder,
+                               {static_cast<int32_t>(0x23456780), 0x00100000,
+                                0x4, 0x180, 2523136, 0, 0, 0},
+                               {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightArithmeticS32) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(
-      &builder, {static_cast<int32>(0x92345678), static_cast<int32>(0x10001000),
-                 1, 3, 77, 1, -3, 77});
-  auto b = ConstantR1<int32>(&builder, {4, 8, 2, 7, 2, 32, 100, -1});
+  auto a = ConstantR1<int32_t>(
+      &builder, {static_cast<int32_t>(0x92345678),
+                 static_cast<int32_t>(0x10001000), 1, 3, 77, 1, -3, 77});
+  auto b = ConstantR1<int32_t>(&builder, {4, 8, 2, 7, 2, 32, 100, -1});
   ShiftRightArithmetic(a, b);
 
-  ComputeAndCompareR1<int32>(
+  ComputeAndCompareR1<int32_t>(
       &builder,
-      {static_cast<int32>(0xF9234567), static_cast<int32>(0x00100010), 0, 0, 19,
-       0, -1, 0},
+      {static_cast<int32_t>(0xF9234567), static_cast<int32_t>(0x00100010), 0, 0,
+       19, 0, -1, 0},
       {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightLogicalS32) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(
-      &builder, {static_cast<int32>(0x92345678), static_cast<int32>(0x10001000),
-                 1, 3, 77, 1, -3, 77});
-  auto b = ConstantR1<int32>(&builder, {4, 8, 2, 7, 5, 32, 100, -1});
+  auto a = ConstantR1<int32_t>(
+      &builder, {static_cast<int32_t>(0x92345678),
+                 static_cast<int32_t>(0x10001000), 1, 3, 77, 1, -3, 77});
+  auto b = ConstantR1<int32_t>(&builder, {4, 8, 2, 7, 5, 32, 100, -1});
   ShiftRightLogical(a, b);
 
-  ComputeAndCompareR1<int32>(&builder,
-                             {0x09234567, 0x00100010, 0, 0, 2, 0, 0, 0}, {});
+  ComputeAndCompareR1<int32_t>(&builder,
+                               {0x09234567, 0x00100010, 0, 0, 2, 0, 0, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftLeftU32) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder,
-                              {0x12345678, 0xF0001000, 1, 3, 77, 1, ~3u, 77});
-  auto b = ConstantR1<uint32>(&builder, {4, 8, 2, 7, 15, 32, 100, ~0u});
+  auto a = ConstantR1<uint32_t>(&builder,
+                                {0x12345678, 0xF0001000, 1, 3, 77, 1, ~3u, 77});
+  auto b = ConstantR1<uint32_t>(&builder, {4, 8, 2, 7, 15, 32, 100, ~0u});
   ShiftLeft(a, b);
 
-  ComputeAndCompareR1<uint32>(
+  ComputeAndCompareR1<uint32_t>(
       &builder, {0x23456780, 0x00100000, 0x4, 0x180, 2523136, 0, 0, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightArithmeticU32) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder,
-                              {0x92345678, 0x10001000, 1, 3, 77, 1, ~3u, 77});
-  auto b = ConstantR1<uint32>(&builder, {4, 8, 2, 7, 2, 32, 100, ~0u});
+  auto a = ConstantR1<uint32_t>(&builder,
+                                {0x92345678, 0x10001000, 1, 3, 77, 1, ~3u, 77});
+  auto b = ConstantR1<uint32_t>(&builder, {4, 8, 2, 7, 2, 32, 100, ~0u});
   ShiftRightArithmetic(a, b);
 
-  ComputeAndCompareR1<uint32>(
+  ComputeAndCompareR1<uint32_t>(
       &builder, {0xF9234567, 0x00100010, 0, 0, 19, 0, ~0u, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ShiftRightLogicalU32) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(&builder,
-                              {0x92345678, 0x10001000, 1, 3, 77, 1, ~3u, 77});
-  auto b = ConstantR1<uint32>(&builder, {4, 8, 2, 7, 5, 32, 100, ~0u});
+  auto a = ConstantR1<uint32_t>(&builder,
+                                {0x92345678, 0x10001000, 1, 3, 77, 1, ~3u, 77});
+  auto b = ConstantR1<uint32_t>(&builder, {4, 8, 2, 7, 5, 32, 100, ~0u});
   ShiftRightLogical(a, b);
 
-  ComputeAndCompareR1<uint32>(&builder,
-                              {0x09234567, 0x00100010, 0, 0, 2, 0, 0, 0}, {});
+  ComputeAndCompareR1<uint32_t>(&builder,
+                                {0x09234567, 0x00100010, 0, 0, 2, 0, 0, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
@@ -1303,12 +1310,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtF32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareEqS32s) {
-  const int32_t min = std::numeric_limits<int32>::min();
-  const int32_t max = std::numeric_limits<int32>::max();
+  const int32_t min = std::numeric_limits<int32_t>::min();
+  const int32_t max = std::numeric_limits<int32_t>::max();
   XlaBuilder builder(TestName());
   auto lhs =
-      ConstantR1<int32>(&builder, {min, min, min, 0, 0, 0, max, max, max});
-  auto rhs = ConstantR1<int32>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
+      ConstantR1<int32_t>(&builder, {min, min, min, 0, 0, 0, max, max, max});
+  auto rhs =
+      ConstantR1<int32_t>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
   Eq(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1318,8 +1326,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqS32s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareEqZeroElementS32s) {
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<int32>(&builder, {});
-  auto rhs = ConstantR1<int32>(&builder, {});
+  auto lhs = ConstantR1<int32_t>(&builder, {});
+  auto rhs = ConstantR1<int32_t>(&builder, {});
   Eq(lhs, rhs);
 
   ComputeAndCompareR1<bool>(&builder, {}, {});
@@ -1385,12 +1393,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareNeF32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareNeS32s) {
-  const int32_t min = std::numeric_limits<int32>::min();
-  const int32_t max = std::numeric_limits<int32>::max();
+  const int32_t min = std::numeric_limits<int32_t>::min();
+  const int32_t max = std::numeric_limits<int32_t>::max();
   XlaBuilder builder(TestName());
   auto lhs =
-      ConstantR1<int32>(&builder, {min, min, min, 0, 0, 0, max, max, max});
-  auto rhs = ConstantR1<int32>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
+      ConstantR1<int32_t>(&builder, {min, min, min, 0, 0, 0, max, max, max});
+  auto rhs =
+      ConstantR1<int32_t>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
   Ne(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1398,12 +1407,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareNeS32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareGeS32s) {
-  const int32_t min = std::numeric_limits<int32>::min();
-  const int32_t max = std::numeric_limits<int32>::max();
+  const int32_t min = std::numeric_limits<int32_t>::min();
+  const int32_t max = std::numeric_limits<int32_t>::max();
   XlaBuilder builder(TestName());
   auto lhs =
-      ConstantR1<int32>(&builder, {min, min, min, 0, 0, 0, max, max, max});
-  auto rhs = ConstantR1<int32>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
+      ConstantR1<int32_t>(&builder, {min, min, min, 0, 0, 0, max, max, max});
+  auto rhs =
+      ConstantR1<int32_t>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
   Ge(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1411,12 +1421,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGeS32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareGtS32s) {
-  const int32_t min = std::numeric_limits<int32>::min();
-  const int32_t max = std::numeric_limits<int32>::max();
+  const int32_t min = std::numeric_limits<int32_t>::min();
+  const int32_t max = std::numeric_limits<int32_t>::max();
   XlaBuilder builder(TestName());
   auto lhs =
-      ConstantR1<int32>(&builder, {min, min, min, 0, 0, 0, max, max, max});
-  auto rhs = ConstantR1<int32>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
+      ConstantR1<int32_t>(&builder, {min, min, min, 0, 0, 0, max, max, max});
+  auto rhs =
+      ConstantR1<int32_t>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
   Gt(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1425,12 +1436,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGtS32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareLeS32s) {
-  const int32_t min = std::numeric_limits<int32>::min();
-  const int32_t max = std::numeric_limits<int32>::max();
+  const int32_t min = std::numeric_limits<int32_t>::min();
+  const int32_t max = std::numeric_limits<int32_t>::max();
   XlaBuilder builder(TestName());
   auto lhs =
-      ConstantR1<int32>(&builder, {min, min, min, 0, 0, 0, max, max, max});
-  auto rhs = ConstantR1<int32>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
+      ConstantR1<int32_t>(&builder, {min, min, min, 0, 0, 0, max, max, max});
+  auto rhs =
+      ConstantR1<int32_t>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
   Le(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1438,12 +1450,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLeS32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareLtS32s) {
-  const int32_t min = std::numeric_limits<int32>::min();
-  const int32_t max = std::numeric_limits<int32>::max();
+  const int32_t min = std::numeric_limits<int32_t>::min();
+  const int32_t max = std::numeric_limits<int32_t>::max();
   XlaBuilder builder(TestName());
   auto lhs =
-      ConstantR1<int32>(&builder, {min, min, min, 0, 0, 0, max, max, max});
-  auto rhs = ConstantR1<int32>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
+      ConstantR1<int32_t>(&builder, {min, min, min, 0, 0, 0, max, max, max});
+  auto rhs =
+      ConstantR1<int32_t>(&builder, {min, 0, max, -1, 0, 1, min, 0, max});
   Lt(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1452,10 +1465,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtS32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareEqU32s) {
-  const uint32 max = std::numeric_limits<uint32>::max();
+  const uint32_t max = std::numeric_limits<uint32_t>::max();
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<uint32>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
-  auto rhs = ConstantR1<uint32>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
+  auto lhs = ConstantR1<uint32_t>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
+  auto rhs = ConstantR1<uint32_t>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
   Eq(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1464,10 +1477,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareNeU32s) {
-  const uint32 max = std::numeric_limits<uint32>::max();
+  const uint32_t max = std::numeric_limits<uint32_t>::max();
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<uint32>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
-  auto rhs = ConstantR1<uint32>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
+  auto lhs = ConstantR1<uint32_t>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
+  auto rhs = ConstantR1<uint32_t>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
   Ne(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1475,10 +1488,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareNeU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareGeU32s) {
-  const uint32 max = std::numeric_limits<uint32>::max();
+  const uint32_t max = std::numeric_limits<uint32_t>::max();
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<uint32>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
-  auto rhs = ConstantR1<uint32>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
+  auto lhs = ConstantR1<uint32_t>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
+  auto rhs = ConstantR1<uint32_t>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
   Ge(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1486,10 +1499,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGeU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareGtU32s) {
-  const uint32 max = std::numeric_limits<uint32>::max();
+  const uint32_t max = std::numeric_limits<uint32_t>::max();
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<uint32>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
-  auto rhs = ConstantR1<uint32>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
+  auto lhs = ConstantR1<uint32_t>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
+  auto rhs = ConstantR1<uint32_t>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
   Gt(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1498,10 +1511,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGtU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareLeU32s) {
-  const uint32 max = std::numeric_limits<uint32>::max();
+  const uint32_t max = std::numeric_limits<uint32_t>::max();
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<uint32>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
-  auto rhs = ConstantR1<uint32>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
+  auto lhs = ConstantR1<uint32_t>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
+  auto rhs = ConstantR1<uint32_t>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
   Le(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1509,10 +1522,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLeU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
-  const uint32 max = std::numeric_limits<uint32>::max();
+  const uint32_t max = std::numeric_limits<uint32_t>::max();
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<uint32>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
-  auto rhs = ConstantR1<uint32>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
+  auto lhs = ConstantR1<uint32_t>(&builder, {0, 0, 0, 5, 5, 5, max, max, max});
+  auto rhs = ConstantR1<uint32_t>(&builder, {0, 1, max, 4, 5, 6, 0, 1, max});
   Lt(lhs, rhs);
 
   ComputeAndCompareR1<bool>(
@@ -1593,6 +1606,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowSpecialF32) {
   }
 
   std::vector<float> expected;
+  expected.reserve(values.size());
   for (auto value : values) {
     float sum = 0.0f;
     for (float exponent : exponents) {
@@ -1870,7 +1884,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, SquareIn4D) {
 
   std::vector<float> values_vector;
   std::vector<float> expected_vector;
-  for (int i = 0; i < values.num_elements(); ++i) {
+  const auto num_elements = values.num_elements();
+  values_vector.reserve(num_elements);
+  expected_vector.reserve(num_elements);
+  for (int i = 0; i < num_elements; ++i) {
     values_vector.push_back(static_cast<float>(i) / values.num_elements());
     expected_vector.push_back(values_vector.back() * values_vector.back());
   }
@@ -1936,6 +1953,17 @@ XLA_TEST_F(ArrayElementwiseOpTest, MaxF32s) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest,
+           DISABLED_ON_CPU(DefaultMaxF32sNaNPropagation)) {
+  XlaBuilder builder(TestName());
+  auto lhs = ConstantR1<float>(&builder, {1.0f, 1.0f, 2.25f, NAN, 6.0f});
+  auto rhs = ConstantR1<float>(&builder, {2.0f, -5.0f, 1.0f, 10.0f, NAN});
+  Max(lhs, rhs);
+
+  ComputeAndCompareR1<float>(&builder, {2.0f, 1.0f, 2.25f, NAN, NAN}, {},
+                             error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, MaxZeroElementF32s) {
   XlaBuilder builder(TestName());
   auto lhs = ConstantR1<float>(&builder, {});
@@ -1956,55 +1984,55 @@ XLA_TEST_F(ArrayElementwiseOpTest, MaxF64s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MaxS32s) {
-  const int32_t min = std::numeric_limits<int32>::min();
-  const int32_t max = std::numeric_limits<int32>::max();
+  const int32_t min = std::numeric_limits<int32_t>::min();
+  const int32_t max = std::numeric_limits<int32_t>::max();
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<int32>(
+  auto x = ConstantR1<int32_t>(
       &builder, {min, min, min, -1, -1, 0, 0, 0, 1, 1, max, max, max});
-  auto y = ConstantR1<int32>(
+  auto y = ConstantR1<int32_t>(
       &builder, {min, max, 0, -10, 0, -1, 0, 1, 0, 10, 0, max, min});
   Max(x, y);
 
-  std::vector<int32> expected = {min, max, 0,  -1,  0,   0,  0,
-                                 1,   1,   10, max, max, max};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  std::vector<int32_t> expected = {min, max, 0,  -1,  0,   0,  0,
+                                   1,   1,   10, max, max, max};
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MinS32s) {
-  const int32_t min = std::numeric_limits<int32>::min();
-  const int32_t max = std::numeric_limits<int32>::max();
+  const int32_t min = std::numeric_limits<int32_t>::min();
+  const int32_t max = std::numeric_limits<int32_t>::max();
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<int32>(
+  auto x = ConstantR1<int32_t>(
       &builder, {min, min, min, -1, -1, 0, 0, 0, 1, 1, max, max, max});
-  auto y = ConstantR1<int32>(
+  auto y = ConstantR1<int32_t>(
       &builder, {min, max, 0, -10, 0, -1, 0, 1, 0, 10, 0, max, min});
   Min(x, y);
 
-  std::vector<int32> expected = {min, min, min, -10, -1,  -1, 0,
-                                 0,   0,   1,   0,   max, min};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  std::vector<int32_t> expected = {min, min, min, -10, -1,  -1, 0,
+                                   0,   0,   1,   0,   max, min};
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MaxU32s) {
-  const uint32 max = std::numeric_limits<uint32>::max();
+  const uint32_t max = std::numeric_limits<uint32_t>::max();
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<uint32>(&builder, {0, 0, 1, 1, 1, max, max, max});
-  auto y = ConstantR1<uint32>(&builder, {0, 1, 0, 1, 10, 0, 234234, max});
+  auto x = ConstantR1<uint32_t>(&builder, {0, 0, 1, 1, 1, max, max, max});
+  auto y = ConstantR1<uint32_t>(&builder, {0, 1, 0, 1, 10, 0, 234234, max});
   Max(x, y);
 
-  std::vector<uint32> expected = {0, 1, 1, 1, 10, max, max, max};
-  ComputeAndCompareR1<uint32>(&builder, expected, {});
+  std::vector<uint32_t> expected = {0, 1, 1, 1, 10, max, max, max};
+  ComputeAndCompareR1<uint32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MinU32s) {
-  const uint32 max = std::numeric_limits<uint32>::max();
+  const uint32_t max = std::numeric_limits<uint32_t>::max();
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<uint32>(&builder, {0, 0, 1, 1, 1, max, max, max});
-  auto y = ConstantR1<uint32>(&builder, {0, 1, 0, 1, 10, 0, 234234, max});
+  auto x = ConstantR1<uint32_t>(&builder, {0, 0, 1, 1, 1, max, max, max});
+  auto y = ConstantR1<uint32_t>(&builder, {0, 1, 0, 1, 10, 0, 234234, max});
   Min(x, y);
 
-  std::vector<uint32> expected = {0, 0, 0, 1, 1, 0, 234234, max};
-  ComputeAndCompareR1<uint32>(&builder, expected, {});
+  std::vector<uint32_t> expected = {0, 0, 0, 1, 1, 0, 234234, max};
+  ComputeAndCompareR1<uint32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MaxTenF32s) {
@@ -2063,24 +2091,24 @@ XLA_TEST_F(ArrayElementwiseOpTest, Max1DAnd2DZeroElementF32s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, Max3DAndScalarS32s) {
   XlaBuilder builder(TestName());
-  auto scalar = ConstantR0<int32>(&builder, 2);
-  Array3D<int32> a_3d({{{3, 9, -1}, {2, -10, 3}}, {{-2, 2, 8}, {12, 10, 4}}});
-  auto array = ConstantR3FromArray3D<int32>(&builder, a_3d);
+  auto scalar = ConstantR0<int32_t>(&builder, 2);
+  Array3D<int32_t> a_3d({{{3, 9, -1}, {2, -10, 3}}, {{-2, 2, 8}, {12, 10, 4}}});
+  auto array = ConstantR3FromArray3D<int32_t>(&builder, a_3d);
   Max(array, scalar, /*broadcast_dimensions=*/{});
 
-  Array3D<int32> expected({{{3, 9, 2}, {2, 2, 3}}, {{2, 2, 8}, {12, 10, 4}}});
-  ComputeAndCompareR3<int32>(&builder, expected, {});
+  Array3D<int32_t> expected({{{3, 9, 2}, {2, 2, 3}}, {{2, 2, 8}, {12, 10, 4}}});
+  ComputeAndCompareR3<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, Max3DAndScalarZeroElementS32s) {
   XlaBuilder builder(TestName());
-  auto scalar = ConstantR0<int32>(&builder, 2);
-  Array3D<int32> a_3d(2, 0, 3);
-  auto array = ConstantR3FromArray3D<int32>(&builder, a_3d);
+  auto scalar = ConstantR0<int32_t>(&builder, 2);
+  Array3D<int32_t> a_3d(2, 0, 3);
+  auto array = ConstantR3FromArray3D<int32_t>(&builder, a_3d);
   Max(array, scalar, /*broadcast_dimensions=*/{});
 
-  Array3D<int32> expected(2, 0, 3);
-  ComputeAndCompareR3<int32>(&builder, expected, {});
+  Array3D<int32_t> expected(2, 0, 3);
+  ComputeAndCompareR3<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, Min2DTo1DF32s) {
@@ -2133,31 +2161,31 @@ XLA_TEST_F(ArrayElementwiseOpTest, Min2DTo4DZeroElementF32s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, MinTenS32s) {
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<int32>(&builder, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
-  auto y = ConstantR1<int32>(&builder, {9, 8, 7, 6, 5, 4, 3, 2, 1, 0});
+  auto x = ConstantR1<int32_t>(&builder, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+  auto y = ConstantR1<int32_t>(&builder, {9, 8, 7, 6, 5, 4, 3, 2, 1, 0});
   Min(x, y);
 
-  std::vector<int32> expected = {0, 1, 2, 3, 4, 4, 3, 2, 1, 0};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  std::vector<int32_t> expected = {0, 1, 2, 3, 4, 4, 3, 2, 1, 0};
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MaxTenS32s) {
   XlaBuilder builder(TestName());
-  auto x = ConstantR1<int32>(&builder, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
-  auto y = ConstantR1<int32>(&builder, {9, 8, 7, 6, 5, 4, 3, 2, 1, 0});
+  auto x = ConstantR1<int32_t>(&builder, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+  auto y = ConstantR1<int32_t>(&builder, {9, 8, 7, 6, 5, 4, 3, 2, 1, 0});
   Max(x, y);
 
-  std::vector<int32> expected = {9, 8, 7, 6, 5, 5, 6, 7, 8, 9};
-  ComputeAndCompareR1<int32>(&builder, expected, {});
+  std::vector<int32_t> expected = {9, 8, 7, 6, 5, 5, 6, 7, 8, 9};
+  ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, RemTwoConstantS32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<int32>(&builder, {-3, 26, 2, -1, 1});
-  auto b = ConstantR1<int32>(&builder, {10, 5, 1, 10, -10});
+  auto a = ConstantR1<int32_t>(&builder, {-3, 26, 2, -1, 1});
+  auto b = ConstantR1<int32_t>(&builder, {10, 5, 1, 10, -10});
   Rem(a, b);
 
-  ComputeAndCompareR1<int32>(&builder, {-3, 1, 0, -1, 1}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {-3, 1, 0, -1, 1}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, NonNanClampF32) {
@@ -2218,54 +2246,54 @@ XLA_TEST_F(ArrayElementwiseOpTest, ClampF32ScalarVector) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClampS32Vector) {
   XlaBuilder builder(TestName());
-  auto min_vector = ConstantR1<int32>(&builder, {1, -6, 1, 2, 0, -5});
-  auto arg_vector = ConstantR1<int32>(&builder, {2, 10, -5, 1, 4, 10});
-  auto max_vector = ConstantR1<int32>(&builder, {3, 0, 25, 5, 123, -1});
+  auto min_vector = ConstantR1<int32_t>(&builder, {1, -6, 1, 2, 0, -5});
+  auto arg_vector = ConstantR1<int32_t>(&builder, {2, 10, -5, 1, 4, 10});
+  auto max_vector = ConstantR1<int32_t>(&builder, {3, 0, 25, 5, 123, -1});
   Clamp(min_vector, arg_vector, max_vector);
 
-  ComputeAndCompareR1<int32>(&builder, {2, 0, 1, 2, 4, -1}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {2, 0, 1, 2, 4, -1}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClampS32ScalarVector) {
   XlaBuilder builder(TestName());
-  auto min_scalar = ConstantR0<int32>(&builder, 0);
-  auto min_vector = ConstantR1<int32>(&builder, {1, -6, 1, 2, 0});
-  auto arg_vector = ConstantR1<int32>(&builder, {2, 10, -5, 1, 4});
-  auto max_scalar = ConstantR0<int32>(&builder, 3);
-  auto max_vector = ConstantR1<int32>(&builder, {3, 1, 25, 5, 123});
+  auto min_scalar = ConstantR0<int32_t>(&builder, 0);
+  auto min_vector = ConstantR1<int32_t>(&builder, {1, -6, 1, 2, 0});
+  auto arg_vector = ConstantR1<int32_t>(&builder, {2, 10, -5, 1, 4});
+  auto max_scalar = ConstantR0<int32_t>(&builder, 3);
+  auto max_vector = ConstantR1<int32_t>(&builder, {3, 1, 25, 5, 123});
   // Perform clamp with broadcasted scalar and vector.
   Add(Add(Clamp(min_vector, arg_vector, max_scalar),
           Clamp(min_scalar, arg_vector, max_vector)),
       Add(Clamp(min_vector, arg_vector, max_vector),
           Clamp(min_scalar, arg_vector, max_scalar)));
 
-  ComputeAndCompareR1<int32>(&builder, {8, 8, 2, 6, 14}, {});
+  ComputeAndCompareR1<int32_t>(&builder, {8, 8, 2, 6, 14}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClampU32Vector) {
   XlaBuilder builder(TestName());
-  auto min_vector = ConstantR1<uint32>(&builder, {1, 2, 1, 2, 0, ~0u - 4});
-  auto arg_vector = ConstantR1<uint32>(&builder, {2, 10, 5, 1, 4, 10});
-  auto max_vector = ConstantR1<uint32>(&builder, {3, 5, 25, 5, 123, ~0u});
+  auto min_vector = ConstantR1<uint32_t>(&builder, {1, 2, 1, 2, 0, ~0u - 4});
+  auto arg_vector = ConstantR1<uint32_t>(&builder, {2, 10, 5, 1, 4, 10});
+  auto max_vector = ConstantR1<uint32_t>(&builder, {3, 5, 25, 5, 123, ~0u});
   Clamp(min_vector, arg_vector, max_vector);
 
-  ComputeAndCompareR1<uint32>(&builder, {2, 5, 5, 2, 4, ~0u - 4}, {});
+  ComputeAndCompareR1<uint32_t>(&builder, {2, 5, 5, 2, 4, ~0u - 4}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClampU32ScalarVector) {
   XlaBuilder builder(TestName());
-  auto min_scalar = ConstantR0<uint32>(&builder, 0);
-  auto min_vector = ConstantR1<uint32>(&builder, {1, 0, 1, 2, 0});
-  auto arg_vector = ConstantR1<uint32>(&builder, {2, 10, 0, 1, 4});
-  auto max_scalar = ConstantR0<uint32>(&builder, 3);
-  auto max_vector = ConstantR1<uint32>(&builder, {3, 1, 25, 5, 123});
+  auto min_scalar = ConstantR0<uint32_t>(&builder, 0);
+  auto min_vector = ConstantR1<uint32_t>(&builder, {1, 0, 1, 2, 0});
+  auto arg_vector = ConstantR1<uint32_t>(&builder, {2, 10, 0, 1, 4});
+  auto max_scalar = ConstantR0<uint32_t>(&builder, 3);
+  auto max_vector = ConstantR1<uint32_t>(&builder, {3, 1, 25, 5, 123});
   // Perform clamp with broadcasted scalar and vector.
   Add(Add(Clamp(min_vector, arg_vector, max_scalar),
           Clamp(min_scalar, arg_vector, max_vector)),
       Add(Clamp(min_vector, arg_vector, max_vector),
           Clamp(min_scalar, arg_vector, max_scalar)));
 
-  ComputeAndCompareR1<uint32>(&builder, {8, 8, 2, 6, 14}, {});
+  ComputeAndCompareR1<uint32_t>(&builder, {8, 8, 2, 6, 14}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersF32s) {
@@ -2351,8 +2379,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
   auto inf = std::numeric_limits<float>::infinity();
   std::vector<float> ys;
   std::vector<float> xs;
-  for (auto y : {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f}) {
-    for (auto x : {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f}) {
+  const auto _ys = {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
+  const auto _xs = {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f};
+  const auto n = _ys.size() * _xs.size();
+  ys.reserve(n);
+  xs.reserve(n);
+  for (auto y : _ys) {
+    for (auto x : _xs) {
       ys.push_back(y);
       xs.push_back(x);
     }
@@ -2369,8 +2402,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   auto inf = std::numeric_limits<float>::infinity();
   std::vector<std::complex<float>> ys;
   std::vector<std::complex<float>> xs;
-  for (auto y : {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f}) {
-    for (auto x : {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f}) {
+  const auto _ys = {+0.0f, -0.0f, inf, -inf, 5.0f, -3.0f, 2.0f, -8.0f, 1.0f};
+  const auto _xs = {+0.0f, -0.0f, inf, -inf, 6.0f, -4.0f, 2.0f, 8.0f};
+  const auto n = _ys.size() * _xs.size();
+  ys.reserve(n);
+  xs.reserve(n);
+  for (auto y : _ys) {
+    for (auto x : _xs) {
       ys.push_back(y);
       xs.push_back(x);
     }
@@ -2507,11 +2545,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClzU32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<uint32>(
+  auto a = ConstantR1<uint32_t>(
       &builder, {0, 1, 0x10, 0x10000, 0x700000, 0x12345678, 0xF2345678});
   Clz(a);
 
-  ComputeAndCompareR1<uint32>(&builder, {32, 31, 27, 15, 9, 3, 0}, {});
+  ComputeAndCompareR1<uint32_t>(&builder, {32, 31, 27, 15, 9, 3, 0}, {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClzS64s) {
@@ -2655,8 +2693,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Add1DTo2DF32) {
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Eq) {
   // Test broadcasting in Eq comparison.
   XlaBuilder builder(TestName());
-  auto v = ConstantR1<int32>(&builder, {42, 73});
-  auto m = ConstantR2<int32>(&builder, {{42, 73}, {42, 52}});
+  auto v = ConstantR1<int32_t>(&builder, {42, 73});
+  auto m = ConstantR2<int32_t>(&builder, {{42, 73}, {42, 52}});
 
   // This test exercises both possible broadcast dimensions for a vector/matrix
   // comparison.
@@ -2673,11 +2711,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Eq) {
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ne) {
   // Test broadcasting in Ne comparison.
   XlaBuilder builder(TestName());
-  auto v = ConstantR1<int32>(&builder, {42, 73});
-  auto m = ConstantR2<int32>(&builder, {{42, 73}, {42, 52}});
+  auto v = ConstantR1<int32_t>(&builder, {42, 73});
+  auto m = ConstantR2<int32_t>(&builder, {{42, 73}, {42, 52}});
   Ne(v, m, /*broadcast_dimensions=*/{1});
 
-  const string expected = R"(pred[2,2] {
+  const std::string expected = R"(pred[2,2] {
   { 0, 0 },
   { 0, 1 }
 })";
@@ -2687,11 +2725,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ne) {
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ge) {
   // Test broadcasting in Ge comparison.
   XlaBuilder builder(TestName());
-  auto v = ConstantR1<int32>(&builder, {1, 2, 3, 4});
-  auto m = ConstantR2<int32>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
+  auto v = ConstantR1<int32_t>(&builder, {1, 2, 3, 4});
+  auto m = ConstantR2<int32_t>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
   Ge(v, m, /*broadcast_dimensions=*/{1});
 
-  const string expected = R"(pred[2,4] {
+  const std::string expected = R"(pred[2,4] {
   { 1, 1, 0, 0 },
   { 0, 0, 0, 1 }
 })";
@@ -2701,11 +2739,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ge) {
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Gt) {
   // Test broadcasting in Gt comparison.
   XlaBuilder builder(TestName());
-  auto v = ConstantR1<int32>(&builder, {1, 2, 3, 4});
-  auto m = ConstantR2<int32>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
+  auto v = ConstantR1<int32_t>(&builder, {1, 2, 3, 4});
+  auto m = ConstantR2<int32_t>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
   Gt(v, m, /*broadcast_dimensions=*/{1});
 
-  const string expected = R"(pred[2,4] {
+  const std::string expected = R"(pred[2,4] {
   { 0, 1, 0, 0 },
   { 0, 0, 0, 0 }
 })";
@@ -2715,11 +2753,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Gt) {
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Le) {
   // Test broadcasting in Le comparison.
   XlaBuilder builder(TestName());
-  auto v = ConstantR1<int32>(&builder, {1, 2, 3, 4});
-  auto m = ConstantR2<int32>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
+  auto v = ConstantR1<int32_t>(&builder, {1, 2, 3, 4});
+  auto m = ConstantR2<int32_t>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
   Le(v, m, /*broadcast_dimensions=*/{1});
 
-  const string expected = R"(pred[2,4] {
+  const std::string expected = R"(pred[2,4] {
   { 1, 0, 1, 1 },
   { 1, 1, 1, 1 }
 })";
@@ -2729,11 +2767,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Le) {
 XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Lt) {
   // Test broadcasting in Lt comparison.
   XlaBuilder builder(TestName());
-  auto v = ConstantR1<int32>(&builder, {1, 2, 3, 4});
-  auto m = ConstantR2<int32>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
+  auto v = ConstantR1<int32_t>(&builder, {1, 2, 3, 4});
+  auto m = ConstantR2<int32_t>(&builder, {{1, 0, 5, 6}, {42, 52, 10, 4}});
   Lt(v, m, /*broadcast_dimensions=*/{1});
 
-  const string expected = R"(pred[2,4] {
+  const std::string expected = R"(pred[2,4] {
   { 0, 0, 1, 1 },
   { 1, 1, 1, 0 }
 })";
@@ -2943,7 +2981,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGtR3F32sWithDegenerateDim2) {
 
   Array3D<int> expected_3d(
       {{{0, 1}, {0, 0}, {0, 0}}, {{0, 1}, {1, 0}, {0, 1}}});
-  const string expected = R"(pred[2,3,2] {
+  const std::string expected = R"(pred[2,3,2] {
 {
   { 0, 1 },
   { 0, 0 },

@@ -39,9 +39,10 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
                               const Device* device,
                               std::unique_ptr<Graph>* graph,
                               const Options& options) {
+  static const char* kGraphOptimizerCategory = "GraphOptimizerPass";
+
   Graph* g = graph->get();
   DumpGraph("Initial", g);
-
   bool changed = true;
   const int kMaxRounds = 10;
   for (int rounds = 0; rounds < kMaxRounds; ++rounds) {
@@ -51,8 +52,9 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
       changed = true;
     }
 
-    uint64 inlining_start_us = Env::Default()->NowMicros();
-    uint64 inlining_total_us = 0;
+    tensorflow::metrics::ScopedCounter<2> inlining_timings(
+        tensorflow::metrics::GetGraphOptimizationCounter(),
+        {kGraphOptimizerCategory, "function_inlining"});
     if (opts_.do_function_inlining() && RemoveDeadNodes(g)) {
       DumpGraph("RemoveDeadNodes", g);
       changed = true;
@@ -62,11 +64,14 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
       changed = true;
     }
     if (opts_.do_function_inlining()) {
-      inlining_total_us += Env::Default()->NowMicros() - inlining_start_us;
+      inlining_timings.AccumulateAndStop();
     }
 
     if (opts_.do_constant_folding()) {
-      const uint64 pass_start_us = Env::Default()->NowMicros();
+      tensorflow::metrics::ScopedCounter<2> timings(
+          tensorflow::metrics::GetGraphOptimizationCounter(),
+          {kGraphOptimizerCategory, "constant_folding"});
+
       ConstantFoldingOptions cf_opts;
       cf_opts.shape_map = options.shape_map;
       cf_opts.consider = options.cf_consider_fn;
@@ -82,32 +87,28 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
         DumpGraph("ConstFolding", g);
         changed = true;
       }
-      const uint64 pass_end_us = Env::Default()->NowMicros();
-      metrics::UpdateGraphOptimizerPassTime("constant_folding",
-                                            pass_end_us - pass_start_us);
     }
 
-    inlining_start_us = Env::Default()->NowMicros();
-    if (opts_.do_function_inlining() && FixupSourceAndSinkEdges(g)) {
-      DumpGraph("FixupSourceAndSinkEdges", g);
-      changed = true;
-    }
     if (opts_.do_function_inlining()) {
-      inlining_total_us += Env::Default()->NowMicros() - inlining_start_us;
+      inlining_timings.Start();
+      if (FixupSourceAndSinkEdges(g)) {
+        DumpGraph("FixupSourceAndSinkEdges", g);
+        changed = true;
+      }
+      inlining_timings.AccumulateAndStop();
     }
 
     if (opts_.do_common_subexpression_elimination()) {
-      const uint64 pass_start_us = Env::Default()->NowMicros();
+      tensorflow::metrics::ScopedCounter<2> timings(
+          tensorflow::metrics::GetGraphOptimizationCounter(),
+          {kGraphOptimizerCategory, "common_subexpression_elimination"});
       if (OptimizeCSE(g, options.cse_consider_fn)) {
         DumpGraph("OptimizeCSE", g);
         changed = true;
       }
-      const uint64 pass_end_us = Env::Default()->NowMicros();
-      metrics::UpdateGraphOptimizerPassTime("common_subexpression_elimination",
-                                            pass_end_us - pass_start_us);
     }
     if (opts_.do_function_inlining()) {
-      inlining_start_us = Env::Default()->NowMicros();
+      inlining_timings.Start();
       ExpandInlineFunctionsOptions expand_inline_opts;
       expand_inline_opts.native_options.inlined_function_body_placer =
           InlinedFunctionBodyPlacer::SingleDevice();
@@ -144,10 +145,7 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
         changed = true;
       }
 
-      const uint64 inlining_end_us = Env::Default()->NowMicros();
-      metrics::UpdateGraphOptimizerPassTime(
-          "function_inlining",
-          (inlining_end_us - inlining_start_us) + inlining_total_us);
+      inlining_timings.ReportAndStop();
     }
     if (!changed) break;
   }

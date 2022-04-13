@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -79,10 +81,14 @@ class DepthToSpaceTester {
 
   inline int32_t BlockSize() const { return block_size_; }
 
-  void Test(TfLiteDelegate* delegate) const;
+  template <class T>
+  void Test(TensorType tensor_type, Interpreter* delegate_interpreter,
+            Interpreter* default_interpreter) const;
+
+  void Test(TensorType tensor_type, TfLiteDelegate* delegate) const;
 
  private:
-  std::vector<char> CreateTfLiteModel() const;
+  std::vector<char> CreateTfLiteModel(TensorType tensor_type) const;
 
   int32_t batch_size_ = 1;
   int32_t input_height_ = 1;

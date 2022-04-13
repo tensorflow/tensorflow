@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -35,10 +37,13 @@ RegistrationMap* GetRegistrationMap() {
 }  // namespace
 
 std::unique_ptr<CostMeasurement> CostMeasurementRegistry::CreateByNameOrNull(
-    const std::string& name) {
+    const std::string& name, const CostMeasurement::Context& context) {
   const auto it = GetRegistrationMap()->find(name);
-  if (it == GetRegistrationMap()->end()) return nullptr;
-  return std::unique_ptr<CostMeasurement>(it->second());
+  if (it == GetRegistrationMap()->end()) {
+    LOG_FIRST_N(ERROR, 1) << "Cost type " << name << " is unregistered.";
+    return nullptr;
+  }
+  return it->second(context);
 }
 
 void CostMeasurementRegistry::RegisterCostMeasurement(absl::string_view name,

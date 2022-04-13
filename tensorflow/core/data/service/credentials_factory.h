@@ -57,7 +57,8 @@ class CredentialsFactory {
       absl::string_view protocol,
       std::shared_ptr<::grpc::ChannelCredentials>* out);
 
-  // Returns whether a factory has been registered under the given protocl name.
+  // Returns whether a factory has been registered under the given protocol
+  // name.
   static bool Exists(absl::string_view protocol);
 
  private:

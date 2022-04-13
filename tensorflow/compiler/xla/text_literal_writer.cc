@@ -25,14 +25,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
 /* static */ Status TextLiteralWriter::WriteToPath(const Literal& literal,
                                                    absl::string_view path) {
   std::unique_ptr<tensorflow::WritableFile> f;
-  auto s = tensorflow::Env::Default()->NewWritableFile(string(path), &f);
+  auto s = tensorflow::Env::Default()->NewWritableFile(std::string(path), &f);
   if (!s.ok()) {
     return s;
   }
@@ -44,16 +43,16 @@ namespace xla {
 
   Status status;
   tensorflow::WritableFile* f_ptr = f.get();
-  literal.EachCellAsString(
-      [f_ptr, &status](absl::Span<const int64_t> indices, const string& value) {
-        if (!status.ok()) {
-          return;
-        }
-        string coordinates =
-            absl::StrCat("(", absl::StrJoin(indices, ", "), ")");
+  literal.EachCellAsString([f_ptr, &status](absl::Span<const int64_t> indices,
+                                            const std::string& value) {
+    if (!status.ok()) {
+      return;
+    }
+    std::string coordinates =
+        absl::StrCat("(", absl::StrJoin(indices, ", "), ")");
 
-        status = f_ptr->Append(absl::StrCat(coordinates, ": ", value, "\n"));
-      });
+    status = f_ptr->Append(absl::StrCat(coordinates, ": ", value, "\n"));
+  });
   auto ignored = f->Close();
   return status;
 }

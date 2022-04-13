@@ -26,10 +26,10 @@ namespace gpu {
 // backwards-input convolutions into CustomCall HLOs that call into
 // Cudnn/Miopen.
 // For integer convolution, it requires the following pattern:
-// conv<InputT=int32, ResultT=int32>(
-//   convert<int32>(int8_x), convert<int32>(int8_y))
+// conv<InputT=int32_t, ResultT=int32_t>(
+//   convert<int32_t>(int8_x), convert<int32_t>(int8_y))
 // We transform it to:
-// custom_call<int32>(int8_x, int8_y, target=cudnnForwardConvolution)
+// custom_call<int32_t>(int8_x, int8_y, target=cudnnForwardConvolution)
 // Note that this pattern is necessary but not sufficient to map convolutions
 // to CuDNN. More patterns will be matched in cudnn_fused_conv_rewriter.
 
@@ -39,6 +39,16 @@ class GpuConvRewriter : public HloModulePass {
 
   StatusOr<bool> Run(HloModule* module) override;
 };
+
+namespace conv_matchers {
+
+bool CanImplementAsGpuForwardConv(HloInstruction* conv);
+std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
+MatchBackwardFilter(HloInstruction* conv);
+std::tuple<bool, Window, ConvolutionDimensionNumbers, HloInstruction*>
+MatchBackwardInput(HloInstruction* conv);
+
+}  // namespace conv_matchers
 
 }  // namespace gpu
 }  // namespace xla

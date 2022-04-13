@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 
 #include "tensorflow/compiler/xla/service/call_inliner.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
@@ -301,8 +301,8 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4) {
   EXPECT_FALSE(changed);
 }
 
-// Don't vectorize int8 -> int32 into int8x4 or int8x32; this is not supported
-// in cudnn.
+// Don't vectorize int8_t -> int32_t into int8x4 or int8x32; this is not
+// supported in cudnn.
 TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4IfOutputIsS32) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule
@@ -320,8 +320,8 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4IfOutputIsS32) {
   EXPECT_FALSE(changed);
 }
 
-// Don't vectorize int8 -> float into int8x4 or int8x32.  Vectorizing to int8x4
-// *is* allowed by cudnn, but we don't do it at the moment.
+// Don't vectorize int8_t -> float into int8x4 or int8x32.  Vectorizing to
+// int8x4 *is* allowed by cudnn, but we don't do it at the moment.
 TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4IfOutputIsF32) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule

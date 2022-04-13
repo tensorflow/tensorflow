@@ -35,9 +35,24 @@ Status EqualShapes(const Shape& expected, const Shape& actual);
 // primitive type are equal.
 Status Equal(const LiteralSlice& expected, const LiteralSlice& actual);
 
+// Structure that contains the distribution of absolute and relative errors,
+// bucketized into five buckets: [0.0001, 0.001, 0.01, 0.1, 1].
+// Useful to understand the distribution of errors and set the permissible
+// error bounds in an ErrorSpec.
+struct ErrorBuckets {
+  explicit ErrorBuckets(const std::vector<int64_t>& absolute_error_buckets = {},
+                        const std::vector<int64_t>& rel_error_buckets = {})
+      : abs_error_buckets(absolute_error_buckets),
+        rel_error_buckets(rel_error_buckets) {}
+
+  const std::vector<int64_t> abs_error_buckets;
+  const std::vector<int64_t> rel_error_buckets;
+};
+
 using MiscompareCallback = std::function<void(
     const LiteralSlice& expected, const LiteralSlice& actual,
-    const LiteralSlice& mismatches, const ShapeIndex& shape_index)>;
+    const LiteralSlice& mismatches, const ShapeIndex& shape_index,
+    const ErrorBuckets& error_buckets)>;
 
 // Inspects whether the expected and actual literals are within the given error
 // bound for all elements. Also, inspects whether the rank, dimensions sizes,
@@ -68,7 +83,7 @@ Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
 // 3 minutes.  The utility of printing a literal with >1000 elements is
 // questionable, especially when writing the Literal proto to disk is orders
 // of magnitude faster.
-string ToStringTruncated(const LiteralSlice& literal);
+std::string ToStringTruncated(const LiteralSlice& literal);
 
 }  // namespace literal_comparison
 }  // namespace xla

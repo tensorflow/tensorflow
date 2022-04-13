@@ -58,6 +58,11 @@ Status MakeIteratorFromInputElement(
     std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node);
 
+// Creates an iterator context appropriate for a nested dataset's iterator. A
+// nested dataset is a dataset created within another dataset, e.g. by the
+// function passed to `interleave` or `flat_map`.
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx);
+
 struct ShortCircuitInfo {
   std::vector<int> indices;
   std::vector<bool> can_move;

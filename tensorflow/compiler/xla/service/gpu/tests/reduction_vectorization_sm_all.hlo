@@ -73,7 +73,7 @@ ENTRY %main {
 
 // CHECK-SM60: .entry exp
 // CHECK-SM60-LABEL: .entry reduce_exp
-// CHECK-SM60-COUNT-8: ld.global.nc.f32
+// CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
 
 // CHECK-SM70: .entry exp
 // CHECK-SM70-LABEL: .entry reduce_exp
@@ -103,7 +103,7 @@ HloModule ReduceTileFit
 // CHECK-SM50-COUNT-8: ld.global.nc.f32
 
 // CHECK-SM60-LABEL: .entry reduce_tile_fit
-// CHECK-SM60-COUNT-8: ld.global.nc.f32
+// CHECK-SM60-COUNT-8: ld.global.nc.v2.f32
 
 // CHECK-SM70-LABEL: .entry reduce_tile_fit
 // CHECK-SM70-COUNT-4: ld.global.nc.v2.f32

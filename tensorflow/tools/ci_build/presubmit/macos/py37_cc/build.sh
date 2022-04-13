@@ -34,20 +34,24 @@ function run_build () {
   # Get the default test targets for bazel.
   source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
+  # TODO(b/203827187): Only build //tensorflow/python/... for now due to
+  # timeouts. We have too many tests and build also takes too long so we need to
+  # fix this after more in-depth profiling.
   "${BAZEL_WRAPPER_PATH}" \
     test \
+    --profile="${KOKORO_ARTIFACTS_DIR}/profile.json.gz" \
+    --build_event_binary_file="${KOKORO_ARTIFACTS_DIR}/build_events.pb" \
     --nodistinct_host_configuration \
     --build_tag_filters="${tag_filters}" \
     --test_tag_filters="${tag_filters}" \
     --action_env=PATH \
     --remote_accept_cached=true \
-    --spawn_strategy=standalone \
     --remote_local_fallback=false \
     --remote_timeout=600 \
-    --strategy=Javac=standalone \
-    --strategy=Closure=standalone \
-    --genrule_strategy=standalone \
-    -- ${DEFAULT_BAZEL_TARGETS}
+    -- //tensorflow/python/... # ${DEFAULT_BAZEL_TARGETS} -//tensorflow/java/... -//tensorflow/lite/java/...
+
+  # Print build time statistics, including critical path.
+  bazel analyze-profile "${KOKORO_ARTIFACTS_DIR}/profile.json.gz"
 
   # Copy log to output to be available to GitHub
   ls -la "$(bazel info output_base)/java.log"

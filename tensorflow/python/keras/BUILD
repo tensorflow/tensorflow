@@ -35,15 +35,11 @@ py_library(
         ":testing_utils",  # TODO(scottzhu): Stop exporting the test_utils after removing all the callers.
         "//tensorflow/python:training",
         "//tensorflow/python/keras/distribute",
-        "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
-        "//tensorflow/python/keras/premade",
-        "//tensorflow/python/keras/preprocessing",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils",
-        "//tensorflow/python/keras/wrappers",
         "//tensorflow/python/saved_model",
     ],
 )
@@ -539,7 +535,10 @@ tf_py_test(
     size = "medium",
     srcs = ["callbacks_v1_test.py"],
     python_version = "PY3",
-    tags = ["notsan"],
+    tags = [
+        "no_mac",
+        "notsan",
+    ],
     deps = [
         ":callbacks",
         ":callbacks_v1",

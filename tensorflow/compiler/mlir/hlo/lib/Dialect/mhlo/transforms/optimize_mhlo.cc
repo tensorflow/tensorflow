@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 
-using mlir::OwningRewritePatternList;
+using mlir::RewritePatternSet;
 
 namespace mlir {
 namespace mhlo {
@@ -88,7 +88,7 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
       return rewriter.notifyMatchFailure(gather,
                                          "offset_dims.size != operand.rank");
     }
-    for (auto it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
+    for (const auto& it : llvm::enumerate(dimension_numbers.getOffsetDims())) {
       if (it.index() != it.value()) {
         return rewriter.notifyMatchFailure(gather,
                                            "offset_dims != [0, result.rank)");
@@ -100,8 +100,8 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
                                          "slices_size.size > result.rank");
     }
 
-    for (auto it : llvm::enumerate(result_ty.getShape())) {
-      if (gather.slice_sizes().getValue<int64_t>(it.index() + 1) !=
+    for (const auto& it : llvm::enumerate(result_ty.getShape())) {
+      if (gather.slice_sizes().getValues<int64_t>()[it.index() + 1] !=
           it.value()) {
         return failure();
       }
@@ -165,8 +165,8 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
 }  // end anonymous namespace
 
 void PopulateOptimizeMHLOPatterns(MLIRContext* context,
-                                  OwningRewritePatternList* patterns) {
-  patterns->insert<GatherIsSlice>(context);
+                                  RewritePatternSet* patterns) {
+  patterns->add<GatherIsSlice>(context);
 }
 }  // end namespace mhlo
 }  // end namespace mlir

@@ -163,6 +163,10 @@ class CPUAllocator : public Allocator {
     return port::MallocExtension_GetAllocatedSize(ptr);
   }
 
+  AllocatorMemoryType GetMemoryType() const override {
+    return AllocatorMemoryType::kHostPageable;
+  }
+
  private:
   mutex mu_;
   AllocatorStats stats_ TF_GUARDED_BY(mu_);
@@ -200,6 +204,10 @@ class CPUAllocatorFactory : public AllocatorFactory {
     }
 
     bool SupportsCoalescing() const override { return false; }
+
+    AllocatorMemoryType GetMemoryType() const override {
+      return cpu_allocator_->GetMemoryType();
+    }
 
    private:
     CPUAllocator* cpu_allocator_;

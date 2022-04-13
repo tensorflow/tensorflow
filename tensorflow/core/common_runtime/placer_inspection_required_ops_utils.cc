@@ -183,11 +183,7 @@ Status AddInputIdentity(Node* node, int input_idx, Graph* graph,
           << input_idx << " \n"
           << identity_def.DebugString();
 
-  Status status;
-  Node* identity_node = graph->AddNode(identity_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(Node * identity_node, graph->AddNode(identity_def));
   graph->AddEdge(edge->src(), edge->src_output(), identity_node, 0);
 
   // Replace node's `input_idx` input with the new identity's 0'th output
@@ -217,11 +213,7 @@ Status AddOutputIdentities(Node* node, Graph* graph,
     TF_RETURN_IF_ERROR(builder.Finalize(&identity_def));
     MergeDebugInfo(NodeDebugInfo(*node), &identity_def);
 
-    Status status;
-    *identity_node = graph->AddNode(identity_def, &status);
-    if (!status.ok()) {
-      return status;
-    }
+    TF_ASSIGN_OR_RETURN(*identity_node, graph->AddNode(identity_def));
     graph->AddEdge(node, src_output, *identity_node, 0);
     return Status::OK();
   };

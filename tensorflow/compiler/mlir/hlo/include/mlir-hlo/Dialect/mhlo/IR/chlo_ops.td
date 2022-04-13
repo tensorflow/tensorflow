@@ -52,13 +52,12 @@ def HLOClient_Dialect : Dialect {
     and provide conversion patterns to fully materialize into lower level
     dialects.
   }];
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }
 
-class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
+class HLOClient_Op<string mnemonic, list<Trait> traits> :
     Op<HLOClient_Dialect, mnemonic, traits> {
-  // TODO(b/129012527) Much of this custom verification should be expressed as
-  // type constraints.
-  let verifier = [{ return Verify(*this); }];
 }
 
 class HLOClient_NativeOpTrait<string name> : NativeOpTrait<name> {
@@ -84,10 +83,9 @@ def HLOClient_Broadcasting : HLOClient_NativeOpTrait<"Broadcasting"> {
 //===----------------------------------------------------------------------===//
 
 class HLOClient_BroadcastBinaryElementwiseOp<
-  string mnemonic, list<OpTrait> traits> : HLOClient_Op<mnemonic, traits # [
+  string mnemonic, list<Trait> traits> : HLOClient_Op<mnemonic, traits # [
       HLO_BroadcastingElementwise, HLOClient_Broadcasting,
-      DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
-      "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
+      InferTensorTypeWithReify]> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -96,15 +94,17 @@ class HLOClient_BroadcastBinaryElementwiseOp<
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 
-  let builders = [
-    OpBuilder<(ins "Value":$left, "Value":$right,
-      "DenseIntElementsAttr":$broadcast_dimensions)>];
-
   let results = (outs HLO_Tensor);
 
   let assemblyFormat = [{
     $lhs `,` $rhs attr-dict `:`
     `(` type($lhs) `,` type($rhs) `)` `->` type(results)
+  }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
   }];
 }
 
@@ -447,7 +447,7 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
 // Unary op
 //===----------------------------------------------------------------------===//
 
-class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
+class HLOClient_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
     Type ArgTensorType, Type ResultTensorType> : HLOClient_Op<mnemonic,
     traits # [InferShapeEqualityOpInterface, NoSideEffect, Elementwise,
     SameOperandsAndResultShape, InferShapedTypeOpInterface]> {
@@ -609,10 +609,7 @@ def HLOClient_TanOp : HLOClient_UnaryElementwiseOp<"tan",
 
 def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
     HLOClient_Broadcasting, HLO_BroadcastingElementwise,
-    SameOperandsAndResultShape, InferTypeOpInterface,
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-    ["inferReturnTypeComponents", "reifyReturnTypeShapes"]>,
-    NativeOpTrait<"InferTensorType">]> {
+    SameOperandsAndResultShape, InferTensorTypeWithReify]> {
   let summary = "Constant like operator";
 
   let description = [{
@@ -623,7 +620,8 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like", [NoSideEffect,
   let arguments = (ins AnyAttr:$value, HLO_Tensor:$operand);
   let results = (outs HLO_Tensor);
 
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 def HLOClient_DigammaOp : HLOClient_UnaryElementwiseOp<"digamma",
@@ -728,19 +726,19 @@ def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
   let builders = [
     OpBuilder<(ins "Value":$lhs, "Value":$rhs,
       "DenseIntElementsAttr":$broadcast_dimensions,
-      "StringAttr":$comparison_direction, CArg<"StringAttr", "{}">:$compare_type)>];
+      "::mlir::mhlo::ComparisonDirection":$comparison_direction,
+      CArg<"::mlir::mhlo::ComparisonType",
+      "::mlir::mhlo::ComparisonType::NOTYPE">:$compare_type)>,
+  ];
 }
 
 //===----------------------------------------------------------------------===//
 // Broadcasting select op
 //===----------------------------------------------------------------------===//
 
-def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
-    NoSideEffect,
-    HLOClient_Broadcasting,
-    HLO_BroadcastingElementwise,
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface, [
-    "inferReturnTypeComponents", "reifyReturnTypeShapes"]>]> {
+def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select",
+    [NoSideEffect, HLOClient_Broadcasting, HLO_BroadcastingElementwise,
+     InferTensorTypeWithReify]> {
   string summary = "Select operator (with optional numpy-style broadcasting)";
 
   string description = [{
@@ -761,6 +759,12 @@ def HLOClient_BroadcastSelectOp : HLOClient_Op<"broadcast_select", [
   let assemblyFormat = [{
     $pred `,` $on_true `,` $on_false attr-dict `:`
     `(` type($pred) `,` type($on_true) `,` type($on_false) `)` `->` type(results)
+  }];
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+      return succeeded(mlir::verifyCompatibleShapes(l, r));
+    }
   }];
 }
 
@@ -807,6 +811,7 @@ def HLOClient_MinimumBroadcastShapesOp :
 
   let assemblyFormat = "$shapes attr-dict `:` type($shapes) `->` type($results)";
 
+  let hasVerifier = 1;
 }
 
 def HLOClient_RankSpecializationClusterOp
@@ -842,6 +847,8 @@ def HLOClient_RankSpecializationClusterOp
   let arguments = (ins Variadic<HLO_Tensor>:$operands);
   let results = (outs Variadic<HLO_Tensor>:$results);
   let regions = (region SizedRegion<1>:$body);
+
+  let hasVerifier = 1;
 }
 
 def HLOClient_RankSpecializationClusterYieldOp

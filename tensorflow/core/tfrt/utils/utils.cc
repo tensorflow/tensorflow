@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/tfrt/eager/virtual_device.h"
+#include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tpu/virtual_device.h"
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
@@ -28,6 +29,8 @@ limitations under the License.
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 
 namespace tfrt {
+
+using ::tensorflow::StatusOr;
 
 Expected<const char*> ConvertTfDeviceNameToTfrt(
     const char* device_name, tensorflow::EagerContext* eager_context) {
@@ -63,7 +66,7 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
       {fallback_init_func.data(), fallback_init_func.size()});
   if (func == nullptr) return tensorflow::Status::OK();
 
-  auto ready_chain = GetReadyChain(host);
+  auto ready_chain = GetReadyChain();
 
   DCHECK_EQ(func->argument_types().size(), 1);
 
@@ -76,7 +79,7 @@ tensorflow::Status RunRuntimeInitializer(const tfrt::ExecutionContext& exec_ctx,
   host->Await(results);
 
   if (auto* error = results[0]->GetErrorIfPresent()) {
-    return tensorflow::errors::Internal(error->message);
+    return CreateTfErrorStatus(*error);
   }
 
   return tensorflow::Status::OK();
@@ -114,6 +117,11 @@ StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
                     host_context->diag_handler(), host_context->allocator());
   TF_RET_CHECK(bef_file) << "failed to open BEF";
   return bef_file;
+}
+
+int64_t GetUniqueInt() {
+  static std::atomic<int64_t> id(0);
+  return id.fetch_add(1, std::memory_order_relaxed);
 }
 
 }  // namespace tfrt

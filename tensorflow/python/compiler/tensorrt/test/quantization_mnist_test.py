@@ -346,9 +346,9 @@ class MNISTTestV2(QuantizationAwareTrainingMNISTTest):
             maximum_cached_engines=1)
         converter = trt_convert.TrtGraphConverterV2(
             input_saved_model_dir=saved_model_dir,
-            conversion_params=conv_params,
             use_dynamic_shape=use_dynamic_shape,
-            dynamic_shape_profile_strategy='ImplicitBatchModeCompatible')
+            dynamic_shape_profile_strategy='ImplicitBatchModeCompatible',
+            **conv_params._asdict())
         converter.convert()
         func = converter._converted_func
       else:

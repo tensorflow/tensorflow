@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROPAGATOR_STATE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROPAGATOR_STATE_H_
 
+#include <queue>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/entry.h"
@@ -516,6 +517,44 @@ class PropagatorState {
 inline int64_t PropagatorState::TaggedNode::get_iter_num() const {
   return input_iter->iter_num;
 }
+
+// `OrderedPropagatorState` replaces `PropagatorState`s `TaggedNodeReadyQueue`
+// with a priority queue. This ensures that the order in which we dequeue
+// `TaggedNode&`s is stable with respect to ASLR.
+//
+// This is not always needed, as in a multithreaded environment, executions are
+// expected to happen nondeterministically, but this nondeteminism can be a
+// problem: For example, In usecases that are running close to the RAM limit of
+// a device, reordering ops can cause an increase in memory fragmenenation,
+// causing an OOM.
+// This codepath is enabled using TF_DETERMINISTIC_ORDER=1 in executor.cc
+class OrderedPropagatorState : public PropagatorState {
+  using PropagatorState::PropagatorState;
+
+ public:
+  class TaggedNodeReadyQueue : PropagatorState::TaggedNodeReadyQueue {
+   public:
+    TaggedNodeReadyQueue() : readyp_(compare) {}
+    void push_back(const TaggedNode& node) { readyp_.push(node); }
+    TaggedNode front() const { return readyp_.top(); }
+    void pop_front() { readyp_.pop(); }
+    bool empty() const { return readyp_.empty(); }
+
+   private:
+    static bool compare(TaggedNode const& lhs, TaggedNode const& rhs) {
+      std::tuple<int, uint64, int64_t> lhs_prio{lhs.node_item->node_id,
+                                                lhs.input_frame->frame_id,
+                                                lhs.input_iter->iter_num};
+      std::tuple<int, uint64, int64_t> rhs_prio{rhs.node_item->node_id,
+                                                rhs.input_frame->frame_id,
+                                                rhs.input_iter->iter_num};
+      return lhs_prio < rhs_prio;
+    }
+
+    std::priority_queue<TaggedNode, std::vector<TaggedNode>, decltype(&compare)>
+        readyp_;
+  };
+};
 
 }  // namespace tensorflow
 

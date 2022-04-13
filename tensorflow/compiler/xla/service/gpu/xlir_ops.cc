@@ -17,6 +17,7 @@
 #include "tensorflow/compiler/xla/service/gpu/xlir_ops.h"
 
 #include "mlir/IR/TypeUtilities.h"
+#include "tfrt/gpu/wrapper/ccl_wrapper.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
 
 namespace xla {
@@ -58,16 +59,13 @@ static ParseResult parseEnum(OpAsmParser &parser,
 template <typename T>
 static ParseResult parseEnum(OpAsmParser &parser,
                              tfrt::gpu::EnumAttr<T> &attribute) {
-  auto parse_func = [](StringRef name) {
-    return tfrt::gpu::wrapper::Parse<T>(name);
-  };
-  return parseEnum(parser, attribute, +parse_func);
+  return parseEnum(parser, attribute, &T::Parse);
 }
 
 template <typename T>
 static void printEnum(OpAsmPrinter &printer, Operation *,
                       tfrt::gpu::EnumAttr<T> attribute) {
-  tfrt::gpu::wrapper::operator<<(printer.getStream(), attribute.getValue());
+  printer << attribute.getValue();
 }
 
 }  // namespace gpu

@@ -41,7 +41,7 @@ bool KernelTestDelegateProviders::InitFromCmdlineArgs(int* argc,
         this->params_.Set<bool>(kUseSimpleAllocator, val, argv_position);
       },
       false, "Use Simple Memory Allocator for SingleOpModel", Flag::kOptional)};
-  delegate_list_util_.AppendCmdlineFlags(&flags);
+  delegate_list_util_.AppendCmdlineFlags(flags);
 
   bool parse_result = tflite::Flags::Parse(argc, argv, flags);
   if (!parse_result || params_.Get<bool>("help")) {

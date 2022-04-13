@@ -27,16 +27,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 
 namespace xla {
-string GetFloatDataType(bool use_bfloat16) {
+std::string GetFloatDataType(bool use_bfloat16) {
   return use_bfloat16 ? "bf16" : "f32";
 }
 
-string DepthwiseConvolution2DTestDataToString(
+std::string DepthwiseConvolution2DTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<DepthwiseConvolution2DSpec, bool>>& data) {
   const auto& spec = ::testing::get<0>(data.param);
-  const string data_type = GetFloatDataType(::testing::get<1>(data.param));
-  string str = absl::StrCat(
+  const std::string data_type = GetFloatDataType(::testing::get<1>(data.param));
+  std::string str = absl::StrCat(
       "activation_dims_", absl::StrJoin(spec.activation_dims, "x"),
       "_activation_layout_", absl::StrJoin(spec.activation_layout, "_"),
       "_kernel_dims_", absl::StrJoin(spec.kernel_dims, "x"), "_kernel_layout_",
@@ -53,11 +53,11 @@ string DepthwiseConvolution2DTestDataToString(
   return str;
 }
 
-string BuildHloTextDepthwiseConvolution2D(
+std::string BuildHloTextDepthwiseConvolution2D(
     const DepthwiseConvolution2DSpec& spec, bool use_bfloat16,
     bool is_scheduled) {
-  const string data_type = GetFloatDataType(use_bfloat16);
-  const string sched_tag = is_scheduled ? ", is_scheduled=true " : "";
+  const std::string data_type = GetFloatDataType(use_bfloat16);
+  const std::string sched_tag = is_scheduled ? ", is_scheduled=true " : "";
   if (spec.activation_dims[1] == 1 && spec.kernel_dims[1] == 2) {
     return absl::StrFormat(
         R"(

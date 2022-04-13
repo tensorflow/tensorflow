@@ -85,7 +85,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     if (input_cardinality_ == kInfiniteCardinality ||
         to_concatenate_cardinality_ == kInfiniteCardinality) {
       return kInfiniteCardinality;
@@ -95,6 +95,21 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       return kUnknownCardinality;
     }
     return input_cardinality_ + to_concatenate_cardinality_;
+  }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t input_cardinality = input_->Cardinality(options);
+    int64_t to_concatenate_cardinality = to_concatenate_->Cardinality(options);
+
+    if (input_cardinality == kInfiniteCardinality ||
+        to_concatenate_cardinality == kInfiniteCardinality) {
+      return kInfiniteCardinality;
+    }
+    if (input_cardinality == kUnknownCardinality ||
+        to_concatenate_cardinality == kUnknownCardinality) {
+      return kUnknownCardinality;
+    }
+    return input_cardinality + to_concatenate_cardinality;
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {

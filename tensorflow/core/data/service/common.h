@@ -61,21 +61,12 @@ StatusOr<TargetWorkers> ParseTargetWorkers(absl::string_view s);
 // Converts a `TargetWorkers` enum to string.
 std::string TargetWorkersToString(TargetWorkers target_workers);
 
-// tf.data service deployment mode.
-enum class DeploymentMode : int64_t {
-  UNSET = 0,
-  // tf.data service workers colocate with TF workers.
-  COLOCATED = 1,
-  // tf.data service workers run in dedicated tf.data hosts.
-  REMOTE = 2,
-  // tf.data service workers run in colocated TF hosts and dedicated tf.data
-  // hosts.
-  HYBRID = 3,
-};
-
 // Parses a string representing a `DeploymentMode` (case-insensitive).
 // Returns InvalidArgument if the string is not recognized.
 StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s);
+
+// Returns true if `status` is a retriable error that indicates preemption.
+bool IsPreemptedError(const Status& status);
 
 // Base class for data service clients. Data service clients are
 // threadsafe.

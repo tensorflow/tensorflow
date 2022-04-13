@@ -76,6 +76,7 @@ pytype_strict_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/types",
     ],
@@ -118,6 +119,7 @@ py_library(
     deps = [
         ":cross_device_ops",
         ":distribute_lib",
+        ":merge_call_interim",
         ":mirrored_strategy",
         ":multi_process_runner",
         ":multi_worker_test_base",
@@ -213,6 +215,9 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = [
+        "notsan",  # TODO(b/220133218)
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -541,6 +546,7 @@ py_library(
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/data/ops:optional_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/ops/ragged:ragged_tensor",
     ],
 )
@@ -633,6 +639,7 @@ py_library(
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/tpu:device_assignment",
+        "//tensorflow/python/tpu:tpu_hardware_feature",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/tpu:tpu_py",
         "//tensorflow/python/tpu/ops",
@@ -649,13 +656,14 @@ distribute_py_test(
     shard_count = 12,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
+        "no_cuda_asan",  # b/213388775
     ],
     tpu_tags = [
         "no_oss",
     ],
     xla_enable_strict_auto_jit = False,  # PSStrategy doesn't work on _xla tests
     deps = [
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:stateful_random_ops",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:combinations",
@@ -1088,7 +1096,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":combinations",
@@ -1124,8 +1131,8 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
-        "no_cuda_asan",  # times out
-        "notsan",  # b/177098062
+        "no_cuda_asan",  # TODO(b/214574707): times out
+        "notsan",  # TODO(b/177098062): flaky for over a year
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1285,7 +1292,11 @@ tf_py_test(
     size = "small",
     srcs = ["sharded_variable_test.py"],
     deps = [
+        ":combinations",
+        ":multi_worker_test_base",
+        ":parameter_server_strategy_v2",
         ":sharded_variable",
+        ":test_util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -1300,6 +1311,8 @@ tf_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model:load",
@@ -1307,6 +1320,7 @@ tf_py_test(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:util",
     ],
@@ -1397,6 +1411,7 @@ distribute_py_test(
     name = "distributed_variable_test",
     size = "medium",
     srcs = ["distributed_variable_test.py"],
+    disable_v2 = True,  # TODO(b/209058825)
     main = "distributed_variable_test.py",
     shard_count = 3,
     tags = [
@@ -1404,6 +1419,7 @@ distribute_py_test(
         "no_cuda_asan",  # times out
         "no_oss",  # b/178656226
         "noasan",  # b/175816710
+        "notap",  # Flaky
         "notsan",  # b/168645872
     ],
     tpu_tags = [
@@ -1616,8 +1632,10 @@ distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
     main = "moving_averages_test.py",
+    shard_count = 5,
     tags = [
         "no_windows",  # TODO(b/184424727): Re-enable this.
+        "notpu",  # TODO(b/210145904)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1659,7 +1677,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
+        "no_windows",  # TODO(b/227211015)
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1819,7 +1837,6 @@ distribute_py_test(
     main = "metrics_v1_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":combinations",
@@ -1840,11 +1857,13 @@ distribute_py_test(
     srcs = ["zero_batch_test.py"],
     disable_mlir_bridge = False,
     main = "zero_batch_test.py",
+    tags = [
+        "no_oss",  # Keras is not available in OSS test
+    ],
     deps = [
         ":combinations",
         ":multi_worker_test_base",
         ":strategy_combinations",
-        "//tensorflow/python:layers",
     ],
 )
 
@@ -1854,8 +1873,8 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",  #Re-enable when fixed
         "nomsan",  # b/154224457: Re-enable when fixed.
+        "notsan",  # TODO(b/220133218)
     ],
     # b/155301154 broken with XLA:GPU
     xla_enable_strict_auto_jit = True,
@@ -1897,6 +1916,8 @@ cuda_py_test(
 tpu_py_test(
     name = "collective_all_reduce_strategy_test_tpu",
     srcs = ["collective_all_reduce_strategy_test.py"],
+    # FIXME(b/227404010): On TFRT TPU, eager CollectiveReduceV2 is broken.
+    disable_tfrt = True,
     main = "collective_all_reduce_strategy_test.py",
     python_version = "PY3",
     deps = [
@@ -1940,7 +1961,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",  #Re-enable when fixed.
+        "notsan",  # TODO(b/220133218)
     ],
     # b/141096229: Non-atomic AssignAdd
     xla_enable_strict_auto_jit = False,
@@ -2132,7 +2153,6 @@ distribute_py_test(
     main = "tf_function_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":combinations",
@@ -2254,6 +2274,7 @@ distribute_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
     ],
     deps = [
@@ -2262,6 +2283,7 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
         ":ps_values",
+        ":test_util",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:lookup_ops",
@@ -2324,5 +2346,32 @@ pytype_strict_library(
         ":input_lib",
         "//tensorflow/python:tf2",
         "//tensorflow/python/distribute/v1:input_lib",
+    ],
+)
+
+py_library(
+    name = "merge_call_interim",
+    srcs = [
+        "merge_call_interim.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":distribute_lib",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+cuda_py_test(
+    name = "template_mirrored_strategy_test",
+    size = "small",
+    srcs = ["template_mirrored_strategy_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:template",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
 )

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 
+#include <string>
+
+#include "tensorflow/core/distributed_runtime/error_payloads.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -33,7 +36,7 @@ class FakeDevice : public Device {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
-  static std::unique_ptr<Device> MakeCPU(const string& name) {
+  static std::unique_ptr<Device> MakeCPU(const std::string& name) {
     DeviceAttributes device_attributes;
     device_attributes.set_name(name);
     device_attributes.set_device_type(DeviceType("FakeCPU").type());
@@ -67,7 +70,7 @@ TEST_F(SessionMgrTest, CreateSessionSimple) {
   server_def.set_job_name("worker");
   server_def.set_task_index(3);
 
-  string session_handle = "test_session_handle";
+  std::string session_handle = "test_session_handle";
   TF_EXPECT_OK(mgr_.CreateSession(session_handle, server_def, true));
   std::shared_ptr<WorkerSession> session;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession(session_handle, &session));
@@ -90,7 +93,7 @@ TEST_F(SessionMgrTest, CreateSessionClusterDefWorkerName) {
   DeviceAttributes* remote_cpu = cluster_device_attributes.Add();
   remote_cpu->set_name("/job:coordinator/replica:0/task:0/device:fakecpu:0");
 
-  string session_handle = "test_session_handle";
+  std::string session_handle = "test_session_handle";
   TF_EXPECT_OK(mgr_.CreateSession(session_handle, server_def,
                                   cluster_device_attributes, true));
   std::shared_ptr<WorkerSession> session;
@@ -108,7 +111,7 @@ TEST_F(SessionMgrTest, CreateSessionClusterDefWorkerName) {
 
 TEST_F(SessionMgrTest, CreateSessionDefaultWorkerName) {
   ServerDef server_def;
-  string session_handle = "test_session_handle";
+  std::string session_handle = "test_session_handle";
   TF_EXPECT_OK(mgr_.CreateSession(session_handle, server_def, true));
   std::shared_ptr<WorkerSession> session;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession(session_handle, &session));
@@ -162,16 +165,16 @@ TEST_F(SessionMgrTest, CreateSessionWithMasterName) {
 
   protobuf::RepeatedPtrField<DeviceAttributes> cluster_device_attributes;
 
-  const string master_name = "/job:master/replica:0/task:1";
+  const std::string master_name = "/job:master/replica:0/task:1";
   const int64_t old_incarnation = random::New64();
   const int64_t new_incarnation = random::New64();
 
   // Allow multiple worker sessions to be created by the same master
-  string sess_handle1 = "test_session_handle_1";
+  std::string sess_handle1 = "test_session_handle_1";
   TF_EXPECT_OK(mgr_.CreateSession(sess_handle1, server_def,
                                   cluster_device_attributes, true, master_name,
                                   old_incarnation));
-  string sess_handle2 = "test_session_handle_2";
+  std::string sess_handle2 = "test_session_handle_2";
   TF_EXPECT_OK(mgr_.CreateSession(sess_handle2, server_def,
                                   cluster_device_attributes, true, master_name,
                                   old_incarnation));
@@ -185,7 +188,7 @@ TEST_F(SessionMgrTest, CreateSessionWithMasterName) {
 
   // When the master creates a WorkerSession with new incarnation, the old
   // WorkerSessions should be garbage collected.
-  string sess_handle3 = "test_session_handle_3";
+  std::string sess_handle3 = "test_session_handle_3";
   TF_EXPECT_OK(mgr_.CreateSession(sess_handle3, server_def,
                                   cluster_device_attributes, true, master_name,
                                   new_incarnation));
@@ -218,10 +221,10 @@ TEST_F(SessionMgrTest, CreateSessionWithoutMasterName) {
   protobuf::RepeatedPtrField<DeviceAttributes> cluster_device_attributes;
 
   // WorkerSession will NOT be garbage collected for empty master names.
-  string sess_handle1 = "test_session_handle_no_master_1";
+  std::string sess_handle1 = "test_session_handle_no_master_1";
   TF_EXPECT_OK(mgr_.CreateSession(sess_handle1, server_def,
                                   cluster_device_attributes, true, "", 0));
-  string sess_handle2 = "test_session_handle_no_master_2";
+  std::string sess_handle2 = "test_session_handle_no_master_2";
   TF_EXPECT_OK(mgr_.CreateSession(sess_handle2, server_def,
                                   cluster_device_attributes, true, "", 0));
 
@@ -237,7 +240,7 @@ TEST_F(SessionMgrTest, CreateSessionWithoutMasterName) {
 }
 
 TEST_F(SessionMgrTest, LegacySession) {
-  string session_handle = "";
+  std::string session_handle = "";
   std::shared_ptr<WorkerSession> session;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession(session_handle, &session));
   EXPECT_EQ(mgr_.LegacySession(), session);
@@ -246,19 +249,20 @@ TEST_F(SessionMgrTest, LegacySession) {
 }
 
 TEST_F(SessionMgrTest, UnknownSessionHandle) {
-  string session_handle = "unknown_session_handle";
+  std::string session_handle = "unknown_session_handle";
   std::shared_ptr<WorkerSession> session;
   Status s = mgr_.WorkerSessionForSession(session_handle, &session);
   EXPECT_TRUE(errors::IsAborted(s));
   EXPECT_TRUE(
       absl::StrContains(s.error_message(), "Session handle is not found"));
+  EXPECT_TRUE(s.GetPayload(kWorkerPossiblyRestarted).has_value());
 }
 
 TEST_F(SessionMgrTest, WorkerNameFromServerDef) {
   ServerDef server_def;
   server_def.set_job_name("worker");
   server_def.set_task_index(3);
-  string worker_name = SessionMgr::WorkerNameFromServerDef(server_def);
+  std::string worker_name = SessionMgr::WorkerNameFromServerDef(server_def);
   EXPECT_EQ("/job:worker/replica:0/task:3", worker_name);
 }
 

@@ -43,16 +43,27 @@ inline void BroadcastBinaryFunction4DSlow(
   NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
                                       unextended_input2_shape, &desc1, &desc2);
 
+  const int* dims_data =
+      reinterpret_cast<const int*>(output_shape.DimsDataUpTo5D());
   for (int b = 0; b < output_shape.Dims(0); ++b) {
+    int out_idx_b = b * dims_data[1];
+    int in_idx1_b = desc1.strides[0] * b;
+    int in_idx2_b = desc2.strides[0] * b;
     for (int y = 0; y < output_shape.Dims(1); ++y) {
+      int out_idx_y = (out_idx_b + y) * dims_data[2];
+      int in_idx1_y = in_idx1_b + desc1.strides[1] * y;
+      int in_idx2_y = in_idx2_b + desc2.strides[1] * y;
       for (int x = 0; x < output_shape.Dims(2); ++x) {
+        int out_idx_x = (out_idx_y + x) * dims_data[3];
+        int in1_idx = in_idx1_y + desc1.strides[2] * x;
+        int in2_idx = in_idx2_y + desc2.strides[2] * x;
         for (int c = 0; c < output_shape.Dims(3); ++c) {
-          auto out_idx = Offset(output_shape, b, y, x, c);
-          auto in1_idx = SubscriptToIndex(desc1, b, y, x, c);
-          auto in2_idx = SubscriptToIndex(desc2, b, y, x, c);
+          auto out_idx = out_idx_x + c;
           auto in1_val = input1_data[in1_idx];
           auto in2_val = input2_data[in2_idx];
           output_data[out_idx] = func(in1_val, in2_val);
+          in1_idx += desc1.strides[3];
+          in2_idx += desc2.strides[3];
         }
       }
     }

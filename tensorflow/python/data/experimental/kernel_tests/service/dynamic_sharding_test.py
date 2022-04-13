@@ -19,10 +19,13 @@ import numpy as np
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
@@ -33,7 +36,8 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     return self.make_distributed_dataset(
         dataset,
         cluster,
-        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC)
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+        job_name="job_name")
 
   @combinations.generate(test_base.default_test_combinations())
   def testBasic(self):
@@ -82,12 +86,40 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(ds, elements, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testRepeat(self):
+  def testGroupByWindow(self):
+    # Verify that split providers are not propagated into iterators created for
+    # the reduce datasets created by the reduce_fn in group_by_window.
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+    elements = [1, 5, 0]
+    ds = dataset_ops.Dataset.from_tensor_slices(elements)
+
+    def reduce_fn(_, window):
+      return dataset_ops.Dataset.zip((window, dataset_ops.Dataset.range(100)))
+
+    ds = ds.group_by_window(lambda x: 0, reduce_fn, window_size=3)
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    # This will fail if the tensor_slices split provider ispropagated into the
+    # `reduce_fn`, since the `zip` requires either 0 or 2 split providers.
+    self.getDatasetOutput(ds)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRepeatBeforeDistribution(self):
     cluster = data_service_test_base.TestCluster(num_workers=2)
     num_repeats = 5
     num_elements = 20
     ds = dataset_ops.Dataset.range(num_elements).repeat(num_repeats)
     ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    self.assertDatasetProduces(
+        ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRepeatAfterDistribution(self):
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+    num_repeats = 5
+    num_elements = 20
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    ds = ds.repeat(num_repeats)
     self.assertDatasetProduces(
         ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
 
@@ -313,6 +345,53 @@ class DynamicShardingTest(data_service_test_base.TestBase,
         ds, cluster, processing_mode="distributed_epoch")
     self.assertDatasetProduces(
         ds, list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFlatMapWithRepeat(self):
+    cluster = data_service_test_base.TestCluster(num_workers=3)
+    ds = dataset_ops.Dataset.range(5)
+
+    def flat_map_fn(_):
+      return dataset_ops.Dataset.from_tensor_slices(["a", "b", "c"]).repeat(10)
+
+    ds = ds.flat_map(flat_map_fn)
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+
+    self.assertDatasetProduces(
+        ds, [b"a", b"b", b"c"] * 50, assert_items_equal=True)
+
+
+class DynamicShardingFilesTest(data_service_test_base.TestBase,
+                               tf_record_test_base.TFRecordTestBase,
+                               parameterized.TestCase):
+
+  def setUp(self):
+    super(DynamicShardingFilesTest, self).setUp()
+    self._num_files = 5
+    self._num_records = 5
+    self._filenames = self._createFiles()
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShuffleFiles(self):
+    cluster = data_service_test_base.TestCluster(num_workers=3)
+    shuffled_filenames = random_ops.random_shuffle(self._filenames)
+    dataset = dataset_ops.Dataset.from_tensor_slices(shuffled_filenames)
+    dataset = dataset.interleave(readers.TFRecordDataset)
+    dataset = self.make_distributed_dataset(
+        dataset,
+        cluster=cluster,
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC)
+    # pylint:disable=g-complex-comprehension
+    expected = [
+        b"Record %d of file %d" % (record, file)
+        for file in range(0, 5)
+        for record in range(0, 5)
+    ]
+    self.assertDatasetProduces(
+        dataset,
+        expected,
+        requires_initialization=True,
+        assert_items_equal=True)
 
 
 if __name__ == "__main__":

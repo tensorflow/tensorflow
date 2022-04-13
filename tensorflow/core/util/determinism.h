@@ -19,6 +19,7 @@ limitations under the License.
 namespace tensorflow {
 
 bool OpDeterminismRequired();
+bool OpOrderDeterminismRequired();
 void EnableOpDeterminism(bool enabled);
 
 }  // namespace tensorflow

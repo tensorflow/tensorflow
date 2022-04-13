@@ -250,7 +250,8 @@ def conv(lhs,
          precision_config=None,
          preferred_element_type=None,
          name=None,
-         use_v2=False):
+         use_v2=False,
+         batch_group_count=1):
   """Wraps the XLA ConvGeneralDilated operator.
 
   ConvGeneralDilated is the most general form of XLA convolution and is
@@ -270,6 +271,7 @@ def conv(lhs,
     preferred_element_type: the result `dtype`.
     name: an optional name for the operator.
     use_v2: an optional request to use the XlaConvV2 op even if not necessary.
+    batch_group_count: number of batch groups or grouped filters.
 
   Returns:
     A tensor representing the output of the convolution.
@@ -277,7 +279,9 @@ def conv(lhs,
   precision_config_proto = ""
   if precision_config:
     precision_config_proto = precision_config.SerializeToString()
-  needs_v2 = preferred_element_type or (lhs.dtype != rhs.dtype)
+  needs_v2 = (
+      preferred_element_type or (lhs.dtype != rhs.dtype) or
+      batch_group_count > 1)
   if preferred_element_type is None:
     preferred_element_type = np_utils.result_type(lhs.dtype, rhs.dtype)
   if needs_v2 or use_v2:
@@ -289,6 +293,7 @@ def conv(lhs,
         lhs_dilation=lhs_dilation,
         rhs_dilation=rhs_dilation,
         feature_group_count=feature_group_count,
+        batch_group_count=batch_group_count,
         dimension_numbers=dimension_numbers.SerializeToString(),
         precision_config=precision_config_proto,
         preferred_element_type=preferred_element_type,
@@ -550,6 +555,7 @@ key_value_sort = gen_xla_ops.xla_key_value_sort
 variadic_sort = gen_xla_ops.xla_variadic_sort
 while_loop = gen_xla_ops.xla_while
 dequantize = gen_xla_ops.xla_dequantize
+custom_call = gen_xla_ops.xla_custom_call
 
 
 def gather(operand, start_indices, dimension_numbers, slice_sizes,
@@ -573,3 +579,7 @@ def scatter(operand, scatter_indices, updates, update_computation,
       dimension_numbers=dimension_numbers.SerializeToString(),
       indices_are_sorted=indices_are_sorted,
       name=name)
+
+
+def optimization_barrier(*args):
+  return gen_xla_ops.xla_optimization_barrier(args)

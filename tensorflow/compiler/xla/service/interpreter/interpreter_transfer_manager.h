@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_INTERPRETER_TRANSFER_MANAGER_H_
 
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -28,7 +27,9 @@ class InterpreterTransferManager : public GenericTransferManager {
   ~InterpreterTransferManager() override = default;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(InterpreterTransferManager);
+  InterpreterTransferManager(const InterpreterTransferManager&) = delete;
+  InterpreterTransferManager& operator=(const InterpreterTransferManager&) =
+      delete;
 };
 
 }  // namespace xla

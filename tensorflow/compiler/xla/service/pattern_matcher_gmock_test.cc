@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -26,14 +27,14 @@ namespace m = ::xla::match;
 using ::testing::Not;
 
 template <typename MatchedTy>
-string Describe(const ::testing::Matcher<MatchedTy>& m) {
+std::string Describe(const ::testing::Matcher<MatchedTy>& m) {
   std::stringstream ss;
   m.DescribeTo(&ss);
   return ss.str();
 }
 
 template <typename MatchedTy>
-string Explain(
+std::string Explain(
     const MatchedTy& val,
     const ::testing::Matcher<typename std::remove_cv<MatchedTy>::type>& m) {
   ::testing::StringMatchResultListener listener;

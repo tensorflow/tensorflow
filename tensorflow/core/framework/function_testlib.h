@@ -128,6 +128,9 @@ FunctionDef ResourceIdentity();
 // x: resource -> y: float.
 FunctionDef ReadResourceVariable();
 
+// Contains simple control flow returning the input via an Enter op.
+FunctionDef ControlFlow();
+
 // Contains malformed control flow which can't be run by the executor.
 FunctionDef InvalidControlFlow();
 

@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -51,6 +50,8 @@ flags.DEFINE_bool(
 # Internally, both the monorepo and the external build system do this for you.
 SOURCE_PATH_CORE = pathlib.Path('tensorflow/lite/java/src/main/java')
 SOURCE_PATH_SUPPORT = pathlib.Path('tensorflow_lite_support/java/src/java')
+SOURCE_PATH_METADATA = pathlib.Path(
+    'tensorflow_lite_support/metadata/java/src/java')
 SOURCE_PATH_ODML = pathlib.Path('tensorflow_lite_support/odml/java/image/src')
 SOURCE_PATH_ANDROID_SDK = pathlib.Path('android/sdk/api/26.txt')
 
@@ -117,6 +118,7 @@ def main(unused_argv):
     merged_temp_dir = pathlib.Path(merge_tmp_dir)
     overlay(resolve_nested_dir(SOURCE_PATH_CORE, root), merged_temp_dir)
     overlay(resolve_nested_dir(SOURCE_PATH_SUPPORT, root), merged_temp_dir)
+    overlay(resolve_nested_dir(SOURCE_PATH_METADATA, root), merged_temp_dir)
     overlay(resolve_nested_dir(SOURCE_PATH_ODML, root), merged_temp_dir)
 
     gen_java.gen_java_docs(

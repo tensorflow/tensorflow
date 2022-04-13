@@ -27,13 +27,13 @@ class XlaDebugInfoManagerTest : public HloTestBase {
     // We allow same id to be registered multiple times. we need unique id to
     // know which program is referenced (such as in UnregisterProgram).
     int unique_id;
-    string id;
+    std::string id;
     std::shared_ptr<HloModule> module;
     std::shared_ptr<BufferAssignmentProto> buffer_assignment;
   };
 
   // Return unique id of this module.
-  int RegisterProgram(const string& module_id) {
+  int RegisterProgram(const std::string& module_id) {
     DebugMetadata debug_info;
     HloModuleConfig config;
     debug_info.unique_id = ++serial_;

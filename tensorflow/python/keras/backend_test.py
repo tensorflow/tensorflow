@@ -35,11 +35,9 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.layers import advanced_activations
-from tensorflow.python.keras.layers.normalization import batch_normalization_v1
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -156,17 +154,9 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(backend.get_uid('foo'), 1)
 
   def test_learning_phase(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.assertRaises(ValueError):
         backend.set_learning_phase(2)
-
-      # Test running with a learning-phase-consuming layer
-      with backend.learning_phase_scope(0):
-        x = input_layer.Input((3,))
-        y = batch_normalization_v1.BatchNormalization()(x)
-        if not context.executing_eagerly():
-          self.evaluate(variables.global_variables_initializer())
-          sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_learning_phase_name(self):
     with backend.name_scope('test_scope'):

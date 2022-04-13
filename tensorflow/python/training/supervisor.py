@@ -175,7 +175,7 @@ class Supervisor(object):
   # As summary_op was None, managed_session() does not start the
   # summary thread.
   with sv.managed_session(FLAGS.master) as sess:
-    for step in xrange(1000000):
+    for step in range(1000000):
       if sv.should_stop():
         break
       if is_chief and step % 100 == 0:
@@ -947,7 +947,7 @@ class Supervisor(object):
     def train():
       sv = tf.compat.v1.train.Supervisor(...)
       with sv.managed_session(<master>) as sess:
-        for step in xrange(..):
+        for step in range(..):
           if sv.should_stop():
             break
           sess.run(<my training op>)

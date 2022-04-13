@@ -22,7 +22,7 @@ from tensorflow.compiler.mlir.tfr.examples.mnist import gen_mnist_ops
 from tensorflow.compiler.mlir.tfr.examples.mnist import ops_defs  # pylint: disable=unused-import
 from tensorflow.python.framework import load_library
 
-flags.DEFINE_integer('train_steps', 20, 'Number of steps in training.')
+flags.DEFINE_integer('train_steps', 200, 'Number of steps in training.')
 
 _lib_dir = os.path.dirname(gen_mnist_ops.__file__)
 _lib_name = os.path.basename(gen_mnist_ops.__file__)[4:].replace('.py', '.so')

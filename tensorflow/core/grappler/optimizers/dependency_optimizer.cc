@@ -75,8 +75,10 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
   }
 
   const NodeDef* input = node_map_->GetNode(NodeName(node.input(0)));
-  CHECK(input != nullptr) << "node = " << node.name()
-                          << " input = " << node.input(0);
+  if (input == nullptr) {
+    VLOG(1) << "node = " << node.name() << " input = " << node.input(0);
+    return false;
+  }
   // Don't remove Identity nodes corresponding to Variable reads or following
   // Recv.
   if (IsVariable(*input) || IsRecv(*input)) {

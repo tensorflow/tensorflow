@@ -55,7 +55,7 @@ bool HloMatcher::MatchAndExplain(
                   << operands[index]->ToString()
                   << "\ndoesn't match expected:\n\t";
         operands_[index].DescribeTo(listener->stream());
-        string explanation = inner_listener.str();
+        std::string explanation = inner_listener.str();
         if (!explanation.empty()) {
           *listener << ", " << explanation;
         }

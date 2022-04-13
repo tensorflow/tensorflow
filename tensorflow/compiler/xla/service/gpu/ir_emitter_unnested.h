@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/compiler/xla/service/custom_call_status.h"
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
@@ -43,16 +44,6 @@ struct BufferSlice {
   bool written = false;
 
   Shape shape;
-};
-
-// Convenience struct that contains useful data structures in MLIR emitter.
-// Not all fields may be filled. It's entiredly dependent on the uses.
-struct MlirEmitterContext {
-  void SetOperation(mlir::Operation* op);
-
-  std::string name;
-  std::vector<Shape> operand_shapes;
-  std::vector<Shape> output_shapes;
 };
 
 // Emits LLVM IR for an "unnested computation".
@@ -100,7 +91,7 @@ class IrEmitterUnnested : public IrEmitter {
     // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
     llvm::Value* thread_id_y;
 
-    // Lane id: `thread_id % kWarpSize`
+    // Lane id: `thread_id % WarpSize`
     llvm::Value* lane_id;
 
     // Block id.
@@ -112,7 +103,7 @@ class IrEmitterUnnested : public IrEmitter {
     //
     // Same semantics as CreateInBoundsGEP.
     llvm::Value* GEPIntoSharedMemory(
-        llvm::IRBuilder<>* b, llvm::Value* shared,
+        llvm::IRBuilder<>* b, llvm::GlobalVariable* shared,
         absl::Span<llvm::Value* const> idx_major_to_minor,
         const llvm::Twine& name = "") const;
 
@@ -160,6 +151,13 @@ class IrEmitterUnnested : public IrEmitter {
     return std::make_unique<ThunkSequence>(std::move(thunk_sequence_));
   }
 
+  // Emits code for the given LMHLO region.
+  //
+  // Also populates related information to 'ir_emitter_context_' for
+  // large-constant initializations. Large constants don't get initializers in
+  // the generated code and so must be initialized by XLA. The value of these
+  // constants will be stored in 'content'. Constants with initializers in the
+  // generated code will have empty 'content'.
   Status EmitLmhloRegion(mlir::Region* region);
 
  private:
@@ -176,7 +174,6 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitConditional(mlir::Operation* op);
   Status EmitConvolutionThunk(mlir::Operation* op);
   Status EmitGemmThunk(mlir::Operation* op);
-  Status EmitBatchNormThunk(mlir::Operation* op);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -192,7 +189,9 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitRngGetAndUpdateState(mlir::Operation* op);
   Status EmitScatter(mlir::Operation* op);
   Status EmitSort(mlir::Operation* op);
-  Status EmitTriangularSolve(mlir::Operation* op);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  Status EmitTriangularSolveCustomCall(mlir::Operation* op);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   template <typename NcclThunkType, typename OpTy>
   Status EmitNcclThunk(mlir::Operation* op);
@@ -215,6 +214,30 @@ class IrEmitterUnnested : public IrEmitter {
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
     thunk_sequence_.emplace_back(std::move(thunk));
   }
+
+  // Load data from potentially unaligned address. If address is offset by
+  // `alignment_bytes`, data is read in the unit of `alignment_bytes` to avoid
+  // memory read misalignment in CUDA; otherwise, the entire data are loaded
+  // from the given memory address.
+  //
+  //   address: the memory address to load data from.
+  //   data_type: the type of data to load.
+  //   alignment_bytes: the number of bytes required to align. The number of
+  //     bytes of the data_type must be divisible by alignment_bytes.
+  llvm::Value* CreateLoad(llvm::Value* address, llvm::Type* data_type,
+                          int alignment_bytes);
+
+  // Store data at a potentially unaligned address. If the address is offset by
+  // `alignment_bytes`, data is stored in the unit of `alignment_bytes` to avoid
+  // memory write misalignment in CUDA; otherwise, the entire data is stored at
+  // the given memory address.
+  //
+  //   data: the data to be stored.
+  //   address: the memory address to store data.
+  //   alignment_bytes: the number of bytes required to align. The number of
+  //     bytes of the data_type must be divisible by alignment_bytes.
+  void CreateStore(llvm::Value* data, llvm::Value* address,
+                   int alignment_bytes);
 
   // Input = {static array, dynamic_dim0, dynamic_dim1}
   // Output = {dynamic array(with dynamic dimension meta data at the end)}
@@ -343,13 +366,13 @@ class IrEmitterUnnested : public IrEmitter {
   //      accum += in[i];
   //    }
   //    accum = warp_reduce(accum);
-  //    if (threadIdx.x % kWarpSize == 0) {
-  //      cache[threadIdx.x / kWarpSize] = accum;
+  //    if (threadIdx.x % WarpSize == 0) {
+  //      cache[threadIdx.x / WarpSize] = accum;
   //    }
   //    __syncthreads();
-  //    if (threadIdx.x / kWarpSize == 0) {
-  //      bool warp_exists = threadIdx.x < (blockDim.x / kWarpSize);
-  //      float block_accum = warp_exists ? cache[threadIdx.x % kWarpSize] : 0;
+  //    if (threadIdx.x / WarpSize == 0) {
+  //      bool warp_exists = threadIdx.x < (blockDim.x / WarpSize);
+  //      float block_accum = warp_exists ? cache[threadIdx.x % WarpSize] : 0;
   //      block_accum = warp_reduce(accum);
   //      if (threadIdx.x == 0) {
   //        out += block_accum;
@@ -400,7 +423,7 @@ class IrEmitterUnnested : public IrEmitter {
   // and first_reduce are the same instruction. For a kInput fusion,
   // unnested_hlo is the fusion instruction while first_reduce is the first
   // reduce op.
-  ReductionCodegenInfo ComputeReductionCodegenInfo(
+  StatusOr<ReductionCodegenInfo> ComputeReductionCodegenInfo(
       mlir::lmhlo::FusionOp fusion, mlir::mhlo::ReduceOp first_reduce);
 
   // Generates code for input-fusible slices.
@@ -455,13 +478,12 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
-  StatusOr<bool> CheckAndEmitHloWithTile021(mlir::Operation* op);
+  StatusOr<bool> CheckAndEmitHloWithTile021(mlir::lmhlo::FusionOp fusion);
 
   // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm.
   // This is a helper to support the implementation of
   // CheckAndEmitHloWithTile021.
-  void EmitHlo021Tile(mlir::Operation* op, Thunk* kernel_thunk,
-                      const MlirEmitterContext& context,
+  void EmitHlo021Tile(mlir::lmhlo::FusionOp fusion, Thunk* kernel_thunk,
                       absl::Span<const llvm_ir::IrArray> operand_arrays,
                       absl::Span<const llvm_ir::IrArray> output_arrays,
                       absl::Span<const int64_t> reduced_output_dims,
@@ -482,7 +504,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Emits a kernel for the hlo instruction using the given kernel mapping
   // scheme.
-  TilingKernelInfo EmitTilingKernel(
+  StatusOr<TilingKernelInfo> EmitTilingKernel(
       const TilingScheme& tiling_scheme, llvm::Type* index_ty,
       const TileElementGenerator& tile_element_generator);
 
@@ -545,32 +567,37 @@ class IrEmitterUnnested : public IrEmitter {
       const ReductionCodegenState& reduction_codegen_state,
       const TilingKernelInfo& tiling_kernel_info);
 
+  // Returns the address to write the reduction output to.
+  llvm::Value* GetOutputAddressForReduction(
+      int partial_result_idx, llvm::Type* index_ty,
+      const ReductionCodegenState& reduction_codegen_state,
+      const TilingKernelInfo& tiling_kernel_info,
+      const IrEmitterUnnested::ReductionOutputMap& output_arrays,
+      const HloReduceInstruction* reduction, int output_idx);
+
   // `current_output`: the value the tile has calculated.
   // `output_address`: address where the output value has to be written.
   void EmitReductionOutputForRowReduction(
-      const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+      const TilingKernelInfo& tiling_kernel_info,
       const ReductionCodegenState& reduction_codegen_state,
       llvm::Type* index_ty, const ReductionOutputMap& output_arrays,
-      const llvm_ir::IrArray::Index& element_index,
       const HloReduceInstruction* reduction, int partial_result_idx);
 
   // Same arguments as EmitReductionOutputForRowReduction.
   void EmitReductionOutputForColumnReduction(
-      const IrEmitterUnnested::ThreadIdInfo& thread_id_info,
+      const TilingKernelInfo& tiling_kernel_info,
       const ReductionCodegenState& reduction_codegen_state,
       llvm::Type* index_ty, const ReductionOutputMap& output_arrays,
-      const llvm_ir::IrArray::Index& element_index,
-      const HloReduceInstruction* reduction, int partial_result_idx,
-      const TilingKernelInfo& tiling_kernel_info);
+      const HloReduceInstruction* reduction, int partial_result_idx);
 
   // Emits code for reductions in the output_instructions.
-  void EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
-                          absl::Span<HloInstruction* const> instr_index_group,
-                          HloComputation* fused_computation,
-                          FusedIrEmitter* fused_emitter,
-                          const ReductionOutputMap& result_ir_arrays,
-                          const ReductionCodegenInfo& reduction_info,
-                          const Shape& input_shape);
+  Status EmitIRForReduction(mlir::lmhlo::FusionOp fusion,
+                            absl::Span<HloInstruction* const> instr_index_group,
+                            HloComputation* fused_computation,
+                            FusedIrEmitter* fused_emitter,
+                            const ReductionOutputMap& result_ir_arrays,
+                            const ReductionCodegenInfo& reduction_info,
+                            const Shape& input_shape);
 
   // Generate a single element of the tile (update the accumulator state) for a
   // given reducer of index `i`.
@@ -589,7 +616,8 @@ class IrEmitterUnnested : public IrEmitter {
   // reduction: each one should get the output value.
   void EmitFullWarpShuffleDownLoopForReduce(
       const HloComputation* reducer,
-      absl::Span<llvm::Value* const> partial_result_addresses,
+      absl::Span<std::pair<llvm::Value* const, llvm::Type* const>>
+          partial_result_addresses,
       int threads_per_block);
 
   // Allocates a shared tile of given dimensions, applying scaling specified in
@@ -618,7 +646,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
   std::unique_ptr<Thunk> BuildConstantInitializerThunk(
-      absl::Span<const uint8> init_value, const BufferAllocation::Slice& dest,
+      absl::Span<const uint8_t> init_value, const BufferAllocation::Slice& dest,
       const Shape& output_shape);
 
   StatusOr<std::unique_ptr<Thunk>> TryBuildConstantInitializerThunk(
@@ -627,7 +655,6 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(mlir::Operation* op,
                                                          mlir::Value init_value,
                                                          mlir::Value dest);
-
   StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
       mlir::lmhlo::FusionOp fusion, int output_index);
 
@@ -656,8 +683,8 @@ class IrEmitterUnnested : public IrEmitter {
   // In the presence of thread scaling in tiling scheme may return early if the
   // combination of thread_id/block_id does not correspond to a real block.
   // Assumes the current function returns void.
-  ThreadIdInfo EmitThreadIdInfo(const TilingScheme& tiling_scheme,
-                                llvm::Type* index_ty);
+  StatusOr<ThreadIdInfo> EmitThreadIdInfo(const TilingScheme& tiling_scheme,
+                                          llvm::Type* index_ty);
   // Emit __syncthreads(), synchronization barrier for all threads in a block.
   llvm::CallInst* EmitSyncThreads();
 
@@ -667,7 +694,7 @@ class IrEmitterUnnested : public IrEmitter {
   llvm::Value* EmitThreadId(int64_t threads_per_block, llvm::Type* index_ty);
 
   // Emits current block id.
-  llvm::Value* EmitBlockId(int64_t num_blocks, llvm::Type* index_ty);
+  llvm::Value* EmitBlockId(int32_t num_blocks, llvm::Type* index_ty);
 
   // Prints a given format string with the given arguments, prefixed with
   // thread id and block id, and postfixed with a newline.
@@ -685,7 +712,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns the last generated thunk.
   Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
 
-  Status AssertNonDeterminismIsOkay(const string& op_name);
+  Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
@@ -698,6 +725,19 @@ class IrEmitterUnnested : public IrEmitter {
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
       scratch_nested_computations_;
   // End optional members for XLA HLO -> LMHLO.
+
+  // __shared__ memory uses a different address space, so we cast it to
+  // global address space before writing or reading.
+  llvm::Value* CastSharedToGlobal(llvm::Value* input, llvm::Type* element_type,
+                                  llvm::Twine name = "");
+
+  // Returns the ShapedSlices for the given operands.
+  StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
+      mlir::Operation::operand_range operands);
+
+  // Returns the buffer allocation Slice for the given operands.
+  StatusOr<std::vector<BufferAllocation::Slice>> GetSlices(
+      mlir::Operation::operand_range operands);
 };
 
 }  // namespace gpu

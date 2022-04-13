@@ -29,8 +29,10 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import imperative_grad
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -590,15 +592,14 @@ def make_vjp(f, params=None, persistent=True):
 
 
 def flatten_nested_indexed_slices(grad):
-  assert isinstance(grad, ops.IndexedSlices)
+  assert isinstance(grad, indexed_slices.IndexedSlices)
   if isinstance(grad.values, ops.Tensor):
     return grad
   else:
-    assert isinstance(grad.values, ops.IndexedSlices)
+    assert isinstance(grad.values, indexed_slices.IndexedSlices)
     g = flatten_nested_indexed_slices(grad.values)
-    return ops.IndexedSlices(g.values, array_ops.gather(grad.indices,
-                                                        g.indices),
-                             g.dense_shape)
+    return indexed_slices.IndexedSlices(
+        g.values, array_ops.gather(grad.indices, g.indices), g.dense_shape)
 
 
 def aggregate_indexed_slices_gradients(grads):
@@ -620,7 +621,7 @@ def aggregate_indexed_slices_gradients(grads):
 
   grads = [flatten_nested_indexed_slices(x) for x in grads]
   # Form IndexedSlices out of the concatenated values and indices.
-  concat_grad = ops.IndexedSlices(
+  concat_grad = indexed_slices.IndexedSlices(
       array_ops.concat([x.values for x in grads], axis=0),
       array_ops.concat([x.indices for x in grads], axis=0),
       grads[0].dense_shape)
@@ -645,8 +646,9 @@ def _aggregate_grads(gradients):
   if all(isinstance(g, ops.Tensor) for g in gradients):
     return gen_math_ops.add_n(gradients)
   else:
-    assert all(isinstance(g, (ops.Tensor, ops.IndexedSlices))
-               for g in gradients)
+    assert all(
+        isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices))
+        for g in gradients)
     return aggregate_indexed_slices_gradients(gradients)
 
 
@@ -654,7 +656,7 @@ def _num_elements(grad):
   """The number of elements in the `grad` tensor."""
   if isinstance(grad, ops.Tensor):
     shape_tuple = grad._shape_tuple()  # pylint: disable=protected-access
-  elif isinstance(grad, ops.IndexedSlices):
+  elif isinstance(grad, indexed_slices.IndexedSlices):
     shape_tuple = grad.values._shape_tuple()  # pylint: disable=protected-access
   else:
     raise ValueError("`grad` not a Tensor or IndexedSlices.")
@@ -805,8 +807,8 @@ class GradientTape(object):
   >>> print(dy_dx)
   tf.Tensor(4.0, shape=(), dtype=float32)
   >>> # No gradients will be available as `w` isn't being watched.
-  >>> dz_dy = tape.gradient(z, w)
-  >>> print(dz_dy)
+  >>> dz_dw = tape.gradient(z, w)
+  >>> print(dz_dw)
   None
 
   Note that when using models you should ensure that your variables exist when
@@ -1000,22 +1002,32 @@ class GradientTape(object):
     Note: Unless you set `persistent=True` a GradientTape can only be used to
     compute one set of gradients (or jacobians).
 
+    In addition to Tensors, gradient also supports RaggedTensors. For example,
+
+    >>> x = tf.ragged.constant([[1.0, 2.0], [3.0]])
+    >>> with tf.GradientTape() as g:
+    ...   g.watch(x)
+    ...   y = x * x
+    >>> g.gradient(y, x)
+    <tf.RaggedTensor [[2.0, 4.0], [6.0]]>
+
     Args:
-      target: a list or nested structure of Tensors or Variables to be
-        differentiated.
-      sources: a list or nested structure of Tensors or Variables. `target`
-        will be differentiated against elements in `sources`.
-      output_gradients: a list of gradients, one for each element of
-        target. Defaults to None.
+      target: a list or nested structure of Tensors or Variables or
+        CompositeTensors to be differentiated.
+      sources: a list or nested structure of Tensors or Variables or
+        CompositeTensors. `target` will be differentiated against elements in
+        `sources`.
+      output_gradients: a list of gradients, one for each differentiable
+        element of target. Defaults to None.
       unconnected_gradients: a value which can either hold 'none' or 'zero' and
         alters the value which will be returned if the target and sources are
         unconnected. The possible values and effects are detailed in
         'UnconnectedGradients' and it defaults to 'none'.
 
     Returns:
-      a list or nested structure of Tensors (or IndexedSlices, or None),
-      one for each element in `sources`. Returned structure is the same as
-      the structure of `sources`.
+      a list or nested structure of Tensors (or IndexedSlices, or None, or
+      CompositeTensor), one for each element in `sources`. Returned structure
+      is the same as the structure of `sources`.
 
     Raises:
       RuntimeError: If called on a used, non-persistent tape.
@@ -1043,9 +1055,9 @@ class GradientTape(object):
             "derivatives.", 1)
 
     if target is None:
-      raise TypeError("Target should be a list or nested structure"
-                      " of Tensors or Variables to be differentiated,"
-                      " but recieved %r" % (target))
+      raise TypeError("Argument `target` should be a list or nested structure"
+                      " of Tensors, Variables or CompositeTensors to be "
+                      "differentiated, but recieved None.")
 
     flat_targets = []
     for t in nest.flatten(target):
@@ -1058,11 +1070,11 @@ class GradientTape(object):
         with self:
           t = ops.convert_to_tensor(t)
       flat_targets.append(t)
+    flat_targets = composite_tensor_gradient.get_flat_tensors_for_gradients(
+        flat_targets)
 
     flat_sources = nest.flatten(sources)
-    flat_sources_raw = flat_sources
-    flat_sources = [_handle_or_self(x) for x in flat_sources]
-    for t in flat_sources_raw:
+    for t in flat_sources:
       if not backprop_util.IsTrainable(t):
         logging.vlog(
             logging.WARN, "The dtype of the source tensor must be "
@@ -1072,10 +1084,18 @@ class GradientTape(object):
         raise ValueError(
             "GradientTape.gradient is not supported on packed EagerTensors yet."
         )
+    flat_sources_raw = flat_sources
+    flat_sources = composite_tensor_gradient.get_flat_tensors_for_gradients(
+        flat_sources)
+    flat_sources = [_handle_or_self(x) for x in flat_sources]
 
     if output_gradients is not None:
+      output_gradients = nest.flatten(output_gradients)
+      output_gradients = (
+          composite_tensor_gradient.get_flat_tensors_for_gradients(
+              output_gradients))
       output_gradients = [None if x is None else ops.convert_to_tensor(x)
-                          for x in nest.flatten(output_gradients)]
+                          for x in output_gradients]
 
     flat_grad = imperative_grad.imperative_grad(
         self._tape,
@@ -1090,6 +1110,8 @@ class GradientTape(object):
       self._watched_variables = self._tape.watched_variables()
       self._tape = None
 
+    flat_grad = composite_tensor_gradient.replace_flat_tensors_for_gradients(
+        flat_sources_raw, flat_grad)
     grad = nest.pack_sequence_as(sources, flat_grad)
     return grad
 

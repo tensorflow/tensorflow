@@ -14,10 +14,9 @@
 # ==============================================================================
 
 """Operations for clipping (gradient, weight) tensors to min/max values."""
-import six
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -102,7 +101,8 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
     values = ops.convert_to_tensor(
-        t.values if isinstance(t, ops.IndexedSlices) else t, name="t")
+        t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
+        name="t")
 
     # Go through list of tensors, for each value in each tensor clip
     t_min = math_ops.minimum(values, clip_value_max)
@@ -113,8 +113,8 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     t_max = math_ops.maximum(t_min, clip_value_min, name=name)
     values.shape.assert_is_compatible_with(t_max.shape)
 
-    if isinstance(t, ops.IndexedSlices):
-      t_max = ops.IndexedSlices(t_max, t.indices, t.dense_shape)
+    if isinstance(t, indexed_slices.IndexedSlices):
+      t_max = indexed_slices.IndexedSlices(t_max, t.indices, t.dense_shape)
 
   return t_max
   # TODO(scottzhu): switch to use new implementation in 2 weeks.
@@ -211,7 +211,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   """
   with ops.name_scope(name, "clip_by_norm", [t, clip_norm]) as name:
     values = ops.convert_to_tensor(
-        t.values if isinstance(t, ops.IndexedSlices) else t, name="t")
+        t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
+        name="t")
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)
@@ -226,8 +227,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     values_clip = array_ops.identity(
         intermediate / math_ops.maximum(l2norm, clip_norm), name=name)
 
-    if isinstance(t, ops.IndexedSlices):
-      return ops.IndexedSlices(values_clip, t.indices, t.dense_shape)
+    if isinstance(t, indexed_slices.IndexedSlices):
+      return indexed_slices.IndexedSlices(values_clip, t.indices, t.dense_shape)
 
     return values_clip
 
@@ -257,17 +258,17 @@ def global_norm(t_list, name=None):
     TypeError: If `t_list` is not a sequence.
   """
   if (not isinstance(t_list, collections_abc.Sequence) or
-      isinstance(t_list, six.string_types)):
+      isinstance(t_list, str)):
     raise TypeError("`t_list` should be a sequence of tensors. Received "
                     f"{type(t_list)}.")
   t_list = list(t_list)
   with ops.name_scope(name, "global_norm", t_list) as name:
     values = [
         ops.convert_to_tensor(
-            t.values if isinstance(t, ops.IndexedSlices) else t,
-            name="t_%d" % i)
-        if t is not None else t
-        for i, t in enumerate(t_list)]
+            t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
+            name="t_%d" % i) if t is not None else t
+        for i, t in enumerate(t_list)
+    ]
     half_squared_norms = []
     for v in values:
       if v is not None:
@@ -336,7 +337,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
       ([pdf](http://proceedings.mlr.press/v28/pascanu13.pdf))
   """
   if (not isinstance(t_list, collections_abc.Sequence) or
-      isinstance(t_list, six.string_types)):
+      isinstance(t_list, str)):
     raise TypeError("`t_list` should be a sequence of tensors. Received "
                     f"{type(t_list)}.")
   t_list = list(t_list)
@@ -355,10 +356,10 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
     values = [
         ops.convert_to_tensor(
-            t.values if isinstance(t, ops.IndexedSlices) else t,
-            name="t_%d" % i)
-        if t is not None else t
-        for i, t in enumerate(t_list)]
+            t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
+            name="t_%d" % i) if t is not None else t
+        for i, t in enumerate(t_list)
+    ]
 
     values_clipped = []
     for i, v in enumerate(values):
@@ -370,10 +371,10 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
               array_ops.identity(v * scale, name="%s_%d" % (name, i)))
 
     list_clipped = [
-        ops.IndexedSlices(c_v, t.indices, t.dense_shape)
-        if isinstance(t, ops.IndexedSlices)
-        else c_v
-        for (c_v, t) in zip(values_clipped, t_list)]
+        indexed_slices.IndexedSlices(c_v, t.indices, t.dense_shape)
+        if isinstance(t, indexed_slices.IndexedSlices) else c_v
+        for (c_v, t) in zip(values_clipped, t_list)
+    ]
 
   return list_clipped, use_norm
 

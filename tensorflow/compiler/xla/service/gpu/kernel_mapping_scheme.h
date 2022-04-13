@@ -169,9 +169,8 @@ class ReductionCodegenInfo {
 
   const TilingScheme& GetTilingScheme() const { return tiling_scheme_; }
 
-  bool IsRaceFree() const { return is_race_free_; }
-
   int GetNumPartialResults() const { return num_partial_results_; }
+  bool IsRaceFree() const { return is_race_free_; }
 
  private:
   friend class ReductionCodegenState;

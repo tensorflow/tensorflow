@@ -30,10 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -122,7 +119,7 @@ class HloSharding {
 
   // Note that this string canonically has outer curly braces, e.g.
   // "{replicated}".
-  string ToString(bool include_metadata = false) const;
+  std::string ToString(bool include_metadata = false) const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
   Status Validate(const Shape& shape, int64_t num_devices) const;
@@ -280,13 +277,15 @@ class HloSharding {
   }
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 
-  size_t Hash() const;
-
-  struct Hasher {
-    size_t operator()(const HloSharding& sharding) const {
-      return sharding.Hash();
+  template <typename H>
+  friend H AbslHashValue(H h, const HloSharding& sharding) {
+    if (sharding.tuple_) {
+      return H::combine(std::move(h), sharding.tuple_elements_);
     }
-  };
+    return H::combine(std::move(h), sharding.replicated_, sharding.manual_,
+                      sharding.tile_assignment_,
+                      sharding.replicate_on_last_tile_dim_);
+  }
 
   // Gets the tile assignment tensor.
   // REQUIRES: !IsReplicated() && !IsTuple()

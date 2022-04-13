@@ -136,7 +136,7 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": [
+        "TRTEngineOp_000": [
             "weights", "conv", "bias", "bias_add", "relu", "identity",
             "max_pool"
         ]
@@ -305,8 +305,10 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
       self._VerifyTestAttrs(function_protos=gdef_to_verify.library.function)
     else:
       self.assertEqual(num_engines, len(expected_engines))
-      if isinstance(expected_engines, dict):
-        self._VerifyConnections(expected_engines, original_gdef, gdef_to_verify)
+      expected_connections = self.ExpectedConnections(run_params)
+      if expected_connections:
+        self._VerifyConnections(expected_engines, expected_connections,
+                                original_gdef, gdef_to_verify)
       self._VerifyMaxBatchSizeAnnotations(
           expected_engines=expected_engines,
           original_gdef=original_gdef,

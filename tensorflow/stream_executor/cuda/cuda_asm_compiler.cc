@@ -35,20 +35,14 @@ namespace stream_executor {
 
 port::StatusOr<std::vector<uint8>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
-  const bool linking_supported = [] {
-    if (CUDA_VERSION < 11030) {
-      return true;
+  if (CUDA_VERSION >= 11030) {
+    int driver_cuda_version;
+    // Get the highest version of CUDA supported by this driver.
+    RETURN_IF_CUDA_ERROR(cuDriverGetVersion(&driver_cuda_version));
+    if (driver_cuda_version < CUDA_VERSION) {
+      return tensorflow::errors::Unimplemented(
+          "CUDA version unsupported by NVIDIA driver version.");
     }
-    auto version_or_status = gpu::Diagnostician::FindKernelDriverVersion();
-    if (!version_or_status.ok()) {
-      LOG(WARNING) << "Couldn't read CUDA driver version.";
-      return false;
-    }
-    return std::get<0>(*version_or_status) >= 465;
-  }();
-
-  if (!linking_supported) {
-    return tensorflow::errors::Unimplemented("Linking is unsupported");
   }
 
   gpu::ScopedActivateContext activation(context);

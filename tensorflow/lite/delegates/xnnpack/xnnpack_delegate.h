@@ -22,10 +22,28 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
+// Enable XNNPACK acceleration for signed quantized 8-bit inference.
+// This includes operators with channel-wise quantized weights.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_QS8 0x00000001
+// Enable XNNPACK acceleration for unsigned quantized 8-bit inference.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_QU8 0x00000002
+// Force FP16 inference for FP32 operators.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 0x00000004
+
+struct TfLiteXNNPackDelegateWeightsCache;
+
 typedef struct {
   // Number of threads to use in the thread pool.
   // 0 or negative value means no thread pool used.
   int32_t num_threads;
+  // Bitfield with any combination of the following binary options:
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_QS8
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_QU8
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16
+  uint32_t flags;
+  // Cache for packed weights, can be shared between multiple instances of
+  // delegates.
+  struct TfLiteXNNPackDelegateWeightsCache* weights_cache;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns a structure with the default XNNPack delegate options.
@@ -34,7 +52,9 @@ TfLiteXNNPackDelegateOptionsDefault();
 
 // Creates a new delegate instance that need to be destroyed with
 // `TfLiteXNNPackDelegateDelete` when delegate is no longer used by TFLite.
-// When `options` is set to `nullptr`, the following default values are used:
+// When `options` is set to `nullptr`, default values are used (see
+// implementation of TfLiteXNNPackDelegateOptionsDefault in the .cc file for
+// details).
 TFL_CAPI_EXPORT TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options);
 
@@ -47,6 +67,15 @@ TFL_CAPI_EXPORT void* TfLiteXNNPackDelegateGetThreadPool(
 
 // Destroys a delegate created with `TfLiteXNNPackDelegateCreate` call.
 TFL_CAPI_EXPORT void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);
+
+// Creates a new weights cache that can be shared with multiple delegate
+// instances.
+TFL_CAPI_EXPORT struct TfLiteXNNPackDelegateWeightsCache*
+TfLiteXNNPackDelegateWeightsCacheCreate();
+// Destroys a weights cache created with
+// `TfLiteXNNPackDelegateWeightsCacheCreate` call.
+TFL_CAPI_EXPORT void TfLiteXNNPackWeightsCacheDelete(
+    struct TfLiteXNNPackDelegateWeightsCache* cache);
 
 #ifdef __cplusplus
 }

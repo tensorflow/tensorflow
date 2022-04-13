@@ -34,7 +34,6 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.types import trace
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import lazy_loader
@@ -549,32 +548,6 @@ def _generate_shared_name(prefix):
   return "{}{}".format(prefix, uid)
 
 
-class IteratorResourceDeleter(object):
-  """An object which cleans up an iterator resource handle.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectable.
-  """
-
-  __slots__ = ["_deleter", "_handle", "_eager_mode"]
-
-  def __init__(self, handle, deleter):
-    self._deleter = deleter
-    self._handle = handle
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    # Make sure the resource is deleted in the same mode as it was created in.
-    if self._eager_mode:
-      with context.eager_mode():
-        gen_dataset_ops.delete_iterator(
-            handle=self._handle, deleter=self._deleter)
-    else:
-      with context.graph_mode():
-        gen_dataset_ops.delete_iterator(
-            handle=self._handle, deleter=self._deleter)
-
-
 @tf_export("data.Iterator", v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class IteratorBase(collections_abc.Iterator, trackable.Trackable,
@@ -651,7 +624,7 @@ class IteratorBase(collections_abc.Iterator, trackable.Trackable,
 
   @abc.abstractmethod
   def get_next_as_optional(self):
-    """Returns the next element warpped in `tf.experimental.Optional`.
+    """Returns the next element wrapped in `tf.experimental.Optional`.
 
     If the iterator has reached the end of the sequence, the returned
     `tf.experimental.Optional` will have no value.
@@ -673,30 +646,7 @@ class IteratorBase(collections_abc.Iterator, trackable.Trackable,
     raise NotImplementedError("Iterator.get_next_as_optional()")
 
 
-# TODO(b/202447704): Merge into IteratorSpec.
-class IteratorType(trace.TraceType):
-  """Represents Iterators (and specs) for function tracing purposes."""
-
-  def __init__(self, spec, local_id):
-    self._components = (spec, local_id)
-
-  def is_subtype_of(self, other):
-    # TODO(b/202429845): Implement for subtyping.
-    return self == other
-
-  def most_specific_common_supertype(self, others):
-    # TODO(b/202430155) Implement for shape relaxation.
-    return None
-
-  def __hash__(self) -> int:
-    return hash(self._components)
-
-  def __eq__(self, other) -> bool:
-    return isinstance(
-        other, IteratorType) and self._components == other._components
-
-
-class OwnedIterator(IteratorBase, trace.SupportsTracingType):
+class OwnedIterator(IteratorBase):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
   The iterator resource  created through `OwnedIterator` is owned by the Python
@@ -737,7 +687,7 @@ class OwnedIterator(IteratorBase, trace.SupportsTracingType):
           self._element_spec)
       self._flat_output_shapes = structure.get_flat_tensor_shapes(
           self._element_spec)
-      self._iterator_resource, self._deleter = components
+      self._iterator_resource, = components
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(
@@ -764,15 +714,11 @@ class OwnedIterator(IteratorBase, trace.SupportsTracingType):
     self._flat_output_shapes = structure.get_flat_tensor_shapes(
         self._element_spec)
     with ops.colocate_with(ds_variant):
-      self._iterator_resource, self._deleter = (
-          gen_dataset_ops.anonymous_iterator_v2(
+      self._iterator_resource = (
+          gen_dataset_ops.anonymous_iterator_v3(
               output_types=self._flat_output_types,
               output_shapes=self._flat_output_shapes))
       gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
-      # Delete the resource when this object is deleted
-      self._resource_deleter = IteratorResourceDeleter(
-          handle=self._iterator_resource,
-          deleter=self._deleter)
 
   def __iter__(self):
     return self
@@ -900,14 +846,13 @@ class OwnedIterator(IteratorBase, trace.SupportsTracingType):
 
     return {"ITERATOR": _saveable_factory}
 
-  def __tf_tracing_type__(self, tracing_context):
-    return IteratorType(
-        self._type_spec,
-        tracing_context.get_local_id(self._iterator_resource._id))  # pylint:disable=protected-access
+  def __tf_tracing_type__(self, signature_context):
+    return signature_context.make_reference_type(self._type_spec,
+                                                 self._iterator_resource._id)  # pylint:disable=protected-access
 
 
 @tf_export("data.IteratorSpec", v1=[])
-class IteratorSpec(type_spec.TypeSpec, trace.SupportsTracingType):
+class IteratorSpec(type_spec.TypeSpec):
   """Type specification for `tf.data.Iterator`.
 
   For instance, `tf.data.IteratorSpec` can be used to define a tf.function that
@@ -942,13 +887,10 @@ class IteratorSpec(type_spec.TypeSpec, trace.SupportsTracingType):
 
   @property
   def _component_specs(self):
-    return (
-        tensor_spec.TensorSpec([], dtypes.resource),
-        tensor_spec.TensorSpec([], dtypes.variant),
-    )
+    return (tensor_spec.TensorSpec([], dtypes.resource),)
 
   def _to_components(self, value):
-    return (value._iterator_resource, value._deleter)  # pylint: disable=protected-access
+    return (value._iterator_resource,)  # pylint: disable=protected-access
 
   def _from_components(self, components):
     return OwnedIterator(
@@ -960,10 +902,10 @@ class IteratorSpec(type_spec.TypeSpec, trace.SupportsTracingType):
   def from_value(value):
     return IteratorSpec(value.element_spec)  # pylint: disable=protected-access
 
-  def __tf_tracing_type__(self, tracing_context):
+  def __tf_tracing_type__(self, signature_context):
     # TODO(b/202772221): Validate and enforce this assumption of uniqueness per
     # spec instance.
-    return IteratorType(self, tracing_context.get_local_id(id(self)))
+    return signature_context.make_reference_type(self, id(self))
 
 
 # TODO(b/71645805): Expose trackable stateful objects from dataset.

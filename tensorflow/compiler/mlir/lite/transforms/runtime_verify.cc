@@ -24,8 +24,10 @@ namespace {
 
 // This pass verifies that the TFL ops meet the TFL runtime constraints.
 class RuntimeVerifyPass
-    : public mlir::PassWrapper<RuntimeVerifyPass, FunctionPass> {
+    : public mlir::PassWrapper<RuntimeVerifyPass, OperationPass<FuncOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RuntimeVerifyPass)
+
   explicit RuntimeVerifyPass() {}
 
   StringRef getArgument() const final {
@@ -39,12 +41,13 @@ class RuntimeVerifyPass
   }
 
  private:
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
-void RuntimeVerifyPass::runOnFunction() {
-  getFunction().walk([&](TflRuntimeVerifyOpInterface op) {
-    if (failed(op.VerifyTflRuntimeConstraints(op.getOperation())))
+void RuntimeVerifyPass::runOnOperation() {
+  getOperation().walk([&](TflRuntimeVerifyOpInterface op) {
+    if (failed(op.VerifyTflRuntimeConstraints(
+            op.getOperation(), /*emit_error_on_verify_fail=*/true)))
       signalPassFailure();
   });
 }

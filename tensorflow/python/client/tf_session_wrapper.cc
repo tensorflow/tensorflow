@@ -31,7 +31,9 @@ limitations under the License.
 #include "tensorflow/c/python_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/version_info.h"
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
@@ -665,6 +667,15 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
 
+  m.def("TF_OperationGetStackTrace", [](TF_Operation* oper) -> py::object {
+    const std::shared_ptr<tensorflow::AbstractStackTrace> trace =
+        oper->node.GetStackTrace();
+    if (!trace) {
+      return py::none();
+    }
+    return py::cast(*trace, py::return_value_policy::reference);
+  });
+
   m.def("SetRequestedDevice", tensorflow::SetRequestedDevice);
 
   // TF_Buffer util methods
@@ -704,6 +715,16 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
           tensorflow::ClearAttr(graph, op, attr_name, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
         });
+
+  // Note: users should prefer using tf.cast or equivalent, and only when
+  // it's infeasible to set the type via OpDef's type constructor and inference
+  // function.
+  m.def("SetFullType", [](TF_Graph* graph, TF_Operation* op,
+                          const std::string& serialized_full_type) {
+    tensorflow::FullTypeDef proto;
+    proto.ParseFromString(serialized_full_type);
+    tensorflow::SetFullType(graph, op, proto);
+  });
 
   m.def(
       "TF_LoadLibrary",
@@ -1150,7 +1171,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   m.def("TF_GetCode", TF_GetCode);
 
   m.def("TF_SetXlaAutoJitMode", TF_SetXlaAutoJitMode);
-  m.def("TF_SetXlaAutoJitMode", TF_SetXlaAutoJitMode);
+  m.def("TF_GetXlaAutoJitEnabled", TF_GetXlaAutoJitEnabled);
   m.def("TF_SetXlaEnableLazyCompilation", TF_SetXlaEnableLazyCompilation);
   m.def("TF_SetTfXlaCpuGlobalJit", TF_SetTfXlaCpuGlobalJit);
   m.def("TF_SetXlaMinClusterSize", TF_SetXlaMinClusterSize);
@@ -1161,11 +1182,11 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   // // Creating getters instead.
 
   m.def("get_version", []() { return TF_VERSION_STRING; });
-  m.def("get_git_version", []() { return tf_git_version(); });
-  m.def("get_compiler_version", []() { return tf_compiler_version(); });
-  m.def("get_cxx11_abi_flag", []() { return tf_cxx11_abi_flag(); });
+  m.def("get_git_version", []() { return TF_GIT_VERSION; });
+  m.def("get_compiler_version", []() { return TF_COMPILER_VERSION; });
+  m.def("get_cxx11_abi_flag", []() { return TF_CXX11_ABI_FLAG; });
   m.def("get_eigen_max_align_bytes", []() { return EIGEN_MAX_ALIGN_BYTES; });
-  m.def("get_monolithic_build", []() { return tf_monolithic_build(); });
+  m.def("get_monolithic_build", []() { return TF_MONOLITHIC_BUILD; });
   m.def("get_graph_def_version", []() { return TF_GRAPH_DEF_VERSION; });
   m.def("get_graph_def_version_min_consumer",
         []() { return TF_GRAPH_DEF_VERSION_MIN_CONSUMER; });

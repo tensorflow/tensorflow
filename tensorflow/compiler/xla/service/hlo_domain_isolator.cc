@@ -15,15 +15,47 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
 
+#include <cstdint>
+
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace xla {
 
 namespace {
+
+// Add domains which are used as users of a specific instruction.
+StatusOr<int64_t> AddExitDomains(HloInstruction* instruction,
+                                 HloDomainIsolator::DomainCreator* creator) {
+  int64_t added_domains = 0;
+  if (instruction->opcode() == HloOpcode::kDomain) {
+    return added_domains;
+  }
+  // Make a const copy of instruction's users to loop through later, as the
+  // users vector could be changed during the loop
+  // (e.g. ReplaceUseWithDifferentShape).
+  const std::vector<HloInstruction*> users(instruction->users());
+  for (HloInstruction* user : users) {
+    // Check whether a kDomain is necessary between user and instruction.
+    HloInstruction* domain = (*creator)(user, instruction, instruction);
+    if (domain != nullptr) {
+      VLOG(4) << "New domain: " << domain->ToString();
+      // Call ReplaceUseWithDifferentShape even though the shapes are
+      // expected to match to avoid an expensive shape check between the
+      // original and the new instruction.
+      TF_RETURN_IF_ERROR(
+          instruction->ReplaceUseWithDifferentShape(user, domain));
+      ++added_domains;
+    }
+  }
+  return added_domains;
+}
 
 StatusOr<bool> RunInternal(HloModule* module,
                            HloDomainIsolator::DomainCreator* creator) {
@@ -65,6 +97,16 @@ StatusOr<bool> RunInternal(HloModule* module,
 
 HloDomainIsolator::HloDomainIsolator(DomainCreatorFactory creator_factory)
     : creator_factory_(std::move(creator_factory)) {}
+
+StatusOr<bool> HloDomainIsolator::UpdateDomains(HloInstruction* instruction) {
+  TF_ASSIGN_OR_RETURN(const int64_t removed_domains,
+                      HloDomainRemover::RemoveExitDomains(
+                          instruction, ShardingMetadata::KindName()));
+  DomainCreator creator = creator_factory_();
+  TF_ASSIGN_OR_RETURN(const int64_t added_domains,
+                      AddExitDomains(instruction, &creator));
+  return removed_domains > 0 || added_domains > 0;
+}
 
 StatusOr<bool> HloDomainIsolator::Run(HloModule* module) {
   DomainCreator creator = creator_factory_();

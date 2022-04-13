@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -329,7 +328,7 @@ class _CoordinatedClosureQueue(object):
   def stop(self):
     with self._queue_lock:
       self._should_process_closures = False
-      self._closures_queued_condition.notifyAll()
+      self._closures_queued_condition.notify_all()
     self._watchdog.stop()
 
   def _cancel_all_closures(self):
@@ -408,9 +407,9 @@ class _CoordinatedClosureQueue(object):
         raise AssertionError("There is no inflight closures to mark_finished.")
       self._inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
-        self._no_inflight_closure_condition.notifyAll()
+        self._no_inflight_closure_condition.notify_all()
       if self._queue.empty() and self._inflight_closure_count == 0:
-        self._stop_waiting_condition.notifyAll()
+        self._stop_waiting_condition.notify_all()
       self._watchdog.report_closure_done()
 
   def put_back(self, closure):
@@ -426,7 +425,7 @@ class _CoordinatedClosureQueue(object):
         self._closures_queued_condition.notify()
       self._inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
-        self._no_inflight_closure_condition.notifyAll()
+        self._no_inflight_closure_condition.notify_all()
 
   def wait(self, timeout=None):
     """Wait for all closures to be finished before returning.
@@ -459,8 +458,8 @@ class _CoordinatedClosureQueue(object):
         self._error = e
       self._inflight_closure_count -= 1
       if self._inflight_closure_count == 0:
-        self._no_inflight_closure_condition.notifyAll()
-      self._stop_waiting_condition.notifyAll()
+        self._no_inflight_closure_condition.notify_all()
+      self._stop_waiting_condition.notify_all()
 
   def done(self):
     """Returns true if the queue is empty and there is no inflight closure.
@@ -539,6 +538,19 @@ class WorkerPreemptionHandler(object):
         logging.error(
             "Remote function on worker %s failed with %r:%s\n"
             "It is treated as a transient connectivity failure for now.",
+            worker_device_name, e, e)
+        if on_transient_failure_fn:
+          on_transient_failure_fn()
+        return
+
+      # If the error is due to temporary connectivity issues that cause the
+      # server-side RPCs to be cancelled, TF might not abort the step and the
+      # closure might timeout. The coordinator ignores certain amount of such
+      # failures without marking worker as failure.
+      if self._cluster._record_and_ignore_transient_timeouts(e):  # pylint: disable=protected-access
+        logging.error(
+            "Remote function on worker %s failed with %r:%s\n"
+            "This derived error is ignored and not reported to users.",
             worker_device_name, e, e)
         if on_transient_failure_fn:
           on_transient_failure_fn()
@@ -683,7 +695,7 @@ class Worker(object):
     """Runs a closure with preemption handling."""
     assert closure is not None
     try:
-      with self._cluster.failure_handler.wait_on_failure(
+      with self.failure_handler.wait_on_failure(
           on_failure_fn=lambda: self._cluster.closure_queue.put_back(closure),
           on_transient_failure_fn=lambda: self._cluster.closure_queue.put_back(
               closure),
@@ -818,6 +830,18 @@ class Cluster(object):
     self._potential_ps_failures_lock = threading.Lock()
     self._potential_ps_failures_count = [0] * self._num_ps
 
+    # Ignore worker timeouts due to transient connection errors.
+    # Transient connectivity issues might cause the server side to unexpectedly
+    # cancel RPC handling logic, leading to closure execution timeouts. When
+    # the _transient_timeout_threshold is set to a positive number, the cluster
+    # coordinator ignores DeadlineExceeded errors from workers for the specified
+    # times before raising the error to users.
+    self._transient_timeouts_threshold = int(
+        os.environ.get("TF_COORDINATOR_IGNORE_TRANSIENT_TIMEOUTS",
+                       self._num_workers // 10))
+    self._transient_timeouts_lock = threading.Lock()
+    self._transient_timeouts_count = 0
+
     self.closure_queue = _CoordinatedClosureQueue()
     self.failure_handler = WorkerPreemptionHandler(context.get_server_def(),
                                                    self)
@@ -852,6 +876,18 @@ class Cluster(object):
           return False
     return True
 
+  def _record_and_ignore_transient_timeouts(self, e):
+    """Records observed timeout error and return if it should be ignored."""
+    if self._transient_timeouts_threshold <= 0:
+      return False
+    if not isinstance(e, errors.DeadlineExceededError):
+      return False
+    with self._transient_timeouts_lock:
+      self._transient_timeouts_count += 1
+      if self._transient_timeouts_count >= self._transient_timeouts_threshold:
+        return False
+    return True
+
   def schedule(self, function, args, kwargs):
     """Schedules `function` to be dispatched to a worker for execution.
 
@@ -882,7 +918,8 @@ class Cluster(object):
     return self.closure_queue.done()
 
 
-@tf_export("distribute.experimental.coordinator.ClusterCoordinator", v1=[])
+@tf_export("distribute.experimental.coordinator.ClusterCoordinator",
+           "distribute.coordinator.ClusterCoordinator", v1=[])
 class ClusterCoordinator(object):
   """An object to schedule and coordinate remote function execution.
 
@@ -1021,7 +1058,7 @@ class ClusterCoordinator(object):
 
     Args:
       fn: A `tf.function`; the function to be dispatched to a worker for
-        execution asynchronously. Regular python funtion is not supported to be
+        execution asynchronously. Regular python function is not supported to be
         scheduled.
       args: Positional arguments for `fn`.
       kwargs: Keyword arguments for `fn`.
@@ -1088,14 +1125,15 @@ class ClusterCoordinator(object):
     return self._cluster.done()
 
   def create_per_worker_dataset(self, dataset_fn):
-    """Create dataset on workers by calling `dataset_fn` on worker devices.
+    """Create dataset on each worker.
 
-    This creates the given dataset generated by dataset_fn on workers
-    and returns an object that represents the collection of those individual
-    datasets. Calling `iter` on such collection of datasets returns a
-    `tf.distribute.experimental.coordinator.PerWorkerValues`, which is a
-    collection of iterators, where the iterators have been placed on respective
-    workers.
+    This creates dataset on workers from the input which can be either a
+    `tf.data.Dataset`, a `tf.distribute.DistributedDataset` or a functino which
+    returns a dataset, and returns an object that represents the collection of
+    those individual datasets. Calling `iter` on such collection of datasets
+    returns a `tf.distribute.experimental.coordinator.PerWorkerValues`, which is
+    a collection of iterators, where the iterators have been placed on
+    respective workers.
 
     Calling `next` on a `PerWorkerValues` of iterator is unsupported. The
     iterator is meant to be passed as an argument into
@@ -1246,8 +1284,20 @@ def _is_ps_failure(error):
           _RPC_ERROR_FROM_PS in str(error))
 
 
+def _handle_graph_execution_error_as_worker_failure():
+  return int(os.environ.get("TF_PS_HANDLE_UNKNOWN_ERROR", "0")) > 0
+
+
 def _is_worker_failure(error):
   """Whether the error is considered a worker failure."""
+
+  # TODO(b/216666282): Understand why worker failure can manifest as a
+  # "Graph execution error" `UnknownError`.
+  if (_handle_graph_execution_error_as_worker_failure() and
+      isinstance(error, errors.UnknownError) and
+      "Graph execution error" in str(error)):
+    logging.info(f"Handling {type(error)}: {str(error)} as worker failure.")
+    return True
 
   # For an `InputError`, extract the original error and assess it accordingly.
   if isinstance(error, InputError):
@@ -1268,7 +1318,7 @@ def _is_worker_failure(error):
   # failure. In that case, gRPC allows channel (which is different from a
   # connection) to be reused for a replaced server listening to same address.
   if isinstance(error, errors.InvalidArgumentError):
-    if ("unknown device" in str(error) or
+    if ("unknown device" in str(error).lower() or
         "Unable to find the relevant tensor remote_handle" in str(error)):
       # TODO(b/159961667): Fix "Unable to find the relevant tensor
       # remote_handle" part.

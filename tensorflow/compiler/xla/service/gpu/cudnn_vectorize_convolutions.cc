@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -26,8 +27,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Finds convolutions that this pass may be able to transform, namely int8 cudnn
-// forward or forward-bias-activation convolutions
+// Finds convolutions that this pass may be able to transform, namely int8_t
+// cudnn forward or forward-bias-activation convolutions
 //
 // cudnn as of v8.2 supports the following data type combinations for forward
 // and forward-bias-activation convolutions.  We have to make sure we only
@@ -36,7 +37,7 @@ namespace gpu {
 //   in       out
 //   int8x1   int8x1
 //   int8x1   float
-//   int8x1   int32
+//   int8x1   int32_t
 //
 //   int8x4   int8x4
 //   int8x4   float
@@ -46,7 +47,7 @@ namespace gpu {
 // https://docs.nvidia.com/deeplearning/cudnn/api/index.html#cudnnConvolutionForward
 //
 // For now we restrict ourselves to only the int8xN -> int8xN cases.  We could
-// allow the int8x4 -> float case in the future if desireable.
+// allow the int8x4 -> float case in the future if desirable.
 static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
     HloComputation* comp) {
   std::vector<HloCustomCallInstruction*> convs;
@@ -363,11 +364,24 @@ static StatusOr<bool> TryRevectorizeConv(
           b, Tuple(&b, {new_conv_result_unrevectorized, new_conv_scratch}),
           conv->parent()));
 
+  // Set the name on the new conv.  This is purely cosmetic, but we attempt to
+  // preserve e.g. "cudnn-conv.42" instead of "custom-call.42".
+  auto new_conv_comp_instrs = new_conv_comp->instructions();
+  auto new_conv_it =
+      absl::c_find_if(new_conv_comp_instrs, [](HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kCustomCall;
+      });
+  if (new_conv_it != new_conv_comp_instrs.end()) {
+    new_conv_comp->parent()->SetAndUniquifyInstrName(*new_conv_it,
+                                                     conv->name());
+  }
+
   // Replace the old conv with a call to the computation we just created.
   VLOG(1) << "Re-vectorized conv to " << new_conv_comp->ToString();
   TF_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
       conv, HloInstruction::CreateCall(conv->shape(), conv->operands(),
                                        new_conv_comp)));
+
   return true;
 }
 

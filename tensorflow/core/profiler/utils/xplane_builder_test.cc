@@ -31,16 +31,34 @@ TEST(TimespanTests, NonInstantSpanIncludesSingleTimeTests) {
   XLineBuilder xline_builder = xplane_builder.GetOrCreateLine(0);
   XEventBuilder event_builder = xline_builder.AddEvent(
       *xplane_builder.GetOrCreateEventMetadata("1st event"));
+  constexpr auto kBoolStat = true;
+  constexpr auto kInt32Stat = int32_t{1234};
+  constexpr auto kInt64Stat = int64_t{1234} << 32;
+  constexpr auto kUint32Stat = uint32_t{5678};
+  constexpr auto kUint64Stat = uint64_t{5678} << 32;
+  constexpr auto kFloatStat = 0.5f;
+  constexpr auto kDoubleStat = 1.0;
+  constexpr auto kStringStat = "abc";
+  constexpr auto kRefStat = "referenced abc";
   event_builder.AddStatValue(
-      *xplane_builder.GetOrCreateStatMetadata("int stat"), int64_t{1234});
+      *xplane_builder.GetOrCreateStatMetadata("bool stat"), kBoolStat);
   event_builder.AddStatValue(
-      *xplane_builder.GetOrCreateStatMetadata("string stat"),
-      std::string("abc"));
+      *xplane_builder.GetOrCreateStatMetadata("int32 stat"), kInt32Stat);
   event_builder.AddStatValue(
-      *xplane_builder.GetOrCreateStatMetadata("double stat"), 1.0);
+      *xplane_builder.GetOrCreateStatMetadata("int64 stat"), kInt64Stat);
+  event_builder.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata("uint32 stat"), kUint32Stat);
+  event_builder.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata("uint64 stat"), kUint64Stat);
+  event_builder.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata("string stat"), kStringStat);
+  event_builder.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata("float stat"), kFloatStat);
+  event_builder.AddStatValue(
+      *xplane_builder.GetOrCreateStatMetadata("double stat"), kDoubleStat);
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("ref stat"),
-      *xplane_builder.GetOrCreateStatMetadata("referenced abc"));
+      *xplane_builder.GetOrCreateStatMetadata(kRefStat));
 
   XPlaneVisitor xplane_visitor(&plane);
   EXPECT_EQ(xplane_visitor.NumLines(), 1);
@@ -49,23 +67,42 @@ TEST(TimespanTests, NonInstantSpanIncludesSingleTimeTests) {
     xline.ForEachEvent([&](const XEventVisitor& xevent) {
       EXPECT_EQ(xevent.Name(), "1st event");
       xevent.ForEachStat([&](const XStatVisitor& stat) {
-        if (stat.Name() == "int stat") {
-          EXPECT_EQ(stat.IntValue(), int64{1234});
+        if (stat.Name() == "bool stat") {
+          EXPECT_EQ(stat.BoolValue(), kBoolStat);
+          num_stats++;
+        } else if (stat.Name() == "int32 stat") {
+          EXPECT_EQ(stat.IntValue(), kInt32Stat);
+          EXPECT_EQ(stat.IntOrUintValue(), kInt32Stat);
+          num_stats++;
+        } else if (stat.Name() == "int64 stat") {
+          EXPECT_EQ(stat.IntValue(), kInt64Stat);
+          EXPECT_EQ(stat.IntOrUintValue(), kInt64Stat);
+          num_stats++;
+        } else if (stat.Name() == "uint32 stat") {
+          EXPECT_EQ(stat.UintValue(), kUint32Stat);
+          EXPECT_EQ(stat.IntOrUintValue(), kUint32Stat);
+          num_stats++;
+        } else if (stat.Name() == "uint64 stat") {
+          EXPECT_EQ(stat.UintValue(), kUint64Stat);
+          EXPECT_EQ(stat.IntOrUintValue(), kUint64Stat);
           num_stats++;
         } else if (stat.Name() == "string stat") {
-          EXPECT_EQ(stat.StrOrRefValue(), "abc");
+          EXPECT_EQ(stat.StrOrRefValue(), kStringStat);
+          num_stats++;
+        } else if (stat.Name() == "float stat") {
+          EXPECT_EQ(stat.DoubleValue(), kFloatStat);
           num_stats++;
         } else if (stat.Name() == "double stat") {
-          EXPECT_EQ(stat.DoubleValue(), 1.0);
+          EXPECT_EQ(stat.DoubleValue(), kDoubleStat);
           num_stats++;
         } else if (stat.Name() == "ref stat") {
-          EXPECT_EQ(stat.StrOrRefValue(), "referenced abc");
+          EXPECT_EQ(stat.StrOrRefValue(), kRefStat);
           num_stats++;
         }
       });
     });
   });
-  EXPECT_EQ(num_stats, 4);
+  EXPECT_EQ(num_stats, 9);
 }
 
 }  // namespace

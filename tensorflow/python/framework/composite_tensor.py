@@ -108,7 +108,7 @@ def replace_composites_with_components(structure):
   if isinstance(structure, CompositeTensor):
     return replace_composites_with_components(
         structure._type_spec._to_components(structure))  # pylint: disable=protected-access
-  elif not nest.is_sequence(structure):
+  elif not nest.is_nested(structure):
     return structure
   else:
     return nest.map_structure(

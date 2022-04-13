@@ -27,6 +27,10 @@ limitations under the License.
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
+#endif
+
 namespace xla {
 namespace gpu {
 
@@ -54,6 +58,22 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       const HloCustomCallInstruction* instr);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+  // Simple bundle of an algorithm and its output, for comparing results across
+  // autotuned algorithms.
+  struct ReferenceResult {
+    stream_executor::dnn::AlgorithmDesc algorithm;
+    stream_executor::DeviceMemoryBase buffer;
+  };
+
+  StatusOr<tensorflow::AutotuneResult> AutotuneOneConvRunner(
+      const GpuConvConfig& config, const HloCustomCallInstruction* instr,
+      se::DeviceMemoryAllocator* allocator,
+      se::RedzoneAllocator* input_output_allocator, se::Stream* stream,
+      MaybeFusedConvRunner* const runner,
+      absl::Span<const stream_executor::DeviceMemoryBase> operand_buffers,
+      stream_executor::DeviceMemoryBase result_buffer,
+      absl::optional<ReferenceResult>* reference_result,
+      absl::Span<const stream_executor::dnn::AlgorithmDesc> disabled_algos);
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction* instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);

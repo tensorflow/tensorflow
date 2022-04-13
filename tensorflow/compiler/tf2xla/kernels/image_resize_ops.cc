@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/tf2xla/kernels/image_resize_ops.h"
 
+#include <string>
+
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
@@ -26,9 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -470,7 +475,11 @@ xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(
 }
 
 void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
-                    bool is_kernel_bilinear) {
+                    bool half_pixel_centers_, bool is_kernel_bilinear_) {
+  // We implement bilinear interpolation and nearest neighbor with a Gather op.
+  // For each output pixel, we gather the necessary slices of the input.
+  // We then construct the weights that are necessary to calculate the weighted
+  // sum for each output pixel. We do this with a DotGeneral op.
   xla::XlaBuilder* b = ctx->builder();
 
   TensorShape input_shape = ctx->InputShape(0);
@@ -496,87 +505,167 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
               errors::InvalidArgument("output size must be positive, got [",
                                       out_size[0], ",", out_size[1], "]"));
 
-  const int num_spatial_dims = 2;
-
   xla::XlaOp input = ctx->Input(0);
   xla::PrimitiveType input_type = ctx->input_xla_type(0);
-
-  // If in_size[i] > 1 and out_size[i] == 1, slice out the first input in
-  // dimension i.
-  bool slice_input = false;
-  for (int i = 0; i < num_spatial_dims; ++i) {
-    if (in_size[i] > 1 && out_size[i] == 1) {
-      // If in_size[i] > 1 but out_size[i] == 1, then we slice out the first
-      // entry before resizing.
-      slice_input = true;
-      in_size[i] = 1;
-    }
-  }
-  if (slice_input) {
-    input = xla::Slice(input, {0, 0, 0, 0},
-                       {batch, in_size[0], in_size[1], channels}, {1, 1, 1, 1});
-  }
-
-  // Output is always type float if 'is_kernel_bilinear' is true.
-  // GPU with integer input also uses float, because XLA
-  // integer convolution on CuDNN is either not supported or not allowed
-  // directly.
   xla::PrimitiveType original_input_type = input_type;
-  if (is_kernel_bilinear || (xla::primitive_util::IsIntegralType(input_type))) {
+  if (is_kernel_bilinear_ || xla::primitive_util::IsIntegralType(input_type)) {
     input = xla::ConvertElementType(input, xla::F32);
     input_type = xla::F32;
   }
+  DataType output_dtype =
+      EncodePrimitiveTypeAsDataType(input_type).ValueOrDie();
 
-  for (int dim = 0; dim < in_size.size(); ++dim) {
-    // If the pairwise_distance function more accurately estimated performance,
-    // this threshold could be reduced.
-    constexpr int64_t kSmallDimThreshold = 1 << 10;
-    if (in_size[dim] > out_size[dim] || out_size[dim] < kSmallDimThreshold) {
-      std::vector<int64_t> next_size = in_size;
-      next_size[dim] = out_size[dim];
-      input = ResizeUsingDilationAndConvolution(
-          b, input, input_type, num_spatial_dims, in_size, next_size, channels,
-          align_corners_, is_kernel_bilinear);
-      in_size[dim] = next_size[dim];
-    }
+  xla::XlaOp scalar_one_op =
+      xla::ConvertElementType(xla::ConstantR0(b, 1), input_type);
+  xla::XlaOp scalar_half_op =
+      xla::ConvertElementType(xla::ConstantR0(b, 0.5), input_type);
+  xla::XlaOp scalar_zero_op =
+      xla::ConvertElementType(xla::ConstantR0(b, 0), input_type);
+  float h_scale;
+  if (align_corners_ && out_size[0] > 1) {
+    h_scale = (in_size[0] - 1) / static_cast<float>(out_size[0] - 1);
+  } else {
+    h_scale = in_size[0] / static_cast<float>(out_size[0]);
   }
-
-  // This function approximates the cost of a bilinear resize from a src_size to
-  // a dst_size. The accuracy is okay, but empirically, the algorithm makes some
-  // suboptimal choices. A better cost model would improve performance.
-  auto pairwise_distance = [align_corners_](int64_t src_size,
-                                            int64_t dst_size) {
-    auto params = ComputeResizeConvolutionParameters({src_size}, {dst_size},
-                                                     align_corners_);
-    return params.stride[0];
-  };
-
-  for (int dim = 0; dim < in_size.size(); ++dim) {
-    std::vector<int64_t> distances(out_size[dim] + 1);
-    std::vector<int64_t> next_step(out_size[dim] + 1);
-    for (int64_t i = distances.size() - 2; i >= in_size[dim]; --i) {
-      distances[i] = INT64_MAX;
-      for (int64_t j = i + 1; j < distances.size(); ++j) {
-        int64_t distance = pairwise_distance(i, j) + distances[j];
-        if (distance < distances[i]) {
-          distances[i] = distance;
-          next_step[i] = j;
-        }
-      }
-    }
-
-    while (in_size[dim] != out_size[dim]) {
-      auto next_size = in_size;
-      next_size[dim] = next_step[in_size[dim]];
-      input = ResizeUsingDilationAndConvolution(
-          b, input, input_type, num_spatial_dims, in_size, next_size, channels,
-          align_corners_, is_kernel_bilinear);
-      in_size[dim] = next_size[dim];
-    }
+  xla::XlaOp h_span_start =
+      xla::Iota(b, xla::ShapeUtil::MakeShape(input_type, {out_size[0]}), 0);
+  if (half_pixel_centers_) {
+    h_span_start = xla::Add(h_span_start, scalar_half_op);
   }
+  xla::XlaOp h_scale_op =
+      xla::ConvertElementType(xla::ConstantR0(b, h_scale), input_type);
+  xla::XlaOp h_sample_f = xla::Mul(h_span_start, h_scale_op);
 
-  // Bilinear always outputs float, but nearest neighbor keeps the original type
-  if (!is_kernel_bilinear && original_input_type != input_type) {
+  if (is_kernel_bilinear_) {
+    h_span_start = xla::Sub(h_sample_f, scalar_one_op);
+    if (half_pixel_centers_) {
+      h_span_start = xla::Sub(h_span_start, scalar_half_op);
+    }
+    h_span_start = xla::Ceil(h_span_start);
+  } else {
+    h_span_start =
+        align_corners_ ? xla::Round(h_sample_f) : xla::Floor(h_sample_f);
+  }
+  const int64_t h_span_size =
+      is_kernel_bilinear_ ? std::min(static_cast<int64_t>(3), in_size[0]) : 1;
+  xla::XlaOp h_upper_bound = xla::ConvertElementType(
+      xla::ConstantR0(b, in_size[0] - h_span_size), input_type);
+  if (!is_kernel_bilinear_ && !half_pixel_centers_) {
+    h_span_start = xla::Min(h_span_start, h_upper_bound);
+  } else {
+    h_span_start = xla::Clamp(scalar_zero_op, h_span_start, h_upper_bound);
+  }
+  xla::XlaOp broadcasted_h_span_start =
+      xla::BroadcastInDim(h_span_start, {out_size[0], out_size[1], 1}, {0});
+
+  float w_scale;
+  if (align_corners_ && out_size[1] > 1) {
+    w_scale = (in_size[1] - 1) / static_cast<float>(out_size[1] - 1);
+  } else {
+    w_scale = in_size[1] / static_cast<float>(out_size[1]);
+  }
+  xla::XlaOp w_span_start =
+      xla::Iota(b, xla::ShapeUtil::MakeShape(input_type, {out_size[1]}), 0);
+  if (half_pixel_centers_) {
+    w_span_start = xla::Add(w_span_start, scalar_half_op);
+  }
+  xla::XlaOp w_scale_op =
+      xla::ConvertElementType(xla::ConstantR0(b, w_scale), input_type);
+  xla::XlaOp w_sample_f = xla::Mul(w_span_start, w_scale_op);
+  if (is_kernel_bilinear_) {
+    w_span_start = xla::Sub(w_sample_f, scalar_one_op);
+    if (half_pixel_centers_) {
+      w_span_start = xla::Sub(w_span_start, scalar_half_op);
+    }
+    w_span_start = xla::Ceil(w_span_start);
+  } else {
+    w_span_start =
+        align_corners_ ? xla::Round(w_sample_f) : xla::Floor(w_sample_f);
+  }
+  const int64_t w_span_size =
+      is_kernel_bilinear_ ? std::min(static_cast<int64_t>(3), in_size[1]) : 1;
+  xla::XlaOp w_upper_bound = xla::ConvertElementType(
+      xla::ConstantR0(b, in_size[1] - w_span_size), input_type);
+  if (!is_kernel_bilinear_ && !half_pixel_centers_) {
+    w_span_start = xla::Min(w_span_start, w_upper_bound);
+  } else {
+    w_span_start = xla::Clamp(scalar_zero_op, w_span_start, w_upper_bound);
+  }
+  xla::XlaOp broadcasted_w_span_start =
+      xla::BroadcastInDim(w_span_start, {out_size[0], out_size[1], 1}, {1});
+
+  xla::XlaOp concatted = xla::ConvertElementType(
+      xla::ConcatInDim(b, {broadcasted_h_span_start, broadcasted_w_span_start},
+                       2),
+      xla::S32);
+
+  absl::InlinedVector<int64_t, 4> slize_sizes = {batch, h_span_size,
+                                                 w_span_size, channels};
+  xla::GatherDimensionNumbers dimension_numbers;
+  dimension_numbers.add_offset_dims(0);
+  dimension_numbers.add_offset_dims(1);
+  dimension_numbers.add_offset_dims(2);
+  dimension_numbers.add_offset_dims(3);
+  dimension_numbers.add_start_index_map(1);
+  dimension_numbers.add_start_index_map(2);
+  dimension_numbers.set_index_vector_dim(2);
+  input = xla::Gather(input, concatted, dimension_numbers, slize_sizes, false);
+
+  xla::XlaOp w_weight;
+  if (is_kernel_bilinear_) {
+    xla::XlaOp w_sub = xla::Sub(w_span_start, w_sample_f);
+    w_sub = xla::BroadcastInDim(w_sub, {out_size[1], w_span_size}, {0});
+    xla::XlaOp w_offset =
+        xla::Iota(b, xla::ShapeUtil::MakeShape(input_type, {w_span_size}), 0);
+    xla::XlaOp w_kernel_pos = xla::Add(w_sub, w_offset, {1});
+    if (half_pixel_centers_) {
+      w_kernel_pos = xla::Add(w_kernel_pos, scalar_half_op);
+    }
+    w_weight = xla::Max(scalar_zero_op,
+                        xla::Sub(scalar_one_op, xla::Abs(w_kernel_pos)));
+  } else {
+    w_weight = xla::Broadcast(scalar_one_op, {out_size[1], w_span_size});
+  }
+  xla::XlaOp w_weight_sum = xla::Reduce(
+      w_weight, scalar_zero_op, *ctx->GetOrCreateAdd(output_dtype), {1});
+  w_weight = xla::Div(w_weight, w_weight_sum, {0});
+
+  xla::XlaOp h_weight;
+  if (is_kernel_bilinear_) {
+    xla::XlaOp h_sub = xla::Sub(h_span_start, h_sample_f);
+    h_sub = xla::BroadcastInDim(h_sub, {out_size[0], h_span_size}, {0});
+    xla::XlaOp h_offset =
+        xla::Iota(b, xla::ShapeUtil::MakeShape(input_type, {h_span_size}), 0);
+    xla::XlaOp h_kernel_pos = xla::Add(h_sub, h_offset, {1});
+    if (half_pixel_centers_) {
+      h_kernel_pos = xla::Add(h_kernel_pos, scalar_half_op);
+    }
+    h_weight = xla::Max(scalar_zero_op,
+                        xla::Sub(scalar_one_op, xla::Abs(h_kernel_pos)));
+  } else {
+    h_weight = xla::Broadcast(scalar_one_op, {out_size[0], h_span_size});
+  }
+  xla::XlaOp h_weight_sum = xla::Reduce(
+      h_weight, scalar_zero_op, *ctx->GetOrCreateAdd(output_dtype), {1});
+  h_weight = xla::Div(h_weight, h_weight_sum, {0});
+
+  xla::DotDimensionNumbers dot_dnum;
+  dot_dnum.add_lhs_contracting_dimensions(3);
+  dot_dnum.add_lhs_contracting_dimensions(1);
+  dot_dnum.add_rhs_contracting_dimensions(1);
+  dot_dnum.add_rhs_contracting_dimensions(2);
+  dot_dnum.add_lhs_batch_dimensions(2);
+  dot_dnum.add_lhs_batch_dimensions(0);
+  dot_dnum.add_rhs_batch_dimensions(4);
+  dot_dnum.add_rhs_batch_dimensions(5);
+  input = xla::DotGeneral(
+      xla::DotGeneral(w_weight, h_weight, xla::DotDimensionNumbers()), input,
+      dot_dnum);
+
+  absl::InlinedVector<int64_t, 4> perm = {2, 0, 1, 3};
+  input = xla::Transpose(input, perm);
+
+  if (!is_kernel_bilinear_ && original_input_type != input_type) {
     input = xla::ConvertElementType(input, original_input_type);
   }
   ctx->SetOutput(0, input);
@@ -586,19 +675,14 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
 ResizeNearestNeighborOp::ResizeNearestNeighborOp(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
-  OP_REQUIRES(
-      ctx, align_corners_ == true,
-      errors::Unimplemented("ResizeNearestNeighbor with align_corners=False "
-                            "is not yet implemented"));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
-  OP_REQUIRES(ctx, half_pixel_centers_ == false,
-              errors::Unimplemented(
-                  "ResizeNearestNeighbor with half_pixel_centers=True is "
-                  "not yet implemented"));
+  OP_REQUIRES(ctx, !half_pixel_centers_ || !align_corners_,
+              errors::Unimplemented("If half_pixel_centers is True, "
+                                    "align_corners must be False."));
 }
 
 void ResizeNearestNeighborOp::Compile(XlaOpKernelContext* ctx) {
-  GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
+  GeneralCompile(ctx, align_corners_, half_pixel_centers_, is_kernel_bilinear_);
 }
 
 REGISTER_XLA_OP(Name("ResizeNearestNeighbor").CompileTimeConstantInput("size"),
@@ -608,14 +692,13 @@ ResizeBilinearOp::ResizeBilinearOp(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
-  OP_REQUIRES(
-      ctx, half_pixel_centers_ == false,
-      errors::Unimplemented("ResizeBilinear with half_pixel_centers=True is "
-                            "not yet implemented"));
+  OP_REQUIRES(ctx, !half_pixel_centers_ || !align_corners_,
+              errors::Unimplemented("If half_pixel_centers is True, "
+                                    "align_corners must be False."));
 }
 
 void ResizeBilinearOp::Compile(XlaOpKernelContext* ctx) {
-  GeneralCompile(ctx, align_corners_, is_kernel_bilinear_);
+  GeneralCompile(ctx, align_corners_, half_pixel_centers_, is_kernel_bilinear_);
 }
 
 REGISTER_XLA_OP(Name("ResizeBilinear").CompileTimeConstantInput("size"),

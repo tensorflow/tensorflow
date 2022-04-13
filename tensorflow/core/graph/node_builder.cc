@@ -117,6 +117,12 @@ NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
   return *this;
 }
 
+StatusOr<Node*> NodeBuilder::Finalize(Graph* graph, bool consume) {
+  Node* out;
+  TF_RETURN_IF_ERROR(Finalize(graph, &out, consume));
+  return out;
+}
+
 Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) {
@@ -132,9 +138,7 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
   TF_RETURN_IF_ERROR(
       CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));
 
-  Status status;
-  Node* node = graph->AddNode(std::move(node_def), &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph->AddNode(std::move(node_def)));
 
   node->set_assigned_device_name(assigned_device_);
 

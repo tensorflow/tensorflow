@@ -26,8 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/int_type.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -35,7 +33,6 @@ namespace xla {
 class LogicalBuffer : public BufferValue {
  public:
   LogicalBuffer(HloInstruction* instruction, const ShapeIndex& index, Id id);
-  ~LogicalBuffer() override;
 
   // Return the instruction that defines the buffer.
   HloInstruction* instruction() const override { return instruction_; }
@@ -51,15 +48,11 @@ class LogicalBuffer : public BufferValue {
     return ShapeUtil::GetSubshape(instruction_->shape(), index_);
   }
 
-  string ToString() const override;
+  std::string ToString() const override;
 
  private:
   HloInstruction* instruction_;
   ShapeIndex index_;
-
-  // Similar to HLO constructs (HloInstruction, etc), pointers are used for
-  // comparison to equality, so disable all copying.
-  TF_DISALLOW_COPY_AND_ASSIGN(LogicalBuffer);
 };
 
 }  // namespace xla

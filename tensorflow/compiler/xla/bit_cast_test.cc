@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/bit_cast.h"
 
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
@@ -25,18 +24,18 @@ using ::Eigen::half;
 using ::tensorflow::bfloat16;
 
 TEST(BitCastTest, BackAndForth) {
-  for (uint32 n = 0; n < 0x10000; ++n) {
-    uint16 initial_rep = n;
+  for (uint32_t n = 0; n < 0x10000; ++n) {
+    uint16_t initial_rep = n;
     bfloat16 float_val = BitCast<bfloat16>(initial_rep);
-    uint16 final_rep = BitCast<uint16>(float_val);
+    uint16_t final_rep = BitCast<uint16_t>(float_val);
 
     EXPECT_EQ(initial_rep, final_rep);
   }
 
-  for (uint32 n = 0; n < 0x10000; ++n) {
-    uint16 initial_rep = n;
+  for (uint32_t n = 0; n < 0x10000; ++n) {
+    uint16_t initial_rep = n;
     half float_val = BitCast<half>(initial_rep);
-    uint16 final_rep = BitCast<uint16>(float_val);
+    uint16_t final_rep = BitCast<uint16_t>(float_val);
 
     EXPECT_EQ(initial_rep, final_rep);
   }

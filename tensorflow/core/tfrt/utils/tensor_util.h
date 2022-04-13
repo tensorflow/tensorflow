@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_UTILS_TENSOR_UTIL_H_
 
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/tfrt/utils/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor.h"  // from @tf_runtime
@@ -32,11 +32,11 @@ AsyncValueRef<TensorHandle> TFTensorToTFRTTensorHandle(
     const tensorflow::Tensor& tf_tensor, HostContext* host_ctx);
 
 // Creates a TFRT TensorHandle using the shape and data in a tensorflow tensor.
-StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
+tensorflow::StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
     const tensorflow::Tensor& tensor, HostContext* host);
 
 // Creates a tensorflow tensor using the shape and data in a TFRT tensorhandle.
-StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
+tensorflow::StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
     const TensorHandle& tensor_handle);
 
 }  // namespace tfrt

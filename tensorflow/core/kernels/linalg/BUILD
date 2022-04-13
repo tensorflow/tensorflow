@@ -105,8 +105,9 @@ LINALG_DEPS = [
     "//tensorflow/core/kernels:cast_op",
     "//tensorflow/core/kernels:fill_functor",
     "//tensorflow/core/kernels:transpose_functor",
-] + if_cuda([
+] + if_cuda_or_rocm([
     ":eye_functor",
+]) + if_cuda([
     "//tensorflow/core/util:cuda_solvers",
 ]) + if_rocm([
     "//tensorflow/core/util:rocm_solvers",
@@ -258,7 +259,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "qr_op",
     prefix = "qr_op",
-    deps = LINALG_DEPS + if_cuda([
+    deps = LINALG_DEPS + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cwise_op",
         ":matrix_band_part_op",
     ]),
@@ -273,9 +274,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lu_op",
     prefix = "lu_op",
-    deps = if_cuda([
-        "//tensorflow/core/util:cuda_solvers",
+    deps = if_cuda_or_rocm([
         "//tensorflow/core/kernels:transpose_functor",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
     ]) + [
         "//third_party/eigen3",
         "//tensorflow/core:framework",

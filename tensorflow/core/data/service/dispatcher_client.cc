@@ -89,14 +89,14 @@ Status DataServiceDispatcherClient::GetDatasetDef(int64_t dataset_id,
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t repetition,
+Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t iteration,
                                              int64_t split_provider_index,
                                              Tensor& split,
                                              bool& end_of_splits) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetSplitRequest req;
   req.set_job_id(job_id);
-  req.set_repetition(repetition);
+  req.set_iteration(iteration);
   req.set_split_provider_index(split_provider_index);
   GetSplitResponse resp;
   grpc::ClientContext client_ctx;
@@ -114,14 +114,12 @@ Status DataServiceDispatcherClient::GetSplit(int64_t job_id, int64_t repetition,
 }
 
 Status DataServiceDispatcherClient::RegisterDataset(
-    const DatasetDef& dataset, const absl::optional<std::string>& element_spec,
+    const DatasetDef& dataset, const DataServiceMetadata& metadata,
     int64_t& dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrRegisterDatasetRequest req;
   *req.mutable_dataset() = dataset;
-  if (element_spec.has_value()) {
-    req.set_element_spec(element_spec.value());
-  }
+  *req.mutable_metadata() = metadata;
 
   GetOrRegisterDatasetResponse resp;
   grpc::ClientContext client_ctx;
@@ -135,7 +133,7 @@ Status DataServiceDispatcherClient::RegisterDataset(
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64_t dataset_id, const ProcessingModeDef& processing_mode,
-    const absl::optional<JobKey>& job_key,
+    const absl::optional<JobKeyDef>& job_key,
     absl::optional<int64_t> num_consumers, TargetWorkers target_workers,
     int64_t& job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
@@ -224,19 +222,32 @@ Status DataServiceDispatcherClient::GetWorkers(
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetElementSpec(int64_t dataset_id,
-                                                   std::string& element_spec) {
+Status DataServiceDispatcherClient::GetDataServiceMetadata(
+    int64_t dataset_id, DataServiceMetadata& metadata) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
-
-  GetElementSpecRequest req;
+  GetDataServiceMetadataRequest req;
   req.set_dataset_id(dataset_id);
-  GetElementSpecResponse resp;
+  GetDataServiceMetadataResponse resp;
   grpc::ClientContext ctx;
-  grpc::Status s = stub_->GetElementSpec(&ctx, req, &resp);
+  grpc::Status s = stub_->GetDataServiceMetadata(&ctx, req, &resp);
   if (!s.ok()) {
-    return grpc_util::WrapError("Failed to get element_spec", s);
+    return grpc_util::WrapError("Failed to get data service metadata", s);
   }
-  element_spec = resp.element_spec();
+  metadata = resp.metadata();
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::GetDataServiceConfig(
+    DataServiceConfig& config) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  GetDataServiceConfigRequest request;
+  GetDataServiceConfigResponse response;
+  grpc::ClientContext ctx;
+  grpc::Status s = stub_->GetDataServiceConfig(&ctx, request, &response);
+  if (!s.ok()) {
+    return grpc_util::WrapError("Failed to get data service config", s);
+  }
+  config = response.config();
   return Status::OK();
 }
 

@@ -665,6 +665,43 @@ ReferenceUtil::ReduceToRowArray2D(
   return result;
 }
 
+/* static */ std::unique_ptr<Array3D<float>> ReferenceUtil::MapArray3D(
+    const Array3D<float>& array,
+    const std::function<float(float)>& map_function) {
+  int64_t n1 = array.n1();
+  int64_t n2 = array.n2();
+  int64_t n3 = array.n3();
+  auto result = absl::make_unique<Array3D<float>>(n1, n2, n3);
+  for (int64_t i = 0; i < n1; ++i) {
+    for (int64_t j = 0; j < n2; ++j) {
+      for (int64_t k = 0; k < n3; ++k) {
+        (*result)(i, j, k) = map_function(array(i, j, k));
+      }
+    }
+  }
+  return result;
+}
+
+/* static */ std::unique_ptr<Array3D<float>> ReferenceUtil::MapArray3D(
+    const Array3D<float>& lhs, const Array3D<float>& rhs,
+    const std::function<float(float, float)>& map_function) {
+  CHECK_EQ(lhs.n1(), rhs.n1());
+  CHECK_EQ(lhs.n2(), rhs.n2());
+  CHECK_EQ(lhs.n3(), rhs.n3());
+  int64_t n1 = lhs.n1();
+  int64_t n2 = rhs.n2();
+  int64_t n3 = rhs.n3();
+  auto result = absl::make_unique<Array3D<float>>(n1, n2, n3);
+  for (int64_t i = 0; i < n1; ++i) {
+    for (int64_t j = 0; j < n2; ++j) {
+      for (int64_t k = 0; k < n3; ++k) {
+        (*result)(i, j, k) = map_function(lhs(i, j, k), rhs(i, j, k));
+      }
+    }
+  }
+  return result;
+}
+
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MapWithIndexArray2D(
     const Array2D<float>& matrix,
     const std::function<float(float, int64_t, int64_t)>& map_function) {

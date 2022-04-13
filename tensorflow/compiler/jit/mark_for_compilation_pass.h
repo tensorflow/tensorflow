@@ -41,7 +41,8 @@ class MarkForCompilationPass : public GraphOptimizationPass {
 
  private:
   Status RunForTest(const GraphOptimizationPassOptions& options,
-                    bool disable_deadness_analysis);
+                    bool disable_deadness_analysis,
+                    bool deterministic_cluster_names);
 
   friend class MarkForCompilationPassTestHelper;
 };

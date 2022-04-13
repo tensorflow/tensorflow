@@ -44,10 +44,19 @@ and the following optional parameters:
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 *   `max_profiling_buffer_entries`: `int` (default=1024) \
-    The max number of profiling events that will be stored during each inference
-    run. It is only meaningful when `enable_op_profiling` is set to `true`.
-    Note, the actual value of this parameter will be adjusted if the model has
-    more nodes than the specified value of this parameter.
+    The initial max number of profiling events that will be stored during each
+    inference run. It is only meaningful when `enable_op_profiling` is set to
+     `true`. Note, the actual value of this parameter will be adjusted if the
+     model has more nodes than the specified value of this parameter. Also, when
+     `allow_dynamic_profiling_buffer_increase` is set to `true`, the number of
+     profiling buffer entries will be increased dynamically.
+*   `allow_dynamic_profiling_buffer_increase`: `bool` (default=false) \
+    Whether allowing dynamic increase on the number of profiling buffer entries.
+    It is only meaningful when `enable_op_profiling` is set to `true`.
+    Note, allowing dynamic buffer size increase may cause more profiling
+    overhead, thus it is preferred to set `max_profiling_buffer_entries` to a
+    large-enough value.
+
 *   `profiling_output_csv_file`: `str` (default="") \
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
@@ -80,6 +89,12 @@ and the following optional parameters:
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
     flags.
+*  `release_dynamic_tensors`: `bool` (default=false) \
+    Whether to configure the Interpreter to immediately release the memory of
+    dynamic tensors in the graph once they are not used.
+*  `optimize_memory_for_large_tensors`: `int` (default=0) \
+    Whether to optimize memory usage for large tensors with sacrificing latency.
+    When the feature is enabled, `release_dynamic_tensors` is also enabled.
 
 ### Model input parameters
 By default, the tool will use randomized data for model inputs. The following

@@ -416,7 +416,7 @@ class BaseUnidirectionalLstmTest : public ::testing::TestWithParam<bool> {
       }
     }
 
-    lstm->Invoke();
+    ASSERT_EQ(lstm->Invoke(), kTfLiteOk);
 
     const int num_outputs = lstm->num_outputs();
     EXPECT_GT(num_outputs, 0);
@@ -2529,7 +2529,7 @@ class BaseLayerNormUnidirectionalLstmTest : public ::testing::Test {
       }
     }
 
-    lstm->Invoke();
+    ASSERT_EQ(lstm->Invoke(), kTfLiteOk);
 
     const int num_outputs = lstm->num_outputs();
     EXPECT_GT(num_outputs, 0);
@@ -3176,7 +3176,7 @@ TEST(IntegerUnidirectionalSequenceLstmOpTest,
 
   // Invoke and verify the result.
   lstm.SetInput(lstm_input);
-  lstm.Invoke();
+  ASSERT_EQ(lstm.Invoke(), kTfLiteOk);
   EXPECT_THAT(lstm.GetOutput(), ElementsAreArray(expected_output));
 }
 
@@ -3345,7 +3345,7 @@ TEST(IntegerUnidirectionalSequenceLstmOpTest,
 
   // Invoke and verify the result.
   lstm.SetInput(lstm_input);
-  lstm.Invoke();
+  ASSERT_EQ(lstm.Invoke(), kTfLiteOk);
   EXPECT_THAT(lstm.GetOutput(), ElementsAreArray(expected_output));
 }
 

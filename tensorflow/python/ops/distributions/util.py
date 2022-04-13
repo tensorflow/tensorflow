@@ -1385,7 +1385,7 @@ def parent_frame_arguments():
   return final_args
 
 
-class AppendDocstring(object):
+class AppendDocstring:
   """Helper class to promote private subclass docstring to public counterpart.
 
   Example:
