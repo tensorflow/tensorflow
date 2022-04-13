@@ -26,36 +26,6 @@ namespace grappler {
 
 constexpr char kAutotune[] = "autotune";
 
-class GPUTensorOpList {
- public:
-  gtl::FlatSet<string> AllowList() {
-    auto list = gtl::FlatSet<string>{
-        "map_and_batch_fusion",
-        "noop_elimination",
-        "map_parallelization",
-        "shuffle_and_repeat_fusion",
-        "filter_fusion",
-        "map_and_filter_fusion",
-        "map_fusion",
-        "parallel_batch",
-        "autotune_buffer_sizes",
-        "disable_prefetch_legacy_autotune",
-        "make_sloppy",
-        "use_choose_fastest",
-        "batch_parallelization",
-        "enable_gradient_descent",
-        "inject_prefetch",
-        "inject_prefetch_eligible",
-        "autotune",
-        "slack",
-        "slack_period",
-        "make_deterministic",
-        "enable_gpu_compatible_memory",
-    };
-    return list;
-  }
-};
-
 // If prefetch_to_device op exists, this op will try to set the set
 // the memory type to the gpu compatible type (pinned memory)
 class EnableGPUCompatibleMemory : public TFDataOptimizerBase {

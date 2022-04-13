@@ -68,9 +68,6 @@ TEST_P(RewriteTest, DisablePrefetchLegacyAutotune) {
             {"output_types", gtl::ArraySlice<DataType>{}}}),
       NDef("prefetch1", "PrefetchDataset", {"range"},
            {{"legacy_autotune", true}}),
-      NDef("prefetch2", "PrefetchDataset", {"prefetch1"},
-           {{"legacy_autotune", false}}),
-      NDef("prefetch3", "PrefetchDataset", {"prefetch2"}, {}),
   });
 
   GraphDef output;

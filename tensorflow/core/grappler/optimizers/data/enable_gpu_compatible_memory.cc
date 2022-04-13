@@ -37,10 +37,6 @@ constexpr char UseGpuCompatAllocatorAttr[] = "UseGpuCompatAllocator";
 bool HasUseGpuCompatAllocatorAttr(const NodeDef& node) {
     return node.attr().contains(UseGpuCompatAllocatorAttr);
 }
-
-std::unique_ptr<GPUTensorOpList> get_gpu_tensor_op_list() {
-  return std::make_unique<GPUTensorOpList>();
-}
 }  // namespace
 
 Status EnableGPUCompatibleMemory::OptimizeAndCollectStats(Cluster* cluster,
@@ -59,17 +55,8 @@ Status EnableGPUCompatibleMemory::OptimizeAndCollectStats(Cluster* cluster,
     const NodeDef& prefetch_node = node;
     NodeDef* node_prior = graph_utils::GetInputNode(prefetch_node, graph);
 
-    std::unique_ptr<GPUTensorOpList> mp_lists =
-        get_gpu_tensor_op_list();
     if (node_prior == nullptr) {
       VLOG(2) << "No op was found prior to the prefetch op!";
-      return Status::OK();      
-    }
-
-    if (!mp_lists->AllowList().count(node_prior->op()))
-    {
-      VLOG(2) << "The " << node_prior->op() << " op was not listed in the "
-        << "allowlist of the EnableGPUCompatibleMemory op";
       return Status::OK();      
     }
 
