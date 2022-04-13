@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 
 #include <functional>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
@@ -44,14 +45,12 @@ GpuGemmConfig GetGpuGemmConfig(const HloInstruction *gemm) {
 GemmThunk::GemmThunk(ThunkInfo thunk_info, GpuGemmConfig config,
                      const BufferAllocation::Slice &lhs_buffer,
                      const BufferAllocation::Slice &rhs_buffer,
-                     const BufferAllocation::Slice &output_buffer,
-                     bool implements_whole_instruction)
+                     const BufferAllocation::Slice &output_buffer)
     : Thunk(Kind::kGemm, thunk_info),
       config_(std::move(config)),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
-      output_buffer_(output_buffer),
-      implements_whole_instruction_(implements_whole_instruction) {}
+      output_buffer_(output_buffer) {}
 
 Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
   auto get_device_address = [&](const BufferAllocation::Slice &slice) {
@@ -62,8 +61,7 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
   se::DeviceMemoryBase lhs_data = get_device_address(lhs_buffer_);
   se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
-  return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream,
-                 implements_whole_instruction_, profile_index());
+  return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream);
 }
 
 // This struct contains the metadata of a matrix, e.g., its base address and
@@ -185,8 +183,6 @@ static Status DoGemm(int64_t batch_size, const MatrixDescriptor &lhs,
 Status RunGemm(const GpuGemmConfig &gemm_config,
                se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream *stream,
-               bool implements_whole_instruction,
-               absl::optional<int64_t> profile_index,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {
   VLOG(2) << "Executing a GemmThunk";
