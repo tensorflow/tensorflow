@@ -414,15 +414,15 @@ cc_library(
 )
 
 cc_library(
-        name = "rocm_helpers",
-        srcs = ["rocm_helpers.cu.cc"],
-	copts = rocm_copts(),
-        deps =
+    name = "rocm_helpers",
+    srcs = ["rocm_helpers.cu.cc"],
+    copts = rocm_copts(),
+    deps =
         [
-                "@local_config_rocm//rocm:rocm_headers",
+            "@local_config_rocm//rocm:rocm_headers",
         ],
-        alwayslink = True,
-    )
+    alwayslink = True,
+)
 
 cc_library(
     name = "all_runtime",
