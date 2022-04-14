@@ -161,7 +161,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
             {{"_r", 1},
              {"id", request_id},
              {"signature", signature_name},
-             {"model_id", absl::StrCat(options.model_metadata.name(),
+             {"model_id", absl::StrCat(options.model_metadata.name(), ":",
                                        options.model_metadata.version())}});
       },
       tensorflow::profiler::ContextType::kTfrtExecutor,
