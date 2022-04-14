@@ -58,7 +58,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
