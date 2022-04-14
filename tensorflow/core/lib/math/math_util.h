@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_
 #define TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_
 
-#include <limits>
 #include <type_traits>
 
 #include "tensorflow/core/platform/logging.h"
@@ -85,6 +84,29 @@ class MathUtil {
   // Input validity is DCHECKed.
   template <typename T>
   static T IPow(T base, int exp);
+
+  // Retrieves the sign of `x`:
+  //  nan if x is nan.
+  //   -1 if x < 0,
+  //   +1 if x > 0,
+  //    0 if x = 0.
+  template <typename T, absl::enable_if_t<std::is_integral<T>::value, int> = 0>
+  static T Sign(const T x) {
+    return SignHelper<T>(x);
+  }
+  template <typename T, absl::enable_if_t<!std::is_integral<T>::value, int> = 0>
+  static T Sign(const T x) {
+    return std::isnan(x) ? x : SignHelper<T>(x);
+  }
+
+ private:
+  // A helper function to reduce duplication between two MathUtil::Sign
+  // functions, which are required to be split to avoid ambiguity for integral
+  // types with std::isnan for some builds.
+  template <typename T>
+  static T SignHelper(const T x) {
+    return x == T(0) ? T(0) : (x > T(0) ? T(1) : T(-1));
+  }
 };
 
 // ---- CeilOrFloorOfRatio ----
@@ -134,15 +156,15 @@ IntegralType MathUtil::CeilOrFloorOfRatio(IntegralType numerator,
 }
 
 template <typename IntegralType>
-IntegralType MathUtil::GCD(IntegralType a, IntegralType b) {
+IntegralType MathUtil::GCD(IntegralType x, IntegralType y) {
   static_assert(std::is_unsigned<IntegralType>::value,
                 "signed GCD not supported!");
-  while (b != 0) {
-    IntegralType r = a % b;
-    a = b;
-    b = r;
+  while (y != 0) {
+    IntegralType r = x % y;
+    x = y;
+    y = r;
   }
-  return a;
+  return x;
 }
 
 // ---- IPow ----
@@ -157,16 +179,6 @@ T MathUtil::IPow(T base, int exp) {
     exp >>= 1;
     if (exp == 0) return result;
   }
-}
-
-// Retrieves the sign mask of `x`:
-//   -1 if x < 0,
-//   +1 if x > 0,
-//    0 if x = 0.
-//  nan if x is nan.
-template <typename T>
-static T Sign(const T x) {
-  return std::isnan(x) ? x : (x == T(0) ? T(0) : (x > T(0) ? T(1) : T(-1)));
 }
 
 }  // namespace tensorflow
