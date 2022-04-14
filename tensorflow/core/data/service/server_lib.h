@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SERVER_LIB_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SERVER_LIB_H_
 
+#include <memory>
+#include <string>
+
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/data_transfer.h"
