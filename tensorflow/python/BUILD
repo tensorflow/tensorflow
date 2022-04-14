@@ -3296,7 +3296,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
-        "//tensorflow/core/profiler/internal/cpu:python_tracer",
+        "//tensorflow/core/profiler/backends/cpu:python_tracer",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/lite/delegates/flex:delegate",
@@ -3388,7 +3388,7 @@ filegroup(
         "//tensorflow/core/util:determinism",  # determinism
         "//tensorflow/core/platform:tensor_float_32_utils",  # tensor_float_32
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core/profiler/internal/cpu:traceme_recorder_impl",  # profiler
+        "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/profiler/rpc:profiler_server_impl",  # profiler
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",  # profiler

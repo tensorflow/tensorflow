@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
+#include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/rocm_tracer.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"

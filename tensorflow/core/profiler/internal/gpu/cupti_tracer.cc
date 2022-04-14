@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
+#include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 #include "tensorflow/core/profiler/internal/gpu/nvtx_utils.h"
 

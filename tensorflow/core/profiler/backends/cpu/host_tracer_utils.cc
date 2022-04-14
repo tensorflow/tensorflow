@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/internal/cpu/host_tracer_utils.h"
+#include "tensorflow/core/profiler/backends/cpu/host_tracer_utils.h"
 
 #include <string>
 #include <utility>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
+#include "tensorflow/core/profiler/backends/cpu/traceme_recorder.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/parse_annotation.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"

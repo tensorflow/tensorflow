@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/internal/cpu/python_tracer.h"
+#include "tensorflow/core/profiler/backends/cpu/host_tracer.h"
 #include "tensorflow/core/profiler/lib/profiler_factory.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 
@@ -20,16 +20,15 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-std::unique_ptr<ProfilerInterface> CreatePythonTracer(
+std::unique_ptr<ProfilerInterface> CreateHostTracer(
     const ProfileOptions& profile_options) {
-  PythonTracerOptions options;
-  options.enable_trace_python_function = profile_options.python_tracer_level();
-  options.enable_python_traceme = profile_options.host_tracer_level();
-  return CreatePythonTracer(options);
+  HostTracerOptions options;
+  options.trace_level = profile_options.host_tracer_level();
+  return CreateHostTracer(options);
 }
 
-auto register_python_tracer_factory = [] {
-  RegisterProfilerFactory(&CreatePythonTracer);
+auto register_host_tracer_factory = [] {
+  RegisterProfilerFactory(&CreateHostTracer);
   return 0;
 }();
 
