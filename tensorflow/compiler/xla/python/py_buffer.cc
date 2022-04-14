@@ -608,7 +608,11 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       py::is_method(type));
   type.attr("copy_to_remote_device") = py::cpp_function(
       [](PyBuffer::object self, const py::bytes serialized_descriptor) {
-        return self.buf()->CopyToRemoteDevice(serialized_descriptor);
+        // TODO(phawkins): remove the std::string cast after C++17 is required.
+        // py::bytes has a std::string_view cast, but not an absl::string_view
+        // cast.
+        return self.buf()->CopyToRemoteDevice(
+            static_cast<std::string>(serialized_descriptor));
       },
       py::is_method(type));
 
