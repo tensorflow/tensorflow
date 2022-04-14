@@ -692,6 +692,7 @@ cc_library(
     hdrs = ["tf2xla_util.h"],
     visibility = [":friends"],
     deps = [
+        ":frontend_attributes_util",
         ":sharding_util",
         ":tf2xla_proto_cc",
         "//tensorflow/compiler/xla:status_macros",
@@ -1035,6 +1036,7 @@ tf_cc_test(
     deps = [
         ":functionalize_control_flow",
         ":test_util",
+        ":tf2xla_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

@@ -23,8 +23,15 @@ namespace mlir {
 namespace TF {
 
 // TODO(b/228344955) use inline constexpr with C++17
+
+// Marks a node for XLA compilation. The attribute value indicates the
+// compilation device type.
 extern const llvm::StringRef kCompileDeviceTypeAttr;
+// Marks a node for replication. The attribute value indicates the replication
+// metadata op.
 extern const llvm::StringRef kReplicationInfoAttr;
+// Marks a node for XLA-TPU compilation. The attribute value indicates the
+// associated compilation cluster and replication metadata op.
 extern const llvm::StringRef kTPUReplicateAttr;
 
 // Copies attributes that satisfy the given predicate from `from` to `to`.
