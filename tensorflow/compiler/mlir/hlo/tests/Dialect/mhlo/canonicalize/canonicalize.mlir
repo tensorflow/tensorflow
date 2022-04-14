@@ -191,6 +191,16 @@ func.func @concatenate_noop(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   func.return %0 : tensor<4xi32>
 }
 
+// CHECK-LABEL: concatenate_noop_typecast
+func.func @concatenate_noop_typecast(%arg0: tensor<?xi32>) -> tensor<4xi32> {
+  // CHECK-SAME: [[ARG:%.+]]: tensor<?xi32>
+  // CHECK-NEXT: [[RES:%.+]] = tensor.cast [[ARG]] : tensor<?xi32> to tensor<4xi32>
+  %0 = "mhlo.concatenate"(%arg0) { dimension = 0 : i64 } : (tensor<?xi32>) -> tensor<4xi32>
+
+  // CHECK: return [[RES]]
+  func.return %0 : tensor<4xi32>
+}
+
 // CHECK-LABEL: concatenate_remove_operand
 func.func @concatenate_remove_operand(%arg0: tensor<4xi32>, %arg1: tensor<0xi32>) -> tensor<4xi32> {
   // CHECK-SAME: [[ARG0:%.+]]: tensor<4xi32>

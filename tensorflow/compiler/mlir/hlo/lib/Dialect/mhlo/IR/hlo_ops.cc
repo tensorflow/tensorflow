@@ -2619,6 +2619,19 @@ OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 namespace {
+class SingleOperandConcatenateToCast : public OpRewritePattern<ConcatenateOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(ConcatenateOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.val().size() != 1) return failure();
+
+    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, op.getType(),
+                                                op.val().front());
+    return success();
+  }
+};
+
 class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -2765,7 +2778,8 @@ LogicalResult ConcatenateOp::inferReturnTypes(
 
 void ConcatenateOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.add<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
+  results.add<ConcatenateOperandRemoval, ConcatenateForwarding,
+              SingleOperandConcatenateToCast>(context);
 }
 
 template <typename T>
