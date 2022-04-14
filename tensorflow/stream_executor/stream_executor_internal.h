@@ -314,6 +314,10 @@ class StreamExecutorInterface {
     return false;
   }
 
+  // Returns whether the StreamExecutor has support for BLAS plans as
+  // implemented for instance in the cuBLASLt API
+  virtual bool SupportsBlasPlans() const { return false; }
+
   // Returns whether this StreamExecutor has BLAS support for its underlying
   // platform.
   virtual bool SupportsBlas() const { return false; }
