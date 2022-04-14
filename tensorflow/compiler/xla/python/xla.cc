@@ -229,6 +229,9 @@ PYBIND11_MODULE(xla_extension, m) {
            py::arg("device") = nullptr, py::arg("force_copy") = false,
            py::arg("host_buffer_semantics") =
                PjRtClient::HostBufferSemantics::kZeroCopy)
+      .def("make_cross_host_receive_buffers",
+           &PyClient::MakeCrossHostReceiveBuffers, py::arg("shapes"),
+           py::arg("device"))
       .def("compile", &PyClient::Compile, py::arg("computation"),
            py::arg("compile_options") = CompileOptions())
       .def("compile", &PyClient::CompileMlir, py::arg("computation"),
