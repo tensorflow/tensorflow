@@ -232,7 +232,7 @@ def InvokeNvcc(argv, log=False):
   capabilities_both = capabilities_sm.intersection(capabilities_compute)
   for capability in capabilities_both:
     capability = capability[len('sm_'):]
-    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
+    nvccopts += r'-gencode=arch=compute_%s,code=\"sm_%s,compute_%s\" ' % (
         capability, capability, capability)
   for capability in capabilities_sm - capabilities_both:
     capability = capability[len('sm_'):]
