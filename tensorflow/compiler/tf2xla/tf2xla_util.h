@@ -30,6 +30,26 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Some strings which are needed in TF2XLA context.
+// TODO(b/228344955) use inline constexpr with C++17
+
+// Marks a node for XLA-TPU compilation. The attribute value indicates the
+// associated compilation cluster and replication metadata op.
+extern const absl::string_view kTpuReplicateAttr;
+// Marks a node for XLA compilation. The attribute value indicates the
+// compilation device type.
+extern const absl::string_view kCompileDeviceTypeAttr;
+// Marks a node for replication. The attribute value indicates the replication
+// metadata op.
+extern const absl::string_view kReplicationInfoAttr;
+// Marks a node inside of an XLA compilation cluster to be placed outside of the
+// cluster.
+extern const absl::string_view kXlaOutsideCompilationAttr;
+
+// Attributes that need to be propagated during rewrites (e.g., in
+// functionalization)
+extern const std::array<absl::string_view, 5> kAttrsToPropagate;
+
 // ValidateConfig returns OK iff config is valid.
 Status ValidateConfig(const tf2xla::Config& config);
 
@@ -143,9 +163,6 @@ Status RewriteAssociatedFunction(
     const AssociatedFunctionInfo& associated_function,
     const string& rewritten_function_name);
 
-// Attribute to mark nodes to be executed on host.
-extern const char kXlaOutsideCompilationAttrName[];
-
 // Class to act as cache for FunctionLibraryRuntime::Handle objects.
 class CachedFunctionHandles {
  public:
@@ -211,8 +228,6 @@ Status PruneUnreachableFunctionsFromGraph(const Graph& g,
 // TODO(b/128633174) remove the TensorList and related TensorList ops.
 Status RewriteTensorListWithConstElement(Graph* g,
                                          FunctionLibraryDefinition* fld);
-
-extern const char kTpuReplicateAttrName[];
 
 inline bool IsConstTraversableOpType(const Node* node) {
   return node->type_string() == "Identity" ||

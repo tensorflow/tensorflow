@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -44,6 +45,21 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
+
+// TODO(b/228344955) use inline constexpr with C++17
+const absl::string_view kTpuReplicateAttr = "_tpu_replicate";
+const absl::string_view kXlaOutsideCompilationAttr = "_xla_outside_compilation";
+const absl::string_view kCompileDeviceTypeAttr = "_xla_compile_device_type";
+const absl::string_view kReplicationInfoAttr = "_replication_info";
+
+// TODO(b/160275126): if possible, avoid hard-coding these attributes here
+const std::array<absl::string_view, 5> kAttrsToPropagate = {
+    kCompileDeviceTypeAttr,
+    kReplicationInfoAttr,
+    kXlaFrontendAttributesAttrName,
+    kXlaOutsideCompilationAttr,
+    kTpuReplicateAttr,
+};
 
 namespace {
 
@@ -481,9 +497,6 @@ StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
   return IsLoopInvariant(loop_body, index, lookup_fld,
                          /*fallback_fld=*/nullptr, &cache);
 }
-
-const char kTpuReplicateAttrName[] = "_tpu_replicate";
-const char kXlaOutsideCompilationAttrName[] = "_xla_outside_compilation";
 
 Status ValidateConfig(const tf2xla::Config& config) {
   std::set<string> names;

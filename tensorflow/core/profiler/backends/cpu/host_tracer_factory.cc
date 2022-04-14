@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,22 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_HOST_TRACER_UTILS_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_HOST_TRACER_UTILS_H_
-
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/cpu/traceme_recorder.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/backends/cpu/host_tracer.h"
+#include "tensorflow/core/profiler/lib/profiler_factory.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 
 namespace tensorflow {
 namespace profiler {
+namespace {
 
-// Convert complete events to XPlane format.
-void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
-                                   TraceMeRecorder::Events&& events,
-                                   XPlane* raw_plane);
+std::unique_ptr<ProfilerInterface> CreateHostTracer(
+    const ProfileOptions& profile_options) {
+  HostTracerOptions options;
+  options.trace_level = profile_options.host_tracer_level();
+  return CreateHostTracer(options);
+}
 
+auto register_host_tracer_factory = [] {
+  RegisterProfilerFactory(&CreateHostTracer);
+  return 0;
+}();
+
+}  // namespace
 }  // namespace profiler
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_HOST_TRACER_UTILS_H_

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RUN: tf-quant-opt %s -tf-fused-kernel-matcher -quant-prepare-lifting | FileCheck %s
+// RUN: tf-quant-opt %s -quant-prepare-lifting | FileCheck %s
 
 func.func @fold_batch_norm(%arg0: tensor<*xf32>) -> (tensor<*xf32>) {
   %cst = "tf.Const"() {value = dense<1.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>

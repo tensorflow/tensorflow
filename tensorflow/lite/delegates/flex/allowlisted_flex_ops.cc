@@ -732,6 +732,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "UniqueWithCounts",
           "UniqueWithCountsV2",
           "Unpack",
+          "UnsortedSegmentJoin",
           "UnsortedSegmentMax",
           "UnsortedSegmentMin",
           "UnsortedSegmentProd",

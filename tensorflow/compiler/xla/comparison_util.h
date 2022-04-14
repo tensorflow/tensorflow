@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 
 #include <string>
+#include <type_traits>
 
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
@@ -24,7 +25,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 namespace xla {
 
@@ -134,6 +137,13 @@ class Comparison {
     return primitive_type_ == PrimitiveType::U32 && IsTotalOrder();
   }
 
+  inline bool IsIntegralPrimitiveType() const {
+    return primitive_util::IsIntegralType(primitive_type_);
+  }
+  inline bool IsFloatingPointPrimitiveType() const {
+    return primitive_util::IsFloatingPointType(primitive_type_);
+  }
+
   // Returns whether (a dir a) is always true for this comparison.
   bool IsReflexive() const;
 
@@ -173,15 +183,29 @@ class Comparison {
     }
   }
 
-  // Applies the comparison from this Comparison's direction. Note that this
-  // does not account for the PrimitiveType and Order associated with this
-  // comparison, and instead uses the type T. For example,
-  //
-  // float operand = absl::bit_cast<float>(0x7fc00000); /* NaN */
-  // Comparison(Direction::kEq, xla::F32, Order::kTotal)
-  //   .Compare<float>(operand, operand)  // false, since it's using IEEE-754.
-  template <typename T>
+  // Applies the comparison from this Comparison's direction and ordering for
+  // integral types.
+  template <typename T, absl::enable_if_t<std::is_integral<T>::value, int> = 0>
   bool Compare(const T a, const T b) const {
+    CHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
+    return GetComparator<T>()(a, b);
+  }
+
+  // Applies the comparison from this Comparison's direction and ordering
+  // for floating point types.
+  template <typename T,
+            absl::enable_if_t<std::is_floating_point<T>::value ||
+                                  std::is_same<T, xla::bfloat16>::value,
+                              int> = 0>
+  bool Compare(const T a, const T b) const {
+    CHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
+    if (IsTotalOrder()) {
+      //  -NaN < -Inf < -Finite < -0 < +0 < +Finite < +Inf < +NaN
+      // Reference:
+      // https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations
+      using R = typename SignedIntegerTypeForSize<sizeof(T)>::type;
+      return GetComparator<R>()(ToSignMagnitude(a), ToSignMagnitude(b));
+    }
     return GetComparator<T>()(a, b);
   }
 

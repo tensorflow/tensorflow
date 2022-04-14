@@ -3702,7 +3702,7 @@ Stream &Stream::ThenBlasLtMatmulImpl(
     const DeviceMemory<CType> &bias,
     blas::ProfileResult *output_profile_result) {
   VLOG_CALL(PARAM(plan), PARAM(alpha), PARAM(a), PARAM(b), PARAM(beta),
-            PARAM(c), PARAM(algorithm), PARAM(bias));
+            PARAM(scratch_allocator), PARAM(c), PARAM(algorithm), PARAM(bias));
 
   ThenBlasWithProfileImpl<
       const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<CType> &,

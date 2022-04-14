@@ -126,13 +126,27 @@ ENTRY AddDotsFunc {
       backend().compiler()->RunHloPasses(
           *get_module(), backend().default_stream_executor(),
           backend().default_stream_executor()->GetAllocator()));
-  StatusOr<bool> filecheck_result = RunFileCheck(optimized_module->ToString(),
-                                                 R"(
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  if (!debug_options.xla_gpu_enable_cublaslt()) {
+    StatusOr<bool> filecheck_result_cublas =
+        RunFileCheck(optimized_module->ToString(),
+                     R"(
 ; CHECK:    \"selected_algorithm\":\"-1\"
       )");
-  TF_ASSERT_OK(filecheck_result.status());
-  EXPECT_TRUE(filecheck_result.ValueOrDie());
-  EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-5, 1e-5}));
+    TF_ASSERT_OK(filecheck_result_cublas.status());
+    EXPECT_TRUE(filecheck_result_cublas.ValueOrDie());
+    EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-5, 1e-5}));
+  } else {
+    // With cublaslt enabled, selected_algorithm is se::blas::kNoAlgorithm
+    StatusOr<bool> filecheck_result_cublas =
+        RunFileCheck(optimized_module->ToString(),
+                     R"(
+; CHECK:    \"selected_algorithm\":\"-4\"
+      )");
+    TF_ASSERT_OK(filecheck_result_cublas.status());
+    EXPECT_TRUE(filecheck_result_cublas.ValueOrDie());
+    EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-3, 1e-5}));
+  }
 }
 
 TEST_F(GemmRewriteTest, ArgTransposeFoldCheck) {
@@ -248,7 +262,12 @@ ENTRY AddDotsFunc {
 
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  if (!debug_options.xla_gpu_enable_cublaslt()) {
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  } else {
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-2}));
+  }
   MatchOptimizedHlo(hlo_text,
                     R"(
 

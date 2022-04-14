@@ -1485,6 +1485,8 @@ def _build_meta_graph(obj,
     exported_graph: `tf.Graph` object generated from `obj`.
     object_saver: `util.TrackableSaver` of the `obj` and its dependencies.
     asset_info: `_AssetInfo` tuple containing external assets in the `obj`.
+    saveable_view.nodes: _SaveableView nodes.
+    saveable_view.node_paths: _SaveableView paths.
   """
 
   with save_context.save_context(options):

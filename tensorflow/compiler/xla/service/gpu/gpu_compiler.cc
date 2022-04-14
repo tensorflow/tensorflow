@@ -207,14 +207,31 @@ class GpuBfloat16Support : public BFloat16Support {
  private:
   bool IsSupported(const HloInstruction& hlo) const {
     switch (hlo.opcode()) {
+      // Collective ops.
       case HloOpcode::kAllGather:
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kAllReduceDone:
-      case HloOpcode::kReduceScatter:
       case HloOpcode::kAllToAll:
-      case HloOpcode::kBitcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kReduceScatter:
+      // Data movement only ops.
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kCopy:
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kGather:
+      case HloOpcode::kPad:
+      case HloOpcode::kReshape:
+      case HloOpcode::kReverse:
+      case HloOpcode::kScatter:
+      case HloOpcode::kSelect:
+      case HloOpcode::kSelectAndScatter:
+      case HloOpcode::kSlice:
+      case HloOpcode::kTranspose:
+      // Other special ops.
+      case HloOpcode::kBitcast:
         return true;
       case HloOpcode::kConvolution:
         return IsConvBF16Supported();

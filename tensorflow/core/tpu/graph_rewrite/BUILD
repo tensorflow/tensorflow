@@ -160,6 +160,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/core/common_runtime:device_propagation",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",

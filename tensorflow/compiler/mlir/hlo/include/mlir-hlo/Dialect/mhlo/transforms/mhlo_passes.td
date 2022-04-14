@@ -227,3 +227,9 @@ def RankSpecializationToSCFPass
            "of greater rank may result in a runtime failure.">,
   ];
 }
+
+def CollapseElementwiseMapPass
+    : Pass<"mhlo-collapse-elementwise-map", "func::FuncOp"> {
+  let summary = "Collapse the mhlo.map if the map only has elementwise ops.";
+  let constructor = "createCollapseElementwiseMapPass()";
+}

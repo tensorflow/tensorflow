@@ -219,6 +219,7 @@ cc_library(
         "vectorization_pass.cc",
     ],
     hdrs = ["passes.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":bufferize",  # buildcleaner: keep
         ":bufferize_tiled_loop",  # buildcleaner: keep
