@@ -37,10 +37,50 @@ def FallbackSync_Dialect : Dialect {
 
 class FallbackSync_Op<string mnemonic, list<Trait> traits = []> :
     Op<FallbackSync_Dialect, mnemonic, !listconcat(traits, [IsolatedFromAbove])> {
-  // Each registered op in the fallback namespace needs to provide all of a
-  // verifier, a printer and a parser.
-  let hasVerifier = 1;
-  let hasCustomAssemblyFormat = 1;
+}
+
+// TODO(rohitju): Add a verifier if there is anything that should be verified
+// compile time.
+def SetResourceOp : FallbackSync_Op<"set_resource", [CoreRT_TypedAttributeTrait]> {
+  let summary = "Set a tensor in resource array";
+
+  let description = [{
+    Set a tensor in resource array.
+
+    arg: the tensor to be set in the resource array.
+    index: the index in the resource array
+  }];
+
+  let arguments = (ins
+    TFTensorType:$arg,
+    I64Attr:$index
+  );
+
+  let results = (outs);
+
+  let assemblyFormat = "operands attr-dict";
+}
+
+def GetResourceOp : FallbackSync_Op<"get_resource",
+    [CoreRT_TypedAttributeTrait]> {
+  let summary = "get a tensor in resource array";
+
+  let description = [{
+    Get a tensor in resource array.
+
+    indices: the indices in the resource array.
+    results: the tensor values for the corresponding indices.
+  }];
+
+  let arguments = (ins
+    I64ArrayAttr:$indices
+  );
+
+  let results = (outs
+    Variadic<TFTensorType>:$results
+  );
+
+  let assemblyFormat = "attr-dict `:` type($results)";
 }
 
 def ExecuteOp : FallbackSync_Op<"executeop",
@@ -73,6 +113,9 @@ def ExecuteOp : FallbackSync_Op<"executeop",
     OpBuilder<(ins "ArrayRef<Type>":$results, "ValueRange":$operands,
       "ArrayRef<std::pair<StringRef, Attribute>>":$op_attrs,
       "StringRef":$op_name)>];
+
+  let hasVerifier = 1;
+  let hasCustomAssemblyFormat = 1;
 }
 
 #endif
