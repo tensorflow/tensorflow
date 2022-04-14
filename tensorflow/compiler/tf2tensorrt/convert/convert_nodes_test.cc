@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/strings/match.h"
@@ -36,8 +37,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
@@ -67,6 +66,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -1370,20 +1371,34 @@ class OpConverterTest : public ::testing::Test {
     }
   }
 
-  // Add weights for both validation and conversion.
-  template <typename T>
+  // Adds weights for both validation and conversion. The type of the weight is
+  // determined by tf_type. The initial value vector (values) can have any
+  // type (T) that can be static casted to tf_type.
+  template <typename T = int32>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
-                      const std::vector<T>& values) {
+                      const std::vector<T>& values_inp, DataType tf_type,
+                      bool fix_values = true) {
+    const DimsAdapter dims_adap(dims);
+    const int64_t num_elements = dims_adap.Volume();
+
+    std::vector<T> values(values_inp);
+    if (num_elements != values.size()) {
+      if (fix_values) {
+        AdjustVectorByDims<T>(values, num_elements, name, "AddTestWeights");
+      } else {
+        FAIL() << "Unable to create test weights: "
+               << (num_elements > values.size() ? "not enough" : "to many")
+               << " values specified: " << values.size() << " vs. "
+               << num_elements << " defined by dims";
+      }
+    }
     // Add weights for validation.
-    const auto tf_type = DataTypeToEnum<T>::v();
-    const Tensor t = AsTensor<T>(values, dims, tf_type);
+    Tensor t = AsTensor<T>(values, dims, tf_type);
     node_inputs_[name] = ops::Const(scope_.WithOpName(name), t);
 
     // Add weights for conversion.
     nvinfer1::DataType dtype;
     TF_ASSERT_OK(TfTypeToTrtType(tf_type, &dtype));
-    const DimsAdapter dims_adap(dims);
-    const int64_t num_elements = dims_adap.Volume();
     QCHECK_EQ(num_elements, values.size())
         << num_elements << " vs " << values.size();
     TRT_ShapedWeights weights(dtype);
@@ -1415,33 +1430,8 @@ class OpConverterTest : public ::testing::Test {
   // value type (T) will determine the type of the weights.
   template <typename T = int32>
   void AddTestWeights(const string& name, const std::vector<int>& dims,
-                      const std::vector<T>& values_inp, DataType tf_type,
-                      bool fix_values = true) {
-    const auto num_elements = std::accumulate(std::begin(dims), std::end(dims),
-                                              1, std::multiplies<int>());
-
-    std::vector<T> values(values_inp);
-    if (num_elements != values.size()) {
-      if (fix_values) {
-        AdjustVectorByDims<T>(values, num_elements, name, "AddTestWeights");
-      } else {
-        FAIL() << "Unable to create test weights: "
-               << (num_elements > values.size() ? "not enough" : "to many")
-               << " values specified: " << values.size() << " vs. "
-               << num_elements << " defined by dims";
-      }
-    }
-
-    if (tf_type == DT_FLOAT) {
-      AddTestWeights(name, dims, CastVector<T, float>(values));
-    } else if (tf_type == DT_HALF) {
-      AddTestWeights(name, dims, CastVector<T, Eigen::half>(values));
-    } else if (tf_type == DT_INT32) {
-      AddTestWeights(name, dims, CastVector<T, int32>(values));
-    } else {
-      FAIL() << "Cannot create test weights with type "
-             << DataTypeString(tf_type);
-    }
+                      const std::vector<T>& value, bool fix_values = true) {
+    AddTestWeights(name, dims, value, DataTypeToEnum<T>::value, fix_values);
   }
 
   // Test validation in validation-only mode.
@@ -1857,14 +1847,12 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
       std::map<std::string,
                std::pair<std::function<NodeDef(DataType)>, std::vector<T>>>&
           op_test_info,
-      DataType tf_type) {
+      const std::vector<std::vector<T>>& data) {
     // Test combinations of tensor vs weight inputs (except when both inputs are
     // weights).
-    bool expectedToFailTested = false;
+    const DataType tf_type = get_tf_type();
     for (const bool operand_1_is_tensor : {true, false}) {
       for (const bool operand_2_is_tensor : {true, false}) {
-        const auto bothOperandsAreWeights =
-            !operand_1_is_tensor && !operand_2_is_tensor;
         for (auto& iter : map) {
           const string& op_name = iter.first;
           SCOPED_TRACE(StrCat(op_name, "_", operand_1_is_tensor ? "T" : "W",
@@ -1874,26 +1862,36 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
             FAIL() << "Binary op test map does not contain op " << op_name;
           }
 
-          if (!expectedToFailTested && bothOperandsAreWeights) {
+          if (!operand_1_is_tensor && !operand_2_is_tensor) {
             runExpectedToFailTest(op_name);
-            expectedToFailTested = true;
-            break;
+            continue;
+          }
+          auto conv_status = Status::OK();
+          if (tf_type == DT_BOOL) {
+            if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+              conv_status = errors::Unimplemented(
+                  "Binary op: '", op_name,
+                  "' is not supported in implicit batch mode");
+            } else if (!operand_1_is_tensor || !operand_2_is_tensor) {
+              conv_status = errors::InvalidArgument(
+                  "Both inputs  of '", op_name, "' are expected to be tensors");
+            }
           }
 
           Reset();
           if (operand_1_is_tensor) {
-            AddTestTensor("input1", {2, 1, 2}, {3, 6, 3, 6});
+            AddTestTensor("input1", {2, 1, 2}, data[0]);
           } else {
-            AddTestWeights("input1", {1, 2}, std::vector<T>{3, 6}, tf_type);
+            AddTestWeights("input1", {1, 2}, data[1], tf_type);
           }
           if (operand_2_is_tensor) {
-            AddTestTensor("input2", {2, 2, 1}, {2, 3, 2, 3});
+            AddTestTensor("input2", {2, 2, 1}, data[2]);
           } else {
-            AddTestWeights("input2", {2, 1}, std::vector<T>{2, 3}, tf_type);
+            AddTestWeights("input2", {2, 1}, data[3], tf_type);
           }
 
           const NodeDef& node_def = op_test_info[op_name].first(tf_type);
-          TestOpConverter("my_binary", node_def, {2, 2, 2}, Status::OK(),
+          TestOpConverter("my_binary", node_def, {2, 2, 2}, conv_status,
                           Status::OK(),
                           ElementsAreArray(op_test_info[op_name].second));
         }
@@ -1911,9 +1909,8 @@ class OpConverter_BinaryTest : public ParameterizedOpConverterTestBase {
     AddTestWeights("weights1", {1}, {1}, tf_type_);
     AddTestWeights("weights2", {1}, {1}, tf_type_);
     const string error =
-        "Constant folding is falled back to TensorFlow, "
-        "binary op '" +
-        op_name + "' received both input as constant";
+        "Constant folding is falled back to TensorFlow, binary op '" + op_name +
+        "' received both input as constant";
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED, error);
   }
 };
@@ -1935,6 +1932,7 @@ typedef ParameterizedOpConverterTestBase OpConverter_FP32_Test;
 typedef ParameterizedOpConverterTestBase OpConverter_FP32_FP16_Test;
 // Base class for Binary tests that need to be tested
 typedef OpConverter_BinaryTest<float> OpConverter_FP32_FP16_BinaryTest;
+typedef OpConverter_BinaryTest<bool> OpConverter_BOOL_BinaryTest;
 // Base class for tests that need to be tested for FP32, FP16, and INT32
 typedef ParameterizedOpConverterTestBase OpConverter_FP32_FP16_INT32_Test;
 // Base class for tests that need to be tested for INT32
@@ -1969,6 +1967,12 @@ INSTANTIATE_TEST_CASE_P(
     OpConvTestInstantiation, OpConverter_FP32_FP16_BinaryTest,
     ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
                        ::testing::Values(DT_FLOAT, DT_HALF),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
+
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, OpConverter_BOOL_BinaryTest,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_BOOL),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
 template <typename T>
@@ -3285,7 +3289,24 @@ TEST_P(OpConverter_FP32_FP16_BinaryTest, ConvertBinary) {
   ADD_OP("Maximum", ops::Maximum, {3, 6, 3, 6, 3, 6, 3, 6});
   ADD_OP("Pow", ops::Pow, {9, 36, 27, 216, 9, 36, 27, 216});
 #undef ADD_OP
-  RunTests(*BinaryOperationMap(), op_test_info, get_tf_type());
+  std::vector<std::vector<float>> data = {
+      {3, 6, 3, 6}, {3, 6}, {2, 3, 2, 3}, {2, 3}};
+  RunTests(*BinaryOperationMap(), op_test_info, data);
+}
+
+TEST_P(OpConverter_BOOL_BinaryTest, ConvertBooleanBinary) {
+  using OpFunc = std::function<NodeDef(DataType)>;
+  std::map<std::string, std::pair<OpFunc, std::vector<bool>>> op_test_info;
+#define ADD_OP(name, op, v1, v2, v3, v4, v5, v6, v7, v8) \
+  op_test_info[name] =                                   \
+      std::make_pair(GetBinaryOpNodeDef<op>,             \
+                     std::vector<bool>(v1, v2, v3, v4, v5, v6, v7, v8))
+  ADD_OP("LogicalOr", ops::LogicalOr, {1, 1, 0, 1, 1, 1, 0, 1});
+  ADD_OP("LogicalAnd", ops::LogicalAnd, {0, 1, 0, 0, 0, 1, 0, 0});
+#undef ADD_OP
+  std::vector<std::vector<bool>> data = {
+      {0, 1, 0, 1}, {0, 1}, {1, 0, 1, 0}, {1, 0}};
+  RunTests(*BinaryBooleanOperationMap(), op_test_info, data);
 }
 
 NodeDef GetAddNNodeDef(const std::vector<string>& input_names, DataType dtype) {
