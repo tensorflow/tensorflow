@@ -957,7 +957,7 @@ def _annotate_variable_ops(func, graph_def):
   """
   ph_shape_map = {}
   for ph, var in zip(func.graph.internal_captures, func.variables):
-      ph_shape_map[ph.name] = var.shape
+    ph_shape_map[ph.name] = var.shape
   # Construct a mapping of node names to nodes
   # TODO: better way? in graph
   name_to_node = {node.name: node for node in graph_def.node}
