@@ -302,6 +302,8 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
   // -> W: 1 1 1  1 3 5 1
   // ***************************************************************************
   if (!operand_l.is_tensor() && !operand_r.is_tensor()) {
+    // TODO(lsugy): remove this check in dynamic shapes mode. This should work
+    // if both inputs are weights.
     return errors::InvalidArgument(
         "Broadcasting requires at least one of the operands be tensors");
   }
@@ -3324,7 +3326,8 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   TFTRT_CHECK_INPUT_SIZE(inputs.size(), 2, node_def);
 
   if (inputs[0].is_weights() && inputs[1].is_weights()) {
-    /// TODO: handle this
+    // TODO(lsugy): don't assume that if all inputs are weights, grappler
+    // should fold them, because variables are weights.
     return errors::InvalidArgument(
         "All inputs are weights, but Grappler is expected to fold them.");
   }
@@ -4698,6 +4701,8 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
+    // TODO(lsugy): don't assume that if all inputs are weights, grappler
+    // should fold them, because variables are weights.
     return errors::InvalidArgument(
         "All inputs are weights, but Grappler is expected to fold them.");
   }
@@ -5911,7 +5916,6 @@ Status ConvertGraphDefToEngine(
       DataType tf_dtype = node_def.attr().at(type_key).type();
       if (tf_dtype == DT_RESOURCE) {
         VLOG(2) << "Adding engine input resource " << node_name;
-        /// TODO: figure out static case
         TF_RETURN_IF_ERROR(converter->AddInputResource(
             node_name, ctx->input(slot_number).flat<ResourceHandle>()(0)));
       } else {

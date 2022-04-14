@@ -257,6 +257,11 @@ class ConvertReadVariableOp : public OpConverterBase<ConvertReadVariableOp> {
   }
 
   Status Validate() {
+    if (params_->use_implicit_batch) {
+      return errors::Unimplemented("Implicit batch mode not supported, at ",
+                                   params_->node_def.name());
+    }
+
     StatusOr<DataType> dtype = GetAttrValue<DataType>("dtype");
     TRT_ENSURE_OK(dtype);
     attrs_.dtype = *dtype;

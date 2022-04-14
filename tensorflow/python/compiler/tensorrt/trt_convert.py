@@ -959,18 +959,21 @@ def _annotate_variable_ops(func, graph_def):
   for ph, var in zip(func.graph.internal_captures, func.variables):
     ph_shape_map[ph.name] = var.shape
   # Construct a mapping of node names to nodes
-  # TODO: better way? in graph
   name_to_node = {node.name: node for node in graph_def.node}
   # Go through all the ReadVariableOp nodes in the graph def
   for node in graph_def.node:
     if node.op == "ReadVariableOp" or node.op == "ResourceGather":
       node_ = node
       # Go up the chain of identities to find a placeholder
-      # TODO: what if we don't find a placeholder?
       while name_to_node[node_.input[0]].op == "Identity":
         node_ = name_to_node[node_.input[0]]
-      shape = ph_shape_map[node_.input[0] + ":0"]
-      node.attr["_shape"].shape.CopyFrom(shape.as_proto())
+      ph_name = node_.input[0] + ":0"
+      if ph_name in ph_shape_map:
+        shape = ph_shape_map[ph_name]
+        node.attr["_shape"].shape.CopyFrom(shape.as_proto())
+      else:
+        raise RuntimeError(
+            "Not found in the function captures: {}".format(ph_name))
 
 
 def _get_engines_io_nodes_count(node, key):
@@ -1203,6 +1206,12 @@ class TrtGraphConverterV2(object):
       self._use_dynamic_shape = False
     else:
       self._use_dynamic_shape = use_dynamic_shape
+
+    if not self.freeze and not self._use_dynamic_shape:
+      logging.warn(
+          "Disabling graph freezing is only possible in dynamic shape mode."
+          " The graph will be frozen.")
+      self.freeze = True
 
     self._profile_strategy = "Unknown"
     if self._use_dynamic_shape:
