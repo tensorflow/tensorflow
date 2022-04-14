@@ -1120,6 +1120,16 @@ struct ConvertPolygammaOp : public OpConversionPattern<PolygammaOp> {
   }
 };
 
+// Sinh(x) = (e^x - e^-x) / 2
+//         = e^(x + log(1/2)) - e^(-x + log(1/2)).
+//
+// The second formulation avoids overflowing when e^x = inf but (e^x)/2 is not
+// inf.
+//
+// This incorrectly overflows to +/-inf for two f32 input values, namely
+// +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
+// correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
+// we deem this acceptable.
 Value MaterializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
                                             Location loc, ValueRange operands) {
   SinhOp::Adaptor transformed(operands);
@@ -1152,16 +1162,24 @@ Value MaterializeSinhApproximation(ConversionPatternRewriter &rewriter,
 
   SinhOp::Adaptor transformed(operands);
   Value x = transformed.operand();
-  Value exp_x = rewriter.create<mhlo::ExpOp>(loc, x);
-  Value exp_neg_x =
-      rewriter.create<mhlo::ExpOp>(loc, rewriter.create<mhlo::NegOp>(loc, x));
-  Value exp_difference = rewriter.create<mhlo::SubOp>(loc, exp_x, exp_neg_x);
-  Value two = getConstantLike(rewriter, loc, 2.0, x);
-  Value small_sinh_result =
-      rewriter.create<mhlo::DivOp>(loc, exp_difference, two);
+
+  // For smaller x, we get unwanted cancellations of e^x - e^-x, resulting in
+  // 0.
+  // Rewrite this to avoid that. We use expm1(x) because that preserves the
+  // first order term of the taylor series of e^x.
+  // (e^(x) - e^(-x)) / 2. =
+  // (e^(x) - 1 + 1 - e^(-x)) / 2.
+  // (expm1(x) + (e^(x) - 1) / e^x) / 2.
+  // (expm1(x) + expm1(x) / (expm1(x) + 1)) / 2.
+  Value expm1 = rewriter.create<mhlo::Expm1Op>(loc, x);
+  Value one = getConstantLike(rewriter, loc, 1.0, x);
+  Value one_half = getConstantLike(rewriter, loc, 0.5, x);
+  Value expm1_plus_one = rewriter.create<mhlo::AddOp>(loc, expm1, one);
+  Value ratio = rewriter.create<mhlo::DivOp>(loc, expm1, expm1_plus_one);
+  Value sum = rewriter.create<mhlo::AddOp>(loc, expm1, ratio);
+  Value small_sinh_result = rewriter.create<mhlo::MulOp>(loc, one_half, sum);
 
   Value abs_x = rewriter.create<mhlo::AbsOp>(loc, x);
-  Value one = getConstantLike(rewriter, loc, 1.0, x);
   Value abs_x_lt_one = rewriter.create<mhlo::CompareOp>(
       loc, abs_x, one, mhlo::ComparisonDirection::LT);
   return rewriter.create<mhlo::SelectOp>(loc, abs_x_lt_one, small_sinh_result,

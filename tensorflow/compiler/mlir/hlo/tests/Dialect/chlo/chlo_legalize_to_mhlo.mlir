@@ -2125,6 +2125,7 @@ func.func @polygamma_f16(%lhs : tensor<f16>, %rhs : tensor<f16>) -> tensor<f16> 
 
 // -----
 
+
 // CHECK-LABEL: @sinh_f32
 // CHECK-SAME: (%[[X:.*]]: tensor<f32>)
 func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
@@ -2138,14 +2139,14 @@ func.func @sinh_f32(%x : tensor<f32>) -> tensor<f32> {
   // CHECK: %[[LOG_HALF_MINUS_X:.*]] = mhlo.subtract %[[LOG_HALF]], %[[X]] : tensor<f32>
   // CHECK: %[[EXP_2:.*]] = mhlo.exponential %[[LOG_HALF_MINUS_X]] : tensor<f32>
   // CHECK: %[[LARGE_SINH_RESULT:.*]] = mhlo.subtract %[[EXP_1]], %[[EXP_2]] : tensor<f32>
-  // CHECK: %[[EXP_X:.*]] = mhlo.exponential %[[X]] : tensor<f32>
-  // CHECK: %[[NEG_X:.*]] = mhlo.negate %[[X]] : tensor<f32>
-  // CHECK: %[[EXP_NEG_X:.*]] = mhlo.exponential %[[NEG_X]] : tensor<f32>
-  // CHECK: %[[EXP_X_MINUS_EXP_NEG_X:.*]] = mhlo.subtract %[[EXP_X]], %[[EXP_NEG_X]] : tensor<f32>
-  // CHECK: %[[TWO:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f32>
-  // CHECK: %[[SMALL_SINH_RESULT:.*]] = mhlo.divide %[[EXP_X_MINUS_EXP_NEG_X]], %[[TWO]] : tensor<f32>
+  // CHECK: %[[EXPM1:.*]] = mhlo.exponential_minus_one %[[X]] : tensor<f32>
+  // CHECK-DAG: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[HALF:.*]] = mhlo.constant dense<5.000000e-01> : tensor<f32>
+  // CHECK: %[[EXPM1_PLUS_ONE:.*]] = mhlo.add %[[EXPM1]], %[[ONE]] : tensor<f32>
+  // CHECK: %[[RATIO:.*]] = mhlo.divide %[[EXPM1]], %[[EXPM1_PLUS_ONE]] : tensor<f32>
+  // CHECK: %[[SUM:.*]] = mhlo.add %[[EXPM1]], %[[RATIO]] : tensor<f32>
+  // CHECK: %[[SMALL_SINH_RESULT:.*]] = mhlo.multiply %[[HALF]], %[[SUM]] : tensor<f32>
   // CHECK: %[[ABS_X:.*]] = mhlo.abs %[[X]] : tensor<f32>
-  // CHECK: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   // CHECK: %[[ABS_X_LT_ONE:.*]] = "mhlo.compare"(%[[ABS_X]], %[[ONE]]) {compare_type = #mhlo<"comparison_type NOTYPE">, comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[ABS_X_LT_ONE]], %[[SMALL_SINH_RESULT]], %[[LARGE_SINH_RESULT]]) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK: return %[[RESULT]] : tensor<f32>
