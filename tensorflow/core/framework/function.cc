@@ -74,7 +74,7 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   if (!arg_def.type_list_attr().empty()) {
     const AttrValue* v = attrs.Find(arg_def.type_list_attr());
     if (v == nullptr) {
-      return errors::NotFound("type attr not found: ",
+      return errors::NotFound("type list attr not found: ",
                               arg_def.type_list_attr());
     }
     *is_type_list = true;
@@ -89,7 +89,7 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   if (!arg_def.number_attr().empty()) {
     const AttrValue* v = attrs.Find(arg_def.number_attr());
     if (v == nullptr) {
-      return errors::NotFound("type attr not found: ", arg_def.type_attr());
+      return errors::NotFound("number attr not found: ", arg_def.number_attr());
     }
     num = v->i();
   }
