@@ -134,8 +134,31 @@ struct DynamicReshapeOpInterface
                    op_result_type.dyn_cast<UnrankedTensorType>()) {
       result_type = UnrankedMemRefType::get(unranked_type.getElementType(), 0);
     }
+    auto operand = *operand_buffer;
+    // If the operand has a non-identity affine map, we will have to add a copy.
+    if (operand_buffer->getType().isa<MemRefType>() &&
+        !operand_buffer->getType()
+             .cast<MemRefType>()
+             .getLayout()
+             .isIdentity()) {
+      // Do not deallocate the buffer if it may be yielded from the enclosing
+      // block.
+      // Note: Unless OneShotAnalysis was run, `dealloc_buffer` is currently
+      // always `false` and we delegate all buffer deallocations to the
+      // BufferDeallocation pass.
+      bool dealloc_buffer =
+          !state.getAnalysisState().isTensorYielded(reshape_op.result());
+      FailureOr<Value> alloc = state.createAlloc(
+          rewriter, op->getLoc(), *operand_buffer, /*dealloc=*/dealloc_buffer);
+      if (failed(alloc)) return failure();
+
+      operand = *alloc;
+      auto copy_status = bufferization::createMemCpy(
+          rewriter, op->getLoc(), *operand_buffer, operand, state.getOptions());
+      if (failed(copy_status)) return failure();
+    }
     bufferization::replaceOpWithNewBufferizedOp<memref::ReshapeOp>(
-        rewriter, op, result_type, *operand_buffer, *output_shape_buffer);
+        rewriter, op, result_type, operand, *output_shape_buffer);
     return success();
   }
 };
