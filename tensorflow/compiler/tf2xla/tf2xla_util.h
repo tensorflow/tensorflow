@@ -36,13 +36,19 @@ namespace tensorflow {
 // Marks a node for XLA-TPU compilation. The attribute value indicates the
 // associated compilation cluster and replication metadata op.
 extern const absl::string_view kTpuReplicateAttr;
+// Marks a node for XLA compilation. The attribute value indicates the
+// compilation device type.
+extern const absl::string_view kCompileDeviceTypeAttr;
+// Marks a node for replication. The attribute value indicates the replication
+// metadata op.
+extern const absl::string_view kReplicationInfoAttr;
 // Marks a node inside of an XLA compilation cluster to be placed outside of the
 // cluster.
 extern const absl::string_view kXlaOutsideCompilationAttr;
 
 // Attributes that need to be propagated during rewrites (e.g., in
 // functionalization)
-extern const std::array<absl::string_view, 3> kAttrsToPropagate;
+extern const std::array<absl::string_view, 5> kAttrsToPropagate;
 
 // ValidateConfig returns OK iff config is valid.
 Status ValidateConfig(const tf2xla::Config& config);

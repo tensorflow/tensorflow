@@ -49,9 +49,13 @@ namespace tensorflow {
 // TODO(b/228344955) use inline constexpr with C++17
 const absl::string_view kTpuReplicateAttr = "_tpu_replicate";
 const absl::string_view kXlaOutsideCompilationAttr = "_xla_outside_compilation";
+const absl::string_view kCompileDeviceTypeAttr = "_xla_compile_device_type";
+const absl::string_view kReplicationInfoAttr = "_replication_info";
 
 // TODO(b/160275126): if possible, avoid hard-coding these attributes here
-const std::array<absl::string_view, 3> kAttrsToPropagate = {
+const std::array<absl::string_view, 5> kAttrsToPropagate = {
+    kCompileDeviceTypeAttr,
+    kReplicationInfoAttr,
     kXlaFrontendAttributesAttrName,
     kXlaOutsideCompilationAttr,
     kTpuReplicateAttr,
