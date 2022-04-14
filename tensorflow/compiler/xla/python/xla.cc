@@ -163,10 +163,6 @@ PYBIND11_MODULE(xla_extension, m) {
         return device.client->LiveBuffersOnDevice(device.get());
       });
 
-  // TODO(tomhennigan): Can we remove this type definition?
-  py::class_<TfrtCpuDevice, PjRtDevice, ClientAndPtr<TfrtCpuDevice>> cpu(
-      m, "CpuDevice");
-
   py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
       .def_property_readonly("device_vendor", &GpuDevice::device_vendor);
 

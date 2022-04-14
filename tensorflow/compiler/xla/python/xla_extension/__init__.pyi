@@ -298,9 +298,6 @@ class Device:
   def transfer_from_outfeed(self, shape: Shape): ...
   def live_buffers(self) -> List[Buffer]: ...
 
-class CpuDevice(Device):
-  pass
-
 class GpuDevice(Device):
   device_vendor: str
 
