@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_eigen_output_kernels.h"
+#include "tensorflow/core/util/matmul_autotune.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
@@ -53,7 +54,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
-#include "tensorflow/core/util/matmul_autotune.h"
 #include "tensorflow/stream_executor/matmul_util.h"
 #endif  // GOOGLE_CUDA
 
