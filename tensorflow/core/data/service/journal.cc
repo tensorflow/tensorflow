@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/journal.h"
 
+#include <string>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/io/record_reader.h"
