@@ -46,23 +46,6 @@ TEST(DefaultWorkQueueWrapperTest, AddTask_OnlyTask) {
   work_queue_wrapper->Await(std::move(av));
 }
 
-TEST(DefaultWorkQueueWrapperTest, AddTask_TaskAndExecutionContext) {
-  auto work_queue = tfrt::CreateSingleThreadedWorkQueue();
-  auto work_queue_wrapper = WrapDefaultWorkQueue(std::move(work_queue));
-
-  auto host_ctx = tfrt::CreateHostContext();
-  auto req_ctx =
-      tfrt::RequestContextBuilder(host_ctx.get(), /*resource_context=*/nullptr)
-          .build();
-  ASSERT_FALSE(!req_ctx);
-  tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
-
-  auto av = tfrt::MakeUnconstructedAsyncValueRef<int>().ReleaseRCRef();
-  work_queue_wrapper->AddTask(
-      exec_ctx, tfrt::TaskFunction([av] { av->emplace<int>(0); }));
-  work_queue_wrapper->Await(std::move(av));
-}
-
 TEST(DefaultWorkQueueWrapperTest, AddBlockingTask_TaskAndAllowQueueing) {
   auto work_queue = tfrt::CreateSingleThreadedWorkQueue();
   auto work_queue_wrapper = WrapDefaultWorkQueue(std::move(work_queue));
@@ -71,28 +54,6 @@ TEST(DefaultWorkQueueWrapperTest, AddBlockingTask_TaskAndAllowQueueing) {
   std::thread thread{[&] {
     auto work = work_queue_wrapper->AddBlockingTask(
         tfrt::TaskFunction([&] { av->emplace<int>(0); }),
-        /*allow_queuing=*/true);
-  }};
-  work_queue_wrapper->Await(std::move(av));
-  thread.join();
-}
-
-TEST(DefaultWorkQueueWrapperTest,
-     AddBlockingTask_TaskAndExecutionContextAndAllowQueueing) {
-  auto work_queue = tfrt::CreateSingleThreadedWorkQueue();
-  auto work_queue_wrapper = WrapDefaultWorkQueue(std::move(work_queue));
-
-  auto host_ctx = tfrt::CreateHostContext();
-  auto req_ctx =
-      tfrt::RequestContextBuilder(host_ctx.get(), /*resource_context=*/nullptr)
-          .build();
-  ASSERT_FALSE(!req_ctx);
-  tfrt::ExecutionContext exec_ctx(std::move(*req_ctx));
-
-  auto av = tfrt::MakeUnconstructedAsyncValueRef<int>().ReleaseRCRef();
-  std::thread thread{[&] {
-    auto work = work_queue_wrapper->AddBlockingTask(
-        exec_ctx, tfrt::TaskFunction([&] { av->emplace<int>(0); }),
         /*allow_queuing=*/true);
   }};
   work_queue_wrapper->Await(std::move(av));
@@ -128,7 +89,7 @@ TEST(DefaultWorkQueueWrapperTest, IntraOpThreadPool) {
   auto statusor_queue = work_queue_wrapper->InitializeRequest(
       /*request_context_builder=*/nullptr, &got_intra_op_threadpool);
   TF_ASSERT_OK(statusor_queue.status());
-  EXPECT_EQ(statusor_queue.ValueOrDie(), nullptr);
+  EXPECT_NE(statusor_queue.ValueOrDie(), nullptr);
 
   EXPECT_EQ(got_intra_op_threadpool, &intra_op_thread_pool);
 }
