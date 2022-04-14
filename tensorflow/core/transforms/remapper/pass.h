@@ -25,7 +25,7 @@ namespace tfg {
 
 // Creates a remapper pass to remap the operations onto other opreations which
 // decrease the amount of operations to perform a computation.
-std::unique_ptr<Pass> CreateRemapperPass();
+std::unique_ptr<Pass> CreateRemapperPass(bool enable_mkl_patterns = false);
 
 }  // namespace tfg
 }  // namespace mlir

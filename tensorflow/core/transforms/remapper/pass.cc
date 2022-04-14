@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/transforms/remapper/remapper_pass.h"
+#include "tensorflow/core/transforms/remapper/pass.h"
 
 #include <memory>
 #include <utility>
@@ -98,6 +98,12 @@ class MatchMulSigmoid : public RewritePattern {
 };
 
 class Remapper : public RemapperBase<Remapper> {
+ public:
+  Remapper() = default;
+  explicit Remapper(bool enable_mkl_patterns) {
+    enable_mkl_patterns_ = enable_mkl_patterns;
+  }
+
   LogicalResult initialize(MLIRContext *context) override {
     RewritePatternSet patterns(context);
     populateRemapperPatterns(context, patterns);
@@ -121,8 +127,8 @@ void Remapper::runOnOperation() {
     signalPassFailure();
 }
 
-std::unique_ptr<Pass> CreateRemapperPass() {
-  return std::make_unique<Remapper>();
+std::unique_ptr<Pass> CreateRemapperPass(bool enable_mkl_patterns) {
+  return std::make_unique<Remapper>(enable_mkl_patterns);
 }
 
 }  // namespace tfg
