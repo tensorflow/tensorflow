@@ -147,7 +147,7 @@ def InvokeNvcc(argv, log=False):
   for capability in capabilities_both:
     capability = capability[len('sm_'):]
     nvccopts += [
-        r'-gencode=arch=compute_%s,code=\"sm_%s,compute_%s\"' % (
+        r'-gencode=arch=compute_%s,code=\\"sm_%s,compute_%s\\"' % (
             capability, capability, capability)
     ]
   for capability in capabilities_sm - capabilities_both:
