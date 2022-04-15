@@ -125,11 +125,11 @@ Status GenerateResourceSharedNameIfEmpty(
 }
 
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
-                          bool restrict_functionalization_to_tpu_nodes) {
-  // If `restrict_functionalization_to_tpu_nodes` is true let filter function
-  // return true for `_tpu_replicate` nodes, otherwise don't set filter.
+                          bool restrict_functionalization_to_compiled_nodes) {
+  // If `restrict_functionalization_to_compiled_nodes` is true define filter
+  // function.
   NodeFilter node_filter =
-      restrict_functionalization_to_tpu_nodes
+      restrict_functionalization_to_compiled_nodes
           ? [](const Node* n) { return n->attrs().Find(kTpuReplicateAttr); }
           : NodeFilter{};
   TF_RETURN_WITH_CONTEXT_IF_ERROR(

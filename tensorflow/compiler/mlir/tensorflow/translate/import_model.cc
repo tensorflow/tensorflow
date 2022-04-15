@@ -3581,7 +3581,7 @@ class SimpleSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
       TF_RETURN_IF_ERROR(UpgradeLegacyGraph(
           graph.get(),
           const_cast<FunctionLibraryDefinition*>(&graph->flib_def()),
-          /*restrict_functionalization_to_tpu_nodes=*/false));
+          /*restrict_functionalization_to_compiled_nodes=*/false));
     }
 
     return SimpleSavedModelMLIRImportInput(meta_graph_def, debug_info,
@@ -4183,7 +4183,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
     TF_RETURN_IF_ERROR(
         UpgradeLegacyGraph(const_cast<Graph*>(&graph),
                            const_cast<FunctionLibraryDefinition*>(&flib_def),
-                           specs.restrict_functionalization_to_tpu_nodes));
+                           specs.restrict_functionalization_to_compiled_nodes));
   }
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
   return GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs,
