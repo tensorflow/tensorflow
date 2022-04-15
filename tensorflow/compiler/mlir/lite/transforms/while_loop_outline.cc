@@ -45,6 +45,8 @@ class WhileOutlinePass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(WhileOutlinePass)
+
   explicit WhileOutlinePass() {}
 
   StringRef getArgument() const final {

@@ -2364,6 +2364,32 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "simplify_fp_conversions",
+    srcs = ["simplify_fp_conversions.cc"],
+    hdrs = ["simplify_fp_conversions.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/core/platform:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "simplify_fp_conversions_test",
+    srcs = ["simplify_fp_conversions_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":simplify_fp_conversions",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "logistic_expander",
     srcs = ["logistic_expander.cc"],
     hdrs = ["logistic_expander.h"],
@@ -5210,6 +5236,7 @@ cc_library(
         ":executable",
         ":hlo",
         ":hlo_module_group",
+        ":hlo_module_util",
         ":hlo_parser",
         ":hlo_runner_interface",
         ":transfer_manager",

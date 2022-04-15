@@ -50,26 +50,31 @@ class TfrtGraphExecutionState {
     absl::Duration grappler_duration;
   };
 
+  struct Options {
+    bool run_placer_grappler_on_functions = false;
+    bool enable_tfrt_gpu = false;
+  };
+
   // Creates a `GraphExecutionState` given `graph_def` and `fallback_state`.
   static StatusOr<std::unique_ptr<TfrtGraphExecutionState>> Create(
-      tensorflow::GraphDef graph_def, const FallbackState& fallback_state,
-      bool run_placer_grappler_on_functions = false);
+      const Options& options, tensorflow::GraphDef graph_def,
+      const FallbackState& fallback_state);
 
   // Ctor. Do not use directly. Public only for `std::make_unique<>()`.
   TfrtGraphExecutionState(
+      const Options& options,
       std::unique_ptr<tensorflow::GraphExecutionState> graph_execution_state,
       const FallbackState& fallback_state,
-      bool run_placer_grappler_on_functions,
       absl::flat_hash_set<std::string> functions_to_optimize)
-      : graph_execution_state_(std::move(graph_execution_state)),
+      : options_(options),
+        graph_execution_state_(std::move(graph_execution_state)),
         fallback_state_(fallback_state),
-        run_placer_grappler_on_functions_(run_placer_grappler_on_functions),
         functions_to_optimize_(std::move(functions_to_optimize)) {}
 
   // Creates an optimized graph by pruning with `graph_import_config` and
   // best-effort Grappler run.
   StatusOr<OptimizationResult> CreateOptimizedGraph(
-      const tensorflow::GraphImportConfig& graph_import_config);
+      tensorflow::GraphImportConfig& graph_import_config);
 
   // Extends the current graph by `graph`.
   Status Extend(const GraphDef& graph);
@@ -99,6 +104,8 @@ class TfrtGraphExecutionState {
       const tensorflow::Graph& graph,
       const tensorflow::BuildGraphOptions& build_graph_options);
 
+  Options options_;
+
   std::unique_ptr<tensorflow::GraphExecutionState> graph_execution_state_
       ABSL_GUARDED_BY(graph_execution_state_mu_);
   // We need this mutex even thought `GraphExecutionState` is thread-safe,
@@ -106,8 +113,7 @@ class TfrtGraphExecutionState {
   mutable absl::Mutex graph_execution_state_mu_;
 
   const FallbackState& fallback_state_;
-  bool run_placer_grappler_on_functions_;
-  // Only valid if `run_placer_grappler_on_functions_` is true.
+  // Only valid if `options_.run_placer_grappler_on_functions` is true.
   absl::flat_hash_set<std::string> functions_to_optimize_;
 };
 

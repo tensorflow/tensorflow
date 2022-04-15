@@ -73,10 +73,19 @@ class TFPackage {
     return variable_reader_.get();
   }
 
+  // Returns whether or not we found a valid checkpoint when loading the
+  // package.
+  bool HasCheckpoint() { return has_checkpoint_; }
+
+  // Returns the path to the variables file.
+  const std::string GetVariablesFilepath() { return variables_filepath_; }
+
  private:
   SavedModel saved_model_proto_;
   TrackableObjectGraph trackable_object_graph_;
   std::unique_ptr<tensorflow::BundleReader> variable_reader_;
+  std::string variables_filepath_;
+  bool has_checkpoint_;
 };
 
 }  // namespace libexport

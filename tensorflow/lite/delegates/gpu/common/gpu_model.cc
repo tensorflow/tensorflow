@@ -199,8 +199,12 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
                                  TensorReserver* tensor_reserver) {
   ValueId max_id = 0;
   auto tensors = graph.values();
-  auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
   for (auto& t : tensors) {
+    auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
+    if (t->tensor.type != DataType::FLOAT32 &&
+        t->tensor.type != DataType::FLOAT16) {
+      data_type = t->tensor.type;
+    }
     const auto shape = graph.GetValue(t->id)->tensor.shape;
     auto it_predefined = create_info.predefined.find(t->id);
     auto it_immutable_external =

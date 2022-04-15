@@ -436,6 +436,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"AddV2"},
       {"AllToAll"},
       {"Angle"},
+      {"ApproxTopK", 1, {0}},
       {"ApproximateEqual"},
       {"ArgMax"},
       {"ArgMin"},

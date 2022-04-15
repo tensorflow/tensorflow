@@ -60,7 +60,7 @@ TEST(ProfilerTest, NoProfilesAreCollectedWhenEventTypeUnsupported) {
   tflite::Profiler* p = &profiler;
   p->AddEvent("Hello",
               Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT,
-              /*start*/ 0, /*end*/ 1,
+              /*elaped_time*/ 1,
               /*event_metadata*/ 2);
   auto handler = p->BeginEvent(
       "begin", Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT, 0);

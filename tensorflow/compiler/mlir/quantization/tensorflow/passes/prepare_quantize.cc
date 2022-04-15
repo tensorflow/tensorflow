@@ -76,6 +76,8 @@ class PrepareQuantizePass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareQuantizePass)
+
   // Constructor used by the PassRegistration and enforce uint8 quantization.
   // This is only used by test.
   explicit PrepareQuantizePass() {

@@ -90,6 +90,11 @@ bool AreEquivalent(FuncOp& lhs, FuncOp& rhs) {
 class DeduplicateFunctionsInovkedByBatchFunction
     : public mlir::PassWrapper<DeduplicateFunctionsInovkedByBatchFunction,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      DeduplicateFunctionsInovkedByBatchFunction)
+
+ private:
   llvm::StringRef getArgument() const final {
     return "tfrt-deduplicate-functions-invoked-by-batch-function";
   }

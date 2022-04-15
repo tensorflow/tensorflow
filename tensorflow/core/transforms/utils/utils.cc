@@ -42,6 +42,14 @@ bool NodeIsOnCpu(Operation *op) {
          absl::StartsWith(device, tensorflow::DEVICE_CPU);
 }
 
+void EraseRegularNodeAttributes(NamedAttrList &attr_list) {
+  NamedAttrList new_attr_list;
+  for (NamedAttribute attr : attr_list) {
+    if (attr.getName().strref().startswith("_")) new_attr_list.append(attr);
+  }
+  attr_list = new_attr_list;
+}
+
 void ForwardNonIntrinsicAttributes(Operation *src, Operation *dst) {
   NamedAttrList dst_attrs(dst->getAttrDictionary());
   DenseSet<StringAttr> name_set;

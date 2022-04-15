@@ -34,7 +34,7 @@ Status GenerateResourceSharedNameIfEmpty(
 // Upgrade the `graph` and `flib_def` by applying control flow
 // functionalization.
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
-                          bool restrict_functionalization_to_tpu_nodes);
+                          bool restrict_functionalization_to_compiled_nodes);
 
 }  // namespace tensorflow
 

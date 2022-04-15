@@ -23,6 +23,11 @@ namespace {
 class TestTensorArraySideEffectAnalysis
     : public mlir::PassWrapper<TestTensorArraySideEffectAnalysis,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      TestTensorArraySideEffectAnalysis)
+
+ private:
   llvm::StringRef getArgument() const final {
     return "tfrt-test-tensor-array-effect";
   }

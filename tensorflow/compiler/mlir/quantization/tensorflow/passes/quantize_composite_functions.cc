@@ -54,6 +54,8 @@ class QuantizeCompositeFunctionsPass
     : public mlir::PassWrapper<QuantizeCompositeFunctionsPass,
                                OperationPass<ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeCompositeFunctionsPass)
+
   explicit QuantizeCompositeFunctionsPass() {}
   explicit QuantizeCompositeFunctionsPass(
       QuantizationMethod quantization_method)

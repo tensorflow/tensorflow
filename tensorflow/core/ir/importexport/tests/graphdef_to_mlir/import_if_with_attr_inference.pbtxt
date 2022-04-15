@@ -316,6 +316,9 @@ library {
         value {
           list {
             shape {
+              dim {
+                size: 4
+              }
             }
           }
         }

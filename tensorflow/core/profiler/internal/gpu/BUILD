@@ -211,7 +211,7 @@ tf_cuda_library(
         ":cupti_utils",
         ":nvtx_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/internal/cpu:annotation_stack",
+        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/profiler/utils:buffer_pool",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -229,7 +229,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/internal/cpu:annotation_stack",
+        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/stream_executor/rocm:roctracer_wrapper",
         "@com_google_absl//absl/container:fixed_array",

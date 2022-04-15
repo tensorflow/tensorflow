@@ -1,4 +1,4 @@
-# Return the options to use for a C++ library or binary build.
+# Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -756,9 +756,6 @@ def tf_cc_shared_object(
 def get_cc_shared_library_target_name(name):
     return name + "_st"  # Keep short. See b/221093790
 
-def get_sharedlibname(name):
-    return "sl_" + name  # Keep short. See b/221093790
-
 # buildozer: disable=function-docstring-args
 def tf_cc_shared_library(
         name,
@@ -822,13 +819,12 @@ def tf_cc_shared_library(
         )
 
         cc_shared_library_name = get_cc_shared_library_target_name(name_os_full)
-        shared_lib_name = get_sharedlibname(name_os_full)
         cc_shared_library(
             name = cc_shared_library_name,
             roots = [cc_library_name],
             static_deps = static_deps,
-            shared_lib_name = shared_lib_name,
-            user_link_flags = linkopts + _rpath_user_link_flags(shared_lib_name) + select({
+            shared_lib_name = name_os_full,
+            user_link_flags = linkopts + _rpath_user_link_flags(name_os_full) + select({
                 clean_dep("//tensorflow:ios"): [
                     "-Wl,-install_name,@rpath/" + soname,
                 ],
@@ -841,18 +837,12 @@ def tf_cc_shared_library(
                 ],
             }),
             additional_linker_inputs = additional_linker_inputs,
-            features = if_windows(["no_windows_export_all_symbols"]),  # See b/227922702
             visibility = visibility,
             win_def_file = if_windows(win_def_file, otherwise = None),
         )
-        native.alias(
-            name = shared_lib_name,
-            actual = cc_shared_library_name,
-            visibility = visibility,
-        )
         filegroup(
             name = name_os_full,
-            srcs = [shared_lib_name],
+            srcs = [cc_shared_library_name],
             output_group = "main_shared_library_output",
         )
 

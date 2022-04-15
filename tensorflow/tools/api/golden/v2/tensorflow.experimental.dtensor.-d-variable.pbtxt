@@ -137,6 +137,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "read_value_no_copy"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "ref"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

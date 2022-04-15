@@ -177,6 +177,8 @@ class PrepareCompositeFunctionsPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareCompositeFunctionsPass)
+
   explicit PrepareCompositeFunctionsPass() {}
 
   StringRef getArgument() const final {

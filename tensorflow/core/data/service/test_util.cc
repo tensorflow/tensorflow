@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/test_util.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 

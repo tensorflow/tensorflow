@@ -55,18 +55,27 @@ tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
   // Load the trackable object graph for restoring checkpoint values
   const std::string variables_dir =
       tensorflow::io::JoinPath(path, tensorflow::kSavedModelVariablesDirectory);
-  const std::string variables_prefix = tensorflow::io::JoinPath(
-      variables_dir, tensorflow::kSavedModelVariablesFilename);
-  tf_package.variable_reader_ = std::make_unique<tensorflow::BundleReader>(
-      tensorflow::Env::Default(), variables_prefix);
-  tensorflow::Tensor object_graph_tensor;
-  RETURN_IF_ERROR(tf_package.variable_reader_->Lookup(
-      tensorflow::kObjectGraphProtoKey, &object_graph_tensor));
-  const auto* object_graph_string =
-      reinterpret_cast<const tensorflow::tstring*>(
-          object_graph_tensor.tensor_data().data());
-  // TODO(danielellis): make sure parse was successful
-  tf_package.trackable_object_graph_.ParseFromString(*object_graph_string);
+  // TODO(b/228181641): revisit non-explicit-checkpoint-loading behavior when
+  // MLAs come along
+  if (Env::Default()->FileExists(variables_dir).ok()) {
+    tf_package.has_checkpoint_ = true;
+    tf_package.variables_filepath_ = tensorflow::io::JoinPath(
+        variables_dir, tensorflow::kSavedModelVariablesFilename);
+    tf_package.variable_reader_ = std::make_unique<tensorflow::BundleReader>(
+        tensorflow::Env::Default(), tf_package.variables_filepath_);
+    tensorflow::Tensor object_graph_tensor;
+    RETURN_IF_ERROR(tf_package.variable_reader_->Lookup(
+        tensorflow::kObjectGraphProtoKey, &object_graph_tensor));
+    const auto* object_graph_string =
+        reinterpret_cast<const tensorflow::tstring*>(
+            object_graph_tensor.tensor_data().data());
+    // TODO(danielellis): make sure parse was successful
+    tf_package.trackable_object_graph_.ParseFromString(*object_graph_string);
+  } else {
+    tf_package.has_checkpoint_ = false;
+    LOG(INFO)
+        << "No checkpoint found, assuming this is a program-only SavedModel";
+  }
   return tf_package;
 }
 

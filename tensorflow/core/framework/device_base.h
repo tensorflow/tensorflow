@@ -166,10 +166,6 @@ class DeviceBase {
     accelerator_device_info_ = device_info;
   }
 
-  virtual const AcceleratorDeviceInfo* tensorflow_gpu_device_info() const {
-    return accelerator_device_info_;
-  }
-
   virtual const AcceleratorDeviceInfo* tensorflow_accelerator_device_info()
       const {
     return accelerator_device_info_;

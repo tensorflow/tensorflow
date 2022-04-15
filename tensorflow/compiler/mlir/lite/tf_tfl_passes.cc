@@ -333,6 +333,9 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     // quantization passes based on quant_specs.
     if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
       AddQuantizationPasses(pass_config.quant_specs, *pass_manager);
+      // Remove unnecessary QDQs while handling QAT models.
+      pass_manager->addNestedPass<mlir::func::FuncOp>(
+          mlir::TFL::CreatePostQuantizeRemoveQDQPass());
     } else if (pass_config.quant_specs
                    .RunAndRewriteDynamicRangeQuantizationPasses()) {
       AddDynamicRangeQuantizationPasses(pass_config.quant_specs, *pass_manager);

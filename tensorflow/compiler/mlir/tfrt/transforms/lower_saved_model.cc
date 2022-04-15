@@ -416,6 +416,8 @@ class LowerTFSavedModelPass
     : public mlir::PassWrapper<LowerTFSavedModelPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerTFSavedModelPass)
+
   explicit LowerTFSavedModelPass(bool hoist_invariant_ops) {
     hoist_invariant_ops_ = hoist_invariant_ops;
   }
@@ -545,6 +547,10 @@ class ConvertReferenceVariableToResourceVariablePass
     return "Convert reference variable to resource variables.";
   }
   void runOnOperation() override;
+
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      ConvertReferenceVariableToResourceVariablePass)
 };
 
 mlir::LogicalResult ConvertReferenceVariableToResourceVariable(

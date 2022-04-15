@@ -33,6 +33,7 @@ cc_library(
         "utils.h",
     ],
     deps = [
+        ":error_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime/eager:context",
@@ -188,7 +189,9 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:const_op",
         "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/cc:while_loop",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:tensor_testutil",

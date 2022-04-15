@@ -85,6 +85,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/LLVMTranslationInterface.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
@@ -874,13 +875,11 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
       mlir::mhlo::createLegalizeHloToLinalgPass());
 
   // Lower index cast on tensors to tensor.generate.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::kernel_gen::transforms::CreateLowerIndexCastPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::CreateLowerIndexCastPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::kernel_gen::transforms::CreateShapeSimplification());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::CreateShapeSimplification());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createShapeToShapeLowering());
   pm.addPass(mlir::createConvertShapeToStandardPass());
   pm.addNestedPass<mlir::func::FuncOp>(

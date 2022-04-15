@@ -113,6 +113,12 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   // creates unnecessary constants ops.
   pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorDCE());
 
+  // Canonicalization will merge tf.ConstOp from different DTensorLayout
+  // annotations, causing problem during mesh propagation. Undo the merge
+  // before creating clusters.
+  pm->addNestedPass<mlir::func::FuncOp>(
+      CreateDTensorUndoMergeConstAcrossMesh());
+
   // Propagate mesh cluster config and cluster ops by mesh cluster so that
   // SPMD expansion can be isolated to a single device mesh.
   pm->addNestedPass<mlir::func::FuncOp>(CreateDTensorOpToDeviceClusterPass());

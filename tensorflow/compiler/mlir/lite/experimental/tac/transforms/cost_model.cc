@@ -87,6 +87,8 @@ int64_t GetTransferredElementCount(func::CallOp from_graph,
 }
 
 struct GetOpCostPass : mlir::PassWrapper<GetOpCostPass, OperationPass<FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GetOpCostPass)
+
   llvm::StringRef getArgument() const final { return "tfl-get-op-cost"; }
   llvm::StringRef getDescription() const final {
     return "Get cost for every op";

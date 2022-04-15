@@ -188,26 +188,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
-        if (legacy_autotune_) {
-          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
-                 auto_tuner_.buffer_limit() != 0) {
+        while (buffer_.empty() && !prefetch_thread_finished_ &&
+               buffer_limit() != 0) {
+          if (legacy_autotune_) {
             auto_tuner_.RecordEmpty();
             buffer_size_->value = auto_tuner_.buffer_limit();
-            RecordStop(ctx);
-            cond_var_->wait(l);
-            RecordStart(ctx);
           }
-        } else {
-          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
-                 buffer_size_->value != 0) {
-            RecordStop(ctx);
-            cond_var_->wait(l);
-            RecordStart(ctx);
-          }
-        }
-
-        if (cancelled_) {
-          return errors::Cancelled("Iterator was cancelled");
+          RecordStop(ctx);
+          cond_var_->wait(l);
+          RecordStart(ctx);
         }
 
         if (!buffer_.empty()) {
@@ -586,7 +575,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     const int64_t buffer_size_min_;
     PrefetchAutotuner auto_tuner_ TF_GUARDED_BY(*mu_);
     std::deque<BufferElement> buffer_ TF_GUARDED_BY(*mu_);
-    std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
     bool prefetch_thread_finished_ TF_GUARDED_BY(*mu_) = false;
     const bool legacy_autotune_;
@@ -604,6 +592,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
     int64 interleave_depth_ = -1;
+    std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
   };
 
   const DatasetBase* const input_;

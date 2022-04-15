@@ -77,6 +77,11 @@ bool FunctionHasSideEffect(
 class OptimizeTfControlFlowSideEffectPass
     : public mlir::PassWrapper<OptimizeTfControlFlowSideEffectPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      OptimizeTfControlFlowSideEffectPass)
+
+ private:
   llvm::StringRef getArgument() const final {
     return "tfrt-optimize-tf-control-flow-side-effect";
   }

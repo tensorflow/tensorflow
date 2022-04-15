@@ -80,6 +80,8 @@ class LegalizeTF : public PassWrapper<LegalizeTF, OperationPass<FuncOp>> {
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTF)
+
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF&) {}
   explicit LegalizeTF(bool run_tfl_runtime_verification,
@@ -165,6 +167,13 @@ Value GetShape(Value input, Location loc, PatternRewriter& rewriter) {
       .create<TF::ShapeOp>(loc, input,
                            /*use_32bit=*/false_attr)
       .output();
+}
+
+mlir::TFL::MirrorPaddingType GetTFLMirrorPaddingFromString(
+    mlir::StringAttr padding) {
+  return llvm::StringSwitch<mlir::TFL::MirrorPaddingType>(padding.getValue())
+      .Case("REFLECT", mlir::TFL::MirrorPaddingType::REFLECT)
+      .Case("SYMMETRIC", mlir::TFL::MirrorPaddingType::SYMMETRIC);
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tf.inc"

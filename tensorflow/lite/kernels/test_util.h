@@ -706,6 +706,7 @@ class SingleOpModel {
         buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
       }
 
+      builder_.ForceVectorAlignment(data.size(), sizeof(T), 16);
       // Add data as a Buffer to buffers list.
       buffer_id = buffers_.size();
       auto data_buffer =

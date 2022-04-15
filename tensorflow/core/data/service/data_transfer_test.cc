@@ -71,24 +71,28 @@ TEST(DataTransferTest, EstimateMemoryUsageBytes) {
   GetElementResult empty;
   EXPECT_GT(empty.EstimatedMemoryUsageBytes(), 0);
 
-  Tensor tensor(DT_INT64, TensorShape({10, 10}));
+  Tensor tensor(DT_INT64, TensorShape({10, 100}));
   GetElementResult int64_result = MakeElementResult(tensor);
-  EXPECT_GT(int64_result.EstimatedMemoryUsageBytes(), 100 * sizeof(int64_t));
+  EXPECT_GT(int64_result.EstimatedMemoryUsageBytes(), 1000 * sizeof(int64_t));
   EXPECT_GT(int64_result.EstimatedMemoryUsageBytes(),
             int64_result.components[0].AllocatedBytes());
   EXPECT_GE(int64_result.EstimatedMemoryUsageBytes(), sizeof(int64_result));
 }
 
-TEST(DataTransferTest, EstimateVarintMemoryUsageBytes) {
+TEST(DataTransferTest, EstimateVariantMemoryUsageBytes) {
   const size_t data_size = 1000;
   CompressedElement compressed;
   compressed.set_data(std::string(data_size, 'a'));
 
   Tensor tensor(DT_VARIANT, TensorShape({}));
-  tensor.scalar<Variant>()() = std::move(compressed);
+  tensor.scalar<Variant>()() = compressed;
 
   GetElementResult variant_result = MakeElementResult(tensor);
   EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(), data_size);
+  EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(),
+            compressed.ByteSizeLong());
+  EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(),
+            compressed.SpaceUsedLong());
 }
 
 TEST(DataTransferTest, CopyGetElementResult) {

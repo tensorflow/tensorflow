@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_PASSES_H_
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/util.h"
 
@@ -35,6 +36,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertFakeQuantToQdqPass();
 // Lifts the quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftQuantizableSpotsAsFunctionsPass();
+
+// Apply graph optimizations such as fusing and constant folding to prepare
+// lifting.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass();
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.

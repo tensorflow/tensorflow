@@ -2092,6 +2092,8 @@ class HloInstruction {
 
   // Delegates to HloCompareInstruction::direction().
   ComparisonDirection comparison_direction() const;
+  // Delegates to HloCompareInstruction::order().
+  ComparisonOrder comparison_order() const;
 
   // Delegates to HloTriangularSolveInstruction::triangular_solve_options().
   const TriangularSolveOptions& triangular_solve_options() const;

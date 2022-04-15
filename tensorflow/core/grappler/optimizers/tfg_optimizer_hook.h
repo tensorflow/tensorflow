@@ -36,8 +36,11 @@ using TFGPassPipelineBuilder = std::function<void(PassManager& pm)>;
 // implemented with TFG.
 class TFGGrapplerOptimizer : public tensorflow::grappler::GraphOptimizer {
  public:
-  // Constructs a TFG optimizer using the provided pipeline builder.
-  explicit TFGGrapplerOptimizer(TFGPassPipelineBuilder builder);
+  // Constructs a TFG optimizer using the provided pipeline builder. If
+  // `num_tfg_threads` is non-zero, then TFG will use threading with the
+  // specified number of threads.
+  explicit TFGGrapplerOptimizer(TFGPassPipelineBuilder builder,
+                                unsigned num_tfg_threads);
   // Explicit destructor to defer instantiation of Impl.
   ~TFGGrapplerOptimizer() override;
 

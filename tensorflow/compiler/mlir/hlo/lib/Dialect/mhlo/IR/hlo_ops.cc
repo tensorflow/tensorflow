@@ -594,6 +594,19 @@ LogicalResult verifyReducerShape(
 //===----------------------------------------------------------------------===//
 
 LogicalResult ReduceScatterOp::verify() {
+  if (failed(mlir::hlo::VerifyReplicaGroups(*this, /*is_uniform_sized=*/true)))
+    return failure();
+  auto operand_type = operand().getType().cast<TensorType>();
+  bool operand_type_ranked = operand_type.isa<RankedTensorType>();
+  Block& block = computation().front();
+  SmallVector<TensorType> accumulator_subshapes;
+  if (failed(verifyReducerShape(
+          this->getLoc(), block, {operand_type},
+          {RankedTensorType::get({}, operand_type.getElementType())},
+          /*numInputs=*/1, /*allowedDimensions=*/{},
+          /*allInputsUnranked=*/!operand_type_ranked, accumulator_subshapes)))
+    return failure();
+
   return mlir::hlo::VerifyReduceScatter(
       *this,
       /*operand_types=*/{operand().getType()},
@@ -2606,6 +2619,19 @@ OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 namespace {
+class SingleOperandConcatenateToCast : public OpRewritePattern<ConcatenateOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(ConcatenateOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.val().size() != 1) return failure();
+
+    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, op.getType(),
+                                                op.val().front());
+    return success();
+  }
+};
+
 class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -2752,7 +2778,8 @@ LogicalResult ConcatenateOp::inferReturnTypes(
 
 void ConcatenateOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                                 MLIRContext* context) {
-  results.add<ConcatenateOperandRemoval, ConcatenateForwarding>(context);
+  results.add<ConcatenateOperandRemoval, ConcatenateForwarding,
+              SingleOperandConcatenateToCast>(context);
 }
 
 template <typename T>
@@ -4982,6 +5009,51 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 // UnaryOps
 //===----------------------------------------------------------------------===//
+
+ParseResult parseUnaryOp(OpAsmParser& parser, OperationState& result) {
+  SmallVector<OpAsmParser::UnresolvedOperand> operands;
+  Type type;
+  // If the operand is in-between parentheses, use generic form.
+  SMLoc loc = parser.getCurrentLocation();
+  if (!parser.parseOptionalLParen()) {
+    if (parser.parseOperandList(operands) || parser.parseRParen() ||
+        parser.parseOptionalAttrDict(result.attributes) ||
+        parser.parseColon() || parser.parseType(type))
+      return failure();
+    auto fnType = type.dyn_cast<FunctionType>();
+    if (!fnType) {
+      parser.emitError(loc, "expected function type");
+      return failure();
+    }
+    if (parser.resolveOperands(operands, fnType.getInputs(), loc,
+                               result.operands))
+      return failure();
+    result.addTypes(fnType.getResults());
+    return success();
+  }
+  // Otherwise, use shorthand syntax.
+  return failure(parser.parseOperandList(operands) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
+                 parser.parseColonType(type) ||
+                 parser.resolveOperands(operands, type, result.operands) ||
+                 parser.addTypeToList(type, result.types));
+}
+
+void printUnaryOp(Operation* op, OpAsmPrinter& p) {
+  assert(op->getNumResults() == 1 && "op should have one result");
+  assert(op->getNumOperands() == 1 && "op should have one input");
+  // If not all types are the same, use generic form.
+  auto resultType = op->getResult(0).getType();
+  if (resultType != op->getOperandTypes()[0]) {
+    p.printGenericOp(op, /*printOpName=*/false);
+    return;
+  }
+  // Otherwise, use the shorthand syntax.
+  p << ' ';
+  p.printOperands(op->getOperands());
+  p.printOptionalAttrDict(op->getAttrs());
+  p << " : " << resultType;
+}
 
 template <typename Op, typename ElementType = Type, typename ValType,
           typename Convert>
@@ -7707,10 +7779,12 @@ LogicalResult deriveShapeFromOperand(
 
 Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
                                             Type type, Location loc) {
+  // HLO dialect constants require the type of value and result to match.
+  if (type != value.getType()) return nullptr;
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
-  if (value.isa<ElementsAttr>())
-    return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
+  if (auto elementsAttr = value.dyn_cast<ElementsAttr>())
+    return builder.create<mhlo::ConstOp>(loc, type, elementsAttr);
   return nullptr;
 }
 

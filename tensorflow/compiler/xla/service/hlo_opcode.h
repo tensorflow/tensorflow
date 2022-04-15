@@ -138,6 +138,7 @@ namespace xla {
   V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)                      \
   V(kRngBitGenerator, "rng-bit-generator", 1)                                  \
   V(kRoundNearestAfz, "round-nearest-afz", 1)                                  \
+  V(kRoundNearestEven, "round-nearest-even", 1)                                \
   V(kRsqrt, "rsqrt", 1)                                                        \
   V(kScatter, "scatter", 3)                                                    \
   V(kSelect, "select", 3)                                                      \

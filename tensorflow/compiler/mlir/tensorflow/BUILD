@@ -1180,8 +1180,6 @@ cc_library(
         "transforms/resource_op_lifting_cleanup.cc",
         "transforms/resource_op_lifting_cleanup.h",
         "transforms/rewrite_tpu_embedding_ops.cc",
-        "transforms/shape_inference.cc",
-        "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/stack_ops_decomposition.cc",
         "transforms/strip_noinline_attribute.cc",
@@ -1223,7 +1221,6 @@ cc_library(
         "transforms/collection_ops_util.h",
         "transforms/einsum.h",
         "transforms/passes.h",
-        "transforms/shape_inference.h",
     ],
     includes = ["include"],
     textual_hdrs = [
@@ -1248,7 +1245,7 @@ cc_library(
         ":lower_tf_lib",
         ":mangling_util",
         ":serialize_mlir_module_utils",
-        ":shape_inference_utils",
+        ":shape_inference_pass",
         ":tensorflow",
         ":tensorflow_analysis",
         ":tensorflow_ops",
@@ -1309,6 +1306,41 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "shape_inference_pass",
+    srcs = [
+        "transforms/passes.h",
+        "transforms/passes_detail.h",
+        "transforms/shape_inference.cc",
+        "transforms/shape_inference_pass.cc",
+    ],
+    hdrs = [
+        "transforms/shape_inference.h",
+    ],
+    deps = [
+        ":serialize_mlir_module_utils",
+        ":shape_inference_utils",
+        ":tensorflow",
+        ":tensorflow_types",
+        ":tf_device_pass_inc_gen",
+        ":tf_pass_inc_gen",
+        ":translate_utils",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir/types:Dialect",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -1409,6 +1441,7 @@ cc_library(
     srcs = ["translate/upgrade_graph.cc"],
     hdrs = ["translate/upgrade_graph.h"],
     deps = [
+        ":attribute_utils",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -2044,6 +2077,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     ":error_util",
     ":mlir_roundtrip_flags",
     ":serialize_mlir_module_utils",
+    ":shape_inference_pass",
     ":tensorflow",
     ":tensorflow_types",
     ":tensorflow_passes",

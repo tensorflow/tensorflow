@@ -510,6 +510,38 @@ retained with length 1.
   let hasVerifier = 1;
 }
 
+def TF_ApproxTopKOp : TF_Op<"ApproxTopK", [NoSideEffect]> {
+  let summary = [{
+Returns min/max k values and their indices of the input operand in an approximate manner.
+  }];
+
+  let description = [{
+Returns min/max k values and their indices of the input operand in an approximate manner.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{Array to search. Must be at least 1-D of the floating type}]>:$input,
+
+    Confined<I64Attr, [IntMinValue<0>]>:$k,
+    DefaultValuedAttr<I64Attr, "-1">:$reduction_dimension,
+    DefaultValuedAttr<F32Attr, "0.95f">:$recall_target,
+    DefaultValuedAttr<BoolAttr, "true">:$is_max_k,
+    DefaultValuedAttr<I64Attr, "-1">:$reduction_input_size_override,
+    DefaultValuedAttr<BoolAttr, "true">:$aggregate_to_topk
+  );
+
+  let results = (outs
+    Res<TensorOf<[TF_Bfloat16, TF_Float16, TF_Float32]>, [{The min/max k values along the `reduction_dimension` of the `input` operand.
+The dimension are the same as the `input` operand except for the
+`reduction_dimension`: when `aggregate_to_topk` is true, the reduction
+dimension is `k`; otherwise, it is greater equals to `k` where the size is
+implementation-defined.}]>:$values,
+    Res<TF_Int32Tensor, [{The indices of `values` along the `reduction_dimension` of the `input` operand.}]>:$indices
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ApproximateEqualOp : TF_Op<"ApproximateEqual", [Commutative, NoSideEffect]> {
   let summary = "Returns the truth value of abs(x-y) < tolerance element-wise.";
 
@@ -2490,7 +2522,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
   TF_DerivedOperandTypeAttr Tperm = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_Conv2DOp : TF_Op<"Conv2D", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_LayoutSensitiveInterface]> {
+def TF_Conv2DOp : TF_Op<"Conv2D", [InferTensorType, NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = [{
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
   }];
@@ -2632,7 +2664,7 @@ w.r.t. the input of the convolution.}]>:$output
   }];
 }
 
-def TF_Conv3DOp : TF_Op<"Conv3D", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
+def TF_Conv3DOp : TF_Op<"Conv3D", [InferTensorType, NoSideEffect]> {
   let summary = [{
 Computes a 3-D convolution given 5-D `input` and `filter` tensors.
   }];
@@ -4577,7 +4609,7 @@ dimension of size 1 added.}]>:$output
   ];
 }
 
-def TF_Expm1Op : TF_Op<"Expm1", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_Expm1Op : TF_Op<"Expm1", [InferTensorType, NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes `exp(x) - 1` element-wise.";
 
   let description = [{
@@ -19532,7 +19564,7 @@ documented at https://www.tensorflow.org/xla/operation_semantics#allreduce.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaBroadcastHelperOp : TF_Op<"XlaBroadcastHelper", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_NoConstantFold]> {
+def TF_XlaBroadcastHelperOp : TF_Op<"XlaBroadcastHelper", [InferTensorType, NoSideEffect, TF_NoConstantFold]> {
   let summary = "Helper operator for performing XLA-style broadcasts";
 
   let description = [{
@@ -20129,7 +20161,7 @@ key: A unique identifier for this region used to match up host transfers.
   TF_DerivedOperandTypeAttr Tinput = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_XlaSetDynamicDimensionSizeOp : TF_Op<"XlaSetDynamicDimensionSize", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect, TF_NoConstantFold]> {
+def TF_XlaSetDynamicDimensionSizeOp : TF_Op<"XlaSetDynamicDimensionSize", [InferTensorType, NoSideEffect, TF_NoConstantFold]> {
   let summary = "Make a static dimension into a xla bounded dynamic dimension.";
 
   let description = [{

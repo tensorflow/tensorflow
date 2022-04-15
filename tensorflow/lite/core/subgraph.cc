@@ -237,7 +237,8 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
       subgraphs_(subgraphs),
       resources_(resources),
       resource_ids_(resource_ids),
-      initialization_status_map_(initialization_status_map) {
+      initialization_status_map_(initialization_status_map),
+      large_tensors_thresholds_in_bytes_(0) {
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportErrorC;
@@ -987,6 +988,20 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
   return op_reg.prepare(&context_, node);
 }
 
+TfLiteStatus Subgraph::MayAllocateOpOutput(TfLiteNode* node) {
+  if (IsMemoryOptimizationForLargeTensorsEnabled()) {
+    for (int i = 0; i < node->outputs->size; ++i) {
+      int tensor_index = node->outputs->data[i];
+      TfLiteTensor* tensor = &context_.tensors[tensor_index];
+      if (tensor->data.raw == nullptr &&
+          tensor->allocation_type == kTfLiteDynamic) {
+        TfLiteTensorRealloc(tensor->bytes, tensor);
+      }
+    }
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus Subgraph::PrepareOpsStartingAt(
     int first_execution_plan_index, const std::vector<int>& execution_plan,
     int* last_execution_plan_index_prepared) {
@@ -1141,10 +1156,6 @@ TfLiteStatus Subgraph::Invoke() {
     return kTfLiteError;
   }
 
-  // Allocate large dynamic tensors which memory are required to be allocated
-  // before executing the graph.
-  MaybeAllocateLargeDynamicTensors();
-
   TfLiteStatus status = kTfLiteOk;
   if (state_ == kStateUninvokable) {
     ReportError("Invoke called on model that is not ready.");
@@ -1206,6 +1217,9 @@ TfLiteStatus Subgraph::Invoke() {
         }
       }
     }
+    // Allocate dynamic tensors which memory is required to be allocated
+    // before executing the node.
+    MayAllocateOpOutput(&node);
 
     if (check_cancelled_func_ != nullptr &&
         check_cancelled_func_(cancellation_data_)) {
@@ -1240,7 +1254,7 @@ TfLiteStatus Subgraph::Invoke() {
       }
     }
     // Release dynamic tensor memory if configured by the user.
-    MaybeReleaseDynamicInputs(node, node_index);
+    MaybeReleaseDynamicTensors(node, node_index);
   }
 
   return status;
@@ -1497,17 +1511,17 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
   return kTfLiteOk;
 }
 
-void Subgraph::UseDynamicAllocationForLargeTensors(
-    int large_tensors_threshods_in_bytes) {
+void Subgraph::OptimizeMemoryForLargeTensors(
+    int large_tensors_thresholds_in_bytes) {
+  large_tensors_thresholds_in_bytes_ = large_tensors_thresholds_in_bytes;
   for (size_t tensor_index = 0; tensor_index < context_.tensors_size;
        tensor_index++) {
     TfLiteTensor* tensor = &context_.tensors[tensor_index];
-    if (tensor->bytes >= large_tensors_threshods_in_bytes &&
+    if (tensor->bytes >= large_tensors_thresholds_in_bytes_ &&
         tensor->allocation_type == kTfLiteArenaRw &&
         // Skip input tensors since they are handled by ResizeInputTensor().
         std::find(inputs_.begin(), inputs_.end(), tensor_index) ==
             inputs_.end()) {
-      large_static_shape_tensors_.insert(tensor_index);
       // Change large tensors' allocation_type and data.raw. This method must be
       // called before AllocateTensors() to avoid handling them by ArenaPlanner.
       tensor->allocation_type = kTfLiteDynamic;
@@ -1860,12 +1874,24 @@ void Subgraph::InitializeTensorReleaseMap() {
       if (!input_tensor) continue;
       tensor_to_last_op_index_[input_tensor_index] = node_index;
     }
+    // Also checks outputs of a node to make sure tensors are released in case
+    // when a tensor is not used for input of another node.
+    for (int output_index = 0; output_index < node.outputs->size;
+         ++output_index) {
+      int output_tensor_index = node.outputs->data[output_index];
+      TfLiteTensor* output_tensor = tensor(output_tensor_index);
+      if (!output_tensor) continue;
+      tensor_to_last_op_index_[output_tensor_index] = node_index;
+    }
   }
 }
 
-void Subgraph::MaybeReleaseDynamicInputs(const TfLiteNode& node,
-                                         size_t node_index) {
+void Subgraph::MaybeReleaseDynamicTensors(const TfLiteNode& node,
+                                          size_t node_index) {
   if (!release_dynamic_tensors_if_unused_) return;
+
+  // Release input tensors if they're neither graph input tensors nor no
+  // longer used by remaining graph execution.
   auto tensorIsInput = [&](int index) {
     for (int idx : inputs_) {
       if (idx == index) return true;
@@ -1878,8 +1904,6 @@ void Subgraph::MaybeReleaseDynamicInputs(const TfLiteNode& node,
     }
     return false;
   };
-  // Release dynamic tensor's memory if the current node is the last one that
-  // uses the tensor.
   for (int input_index = 0; input_index < node.inputs->size; ++input_index) {
     int input_tensor_index = node.inputs->data[input_index];
     TfLiteTensor* input_tensor = tensor(input_tensor_index);
@@ -1895,14 +1919,24 @@ void Subgraph::MaybeReleaseDynamicInputs(const TfLiteNode& node,
       }
     }
   }
-}
 
-void Subgraph::MaybeAllocateLargeDynamicTensors() {
-  for (int tensor_index : large_static_shape_tensors_) {
-    TfLiteTensor* tensor = &context_.tensors[tensor_index];
-    if (tensor->allocation_type == kTfLiteDynamic &&
-        tensor->data.raw == nullptr) {
-      TfLiteTensorRealloc(tensor->bytes, tensor);
+  // Release output tensors if they're neither graph output tensors nor no
+  // longer used by remaining graph execution.
+  for (int output_index = 0; output_index < node.outputs->size;
+       ++output_index) {
+    int output_tensor_index = node.outputs->data[output_index];
+    TfLiteTensor* output_tensor = tensor(output_tensor_index);
+    if (!output_tensor || output_tensor->allocation_type != kTfLiteDynamic ||
+        output_tensor->type == kTfLiteString ||
+        output_tensor->type == kTfLiteResource ||
+        tensorIsInput(output_tensor_index) ||
+        tensorIsOutput(output_tensor_index))
+      continue;
+    auto it = tensor_to_last_op_index_.find(output_tensor_index);
+    if (it != tensor_to_last_op_index_.end() && it->second == node_index) {
+      if (output_tensor->data.raw) {
+        TfLiteTensorDataFree(output_tensor);
+      }
     }
   }
 }

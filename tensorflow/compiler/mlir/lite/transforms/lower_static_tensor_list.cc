@@ -84,6 +84,8 @@ namespace {
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
     : public PassWrapper<LowerStaticTensorListPass, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerStaticTensorListPass)
+
   LowerStaticTensorListPass() = default;
   LowerStaticTensorListPass(const LowerStaticTensorListPass &) {}
   explicit LowerStaticTensorListPass(bool allow_tensorlist_pass_through,

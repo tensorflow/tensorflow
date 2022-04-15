@@ -33,6 +33,8 @@ namespace {
 // cond and body regions.
 struct LegalizeWhile
     : public PassWrapper<LegalizeWhile, OperationPass<ModuleOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeWhile)
+
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
