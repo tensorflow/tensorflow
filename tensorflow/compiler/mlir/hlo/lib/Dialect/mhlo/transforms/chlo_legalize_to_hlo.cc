@@ -405,9 +405,10 @@ Value MaterializeWithUpcast(ConversionPatternRewriter &rewriter, Location loc,
                             ValueRange args, FloatType min_precision_ty,
                             Value callback(ConversionPatternRewriter &,
                                            Location, ValueRange)) {
-  auto original_ty =
-      getElementTypeOrSelf(args.front().getType()).cast<FloatType>();
-  bool needs_upcast = original_ty.getWidth() < min_precision_ty.getWidth();
+  auto original_ty = getElementTypeOrSelf(args.front().getType());
+  auto float_original_ty = original_ty.dyn_cast<FloatType>();
+  bool needs_upcast = float_original_ty && float_original_ty.getWidth() <
+                                               min_precision_ty.getWidth();
 
   // Upcast arguments if necessary.
   llvm::SmallVector<Value, 2> casted_args;
@@ -668,13 +669,6 @@ struct ConvertCoshOp : public OpConversionPattern<CoshOp> {
   LogicalResult matchAndRewrite(
       CoshOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value x = adaptor.operand();
-    if (x.getType().cast<ShapedType>().getElementType().isa<ComplexType>()) {
-      // TODO(hinsu): Support operands with complex element types by always
-      // using the formula for large x. The compare op is not legal for complex
-      // numbers.
-      return failure();
-    }
     rewriter.replaceOp(
         op, MaterializeWithUpcast(rewriter, op.getLoc(), adaptor.getOperands(),
                                   rewriter.getF32Type(),
